@@ -27,23 +27,23 @@
   /* Toppbar */
   #topbar {
     position: fixed; top: 0; left: 0; right: 0;
-    display: flex; align-items: center; gap: 8px;
-    padding: 10px 12px;
+    display: flex; align-items: center; gap: 6px;
+    padding: 8px 10px;
     background: linear-gradient(to bottom, rgba(20,24,31,.95), rgba(20,24,31,.75));
     z-index: 10;
     flex-wrap: wrap;
   }
-  #topbar .logo { font-weight: 700; font-size: 15px; letter-spacing: .5px; margin-right: 4px; }
+  #topbar .logo { font-weight: 700; font-size: 15px; letter-spacing: .5px; margin-right: 2px; }
   #topbar .logo span { color: var(--accent); }
   button, label.btn {
     background: var(--panel2);
     color: var(--text);
     border: 1px solid var(--border);
     border-radius: 8px;
-    padding: 8px 14px;
+    padding: 8px 12px;
     font-size: 13px;
     cursor: pointer;
-    display: inline-flex; align-items: center; gap: 6px;
+    display: inline-flex; align-items: center; gap: 5px;
     user-select: none;
     -webkit-tap-highlight-color: transparent;
   }
@@ -53,12 +53,44 @@
   #fileInput { display: none; }
   #status { font-size: 12px; color: var(--muted); margin-left: auto; }
 
-  /* Panel (egenskaper / kommentarer) */
+  /* Verktøylinje (etter innlasting) */
+  #toolbar {
+    position: fixed;
+    top: 52px; left: 0; right: 0;
+    display: none;
+    align-items: center; gap: 6px;
+    padding: 4px 10px;
+    z-index: 10;
+    flex-wrap: wrap;
+  }
+  #toolbar.open { display: flex; }
+  #toolbar button { padding: 7px 10px; font-size: 12px; }
+
+  /* Kontekst-kontroller nederst (snitt/mål) */
+  #modeBar {
+    position: fixed;
+    bottom: 14px; left: 50%; transform: translateX(-50%);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px 14px;
+    z-index: 12;
+    display: none;
+    align-items: center; gap: 8px;
+    flex-wrap: wrap;
+    max-width: 94vw;
+  }
+  #modeBar.open { display: flex; }
+  #modeBar .lbl { font-size: 12px; color: var(--muted); }
+  #modeBar input[type=range] { width: 180px; }
+  #modeBar button { padding: 6px 10px; font-size: 12px; }
+
+  /* Panel (egenskaper / kommentarer / mengder) */
   .panel {
     position: fixed;
     right: 0; bottom: 0;
-    width: 340px; max-width: 100vw;
-    max-height: 55vh;
+    width: 360px; max-width: 100vw;
+    max-height: 60vh;
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 12px 0 0 0;
@@ -79,6 +111,11 @@
   .prop-row { display: flex; padding: 5px 0; border-bottom: 1px solid var(--border); gap: 10px; }
   .prop-row .k { color: var(--muted); min-width: 110px; flex-shrink: 0; }
   .prop-row .v { word-break: break-word; }
+  .prop-actions { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+
+  .qty-row { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+  .qty-row .n { word-break: break-word; }
+  .qty-row .c { color: var(--accent2); white-space: nowrap; text-align: right; }
 
   /* Kommentar-liste */
   .comment {
@@ -153,9 +190,10 @@
     display: none;
   }
   @media (max-width: 640px) {
-    #topbar { padding: 8px; gap: 6px; }
-    button, label.btn { padding: 8px 10px; font-size: 12px; }
-    .panel { width: 100vw; border-radius: 12px 12px 0 0; max-height: 50vh; }
+    #topbar { padding: 6px; gap: 5px; }
+    button, label.btn { padding: 7px 9px; font-size: 12px; }
+    .panel { width: 100vw; border-radius: 12px 12px 0 0; max-height: 55vh; }
+    #hint { display: none !important; }
   }
 </style>
 </head>
@@ -164,19 +202,30 @@
 
 <div id="topbar">
   <div class="logo">STORM <span>IFC</span></div>
-  <label class="btn" for="fileInput">📂 Åpne IFC</label>
+  <label class="btn" for="fileInput">📂 Åpne</label>
   <input type="file" id="fileInput">
-  <button id="btnMarker">📌 Markering</button>
   <button id="btnComments">💬 <span id="commentCount">0</span></button>
-  <button id="btnFit">🎯 Sentrer</button>
-  <button id="btnShare" style="display:none">📤 Mobil-fil</button>
+  <button id="btnFit">🎯</button>
+  <button id="btnShare" style="display:none">📤</button>
   <div id="status"></div>
 </div>
+
+<div id="toolbar">
+  <button id="btnMarker">📌 Markering</button>
+  <button id="btnMeasure">📏 Mål</button>
+  <button id="btnKote">⛰ Kote</button>
+  <button id="btnClip">✂️ Snitt</button>
+  <button id="btnGhost">👻 Transparent</button>
+  <button id="btnQty">📊 Mengder</button>
+  <button id="btnShowAll" style="display:none">👁 Vis alle</button>
+</div>
+
+<div id="modeBar"></div>
 
 <div id="splash">
   <h1>STORM <span>IFC-VIEWER</span></h1>
   <p>Åpne en IFC-modell (BIM) direkte i nettleseren – på mobil eller PC.
-     Naviger i 3D, trykk på elementer for info, og legg inn markeringer med kommentarer.</p>
+     Naviger i 3D, trykk på elementer for info, mål, snitt og legg inn markeringer.</p>
   <label class="btn" for="fileInput">📂 Velg IFC-fil</label>
   <p style="font-size:12px">Filen behandles kun lokalt i nettleseren din – ingenting lastes opp.</p>
   <p id="jsCheck" style="color:#ef4444; font-size:13px; font-weight:600">⚠️ JavaScript kjører ikke. Åpner du fila i forhåndsvisning (Filer/mail)? Åpne den i Safari eller Chrome i stedet.</p>
@@ -191,7 +240,12 @@
 
 <div class="panel" id="commentPanel">
   <header><span>Markeringer</span><button onclick="document.getElementById('commentPanel').classList.remove('open')">✕</button></header>
-  <div class="body" id="commentBody"><p style="color:var(--muted)">Ingen markeringer ennå. Trykk på 📌 Markering og deretter på modellen.</p></div>
+  <div class="body" id="commentBody"></div>
+</div>
+
+<div class="panel" id="qtyPanel">
+  <header><span>Mengder</span><button onclick="document.getElementById('qtyPanel').classList.remove('open')">✕</button></header>
+  <div class="body" id="qtyBody"></div>
 </div>
 
 <div id="commentDialog">
@@ -343,12 +397,20 @@ let modelID = null;
 let modelGroup = null;
 let fileName = "";
 let lastBuffer = null;
+let modelBox = null;
+let modelSize = 10;
+let koteMatrixInv = null; // for å regne tilbake til opprinnelige koter
+let qtyCache = null;
+
 const markerGroup = new THREE.Group();
-scene.add(markerGroup);
+const measureGroup = new THREE.Group();
+const koteGroup = new THREE.Group();
+scene.add(markerGroup, measureGroup, koteGroup);
 
 const statusEl = document.getElementById("status");
 const loadingEl = document.getElementById("loading");
 const loadingText = document.getElementById("loadingText");
+const $ = (id) => document.getElementById(id);
 
 document.getElementById("fileInput").addEventListener("change", async (e) => {
   const file = e.target.files[0];
@@ -360,19 +422,15 @@ document.getElementById("fileInput").addEventListener("change", async (e) => {
   }
   fileName = file.name;
   loadingEl.classList.add("open");
-  loadingText.textContent = "Leser " + file.name + " …";
   try {
     loadingText.textContent = "Starter IFC-motor …";
     await ifcReady;
     loadingText.textContent = "Leser " + file.name + " …";
     const buffer = new Uint8Array(await file.arrayBuffer());
-    await new Promise(r => setTimeout(r, 30)); // la spinneren tegnes
+    await new Promise(r => setTimeout(r, 30));
     lastBuffer = buffer;
     loadModel(buffer);
-    document.getElementById("splash").style.display = "none";
-    document.getElementById("hint").style.display = "block";
-    document.getElementById("btnShare").style.display = "";
-    loadComments();
+    afterLoad();
   } catch (err) {
     console.error(err);
     alert("Klarte ikke å lese IFC-filen: " + err.message);
@@ -382,14 +440,28 @@ document.getElementById("fileInput").addEventListener("change", async (e) => {
   }
 });
 
+function afterLoad() {
+  $("splash").style.display = "none";
+  $("hint").style.display = "block";
+  $("btnShare").style.display = "";
+  $("toolbar").classList.add("open");
+  loadComments();
+}
+
 function clearModel() {
   if (modelGroup) {
     scene.remove(modelGroup);
-    modelGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+    modelGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); });
     modelGroup = null;
   }
   markerGroup.clear();
+  measureGroup.clear();
+  koteGroup.clear();
   comments = [];
+  qtyCache = null;
+  hiddenIDs.clear();
+  ghostOn = false;
+  renderer.clippingPlanes = [];
   renderCommentList();
   if (modelID !== null) { try { ifcApi.CloseModel(modelID); } catch(_){} modelID = null; }
   clearSelection();
@@ -399,6 +471,11 @@ function loadModel(buffer) {
   clearModel();
   modelID = ifcApi.OpenModel(buffer, { COORDINATE_TO_ORIGIN: true });
   modelGroup = new THREE.Group();
+
+  try {
+    const cm = ifcApi.GetCoordinationMatrix(modelID);
+    koteMatrixInv = new THREE.Matrix4().fromArray(cm).invert();
+  } catch(_) { koteMatrixInv = null; }
 
   const matCache = new Map();
   function getMaterial(c) {
@@ -440,6 +517,7 @@ function loadModel(buffer) {
       mtx.fromArray(pg.flatTransformation);
       m.applyMatrix4(mtx);
       m.userData.expressID = expressID;
+      m.userData.origMat = m.material;
       modelGroup.add(m);
       geom.delete();
     }
@@ -448,6 +526,8 @@ function loadModel(buffer) {
 
   scene.add(modelGroup);
   statusEl.textContent = count + " elementer";
+  modelBox = new THREE.Box3().setFromObject(modelGroup);
+  modelSize = modelBox.getSize(new THREE.Vector3()).length() || 10;
   fitToModel();
 }
 
@@ -464,17 +544,171 @@ function fitToModel() {
   camera.updateProjectionMatrix();
   grid.position.y = box.min.y;
 }
-document.getElementById("btnFit").addEventListener("click", fitToModel);
+$("btnFit").addEventListener("click", fitToModel);
+
+// ---------- Tekst-etiketter (sprites) ----------
+function makeLabel(text, color = "#f59e0b") {
+  const pad = 14;
+  const fs = 44;
+  const mc = document.createElement("canvas").getContext("2d");
+  mc.font = "bold " + fs + "px sans-serif";
+  const w = mc.measureText(text).width + pad * 2;
+  const c = document.createElement("canvas");
+  c.width = Math.ceil(w);
+  c.height = fs + pad * 2;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "rgba(20,24,31,0.85)";
+  if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(0, 0, c.width, c.height, 14); ctx.fill(); }
+  else ctx.fillRect(0, 0, c.width, c.height);
+  ctx.strokeStyle = color; ctx.lineWidth = 4; ctx.strokeRect(2, 2, c.width - 4, c.height - 4);
+  ctx.font = "bold " + fs + "px sans-serif";
+  ctx.fillStyle = color;
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText(text, c.width / 2, c.height / 2 + 2);
+  const tex = new THREE.CanvasTexture(c);
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false }));
+  sprite.renderOrder = 998;
+  const s = modelSize * 0.028;
+  sprite.scale.set(s * c.width / c.height, s, 1);
+  return sprite;
+}
+
+// ---------- Modus-håndtering ----------
+let mode = null; // null | marker | measure | kote
+const modeButtons = { marker: $("btnMarker"), measure: $("btnMeasure"), kote: $("btnKote") };
+const modeBar = $("modeBar");
+
+function setMode(m) {
+  mode = (mode === m) ? null : m;
+  for (const k in modeButtons) modeButtons[k].classList.toggle("active", mode === k);
+  measureFirst = null;
+  updateModeBar();
+}
+$("btnMarker").addEventListener("click", () => setMode("marker"));
+$("btnMeasure").addEventListener("click", () => setMode("measure"));
+$("btnKote").addEventListener("click", () => setMode("kote"));
+
+function updateModeBar() {
+  if (clipOn) return; // snittkontroller styrer modeBar
+  if (mode === "measure") {
+    modeBar.innerHTML = '<span class="lbl">Trykk på to punkter i modellen</span><button id="mbClear">Tøm mål</button>';
+    $("mbClear").onclick = () => { measureGroup.clear(); measureFirst = null; };
+    modeBar.classList.add("open");
+  } else if (mode === "kote") {
+    modeBar.innerHTML = '<span class="lbl">Trykk på et punkt for å vise kotehøyde</span><button id="mbClear">Tøm koter</button>';
+    $("mbClear").onclick = () => koteGroup.clear();
+    modeBar.classList.add("open");
+  } else if (mode === "marker") {
+    modeBar.innerHTML = '<span class="lbl">Trykk på modellen for å plassere markering</span>';
+    modeBar.classList.add("open");
+  } else {
+    modeBar.classList.remove("open");
+    modeBar.innerHTML = "";
+  }
+}
+
+// ---------- Snitt (clipping) ----------
+let clipOn = false;
+let clipAxis = "y";
+let clipFlip = false;
+let clipT = 1;
+const axisVectors = { x: new THREE.Vector3(1,0,0), y: new THREE.Vector3(0,1,0), z: new THREE.Vector3(0,0,1) };
+
+$("btnClip").addEventListener("click", () => {
+  clipOn = !clipOn;
+  $("btnClip").classList.toggle("active", clipOn);
+  if (clipOn) {
+    mode = null;
+    for (const k in modeButtons) modeButtons[k].classList.remove("active");
+    showClipBar();
+    applyClip();
+  } else {
+    renderer.clippingPlanes = [];
+    modeBar.classList.remove("open");
+    modeBar.innerHTML = "";
+  }
+});
+
+function showClipBar() {
+  modeBar.innerHTML =
+    '<span class="lbl">Snitt:</span>' +
+    '<button id="cx">X</button><button id="cy">Y (høyde)</button><button id="cz">Z</button>' +
+    '<button id="cf">↔ Snu</button>' +
+    '<input type="range" id="cr" min="0" max="1000" value="' + Math.round(clipT * 1000) + '">';
+  modeBar.classList.add("open");
+  const upd = () => {
+    $("cx").classList.toggle("active", clipAxis === "x");
+    $("cy").classList.toggle("active", clipAxis === "y");
+    $("cz").classList.toggle("active", clipAxis === "z");
+    $("cf").classList.toggle("active", clipFlip);
+  };
+  $("cx").onclick = () => { clipAxis = "x"; upd(); applyClip(); };
+  $("cy").onclick = () => { clipAxis = "y"; upd(); applyClip(); };
+  $("cz").onclick = () => { clipAxis = "z"; upd(); applyClip(); };
+  $("cf").onclick = () => { clipFlip = !clipFlip; upd(); applyClip(); };
+  $("cr").oninput = (e) => { clipT = e.target.value / 1000; applyClip(); };
+  upd();
+}
+
+function applyClip() {
+  if (!modelBox) return;
+  const min = modelBox.min[clipAxis] - 0.05;
+  const max = modelBox.max[clipAxis] + 0.05;
+  const v = min + (max - min) * clipT;
+  const n = axisVectors[clipAxis].clone().multiplyScalar(clipFlip ? 1 : -1);
+  const plane = new THREE.Plane(n, clipFlip ? -v : v);
+  renderer.clippingPlanes = [plane];
+}
+
+// ---------- Transparent (ghost) ----------
+let ghostOn = false;
+const ghostCache = new Map();
+$("btnGhost").addEventListener("click", () => {
+  if (!modelGroup) return;
+  clearSelection();
+  $("propPanel").classList.remove("open");
+  ghostOn = !ghostOn;
+  $("btnGhost").classList.toggle("active", ghostOn);
+  modelGroup.children.forEach(m => {
+    if (ghostOn) {
+      if (!ghostCache.has(m.userData.origMat)) {
+        const g = m.userData.origMat.clone();
+        g.transparent = true; g.opacity = 0.25; g.depthWrite = false;
+        ghostCache.set(m.userData.origMat, g);
+      }
+      m.material = ghostCache.get(m.userData.origMat);
+    } else {
+      m.material = m.userData.origMat;
+    }
+  });
+});
+
+// ---------- Skjul / vis ----------
+const hiddenIDs = new Set();
+function hideElement(expressID) {
+  hiddenIDs.add(expressID);
+  modelGroup.children.forEach(m => { if (m.userData.expressID === expressID) m.visible = false; });
+  clearSelection();
+  $("propPanel").classList.remove("open");
+  $("btnShowAll").style.display = "";
+}
+$("btnShowAll").addEventListener("click", () => {
+  hiddenIDs.clear();
+  if (modelGroup) modelGroup.children.forEach(m => m.visible = true);
+  $("btnShowAll").style.display = "none";
+});
 
 // ---------- Valg / egenskaper ----------
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
 let selectedMeshes = [];
+let currentPropID = null;
 const selMat = new THREE.MeshLambertMaterial({ color: 0x3b82f6, emissive: 0x1d4ed8, side: THREE.DoubleSide });
 
 function clearSelection() {
   selectedMeshes.forEach(({ mesh, mat }) => mesh.material = mat);
   selectedMeshes = [];
+  currentPropID = null;
 }
 
 function pick(clientX, clientY) {
@@ -482,12 +716,21 @@ function pick(clientX, clientY) {
   pointer.x = (clientX / innerWidth) * 2 - 1;
   pointer.y = -(clientY / innerHeight) * 2 + 1;
   raycaster.setFromCamera(pointer, camera);
-  const hits = raycaster.intersectObjects(modelGroup.children, false);
+  const visible = modelGroup.children.filter(m => m.visible);
+  const hits = raycaster.intersectObjects(visible, false);
+  // hopp over treff bak snittplanet
+  if (renderer.clippingPlanes.length) {
+    for (const h of hits) {
+      if (renderer.clippingPlanes.every(p => p.distanceToPoint(h.point) >= -0.001)) return h;
+    }
+    return null;
+  }
   return hits.length ? hits[0] : null;
 }
 
 function selectElement(expressID) {
   clearSelection();
+  currentPropID = expressID;
   modelGroup.children.forEach(m => {
     if (m.userData.expressID === expressID) {
       selectedMeshes.push({ mesh: m, mat: m.material });
@@ -503,20 +746,19 @@ function val(v) {
 }
 
 function showProperties(expressID) {
-  const body = document.getElementById("propBody");
+  const body = $("propBody");
   const rows = [];
   try {
     const line = ifcApi.GetLine(modelID, expressID);
     const typeCode = ifcApi.GetLineType(modelID, expressID);
     let typeName = "";
     try { typeName = ifcApi.GetNameFromTypeCode(typeCode) || ""; } catch(_) {}
-    document.getElementById("propTitle").textContent = (typeName || "Element").replace(/^IFC/i, "Ifc");
+    $("propTitle").textContent = (typeName || "Element").replace(/^IFC/i, "Ifc");
     rows.push(["ExpressID", expressID]);
     for (const key of ["GlobalId","Name","ObjectType","Tag","Description","PredefinedType"]) {
       const v = val(line[key]);
       if (v !== null && v !== "" ) rows.push([key, v]);
     }
-    // Egenskapssett (Psets)
     try {
       const relIDs = ifcApi.GetLineIDsWithType(modelID, WebIFC.IFCRELDEFINESBYPROPERTIES);
       for (let i = 0; i < relIDs.size(); i++) {
@@ -540,29 +782,112 @@ function showProperties(expressID) {
   } catch (err) {
     rows.push(["Feil", "Kunne ikke lese egenskaper"]);
   }
-  body.innerHTML = rows.map(([k,v]) =>
+  body.innerHTML =
+    '<div class="prop-actions"><button id="paHide">🙈 Skjul element</button></div>' +
+    rows.map(([k,v]) =>
     `<div class="prop-row"><div class="k">${esc(String(k))}</div><div class="v">${esc(String(v))}</div></div>`).join("");
-  document.getElementById("commentPanel").classList.remove("open");
-  document.getElementById("propPanel").classList.add("open");
+  $("paHide").onclick = () => hideElement(expressID);
+  $("commentPanel").classList.remove("open");
+  $("qtyPanel").classList.remove("open");
+  $("propPanel").classList.add("open");
 }
 
 function esc(s){ return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
 
-// ---------- Markeringer / kommentarer ----------
-let markerMode = false;
-let comments = [];
-let pendingPoint = null;
-const btnMarker = document.getElementById("btnMarker");
-
-btnMarker.addEventListener("click", () => {
-  markerMode = !markerMode;
-  btnMarker.classList.toggle("active", markerMode);
-  statusEl.textContent = markerMode ? "Trykk på modellen for å plassere markering" : (modelGroup ? modelGroup.children.length ? "" : "" : "");
+// ---------- Mengder ----------
+$("btnQty").addEventListener("click", () => {
+  if (!modelGroup) return;
+  const panel = $("qtyPanel");
+  if (panel.classList.contains("open")) { panel.classList.remove("open"); return; }
+  if (!qtyCache) qtyCache = computeQuantities();
+  renderQuantities(qtyCache);
+  $("propPanel").classList.remove("open");
+  $("commentPanel").classList.remove("open");
+  panel.classList.add("open");
 });
 
-document.getElementById("btnComments").addEventListener("click", () => {
-  document.getElementById("propPanel").classList.remove("open");
-  document.getElementById("commentPanel").classList.toggle("open");
+function computeQuantities() {
+  // samle mesher per element
+  const byID = new Map();
+  modelGroup.children.forEach(m => {
+    const id = m.userData.expressID;
+    if (!byID.has(id)) byID.set(id, []);
+    byID.get(id).push(m);
+  });
+  const groups = new Map();
+  const box = new THREE.Box3();
+  const tmp = new THREE.Box3();
+  const sizeV = new THREE.Vector3();
+  for (const [id, meshes] of byID) {
+    let name = "", objType = "", typeName = "";
+    try {
+      const line = ifcApi.GetLine(modelID, id);
+      name = val(line.Name) || "";
+      objType = val(line.ObjectType) || "";
+      try { typeName = (ifcApi.GetNameFromTypeCode(ifcApi.GetLineType(modelID, id)) || "").replace(/^IFC/, ""); } catch(_){}
+    } catch(_){}
+    // gruppenøkkel: ObjectType er oftest profilen (f.eks. CFSHS100x6), ellers navn uten løpenummer
+    let key = objType || name.replace(/:\d+$/, "") || typeName || "Ukjent";
+    // lengde: lengste dimensjon av elementets samlede boks
+    box.makeEmpty();
+    meshes.forEach(m => { tmp.setFromObject(m); box.union(tmp); });
+    box.getSize(sizeV);
+    const len = Math.max(sizeV.x, sizeV.y, sizeV.z);
+    if (!groups.has(key)) groups.set(key, { count: 0, length: 0, type: typeName });
+    const g = groups.get(key);
+    g.count++;
+    g.length += len;
+  }
+  return [...groups.entries()].sort((a, b) => b[1].count - a[1].count);
+}
+
+function renderQuantities(list) {
+  const total = list.reduce((s, [, g]) => s + g.count, 0);
+  $("qtyBody").innerHTML =
+    '<div class="qty-row" style="font-weight:600"><div class="n">Totalt</div><div class="c">' + total + ' stk</div></div>' +
+    list.map(([key, g]) =>
+      '<div class="qty-row"><div class="n">' + esc(key) + (g.type ? ' <span style="color:var(--muted);font-size:11px">(' + esc(g.type) + ')</span>' : "") + '</div>' +
+      '<div class="c">' + g.count + ' stk · ' + g.length.toFixed(1) + ' m</div></div>').join("") +
+    '<p style="color:var(--muted); font-size:11px; margin-top:10px">Lengde = lengste mål per element (ca-verdi, summert per gruppe)</p>';
+}
+
+// ---------- Kote ----------
+function koteValue(point) {
+  if (koteMatrixInv) {
+    const p = point.clone().applyMatrix4(koteMatrixInv);
+    return p.y;
+  }
+  return point.y;
+}
+
+// ---------- Mål ----------
+let measureFirst = null;
+function addMeasure(p1, p2) {
+  const d = p1.distanceTo(p2);
+  const geo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+  const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xf59e0b, depthTest: false }));
+  line.renderOrder = 997;
+  measureGroup.add(line);
+  const mkDot = (p) => {
+    const dot = new THREE.Mesh(new THREE.SphereGeometry(modelSize * 0.004), new THREE.MeshBasicMaterial({ color: 0xf59e0b, depthTest: false }));
+    dot.renderOrder = 997;
+    dot.position.copy(p);
+    measureGroup.add(dot);
+  };
+  mkDot(p1); mkDot(p2);
+  const label = makeLabel(d.toFixed(2) + " m");
+  label.position.copy(p1).add(p2).multiplyScalar(0.5);
+  measureGroup.add(label);
+}
+
+// ---------- Markeringer / kommentarer ----------
+let comments = [];
+let pendingPoint = null;
+
+$("btnComments").addEventListener("click", () => {
+  $("propPanel").classList.remove("open");
+  $("qtyPanel").classList.remove("open");
+  $("commentPanel").classList.toggle("open");
 });
 
 function storageKey(){ return "storm-ifc-comments::" + fileName; }
@@ -596,16 +921,15 @@ function addMarkerSprite(comment) {
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: markerTexture, depthTest: false }));
   sprite.position.set(comment.x, comment.y, comment.z);
   sprite.renderOrder = 999;
-  const box = modelGroup ? new THREE.Box3().setFromObject(modelGroup) : null;
-  const s = box ? box.getSize(new THREE.Vector3()).length() * 0.012 : 0.3;
+  const s = modelSize * 0.012 || 0.3;
   sprite.scale.set(s, s, 1);
   sprite.userData.commentId = comment.id;
   markerGroup.add(sprite);
 }
 
 window.saveComment = function() {
-  const text = document.getElementById("commentText").value.trim();
-  document.getElementById("commentDialog").classList.remove("open");
+  const text = $("commentText").value.trim();
+  $("commentDialog").classList.remove("open");
   if (!text || !pendingPoint) { pendingPoint = null; return; }
   const c = {
     id: Date.now(),
@@ -618,18 +942,16 @@ window.saveComment = function() {
   persist();
   renderCommentList();
   pendingPoint = null;
-  markerMode = false;
-  btnMarker.classList.remove("active");
-  statusEl.textContent = "";
+  if (mode === "marker") setMode("marker"); // slå av markering-modus
 };
 window.cancelComment = function() {
-  document.getElementById("commentDialog").classList.remove("open");
+  $("commentDialog").classList.remove("open");
   pendingPoint = null;
 };
 
 function renderCommentList() {
-  document.getElementById("commentCount").textContent = comments.length;
-  const body = document.getElementById("commentBody");
+  $("commentCount").textContent = comments.length;
+  const body = $("commentBody");
   if (!comments.length) {
     body.innerHTML = '<p style="color:var(--muted)">Ingen markeringer ennå. Trykk på 📌 Markering og deretter på modellen.</p>';
     return;
@@ -665,14 +987,34 @@ canvas.addEventListener("pointerup", (e) => {
   if (!downPos) return;
   const moved = Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y);
   downPos = null;
-  if (moved > 8) return; // det var en dra-bevegelse
+  if (moved > 8) return;
   const hit = pick(e.clientX, e.clientY);
-  if (!hit) { clearSelection(); document.getElementById("propPanel").classList.remove("open"); return; }
-  if (markerMode) {
+  if (!hit) {
+    if (!mode) { clearSelection(); $("propPanel").classList.remove("open"); }
+    return;
+  }
+  if (mode === "marker") {
     pendingPoint = hit.point.clone();
-    document.getElementById("commentText").value = "";
-    document.getElementById("commentDialog").classList.add("open");
-    setTimeout(() => document.getElementById("commentText").focus(), 50);
+    $("commentText").value = "";
+    $("commentDialog").classList.add("open");
+    setTimeout(() => $("commentText").focus(), 50);
+  } else if (mode === "measure") {
+    if (!measureFirst) {
+      measureFirst = hit.point.clone();
+      const dot = new THREE.Mesh(new THREE.SphereGeometry(modelSize * 0.004), new THREE.MeshBasicMaterial({ color: 0xf59e0b, depthTest: false }));
+      dot.renderOrder = 997;
+      dot.position.copy(measureFirst);
+      dot.userData.temp = true;
+      measureGroup.add(dot);
+    } else {
+      measureGroup.children.filter(o => o.userData.temp).forEach(o => measureGroup.remove(o));
+      addMeasure(measureFirst, hit.point.clone());
+      measureFirst = null;
+    }
+  } else if (mode === "kote") {
+    const label = makeLabel("▲ " + koteValue(hit.point).toFixed(2) + " m", "#22d3ee");
+    label.position.copy(hit.point);
+    koteGroup.add(label);
   } else {
     const id = hit.object.userData.expressID;
     selectElement(id);
@@ -689,7 +1031,7 @@ function bufToB64(buf) {
   });
 }
 
-document.getElementById("btnShare").addEventListener("click", async () => {
+$("btnShare").addEventListener("click", async () => {
   if (!lastBuffer) return;
   loadingText.textContent = "Lager delbar fil …";
   loadingEl.classList.add("open");
@@ -726,10 +1068,7 @@ if (window.EMBEDDED_IFC) {
       fileName = window.EMBEDDED_NAME || "modell.ifc";
       lastBuffer = buf;
       loadModel(buf);
-      document.getElementById("splash").style.display = "none";
-      document.getElementById("hint").style.display = "block";
-      document.getElementById("btnShare").style.display = "";
-      loadComments();
+      afterLoad();
     } catch (err) {
       alert("Klarte ikke å laste innebygd modell: " + err.message);
     } finally {
