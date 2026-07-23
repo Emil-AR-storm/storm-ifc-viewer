@@ -206,7 +206,6 @@
   <input type="file" id="fileInput">
   <button id="btnComments">💬 <span id="commentCount">0</span></button>
   <button id="btnFit">🎯</button>
-  <button id="btnShare" style="display:none">📤</button>
   <div id="status"></div>
 </div>
 
@@ -217,6 +216,7 @@
   <button id="btnClip">✂️ Snitt</button>
   <button id="btnGhost">👻 Transparent</button>
   <button id="btnQty">📊 Mengder</button>
+  <button id="btnColors">🎨 Farger</button>
   <button id="btnShowAll" style="display:none">👁 Vis alle</button>
 </div>
 
@@ -248,6 +248,11 @@
   <div class="body" id="qtyBody"></div>
 </div>
 
+<div class="panel" id="colorPanel">
+  <header><span>Farger</span><button onclick="document.getElementById('colorPanel').classList.remove('open')">✕</button></header>
+  <div class="body" id="colorBody"></div>
+</div>
+
 <div id="commentDialog">
   <h3>Ny markering</h3>
   <textarea id="commentText" placeholder="Skriv en kommentar …"></textarea>
@@ -273,9 +278,6 @@ window.addEventListener("unhandledrejection", function(e) {
 <script type="module">
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
 import * as WebIFC from "https://cdn.jsdelivr.net/npm/web-ifc@0.0.57/web-ifc-api.js";
-
-// Kopi av sidens kildekode (brukes av "Mobil-fil"-knappen)
-const PAGE_SRC = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
 
 // JavaScript kjører – skjul advarselen
 const jsCheck = document.getElementById("jsCheck");
@@ -443,7 +445,6 @@ document.getElementById("fileInput").addEventListener("change", async (e) => {
 function afterLoad() {
   $("splash").style.display = "none";
   $("hint").style.display = "block";
-  $("btnShare").style.display = "";
   $("toolbar").classList.add("open");
   loadComments();
 }
@@ -459,6 +460,8 @@ function clearModel() {
   koteGroup.clear();
   comments = [];
   qtyCache = null;
+  typeInfo = null;
+  typeColorsOn = false;
   hiddenIDs.clear();
   ghostOn = false;
   renderer.clippingPlanes = [];
@@ -789,6 +792,7 @@ function showProperties(expressID) {
   $("paHide").onclick = () => hideElement(expressID);
   $("commentPanel").classList.remove("open");
   $("qtyPanel").classList.remove("open");
+  $("colorPanel").classList.remove("open");
   $("propPanel").classList.add("open");
 }
 
@@ -803,6 +807,7 @@ $("btnQty").addEventListener("click", () => {
   renderQuantities(qtyCache);
   $("propPanel").classList.remove("open");
   $("commentPanel").classList.remove("open");
+  $("colorPanel").classList.remove("open");
   panel.classList.add("open");
 });
 
@@ -887,6 +892,7 @@ let pendingPoint = null;
 $("btnComments").addEventListener("click", () => {
   $("propPanel").classList.remove("open");
   $("qtyPanel").classList.remove("open");
+  $("colorPanel").classList.remove("open");
   $("commentPanel").classList.toggle("open");
 });
 
@@ -1022,38 +1028,105 @@ canvas.addEventListener("pointerup", (e) => {
   }
 });
 
-// ---------- "Mobil-fil": eksporter HTML med modellen innebygd ----------
-function bufToB64(buf) {
-  return new Promise((res) => {
-    const fr = new FileReader();
-    fr.onload = () => res(String(fr.result).split(",")[1]);
-    fr.readAsDataURL(new Blob([buf]));
+// ---------- Fargeinnstillinger (per elementtype) ----------
+const DEFAULT_BG = "#14181f";
+const TYPE_LABELS = {
+  COLUMN: "Søyler", BEAM: "Bjelker", SLAB: "Dekker", WALL: "Vegger",
+  WALLSTANDARDCASE: "Vegger", MEMBER: "Stag/sperrer", PLATE: "Plater",
+  DOOR: "Dører", WINDOW: "Vinduer", ROOF: "Tak", STAIR: "Trapper",
+  STAIRFLIGHT: "Trappeløp", RAILING: "Rekkverk", FOOTING: "Fundamenter",
+  PILE: "Peler", COVERING: "Kledning", CURTAINWALL: "Glassfasader",
+  MECHANICALFASTENER: "Festemidler", FASTENER: "Festemidler",
+  FLOWSEGMENT: "Rør/kanaler", BUILDINGELEMENTPROXY: "Annet"
+};
+const PALETTE = ["#e6194b","#3cb44b","#ffe119","#4363d8","#f58231","#911eb4",
+  "#46f0f0","#f032e6","#bcf60c","#008080","#e6beff","#9a6324","#fffac8",
+  "#800000","#aaffc3","#ffd8b1"];
+let typeInfo = null; // Map typeKey -> { label, meshes, color, mat }
+let typeColorsOn = false;
+
+function buildTypeInfo() {
+  typeInfo = new Map();
+  const idType = new Map();
+  modelGroup.children.forEach(m => {
+    const id = m.userData.expressID;
+    if (!idType.has(id)) {
+      let t = "UKJENT";
+      try { t = (ifcApi.GetNameFromTypeCode(ifcApi.GetLineType(modelID, id)) || "UKJENT"); } catch(_){}
+      idType.set(id, t.toUpperCase().replace(/^IFC/, ""));
+    }
+    const key = idType.get(id);
+    if (!typeInfo.has(key)) {
+      const color = PALETTE[typeInfo.size % PALETTE.length];
+      typeInfo.set(key, {
+        label: TYPE_LABELS[key] || key,
+        meshes: [],
+        color,
+        mat: new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide })
+      });
+    }
+    typeInfo.get(key).meshes.push(m);
   });
 }
 
-$("btnShare").addEventListener("click", async () => {
-  if (!lastBuffer) return;
-  loadingText.textContent = "Lager delbar fil …";
-  loadingEl.classList.add("open");
-  try {
-    const b64 = await bufToB64(lastBuffer);
-    let src = PAGE_SRC.replace(/<script id="embedded-ifc">[\s\S]*?<\/script>/, "");
-    const inject = '<script id="embedded-ifc">window.EMBEDDED_IFC="' + b64 +
-      '";window.EMBEDDED_NAME=' + JSON.stringify(fileName) + ';</scr' + 'ipt>';
-    src = src.replace("<script type=\"module\">", inject + "\n<script type=\"module\">");
-    const blob = new Blob([src], { type: "text/html" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = fileName.replace(/\.ifc$/i, "") + " - Storm Viewer.html";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  } catch (err) {
-    alert("Klarte ikke å lage delbar fil: " + err.message);
-  } finally {
-    loadingEl.classList.remove("open");
+function applyTypeColors() {
+  clearSelection();
+  $("propPanel").classList.remove("open");
+  ghostOn = false;
+  $("btnGhost").classList.remove("active");
+  typeColorsOn = true;
+  for (const [, g] of typeInfo) g.meshes.forEach(m => m.material = g.mat);
+}
+
+function resetColors() {
+  scene.background.set(DEFAULT_BG);
+  typeColorsOn = false;
+  if (modelGroup) {
+    clearSelection();
+    modelGroup.children.forEach(m => m.material = m.userData.origMat);
   }
+  renderColorPanel();
+}
+
+$("btnColors").addEventListener("click", () => {
+  if (!modelGroup) return;
+  const panel = $("colorPanel");
+  if (panel.classList.contains("open")) { panel.classList.remove("open"); return; }
+  if (!typeInfo) buildTypeInfo();
+  renderColorPanel();
+  $("propPanel").classList.remove("open");
+  $("commentPanel").classList.remove("open");
+  $("qtyPanel").classList.remove("open");
+  panel.classList.add("open");
 });
+
+function renderColorPanel() {
+  const bgVal = "#" + scene.background.getHexString();
+  let html =
+    '<div class="prop-actions">' +
+    '<button id="colApply" class="primary">🎨 Fargelegg etter type</button>' +
+    '<button id="colReset">Originalfarger</button></div>' +
+    '<div class="qty-row"><div class="n">Bakgrunn</div><div class="c"><input type="color" id="colBg" value="' + bgVal + '"></div></div>';
+  const keys = [...typeInfo.keys()];
+  keys.forEach((key, i) => {
+    const g = typeInfo.get(key);
+    html += '<div class="qty-row"><div class="n">' + esc(g.label) +
+      ' <span style="color:var(--muted);font-size:11px">(' + g.meshes.length + ')</span></div>' +
+      '<div class="c"><input type="color" data-type="' + i + '" value="' + g.color + '"></div></div>';
+  });
+  $("colorBody").innerHTML = html;
+  $("colBg").oninput = (e) => scene.background.set(e.target.value);
+  $("colApply").onclick = applyTypeColors;
+  $("colReset").onclick = resetColors;
+  $("colorBody").querySelectorAll("input[data-type]").forEach(inp => {
+    inp.oninput = (e) => {
+      const g = typeInfo.get(keys[Number(e.target.dataset.type)]);
+      g.color = e.target.value;
+      g.mat.color.set(e.target.value);
+      if (!typeColorsOn) applyTypeColors();
+    };
+  });
+}
 
 // ---------- Automatisk innlasting av innebygd modell ----------
 if (window.EMBEDDED_IFC) {
