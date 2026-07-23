@@ -662,50 +662,64 @@ function buildAxes() {
     line.renderOrder = 990;
     axesGroup.add(line);
   }
-  function addTag(text, pos, color) {
-    const lab = makeLabel(text, color || "#8ab4ff", TAG);
+  function addTag(text, pos, color, sizeF) {
+    const lab = makeLabel(text, color || "#8ab4ff", sizeF || TAG);
     lab.position.copy(pos); lab.position.y = labelY;
     axesGroup.add(lab);
   }
+  // Merkelapp-størrelse krymper når naboaksene står tettere enn 5000 mm
+  function tagSize(gapMM) {
+    const f = Math.max(0.45, Math.min(1, gapMM / 5000));
+    return TAG * f;
+  }
+  function neighborGap(groups, i) {
+    let g = Infinity;
+    if (i > 0) g = Math.min(g, groups[i].c - groups[i - 1].c);
+    if (i < groups.length - 1) g = Math.min(g, groups[i + 1].c - groups[i].c);
+    return (g === Infinity ? 5 * one : g) * toMM;
+  }
 
-  // Akselinjer følger byggets form: 1 m ut fra ytterste søyle på hver akse
+  // Grenser for hele bygget (alle søyler)
+  const minX = Math.min(...boxes.map(b => b.min.x)), maxX = Math.max(...boxes.map(b => b.max.x));
+  const minZ = Math.min(...boxes.map(b => b.min.z)), maxZ = Math.max(...boxes.map(b => b.max.z));
+
+  // Akselinjer stikker gjennom hele bygget + 1 m i hver ende
   xs.forEach((g, i) => {
-    const a = g.perpMin - one, b = g.perpMax + one;
-    addLine(new THREE.Vector3(g.c, y, a), new THREE.Vector3(g.c, y, b), dashMat, true);
-    addTag(String(i + 1), new THREE.Vector3(g.c, y, a));
-    addTag(String(i + 1), new THREE.Vector3(g.c, y, b));
+    const s = tagSize(neighborGap(xs, i));
+    addLine(new THREE.Vector3(g.c, y, minZ - one), new THREE.Vector3(g.c, y, maxZ + one), dashMat, true);
+    addTag(String(i + 1), new THREE.Vector3(g.c, y, minZ - one), null, s);
+    addTag(String(i + 1), new THREE.Vector3(g.c, y, maxZ + one), null, s);
   });
   zs.forEach((g, i) => {
-    const a = g.perpMin - one, b = g.perpMax + one;
-    addLine(new THREE.Vector3(a, y, g.c), new THREE.Vector3(b, y, g.c), dashMat, true);
-    addTag(axisLetter(i), new THREE.Vector3(a, y, g.c));
-    addTag(axisLetter(i), new THREE.Vector3(b, y, g.c));
+    const s = tagSize(neighborGap(zs, i));
+    addLine(new THREE.Vector3(minX - one, y, g.c), new THREE.Vector3(maxX + one, y, g.c), dashMat, true);
+    addTag(axisLetter(i), new THREE.Vector3(minX - one, y, g.c), null, s);
+    addTag(axisLetter(i), new THREE.Vector3(maxX + one, y, g.c), null, s);
   });
 
-  // Målekjede: ytterkant ytterste søyle → senter-senter i mellom → ytterkant siste.
-  // Hvert segment legges 1 m utenfor bygget der bygget faktisk er (følger formen).
-  function dimChain(groups, dir) {
+  // Målekjede på én rett linje 1 m utenfor bygget:
+  // ytterkant ytterste søyle → senter-senter i mellom → ytterkant siste
+  function dimChain(groups, dir, off) {
     if (groups.length < 2) return;
     const pts = groups.map((g, i) =>
       i === 0 ? g.edgeMin : (i === groups.length - 1 ? g.edgeMax : g.c));
+    const mk = (v) => dir === "x"
+      ? new THREE.Vector3(v, y, off)
+      : new THREE.Vector3(off, y, v);
     const tick = one * 0.3;
+    addLine(mk(pts[0]), mk(pts[pts.length - 1]), dimMat, false);
+    for (const p of pts) {
+      const t1 = mk(p), t2 = mk(p);
+      if (dir === "x") { t1.z -= tick; t2.z += tick; } else { t1.x -= tick; t2.x += tick; }
+      addLine(t1, t2, dimMat, false);
+    }
     for (let i = 0; i < pts.length - 1; i++) {
-      const off = Math.min(groups[i].perpMin, groups[i + 1].perpMin) - one;
-      const mk = (v) => dir === "x"
-        ? new THREE.Vector3(v, y, off)
-        : new THREE.Vector3(off, y, v);
-      addLine(mk(pts[i]), mk(pts[i + 1]), dimMat, false);
-      for (const p of [pts[i], pts[i + 1]]) {
-        const t1 = mk(p), t2 = mk(p);
-        if (dir === "x") { t1.z -= tick; t2.z += tick; } else { t1.x -= tick; t2.x += tick; }
-        addLine(t1, t2, dimMat, false);
-      }
       const mm = Math.round((pts[i + 1] - pts[i]) * toMM);
-      addTag(String(mm), mk((pts[i] + pts[i + 1]) / 2), "#fbbf24");
+      addTag(String(mm), mk((pts[i] + pts[i + 1]) / 2), "#fbbf24", tagSize(mm));
     }
   }
-  dimChain(xs, "x"); // tallakser
-  dimChain(zs, "z"); // bokstavakser
+  dimChain(xs, "x", minZ - one * 2.5); // tallakser: kjede utenfor akse-merkelappene
+  dimChain(zs, "z", minX - one * 2.5); // bokstavakser
 }
 
 $("btnAxes").addEventListener("click", () => {
