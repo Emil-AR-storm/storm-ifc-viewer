@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Storm IFC-Viewer</title>
+<style>
+  :root {
+    --bg: #14181f;
+    --panel: #1e242e;
+    --panel2: #262d3a;
+    --text: #e8ecf2;
+    --muted: #93a0b4;
+    --accent: #3b82f6;
+    --accent2: #f59e0b;
+    --border: #333c4c;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  #viewer { position: fixed; inset: 0; touch-action: none; }
+
+  /* Toppbar */
+  #topbar {
+    position: fixed; top: 0; left: 0; right: 0;
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 12px;
+    background: linear-gradient(to bottom, rgba(20,24,31,.95), rgba(20,24,31,.75));
+    z-index: 10;
+    flex-wrap: wrap;
+  }
+  #topbar .logo { font-weight: 700; font-size: 15px; letter-spacing: .5px; margin-right: 4px; }
+  #topbar .logo span { color: var(--accent); }
+  button, label.btn {
+    background: var(--panel2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 13px;
+    cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  button:active, label.btn:active { transform: scale(.97); }
+  button.primary { background: var(--accent); border-color: var(--accent); }
+  button.active { background: var(--accent2); border-color: var(--accent2); color: #14181f; font-weight: 600; }
+  #fileInput { display: none; }
+  #status { font-size: 12px; color: var(--muted); margin-left: auto; }
+
+  /* Panel (egenskaper / kommentarer) */
+  .panel {
+    position: fixed;
+    right: 0; bottom: 0;
+    width: 340px; max-width: 100vw;
+    max-height: 55vh;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px 0 0 0;
+    z-index: 11;
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .panel.open { display: flex; }
+  .panel header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px;
+    background: var(--panel2);
+    font-size: 14px; font-weight: 600;
+  }
+  .panel header button { padding: 2px 10px; font-size: 15px; }
+  .panel .body { overflow-y: auto; padding: 12px 14px; font-size: 13px; }
+  .prop-row { display: flex; padding: 5px 0; border-bottom: 1px solid var(--border); gap: 10px; }
+  .prop-row .k { color: var(--muted); min-width: 110px; flex-shrink: 0; }
+  .prop-row .v { word-break: break-word; }
+
+  /* Kommentar-liste */
+  .comment {
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin-bottom: 8px;
+    cursor: pointer;
+  }
+  .comment .meta { font-size: 11px; color: var(--muted); margin-bottom: 3px; display:flex; justify-content: space-between; }
+  .comment .del { color: #ef4444; font-size: 11px; cursor: pointer; }
+
+  /* Kommentar-dialog */
+  #commentDialog {
+    position: fixed; left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    width: 320px; max-width: 92vw;
+    z-index: 20;
+    display: none;
+  }
+  #commentDialog.open { display: block; }
+  #commentDialog h3 { font-size: 14px; margin-bottom: 10px; }
+  #commentDialog textarea {
+    width: 100%; height: 80px;
+    background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px; font-size: 14px; resize: none;
+    font-family: inherit;
+  }
+  #commentDialog .actions { display: flex; gap: 8px; margin-top: 10px; justify-content: flex-end; }
+
+  /* Startskjerm */
+  #splash {
+    position: fixed; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 16px; z-index: 5;
+    text-align: center; padding: 20px;
+  }
+  #splash h1 { font-size: 26px; }
+  #splash h1 span { color: var(--accent); }
+  #splash p { color: var(--muted); max-width: 420px; font-size: 14px; line-height: 1.5; }
+  #splash label.btn { font-size: 16px; padding: 14px 26px; background: var(--accent); border-color: var(--accent); }
+
+  #loading {
+    position: fixed; inset: 0;
+    background: rgba(20,24,31,.85);
+    display: none; align-items: center; justify-content: center;
+    flex-direction: column; gap: 14px;
+    z-index: 30;
+  }
+  #loading.open { display: flex; }
+  .spinner {
+    width: 40px; height: 40px;
+    border: 4px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  #hint {
+    position: fixed; bottom: 12px; left: 12px;
+    font-size: 11px; color: var(--muted);
+    z-index: 9; max-width: 55vw;
+    background: rgba(20,24,31,.6); padding: 6px 10px; border-radius: 8px;
+    display: none;
+  }
+  @media (max-width: 640px) {
+    #topbar { padding: 8px; gap: 6px; }
+    button, label.btn { padding: 8px 10px; font-size: 12px; }
+    .panel { width: 100vw; border-radius: 12px 12px 0 0; max-height: 50vh; }
+  }
+</style>
+</head>
+<body>
+<canvas id="viewer"></canvas>
+
+<div id="topbar">
+  <div class="logo">STORM <span>IFC</span></div>
+  <label class="btn" for="fileInput">📂 Åpne IFC</label>
+  <input type="file" id="fileInput">
+  <button id="btnMarker">📌 Markering</button>
+  <button id="btnComments">💬 <span id="commentCount">0</span></button>
+  <button id="btnFit">🎯 Sentrer</button>
+  <button id="btnShare" style="display:none">📤 Mobil-fil</button>
+  <div id="status"></div>
+</div>
+
+<div id="splash">
+  <h1>STORM <span>IFC-VIEWER</span></h1>
+  <p>Åpne en IFC-modell (BIM) direkte i nettleseren – på mobil eller PC.
+     Naviger i 3D, trykk på elementer for info, og legg inn markeringer med kommentarer.</p>
+  <label class="btn" for="fileInput">📂 Velg IFC-fil</label>
+  <p style="font-size:12px">Filen behandles kun lokalt i nettleseren din – ingenting lastes opp.</p>
+  <p id="jsCheck" style="color:#ef4444; font-size:13px; font-weight:600">⚠️ JavaScript kjører ikke. Åpner du fila i forhåndsvisning (Filer/mail)? Åpne den i Safari eller Chrome i stedet.</p>
+</div>
+
+<div id="loading"><div class="spinner"></div><div id="loadingText">Laster modell …</div></div>
+
+<div class="panel" id="propPanel">
+  <header><span id="propTitle">Egenskaper</span><button onclick="document.getElementById('propPanel').classList.remove('open')">✕</button></header>
+  <div class="body" id="propBody"></div>
+</div>
+
+<div class="panel" id="commentPanel">
+  <header><span>Markeringer</span><button onclick="document.getElementById('commentPanel').classList.remove('open')">✕</button></header>
+  <div class="body" id="commentBody"><p style="color:var(--muted)">Ingen markeringer ennå. Trykk på 📌 Markering og deretter på modellen.</p></div>
+</div>
+
+<div id="commentDialog">
+  <h3>Ny markering</h3>
+  <textarea id="commentText" placeholder="Skriv en kommentar …"></textarea>
+  <div class="actions">
+    <button onclick="cancelComment()">Avbryt</button>
+    <button class="primary" onclick="saveComment()">Lagre</button>
+  </div>
+</div>
+
+<div id="hint">🖱️/👆 Dra: roter · To fingre / høyreklikk: panorer · Klype / rullehjul: zoom · Trykk på element: info</div>
+
+<script>
+// Fanger feil og viser dem på skjermen (nyttig på mobil uten konsoll)
+window.addEventListener("error", function(e) {
+  var s = document.getElementById("status");
+  if (s) s.textContent = "Feil: " + (e.message || "ukjent");
+});
+window.addEventListener("unhandledrejection", function(e) {
+  var s = document.getElementById("status");
+  if (s) s.textContent = "Feil: " + (e.reason && e.reason.message ? e.reason.message : e.reason);
+});
+</script>
+<script type="module">
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
+import * as WebIFC from "https://cdn.jsdelivr.net/npm/web-ifc@0.0.57/web-ifc-api.js";
+
+// Kopi av sidens kildekode (brukes av "Mobil-fil"-knappen)
+const PAGE_SRC = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
+
+// JavaScript kjører – skjul advarselen
+const jsCheck = document.getElementById("jsCheck");
+if (jsCheck) jsCheck.style.display = "none";
+
+// Egen enkel kamera-kontroll (mus + touch) – ingen eksterne avhengigheter
+class SimpleControls {
+  constructor(camera, dom) {
+    this.camera = camera;
+    this.dom = dom;
+    this.target = new THREE.Vector3();
+    this._pointers = new Map();
+    this._prevDist = 0;
+    this._prevMid = null;
+    dom.addEventListener("pointerdown", (e) => {
+      dom.setPointerCapture(e.pointerId);
+      this._pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, button: e.button });
+      if (this._pointers.size === 2) {
+        const [a, b] = [...this._pointers.values()];
+        this._prevDist = Math.hypot(a.x - b.x, a.y - b.y);
+        this._prevMid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      }
+    });
+    dom.addEventListener("pointermove", (e) => {
+      const p = this._pointers.get(e.pointerId);
+      if (!p) return;
+      if (this._pointers.size === 1) {
+        const dx = e.clientX - p.x, dy = e.clientY - p.y;
+        if (p.button === 2) this._pan(dx, dy);
+        else this._rotate(dx, dy);
+      }
+      p.x = e.clientX; p.y = e.clientY;
+      if (this._pointers.size === 2) {
+        const [a, b] = [...this._pointers.values()];
+        const dist = Math.hypot(a.x - b.x, a.y - b.y);
+        const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+        if (this._prevDist > 0) this._zoom(this._prevDist / dist);
+        if (this._prevMid) this._pan(mid.x - this._prevMid.x, mid.y - this._prevMid.y);
+        this._prevDist = dist;
+        this._prevMid = mid;
+      }
+    });
+    const end = (e) => { this._pointers.delete(e.pointerId); this._prevDist = 0; this._prevMid = null; };
+    dom.addEventListener("pointerup", end);
+    dom.addEventListener("pointercancel", end);
+    dom.addEventListener("wheel", (e) => { e.preventDefault(); this._zoom(1 + e.deltaY * 0.0012); }, { passive: false });
+    dom.addEventListener("contextmenu", (e) => e.preventDefault());
+  }
+  _offset() { return this.camera.position.clone().sub(this.target); }
+  _rotate(dx, dy) {
+    const off = this._offset();
+    const sph = new THREE.Spherical().setFromVector3(off);
+    sph.theta -= dx * 0.006;
+    sph.phi -= dy * 0.006;
+    sph.phi = Math.max(0.05, Math.min(Math.PI - 0.05, sph.phi));
+    this.camera.position.copy(this.target).add(new THREE.Vector3().setFromSpherical(sph));
+    this.camera.lookAt(this.target);
+  }
+  _pan(dx, dy) {
+    const dist = this._offset().length();
+    const factor = dist * 0.0016;
+    const right = new THREE.Vector3().setFromMatrixColumn(this.camera.matrix, 0);
+    const up = new THREE.Vector3().setFromMatrixColumn(this.camera.matrix, 1);
+    const move = right.multiplyScalar(-dx * factor).add(up.multiplyScalar(dy * factor));
+    this.camera.position.add(move);
+    this.target.add(move);
+  }
+  _zoom(scale) {
+    const off = this._offset().multiplyScalar(scale);
+    const len = off.length();
+    if (len < 0.2 || len > 8000) return;
+    this.camera.position.copy(this.target).add(off);
+  }
+  update() { this.camera.lookAt(this.target); }
+}
+
+// ---------- Scene ----------
+const canvas = document.getElementById("viewer");
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x14181f);
+
+const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 5000);
+camera.position.set(15, 12, 15);
+
+const controls = new SimpleControls(camera, canvas);
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.85));
+const dir = new THREE.DirectionalLight(0xffffff, 1.4);
+dir.position.set(30, 60, 30);
+scene.add(dir);
+const dir2 = new THREE.DirectionalLight(0xffffff, 0.5);
+dir2.position.set(-30, 20, -30);
+scene.add(dir2);
+
+const grid = new THREE.GridHelper(60, 60, 0x2c3442, 0x232a36);
+scene.add(grid);
+
+function resize() {
+  renderer.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+}
+addEventListener("resize", resize);
+resize();
+
+renderer.setAnimationLoop(() => {
+  controls.update();
+  renderer.render(scene, camera);
+});
+
+// ---------- IFC ----------
+const ifcApi = new WebIFC.IfcAPI();
+ifcApi.SetWasmPath("https://cdn.jsdelivr.net/npm/web-ifc@0.0.57/", true);
+const ifcReady = ifcApi.Init();
+
+let modelID = null;
+let modelGroup = null;
+let fileName = "";
+let lastBuffer = null;
+const markerGroup = new THREE.Group();
+scene.add(markerGroup);
+
+const statusEl = document.getElementById("status");
+const loadingEl = document.getElementById("loading");
+const loadingText = document.getElementById("loadingText");
+
+document.getElementById("fileInput").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (!/\.ifc$/i.test(file.name)) {
+    alert("Dette ser ikke ut som en IFC-fil (" + file.name + "). Velg en fil som slutter på .ifc");
+    e.target.value = "";
+    return;
+  }
+  fileName = file.name;
+  loadingEl.classList.add("open");
+  loadingText.textContent = "Leser " + file.name + " …";
+  try {
+    loadingText.textContent = "Starter IFC-motor …";
+    await ifcReady;
+    loadingText.textContent = "Leser " + file.name + " …";
+    const buffer = new Uint8Array(await file.arrayBuffer());
+    await new Promise(r => setTimeout(r, 30)); // la spinneren tegnes
+    lastBuffer = buffer;
+    loadModel(buffer);
+    document.getElementById("splash").style.display = "none";
+    document.getElementById("hint").style.display = "block";
+    document.getElementById("btnShare").style.display = "";
+    loadComments();
+  } catch (err) {
+    console.error(err);
+    alert("Klarte ikke å lese IFC-filen: " + err.message);
+  } finally {
+    loadingEl.classList.remove("open");
+    e.target.value = "";
+  }
+});
+
+function clearModel() {
+  if (modelGroup) {
+    scene.remove(modelGroup);
+    modelGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+    modelGroup = null;
+  }
+  markerGroup.clear();
+  comments = [];
+  renderCommentList();
+  if (modelID !== null) { try { ifcApi.CloseModel(modelID); } catch(_){} modelID = null; }
+  clearSelection();
+}
+
+function loadModel(buffer) {
+  clearModel();
+  modelID = ifcApi.OpenModel(buffer, { COORDINATE_TO_ORIGIN: true });
+  modelGroup = new THREE.Group();
+
+  const matCache = new Map();
+  function getMaterial(c) {
+    const key = [c.x.toFixed(3), c.y.toFixed(3), c.z.toFixed(3), c.w.toFixed(3)].join("|");
+    if (!matCache.has(key)) {
+      matCache.set(key, new THREE.MeshLambertMaterial({
+        color: new THREE.Color(c.x, c.y, c.z),
+        transparent: c.w < 1,
+        opacity: c.w,
+        side: THREE.DoubleSide
+      }));
+    }
+    return matCache.get(key);
+  }
+
+  let count = 0;
+  ifcApi.StreamAllMeshes(modelID, (mesh) => {
+    const expressID = mesh.expressID;
+    for (let i = 0; i < mesh.geometries.size(); i++) {
+      const pg = mesh.geometries.get(i);
+      const geom = ifcApi.GetGeometry(modelID, pg.geometryExpressID);
+      const verts = ifcApi.GetVertexArray(geom.GetVertexData(), geom.GetVertexDataSize());
+      const indices = ifcApi.GetIndexArray(geom.GetIndexData(), geom.GetIndexDataSize());
+
+      const pos = new Float32Array(verts.length / 2);
+      const norm = new Float32Array(verts.length / 2);
+      for (let j = 0; j < verts.length; j += 6) {
+        const k = j / 2;
+        pos[k] = verts[j]; pos[k+1] = verts[j+1]; pos[k+2] = verts[j+2];
+        norm[k] = verts[j+3]; norm[k+1] = verts[j+4]; norm[k+2] = verts[j+5];
+      }
+      const bg = new THREE.BufferGeometry();
+      bg.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+      bg.setAttribute("normal", new THREE.BufferAttribute(norm, 3));
+      bg.setIndex(new THREE.BufferAttribute(new Uint32Array(indices), 1));
+
+      const m = new THREE.Mesh(bg, getMaterial(pg.color));
+      const mtx = new THREE.Matrix4();
+      mtx.fromArray(pg.flatTransformation);
+      m.applyMatrix4(mtx);
+      m.userData.expressID = expressID;
+      modelGroup.add(m);
+      geom.delete();
+    }
+    count++;
+  });
+
+  scene.add(modelGroup);
+  statusEl.textContent = count + " elementer";
+  fitToModel();
+}
+
+function fitToModel() {
+  if (!modelGroup) return;
+  const box = new THREE.Box3().setFromObject(modelGroup);
+  const center = box.getCenter(new THREE.Vector3());
+  const size = box.getSize(new THREE.Vector3()).length();
+  const dist = Math.max(size * 0.7, 5);
+  controls.target.copy(center);
+  camera.position.copy(center).add(new THREE.Vector3(dist * .7, dist * .55, dist * .7));
+  camera.near = size / 1000;
+  camera.far = size * 10 + 100;
+  camera.updateProjectionMatrix();
+  grid.position.y = box.min.y;
+}
+document.getElementById("btnFit").addEventListener("click", fitToModel);
+
+// ---------- Valg / egenskaper ----------
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+let selectedMeshes = [];
+const selMat = new THREE.MeshLambertMaterial({ color: 0x3b82f6, emissive: 0x1d4ed8, side: THREE.DoubleSide });
+
+function clearSelection() {
+  selectedMeshes.forEach(({ mesh, mat }) => mesh.material = mat);
+  selectedMeshes = [];
+}
+
+function pick(clientX, clientY) {
+  if (!modelGroup) return null;
+  pointer.x = (clientX / innerWidth) * 2 - 1;
+  pointer.y = -(clientY / innerHeight) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  const hits = raycaster.intersectObjects(modelGroup.children, false);
+  return hits.length ? hits[0] : null;
+}
+
+function selectElement(expressID) {
+  clearSelection();
+  modelGroup.children.forEach(m => {
+    if (m.userData.expressID === expressID) {
+      selectedMeshes.push({ mesh: m, mat: m.material });
+      m.material = selMat;
+    }
+  });
+}
+
+function val(v) {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "object" && "value" in v) return v.value;
+  return v;
+}
+
+function showProperties(expressID) {
+  const body = document.getElementById("propBody");
+  const rows = [];
+  try {
+    const line = ifcApi.GetLine(modelID, expressID);
+    const typeCode = ifcApi.GetLineType(modelID, expressID);
+    let typeName = "";
+    try { typeName = ifcApi.GetNameFromTypeCode(typeCode) || ""; } catch(_) {}
+    document.getElementById("propTitle").textContent = (typeName || "Element").replace(/^IFC/i, "Ifc");
+    rows.push(["ExpressID", expressID]);
+    for (const key of ["GlobalId","Name","ObjectType","Tag","Description","PredefinedType"]) {
+      const v = val(line[key]);
+      if (v !== null && v !== "" ) rows.push([key, v]);
+    }
+    // Egenskapssett (Psets)
+    try {
+      const relIDs = ifcApi.GetLineIDsWithType(modelID, WebIFC.IFCRELDEFINESBYPROPERTIES);
+      for (let i = 0; i < relIDs.size(); i++) {
+        const rel = ifcApi.GetLine(modelID, relIDs.get(i));
+        const related = (rel.RelatedObjects || []).map(o => o.value);
+        if (!related.includes(expressID)) continue;
+        const psetRef = rel.RelatingPropertyDefinition;
+        if (!psetRef) continue;
+        const pset = ifcApi.GetLine(modelID, psetRef.value);
+        if (!pset || !pset.HasProperties) continue;
+        const psetName = val(pset.Name) || "Pset";
+        for (const pRef of pset.HasProperties) {
+          try {
+            const p = ifcApi.GetLine(modelID, pRef.value);
+            const pv = val(p.NominalValue);
+            if (pv !== null) rows.push([psetName + " · " + val(p.Name), pv]);
+          } catch(_){}
+        }
+      }
+    } catch(_){}
+  } catch (err) {
+    rows.push(["Feil", "Kunne ikke lese egenskaper"]);
+  }
+  body.innerHTML = rows.map(([k,v]) =>
+    `<div class="prop-row"><div class="k">${esc(String(k))}</div><div class="v">${esc(String(v))}</div></div>`).join("");
+  document.getElementById("commentPanel").classList.remove("open");
+  document.getElementById("propPanel").classList.add("open");
+}
+
+function esc(s){ return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+// ---------- Markeringer / kommentarer ----------
+let markerMode = false;
+let comments = [];
+let pendingPoint = null;
+const btnMarker = document.getElementById("btnMarker");
+
+btnMarker.addEventListener("click", () => {
+  markerMode = !markerMode;
+  btnMarker.classList.toggle("active", markerMode);
+  statusEl.textContent = markerMode ? "Trykk på modellen for å plassere markering" : (modelGroup ? modelGroup.children.length ? "" : "" : "");
+});
+
+document.getElementById("btnComments").addEventListener("click", () => {
+  document.getElementById("propPanel").classList.remove("open");
+  document.getElementById("commentPanel").classList.toggle("open");
+});
+
+function storageKey(){ return "storm-ifc-comments::" + fileName; }
+function loadComments() {
+  try {
+    const raw = localStorage.getItem(storageKey());
+    comments = raw ? JSON.parse(raw) : [];
+  } catch(_) { comments = []; }
+  comments.forEach(addMarkerSprite);
+  renderCommentList();
+}
+function persist() {
+  try { localStorage.setItem(storageKey(), JSON.stringify(comments)); } catch(_){}
+}
+
+function makeMarkerTexture() {
+  const c = document.createElement("canvas");
+  c.width = c.height = 128;
+  const ctx = c.getContext("2d");
+  ctx.beginPath(); ctx.arc(64, 64, 52, 0, Math.PI * 2);
+  ctx.fillStyle = "#f59e0b"; ctx.fill();
+  ctx.lineWidth = 10; ctx.strokeStyle = "#14181f"; ctx.stroke();
+  ctx.fillStyle = "#14181f"; ctx.font = "bold 64px sans-serif";
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText("!", 64, 68);
+  return new THREE.CanvasTexture(c);
+}
+const markerTexture = makeMarkerTexture();
+
+function addMarkerSprite(comment) {
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: markerTexture, depthTest: false }));
+  sprite.position.set(comment.x, comment.y, comment.z);
+  sprite.renderOrder = 999;
+  const box = modelGroup ? new THREE.Box3().setFromObject(modelGroup) : null;
+  const s = box ? box.getSize(new THREE.Vector3()).length() * 0.012 : 0.3;
+  sprite.scale.set(s, s, 1);
+  sprite.userData.commentId = comment.id;
+  markerGroup.add(sprite);
+}
+
+window.saveComment = function() {
+  const text = document.getElementById("commentText").value.trim();
+  document.getElementById("commentDialog").classList.remove("open");
+  if (!text || !pendingPoint) { pendingPoint = null; return; }
+  const c = {
+    id: Date.now(),
+    text,
+    x: pendingPoint.x, y: pendingPoint.y, z: pendingPoint.z,
+    date: new Date().toLocaleString("no-NO", { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit" })
+  };
+  comments.push(c);
+  addMarkerSprite(c);
+  persist();
+  renderCommentList();
+  pendingPoint = null;
+  markerMode = false;
+  btnMarker.classList.remove("active");
+  statusEl.textContent = "";
+};
+window.cancelComment = function() {
+  document.getElementById("commentDialog").classList.remove("open");
+  pendingPoint = null;
+};
+
+function renderCommentList() {
+  document.getElementById("commentCount").textContent = comments.length;
+  const body = document.getElementById("commentBody");
+  if (!comments.length) {
+    body.innerHTML = '<p style="color:var(--muted)">Ingen markeringer ennå. Trykk på 📌 Markering og deretter på modellen.</p>';
+    return;
+  }
+  body.innerHTML = comments.map(c =>
+    `<div class="comment" data-id="${c.id}">
+       <div class="meta"><span>${esc(c.date)}</span><span class="del" data-del="${c.id}">Slett</span></div>
+       <div>${esc(c.text)}</div>
+     </div>`).join("");
+  body.querySelectorAll(".comment").forEach(el => {
+    el.addEventListener("click", (e) => {
+      const delId = e.target.getAttribute("data-del");
+      if (delId) {
+        comments = comments.filter(c => c.id != delId);
+        markerGroup.children.filter(s => s.userData.commentId == delId).forEach(s => markerGroup.remove(s));
+        persist(); renderCommentList();
+        return;
+      }
+      const c = comments.find(c => c.id == el.dataset.id);
+      if (c) {
+        controls.target.set(c.x, c.y, c.z);
+        const off = camera.position.clone().sub(controls.target).normalize().multiplyScalar(8);
+        camera.position.set(c.x + off.x, c.y + off.y, c.z + off.z);
+      }
+    });
+  });
+}
+
+// ---------- Klikk / trykk ----------
+let downPos = null;
+canvas.addEventListener("pointerdown", (e) => { downPos = { x: e.clientX, y: e.clientY }; });
+canvas.addEventListener("pointerup", (e) => {
+  if (!downPos) return;
+  const moved = Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y);
+  downPos = null;
+  if (moved > 8) return; // det var en dra-bevegelse
+  const hit = pick(e.clientX, e.clientY);
+  if (!hit) { clearSelection(); document.getElementById("propPanel").classList.remove("open"); return; }
+  if (markerMode) {
+    pendingPoint = hit.point.clone();
+    document.getElementById("commentText").value = "";
+    document.getElementById("commentDialog").classList.add("open");
+    setTimeout(() => document.getElementById("commentText").focus(), 50);
+  } else {
+    const id = hit.object.userData.expressID;
+    selectElement(id);
+    showProperties(id);
+  }
+});
+
+// ---------- "Mobil-fil": eksporter HTML med modellen innebygd ----------
+function bufToB64(buf) {
+  return new Promise((res) => {
+    const fr = new FileReader();
+    fr.onload = () => res(String(fr.result).split(",")[1]);
+    fr.readAsDataURL(new Blob([buf]));
+  });
+}
+
+document.getElementById("btnShare").addEventListener("click", async () => {
+  if (!lastBuffer) return;
+  loadingText.textContent = "Lager delbar fil …";
+  loadingEl.classList.add("open");
+  try {
+    const b64 = await bufToB64(lastBuffer);
+    let src = PAGE_SRC.replace(/<script id="embedded-ifc">[\s\S]*?<\/script>/, "");
+    const inject = '<script id="embedded-ifc">window.EMBEDDED_IFC="' + b64 +
+      '";window.EMBEDDED_NAME=' + JSON.stringify(fileName) + ';</scr' + 'ipt>';
+    src = src.replace("<script type=\"module\">", inject + "\n<script type=\"module\">");
+    const blob = new Blob([src], { type: "text/html" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = fileName.replace(/\.ifc$/i, "") + " - Storm Viewer.html";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } catch (err) {
+    alert("Klarte ikke å lage delbar fil: " + err.message);
+  } finally {
+    loadingEl.classList.remove("open");
+  }
+});
+
+// ---------- Automatisk innlasting av innebygd modell ----------
+if (window.EMBEDDED_IFC) {
+  (async () => {
+    loadingText.textContent = "Laster innebygd modell …";
+    loadingEl.classList.add("open");
+    try {
+      await ifcReady;
+      const bin = atob(window.EMBEDDED_IFC);
+      const buf = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+      fileName = window.EMBEDDED_NAME || "modell.ifc";
+      lastBuffer = buf;
+      loadModel(buf);
+      document.getElementById("splash").style.display = "none";
+      document.getElementById("hint").style.display = "block";
+      document.getElementById("btnShare").style.display = "";
+      loadComments();
+    } catch (err) {
+      alert("Klarte ikke å laste innebygd modell: " + err.message);
+    } finally {
+      loadingEl.classList.remove("open");
+    }
+  })();
+}
+</script>
+</body>
+</html>
