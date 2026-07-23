@@ -559,7 +559,7 @@ function fitToModel() {
 $("btnFit").addEventListener("click", fitToModel);
 
 // ---------- Tekst-etiketter (sprites) ----------
-function makeLabel(text, color = "#f59e0b") {
+function makeLabel(text, color = "#f59e0b", sizeF = 0.028) {
   const pad = 14;
   const fs = 44;
   const mc = document.createElement("canvas").getContext("2d");
@@ -580,7 +580,7 @@ function makeLabel(text, color = "#f59e0b") {
   const tex = new THREE.CanvasTexture(c);
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false }));
   sprite.renderOrder = 998;
-  const s = modelSize * 0.028;
+  const s = modelSize * sizeF;
   sprite.scale.set(s * c.width / c.height, s, 1);
   return sprite;
 }
@@ -620,6 +620,8 @@ function clusterAxes(vals, tol) {
     g.c = g.items.reduce((s, i) => s + i.c, 0) / g.items.length; // senterlinje
     g.edgeMin = Math.min(...g.items.map(i => i.min));            // ytterkant (lav side)
     g.edgeMax = Math.max(...g.items.map(i => i.max));            // ytterkant (høy side)
+    g.perpMin = Math.min(...g.items.map(i => i.pmin));           // hvor aksen starter (på tvers)
+    g.perpMax = Math.max(...g.items.map(i => i.pmax));           // hvor aksen slutter (på tvers)
   }
   return groups.filter(g => g.items.length >= 2);
 }
@@ -640,17 +642,16 @@ function buildAxes() {
   const toMM = modelSize > 1000 ? 1 : 1000;
   const tol = modelSize > 1000 ? 400 : 0.4; // toleranse for «samme akse»
 
-  const xs = clusterAxes(boxes.map(b => ({ c: (b.min.x + b.max.x) / 2, min: b.min.x, max: b.max.x })), tol);
-  const zs = clusterAxes(boxes.map(b => ({ c: (b.min.z + b.max.z) / 2, min: b.min.z, max: b.max.z })), tol);
+  const xs = clusterAxes(boxes.map(b => ({ c: (b.min.x + b.max.x) / 2, min: b.min.x, max: b.max.x, pmin: b.min.z, pmax: b.max.z })), tol);
+  const zs = clusterAxes(boxes.map(b => ({ c: (b.min.z + b.max.z) / 2, min: b.min.z, max: b.max.z, pmin: b.min.x, pmax: b.max.x })), tol);
   if (!xs.length && !zs.length) return;
 
+  const one = toMM === 1 ? 1000 : 1; // 1 meter i modellens enheter
   const y = modelBox.min.y + modelSize * 0.002;
-  const labelY = y + modelSize * 0.012;
-  const minX = Math.min(...boxes.map(b => b.min.x)), maxX = Math.max(...boxes.map(b => b.max.x));
-  const minZ = Math.min(...boxes.map(b => b.min.z)), maxZ = Math.max(...boxes.map(b => b.max.z));
-  const ext = Math.max(modelSize * 0.05, toMM === 1 ? 2000 : 2);
+  const labelY = y + modelSize * 0.008;
+  const TAG = 0.013; // skriftstørrelse akser/mål (mindre enn standard)
   const dashMat = new THREE.LineDashedMaterial({
-    color: 0x8ab4ff, dashSize: ext * 0.2, gapSize: ext * 0.1,
+    color: 0x8ab4ff, dashSize: one * 0.6, gapSize: one * 0.3,
     depthTest: false, transparent: true, opacity: 0.85
   });
   const dimMat = new THREE.LineBasicMaterial({ color: 0xe2e8f0, depthTest: false, transparent: true, opacity: 0.9 });
@@ -662,45 +663,49 @@ function buildAxes() {
     axesGroup.add(line);
   }
   function addTag(text, pos, color) {
-    const lab = makeLabel(text, color || "#8ab4ff");
+    const lab = makeLabel(text, color || "#8ab4ff", TAG);
     lab.position.copy(pos); lab.position.y = labelY;
     axesGroup.add(lab);
   }
 
-  // Akselinjer med merkelapp i begge ender
+  // Akselinjer følger byggets form: 1 m ut fra ytterste søyle på hver akse
   xs.forEach((g, i) => {
-    addLine(new THREE.Vector3(g.c, y, minZ - ext), new THREE.Vector3(g.c, y, maxZ + ext), dashMat, true);
-    addTag(String(i + 1), new THREE.Vector3(g.c, y, minZ - ext));
-    addTag(String(i + 1), new THREE.Vector3(g.c, y, maxZ + ext));
+    const a = g.perpMin - one, b = g.perpMax + one;
+    addLine(new THREE.Vector3(g.c, y, a), new THREE.Vector3(g.c, y, b), dashMat, true);
+    addTag(String(i + 1), new THREE.Vector3(g.c, y, a));
+    addTag(String(i + 1), new THREE.Vector3(g.c, y, b));
   });
   zs.forEach((g, i) => {
-    addLine(new THREE.Vector3(minX - ext, y, g.c), new THREE.Vector3(maxX + ext, y, g.c), dashMat, true);
-    addTag(axisLetter(i), new THREE.Vector3(minX - ext, y, g.c));
-    addTag(axisLetter(i), new THREE.Vector3(maxX + ext, y, g.c));
+    const a = g.perpMin - one, b = g.perpMax + one;
+    addLine(new THREE.Vector3(a, y, g.c), new THREE.Vector3(b, y, g.c), dashMat, true);
+    addTag(axisLetter(i), new THREE.Vector3(a, y, g.c));
+    addTag(axisLetter(i), new THREE.Vector3(b, y, g.c));
   });
 
-  // Målekjede: ytterkant ytterste søyle → senter-senter i mellom → ytterkant siste
-  function dimChain(groups, dir, offsetPos) {
+  // Målekjede: ytterkant ytterste søyle → senter-senter i mellom → ytterkant siste.
+  // Hvert segment legges 1 m utenfor bygget der bygget faktisk er (følger formen).
+  function dimChain(groups, dir) {
     if (groups.length < 2) return;
     const pts = groups.map((g, i) =>
       i === 0 ? g.edgeMin : (i === groups.length - 1 ? g.edgeMax : g.c));
-    const mk = (v) => dir === "x"
-      ? new THREE.Vector3(v, y, offsetPos)
-      : new THREE.Vector3(offsetPos, y, v);
-    const tick = ext * 0.12;
-    addLine(mk(pts[0]), mk(pts[pts.length - 1]), dimMat, false);
-    for (const p of pts) {
-      const a = mk(p), b = mk(p);
-      if (dir === "x") { a.z -= tick; b.z += tick; } else { a.x -= tick; b.x += tick; }
-      addLine(a, b, dimMat, false);
-    }
+    const tick = one * 0.3;
     for (let i = 0; i < pts.length - 1; i++) {
+      const off = Math.min(groups[i].perpMin, groups[i + 1].perpMin) - one;
+      const mk = (v) => dir === "x"
+        ? new THREE.Vector3(v, y, off)
+        : new THREE.Vector3(off, y, v);
+      addLine(mk(pts[i]), mk(pts[i + 1]), dimMat, false);
+      for (const p of [pts[i], pts[i + 1]]) {
+        const t1 = mk(p), t2 = mk(p);
+        if (dir === "x") { t1.z -= tick; t2.z += tick; } else { t1.x -= tick; t2.x += tick; }
+        addLine(t1, t2, dimMat, false);
+      }
       const mm = Math.round((pts[i + 1] - pts[i]) * toMM);
       addTag(String(mm), mk((pts[i] + pts[i + 1]) / 2), "#fbbf24");
     }
   }
-  dimChain(xs, "x", minZ - ext * 0.55); // tallakser: målekjede langs nedre kant
-  dimChain(zs, "z", minX - ext * 0.55); // bokstavakser: målekjede langs venstre kant
+  dimChain(xs, "x"); // tallakser
+  dimChain(zs, "z"); // bokstavakser
 }
 
 $("btnAxes").addEventListener("click", () => {
