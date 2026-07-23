@@ -216,7 +216,7 @@
   <button id="btnClip">✂️ Snitt</button>
   <button id="btnGhost">👻 Transparent</button>
   <button id="btnQty">📊 Mengder</button>
-  <button id="btnColors">🎨 Farger</button>
+  <button id="btnColors">🎨 Utseende</button>
   <button id="btnShowAll" style="display:none">👁 Vis alle</button>
 </div>
 
@@ -249,7 +249,7 @@
 </div>
 
 <div class="panel" id="colorPanel">
-  <header><span>Farger</span><button onclick="document.getElementById('colorPanel').classList.remove('open')">✕</button></header>
+  <header><span>Utseende</span><button onclick="document.getElementById('colorPanel').classList.remove('open')">✕</button></header>
   <div class="body" id="colorBody"></div>
 </div>
 
@@ -697,8 +697,10 @@ function hideElement(expressID) {
 }
 $("btnShowAll").addEventListener("click", () => {
   hiddenIDs.clear();
+  if (typeInfo) for (const [, g] of typeInfo) g.hidden = false;
   if (modelGroup) modelGroup.children.forEach(m => m.visible = true);
   $("btnShowAll").style.display = "none";
+  if ($("colorPanel").classList.contains("open")) renderColorPanel();
 });
 
 // ---------- Valg / egenskaper ----------
@@ -1112,7 +1114,9 @@ function renderColorPanel() {
     const g = typeInfo.get(key);
     html += '<div class="qty-row"><div class="n">' + esc(g.label) +
       ' <span style="color:var(--muted);font-size:11px">(' + g.meshes.length + ')</span></div>' +
-      '<div class="c"><input type="color" data-type="' + i + '" value="' + g.color + '"></div></div>';
+      '<div class="c" style="display:flex; align-items:center; gap:8px">' +
+      '<button data-hide="' + i + '" title="Skjul/vis" style="padding:3px 8px">' + (g.hidden ? "🚫" : "👁") + '</button>' +
+      '<input type="color" data-type="' + i + '" value="' + g.color + '"></div></div>';
   });
   $("colorBody").innerHTML = html;
   $("colBg").oninput = (e) => scene.background.set(e.target.value);
@@ -1124,6 +1128,16 @@ function renderColorPanel() {
       g.color = e.target.value;
       g.mat.color.set(e.target.value);
       if (!typeColorsOn) applyTypeColors();
+    };
+  });
+  $("colorBody").querySelectorAll("button[data-hide]").forEach(btn => {
+    btn.onclick = (e) => {
+      const g = typeInfo.get(keys[Number(e.currentTarget.dataset.hide)]);
+      g.hidden = !g.hidden;
+      g.meshes.forEach(m => m.visible = !g.hidden && !hiddenIDs.has(m.userData.expressID));
+      e.currentTarget.textContent = g.hidden ? "🚫" : "👁";
+      const anyHidden = hiddenIDs.size > 0 || [...typeInfo.values()].some(t => t.hidden);
+      $("btnShowAll").style.display = anyHidden ? "" : "none";
     };
   });
 }
