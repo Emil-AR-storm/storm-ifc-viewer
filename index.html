@@ -213,6 +213,7 @@
   <button id="btnMarker">📌 Markering</button>
   <button id="btnMeasure">📏 Mål</button>
   <button id="btnKote">⛰ Kote</button>
+  <button id="btnAxes">🔠 Akser</button>
   <button id="btnClip">✂️ Snitt</button>
   <button id="btnGhost">👻 Transparent</button>
   <button id="btnQty">📊 Mengder</button>
@@ -402,12 +403,15 @@ let lastBuffer = null;
 let modelBox = null;
 let modelSize = 10;
 let koteMatrixInv = null; // for å regne tilbake til opprinnelige koter
+let coordMatrix = null;   // original modell → viewer (brukes til aksesystem)
 let qtyCache = null;
 
 const markerGroup = new THREE.Group();
 const measureGroup = new THREE.Group();
 const koteGroup = new THREE.Group();
-scene.add(markerGroup, measureGroup, koteGroup);
+const axesGroup = new THREE.Group();
+axesGroup.visible = false;
+scene.add(markerGroup, measureGroup, koteGroup, axesGroup);
 
 const statusEl = document.getElementById("status");
 const loadingEl = document.getElementById("loading");
@@ -458,6 +462,10 @@ function clearModel() {
   markerGroup.clear();
   measureGroup.clear();
   koteGroup.clear();
+  axesGroup.clear();
+  axesGroup.visible = false;
+  axesOn = false; axesBuilt = false;
+  document.getElementById("btnAxes").classList.remove("active");
   comments = [];
   qtyCache = null;
   typeInfo = null;
@@ -477,8 +485,9 @@ function loadModel(buffer) {
 
   try {
     const cm = ifcApi.GetCoordinationMatrix(modelID);
-    koteMatrixInv = new THREE.Matrix4().fromArray(cm).invert();
-  } catch(_) { koteMatrixInv = null; }
+    coordMatrix = new THREE.Matrix4().fromArray(cm);
+    koteMatrixInv = coordMatrix.clone().invert();
+  } catch(_) { koteMatrixInv = null; coordMatrix = null; }
 
   const matCache = new Map();
   function getMaterial(c) {
@@ -575,6 +584,97 @@ function makeLabel(text, color = "#f59e0b") {
   sprite.scale.set(s * c.width / c.height, s, 1);
   return sprite;
 }
+
+// ---------- Aksesystem (IfcGrid) ----------
+let axesOn = false, axesBuilt = false;
+
+function placementMatrix(pl) {
+  // Bygger transformasjon fra IfcLocalPlacement-kjeden
+  const m = new THREE.Matrix4();
+  if (!pl || !pl.RelativePlacement) return m;
+  const ax = pl.RelativePlacement;
+  const loc = (ax.Location && ax.Location.Coordinates) ? ax.Location.Coordinates.map(c => c.value) : [0,0,0];
+  const zr = (ax.Axis && ax.Axis.DirectionRatios) ? ax.Axis.DirectionRatios.map(c => c.value) : [0,0,1];
+  const xr = (ax.RefDirection && ax.RefDirection.DirectionRatios) ? ax.RefDirection.DirectionRatios.map(c => c.value) : [1,0,0];
+  const vz = new THREE.Vector3(zr[0]||0, zr[1]||0, zr[2]==null?1:zr[2]).normalize();
+  const vx = new THREE.Vector3(xr[0]==null?1:xr[0], xr[1]||0, xr[2]||0).normalize();
+  const vy = new THREE.Vector3().crossVectors(vz, vx).normalize();
+  vx.crossVectors(vy, vz).normalize();
+  m.makeBasis(vx, vy, vz);
+  m.setPosition(loc[0]||0, loc[1]||0, loc[2]||0);
+  if (pl.PlacementRelTo) return placementMatrix(pl.PlacementRelTo).multiply(m);
+  return m;
+}
+
+function axisCurvePoints(curve) {
+  // Akselinjer er (nesten) alltid IfcPolyline
+  if (curve && curve.Points) {
+    return curve.Points.map(p => {
+      const c = p.Coordinates.map(v => v.value);
+      return new THREE.Vector3(c[0]||0, c[1]||0, c[2]||0);
+    });
+  }
+  return null;
+}
+
+function buildAxes() {
+  axesBuilt = true;
+  if (modelID === null) return;
+  const gridY = modelBox ? modelBox.min.y + 0.05 : 0;
+  const labelY = gridY + modelSize * 0.01;
+  const ext = Math.max(2, modelSize * 0.04); // forleng linjene så etikettene havner utenfor bygget
+  const lineMat = new THREE.LineDashedMaterial({
+    color: 0x8ab4ff, dashSize: ext * 0.25, gapSize: ext * 0.12,
+    depthTest: false, transparent: true, opacity: 0.9
+  });
+  let ids;
+  try { ids = ifcApi.GetLineIDsWithType(modelID, WebIFC.IFCGRID); } catch(_) { return; }
+  for (let g = 0; g < ids.size(); g++) {
+    let gridLine;
+    try { gridLine = ifcApi.GetLine(modelID, ids.get(g), true); } catch(_) { continue; }
+    let pm;
+    try { pm = placementMatrix(gridLine.ObjectPlacement); } catch(_) { pm = new THREE.Matrix4(); }
+    const all = [].concat(gridLine.UAxes || [], gridLine.VAxes || [], gridLine.WAxes || []);
+    for (const axis of all) {
+      if (!axis) continue;
+      const pts = axisCurvePoints(axis.AxisCurve);
+      if (!pts || pts.length < 2) continue;
+      const tag = (axis.AxisTag && axis.AxisTag.value != null) ? String(axis.AxisTag.value) : "?";
+      // lokal → grid-plassering → koordinasjonsmatrise → flat på gulvnivå
+      const world = pts.map(p => {
+        const v = p.clone().applyMatrix4(pm);
+        if (coordMatrix) v.applyMatrix4(coordMatrix);
+        v.y = gridY;
+        return v;
+      });
+      const d0 = world[0].clone().sub(world[1]).normalize().multiplyScalar(ext);
+      const dn = world[world.length-1].clone().sub(world[world.length-2]).normalize().multiplyScalar(ext);
+      world[0].add(d0);
+      world[world.length-1].add(dn);
+      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(world), lineMat);
+      line.computeLineDistances();
+      line.renderOrder = 990;
+      axesGroup.add(line);
+      const lab1 = makeLabel(tag, "#8ab4ff");
+      lab1.position.copy(world[0]); lab1.position.y = labelY;
+      const lab2 = makeLabel(tag, "#8ab4ff");
+      lab2.position.copy(world[world.length-1]); lab2.position.y = labelY;
+      axesGroup.add(lab1, lab2);
+    }
+  }
+}
+
+$("btnAxes").addEventListener("click", () => {
+  if (!modelGroup) return;
+  if (!axesBuilt) buildAxes();
+  if (!axesGroup.children.length) {
+    statusEl.textContent = "Ingen aksesystem (IfcGrid) i modellen";
+    return;
+  }
+  axesOn = !axesOn;
+  axesGroup.visible = axesOn;
+  $("btnAxes").classList.toggle("active", axesOn);
+});
 
 // ---------- Modus-håndtering ----------
 let mode = null; // null | marker | measure | kote
