@@ -585,90 +585,129 @@ function makeLabel(text, color = "#f59e0b") {
   return sprite;
 }
 
-// ---------- Aksesystem (IfcGrid) ----------
+// ---------- Aksesystem (automatisk fra søyleplassering) ----------
 let axesOn = false, axesBuilt = false;
 
-function placementMatrix(pl) {
-  // Bygger transformasjon fra IfcLocalPlacement-kjeden
-  const m = new THREE.Matrix4();
-  if (!pl || !pl.RelativePlacement) return m;
-  const ax = pl.RelativePlacement;
-  const loc = (ax.Location && ax.Location.Coordinates) ? ax.Location.Coordinates.map(c => c.value) : [0,0,0];
-  const zr = (ax.Axis && ax.Axis.DirectionRatios) ? ax.Axis.DirectionRatios.map(c => c.value) : [0,0,1];
-  const xr = (ax.RefDirection && ax.RefDirection.DirectionRatios) ? ax.RefDirection.DirectionRatios.map(c => c.value) : [1,0,0];
-  const vz = new THREE.Vector3(zr[0]||0, zr[1]||0, zr[2]==null?1:zr[2]).normalize();
-  const vx = new THREE.Vector3(xr[0]==null?1:xr[0], xr[1]||0, xr[2]||0).normalize();
-  const vy = new THREE.Vector3().crossVectors(vz, vx).normalize();
-  vx.crossVectors(vy, vz).normalize();
-  m.makeBasis(vx, vy, vz);
-  m.setPosition(loc[0]||0, loc[1]||0, loc[2]||0);
-  if (pl.PlacementRelTo) return placementMatrix(pl.PlacementRelTo).multiply(m);
-  return m;
+function columnBoxes() {
+  // Bounding box per søyle (IfcColumn) i viewer-koordinater
+  const ids = new Set();
+  try {
+    const v = ifcApi.GetLineIDsWithType(modelID, WebIFC.IFCCOLUMN);
+    for (let i = 0; i < v.size(); i++) ids.add(v.get(i));
+  } catch(_) {}
+  const boxes = new Map();
+  if (!ids.size || !modelGroup) return [];
+  modelGroup.traverse(o => {
+    if (o.isMesh && ids.has(o.userData.expressID)) {
+      const b = new THREE.Box3().setFromObject(o);
+      const prev = boxes.get(o.userData.expressID);
+      if (prev) prev.union(b); else boxes.set(o.userData.expressID, b);
+    }
+  });
+  return [...boxes.values()];
 }
 
-function axisCurvePoints(curve) {
-  // Akselinjer er (nesten) alltid IfcPolyline
-  if (curve && curve.Points) {
-    return curve.Points.map(p => {
-      const c = p.Coordinates.map(v => v.value);
-      return new THREE.Vector3(c[0]||0, c[1]||0, c[2]||0);
-    });
+function clusterAxes(vals, tol) {
+  // Grupperer søyle-posisjoner som ligger på (nesten) samme linje
+  vals.sort((a, b) => a.c - b.c);
+  const groups = [];
+  for (const v of vals) {
+    const g = groups[groups.length - 1];
+    if (g && v.c - g.items[g.items.length - 1].c <= tol) g.items.push(v);
+    else groups.push({ items: [v] });
   }
-  return null;
+  for (const g of groups) {
+    g.c = g.items.reduce((s, i) => s + i.c, 0) / g.items.length; // senterlinje
+    g.edgeMin = Math.min(...g.items.map(i => i.min));            // ytterkant (lav side)
+    g.edgeMax = Math.max(...g.items.map(i => i.max));            // ytterkant (høy side)
+  }
+  return groups.filter(g => g.items.length >= 2);
+}
+
+function axisLetter(i) {
+  let s = "";
+  do { s = String.fromCharCode(65 + (i % 26)) + s; i = Math.floor(i / 26) - 1; } while (i >= 0);
+  return s;
 }
 
 function buildAxes() {
   axesBuilt = true;
-  if (modelID === null) return;
-  const gridY = modelBox ? modelBox.min.y + 0.05 : 0;
-  const labelY = gridY + modelSize * 0.01;
-  const ext = Math.max(2, modelSize * 0.04); // forleng linjene så etikettene havner utenfor bygget
-  const lineMat = new THREE.LineDashedMaterial({
-    color: 0x8ab4ff, dashSize: ext * 0.25, gapSize: ext * 0.12,
-    depthTest: false, transparent: true, opacity: 0.9
+  if (modelID === null || !modelGroup || !modelBox) return;
+  const boxes = columnBoxes();
+  if (boxes.length < 2) return;
+
+  // mm eller meter? (geometrien følger filens enheter)
+  const toMM = modelSize > 1000 ? 1 : 1000;
+  const tol = modelSize > 1000 ? 400 : 0.4; // toleranse for «samme akse»
+
+  const xs = clusterAxes(boxes.map(b => ({ c: (b.min.x + b.max.x) / 2, min: b.min.x, max: b.max.x })), tol);
+  const zs = clusterAxes(boxes.map(b => ({ c: (b.min.z + b.max.z) / 2, min: b.min.z, max: b.max.z })), tol);
+  if (!xs.length && !zs.length) return;
+
+  const y = modelBox.min.y + modelSize * 0.002;
+  const labelY = y + modelSize * 0.012;
+  const minX = Math.min(...boxes.map(b => b.min.x)), maxX = Math.max(...boxes.map(b => b.max.x));
+  const minZ = Math.min(...boxes.map(b => b.min.z)), maxZ = Math.max(...boxes.map(b => b.max.z));
+  const ext = Math.max(modelSize * 0.05, toMM === 1 ? 2000 : 2);
+  const dashMat = new THREE.LineDashedMaterial({
+    color: 0x8ab4ff, dashSize: ext * 0.2, gapSize: ext * 0.1,
+    depthTest: false, transparent: true, opacity: 0.85
   });
-  let ids;
-  try { ids = ifcApi.GetLineIDsWithType(modelID, WebIFC.IFCGRID); } catch(_) { return; }
-  for (let g = 0; g < ids.size(); g++) {
-    let gridLine;
-    try { gridLine = ifcApi.GetLine(modelID, ids.get(g), true); } catch(_) { continue; }
-    let pm;
-    try { pm = placementMatrix(gridLine.ObjectPlacement); } catch(_) { pm = new THREE.Matrix4(); }
-    const all = [].concat(gridLine.UAxes || [], gridLine.VAxes || [], gridLine.WAxes || []);
-    for (const axis of all) {
-      if (!axis) continue;
-      const pts = axisCurvePoints(axis.AxisCurve);
-      if (!pts || pts.length < 2) continue;
-      const tag = (axis.AxisTag && axis.AxisTag.value != null) ? String(axis.AxisTag.value) : "?";
-      // lokal → grid-plassering → koordinasjonsmatrise → flat på gulvnivå
-      const world = pts.map(p => {
-        const v = p.clone().applyMatrix4(pm);
-        if (coordMatrix) v.applyMatrix4(coordMatrix);
-        v.y = gridY;
-        return v;
-      });
-      const d0 = world[0].clone().sub(world[1]).normalize().multiplyScalar(ext);
-      const dn = world[world.length-1].clone().sub(world[world.length-2]).normalize().multiplyScalar(ext);
-      world[0].add(d0);
-      world[world.length-1].add(dn);
-      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(world), lineMat);
-      line.computeLineDistances();
-      line.renderOrder = 990;
-      axesGroup.add(line);
-      const lab1 = makeLabel(tag, "#8ab4ff");
-      lab1.position.copy(world[0]); lab1.position.y = labelY;
-      const lab2 = makeLabel(tag, "#8ab4ff");
-      lab2.position.copy(world[world.length-1]); lab2.position.y = labelY;
-      axesGroup.add(lab1, lab2);
+  const dimMat = new THREE.LineBasicMaterial({ color: 0xe2e8f0, depthTest: false, transparent: true, opacity: 0.9 });
+
+  function addLine(p1, p2, mat, dashed) {
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([p1, p2]), mat);
+    if (dashed) line.computeLineDistances();
+    line.renderOrder = 990;
+    axesGroup.add(line);
+  }
+  function addTag(text, pos, color) {
+    const lab = makeLabel(text, color || "#8ab4ff");
+    lab.position.copy(pos); lab.position.y = labelY;
+    axesGroup.add(lab);
+  }
+
+  // Akselinjer med merkelapp i begge ender
+  xs.forEach((g, i) => {
+    addLine(new THREE.Vector3(g.c, y, minZ - ext), new THREE.Vector3(g.c, y, maxZ + ext), dashMat, true);
+    addTag(String(i + 1), new THREE.Vector3(g.c, y, minZ - ext));
+    addTag(String(i + 1), new THREE.Vector3(g.c, y, maxZ + ext));
+  });
+  zs.forEach((g, i) => {
+    addLine(new THREE.Vector3(minX - ext, y, g.c), new THREE.Vector3(maxX + ext, y, g.c), dashMat, true);
+    addTag(axisLetter(i), new THREE.Vector3(minX - ext, y, g.c));
+    addTag(axisLetter(i), new THREE.Vector3(maxX + ext, y, g.c));
+  });
+
+  // Målekjede: ytterkant ytterste søyle → senter-senter i mellom → ytterkant siste
+  function dimChain(groups, dir, offsetPos) {
+    if (groups.length < 2) return;
+    const pts = groups.map((g, i) =>
+      i === 0 ? g.edgeMin : (i === groups.length - 1 ? g.edgeMax : g.c));
+    const mk = (v) => dir === "x"
+      ? new THREE.Vector3(v, y, offsetPos)
+      : new THREE.Vector3(offsetPos, y, v);
+    const tick = ext * 0.12;
+    addLine(mk(pts[0]), mk(pts[pts.length - 1]), dimMat, false);
+    for (const p of pts) {
+      const a = mk(p), b = mk(p);
+      if (dir === "x") { a.z -= tick; b.z += tick; } else { a.x -= tick; b.x += tick; }
+      addLine(a, b, dimMat, false);
+    }
+    for (let i = 0; i < pts.length - 1; i++) {
+      const mm = Math.round((pts[i + 1] - pts[i]) * toMM);
+      addTag(String(mm), mk((pts[i] + pts[i + 1]) / 2), "#fbbf24");
     }
   }
+  dimChain(xs, "x", minZ - ext * 0.55); // tallakser: målekjede langs nedre kant
+  dimChain(zs, "z", minX - ext * 0.55); // bokstavakser: målekjede langs venstre kant
 }
 
 $("btnAxes").addEventListener("click", () => {
   if (!modelGroup) return;
   if (!axesBuilt) buildAxes();
   if (!axesGroup.children.length) {
-    statusEl.textContent = "Ingen aksesystem (IfcGrid) i modellen";
+    statusEl.textContent = "Fant ikke nok søyler til å lage aksesystem";
     return;
   }
   axesOn = !axesOn;
