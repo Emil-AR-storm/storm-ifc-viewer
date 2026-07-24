@@ -189,6 +189,26 @@
     background: rgba(20,24,31,.6); padding: 6px 10px; border-radius: 8px;
     display: none;
   }
+  /* Bibliotek */
+  #libBody input[type=search] {
+    width: 100%; padding: 9px 10px;
+    background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    font-size: 14px; margin-bottom: 10px;
+    font-family: inherit;
+  }
+  .lib-item {
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 9px 11px;
+    margin-bottom: 8px;
+    cursor: pointer;
+  }
+  .lib-item:active { transform: scale(.98); }
+  .lib-item .n { font-size: 13px; word-break: break-word; }
+  .lib-item .m { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
   @media (max-width: 640px) {
     #topbar { padding: 6px; gap: 5px; }
     button, label.btn { padding: 7px 9px; font-size: 12px; }
@@ -204,6 +224,7 @@
   <div class="logo">STORM <span>IFC</span></div>
   <label class="btn" for="fileInput">📂 Åpne</label>
   <input type="file" id="fileInput">
+  <button id="btnLib">📚 Bibliotek</button>
   <button id="btnComments">💬 <span id="commentCount">0</span></button>
   <button id="btnFit">🎯</button>
   <div id="status"></div>
@@ -228,6 +249,7 @@
   <p>Åpne en IFC-modell (BIM) direkte i nettleseren – på mobil eller PC.
      Naviger i 3D, trykk på elementer for info, mål, snitt og legg inn markeringer.</p>
   <label class="btn" for="fileInput">📂 Velg IFC-fil</label>
+  <button id="btnLibSplash" style="font-size:15px; padding:12px 22px">📚 Åpne fra biblioteket</button>
   <p style="font-size:12px">Filen behandles kun lokalt i nettleseren din – ingenting lastes opp.</p>
   <p id="jsCheck" style="color:#ef4444; font-size:13px; font-weight:600">⚠️ JavaScript kjører ikke. Åpner du fila i forhåndsvisning (Filer/mail)? Åpne den i Safari eller Chrome i stedet.</p>
 </div>
@@ -247,6 +269,11 @@
 <div class="panel" id="qtyPanel">
   <header><span>Mengder</span><button onclick="document.getElementById('qtyPanel').classList.remove('open')">✕</button></header>
   <div class="body" id="qtyBody"></div>
+</div>
+
+<div class="panel" id="libPanel">
+  <header><span>📚 Modellbibliotek</span><button onclick="document.getElementById('libPanel').classList.remove('open')">✕</button></header>
+  <div class="body" id="libBody"></div>
 </div>
 
 <div class="panel" id="colorPanel">
@@ -276,6 +303,7 @@ window.addEventListener("unhandledrejection", function(e) {
   if (s) s.textContent = "Feil: " + (e.reason && e.reason.message ? e.reason.message : e.reason);
 });
 </script>
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.30.0/lib/msal-browser.min.js"></script>
 <script type="module">
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
 import * as WebIFC from "https://cdn.jsdelivr.net/npm/web-ifc@0.0.57/web-ifc-api.js";
@@ -953,6 +981,7 @@ function showProperties(expressID) {
   $("commentPanel").classList.remove("open");
   $("qtyPanel").classList.remove("open");
   $("colorPanel").classList.remove("open");
+  $("libPanel").classList.remove("open");
   $("propPanel").classList.add("open");
 }
 
@@ -968,6 +997,7 @@ $("btnQty").addEventListener("click", () => {
   $("propPanel").classList.remove("open");
   $("commentPanel").classList.remove("open");
   $("colorPanel").classList.remove("open");
+  $("libPanel").classList.remove("open");
   panel.classList.add("open");
 });
 
@@ -1053,6 +1083,7 @@ $("btnComments").addEventListener("click", () => {
   $("propPanel").classList.remove("open");
   $("qtyPanel").classList.remove("open");
   $("colorPanel").classList.remove("open");
+  $("libPanel").classList.remove("open");
   $("commentPanel").classList.toggle("open");
 });
 
@@ -1257,6 +1288,7 @@ $("btnColors").addEventListener("click", () => {
   $("propPanel").classList.remove("open");
   $("commentPanel").classList.remove("open");
   $("qtyPanel").classList.remove("open");
+  $("libPanel").classList.remove("open");
   panel.classList.add("open");
 });
 
@@ -1298,6 +1330,190 @@ function renderColorPanel() {
       $("btnShowAll").style.display = anyHidden ? "" : "none";
     };
   });
+}
+
+// ---------- SharePoint-bibliotek (Microsoft Graph) ----------
+const SP = {
+  clientId: "4470b31d-c68d-4c64-a3b1-c450c47c292a",  // app-registrering: Storm IFC-Viewer
+  tenantId: "4daa24b2-8144-4c77-b00d-5a91bf914e73",  // Storm Entreprenør AS
+  hostname: "stormentrepreno.sharepoint.com",        // SharePoint-adressen
+  sitePath: "/sites/StormProsjektTegninger",         // området med modellene
+  folder: "IFC-modeller"                             // mappe i Dokumenter-biblioteket
+};
+const GRAPH = "https://graph.microsoft.com/v1.0";
+const SP_SCOPES = ["Sites.Read.All", "Files.Read.All"];
+let msalApp = null, spSiteId = null, spFiles = null;
+
+async function msalInit() {
+  if (msalApp) return msalApp;
+  if (!window.msal) throw new Error("Innloggings-biblioteket (MSAL) lastet ikke – sjekk nettforbindelsen");
+  msalApp = new msal.PublicClientApplication({
+    auth: {
+      clientId: SP.clientId,
+      authority: "https://login.microsoftonline.com/" + SP.tenantId,
+      redirectUri: location.origin + location.pathname
+    },
+    cache: { cacheLocation: "localStorage" }
+  });
+  await msalApp.initialize();
+  const res = await msalApp.handleRedirectPromise();
+  if (res && res.account) msalApp.setActiveAccount(res.account);
+  else {
+    const accs = msalApp.getAllAccounts();
+    if (accs.length) msalApp.setActiveAccount(accs[0]);
+  }
+  // Kom vi nettopp tilbake fra innlogging? Åpne biblioteket igjen.
+  if (msalApp.getActiveAccount() && sessionStorage.getItem("storm-ifc-open-lib")) {
+    sessionStorage.removeItem("storm-ifc-open-lib");
+    openLibrary();
+  }
+  return msalApp;
+}
+if (!SP.clientId.startsWith("FYLL")) msalInit().catch(() => {});
+
+async function spToken() {
+  await msalInit();
+  const account = msalApp.getActiveAccount();
+  if (!account) {
+    sessionStorage.setItem("storm-ifc-open-lib", "1");
+    await msalApp.loginRedirect({ scopes: SP_SCOPES });
+    return null;
+  }
+  try {
+    return (await msalApp.acquireTokenSilent({ scopes: SP_SCOPES, account })).accessToken;
+  } catch (_) {
+    sessionStorage.setItem("storm-ifc-open-lib", "1");
+    await msalApp.loginRedirect({ scopes: SP_SCOPES });
+    return null;
+  }
+}
+
+async function graphGet(path, token) {
+  const r = await fetch(GRAPH + path, { headers: { Authorization: "Bearer " + token } });
+  if (!r.ok) throw new Error("Graph " + r.status + ": " + (await r.text()).slice(0, 200));
+  return r.json();
+}
+
+async function spFetchList() {
+  const token = await spToken();
+  if (!token) return null; // på vei til innlogging
+  if (!spSiteId) {
+    const site = await graphGet("/sites/" + SP.hostname + ":" + SP.sitePath, token);
+    spSiteId = site.id;
+  }
+  const folderPath = SP.folder.split("/").map(encodeURIComponent).join("/");
+  const data = await graphGet("/sites/" + spSiteId + "/drive/root:/" + folderPath +
+    ":/children?$top=999&$select=id,name,size,lastModifiedDateTime,file", token);
+  return (data.value || [])
+    .filter(f => f.file && /\.ifc$/i.test(f.name))
+    .sort((a, b) => a.name.localeCompare(b.name, "no"));
+}
+
+$("btnLib").addEventListener("click", () => {
+  const panel = $("libPanel");
+  if (panel.classList.contains("open")) { panel.classList.remove("open"); return; }
+  ["propPanel", "commentPanel", "qtyPanel", "colorPanel"].forEach(id => $(id).classList.remove("open"));
+  openLibrary();
+});
+$("btnLibSplash").addEventListener("click", openLibrary);
+
+async function openLibrary() {
+  const body = $("libBody");
+  $("libPanel").classList.add("open");
+  if (SP.clientId.startsWith("FYLL")) {
+    body.innerHTML = '<p style="color:var(--muted)">Biblioteket er ikke satt opp ennå – client-ID mangler i konfigurasjonen.</p>';
+    return;
+  }
+  body.innerHTML = '<p style="color:var(--muted)">Henter fil-liste fra SharePoint …</p>';
+  try {
+    const files = await spFetchList();
+    if (files === null) {
+      body.innerHTML = '<p style="color:var(--muted)">Sender deg til Microsoft-innlogging …</p>';
+      return;
+    }
+    spFiles = files;
+    body.innerHTML =
+      '<input type="search" id="libSearch" placeholder="🔍 Søk etter modell …" autocomplete="off">' +
+      '<div id="libList"></div>';
+    $("libSearch").addEventListener("input", () => renderLibList($("libSearch").value));
+    renderLibList("");
+  } catch (err) {
+    body.innerHTML = '<p style="color:#ef4444">Feil: ' + esc(err.message) + '</p>' +
+      '<p style="color:var(--muted); font-size:11px; margin-top:8px">Sjekk at mappen «' + esc(SP.folder) + '» finnes på ' + esc(SP.sitePath) + ' og at du har tilgang.</p>';
+  }
+}
+
+function renderLibList(filter) {
+  const listEl = $("libList");
+  const q = filter.trim().toLowerCase();
+  const list = (spFiles || []).filter(f => f.name.toLowerCase().includes(q));
+  if (!spFiles || !spFiles.length) {
+    listEl.innerHTML = '<p style="color:var(--muted)">Ingen IFC-filer i mappen «' + esc(SP.folder) + '» ennå.</p>';
+    return;
+  }
+  if (!list.length) {
+    listEl.innerHTML = '<p style="color:var(--muted)">Ingen treff på «' + esc(filter) + '».</p>';
+    return;
+  }
+  listEl.innerHTML = list.map(f => {
+    const mb = f.size ? (f.size / 1048576).toFixed(1) + " MB" : "";
+    const d = f.lastModifiedDateTime ? new Date(f.lastModifiedDateTime).toLocaleDateString("no-NO") : "";
+    return '<div class="lib-item" data-id="' + esc(f.id) + '">' +
+      '<div class="n">' + esc(f.name) + '</div>' +
+      '<div class="m">' + mb + (d ? " · " + d : "") + '</div></div>';
+  }).join("");
+  listEl.querySelectorAll(".lib-item").forEach(el => {
+    el.addEventListener("click", () => {
+      const f = spFiles.find(x => x.id === el.dataset.id);
+      if (f) spOpenFile(f);
+    });
+  });
+}
+
+async function spOpenFile(item) {
+  $("libPanel").classList.remove("open");
+  loadingEl.classList.add("open");
+  try {
+    loadingText.textContent = "Henter " + item.name + " …";
+    const token = await spToken();
+    if (!token) return;
+    const meta = await graphGet("/sites/" + spSiteId + "/drive/items/" + item.id, token);
+    const url = meta["@microsoft.graph.downloadUrl"];
+    if (!url) throw new Error("Fikk ingen nedlastingslenke fra SharePoint");
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error("Nedlasting feilet (" + resp.status + ")");
+    let buf;
+    const total = Number(resp.headers.get("Content-Length")) || item.size || 0;
+    if (resp.body && total) {
+      const reader = resp.body.getReader();
+      const chunks = [];
+      let got = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        got += value.length;
+        loadingText.textContent = "Henter " + item.name + " … " + Math.min(100, Math.round(got / total * 100)) + " %";
+      }
+      buf = new Uint8Array(got);
+      let o = 0;
+      for (const c of chunks) { buf.set(c, o); o += c.length; }
+    } else {
+      buf = new Uint8Array(await resp.arrayBuffer());
+    }
+    loadingText.textContent = "Leser " + item.name + " …";
+    await ifcReady;
+    await new Promise(r => setTimeout(r, 30));
+    fileName = item.name;
+    lastBuffer = buf;
+    loadModel(buf);
+    afterLoad();
+  } catch (err) {
+    console.error(err);
+    alert("Klarte ikke å åpne fra biblioteket: " + err.message);
+  } finally {
+    loadingEl.classList.remove("open");
+  }
 }
 
 // ---------- Automatisk innlasting av innebygd modell ----------
