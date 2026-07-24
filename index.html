@@ -240,6 +240,7 @@
   <button id="btnGhost">👻 Transparent</button>
   <button id="btnQty">📊 Mengder</button>
   <button id="btnColors">🎨 Utseende</button>
+  <button id="btnSaveLite" title="Eksporter forenklet modell (.glb) som funker på mobil">💾 Lett kopi</button>
   <button id="btnShowAll" style="display:none">👁 Vis alle</button>
 </div>
 
@@ -306,6 +307,9 @@ window.addEventListener("unhandledrejection", function(e) {
 });
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.30.0/lib/msal-browser.min.js"></script>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
+</script>
 <script type="module">
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
 import * as WebIFC from "https://cdn.jsdelivr.net/npm/web-ifc@0.0.57/web-ifc-api.js";
@@ -452,22 +456,25 @@ const $ = (id) => document.getElementById(id);
 document.getElementById("fileInput").addEventListener("change", async (e) => {
   const file = e.target.files[0];
   if (!file) return;
-  if (!/\.ifc$/i.test(file.name)) {
-    alert("Dette ser ikke ut som en IFC-fil (" + file.name + "). Velg en fil som slutter på .ifc");
+  if (!/\.(ifc|glb)$/i.test(file.name)) {
+    alert("Dette ser ikke ut som en IFC- eller lett kopi-fil (" + file.name + "). Velg en fil som slutter på .ifc eller .glb");
     e.target.value = "";
     return;
   }
   fileName = file.name;
   loadingEl.classList.add("open");
   try {
-    loadingText.textContent = "Starter IFC-motor …";
-    await ifcReady;
+    const isGlb = /\.glb$/i.test(file.name);
+    if (!isGlb) {
+      loadingText.textContent = "Starter IFC-motor …";
+      await ifcReady;
+    }
     loadingText.textContent = "Leser " + file.name + " …";
     const buffer = new Uint8Array(await file.arrayBuffer());
     await new Promise(r => setTimeout(r, 30));
     lastBuffer = buffer;
     setLoadFlag({ name: file.name, light: lightMode });
-    loadModel(buffer);
+    if (isGlb) await loadGlb(buffer); else loadModel(buffer);
     afterLoad();
     clearLoadFlag();
   } catch (err) {
@@ -509,6 +516,9 @@ function clearModel() {
   renderer.clippingPlanes = [];
   renderCommentList();
   if (modelID !== null) { try { ifcApi.CloseModel(modelID); } catch(_){} modelID = null; }
+  glbActive = false;
+  glbProps = null;
+  glbColumns = null;
   clearSelection();
 }
 
@@ -667,6 +677,110 @@ function loadMeshesLight() {
   return { shown, skipped };
 }
 
+// ---------- 💾 Lett kopi (.glb) ----------
+let glbActive = false, glbProps = null, glbColumns = null;
+
+async function loadGlb(buffer) {
+  const { GLTFLoader } = await import("three/addons/loaders/GLTFLoader.js");
+  const ab = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+  const gltf = await new Promise((res, rej) => new GLTFLoader().parse(ab, "", res, rej));
+  clearModel();
+  lightLoaded = true;
+  glbActive = true;
+  renderer.setPixelRatio(1);
+  modelGroup = new THREE.Group();
+  let lite = null;
+  gltf.scene.updateMatrixWorld(true);
+  const meshes = [];
+  gltf.scene.traverse(o => {
+    if (o.userData && o.userData.stormLite) lite = o.userData.stormLite;
+    if (o.isMesh) meshes.push(o);
+  });
+  const idSet = new Set();
+  meshes.forEach(m => {
+    m.geometry.applyMatrix4(m.matrixWorld);
+    m.position.set(0, 0, 0); m.quaternion.identity(); m.scale.set(1, 1, 1);
+    m.updateMatrix();
+    if (m.material) m.material.side = THREE.DoubleSide;
+    m.userData.merged = true;
+    m.userData.origMat = m.material;
+    (m.userData.ranges || []).forEach(r => idSet.add(r.id));
+    modelGroup.add(m);
+  });
+  if (lite) {
+    koteMatrixInv = lite.kote ? new THREE.Matrix4().fromArray(lite.kote) : null;
+    glbColumns = new Set(lite.columns || []);
+    glbProps = new Map(Object.entries(lite.props || {}).map(([k, v]) => [Number(k), v]));
+  } else {
+    glbColumns = new Set();
+    glbProps = new Map();
+  }
+  scene.add(modelGroup);
+  statusEl.textContent = idSet.size + " elementer · 💾 lett kopi";
+  modelBox = new THREE.Box3().setFromObject(modelGroup);
+  modelSize = modelBox.getSize(new THREE.Vector3()).length() || 10;
+  fitToModel();
+}
+
+$("btnSaveLite").addEventListener("click", async () => {
+  if (!modelGroup || !lastBuffer) return;
+  if (glbActive) { alert("Denne modellen er allerede en lett kopi."); return; }
+  if (!lightLoaded) {
+    if (!confirm("Lett kopi lages fra 🪶 lav kvalitet. Laste modellen på nytt i lav kvalitet først?")) return;
+    setLight(true);
+    loadingEl.classList.add("open");
+    loadingText.textContent = "Laster i lav kvalitet …";
+    await new Promise(r => setTimeout(r, 30));
+    try { loadModel(lastBuffer); }
+    catch (err) { alert("Feil: " + err.message); loadingEl.classList.remove("open"); return; }
+  }
+  loadingEl.classList.add("open");
+  loadingText.textContent = "Lager lett kopi …";
+  await new Promise(r => setTimeout(r, 30));
+  try {
+    // metadata som bakes inn i fila: navn/profil per element, søyle-liste (til akser) og kote-matrise
+    const ids = new Set();
+    modelGroup.children.forEach(m => (m.userData.ranges || []).forEach(r => ids.add(r.id)));
+    const props = {};
+    for (const id of ids) {
+      try {
+        const line = ifcApi.GetLine(modelID, id);
+        let tn = "";
+        try { tn = (ifcApi.GetNameFromTypeCode(ifcApi.GetLineType(modelID, id)) || "").replace(/^IFC/i, "Ifc"); } catch(_){}
+        props[id] = [val(line.Name) || "", val(line.ObjectType) || "", tn];
+      } catch(_){}
+    }
+    const columns = [];
+    try {
+      const v = ifcApi.GetLineIDsWithType(modelID, WebIFC.IFCCOLUMN);
+      for (let i = 0; i < v.size(); i++) columns.push(v.get(i));
+    } catch(_){}
+    modelGroup.userData.stormLite = {
+      v: 1, name: fileName,
+      kote: koteMatrixInv ? Array.from(koteMatrixInv.elements) : null,
+      columns, props
+    };
+    // origMat er et materiale-objekt og kan ikke serialiseres – ta det ut midlertidig
+    modelGroup.children.forEach(m => delete m.userData.origMat);
+    const { GLTFExporter } = await import("three/addons/exporters/GLTFExporter.js");
+    const glb = await new Promise((res, rej) => new GLTFExporter().parse(modelGroup, res, rej, { binary: true }));
+    modelGroup.children.forEach(m => m.userData.origMat = m.material);
+    delete modelGroup.userData.stormLite;
+    const blob = new Blob([glb], { type: "model/gltf-binary" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = fileName.replace(/\.ifc$/i, "") + " LETT.glb";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    alert("Lett kopi lastet ned (" + (blob.size / 1048576).toFixed(1) + " MB).\n\nLast den opp i SharePoint-mappen «" + SP.folder + "», så dukker den opp i 📚 Biblioteket og kan åpnes på mobil.");
+  } catch (err) {
+    console.error(err);
+    alert("Klarte ikke å lage lett kopi: " + err.message);
+  } finally {
+    loadingEl.classList.remove("open");
+  }
+});
+
 // Bounding box per element i lav kvalitet-modus (leses ut av de sammenslåtte objektene)
 const _lv = new THREE.Vector3();
 function lightElementBoxes(idSet, out) {
@@ -736,8 +850,9 @@ let axesOn = false, axesBuilt = false;
 
 function columnBoxes() {
   // Bounding box per søyle (IfcColumn) i viewer-koordinater
-  const ids = new Set();
-  try {
+  let ids = new Set();
+  if (glbActive) ids = glbColumns || ids;
+  else try {
     const v = ifcApi.GetLineIDsWithType(modelID, WebIFC.IFCCOLUMN);
     for (let i = 0; i < v.size(); i++) ids.add(v.get(i));
   } catch(_) {}
@@ -781,7 +896,7 @@ function axisLetter(i) {
 
 function buildAxes() {
   axesBuilt = true;
-  if (modelID === null || !modelGroup || !modelBox) return;
+  if (!modelGroup || !modelBox) return;
   const boxes = columnBoxes();
   if (boxes.length < 2) return;
 
@@ -1107,7 +1222,14 @@ function val(v) {
 function showProperties(expressID) {
   const body = $("propBody");
   const rows = [];
-  try {
+  if (glbActive) {
+    const p = glbProps ? glbProps.get(expressID) : null;
+    $("propTitle").textContent = (p && p[2]) || "Element";
+    rows.push(["ExpressID", expressID]);
+    if (p && p[0]) rows.push(["Name", p[0]]);
+    if (p && p[1]) rows.push(["ObjectType", p[1]]);
+    rows.push(["Merk", "Lett kopi – åpne original-IFC-en for full egenskapsliste"]);
+  } else try {
     const line = ifcApi.GetLine(modelID, expressID);
     const typeCode = ifcApi.GetLineType(modelID, expressID);
     let typeName = "";
@@ -1187,7 +1309,10 @@ function computeQuantities() {
   const sizeV = new THREE.Vector3();
   for (const [id, box] of boxMap) {
     let name = "", objType = "", typeName = "";
-    try {
+    if (glbActive) {
+      const p = glbProps ? glbProps.get(id) : null;
+      if (p) { name = p[0] || ""; objType = p[1] || ""; typeName = (p[2] || "").replace(/^Ifc/, ""); }
+    } else try {
       const line = ifcApi.GetLine(modelID, id);
       name = val(line.Name) || "";
       objType = val(line.ObjectType) || "";
@@ -1584,7 +1709,7 @@ async function spFetchList() {
   const data = await graphGet("/sites/" + spSiteId + "/drive/root:/" + folderPath +
     ":/children?$top=999&$select=id,name,size,lastModifiedDateTime,file", token);
   return (data.value || [])
-    .filter(f => f.file && /\.ifc$/i.test(f.name))
+    .filter(f => f.file && /\.(ifc|glb)$/i.test(f.name))
     .sort((a, b) => a.name.localeCompare(b.name, "no"));
 }
 
@@ -1684,13 +1809,14 @@ async function spOpenFile(item) {
     } else {
       buf = new Uint8Array(await resp.arrayBuffer());
     }
+    const isGlb = /\.glb$/i.test(item.name);
     loadingText.textContent = "Leser " + item.name + " …";
-    await ifcReady;
+    if (!isGlb) await ifcReady;
     await new Promise(r => setTimeout(r, 30));
     fileName = item.name;
     lastBuffer = buf;
     setLoadFlag({ name: item.name, size: item.size, light: lightMode, libId: item.id });
-    loadModel(buf);
+    if (isGlb) await loadGlb(buf); else loadModel(buf);
     afterLoad();
     clearLoadFlag();
   } catch (err) {
