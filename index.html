@@ -225,6 +225,7 @@
   <label class="btn" for="fileInput">📂 Åpne</label>
   <input type="file" id="fileInput">
   <button id="btnLib">📚 Bibliotek</button>
+  <button id="btnLight" title="Forenklet lasting for mobil og store modeller">🪶 Lav kvalitet</button>
   <button id="btnComments">💬 <span id="commentCount">0</span></button>
   <button id="btnFit">🎯</button>
   <div id="status"></div>
@@ -248,6 +249,7 @@
   <h1>STORM <span>IFC-VIEWER</span></h1>
   <p>Åpne en IFC-modell (BIM) direkte i nettleseren – på mobil eller PC.
      Naviger i 3D, trykk på elementer for info, mål, snitt og legg inn markeringer.</p>
+  <div id="crashBanner" style="display:none; background:var(--panel); border:1px solid var(--accent2); border-radius:10px; padding:12px 14px; font-size:13px; max-width:420px; line-height:1.5"></div>
   <label class="btn" for="fileInput">📂 Velg IFC-fil</label>
   <button id="btnLibSplash" style="font-size:15px; padding:12px 22px">📚 Åpne fra biblioteket</button>
   <p style="font-size:12px">Filen behandles kun lokalt i nettleseren din – ingenting lastes opp.</p>
@@ -438,8 +440,9 @@ const markerGroup = new THREE.Group();
 const measureGroup = new THREE.Group();
 const koteGroup = new THREE.Group();
 const axesGroup = new THREE.Group();
+const selGroup = new THREE.Group(); // markering av valgt element i lav kvalitet-modus
 axesGroup.visible = false;
-scene.add(markerGroup, measureGroup, koteGroup, axesGroup);
+scene.add(markerGroup, measureGroup, koteGroup, axesGroup, selGroup);
 
 const statusEl = document.getElementById("status");
 const loadingEl = document.getElementById("loading");
@@ -463,11 +466,14 @@ document.getElementById("fileInput").addEventListener("change", async (e) => {
     const buffer = new Uint8Array(await file.arrayBuffer());
     await new Promise(r => setTimeout(r, 30));
     lastBuffer = buffer;
+    setLoadFlag({ name: file.name, light: lightMode });
     loadModel(buffer);
     afterLoad();
+    clearLoadFlag();
   } catch (err) {
     console.error(err);
-    alert("Klarte ikke å lese IFC-filen: " + err.message);
+    clearLoadFlag();
+    if (!(await offerLightRetry(err))) alert("Klarte ikke å lese IFC-filen: " + err.message);
   } finally {
     loadingEl.classList.remove("open");
     e.target.value = "";
@@ -506,8 +512,27 @@ function clearModel() {
   clearSelection();
 }
 
+const matCache = new Map();
+function getMaterial(c) {
+  const key = [c.x.toFixed(3), c.y.toFixed(3), c.z.toFixed(3), c.w.toFixed(3)].join("|");
+  if (!matCache.has(key)) {
+    matCache.set(key, new THREE.MeshLambertMaterial({
+      color: new THREE.Color(c.x, c.y, c.z),
+      transparent: c.w < 1,
+      opacity: c.w,
+      side: THREE.DoubleSide
+    }));
+  }
+  return matCache.get(key);
+}
+
+let lightMode = localStorage.getItem("storm-ifc-light") === "1";
+let lightLoaded = false; // gjelder modellen som er lastet nå
+
 function loadModel(buffer) {
   clearModel();
+  lightLoaded = lightMode;
+  renderer.setPixelRatio(lightLoaded ? 1 : Math.min(window.devicePixelRatio, 2));
   modelID = ifcApi.OpenModel(buffer, { COORDINATE_TO_ORIGIN: true });
   modelGroup = new THREE.Group();
 
@@ -517,20 +542,18 @@ function loadModel(buffer) {
     koteMatrixInv = coordMatrix.clone().invert();
   } catch(_) { koteMatrixInv = null; coordMatrix = null; }
 
-  const matCache = new Map();
-  function getMaterial(c) {
-    const key = [c.x.toFixed(3), c.y.toFixed(3), c.z.toFixed(3), c.w.toFixed(3)].join("|");
-    if (!matCache.has(key)) {
-      matCache.set(key, new THREE.MeshLambertMaterial({
-        color: new THREE.Color(c.x, c.y, c.z),
-        transparent: c.w < 1,
-        opacity: c.w,
-        side: THREE.DoubleSide
-      }));
-    }
-    return matCache.get(key);
-  }
+  const res = lightLoaded ? loadMeshesLight() : loadMeshesFull();
 
+  scene.add(modelGroup);
+  statusEl.textContent = res.shown + " elementer" +
+    (lightLoaded ? " · 🪶" + (res.skipped ? " (" + res.skipped + " små utelatt)" : "") : "");
+  modelBox = new THREE.Box3().setFromObject(modelGroup);
+  modelSize = modelBox.getSize(new THREE.Vector3()).length() || 10;
+  fitToModel();
+}
+
+// Full kvalitet: ett objekt per element (alle funksjoner tilgjengelig)
+function loadMeshesFull() {
   let count = 0;
   ifcApi.StreamAllMeshes(modelID, (mesh) => {
     const expressID = mesh.expressID;
@@ -563,12 +586,107 @@ function loadModel(buffer) {
     }
     count++;
   });
+  return { shown: count, skipped: 0 };
+}
 
-  scene.add(modelGroup);
-  statusEl.textContent = count + " elementer";
-  modelBox = new THREE.Box3().setFromObject(modelGroup);
-  modelSize = modelBox.getSize(new THREE.Vector3()).length() || 10;
-  fitToModel();
+// 🪶 Lav kvalitet: all geometri slås sammen per farge (mye mindre minne),
+// festemidler og veldig små elementer utelates
+function loadMeshesLight() {
+  const skipTypes = new Set([WebIFC.IFCMECHANICALFASTENER, WebIFC.IFCFASTENER, WebIFC.IFCDISCRETEACCESSORY].filter(t => t !== undefined));
+  const buckets = new Map(); // materiale -> { mat, segs, vtot, itot }
+  let shown = 0, skipped = 0;
+  const v = new THREE.Vector3();
+  const nMat = new THREE.Matrix3();
+
+  ifcApi.StreamAllMeshes(modelID, (mesh) => {
+    const expressID = mesh.expressID;
+    try { if (skipTypes.has(ifcApi.GetLineType(modelID, expressID))) { skipped++; return; } } catch(_){}
+    const parts = [];
+    let mnx = Infinity, mny = Infinity, mnz = Infinity, mxx = -Infinity, mxy = -Infinity, mxz = -Infinity;
+    for (let i = 0; i < mesh.geometries.size(); i++) {
+      const pg = mesh.geometries.get(i);
+      const geom = ifcApi.GetGeometry(modelID, pg.geometryExpressID);
+      const verts = ifcApi.GetVertexArray(geom.GetVertexData(), geom.GetVertexDataSize());
+      const indices = ifcApi.GetIndexArray(geom.GetIndexData(), geom.GetIndexDataSize());
+      const mtx = new THREE.Matrix4().fromArray(pg.flatTransformation);
+      nMat.getNormalMatrix(mtx);
+      const pos = new Float32Array(verts.length / 2);
+      const norm = new Float32Array(verts.length / 2);
+      for (let j = 0; j < verts.length; j += 6) {
+        const k = j / 2;
+        v.set(verts[j], verts[j+1], verts[j+2]).applyMatrix4(mtx);
+        pos[k] = v.x; pos[k+1] = v.y; pos[k+2] = v.z;
+        if (v.x < mnx) mnx = v.x; if (v.x > mxx) mxx = v.x;
+        if (v.y < mny) mny = v.y; if (v.y > mxy) mxy = v.y;
+        if (v.z < mnz) mnz = v.z; if (v.z > mxz) mxz = v.z;
+        v.set(verts[j+3], verts[j+4], verts[j+5]).applyMatrix3(nMat).normalize();
+        norm[k] = v.x; norm[k+1] = v.y; norm[k+2] = v.z;
+      }
+      parts.push({ mat: getMaterial(pg.color), pos, norm, idx: new Uint32Array(indices) });
+      geom.delete();
+    }
+    // dropp veldig små elementer (< 0,15 i modellens enheter, dvs. 15 cm i meter-modeller)
+    const diag = Math.hypot(mxx - mnx, mxy - mny, mxz - mnz);
+    if (diag < 0.15) { skipped++; return; }
+    for (const p of parts) {
+      const key = p.mat.uuid;
+      let b = buckets.get(key);
+      if (!b) { b = { mat: p.mat, segs: [], vtot: 0, itot: 0 }; buckets.set(key, b); }
+      b.segs.push({ pos: p.pos, norm: p.norm, idx: p.idx, id: expressID });
+      b.vtot += p.pos.length / 3;
+      b.itot += p.idx.length;
+    }
+    shown++;
+  });
+
+  for (const [, b] of buckets) {
+    const pos = new Float32Array(b.vtot * 3);
+    const norm = new Float32Array(b.vtot * 3);
+    const idx = new Uint32Array(b.itot);
+    const ranges = [];
+    let vo = 0, io = 0;
+    for (const s of b.segs) {
+      pos.set(s.pos, vo * 3);
+      norm.set(s.norm, vo * 3);
+      for (let i = 0; i < s.idx.length; i++) idx[io + i] = s.idx[i] + vo;
+      ranges.push({ start: io, count: s.idx.length, id: s.id });
+      vo += s.pos.length / 3;
+      io += s.idx.length;
+    }
+    b.segs = null;
+    const bg = new THREE.BufferGeometry();
+    bg.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    bg.setAttribute("normal", new THREE.BufferAttribute(norm, 3));
+    bg.setIndex(new THREE.BufferAttribute(idx, 1));
+    const m = new THREE.Mesh(bg, b.mat);
+    m.userData.merged = true;
+    m.userData.ranges = ranges;
+    m.userData.origMat = b.mat;
+    modelGroup.add(m);
+  }
+  return { shown, skipped };
+}
+
+// Bounding box per element i lav kvalitet-modus (leses ut av de sammenslåtte objektene)
+const _lv = new THREE.Vector3();
+function lightElementBoxes(idSet, out) {
+  const boxes = out || new Map();
+  modelGroup.children.forEach(m => {
+    if (!m.userData.merged) return;
+    const p = m.geometry.getAttribute("position").array;
+    const ix = m.geometry.getIndex().array;
+    for (const r of m.userData.ranges) {
+      if (idSet && !idSet.has(r.id)) continue;
+      let b = boxes.get(r.id);
+      if (!b) { b = new THREE.Box3(); boxes.set(r.id, b); }
+      for (let i = r.start; i < r.start + r.count; i++) {
+        const vi = ix[i] * 3;
+        _lv.set(p[vi], p[vi+1], p[vi+2]);
+        b.expandByPoint(_lv);
+      }
+    }
+  });
+  return boxes;
 }
 
 function fitToModel() {
@@ -623,8 +741,9 @@ function columnBoxes() {
     const v = ifcApi.GetLineIDsWithType(modelID, WebIFC.IFCCOLUMN);
     for (let i = 0; i < v.size(); i++) ids.add(v.get(i));
   } catch(_) {}
-  const boxes = new Map();
   if (!ids.size || !modelGroup) return [];
+  if (lightLoaded) return [...lightElementBoxes(ids).values()];
+  const boxes = new Map();
   modelGroup.traverse(o => {
     if (o.isMesh && ids.has(o.userData.expressID)) {
       const b = new THREE.Box3().setFromObject(o);
@@ -895,11 +1014,33 @@ const pointer = new THREE.Vector2();
 let selectedMeshes = [];
 let currentPropID = null;
 const selMat = new THREE.MeshLambertMaterial({ color: 0x3b82f6, emissive: 0x1d4ed8, side: THREE.DoubleSide });
+const selMatLight = new THREE.MeshBasicMaterial({
+  color: 0x3b82f6, side: THREE.DoubleSide,
+  polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2
+});
 
 function clearSelection() {
   selectedMeshes.forEach(({ mesh, mat }) => mesh.material = mat);
   selectedMeshes = [];
+  selGroup.children.forEach(h => h.geometry.dispose());
+  selGroup.clear();
   currentPropID = null;
+}
+
+// Finn expressID fra et raycast-treff (også i sammenslått geometri)
+function hitID(hit) {
+  const u = hit.object.userData;
+  if (!u.merged) return u.expressID;
+  const fi = hit.faceIndex * 3;
+  const r = u.ranges;
+  let lo = 0, hi = r.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (fi < r[mid].start) hi = mid - 1;
+    else if (fi >= r[mid].start + r[mid].count) lo = mid + 1;
+    else return r[mid].id;
+  }
+  return null;
 }
 
 function pick(clientX, clientY) {
@@ -922,6 +1063,33 @@ function pick(clientX, clientY) {
 function selectElement(expressID) {
   clearSelection();
   currentPropID = expressID;
+  if (lightLoaded) {
+    // bygg en liten kopi av elementets trekanter som legges oppå
+    modelGroup.children.forEach(m => {
+      if (!m.userData.merged) return;
+      const rs = m.userData.ranges.filter(r => r.id === expressID);
+      if (!rs.length) return;
+      const p = m.geometry.getAttribute("position").array;
+      const ix = m.geometry.getIndex().array;
+      let n = 0;
+      rs.forEach(r => n += r.count);
+      const arr = new Float32Array(n * 3);
+      let o = 0;
+      rs.forEach(r => {
+        for (let i = r.start; i < r.start + r.count; i++) {
+          const vi = ix[i] * 3;
+          arr[o] = p[vi]; arr[o+1] = p[vi+1]; arr[o+2] = p[vi+2];
+          o += 3;
+        }
+      });
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.BufferAttribute(arr, 3));
+      const hl = new THREE.Mesh(g, selMatLight);
+      hl.renderOrder = 996;
+      selGroup.add(hl);
+    });
+    return;
+  }
   modelGroup.children.forEach(m => {
     if (m.userData.expressID === expressID) {
       selectedMeshes.push({ mesh: m, mat: m.material });
@@ -974,10 +1142,10 @@ function showProperties(expressID) {
     rows.push(["Feil", "Kunne ikke lese egenskaper"]);
   }
   body.innerHTML =
-    '<div class="prop-actions"><button id="paHide">🙈 Skjul element</button></div>' +
+    (lightLoaded ? "" : '<div class="prop-actions"><button id="paHide">🙈 Skjul element</button></div>') +
     rows.map(([k,v]) =>
     `<div class="prop-row"><div class="k">${esc(String(k))}</div><div class="v">${esc(String(v))}</div></div>`).join("");
-  $("paHide").onclick = () => hideElement(expressID);
+  if (!lightLoaded) $("paHide").onclick = () => hideElement(expressID);
   $("commentPanel").classList.remove("open");
   $("qtyPanel").classList.remove("open");
   $("colorPanel").classList.remove("open");
@@ -1002,18 +1170,22 @@ $("btnQty").addEventListener("click", () => {
 });
 
 function computeQuantities() {
-  // samle mesher per element
-  const byID = new Map();
-  modelGroup.children.forEach(m => {
-    const id = m.userData.expressID;
-    if (!byID.has(id)) byID.set(id, []);
-    byID.get(id).push(m);
-  });
+  // bounding box per element (funker i både full og lav kvalitet)
+  const boxMap = new Map();
+  if (lightLoaded) {
+    lightElementBoxes(null, boxMap);
+  } else {
+    const tmp = new THREE.Box3();
+    modelGroup.children.forEach(m => {
+      const id = m.userData.expressID;
+      tmp.setFromObject(m);
+      const b = boxMap.get(id);
+      if (b) b.union(tmp); else boxMap.set(id, tmp.clone());
+    });
+  }
   const groups = new Map();
-  const box = new THREE.Box3();
-  const tmp = new THREE.Box3();
   const sizeV = new THREE.Vector3();
-  for (const [id, meshes] of byID) {
+  for (const [id, box] of boxMap) {
     let name = "", objType = "", typeName = "";
     try {
       const line = ifcApi.GetLine(modelID, id);
@@ -1024,8 +1196,6 @@ function computeQuantities() {
     // gruppenøkkel: ObjectType er oftest profilen (f.eks. CFSHS100x6), ellers navn uten løpenummer
     let key = objType || name.replace(/:\d+$/, "") || typeName || "Ukjent";
     // lengde: lengste dimensjon av elementets samlede boks
-    box.makeEmpty();
-    meshes.forEach(m => { tmp.setFromObject(m); box.union(tmp); });
     box.getSize(sizeV);
     const len = Math.max(sizeV.x, sizeV.y, sizeV.z);
     if (!groups.has(key)) groups.set(key, { count: 0, length: 0, type: typeName });
@@ -1213,7 +1383,8 @@ canvas.addEventListener("pointerup", (e) => {
     label.position.copy(hit.point);
     koteGroup.add(label);
   } else {
-    const id = hit.object.userData.expressID;
+    const id = hitID(hit);
+    if (id == null) return;
     selectElement(id);
     showProperties(id);
   }
@@ -1283,8 +1454,16 @@ $("btnColors").addEventListener("click", () => {
   if (!modelGroup) return;
   const panel = $("colorPanel");
   if (panel.classList.contains("open")) { panel.classList.remove("open"); return; }
-  if (!typeInfo) buildTypeInfo();
-  renderColorPanel();
+  if (lightLoaded) {
+    const bgVal = "#" + scene.background.getHexString();
+    $("colorBody").innerHTML =
+      '<div class="qty-row"><div class="n">Bakgrunn</div><div class="c"><input type="color" id="colBg" value="' + bgVal + '"></div></div>' +
+      '<p style="color:var(--muted); font-size:11px; margin-top:10px">Fargelegging og skjuling per type er ikke tilgjengelig i 🪶 lav kvalitet. Last modellen i full kvalitet for å bruke det.</p>';
+    $("colBg").oninput = (e) => scene.background.set(e.target.value);
+  } else {
+    if (!typeInfo) buildTypeInfo();
+    renderColorPanel();
+  }
   $("propPanel").classList.remove("open");
   $("commentPanel").classList.remove("open");
   $("qtyPanel").classList.remove("open");
@@ -1477,6 +1656,10 @@ async function spOpenFile(item) {
     loadingText.textContent = "Henter " + item.name + " …";
     const token = await spToken();
     if (!token) return;
+    if (!spSiteId) {
+      const site = await graphGet("/sites/" + SP.hostname + ":" + SP.sitePath, token);
+      spSiteId = site.id;
+    }
     const meta = await graphGet("/sites/" + spSiteId + "/drive/items/" + item.id, token);
     const url = meta["@microsoft.graph.downloadUrl"];
     if (!url) throw new Error("Fikk ingen nedlastingslenke fra SharePoint");
@@ -1506,15 +1689,97 @@ async function spOpenFile(item) {
     await new Promise(r => setTimeout(r, 30));
     fileName = item.name;
     lastBuffer = buf;
+    setLoadFlag({ name: item.name, size: item.size, light: lightMode, libId: item.id });
     loadModel(buf);
     afterLoad();
+    clearLoadFlag();
   } catch (err) {
     console.error(err);
-    alert("Klarte ikke å åpne fra biblioteket: " + err.message);
+    clearLoadFlag();
+    if (!(await offerLightRetry(err))) alert("Klarte ikke å åpne fra biblioteket: " + err.message);
   } finally {
     loadingEl.classList.remove("open");
   }
 }
+
+// ---------- 🪶 Lav kvalitet: bryter, krasjflagg og retry ----------
+let lastLoadInfo = null;
+function setLoadFlag(info) {
+  lastLoadInfo = info;
+  try { localStorage.setItem("storm-ifc-loadflag", JSON.stringify(info)); } catch(_){}
+}
+function clearLoadFlag() {
+  try { localStorage.removeItem("storm-ifc-loadflag"); } catch(_){}
+}
+function setLight(on) {
+  lightMode = on;
+  try { localStorage.setItem("storm-ifc-light", on ? "1" : "0"); } catch(_){}
+  $("btnLight").classList.toggle("active", on);
+}
+setLight(lightMode);
+
+$("btnLight").addEventListener("click", async () => {
+  setLight(!lightMode);
+  if (modelGroup && lastBuffer && lightMode !== lightLoaded &&
+      confirm("Laste modellen på nytt i " + (lightMode ? "🪶 lav" : "full") + " kvalitet?")) {
+    loadingEl.classList.add("open");
+    loadingText.textContent = "Laster på nytt …";
+    await new Promise(r => setTimeout(r, 30));
+    try {
+      setLoadFlag(Object.assign({}, lastLoadInfo || { name: fileName }, { light: lightMode }));
+      loadModel(lastBuffer);
+      clearLoadFlag();
+    } catch (err) {
+      clearLoadFlag();
+      alert("Klarte ikke å laste på nytt: " + err.message);
+    } finally {
+      loadingEl.classList.remove("open");
+    }
+  }
+});
+
+// Tilbud om nytt forsøk i lav kvalitet når lasting feiler
+async function offerLightRetry(err) {
+  if (lightMode || !lastBuffer) return false;
+  if (!confirm("Klarte ikke å laste modellen (" + ((err && err.message) || err) + ").\n\nPrøve på nytt i 🪶 lav kvalitet?")) return false;
+  setLight(true);
+  loadingEl.classList.add("open");
+  loadingText.textContent = "Prøver i lav kvalitet …";
+  await new Promise(r => setTimeout(r, 30));
+  try {
+    setLoadFlag(Object.assign({}, lastLoadInfo || { name: fileName }, { light: true }));
+    loadModel(lastBuffer);
+    afterLoad();
+    clearLoadFlag();
+  } catch (e2) {
+    clearLoadFlag();
+    alert("Gikk ikke i lav kvalitet heller: " + e2.message);
+  } finally {
+    loadingEl.classList.remove("open");
+  }
+  return true;
+}
+
+// Krasjet nettleseren under forrige lasting? (flagget ble aldri ryddet bort)
+(function crashCheck() {
+  let info = null;
+  try { info = JSON.parse(localStorage.getItem("storm-ifc-loadflag")); } catch(_){}
+  if (!info) return;
+  clearLoadFlag();
+  const b = $("crashBanner");
+  b.style.display = "block";
+  b.innerHTML = "⚠️ Forrige forsøk på å åpne <b>" + esc(String(info.name || "modellen")) + "</b> ser ut til å ha krasjet nettleseren." +
+    (info.light
+      ? " Den var allerede i 🪶 lav kvalitet – modellen er trolig for stor for denne enheten."
+      : "<br><button id='crashRetry' class='primary' style='margin-top:10px'>🪶 Prøv igjen i lav kvalitet</button>");
+  const btn = $("crashRetry");
+  if (btn) btn.onclick = () => {
+    setLight(true);
+    b.style.display = "none";
+    if (info.libId) spOpenFile({ id: info.libId, name: info.name, size: info.size });
+    else alert("Velg «" + (info.name || "filen") + "» på nytt – den åpnes nå i 🪶 lav kvalitet.");
+  };
+})();
 
 // ---------- Automatisk innlasting av innebygd modell ----------
 if (window.EMBEDDED_IFC) {
