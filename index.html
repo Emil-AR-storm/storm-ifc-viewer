@@ -543,7 +543,9 @@ function loadModel(buffer) {
   clearModel();
   lightLoaded = lightMode;
   renderer.setPixelRatio(lightLoaded ? 1 : Math.min(window.devicePixelRatio, 2));
-  modelID = ifcApi.OpenModel(buffer, { COORDINATE_TO_ORIGIN: true });
+  modelID = ifcApi.OpenModel(buffer, lightLoaded
+    ? { COORDINATE_TO_ORIGIN: true, CIRCLE_SEGMENTS: 8 }
+    : { COORDINATE_TO_ORIGIN: true });
   modelGroup = new THREE.Group();
 
   try {
@@ -701,6 +703,7 @@ async function loadGlb(buffer) {
     m.geometry.applyMatrix4(m.matrixWorld);
     m.position.set(0, 0, 0); m.quaternion.identity(); m.scale.set(1, 1, 1);
     m.updateMatrix();
+    if (!m.geometry.getAttribute("normal")) m.geometry.computeVertexNormals();
     if (m.material) m.material.side = THREE.DoubleSide;
     m.userData.merged = true;
     m.userData.origMat = m.material;
@@ -755,17 +758,32 @@ $("btnSaveLite").addEventListener("click", async () => {
       const v = ifcApi.GetLineIDsWithType(modelID, WebIFC.IFCCOLUMN);
       for (let i = 0; i < v.size(); i++) columns.push(v.get(i));
     } catch(_){}
-    modelGroup.userData.stormLite = {
+    // bygg en krympet kopi for eksport: normaler droppes (regnes ut ved åpning)
+    // og dupliserte punkter sveises sammen – gir mange ganger mindre fil
+    loadingText.textContent = "Komprimerer geometri …";
+    await new Promise(r => setTimeout(r, 30));
+    const { mergeVertices } = await import("three/addons/utils/BufferGeometryUtils.js");
+    const exportGroup = new THREE.Group();
+    for (const m of modelGroup.children) {
+      let g = new THREE.BufferGeometry();
+      g.setAttribute("position", m.geometry.getAttribute("position"));
+      g.setIndex(m.geometry.getIndex());
+      g = mergeVertices(g, 1e-4);
+      const em = new THREE.Mesh(g, m.material);
+      em.userData.merged = true;
+      em.userData.ranges = m.userData.ranges;
+      exportGroup.add(em);
+    }
+    exportGroup.userData.stormLite = {
       v: 1, name: fileName,
       kote: koteMatrixInv ? Array.from(koteMatrixInv.elements) : null,
       columns, props
     };
-    // origMat er et materiale-objekt og kan ikke serialiseres – ta det ut midlertidig
-    modelGroup.children.forEach(m => delete m.userData.origMat);
+    loadingText.textContent = "Lager lett kopi …";
+    await new Promise(r => setTimeout(r, 30));
     const { GLTFExporter } = await import("three/addons/exporters/GLTFExporter.js");
-    const glb = await new Promise((res, rej) => new GLTFExporter().parse(modelGroup, res, rej, { binary: true }));
-    modelGroup.children.forEach(m => m.userData.origMat = m.material);
-    delete modelGroup.userData.stormLite;
+    const glb = await new Promise((res, rej) => new GLTFExporter().parse(exportGroup, res, rej, { binary: true }));
+    exportGroup.children.forEach(em => em.geometry.dispose());
     const blob = new Blob([glb], { type: "model/gltf-binary" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
