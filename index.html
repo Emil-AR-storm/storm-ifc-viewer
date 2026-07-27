@@ -427,8 +427,22 @@ resize();
 
 renderer.setAnimationLoop(() => {
   controls.update();
+  if (axesGroup.visible) updateAxisLOD();
   renderer.render(scene, camera);
 });
+
+// Zoom-avhengige akse-lapper: skjul lapper som ville blitt for små på skjermen.
+// Mål-lappene (gule) krever mer plass enn aksenavnene og dukker opp først når man zoomer inn.
+const _lodV = new THREE.Vector3();
+function updateAxisLOD() {
+  const hpx = renderer.domElement.clientHeight / (2 * Math.tan(camera.fov * Math.PI / 360));
+  for (const o of axesGroup.children) {
+    if (!o.isSprite || !o.userData.axisTag) continue;
+    const d = _lodV.copy(o.position).sub(camera.position).length() || 1;
+    const px = (o.scale.y / d) * hpx; // lappens høyde i skjerm-piksler
+    o.visible = px > (o.userData.dim ? 12 : 7);
+  }
+}
 
 // ---------- IFC ----------
 const ifcApi = new WebIFC.IfcAPI();
@@ -874,6 +888,7 @@ function makeLabel(text, color = "#f59e0b", sizeF = 0.028) {
 let axesOn = false, axesBuilt = false;
 let axisSources = null;        // Map key -> { label, ids: Set }
 let axisSelection = new Set(); // hvilke kilder aksene bygges fra
+let axisFontF = parseFloat(localStorage.getItem("storm-ifc-axisfont")) || 1; // brukervalgt skriftstørrelse
 
 // Stålprofiler (HEA/HEB/IPE/HUP/VKR/SHS osv.) og betong-kjennetegn i ObjectType/navn
 const AXIS_STEEL_RE = /(\bHE\s?-?[ABM]\s?-?\d|\bIPE|\bINP|\bUNP|\bUPE|\bHUP|\bVKR|\bKVR|\bHSQ|\bWQ|\bSHS|\bRHS|\bCHS|\bCFRHS|\bCFSHS|\bCFCHS|\bKCKR|\bS\s?(235|275|355|420|460)\b|st[åa]l|steel)/i;
@@ -1032,9 +1047,13 @@ function buildAxes() {
     line.renderOrder = 990;
     axesGroup.add(line);
   }
-  function addTag(text, pos, color, sizeF) {
+  function addTag(text, pos, color, sizeF, dim) {
     const lab = makeLabel(text, color || "#8ab4ff", sizeF || TAG);
     lab.position.copy(pos); lab.position.y = labelY;
+    lab.userData.axisTag = true;
+    lab.userData.dim = !!dim; // mål-lapp (vises kun når man er nær nok)
+    lab.userData.baseScale = { x: lab.scale.x, y: lab.scale.y };
+    lab.scale.set(lab.scale.x * axisFontF, lab.scale.y * axisFontF, 1);
     axesGroup.add(lab);
   }
   // Merkelapp-størrelse krymper når naboaksene står tettere enn 5000 mm
@@ -1089,7 +1108,7 @@ function buildAxes() {
     }
     for (let i = 0; i < pts.length - 1; i++) {
       const mm = Math.round((pts[i + 1] - pts[i]) * toMM);
-      addTag(String(mm), mk((pts[i] + pts[i + 1]) / 2), "#fbbf24", tagSize(mm));
+      addTag(String(mm), mk((pts[i] + pts[i + 1]) / 2), "#fbbf24", tagSize(mm), true);
     }
   }
   dimChain(xs, "x", minZ - one * 2.5); // tallakser: kjede utenfor akse-merkelappene
@@ -1113,6 +1132,9 @@ function renderAxesPanel() {
       ' <span style="color:var(--muted);font-size:11px">(' + g.ids.size + ')</span></div>' +
       '<div class="c"><input type="checkbox" data-axsrc="' + esc(k) + '"' + (axisSelection.has(k) ? " checked" : "") + '></div></label>';
   }
+  html += '<div class="qty-row"><div class="n">Skriftstørrelse</div>' +
+    '<div class="c"><input type="range" id="axFont" min="40" max="250" step="10" value="' + Math.round(axisFontF * 100) + '" style="width:110px"></div></div>' +
+    '<p style="color:var(--muted); font-size:11px; margin-top:8px">Mål-lappene (gule) vises først når du zoomer nær nok – det holder store modeller ryddige.</p>';
   $("axesBody").innerHTML = html;
   $("axesBody").querySelectorAll("input[data-axsrc]").forEach(inp => {
     inp.onchange = (e) => {
@@ -1121,6 +1143,17 @@ function renderAxesPanel() {
       rebuildAxes();
     };
   });
+  $("axFont").oninput = (e) => {
+    axisFontF = e.target.value / 100;
+    try { localStorage.setItem("storm-ifc-axisfont", axisFontF); } catch(_){}
+    applyAxisFont();
+  };
+}
+
+function applyAxisFont() {
+  for (const o of axesGroup.children)
+    if (o.isSprite && o.userData.baseScale)
+      o.scale.set(o.userData.baseScale.x * axisFontF, o.userData.baseScale.y * axisFontF, 1);
 }
 
 $("btnAxes").addEventListener("click", () => {
