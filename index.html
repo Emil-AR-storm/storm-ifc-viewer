@@ -998,12 +998,26 @@ function buildAxes() {
   const toMM = modelSize > 1000 ? 1 : 1000;
   const tol = modelSize > 1000 ? 400 : 0.4; // toleranse for «samme akse»
 
-  const xs = clusterAxes(boxes.map(b => ({ c: (b.min.x + b.max.x) / 2, min: b.min.x, max: b.max.x, pmin: b.min.z, pmax: b.max.z })), tol);
-  const zs = clusterAxes(boxes.map(b => ({ c: (b.min.z + b.max.z) / 2, min: b.min.z, max: b.max.z, pmin: b.min.x, pmax: b.max.x })), tol);
+  // På store modeller: krev flere elementer per akse til vi er under taket (maks 50 per retning),
+  // ellers drukner visningen i hundrevis av linjer og merkelapper
+  function clusterCapped(vals) {
+    let groups = clusterAxes(vals, tol);
+    let minItems = 2;
+    while (groups.length > 50 && minItems < 50) {
+      minItems++;
+      groups = groups.filter(g => g.items.length >= minItems);
+    }
+    return groups;
+  }
+  const xs = clusterCapped(boxes.map(b => ({ c: (b.min.x + b.max.x) / 2, min: b.min.x, max: b.max.x, pmin: b.min.z, pmax: b.max.z })));
+  const zs = clusterCapped(boxes.map(b => ({ c: (b.min.z + b.max.z) / 2, min: b.min.z, max: b.max.z, pmin: b.min.x, pmax: b.max.x })));
   if (!xs.length && !zs.length) return;
 
   const one = toMM === 1 ? 1000 : 1; // 1 meter i modellens enheter
-  const y = modelBox.min.y + modelSize * 0.002;
+  // Høyde: median av kildeelementenes underkant (ikke modellens bunn – terreng/peler
+  // kan ligge langt under og ville lagt aksene under bygget)
+  const yBottoms = boxes.map(b => b.min.y).sort((a, b) => a - b);
+  const y = yBottoms[Math.floor(yBottoms.length / 2)] + modelSize * 0.002;
   const labelY = y + modelSize * 0.008;
   const TAG = 0.013; // skriftstørrelse akser/mål (mindre enn standard)
   const dashMat = new THREE.LineDashedMaterial({
@@ -1035,9 +1049,13 @@ function buildAxes() {
     return (g === Infinity ? 5 * one : g) * toMM;
   }
 
-  // Grenser for hele bygget (alle søyler)
-  const minX = Math.min(...boxes.map(b => b.min.x)), maxX = Math.max(...boxes.map(b => b.max.x));
-  const minZ = Math.min(...boxes.map(b => b.min.z)), maxZ = Math.max(...boxes.map(b => b.max.z));
+  // Grenser for bygget – fra elementene som faktisk inngår i aksene,
+  // slik at enkeltelementer langt utenfor ikke strekker linjene
+  // (xs: edge = X-retning, perp = Z-retning · zs: edge = Z, perp = X)
+  const minX = Math.min(...xs.map(g => g.edgeMin), ...zs.map(g => g.perpMin));
+  const maxX = Math.max(...xs.map(g => g.edgeMax), ...zs.map(g => g.perpMax));
+  const minZ = Math.min(...zs.map(g => g.edgeMin), ...xs.map(g => g.perpMin));
+  const maxZ = Math.max(...zs.map(g => g.edgeMax), ...xs.map(g => g.perpMax));
 
   // Akselinjer stikker gjennom hele bygget + 1 m i hver ende
   xs.forEach((g, i) => {
