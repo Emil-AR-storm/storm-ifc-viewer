@@ -237,6 +237,8 @@
   <button id="btnKote">⛰ Kote</button>
   <button id="btnAxes">🔠 Akser</button>
   <button id="btnClip">✂️ Snitt</button>
+  <button id="btnStorey">🏢 Etasjer</button>
+  <button id="btnSearch">🔎 Søk</button>
   <button id="btnGhost">👻 Transparent</button>
   <button id="btnQty">📊 Mengder</button>
   <button id="btnColors">🎨 Utseende</button>
@@ -287,6 +289,11 @@
 <div class="panel" id="axesPanel">
   <header><span>🔠 Aksesystem</span><button onclick="document.getElementById('axesPanel').classList.remove('open')">✕</button></header>
   <div class="body" id="axesBody"></div>
+</div>
+
+<div class="panel" id="searchPanel">
+  <header><span>🔎 Elementsøk</span><button onclick="document.getElementById('searchPanel').classList.remove('open')">✕</button></header>
+  <div class="body" id="searchBody"></div>
 </div>
 
 <div id="commentDialog">
@@ -528,6 +535,11 @@ function clearModel() {
   axisSources = null; axisSelection = new Set();
   document.getElementById("axesPanel").classList.remove("open");
   document.getElementById("btnAxes").classList.remove("active");
+  searchIndex = null; lastQuery = "";
+  document.getElementById("searchPanel").classList.remove("open");
+  storeyOn = false; storeyList = null; storeyIdx = -1;
+  document.getElementById("btnStorey").classList.remove("active");
+  sharedOK = false;
   comments = [];
   qtyCache = null;
   typeInfo = null;
@@ -701,7 +713,7 @@ function loadMeshesLight() {
 }
 
 // ---------- 💾 Lett kopi (.glb) ----------
-let glbActive = false, glbProps = null, glbColumns = null;
+let glbActive = false, glbProps = null, glbColumns = null, glbStoreys = null;
 
 async function loadGlb(buffer) {
   const { GLTFLoader } = await import("three/addons/loaders/GLTFLoader.js");
@@ -734,9 +746,11 @@ async function loadGlb(buffer) {
   if (lite) {
     koteMatrixInv = lite.kote ? new THREE.Matrix4().fromArray(lite.kote) : null;
     glbColumns = new Set(lite.columns || []);
+    glbStoreys = lite.storeys || null;
     glbProps = new Map(Object.entries(lite.props || {}).map(([k, v]) => [Number(k), v]));
   } else {
     glbColumns = new Set();
+    glbStoreys = null;
     glbProps = new Map();
   }
   scene.add(modelGroup);
@@ -779,6 +793,8 @@ $("btnSaveLite").addEventListener("click", async () => {
       const v = ifcApi.GetLineIDsWithType(modelID, WebIFC.IFCCOLUMN);
       for (let i = 0; i < v.size(); i++) columns.push(v.get(i));
     } catch(_){}
+    let storeys = [];
+    try { storeys = storeyDataIfc().map(s => ({ name: s.name, ids: s.ids })); } catch(_){}
     // bygg en krympet kopi for eksport: normaler droppes (regnes ut ved åpning)
     // og dupliserte punkter sveises sammen – gir mange ganger mindre fil
     loadingText.textContent = "Komprimerer geometri …";
@@ -796,9 +812,9 @@ $("btnSaveLite").addEventListener("click", async () => {
       exportGroup.add(em);
     }
     exportGroup.userData.stormLite = {
-      v: 1, name: fileName,
+      v: 2, name: fileName,
       kote: koteMatrixInv ? Array.from(koteMatrixInv.elements) : null,
-      columns, props
+      columns, storeys, props
     };
     loadingText.textContent = "Lager lett kopi …";
     await new Promise(r => setTimeout(r, 30));
@@ -1169,7 +1185,7 @@ $("btnAxes").addEventListener("click", () => {
   if (!axisSources) classifyAxisSources();
   if (!axesBuilt) rebuildAxes();
   renderAxesPanel();
-  ["propPanel", "commentPanel", "qtyPanel", "colorPanel", "libPanel"].forEach(id => $(id).classList.remove("open"));
+  ["propPanel", "commentPanel", "qtyPanel", "colorPanel", "libPanel", "searchPanel"].forEach(id => $(id).classList.remove("open"));
   panel.classList.add("open");
   axesOn = true;
   axesGroup.visible = true;
@@ -1192,9 +1208,9 @@ $("btnMeasure").addEventListener("click", () => setMode("measure"));
 $("btnKote").addEventListener("click", () => setMode("kote"));
 
 function updateModeBar() {
-  if (clipOn) return; // snittkontroller styrer modeBar
+  if (clipOn || storeyOn) return; // snitt-/etasjekontroller styrer modeBar
   if (mode === "measure") {
-    modeBar.innerHTML = '<span class="lbl">Trykk på to punkter i modellen</span><button id="mbClear">Tøm mål</button>';
+    modeBar.innerHTML = '<span class="lbl">Trykk på to punkter – festes til nærmeste hjørne</span><button id="mbClear">Tøm mål</button>';
     $("mbClear").onclick = () => { measureGroup.clear(); measureFirst = null; };
     modeBar.classList.add("open");
   } else if (mode === "kote") {
@@ -1223,6 +1239,7 @@ $("btnClip").addEventListener("click", () => {
   if (clipOn) {
     mode = null;
     for (const k in modeButtons) modeButtons[k].classList.remove("active");
+    if (storeyOn) { storeyOn = false; storeyIdx = -1; $("btnStorey").classList.remove("active"); }
     showClipBar();
     applyClip();
   } else {
@@ -1261,6 +1278,112 @@ function applyClip() {
   const n = axisVectors[clipAxis].clone().multiplyScalar(clipFlip ? 1 : -1);
   const plane = new THREE.Plane(n, clipFlip ? -v : v);
   renderer.clippingPlanes = [plane];
+}
+
+// ---------- 🏢 Etasjefilter ----------
+// Viser én etasje om gangen ved hjelp av to klippeplan (funker i full, lav og lett kopi-modus)
+let storeyOn = false, storeyList = null, storeyIdx = -1;
+
+// Leser IfcBuildingStorey + hvilke elementer som hører til hver etasje
+function storeyDataIfc() {
+  try {
+    const byStorey = new Map();
+    const rels = ifcApi.GetLineIDsWithType(modelID, WebIFC.IFCRELCONTAINEDINSPATIALSTRUCTURE);
+    for (let i = 0; i < rels.size(); i++) {
+      const rel = ifcApi.GetLine(modelID, rels.get(i));
+      const sid = rel.RelatingStructure && rel.RelatingStructure.value;
+      if (!sid) continue;
+      try { if (ifcApi.GetLineType(modelID, sid) !== WebIFC.IFCBUILDINGSTOREY) continue; } catch(_) { continue; }
+      let e = byStorey.get(sid);
+      if (!e) {
+        const line = ifcApi.GetLine(modelID, sid);
+        e = { name: val(line.Name) || ("Etasje " + (byStorey.size + 1)), elev: Number(val(line.Elevation)) || 0, ids: [] };
+        byStorey.set(sid, e);
+      }
+      (rel.RelatedElements || []).forEach(o => e.ids.push(o.value));
+    }
+    return [...byStorey.values()].filter(s => s.ids.length).sort((a, b) => a.elev - b.elev);
+  } catch(_) { return []; }
+}
+
+function buildStoreyList() {
+  storeyList = [];
+  let defs = [];
+  if (glbActive) defs = (glbStoreys || []).map(s => ({ name: s.name, ids: new Set(s.ids) }));
+  else if (modelID !== null) defs = storeyDataIfc().map(s => ({ name: s.name, ids: new Set(s.ids) }));
+  if (!defs.length) return;
+  // bounding-bokser for alle etasje-elementer i én omgang
+  const allIds = new Set();
+  defs.forEach(d => d.ids.forEach(id => allIds.add(id)));
+  let boxMap;
+  if (lightLoaded) boxMap = lightElementBoxes(allIds);
+  else {
+    boxMap = new Map();
+    const tmp = new THREE.Box3();
+    modelGroup.children.forEach(m => {
+      const id = m.userData.expressID;
+      if (!allIds.has(id)) return;
+      tmp.setFromObject(m);
+      const b = boxMap.get(id);
+      if (b) b.union(tmp); else boxMap.set(id, tmp.clone());
+    });
+  }
+  for (const d of defs) {
+    const ys = [];
+    for (const id of d.ids) { const b = boxMap.get(id); if (b) ys.push(b.min.y); }
+    if (!ys.length) continue;
+    ys.sort((a, b) => a - b);
+    // etasjens gulvnivå = median av elementenes underkant (robust mot enkeltelementer under gulvet)
+    storeyList.push({ name: d.name, count: ys.length, yBase: ys[Math.floor(ys.length / 2)] });
+  }
+  storeyList.sort((a, b) => a.yBase - b.yBase);
+}
+
+function applyStorey(i) {
+  storeyIdx = i;
+  if (i < 0 || !storeyList || !storeyList[i]) { renderer.clippingPlanes = []; return; }
+  const eps = modelSize * 0.002;
+  const lower = storeyList[i].yBase - eps;
+  const upper = i + 1 < storeyList.length ? storeyList[i + 1].yBase - eps : modelBox.max.y + 1;
+  renderer.clippingPlanes = [
+    new THREE.Plane(new THREE.Vector3(0, 1, 0), -lower),  // vis alt over gulvet
+    new THREE.Plane(new THREE.Vector3(0, -1, 0), upper)   // ... og under neste etasje
+  ];
+}
+
+$("btnStorey").addEventListener("click", () => {
+  if (!modelGroup) return;
+  storeyOn = !storeyOn;
+  $("btnStorey").classList.toggle("active", storeyOn);
+  if (storeyOn) {
+    if (clipOn) { clipOn = false; $("btnClip").classList.remove("active"); }
+    if (!storeyList) buildStoreyList();
+    showStoreyBar();
+    applyStorey(storeyIdx);
+  } else {
+    renderer.clippingPlanes = [];
+    storeyIdx = -1;
+    modeBar.classList.remove("open");
+    modeBar.innerHTML = "";
+    updateModeBar();
+  }
+});
+
+function showStoreyBar() {
+  if (!storeyList || !storeyList.length) {
+    modeBar.innerHTML = '<span class="lbl">Fant ingen etasjer (IfcBuildingStorey) i modellen' +
+      (glbActive ? ' – lag en ny lett kopi fra original-IFC-en for å få med etasjedata' : '') + '</span>';
+    modeBar.classList.add("open");
+    return;
+  }
+  modeBar.innerHTML = '<span class="lbl">Etasje:</span><button data-st="-1">Alle</button>' +
+    storeyList.map((s, i) => '<button data-st="' + i + '">' + esc(s.name) + '</button>').join("");
+  modeBar.classList.add("open");
+  const upd = () => modeBar.querySelectorAll("button[data-st]").forEach(b =>
+    b.classList.toggle("active", Number(b.dataset.st) === storeyIdx));
+  modeBar.querySelectorAll("button[data-st]").forEach(b =>
+    b.onclick = () => { applyStorey(Number(b.dataset.st)); upd(); });
+  upd();
 }
 
 // ---------- Transparent (ghost) ----------
@@ -1453,10 +1576,109 @@ function showProperties(expressID) {
   $("colorPanel").classList.remove("open");
   $("libPanel").classList.remove("open");
   $("axesPanel").classList.remove("open");
+  $("searchPanel").classList.remove("open");
   $("propPanel").classList.add("open");
 }
 
 function esc(s){ return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+// ---------- 🔎 Elementsøk ----------
+let searchIndex = null, lastQuery = "";
+
+function buildSearchIndex() {
+  searchIndex = [];
+  const push = (id, name, objType, tag, type) => searchIndex.push({
+    id,
+    name: name || "", objType: objType || "", tag: tag || "", type: type || "",
+    s: ((name || "") + " " + (objType || "") + " " + (tag || "") + " " + id).toLowerCase()
+  });
+  if (glbActive) {
+    for (const [id, p] of (glbProps || new Map()))
+      push(id, p[0], p[1], "", (p[2] || "").replace(/^Ifc/i, ""));
+  } else if (modelID !== null) {
+    const ids = new Set();
+    modelGroup.children.forEach(m => {
+      if (m.userData.merged) (m.userData.ranges || []).forEach(r => ids.add(r.id));
+      else if (m.userData.expressID !== undefined) ids.add(m.userData.expressID);
+    });
+    for (const id of ids) {
+      try {
+        const line = ifcApi.GetLine(modelID, id);
+        let tn = "";
+        try { tn = (ifcApi.GetNameFromTypeCode(ifcApi.GetLineType(modelID, id)) || "").replace(/^IFC/i, ""); } catch(_){}
+        push(id, val(line.Name), val(line.ObjectType), val(line.Tag), tn);
+      } catch(_){}
+    }
+  }
+}
+
+function elementBoxById(id) {
+  if (lightLoaded) return lightElementBoxes(new Set([id])).get(id) || null;
+  let box = null;
+  const tmp = new THREE.Box3();
+  modelGroup.children.forEach(m => {
+    if (m.userData.expressID === id) {
+      tmp.setFromObject(m);
+      if (box) box.union(tmp); else box = tmp.clone();
+    }
+  });
+  return box;
+}
+
+function zoomToElement(id) {
+  const box = elementBoxById(id);
+  if (!box) return;
+  const c = box.getCenter(new THREE.Vector3());
+  const size = box.getSize(new THREE.Vector3()).length() || modelSize * 0.05;
+  controls.target.copy(c);
+  const dir = camera.position.clone().sub(c);
+  if (dir.lengthSq() < 1e-6) dir.set(1, 0.7, 1);
+  dir.normalize().multiplyScalar(Math.max(size * 2.5, modelSize * 0.02));
+  camera.position.copy(c).add(dir);
+  selectElement(id);
+  showProperties(id);
+}
+
+$("btnSearch").addEventListener("click", () => {
+  if (!modelGroup) return;
+  const panel = $("searchPanel");
+  if (panel.classList.contains("open")) { panel.classList.remove("open"); return; }
+  ["propPanel", "commentPanel", "qtyPanel", "colorPanel", "libPanel", "axesPanel"].forEach(id => $(id).classList.remove("open"));
+  panel.classList.add("open");
+  if (!searchIndex) {
+    $("searchBody").innerHTML = '<p style="color:var(--muted)">Bygger søkeindeks …</p>';
+    setTimeout(() => { buildSearchIndex(); renderSearchUI(); }, 30);
+  } else renderSearchUI();
+});
+
+function renderSearchUI() {
+  $("searchBody").innerHTML =
+    '<input type="search" id="elSearch" placeholder="🔍 Navn, merke, profil eller ID …" autocomplete="off">' +
+    '<div id="searchList"></div>';
+  const inp = $("elSearch");
+  inp.value = lastQuery;
+  inp.addEventListener("input", () => { lastQuery = inp.value; renderSearchResults(); });
+  inp.focus();
+  renderSearchResults();
+}
+
+function renderSearchResults() {
+  const el = $("searchList");
+  const q = lastQuery.trim().toLowerCase();
+  if (q.length < 2) {
+    el.innerHTML = '<p style="color:var(--muted); font-size:12px; margin-top:8px">Skriv minst 2 tegn – søker i navn, merke (Tag), profil og ExpressID. ' + searchIndex.length + ' elementer i indeksen.</p>';
+    return;
+  }
+  const hits = searchIndex.filter(e => e.s.includes(q));
+  if (!hits.length) { el.innerHTML = '<p style="color:var(--muted); margin-top:8px">Ingen treff på «' + esc(lastQuery) + '».</p>'; return; }
+  el.innerHTML = hits.slice(0, 50).map(h =>
+    '<div class="lib-item" data-eid="' + h.id + '">' +
+    '<div class="n">' + esc(h.name || h.objType || String(h.id)) + '</div>' +
+    '<div class="m">' + esc([h.type, h.objType, h.tag && ("Merk: " + h.tag)].filter(Boolean).join(" · ")) + '</div></div>').join("") +
+    (hits.length > 50 ? '<p style="color:var(--muted); font-size:11px; margin-top:6px">Viser 50 av ' + hits.length + ' treff – skriv mer for å avgrense.</p>' : "");
+  el.querySelectorAll(".lib-item").forEach(d =>
+    d.addEventListener("click", () => zoomToElement(Number(d.dataset.eid))));
+}
 
 // ---------- Mengder ----------
 $("btnQty").addEventListener("click", () => {
@@ -1470,6 +1692,7 @@ $("btnQty").addEventListener("click", () => {
   $("colorPanel").classList.remove("open");
   $("libPanel").classList.remove("open");
   $("axesPanel").classList.remove("open");
+  $("searchPanel").classList.remove("open");
   panel.classList.add("open");
 });
 
@@ -1534,6 +1757,39 @@ function koteValue(point) {
 
 // ---------- Mål ----------
 let measureFirst = null;
+
+// Fest målepunktet til nærmeste hjørne i elementet man traff (innen ~18 px på skjermen)
+function snapPoint(hit) {
+  try {
+    const obj = hit.object;
+    const posA = obj.geometry.getAttribute("position");
+    if (!posA) return hit.point;
+    const dist = camera.position.distanceTo(hit.point);
+    const tol = dist * 2 * Math.tan(camera.fov * Math.PI / 360) / renderer.domElement.clientHeight * 18;
+    const v = new THREE.Vector3();
+    let best = null, bestD = tol;
+    const check = (vi) => {
+      v.fromBufferAttribute(posA, vi);
+      if (!obj.userData.merged) v.applyMatrix4(obj.matrixWorld); // sammenslått geometri er allerede i verdenskoordinater
+      const d = v.distanceTo(hit.point);
+      if (d < bestD) { bestD = d; best = v.clone(); }
+    };
+    const ix = obj.geometry.getIndex();
+    if (obj.userData.merged && ix) {
+      // let kun i trekantene til elementet man traff
+      const fi = hit.faceIndex * 3;
+      let range = null;
+      for (const r of obj.userData.ranges) if (fi >= r.start && fi < r.start + r.count) { range = r; break; }
+      if (range && range.count <= 90000)
+        for (let i = range.start; i < range.start + range.count; i++) check(ix.getX(i));
+    } else if (ix && ix.count <= 90000) {
+      for (let i = 0; i < ix.count; i++) check(ix.getX(i));
+    } else if (!ix && posA.count <= 90000) {
+      for (let i = 0; i < posA.count; i++) check(i);
+    }
+    return best || hit.point;
+  } catch(_) { return hit.point; }
+}
 function addMeasure(p1, p2) {
   const d = p1.distanceTo(p2);
   const geo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
@@ -1562,6 +1818,7 @@ $("btnComments").addEventListener("click", () => {
   $("colorPanel").classList.remove("open");
   $("libPanel").classList.remove("open");
   $("axesPanel").classList.remove("open");
+  $("searchPanel").classList.remove("open");
   $("commentPanel").classList.toggle("open");
 });
 
@@ -1573,9 +1830,68 @@ function loadComments() {
   } catch(_) { comments = []; }
   comments.forEach(addMarkerSprite);
   renderCommentList();
+  syncSharedComments(); // hent delte markeringer fra SharePoint i bakgrunnen
 }
 function persist() {
   try { localStorage.setItem(storageKey(), JSON.stringify(comments)); } catch(_){}
+}
+
+// ---- Delte markeringer (lagres som JSON i SharePoint: IFC-modeller/Markeringer) ----
+let sharedOK = false; // koblet til delt lagring for modellen som er åpen nå
+const syncedFile = () => fileName; // JSON-filen følger modellnavnet
+
+function sharedFilePath() {
+  return "/drive/root:/" + SP.folder.split("/").map(encodeURIComponent).join("/") +
+    "/Markeringer/" + encodeURIComponent(syncedFile() + ".markeringer.json");
+}
+async function sharedSiteId(token) {
+  if (!spSiteId) {
+    const site = await graphGet("/sites/" + SP.hostname + ":" + SP.sitePath, token);
+    spSiteId = site.id;
+  }
+  return spSiteId;
+}
+async function syncSharedComments() {
+  const forFile = syncedFile();
+  if (!forFile) return;
+  const token = await spTokenSilent();
+  if (!token) { sharedOK = false; renderCommentList(); return; }
+  try {
+    const sid = await sharedSiteId(token);
+    const r = await fetch(GRAPH + "/sites/" + sid + sharedFilePath() + ":/content",
+      { headers: { Authorization: "Bearer " + token } });
+    let remote = [];
+    if (r.ok) { const d = await r.json(); if (Array.isArray(d)) remote = d; }
+    else if (r.status !== 404) throw new Error("Graph " + r.status);
+    if (syncedFile() !== forFile) return; // brukeren byttet modell underveis
+    const have = new Set(remote.map(c => c.id));
+    const localOnly = comments.filter(c => !have.has(c.id));
+    comments = remote.concat(localOnly);
+    markerGroup.clear();
+    comments.forEach(addMarkerSprite);
+    persist();
+    sharedOK = true;
+    renderCommentList();
+    if (localOnly.length) pushSharedComments(); // last opp det som bare fantes lokalt
+  } catch(_) { sharedOK = false; renderCommentList(); }
+}
+async function pushSharedComments() {
+  const forFile = syncedFile();
+  if (!forFile) return;
+  const token = await spTokenSilent();
+  if (!token) { sharedOK = false; renderCommentList(); return; }
+  try {
+    const sid = await sharedSiteId(token);
+    const body = JSON.stringify(comments);
+    if (syncedFile() !== forFile) return;
+    const r = await fetch(GRAPH + "/sites/" + sid + sharedFilePath() + ":/content", {
+      method: "PUT",
+      headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+      body
+    });
+    sharedOK = r.ok;
+  } catch(_) { sharedOK = false; }
+  renderCommentList();
 }
 
 function makeMarkerTexture() {
@@ -1606,15 +1922,19 @@ window.saveComment = function() {
   const text = $("commentText").value.trim();
   $("commentDialog").classList.remove("open");
   if (!text || !pendingPoint) { pendingPoint = null; return; }
+  let author = "";
+  try { const a = msalApp && msalApp.getActiveAccount(); author = (a && (a.name || a.username)) || ""; } catch(_){}
   const c = {
     id: Date.now(),
     text,
+    author,
     x: pendingPoint.x, y: pendingPoint.y, z: pendingPoint.z,
     date: new Date().toLocaleString("no-NO", { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit" })
   };
   comments.push(c);
   addMarkerSprite(c);
   persist();
+  pushSharedComments();
   renderCommentList();
   pendingPoint = null;
   if (mode === "marker") setMode("marker"); // slå av markering-modus
@@ -1627,13 +1947,16 @@ window.cancelComment = function() {
 function renderCommentList() {
   $("commentCount").textContent = comments.length;
   const body = $("commentBody");
+  const status = sharedOK
+    ? '<p style="color:#3cb44b; font-size:11px; margin:0 0 8px">🟢 Delt via SharePoint – alle med tilgang ser disse</p>'
+    : '<p style="color:var(--muted); font-size:11px; margin:0 0 8px">⚪ Kun lagret på denne enheten – logg inn i 📚 Biblioteket for å dele</p>';
   if (!comments.length) {
-    body.innerHTML = '<p style="color:var(--muted)">Ingen markeringer ennå. Trykk på 📌 Markering og deretter på modellen.</p>';
+    body.innerHTML = status + '<p style="color:var(--muted)">Ingen markeringer ennå. Trykk på 📌 Markering og deretter på modellen.</p>';
     return;
   }
-  body.innerHTML = comments.map(c =>
+  body.innerHTML = status + comments.map(c =>
     `<div class="comment" data-id="${c.id}">
-       <div class="meta"><span>${esc(c.date)}</span><span class="del" data-del="${c.id}">Slett</span></div>
+       <div class="meta"><span>${esc((c.author ? c.author + " · " : "") + (c.date || ""))}</span><span class="del" data-del="${c.id}">Slett</span></div>
        <div>${esc(c.text)}</div>
      </div>`).join("");
   body.querySelectorAll(".comment").forEach(el => {
@@ -1642,7 +1965,7 @@ function renderCommentList() {
       if (delId) {
         comments = comments.filter(c => c.id != delId);
         markerGroup.children.filter(s => s.userData.commentId == delId).forEach(s => markerGroup.remove(s));
-        persist(); renderCommentList();
+        persist(); pushSharedComments(); renderCommentList();
         return;
       }
       const c = comments.find(c => c.id == el.dataset.id);
@@ -1674,8 +1997,9 @@ canvas.addEventListener("pointerup", (e) => {
     $("commentDialog").classList.add("open");
     setTimeout(() => $("commentText").focus(), 50);
   } else if (mode === "measure") {
+    const mp = snapPoint(hit); // fester seg til nærmeste hjørne
     if (!measureFirst) {
-      measureFirst = hit.point.clone();
+      measureFirst = mp.clone();
       const dot = new THREE.Mesh(new THREE.SphereGeometry(modelSize * 0.004), new THREE.MeshBasicMaterial({ color: 0xf59e0b, depthTest: false }));
       dot.renderOrder = 997;
       dot.position.copy(measureFirst);
@@ -1683,7 +2007,7 @@ canvas.addEventListener("pointerup", (e) => {
       measureGroup.add(dot);
     } else {
       measureGroup.children.filter(o => o.userData.temp).forEach(o => measureGroup.remove(o));
-      addMeasure(measureFirst, hit.point.clone());
+      addMeasure(measureFirst, mp.clone());
       measureFirst = null;
     }
   } else if (mode === "kote") {
@@ -1777,6 +2101,7 @@ $("btnColors").addEventListener("click", () => {
   $("qtyPanel").classList.remove("open");
   $("libPanel").classList.remove("open");
   $("axesPanel").classList.remove("open");
+  $("searchPanel").classList.remove("open");
   panel.classList.add("open");
 });
 
@@ -1829,7 +2154,7 @@ const SP = {
   folder: "IFC-modeller"                             // mappe i Dokumenter-biblioteket
 };
 const GRAPH = "https://graph.microsoft.com/v1.0";
-const SP_SCOPES = ["Sites.Read.All", "Files.Read.All"];
+const SP_SCOPES = ["Sites.Read.All", "Files.Read.All", "Files.ReadWrite.All"];
 let msalApp = null, spSiteId = null, spFiles = null;
 
 async function msalInit() {
@@ -1876,6 +2201,17 @@ async function spToken() {
   }
 }
 
+// Stille token-henting: brukes av bakgrunns-synk (delte markeringer).
+// Sender ALDRI brukeren til innlogging – gir null hvis vi ikke er logget inn.
+async function spTokenSilent() {
+  try {
+    await msalInit();
+    const account = msalApp.getActiveAccount();
+    if (!account) return null;
+    return (await msalApp.acquireTokenSilent({ scopes: SP_SCOPES, account })).accessToken;
+  } catch(_) { return null; }
+}
+
 async function graphGet(path, token) {
   const r = await fetch(GRAPH + path, { headers: { Authorization: "Bearer " + token } });
   if (!r.ok) throw new Error("Graph " + r.status + ": " + (await r.text()).slice(0, 200));
@@ -1900,7 +2236,7 @@ async function spFetchList() {
 $("btnLib").addEventListener("click", () => {
   const panel = $("libPanel");
   if (panel.classList.contains("open")) { panel.classList.remove("open"); return; }
-  ["propPanel", "commentPanel", "qtyPanel", "colorPanel", "axesPanel"].forEach(id => $(id).classList.remove("open"));
+  ["propPanel", "commentPanel", "qtyPanel", "colorPanel", "axesPanel", "searchPanel"].forEach(id => $(id).classList.remove("open"));
   openLibrary();
 });
 $("btnLibSplash").addEventListener("click", openLibrary);
