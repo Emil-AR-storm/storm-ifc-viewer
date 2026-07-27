@@ -284,6 +284,11 @@
   <div class="body" id="colorBody"></div>
 </div>
 
+<div class="panel" id="axesPanel">
+  <header><span>🔠 Aksesystem</span><button onclick="document.getElementById('axesPanel').classList.remove('open')">✕</button></header>
+  <div class="body" id="axesBody"></div>
+</div>
+
 <div id="commentDialog">
   <h3>Ny markering</h3>
   <textarea id="commentText" placeholder="Skriv en kommentar …"></textarea>
@@ -506,6 +511,8 @@ function clearModel() {
   axesGroup.clear();
   axesGroup.visible = false;
   axesOn = false; axesBuilt = false;
+  axisSources = null; axisSelection = new Set();
+  document.getElementById("axesPanel").classList.remove("open");
   document.getElementById("btnAxes").classList.remove("active");
   comments = [];
   qtyCache = null;
@@ -863,17 +870,86 @@ function makeLabel(text, color = "#f59e0b", sizeF = 0.028) {
   return sprite;
 }
 
-// ---------- Aksesystem (automatisk fra søyleplassering) ----------
+// ---------- Aksesystem (automatisk fra valgte elementtyper) ----------
 let axesOn = false, axesBuilt = false;
+let axisSources = null;        // Map key -> { label, ids: Set }
+let axisSelection = new Set(); // hvilke kilder aksene bygges fra
 
-function columnBoxes() {
-  // Bounding box per søyle (IfcColumn) i viewer-koordinater
-  let ids = new Set();
-  if (glbActive) ids = glbColumns || ids;
-  else try {
-    const v = ifcApi.GetLineIDsWithType(modelID, WebIFC.IFCCOLUMN);
-    for (let i = 0; i < v.size(); i++) ids.add(v.get(i));
-  } catch(_) {}
+// Stålprofiler (HEA/HEB/IPE/HUP/VKR/SHS osv.) og betong-kjennetegn i ObjectType/navn
+const AXIS_STEEL_RE = /(\bHE\s?-?[ABM]\s?-?\d|\bIPE|\bINP|\bUNP|\bUPE|\bHUP|\bVKR|\bKVR|\bHSQ|\bWQ|\bSHS|\bRHS|\bCHS|\bCFRHS|\bCFSHS|\bCFCHS|\bKCKR|\bS\s?(235|275|355|420|460)\b|st[åa]l|steel)/i;
+const AXIS_CONC_RE = /(betong|concrete|prefab|hulldekk|\bB\s?[2-5]\d\b|\bC\d{2}\/\d{2}|\bLC\d{2})/i;
+const AXIS_TYPE_LABELS = { FOOTING: "Fundamenter", PILE: "Peler", WALL: "Vegger", BEAM: "Bjelker" };
+const AXIS_COL_LABELS = { COL_STEEL: "Stålsøyler", COL_CONC: "Betongsøyler", COL_OTHER: "Søyler (andre)" };
+
+function axisColumnKey(objType, name) {
+  const s = (objType || "") + " " + (name || "");
+  if (AXIS_STEEL_RE.test(s)) return "COL_STEEL";
+  // rene tverrsnittsmål som «300x300» er nesten alltid betong
+  if (AXIS_CONC_RE.test(s) || /^\s*\d{2,4}\s*[x×]\s*\d{2,4}\b/.test(objType || "")) return "COL_CONC";
+  return "COL_OTHER";
+}
+
+function classifyAxisSources() {
+  axisSources = new Map();
+  const add = (key, label, id) => {
+    let g = axisSources.get(key);
+    if (!g) { g = { label, ids: new Set() }; axisSources.set(key, g); }
+    g.ids.add(id);
+  };
+  const handle = (t, id, objType, name) => {
+    if (t === "COLUMN") { const k = axisColumnKey(objType, name); add(k, AXIS_COL_LABELS[k], id); }
+    else if (t === "WALLSTANDARDCASE") add("WALL", AXIS_TYPE_LABELS.WALL, id);
+    else if (AXIS_TYPE_LABELS[t]) add(t, AXIS_TYPE_LABELS[t], id);
+  };
+  if (glbActive) {
+    if (glbProps && glbProps.size) {
+      for (const [id, p] of glbProps)
+        handle((p[2] || "").toUpperCase().replace(/^IFC/, ""), id, p[1], p[0]);
+    } else if (glbColumns) {
+      // eldre lett kopi uten props: kun søyleliste tilgjengelig
+      for (const id of glbColumns) add("COL_OTHER", "Søyler", id);
+    }
+  } else if (modelID !== null) {
+    const cand = [
+      ["COLUMN", WebIFC.IFCCOLUMN], ["FOOTING", WebIFC.IFCFOOTING],
+      ["PILE", WebIFC.IFCPILE], ["WALL", WebIFC.IFCWALL],
+      ["WALLSTANDARDCASE", WebIFC.IFCWALLSTANDARDCASE], ["BEAM", WebIFC.IFCBEAM]
+    ];
+    for (const [t, code] of cand) {
+      if (code === undefined) continue;
+      try {
+        const v = ifcApi.GetLineIDsWithType(modelID, code);
+        for (let i = 0; i < v.size(); i++) {
+          const id = v.get(i);
+          let objType = "", name = "";
+          if (t === "COLUMN") {
+            try { const line = ifcApi.GetLine(modelID, id); objType = val(line.ObjectType) || ""; name = val(line.Name) || ""; } catch(_){}
+          }
+          handle(t, id, objType, name);
+        }
+      } catch(_){}
+    }
+  }
+  // grupper med under 2 elementer kan ikke gi akselinjer
+  for (const [k, g] of axisSources) if (g.ids.size < 2) axisSources.delete(k);
+  // standardvalg: alle søylegrupper (som før), ellers den største gruppen
+  axisSelection = new Set([...axisSources.keys()].filter(k => k.startsWith("COL_")));
+  if (!axisSelection.size && axisSources.size) {
+    let best = null;
+    for (const k of axisSources.keys())
+      if (!best || axisSources.get(k).ids.size > axisSources.get(best).ids.size) best = k;
+    axisSelection.add(best);
+  }
+}
+
+function sourceBoxes() {
+  // Bounding box per element fra valgte kilder, i viewer-koordinater
+  if (!axisSources) classifyAxisSources();
+  const ids = new Set();
+  for (const k of axisSelection) {
+    const g = axisSources.get(k);
+    if (g) for (const id of g.ids) ids.add(id);
+  }
   if (!ids.size || !modelGroup) return [];
   if (lightLoaded) return [...lightElementBoxes(ids).values()];
   const boxes = new Map();
@@ -915,7 +991,7 @@ function axisLetter(i) {
 function buildAxes() {
   axesBuilt = true;
   if (!modelGroup || !modelBox) return;
-  const boxes = columnBoxes();
+  const boxes = sourceBoxes();
   if (boxes.length < 2) return;
 
   // mm eller meter? (geometrien følger filens enheter)
@@ -1002,16 +1078,51 @@ function buildAxes() {
   dimChain(zs, "z", minX - one * 2.5); // bokstavakser
 }
 
+function rebuildAxes() {
+  axesGroup.clear();
+  buildAxes();
+  if (!axesGroup.children.length)
+    statusEl.textContent = "Fant ikke nok elementer på linje til å lage akser fra valgt kilde";
+}
+
+function renderAxesPanel() {
+  if (!axisSources) classifyAxisSources();
+  let html = '<p style="color:var(--muted); font-size:12px; margin:0 0 8px">Velg hvilke elementtyper aksene lages fra:</p>';
+  if (!axisSources.size)
+    html += '<p style="font-size:13px">Fant ingen egnede elementtyper (søyler, fundamenter, peler, vegger, bjelker) i modellen.</p>';
+  for (const [k, g] of axisSources) {
+    html += '<label class="qty-row" style="cursor:pointer"><div class="n">' + esc(g.label) +
+      ' <span style="color:var(--muted);font-size:11px">(' + g.ids.size + ')</span></div>' +
+      '<div class="c"><input type="checkbox" data-axsrc="' + esc(k) + '"' + (axisSelection.has(k) ? " checked" : "") + '></div></label>';
+  }
+  $("axesBody").innerHTML = html;
+  $("axesBody").querySelectorAll("input[data-axsrc]").forEach(inp => {
+    inp.onchange = (e) => {
+      const k = e.target.dataset.axsrc;
+      if (e.target.checked) axisSelection.add(k); else axisSelection.delete(k);
+      rebuildAxes();
+    };
+  });
+}
+
 $("btnAxes").addEventListener("click", () => {
   if (!modelGroup) return;
-  if (!axesBuilt) buildAxes();
-  if (!axesGroup.children.length) {
-    statusEl.textContent = "Fant ikke nok søyler til å lage aksesystem";
+  const panel = $("axesPanel");
+  if (axesOn) {
+    axesOn = false;
+    axesGroup.visible = false;
+    $("btnAxes").classList.remove("active");
+    panel.classList.remove("open");
     return;
   }
-  axesOn = !axesOn;
-  axesGroup.visible = axesOn;
-  $("btnAxes").classList.toggle("active", axesOn);
+  if (!axisSources) classifyAxisSources();
+  if (!axesBuilt) rebuildAxes();
+  renderAxesPanel();
+  ["propPanel", "commentPanel", "qtyPanel", "colorPanel", "libPanel"].forEach(id => $(id).classList.remove("open"));
+  panel.classList.add("open");
+  axesOn = true;
+  axesGroup.visible = true;
+  $("btnAxes").classList.add("active");
 });
 
 // ---------- Modus-håndtering ----------
@@ -1290,6 +1401,7 @@ function showProperties(expressID) {
   $("qtyPanel").classList.remove("open");
   $("colorPanel").classList.remove("open");
   $("libPanel").classList.remove("open");
+  $("axesPanel").classList.remove("open");
   $("propPanel").classList.add("open");
 }
 
@@ -1306,6 +1418,7 @@ $("btnQty").addEventListener("click", () => {
   $("commentPanel").classList.remove("open");
   $("colorPanel").classList.remove("open");
   $("libPanel").classList.remove("open");
+  $("axesPanel").classList.remove("open");
   panel.classList.add("open");
 });
 
@@ -1397,6 +1510,7 @@ $("btnComments").addEventListener("click", () => {
   $("qtyPanel").classList.remove("open");
   $("colorPanel").classList.remove("open");
   $("libPanel").classList.remove("open");
+  $("axesPanel").classList.remove("open");
   $("commentPanel").classList.toggle("open");
 });
 
@@ -1611,6 +1725,7 @@ $("btnColors").addEventListener("click", () => {
   $("commentPanel").classList.remove("open");
   $("qtyPanel").classList.remove("open");
   $("libPanel").classList.remove("open");
+  $("axesPanel").classList.remove("open");
   panel.classList.add("open");
 });
 
@@ -1734,7 +1849,7 @@ async function spFetchList() {
 $("btnLib").addEventListener("click", () => {
   const panel = $("libPanel");
   if (panel.classList.contains("open")) { panel.classList.remove("open"); return; }
-  ["propPanel", "commentPanel", "qtyPanel", "colorPanel"].forEach(id => $(id).classList.remove("open"));
+  ["propPanel", "commentPanel", "qtyPanel", "colorPanel", "axesPanel"].forEach(id => $(id).classList.remove("open"));
   openLibrary();
 });
 $("btnLibSplash").addEventListener("click", openLibrary);
