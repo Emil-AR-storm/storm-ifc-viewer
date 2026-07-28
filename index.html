@@ -1299,7 +1299,7 @@ function setMode(m) {
   mode = (mode === m) ? null : m;
   for (const k in modeButtons) modeButtons[k].classList.toggle("active", mode === k);
   measureFirst = null;
-  snapCursor.visible = false;
+  hideSnapPreview();
   updateModeBar();
 }
 $("btnMarker").addEventListener("click", () => setMode("marker"));
@@ -2056,43 +2056,63 @@ const snapCursor = new THREE.Mesh(new THREE.SphereGeometry(1),
 snapCursor.renderOrder = 998;
 snapCursor.visible = false;
 snapCursorGroup.add(snapCursor);
+// Gul markering av kanten prikken har låst seg til
+const snapEdgeLine = new THREE.Line(
+  new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]),
+  new THREE.LineBasicMaterial({ color: 0xfbbf24, depthTest: false, transparent: true, opacity: 0.95 }));
+snapEdgeLine.renderOrder = 999;
+snapEdgeLine.visible = false;
+snapCursorGroup.add(snapEdgeLine);
+function hideSnapPreview() { snapCursor.visible = false; snapEdgeLine.visible = false; }
 let _snapPrevT = 0;
 
 canvas.addEventListener("pointermove", (e) => {
   if (mode !== "measure" || e.buttons !== 0 || boxSel || !modelGroup) {
-    snapCursor.visible = false;
+    hideSnapPreview();
     return;
   }
   const now = performance.now();
   if (now - _snapPrevT < 60) return; // ikke raycast oftere enn ~16 g/s (store modeller)
   _snapPrevT = now;
   const hit = pick(e.clientX, e.clientY);
-  if (!hit) { snapCursor.visible = false; return; }
-  const p = snapPoint(hit);
-  const snapped = snapOn && p !== hit.point;
-  snapCursor.material.opacity = snapped ? 0.75 : 0.3;
+  if (!hit) { hideSnapPreview(); return; }
+  const sr = snapPoint(hit);
+  snapCursor.material.opacity = sr.edge ? 0.75 : 0.3;
   snapCursor.userData.px = snapOn ? Math.max(10, snapPx * 2) : 12; // diameter ≈ snap-radius
-  snapCursor.position.copy(p);
+  snapCursor.position.copy(sr.point);
   snapCursor.visible = true;
+  if (sr.edge) {
+    snapEdgeLine.geometry.dispose();
+    snapEdgeLine.geometry = new THREE.BufferGeometry().setFromPoints(sr.edge);
+    snapEdgeLine.visible = true;
+  } else snapEdgeLine.visible = false;
 });
-canvas.addEventListener("pointerleave", () => { snapCursor.visible = false; });
+canvas.addEventListener("pointerleave", hideSnapPreview);
 
-// Fest målepunktet til nærmeste hjørne i elementet man traff (følsomhet = snapPx piksler)
+// Fest målepunktet til nærmeste KANT i elementet man traff (følsomhet = snapPx piksler).
+// Kantenes endepunkter fanger også, så hjørner treffes naturlig. Returnerer { point, edge }.
+const _e0 = new THREE.Vector3(), _e1 = new THREE.Vector3(), _e2 = new THREE.Vector3();
+const _seg = new THREE.Line3(), _sp = new THREE.Vector3();
 function snapPoint(hit) {
-  if (!snapOn) return hit.point;
+  if (!snapOn) return { point: hit.point, edge: null };
   try {
     const obj = hit.object;
     const posA = obj.geometry.getAttribute("position");
-    if (!posA) return hit.point;
+    if (!posA) return { point: hit.point, edge: null };
     const dist = camera.position.distanceTo(hit.point);
     const tol = dist * 2 * Math.tan(camera.fov * Math.PI / 360) / renderer.domElement.clientHeight * snapPx;
-    const v = new THREE.Vector3();
-    let best = null, bestD = tol;
-    const check = (vi) => {
-      v.fromBufferAttribute(posA, vi);
-      if (!obj.userData.merged) v.applyMatrix4(obj.matrixWorld); // sammenslått geometri er allerede i verdenskoordinater
-      const d = v.distanceTo(hit.point);
-      if (d < bestD) { bestD = d; best = v.clone(); }
+    let best = null, bestD = tol, bestEdge = null;
+    const world = !obj.userData.merged; // sammenslått geometri er allerede i verdenskoordinater
+    const tryEdge = (a, b) => {
+      _seg.start.copy(a); _seg.end.copy(b);
+      _seg.closestPointToPoint(hit.point, true, _sp);
+      const d = _sp.distanceTo(hit.point);
+      if (d < bestD) { bestD = d; best = _sp.clone(); bestEdge = [a.clone(), b.clone()]; }
+    };
+    const tri = (i0, i1, i2) => {
+      _e0.fromBufferAttribute(posA, i0); _e1.fromBufferAttribute(posA, i1); _e2.fromBufferAttribute(posA, i2);
+      if (world) { _e0.applyMatrix4(obj.matrixWorld); _e1.applyMatrix4(obj.matrixWorld); _e2.applyMatrix4(obj.matrixWorld); }
+      tryEdge(_e0, _e1); tryEdge(_e1, _e2); tryEdge(_e2, _e0);
     };
     const ix = obj.geometry.getIndex();
     if (obj.userData.merged && ix) {
@@ -2101,14 +2121,14 @@ function snapPoint(hit) {
       let range = null;
       for (const r of obj.userData.ranges) if (fi >= r.start && fi < r.start + r.count) { range = r; break; }
       if (range && range.count <= 90000)
-        for (let i = range.start; i < range.start + range.count; i++) check(ix.getX(i));
+        for (let i = range.start; i < range.start + range.count; i += 3) tri(ix.getX(i), ix.getX(i + 1), ix.getX(i + 2));
     } else if (ix && ix.count <= 90000) {
-      for (let i = 0; i < ix.count; i++) check(ix.getX(i));
+      for (let i = 0; i < ix.count; i += 3) tri(ix.getX(i), ix.getX(i + 1), ix.getX(i + 2));
     } else if (!ix && posA.count <= 90000) {
-      for (let i = 0; i < posA.count; i++) check(i);
+      for (let i = 0; i < posA.count; i += 3) tri(i, i + 1, i + 2);
     }
-    return best || hit.point;
-  } catch(_) { return hit.point; }
+    return { point: best || hit.point, edge: bestEdge };
+  } catch(_) { return { point: hit.point, edge: null }; }
 }
 function addMeasure(p1, p2) {
   const d = p1.distanceTo(p2);
@@ -2456,7 +2476,7 @@ canvas.addEventListener("pointerup", (e) => {
     $("commentDialog").classList.add("open");
     setTimeout(() => $("commentText").focus(), 50);
   } else if (mode === "measure") {
-    const mp = snapPoint(hit); // fester seg til nærmeste hjørne
+    const mp = snapPoint(hit).point; // fester seg til nærmeste kant/hjørne
     if (!measureFirst) {
       measureFirst = mp.clone();
       const dot = new THREE.Mesh(new THREE.SphereGeometry(1), new THREE.MeshBasicMaterial({ color: 0xf59e0b, depthTest: false }));
