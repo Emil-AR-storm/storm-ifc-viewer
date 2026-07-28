@@ -344,6 +344,7 @@ class SimpleControls {
     this._prevDist = 0;
     this._prevMid = null;
     dom.addEventListener("pointerdown", (e) => {
+      if (e.shiftKey && e.button === 0) return; // shift+venstre = markeringsboks, ikke kamera
       dom.setPointerCapture(e.pointerId);
       this._pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, button: e.button });
       if (this._pointers.size === 2) {
@@ -546,6 +547,7 @@ function clearModel() {
   document.getElementById("btnStorey").classList.remove("active");
   sharedOK = false;
   multiSel.clear();
+  allBoxCache = null;
   miniInfo = null; miniBase = null;
   miniCanvas.style.display = "none";
   comments = [];
@@ -1731,20 +1733,35 @@ function elementBoxById(id) {
 // ---------- 🧮 Mengder per element ----------
 const _qa = new THREE.Vector3(), _qb = new THREE.Vector3(), _qc = new THREE.Vector3(), _qt = new THREE.Vector3();
 
-// Beregner ytre mål og volum (m³) fra elementets trekanter (signert tetraeder-sum – funker for lukkede volumer som betong og stålprofiler)
-function elementQuantities(id) {
-  const toM = modelSize > 1000 ? 0.001 : 1; // mm-modell → meter
-  const box = elementBoxById(id);
-  let dims = [0, 0, 0];
-  if (box) {
-    const s = box.getSize(new THREE.Vector3());
-    dims = [s.x * toM, s.y * toM, s.z * toM].sort((a, b) => b - a);
+// Bounding box for alle elementer (bygges én gang per modell)
+let allBoxCache = null;
+function allElementBoxes() {
+  if (allBoxCache) return allBoxCache;
+  const map = new Map();
+  if (lightLoaded) lightElementBoxes(null, map);
+  else {
+    const tmp = new THREE.Box3();
+    modelGroup.children.forEach(m => {
+      const id = m.userData.expressID;
+      if (id === undefined) return;
+      tmp.setFromObject(m);
+      const b = map.get(id);
+      if (b) b.union(tmp); else map.set(id, tmp.clone());
+    });
   }
-  let vol = 0;
-  const addTri = (p, i0, i1, i2, mtx) => {
+  allBoxCache = map;
+  return map;
+}
+
+// Beregner ytre mål og volum (m³) for et sett elementer i ÉN gjennomgang av geometrien
+// (signert tetraeder-sum – funker for lukkede volumer som betong og stålprofiler)
+function quantitiesForSet(idSet) {
+  const toM = modelSize > 1000 ? 0.001 : 1; // mm-modell → meter
+  const vols = new Map();
+  const addTri = (p, i0, i1, i2, mtx, id) => {
     _qa.fromBufferAttribute(p, i0); _qb.fromBufferAttribute(p, i1); _qc.fromBufferAttribute(p, i2);
     if (mtx) { _qa.applyMatrix4(mtx); _qb.applyMatrix4(mtx); _qc.applyMatrix4(mtx); }
-    vol += _qa.dot(_qt.copy(_qb).cross(_qc)) / 6;
+    vols.set(id, (vols.get(id) || 0) + _qa.dot(_qt.copy(_qb).cross(_qc)) / 6);
   };
   modelGroup.children.forEach(m => {
     if (!m.isMesh) return;
@@ -1753,17 +1770,30 @@ function elementQuantities(id) {
     if (m.userData.merged) {
       if (!ix) return;
       (m.userData.ranges || []).forEach(r => {
-        if (r.id !== id) return;
+        if (!idSet.has(r.id)) return;
         for (let i = r.start; i < r.start + r.count; i += 3)
-          addTri(p, ix.getX(i), ix.getX(i + 1), ix.getX(i + 2), null);
+          addTri(p, ix.getX(i), ix.getX(i + 1), ix.getX(i + 2), null, r.id);
       });
-    } else if (m.userData.expressID === id) {
+    } else if (idSet.has(m.userData.expressID)) {
       const n = ix ? ix.count : p.count;
       for (let i = 0; i < n; i += 3)
-        addTri(p, ix ? ix.getX(i) : i, ix ? ix.getX(i + 1) : i + 1, ix ? ix.getX(i + 2) : i + 2, m.matrixWorld);
+        addTri(p, ix ? ix.getX(i) : i, ix ? ix.getX(i + 1) : i + 1, ix ? ix.getX(i + 2) : i + 2, m.matrixWorld, m.userData.expressID);
     }
   });
-  return { dims, vol: Math.abs(vol) * toM * toM * toM };
+  const boxes = allElementBoxes();
+  const out = new Map();
+  const s = new THREE.Vector3();
+  for (const id of idSet) {
+    let dims = [0, 0, 0];
+    const b = boxes.get(id);
+    if (b) { b.getSize(s); dims = [s.x * toM, s.y * toM, s.z * toM].sort((a, x) => x - a); }
+    out.set(id, { dims, vol: Math.abs(vols.get(id) || 0) * toM * toM * toM });
+  }
+  return out;
+}
+
+function elementQuantities(id) {
+  return quantitiesForSet(new Set([id])).get(id) || { dims: [0, 0, 0], vol: 0 };
 }
 
 function fmtVol(v) { return (v >= 10 ? v.toFixed(1) : v >= 0.01 ? v.toFixed(2) : v.toFixed(3)) + " m³"; }
@@ -1790,10 +1820,64 @@ function showMultiSummary() {
     '<div class="prop-row" style="font-weight:600"><div class="k">Sum volum</div><div class="v">' + fmtVol(totVol) + '</div></div>' +
     '<div class="prop-row"><div class="k">Sum lengde (lengste mål)</div><div class="v">' + totLen.toFixed(2) + ' m</div></div>' +
     '<div class="prop-row"><div class="k">Antall</div><div class="v">' + multiSel.size + ' stk</div></div>' +
-    items.map(it => '<div class="prop-row"><div class="k">' + esc(it.name) + '</div><div class="v">' + fmtVol(it.vol) + '</div></div>').join("") +
-    '<p style="color:var(--muted); font-size:11px; margin-top:8px">Shift-klikk legger til / fjerner elementer. Vanlig klikk nullstiller utvalget.</p>';
+    items.slice(0, 100).map(it => '<div class="prop-row"><div class="k">' + esc(it.name) + '</div><div class="v">' + fmtVol(it.vol) + '</div></div>').join("") +
+    (items.length > 100 ? '<p style="color:var(--muted); font-size:11px; margin-top:6px">… og ' + (items.length - 100) + ' til (summene øverst gjelder alle).</p>' : "") +
+    '<p style="color:var(--muted); font-size:11px; margin-top:8px">Shift-klikk legger til/fjerner. Shift + dra lager markeringsboks: mot høyre = kun synlige, mot venstre = alt i boksen. Vanlig klikk nullstiller.</p>';
   ["commentPanel", "qtyPanel", "colorPanel", "libPanel", "axesPanel", "searchPanel"].forEach(pid => $(pid).classList.remove("open"));
   $("propPanel").classList.add("open");
+}
+
+// Markerer et helt sett elementer i én gjennomgang (raskt også for hundrevis)
+function selectElementsSet(idSet) {
+  clearSelection();
+  if (!idSet.size) return;
+  if (lightLoaded) {
+    modelGroup.children.forEach(m => {
+      if (!m.userData.merged) return;
+      const rs = (m.userData.ranges || []).filter(r => idSet.has(r.id));
+      if (!rs.length) return;
+      const p = m.geometry.getAttribute("position").array;
+      const ix = m.geometry.getIndex().array;
+      let n = 0;
+      rs.forEach(r => n += r.count);
+      const arr = new Float32Array(n * 3);
+      let o = 0;
+      rs.forEach(r => {
+        for (let i = r.start; i < r.start + r.count; i++) {
+          const vi = ix[i] * 3;
+          arr[o] = p[vi]; arr[o+1] = p[vi+1]; arr[o+2] = p[vi+2];
+          o += 3;
+        }
+      });
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.BufferAttribute(arr, 3));
+      const hl = new THREE.Mesh(g, selMatLight);
+      hl.renderOrder = 996;
+      selGroup.add(hl);
+    });
+  } else {
+    modelGroup.children.forEach(m => {
+      if (idSet.has(m.userData.expressID)) {
+        selectedMeshes.push({ mesh: m, mat: m.material });
+        m.material = selMat;
+      }
+    });
+  }
+}
+
+// Felles shift-klikk-logikk (brukes både ved klikk og små drag)
+function shiftClickAt(x, y) {
+  const hit = pick(x, y);
+  if (!hit) return;
+  const id = hitID(hit);
+  if (id == null) return;
+  if (!multiSel.size && currentPropID != null && currentPropID !== id)
+    multiSel.set(currentPropID, elementQuantities(currentPropID));
+  if (multiSel.has(id)) multiSel.delete(id);
+  else multiSel.set(id, elementQuantities(id));
+  selectElementsSet(new Set(multiSel.keys()));
+  if (multiSel.size) showMultiSummary();
+  else $("propPanel").classList.remove("open");
 }
 
 function zoomToElement(id) {
@@ -2149,6 +2233,137 @@ function renderCommentList() {
   });
 }
 
+// ---------- Markeringsboks (shift + dra) ----------
+// Mot høyre (blå): kun elementer som er synlige i boksen. Mot venstre (grønn): alt innenfor, også skjult bak.
+let boxSel = null, _idMat = null;
+const boxSelEl = document.createElement("div");
+boxSelEl.style.cssText = "position:fixed; border:1.5px dashed #8ab4ff; background:rgba(59,130,246,.12); display:none; z-index:20; pointer-events:none";
+document.body.appendChild(boxSelEl);
+
+// Farge per element bakes inn som vertex-farge (expressID → RGB) for GPU-basert synlighetstest
+function ensureIdColors() {
+  modelGroup.children.forEach(m => {
+    if (!m.isMesh || m.geometry.getAttribute("color")) return;
+    const count = m.geometry.getAttribute("position").count;
+    const arr = new Uint8Array(count * 3);
+    const write = (vi, id) => { arr[vi] = (id >> 16) & 255; arr[vi+1] = (id >> 8) & 255; arr[vi+2] = id & 255; };
+    if (m.userData.merged) {
+      const ix = m.geometry.getIndex().array;
+      for (const r of (m.userData.ranges || []))
+        for (let i = r.start; i < r.start + r.count; i++) write(ix[i] * 3, r.id);
+    } else {
+      const id = m.userData.expressID || 0;
+      for (let i = 0; i < count; i++) write(i * 3, id);
+    }
+    m.geometry.setAttribute("color", new THREE.BufferAttribute(arr, 3, true));
+  });
+}
+
+// Tegner scenen med ID-farger og leser av pikslene i boksen → elementer som faktisk er synlige der
+function idsVisibleInRect(x0, y0, x1, y1) {
+  ensureIdColors();
+  const w = renderer.domElement.clientWidth, h = renderer.domElement.clientHeight;
+  const scale = Math.min(1, 1400 / Math.max(w, h));
+  const rw = Math.max(1, Math.round(w * scale)), rh = Math.max(1, Math.round(h * scale));
+  const rt = new THREE.WebGLRenderTarget(rw, rh);
+  if (!_idMat) _idMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, toneMapped: false });
+  const overlays = [markerGroup, measureGroup, koteGroup, axesGroup, selGroup];
+  const vis = overlays.map(g => g.visible);
+  overlays.forEach(g => g.visible = false);
+  const gridVis = grid.visible; grid.visible = false;
+  const bg = scene.background; scene.background = new THREE.Color(0x000000);
+  const prevCS = renderer.outputColorSpace; renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+  const swaps = [];
+  modelGroup.children.forEach(m => { if (m.isMesh) { swaps.push([m, m.material]); m.material = _idMat; } });
+  renderer.setRenderTarget(rt);
+  renderer.render(scene, camera);
+  const sx = Math.max(0, Math.round(Math.min(x0, x1) * scale));
+  const sy = Math.max(0, Math.round((h - Math.max(y0, y1)) * scale));
+  const sw = Math.max(1, Math.min(rw - sx, Math.round(Math.abs(x1 - x0) * scale)));
+  const sh = Math.max(1, Math.min(rh - sy, Math.round(Math.abs(y1 - y0) * scale)));
+  const buf = new Uint8Array(sw * sh * 4);
+  renderer.readRenderTargetPixels(rt, sx, sy, sw, sh, buf);
+  renderer.setRenderTarget(null);
+  swaps.forEach(([m, mat]) => m.material = mat);
+  overlays.forEach((g, i) => g.visible = vis[i]);
+  grid.visible = gridVis;
+  scene.background = bg;
+  renderer.outputColorSpace = prevCS;
+  rt.dispose();
+  const ids = new Set();
+  for (let i = 0; i < buf.length; i += 4) {
+    const id = (buf[i] << 16) | (buf[i+1] << 8) | buf[i+2];
+    if (id) ids.add(id);
+  }
+  return ids;
+}
+
+// Geometrisk test: alle elementer hvis projiserte boks berører markeringen (også skjult bak andre)
+function idsAllInRect(x0, y0, x1, y1) {
+  const minX = Math.min(x0, x1), maxX = Math.max(x0, x1);
+  const minY = Math.min(y0, y1), maxY = Math.max(y0, y1);
+  const v = new THREE.Vector3();
+  const planes = renderer.clippingPlanes;
+  camera.updateMatrixWorld(true);
+  const ids = new Set();
+  for (const [id, box] of allElementBoxes()) {
+    if (hiddenIDs.has(id)) continue;
+    box.getCenter(v);
+    if (v.clone().applyMatrix4(camera.matrixWorldInverse).z >= 0) continue; // bak kameraet
+    if (planes.length) {
+      let ok = true;
+      for (const p of planes) if (p.distanceToPoint(v) < 0 && !box.intersectsPlane(p)) { ok = false; break; }
+      if (!ok) continue; // utenfor aktivt snitt/etasjefilter
+    }
+    let sMinX = Infinity, sMaxX = -Infinity, sMinY = Infinity, sMaxY = -Infinity;
+    for (let ci = 0; ci < 8; ci++) {
+      v.set(ci & 1 ? box.max.x : box.min.x, ci & 2 ? box.max.y : box.min.y, ci & 4 ? box.max.z : box.min.z);
+      v.project(camera);
+      const px = (v.x + 1) / 2 * innerWidth, py = (1 - v.y) / 2 * innerHeight;
+      if (px < sMinX) sMinX = px; if (px > sMaxX) sMaxX = px;
+      if (py < sMinY) sMinY = py; if (py > sMaxY) sMaxY = py;
+    }
+    if (sMaxX >= minX && sMinX <= maxX && sMaxY >= minY && sMinY <= maxY) ids.add(id);
+  }
+  return ids;
+}
+
+function finishBoxSelect(b) {
+  const visibleOnly = b.x1 >= b.x0; // venstre→høyre = kun synlige
+  const ids = visibleOnly ? idsVisibleInRect(b.x0, b.y0, b.x1, b.y1) : idsAllInRect(b.x0, b.y0, b.x1, b.y1);
+  if (!ids.size) return;
+  const q = quantitiesForSet(ids);
+  for (const id of ids) multiSel.set(id, q.get(id) || { dims: [0, 0, 0], vol: 0 });
+  selectElementsSet(new Set(multiSel.keys()));
+  showMultiSummary();
+}
+
+canvas.addEventListener("pointerdown", (e) => {
+  if (!e.shiftKey || e.button !== 0 || !modelGroup) return;
+  e.preventDefault();
+  boxSel = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY };
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener("pointermove", (e) => {
+  if (!boxSel) return;
+  boxSel.x1 = e.clientX; boxSel.y1 = e.clientY;
+  boxSelEl.style.display = "block";
+  boxSelEl.style.left = Math.min(boxSel.x0, boxSel.x1) + "px";
+  boxSelEl.style.top = Math.min(boxSel.y0, boxSel.y1) + "px";
+  boxSelEl.style.width = Math.abs(boxSel.x1 - boxSel.x0) + "px";
+  boxSelEl.style.height = Math.abs(boxSel.y1 - boxSel.y0) + "px";
+  const crossing = boxSel.x1 < boxSel.x0;
+  boxSelEl.style.borderColor = crossing ? "#3cb44b" : "#8ab4ff";
+  boxSelEl.style.background = crossing ? "rgba(60,180,75,.12)" : "rgba(59,130,246,.12)";
+});
+canvas.addEventListener("pointerup", (e) => {
+  if (!boxSel) return;
+  boxSelEl.style.display = "none";
+  const b = boxSel; boxSel = null;
+  if (Math.abs(b.x1 - b.x0) < 8 && Math.abs(b.y1 - b.y0) < 8) shiftClickAt(e.clientX, e.clientY);
+  else finishBoxSelect(b);
+});
+
 // ---------- Klikk / trykk ----------
 let downPos = null;
 canvas.addEventListener("pointerdown", (e) => { downPos = { x: e.clientX, y: e.clientY }; });
@@ -2186,23 +2401,12 @@ canvas.addEventListener("pointerup", (e) => {
     label.position.copy(hit.point);
     koteGroup.add(label);
   } else {
+    if (e.shiftKey) return; // shift håndteres av markeringsboks-logikken (shiftClickAt / finishBoxSelect)
     const id = hitID(hit);
     if (id == null) return;
-    if (e.shiftKey) {
-      // flervalg: samle mengder for flere konstruksjoner
-      if (!multiSel.size && currentPropID != null && currentPropID !== id)
-        multiSel.set(currentPropID, elementQuantities(currentPropID));
-      if (multiSel.has(id)) multiSel.delete(id);
-      else multiSel.set(id, elementQuantities(id));
-      clearSelection();
-      for (const mid of multiSel.keys()) selectElement(mid, true);
-      if (multiSel.size) showMultiSummary();
-      else $("propPanel").classList.remove("open");
-    } else {
-      multiSel.clear();
-      selectElement(id);
-      showProperties(id);
-    }
+    multiSel.clear();
+    selectElement(id);
+    showProperties(id);
   }
 });
 
