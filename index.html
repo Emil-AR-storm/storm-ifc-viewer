@@ -440,6 +440,8 @@ resize();
 renderer.setAnimationLoop(() => {
   controls.update();
   if (axesGroup.visible) updateAxisLOD();
+  updateScreenScaled(measureGroup);
+  updateScreenScaled(koteGroup);
   drawMiniOverlay();
   renderer.render(scene, camera);
 });
@@ -1305,7 +1307,20 @@ $("btnKote").addEventListener("click", () => setMode("kote"));
 function updateModeBar() {
   if (clipOn || storeyOn) return; // snitt-/etasjekontroller styrer modeBar
   if (mode === "measure") {
-    modeBar.innerHTML = '<span class="lbl">Trykk på to punkter – festes til nærmeste hjørne</span><button id="mbClear">Tøm mål</button>';
+    modeBar.innerHTML = '<span class="lbl">Trykk på to punkter</span>' +
+      '<button id="mbSnap" title="Fest til nærmeste hjørne/kant">🧲 Snap</button>' +
+      '<input type="range" id="mbSnapPx" min="5" max="50" step="1" value="' + snapPx + '" title="Snap-følsomhet (piksler)" style="width:90px">' +
+      '<button id="mbClear">Tøm mål</button>';
+    $("mbSnap").classList.toggle("active", snapOn);
+    $("mbSnap").onclick = () => {
+      snapOn = !snapOn;
+      $("mbSnap").classList.toggle("active", snapOn);
+      try { localStorage.setItem("storm-ifc-snap", snapOn ? "1" : "0"); } catch(_){}
+    };
+    $("mbSnapPx").oninput = (e) => {
+      snapPx = Number(e.target.value);
+      try { localStorage.setItem("storm-ifc-snappx", snapPx); } catch(_){}
+    };
     $("mbClear").onclick = () => { measureGroup.clear(); measureFirst = null; };
     modeBar.classList.add("open");
   } else if (mode === "kote") {
@@ -2012,15 +2027,33 @@ function koteValue(point) {
 
 // ---------- Mål ----------
 let measureFirst = null;
+let snapOn = localStorage.getItem("storm-ifc-snap") !== "0";                    // 🧲 av/på
+let snapPx = parseFloat(localStorage.getItem("storm-ifc-snappx")) || 18;        // følsomhet i piksler
 
-// Fest målepunktet til nærmeste hjørne i elementet man traff (innen ~18 px på skjermen)
+// Lapper og punkter med userData.px holder konstant størrelse på skjermen uansett modellstørrelse
+const _ssV = new THREE.Vector3();
+function updateScreenScaled(group) {
+  if (!group.children.length) return;
+  const k = 2 * Math.tan(camera.fov * Math.PI / 360) / renderer.domElement.clientHeight;
+  group.traverse(o => {
+    const px = o.userData.px;
+    if (!px) return;
+    o.getWorldPosition(_ssV);
+    const s = px * _ssV.distanceTo(camera.position) * k;
+    if (o.isSprite) o.scale.set(s * (o.userData.aspect || 3), s, 1);
+    else o.scale.setScalar(s / 2);
+  });
+}
+
+// Fest målepunktet til nærmeste hjørne i elementet man traff (følsomhet = snapPx piksler)
 function snapPoint(hit) {
+  if (!snapOn) return hit.point;
   try {
     const obj = hit.object;
     const posA = obj.geometry.getAttribute("position");
     if (!posA) return hit.point;
     const dist = camera.position.distanceTo(hit.point);
-    const tol = dist * 2 * Math.tan(camera.fov * Math.PI / 360) / renderer.domElement.clientHeight * 18;
+    const tol = dist * 2 * Math.tan(camera.fov * Math.PI / 360) / renderer.domElement.clientHeight * snapPx;
     const v = new THREE.Vector3();
     let best = null, bestD = tol;
     const check = (vi) => {
@@ -2052,13 +2085,16 @@ function addMeasure(p1, p2) {
   line.renderOrder = 997;
   measureGroup.add(line);
   const mkDot = (p) => {
-    const dot = new THREE.Mesh(new THREE.SphereGeometry(modelSize * 0.004), new THREE.MeshBasicMaterial({ color: 0xf59e0b, depthTest: false }));
+    const dot = new THREE.Mesh(new THREE.SphereGeometry(1), new THREE.MeshBasicMaterial({ color: 0xf59e0b, depthTest: false }));
     dot.renderOrder = 997;
     dot.position.copy(p);
+    dot.userData.px = 8; // konstant skjermstørrelse
     measureGroup.add(dot);
   };
   mkDot(p1); mkDot(p2);
   const label = makeLabel(d.toFixed(2) + " m");
+  label.userData.px = 30; // konstant skjermstørrelse
+  label.userData.aspect = label.scale.x / label.scale.y;
   label.position.copy(p1).add(p2).multiplyScalar(0.5);
   measureGroup.add(label);
 }
@@ -2242,8 +2278,10 @@ document.body.appendChild(boxSelEl);
 
 // Farge per element bakes inn som vertex-farge (expressID → RGB) for GPU-basert synlighetstest
 function ensureIdColors() {
+  let added = false;
   modelGroup.children.forEach(m => {
     if (!m.isMesh || m.geometry.getAttribute("color")) return;
+    added = true;
     const count = m.geometry.getAttribute("position").count;
     const arr = new Uint8Array(count * 3);
     const write = (vi, id) => { arr[vi] = (id >> 16) & 255; arr[vi+1] = (id >> 8) & 255; arr[vi+2] = id & 255; };
@@ -2257,11 +2295,12 @@ function ensureIdColors() {
     }
     m.geometry.setAttribute("color", new THREE.BufferAttribute(arr, 3, true));
   });
+  return added;
 }
 
 // Tegner scenen med ID-farger og leser av pikslene i boksen → elementer som faktisk er synlige der
 function idsVisibleInRect(x0, y0, x1, y1) {
-  ensureIdColors();
+  const freshAttrs = ensureIdColors();
   const w = renderer.domElement.clientWidth, h = renderer.domElement.clientHeight;
   const scale = Math.min(1, 1400 / Math.max(w, h));
   const rw = Math.max(1, Math.round(w * scale)), rh = Math.max(1, Math.round(h * scale));
@@ -2277,6 +2316,8 @@ function idsVisibleInRect(x0, y0, x1, y1) {
   modelGroup.children.forEach(m => { if (m.isMesh) { swaps.push([m, m.material]); m.material = _idMat; } });
   renderer.setRenderTarget(rt);
   renderer.render(scene, camera);
+  // aller første render etter at fargeattributter er lagt til blir svart (VAO-oppdatering) – render en gang til
+  if (freshAttrs) renderer.render(scene, camera);
   const sx = Math.max(0, Math.round(Math.min(x0, x1) * scale));
   const sy = Math.max(0, Math.round((h - Math.max(y0, y1)) * scale));
   const sw = Math.max(1, Math.min(rw - sx, Math.round(Math.abs(x1 - x0) * scale)));
@@ -2386,10 +2427,11 @@ canvas.addEventListener("pointerup", (e) => {
     const mp = snapPoint(hit); // fester seg til nærmeste hjørne
     if (!measureFirst) {
       measureFirst = mp.clone();
-      const dot = new THREE.Mesh(new THREE.SphereGeometry(modelSize * 0.004), new THREE.MeshBasicMaterial({ color: 0xf59e0b, depthTest: false }));
+      const dot = new THREE.Mesh(new THREE.SphereGeometry(1), new THREE.MeshBasicMaterial({ color: 0xf59e0b, depthTest: false }));
       dot.renderOrder = 997;
       dot.position.copy(measureFirst);
       dot.userData.temp = true;
+      dot.userData.px = 8;
       measureGroup.add(dot);
     } else {
       measureGroup.children.filter(o => o.userData.temp).forEach(o => measureGroup.remove(o));
@@ -2398,6 +2440,8 @@ canvas.addEventListener("pointerup", (e) => {
     }
   } else if (mode === "kote") {
     const label = makeLabel("▲ " + koteValue(hit.point).toFixed(2) + " m", "#22d3ee");
+    label.userData.px = 30; // konstant skjermstørrelse
+    label.userData.aspect = label.scale.x / label.scale.y;
     label.position.copy(hit.point);
     koteGroup.add(label);
   } else {
