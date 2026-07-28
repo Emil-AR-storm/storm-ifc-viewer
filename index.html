@@ -442,6 +442,7 @@ renderer.setAnimationLoop(() => {
   if (axesGroup.visible) updateAxisLOD();
   updateScreenScaled(measureGroup);
   updateScreenScaled(koteGroup);
+  updateScreenScaled(snapCursorGroup);
   drawMiniOverlay();
   renderer.render(scene, camera);
 });
@@ -1298,6 +1299,7 @@ function setMode(m) {
   mode = (mode === m) ? null : m;
   for (const k in modeButtons) modeButtons[k].classList.toggle("active", mode === k);
   measureFirst = null;
+  snapCursor.visible = false;
   updateModeBar();
 }
 $("btnMarker").addEventListener("click", () => setMode("marker"));
@@ -2044,6 +2046,36 @@ function updateScreenScaled(group) {
     else o.scale.setScalar(s / 2);
   });
 }
+
+// Forhåndsvisning i mål-modus: gjennomsiktig prikk som følger pekeren.
+// Diameteren = snap-radiusen (følger slideren), og prikken hopper til hjørnet + blir mer solid når snappen tar tak.
+const snapCursorGroup = new THREE.Group();
+scene.add(snapCursorGroup);
+const snapCursor = new THREE.Mesh(new THREE.SphereGeometry(1),
+  new THREE.MeshBasicMaterial({ color: 0xf59e0b, transparent: true, opacity: 0.3, depthTest: false }));
+snapCursor.renderOrder = 998;
+snapCursor.visible = false;
+snapCursorGroup.add(snapCursor);
+let _snapPrevT = 0;
+
+canvas.addEventListener("pointermove", (e) => {
+  if (mode !== "measure" || e.buttons !== 0 || boxSel || !modelGroup) {
+    snapCursor.visible = false;
+    return;
+  }
+  const now = performance.now();
+  if (now - _snapPrevT < 60) return; // ikke raycast oftere enn ~16 g/s (store modeller)
+  _snapPrevT = now;
+  const hit = pick(e.clientX, e.clientY);
+  if (!hit) { snapCursor.visible = false; return; }
+  const p = snapPoint(hit);
+  const snapped = snapOn && p !== hit.point;
+  snapCursor.material.opacity = snapped ? 0.75 : 0.3;
+  snapCursor.userData.px = snapOn ? Math.max(10, snapPx * 2) : 12; // diameter ≈ snap-radius
+  snapCursor.position.copy(p);
+  snapCursor.visible = true;
+});
+canvas.addEventListener("pointerleave", () => { snapCursor.visible = false; });
 
 // Fest målepunktet til nærmeste hjørne i elementet man traff (følsomhet = snapPx piksler)
 function snapPoint(hit) {
