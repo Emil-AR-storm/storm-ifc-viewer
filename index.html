@@ -243,8 +243,12 @@
   <button id="btnQty">📊 Mengder</button>
   <button id="btnColors">🎨 Utseende</button>
   <button id="btnSaveLite" title="Eksporter forenklet modell (.glb) som funker på mobil">💾 Lett kopi</button>
+  <button id="btnMap" title="Minikart – trykk i kartet for å flytte deg dit">🗺 Kart</button>
   <button id="btnShowAll" style="display:none">👁 Vis alle</button>
 </div>
+
+<canvas id="miniMap" width="256" height="256" title="Trykk for å flytte deg dit"
+  style="position:fixed; left:12px; bottom:12px; width:180px; height:180px; border:1px solid #2c3442; border-radius:10px; background:#14181f; display:none; z-index:5; cursor:crosshair; opacity:.92"></canvas>
 
 <div id="modeBar"></div>
 
@@ -435,6 +439,7 @@ resize();
 renderer.setAnimationLoop(() => {
   controls.update();
   if (axesGroup.visible) updateAxisLOD();
+  drawMiniOverlay();
   renderer.render(scene, camera);
 });
 
@@ -540,6 +545,9 @@ function clearModel() {
   storeyOn = false; storeyList = null; storeyIdx = -1;
   document.getElementById("btnStorey").classList.remove("active");
   sharedOK = false;
+  multiSel.clear();
+  miniInfo = null; miniBase = null;
+  miniCanvas.style.display = "none";
   comments = [];
   qtyCache = null;
   typeInfo = null;
@@ -595,6 +603,7 @@ function loadModel(buffer) {
   modelBox = new THREE.Box3().setFromObject(modelGroup);
   modelSize = modelBox.getSize(new THREE.Vector3()).length() || 10;
   fitToModel();
+  renderMiniMap();
 }
 
 // Full kvalitet: ett objekt per element (alle funksjoner tilgjengelig)
@@ -758,6 +767,7 @@ async function loadGlb(buffer) {
   modelBox = new THREE.Box3().setFromObject(modelGroup);
   modelSize = modelBox.getSize(new THREE.Vector3()).length() || 10;
   fitToModel();
+  renderMiniMap();
 }
 
 $("btnSaveLite").addEventListener("click", async () => {
@@ -872,6 +882,89 @@ function fitToModel() {
   grid.position.y = box.min.y;
 }
 $("btnFit").addEventListener("click", fitToModel);
+
+// ---------- 🗺 Minikart (ovenfra, trykk for å flytte deg) ----------
+const miniCanvas = $("miniMap");
+let miniInfo = null, miniBase = null;
+let miniOn = localStorage.getItem("storm-ifc-mini") !== "0";
+
+function renderMiniMap() {
+  miniInfo = null; miniBase = null;
+  if (!modelGroup || !modelBox) { miniCanvas.style.display = "none"; return; }
+  const size = 256;
+  try {
+    const c = modelBox.getCenter(new THREE.Vector3());
+    const half = (Math.max(modelBox.max.x - modelBox.min.x, modelBox.max.z - modelBox.min.z) / 2) * 1.06 || 1;
+    const cam = new THREE.OrthographicCamera(-half, half, half, -half, 0.1, (modelBox.max.y - modelBox.min.y) + modelSize);
+    cam.position.set(c.x, modelBox.max.y + modelSize * 0.2, c.z);
+    cam.up.set(0, 0, -1);
+    cam.lookAt(c.x, modelBox.min.y, c.z);
+    cam.updateMatrixWorld(true);
+    // render toppvisning uten overlegg/klipping til en offscreen-buffer
+    const rt = new THREE.WebGLRenderTarget(size, size);
+    const overlays = [markerGroup, measureGroup, koteGroup, axesGroup, selGroup];
+    const vis = overlays.map(g => g.visible);
+    overlays.forEach(g => g.visible = false);
+    const gridVis = grid.visible; grid.visible = false;
+    const prevClip = renderer.clippingPlanes; renderer.clippingPlanes = [];
+    renderer.setRenderTarget(rt);
+    renderer.render(scene, cam);
+    const px = new Uint8Array(size * size * 4);
+    renderer.readRenderTargetPixels(rt, 0, 0, size, size, px);
+    renderer.setRenderTarget(null);
+    renderer.clippingPlanes = prevClip;
+    overlays.forEach((g, i) => g.visible = vis[i]);
+    grid.visible = gridVis;
+    rt.dispose();
+    const ctx = miniCanvas.getContext("2d");
+    const img = ctx.createImageData(size, size);
+    for (let y = 0; y < size; y++)
+      img.data.set(px.subarray((size - 1 - y) * size * 4, (size - y) * size * 4), y * size * 4);
+    miniBase = img;
+    miniInfo = { cx: c.x, cz: c.z, half, size };
+    drawMiniOverlay(true);
+    miniCanvas.style.display = miniOn ? "block" : "none";
+  } catch(_) { miniCanvas.style.display = "none"; }
+}
+
+const _miniLast = { tx: NaN, tz: NaN, kx: NaN, kz: NaN };
+function drawMiniOverlay(force) {
+  if (!miniInfo || !miniBase) return;
+  const t = controls.target, k = camera.position;
+  if (!force && t.x === _miniLast.tx && t.z === _miniLast.tz && k.x === _miniLast.kx && k.z === _miniLast.kz) return;
+  _miniLast.tx = t.x; _miniLast.tz = t.z; _miniLast.kx = k.x; _miniLast.kz = k.z;
+  const { cx, cz, half, size } = miniInfo;
+  const map = (wx, wz) => [size / 2 + (wx - cx) / half * (size / 2), size / 2 + (wz - cz) / half * (size / 2)];
+  const ctx = miniCanvas.getContext("2d");
+  ctx.putImageData(miniBase, 0, 0);
+  const [px, py] = map(t.x, t.z);
+  const [kx, ky] = map(k.x, k.z);
+  ctx.strokeStyle = "#f59e0b"; ctx.fillStyle = "#f59e0b"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(kx, ky); ctx.lineTo(px, py); ctx.stroke(); // synsretning
+  ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI * 2); ctx.fill();       // hvor du ser
+}
+
+miniCanvas.addEventListener("pointerdown", (e) => {
+  if (!miniInfo) return;
+  e.preventDefault();
+  const r = miniCanvas.getBoundingClientRect();
+  const mx = (e.clientX - r.left) / r.width * miniInfo.size;
+  const my = (e.clientY - r.top) / r.height * miniInfo.size;
+  const wx = miniInfo.cx + (mx - miniInfo.size / 2) / (miniInfo.size / 2) * miniInfo.half;
+  const wz = miniInfo.cz + (my - miniInfo.size / 2) / (miniInfo.size / 2) * miniInfo.half;
+  // flytt kamera + mål dit man trykket (høyden beholdes)
+  const dx = wx - controls.target.x, dz = wz - controls.target.z;
+  controls.target.x += dx; controls.target.z += dz;
+  camera.position.x += dx; camera.position.z += dz;
+});
+
+$("btnMap").addEventListener("click", () => {
+  miniOn = !miniOn;
+  try { localStorage.setItem("storm-ifc-mini", miniOn ? "1" : "0"); } catch(_){}
+  $("btnMap").classList.toggle("active", miniOn);
+  miniCanvas.style.display = miniOn && miniBase ? "block" : "none";
+});
+$("btnMap").classList.toggle("active", miniOn);
 
 // ---------- Tekst-etiketter (sprites) ----------
 function makeLabel(text, color = "#f59e0b", sizeF = 0.028) {
@@ -1478,8 +1571,8 @@ function pick(clientX, clientY) {
   return hits.length ? hits[0] : null;
 }
 
-function selectElement(expressID) {
-  clearSelection();
+function selectElement(expressID, additive) {
+  if (!additive) clearSelection();
   currentPropID = expressID;
   if (lightLoaded) {
     // bygg en liten kopi av elementets trekanter som legges oppå
@@ -1531,6 +1624,11 @@ function showProperties(expressID) {
     rows.push(["ExpressID", expressID]);
     if (p && p[0]) rows.push(["Name", p[0]]);
     if (p && p[1]) rows.push(["ObjectType", p[1]]);
+    try {
+      const q = elementQuantities(expressID);
+      rows.push(["Mål L×B×H (ca)", q.dims.map(fmtDim).join(" × ") + " m"]);
+      rows.push(["Volum (ca)", fmtVol(q.vol)]);
+    } catch(_){}
     rows.push(["Merk", "Lett kopi – åpne original-IFC-en for full egenskapsliste"]);
   } else try {
     const line = ifcApi.GetLine(modelID, expressID);
@@ -1543,6 +1641,11 @@ function showProperties(expressID) {
       const v = val(line[key]);
       if (v !== null && v !== "" ) rows.push([key, v]);
     }
+    try {
+      const q = elementQuantities(expressID);
+      rows.push(["Mål L×B×H (ca)", q.dims.map(fmtDim).join(" × ") + " m"]);
+      rows.push(["Volum (ca)", fmtVol(q.vol)]);
+    } catch(_){}
     try {
       const relIDs = ifcApi.GetLineIDsWithType(modelID, WebIFC.IFCRELDEFINESBYPROPERTIES);
       for (let i = 0; i < relIDs.size(); i++) {
@@ -1623,6 +1726,74 @@ function elementBoxById(id) {
     }
   });
   return box;
+}
+
+// ---------- 🧮 Mengder per element ----------
+const _qa = new THREE.Vector3(), _qb = new THREE.Vector3(), _qc = new THREE.Vector3(), _qt = new THREE.Vector3();
+
+// Beregner ytre mål og volum (m³) fra elementets trekanter (signert tetraeder-sum – funker for lukkede volumer som betong og stålprofiler)
+function elementQuantities(id) {
+  const toM = modelSize > 1000 ? 0.001 : 1; // mm-modell → meter
+  const box = elementBoxById(id);
+  let dims = [0, 0, 0];
+  if (box) {
+    const s = box.getSize(new THREE.Vector3());
+    dims = [s.x * toM, s.y * toM, s.z * toM].sort((a, b) => b - a);
+  }
+  let vol = 0;
+  const addTri = (p, i0, i1, i2, mtx) => {
+    _qa.fromBufferAttribute(p, i0); _qb.fromBufferAttribute(p, i1); _qc.fromBufferAttribute(p, i2);
+    if (mtx) { _qa.applyMatrix4(mtx); _qb.applyMatrix4(mtx); _qc.applyMatrix4(mtx); }
+    vol += _qa.dot(_qt.copy(_qb).cross(_qc)) / 6;
+  };
+  modelGroup.children.forEach(m => {
+    if (!m.isMesh) return;
+    const p = m.geometry.getAttribute("position");
+    const ix = m.geometry.getIndex();
+    if (m.userData.merged) {
+      if (!ix) return;
+      (m.userData.ranges || []).forEach(r => {
+        if (r.id !== id) return;
+        for (let i = r.start; i < r.start + r.count; i += 3)
+          addTri(p, ix.getX(i), ix.getX(i + 1), ix.getX(i + 2), null);
+      });
+    } else if (m.userData.expressID === id) {
+      const n = ix ? ix.count : p.count;
+      for (let i = 0; i < n; i += 3)
+        addTri(p, ix ? ix.getX(i) : i, ix ? ix.getX(i + 1) : i + 1, ix ? ix.getX(i + 2) : i + 2, m.matrixWorld);
+    }
+  });
+  return { dims, vol: Math.abs(vol) * toM * toM * toM };
+}
+
+function fmtVol(v) { return (v >= 10 ? v.toFixed(1) : v >= 0.01 ? v.toFixed(2) : v.toFixed(3)) + " m³"; }
+function fmtDim(d) { return d >= 10 ? d.toFixed(1) : d.toFixed(2); }
+
+function elemDisplayName(id) {
+  if (glbActive) { const p = glbProps && glbProps.get(id); return (p && (p[0] || p[1])) || ("ID " + id); }
+  try { const line = ifcApi.GetLine(modelID, id); return val(line.Name) || val(line.ObjectType) || ("ID " + id); } catch(_) { return "ID " + id; }
+}
+
+// ---------- Flervalg (shift-klikk) med samlede mengder ----------
+let multiSel = new Map(); // expressID -> { dims, vol }
+
+function showMultiSummary() {
+  let totVol = 0, totLen = 0;
+  const items = [];
+  for (const [id, q] of multiSel) {
+    totVol += q.vol;
+    totLen += q.dims[0];
+    items.push({ id, name: elemDisplayName(id), vol: q.vol });
+  }
+  $("propTitle").textContent = "🧮 " + multiSel.size + " elementer valgt";
+  $("propBody").innerHTML =
+    '<div class="prop-row" style="font-weight:600"><div class="k">Sum volum</div><div class="v">' + fmtVol(totVol) + '</div></div>' +
+    '<div class="prop-row"><div class="k">Sum lengde (lengste mål)</div><div class="v">' + totLen.toFixed(2) + ' m</div></div>' +
+    '<div class="prop-row"><div class="k">Antall</div><div class="v">' + multiSel.size + ' stk</div></div>' +
+    items.map(it => '<div class="prop-row"><div class="k">' + esc(it.name) + '</div><div class="v">' + fmtVol(it.vol) + '</div></div>').join("") +
+    '<p style="color:var(--muted); font-size:11px; margin-top:8px">Shift-klikk legger til / fjerner elementer. Vanlig klikk nullstiller utvalget.</p>';
+  ["commentPanel", "qtyPanel", "colorPanel", "libPanel", "axesPanel", "searchPanel"].forEach(pid => $(pid).classList.remove("open"));
+  $("propPanel").classList.add("open");
 }
 
 function zoomToElement(id) {
@@ -2017,8 +2188,21 @@ canvas.addEventListener("pointerup", (e) => {
   } else {
     const id = hitID(hit);
     if (id == null) return;
-    selectElement(id);
-    showProperties(id);
+    if (e.shiftKey) {
+      // flervalg: samle mengder for flere konstruksjoner
+      if (!multiSel.size && currentPropID != null && currentPropID !== id)
+        multiSel.set(currentPropID, elementQuantities(currentPropID));
+      if (multiSel.has(id)) multiSel.delete(id);
+      else multiSel.set(id, elementQuantities(id));
+      clearSelection();
+      for (const mid of multiSel.keys()) selectElement(mid, true);
+      if (multiSel.size) showMultiSummary();
+      else $("propPanel").classList.remove("open");
+    } else {
+      multiSel.clear();
+      selectElement(id);
+      showProperties(id);
+    }
   }
 });
 
