@@ -13,6 +13,7 @@ ifcApi.SetWasmPath("https://cdn.jsdelivr.net/npm/web-ifc@0.0.57/", true);
 
 let klar = null;
 let modelID = null;
+let fil = null;        // selve IFC-bytene, beholdt så hovedtråden kan få dem tilbake
 
 // web-ifc pakker verdier som { value: … }
 const val = (x) => (x && typeof x === "object" && "value" in x ? x.value : x);
@@ -28,7 +29,8 @@ async function cmdOpen({ buffer, light }) {
   if (!klar) klar = ifcApi.Init();
   await klar;
   if (modelID !== null) { try { ifcApi.CloseModel(modelID); } catch(_) {} modelID = null; }
-  modelID = ifcApi.OpenModel(new Uint8Array(buffer), light
+  fil = new Uint8Array(buffer);
+  modelID = ifcApi.OpenModel(fil, light
     ? { COORDINATE_TO_ORIGIN: true, CIRCLE_SEGMENTS: 8 }
     : { COORDINATE_TO_ORIGIN: true });
 
@@ -282,9 +284,19 @@ function cmdAxisSources() {
   return out;
 }
 
+// Gir filen tilbake til hovedtråden (overført, ikke kopiert)
+function cmdBuffer(_a, post) {
+  if (!fil) return { buffer: null };
+  const ut = fil.buffer;
+  fil = null;                     // hovedtråden eier den nå
+  post({ type: "buffer-ut" });    // bare for å ha noe å henge overføringen på
+  return { buffer: ut, _overfor: [ut] };
+}
+
 function cmdClose() {
   if (modelID !== null) { try { ifcApi.CloseModel(modelID); } catch(_) {} }
   modelID = null;
+  fil = null;
   return { ok: true };
 }
 
@@ -298,6 +310,7 @@ export const KOMMANDOER = {
   props: cmdProps,
   storeys: cmdStoreys,
   axisSources: cmdAxisSources,
+  buffer: cmdBuffer,
   close: cmdClose
 };
 
@@ -307,7 +320,11 @@ export async function håndter(msg, post) {
   if (!fn) { post({ id, feil: "Ukjent kommando: " + cmd }); return; }
   try {
     const svar = await fn(args || {}, (m, overfor) => post(Object.assign({ id }, m), overfor));
-    post({ id, svar });
+    if (svar && svar._overfor) {
+      const overfor = svar._overfor;
+      delete svar._overfor;
+      post({ id, svar }, overfor);
+    } else post({ id, svar });
   } catch (err) {
     post({ id, feil: (err && err.message) || String(err) });
   }

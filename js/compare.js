@@ -9,7 +9,8 @@
 // faller den tilbake på geometrisk match: type + posisjon + volum.
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
 import { $, S, esc, loadingEl, loadingText } from "./state.js";
-import { guidFor, typeFor } from "./ifcrpc.js";
+import { guidFor, sikreMeta, typeFor } from "./ifcrpc.js";
+import { alleElementIder } from "./ifc.js";
 import { allElementBoxes, elemDisplayName, elementBoxById, fmtVol, quantitiesForSet, val, zoomToElement } from "./elements.js";
 import { camera, controls, scene } from "./scene.js";
 
@@ -43,7 +44,8 @@ function elementIds() {
 const guidOf = (id) => guidFor(id);
 const typeOf = (id) => typeFor(id);
 
-export function snapshotModel() {
+export async function snapshotModel() {
+  await sikreMeta(alleElementIder);
   if (!S.modelGroup || S.modelID === null) return null; // .glb har ikke IFC-data
   const ids = elementIds();
   const boxes = allElementBoxes();
@@ -301,10 +303,10 @@ export function applySharedCompare(c) {
 }
 
 // ---------- Start / stopp ----------
-function startSnapshot() {
+async function startSnapshot() {
   loadingText.textContent = "Leser modellen …";
   loadingEl.classList.add("open");
-  const snap = snapshotModel();
+  const snap = await snapshotModel();
   loadingEl.classList.remove("open");
   if (!snap) {
     S.compareBase = null;
@@ -327,13 +329,13 @@ export function stopCompare() {
 }
 
 // Kalles fra ifc.js hver gang en modell er ferdig lastet
-S.onModelLoaded = () => {
+S.onModelLoaded = async () => {
   compareGroup.clear();
   const base = S.compareBase;
   if (!base || base.file === S.fileName) return;
   loadingText.textContent = "Sammenligner versjoner …";
   loadingEl.classList.add("open");
-  const now = snapshotModel();
+  const now = await snapshotModel();
   loadingEl.classList.remove("open");
   if (!now) return;
   result = compare(base, now);

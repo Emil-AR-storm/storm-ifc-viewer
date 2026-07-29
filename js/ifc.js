@@ -1,7 +1,7 @@
 // Innlasting av modeller: IFC (full og lav kvalitet) og lett kopi (.glb).
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
 import { $, S, esc, loadingEl, loadingText, statusEl, writePrefs } from "./state.js";
-import { harWorker, hentMeta, kall, metaFor, tømMeta } from "./ifcrpc.js";
+import { harWorker, kall, metaFor, tømMeta } from "./ifcrpc.js";
 import { byggLettKopi, kanskjeLagRaskKopi, lettNavn } from "./lite.js";
 import { hiddenIDs } from "./display.js";
 import { clearSelection } from "./elements.js";
@@ -38,6 +38,9 @@ export async function openLocalFile(file, handle) {
     const buffer = new Uint8Array(await file.arrayBuffer());
     await new Promise(r => setTimeout(r, 30));
     S.lastBuffer = buffer;
+    // stempel for lokale filer: endringstidspunkt + størrelse. Uten dette kunne
+    // ⚡ bare lages for biblioteksmodeller, som var grunnen til at ingenting skjedde.
+    S.liteKilde = isGlb ? null : { eTag: "local:" + (file.lastModified || 0), size: file.size || 0 };
     setLoadFlag({ name: file.name, light: S.lightMode });
     if (isGlb) await loadGlb(buffer); else await loadModel(buffer);
     afterLoad();
@@ -150,6 +153,7 @@ function clearModel() {
   S.axesOn = false; S.axesBuilt = false;
   S.axisSources = null; S.axisSelection = new Set(); S.axisRaw = null;
   S.liteKilde = null;
+  S.bufferITråd = false;
   document.getElementById("axesPanel").classList.remove("open");
   document.getElementById("btnAxes").classList.remove("active");
   S.searchIndex = null; S.lastQuery = "";
@@ -214,10 +218,13 @@ export async function loadModel(buffer) {
   const t0 = performance.now();
   visFramdrift("Leser IFC-filen …", 0, 0);
 
-  // Bufferen overføres til tråden (ikke kopieres). Vi beholder en kopi til
-  // 🪶/💾-omlasting, siden den overførte er borte etterpå.
-  const kopi = buffer.slice();
-  const info = await kall("open", { buffer: kopi.buffer, light: S.lightLoaded }, null, [kopi.buffer]);
+  // Bufferen OVERFØRES til tråden – ingen kopi. Tråden beholder den, så vi kan
+  // få den tilbake ved behov (🪶-omlasting). Før holdt vi filen i to utgaver
+  // samtidig, som på en 200 MB-modell var nettopp det som tok knekken på fanen.
+  const ab = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+  S.lastBuffer = null;
+  S.bufferITråd = true;
+  const info = await kall("open", { buffer: ab, light: S.lightLoaded }, null, [ab]);
   S.modelID = 1;   // «en modell er åpen» – all lesing går nå gjennom IFC-tråden
 
   if (info.coordMatrix) {
@@ -233,18 +240,25 @@ export async function loadModel(buffer) {
   S.modelBox = new THREE.Box3().setFromObject(S.modelGroup);
   S.modelSize = S.modelBox.getSize(new THREE.Vector3()).length() || 10;
 
-  // navn, type, tag og GlobalId for alle elementer i én runde – etterpå kan
-  // resten av viewer'en slå opp synkront som før
-  visFramdrift("Leser elementdata …", 0, 0);
-  await hentMeta(alleElementIder(), (n, av) => visFramdrift("Leser elementdata …", n, av));
-
-  // kandidater til aksesystemet hentes samtidig, så 🔠 Akser kan jobbe synkront
-  try { S.axisRaw = await kall("axisSources"); } catch(_) { S.axisRaw = null; }
+  // Elementdata (navn/type/GlobalId) og aksekilder hentes IKKE her. De leses
+  // første gang noe trenger dem – ellers betaler hver åpning for arbeid du
+  // kanskje ikke skal bruke. Se sikreMeta() i ifcrpc.js og sikreAxisRaw() i axes.js.
 
   fitToModel();
   renderMiniMap();
   console.log("Modell åpnet i " + Math.round(performance.now() - t0) + " ms" +
     (harWorker() ? " (egen tråd)" : " (hovedtråden – " + (S.workerFeil || "ingen tråd") + ")"));
+}
+
+// Bufferen ligger i IFC-tråden etter lasting. Denne henter den tilbake når
+// noe trenger den (omlasting i annen kvalitet).
+export async function hentBuffer() {
+  if (S.lastBuffer) return S.lastBuffer;
+  if (!S.bufferITråd) return null;
+  try {
+    const svar = await kall("buffer");
+    return svar && svar.buffer ? new Uint8Array(svar.buffer) : null;
+  } catch(_) { return null; }
 }
 
 // «Leser … 42 %» eller «… 1 240 av 3 100 elementer»
@@ -254,8 +268,10 @@ function visFramdrift(tekst, gjort, av) {
   loadingText.textContent = tekst + " " + pst + " %";
 }
 
-function alleElementIder() {
+// Alle element-id-er i modellen (også i sammenslått geometri)
+export function alleElementIder() {
   const ids = new Set();
+  if (!S.modelGroup) return ids;
   S.modelGroup.children.forEach(m => {
     if (m.userData.merged) (m.userData.ranges || []).forEach(r => ids.add(r.id));
     else if (m.userData.expressID !== undefined) ids.add(m.userData.expressID);
@@ -438,14 +454,16 @@ setLight(S.lightMode);
 
 $("btnLight").addEventListener("click", async () => {
   setLight(!S.lightMode);
-  if (S.modelGroup && S.lastBuffer && S.lightMode !== S.lightLoaded &&
+  if (S.modelGroup && (S.lastBuffer || S.bufferITråd) && S.lightMode !== S.lightLoaded &&
       confirm("Laste modellen på nytt i " + (S.lightMode ? "🪶 lav" : "full") + " kvalitet?")) {
     loadingEl.classList.add("open");
     loadingText.textContent = "Laster på nytt …";
     await new Promise(r => setTimeout(r, 30));
     try {
       setLoadFlag(Object.assign({}, S.lastLoadInfo || { name: S.fileName }, { light: S.lightMode }));
-      await loadModel(S.lastBuffer);
+      const buf = await hentBuffer();
+      if (!buf) throw new Error("Fant ikke modellfilen igjen – åpne den på nytt");
+      await loadModel(buf);
       clearLoadFlag();
     } catch (err) {
       clearLoadFlag();
@@ -458,7 +476,7 @@ $("btnLight").addEventListener("click", async () => {
 
 // Tilbud om nytt forsøk i lav kvalitet når lasting feiler
 export async function offerLightRetry(err) {
-  if (S.lightMode || !S.lastBuffer) return false;
+  if (S.lightMode || !(S.lastBuffer || S.bufferITråd)) return false;
   if (!confirm("Klarte ikke å laste modellen (" + ((err && err.message) || err) + ").\n\nPrøve på nytt i 🪶 lav kvalitet?")) return false;
   setLight(true);
   loadingEl.classList.add("open");
@@ -466,7 +484,9 @@ export async function offerLightRetry(err) {
   await new Promise(r => setTimeout(r, 30));
   try {
     setLoadFlag(Object.assign({}, S.lastLoadInfo || { name: S.fileName }, { light: true }));
-    await loadModel(S.lastBuffer);
+    const buf = await hentBuffer();
+    if (!buf) throw new Error("Fant ikke modellfilen igjen");
+    await loadModel(buf);
     afterLoad();
     clearLoadFlag();
   } catch (e2) {

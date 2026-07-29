@@ -9,6 +9,8 @@ import { $, S, esc } from "./state.js";
 import { applyClipState } from "./clip.js";
 import { applySharedCompare, collectCompare } from "./compare.js";
 import { buildTypeInfo, applyTypeColors, hiddenIDs, setGhost } from "./display.js";
+import { sikreMeta } from "./ifcrpc.js";
+import { alleElementIder } from "./ifc.js";
 import { camera, controls } from "./scene.js";
 import { spOpenFile } from "./sharepoint.js";
 
@@ -149,7 +151,7 @@ export async function applyView(v) {
       controls.update();
     }
     if ((v.hid || v.col || v.tc) && S.modelGroup && !S.lightLoaded && S.modelID !== null) {
-      if (!S.typeInfo) buildTypeInfo();
+      if (!S.typeInfo) { await sikreMeta(alleElementIder); buildTypeInfo(); }
       if (v.col) {
         for (const k in v.col) {
           const g = S.typeInfo.get(k);

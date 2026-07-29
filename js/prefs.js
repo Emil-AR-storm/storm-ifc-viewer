@@ -2,6 +2,8 @@
 // oppstart ligger i state.js – her ligger bare skrivingen og gjenopprettingen.
 import { $, S, writePrefs } from "./state.js";
 import { applyTypeColors, buildTypeInfo } from "./display.js";
+import { sikreMeta } from "./ifcrpc.js";
+import { alleElementIder } from "./ifc.js";
 
 export function saveSettings() {
   writePrefs();
@@ -30,13 +32,13 @@ export function syncHiddenTypes() {
 }
 
 // Legger på lagret utseende etter at en modell er åpnet
-export function restoreAppearance() {
+export async function restoreAppearance() {
   if (!S.modelGroup || S.lightLoaded || S.glbActive || S.modelID === null) return;
   const hasSaved = S.appear.typeColorsOn || S.appear.ghost ||
     S.appear.hiddenTypes.length || Object.keys(S.appear.colors).length;
   if (!hasSaved) return;
   try {
-    if (!S.typeInfo) buildTypeInfo();
+    if (!S.typeInfo) { await sikreMeta(alleElementIder); buildTypeInfo(); }
     if (S.appear.typeColorsOn) applyTypeColors(true);
     if (S.appear.hiddenTypes.length) {
       let any = false;
