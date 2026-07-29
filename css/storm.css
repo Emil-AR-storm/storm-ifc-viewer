@@ -1,0 +1,252 @@
+/* Storm IFC-Viewer – all stil samlet her */
+:root {
+  --bg: #14181f;
+  --panel: #1e242e;
+  --panel2: #262d3a;
+  --text: #e8ecf2;
+  --muted: #93a0b4;
+  --accent: #3b82f6;
+  --accent2: #f59e0b;
+  --border: #333c4c;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+#viewer { position: fixed; inset: 0; touch-action: none; }
+
+/* Toppbar */
+#topbar {
+  position: fixed; top: 0; left: 0; right: 0;
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 10px;
+  background: linear-gradient(to bottom, rgba(20,24,31,.95), rgba(20,24,31,.75));
+  z-index: 10;
+  flex-wrap: wrap;
+}
+#topbar .logo { font-weight: 700; font-size: 15px; letter-spacing: .5px; margin-right: 2px; }
+#topbar .logo span { color: var(--accent); }
+button, label.btn {
+  background: var(--panel2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  display: inline-flex; align-items: center; gap: 5px;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+button:active, label.btn:active { transform: scale(.97); }
+button.primary { background: var(--accent); border-color: var(--accent); }
+button.active { background: var(--accent2); border-color: var(--accent2); color: #14181f; font-weight: 600; }
+#fileInput { display: none; }
+#status { font-size: 12px; color: var(--muted); margin-left: auto; }
+
+/* Verktøylinje (etter innlasting) */
+#toolbar {
+  position: fixed;
+  top: 52px; left: 0; right: 0;
+  display: none;
+  align-items: center; gap: 6px;
+  padding: 4px 10px;
+  z-index: 10;
+  flex-wrap: wrap;
+}
+#toolbar.open { display: flex; }
+#toolbar button { padding: 7px 10px; font-size: 12px; }
+
+/* Kontekst-kontroller nederst (snitt/mål) */
+#modeBar {
+  position: fixed;
+  bottom: 14px; left: 50%; transform: translateX(-50%);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 14px;
+  z-index: 12;
+  display: none;
+  align-items: center; gap: 8px;
+  flex-wrap: wrap;
+  max-width: 94vw;
+}
+#modeBar.open { display: flex; }
+#modeBar .lbl { font-size: 12px; color: var(--muted); }
+#modeBar input[type=range] { width: 180px; }
+#modeBar button { padding: 6px 10px; font-size: 12px; }
+
+/* Panel (egenskaper / kommentarer / mengder) */
+.panel {
+  position: fixed;
+  right: 0; bottom: 0;
+  width: 360px; max-width: 100vw;
+  max-height: 60vh;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px 0 0 0;
+  z-index: 11;
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+}
+.panel.open { display: flex; }
+.panel header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--panel2);
+  font-size: 14px; font-weight: 600;
+}
+.panel header button { padding: 2px 10px; font-size: 15px; }
+.panel .body { overflow-y: auto; padding: 12px 14px; font-size: 13px; }
+.prop-row { display: flex; padding: 5px 0; border-bottom: 1px solid var(--border); gap: 10px; }
+.prop-row .k { color: var(--muted); min-width: 110px; flex-shrink: 0; }
+.prop-row .v { word-break: break-word; }
+.prop-actions { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+
+.qty-row { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.qty-row .n { word-break: break-word; }
+.qty-row .c { color: var(--accent2); white-space: nowrap; text-align: right; }
+
+/* Kommentar-liste */
+.comment {
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+.comment .meta { font-size: 11px; color: var(--muted); margin-bottom: 3px; display:flex; justify-content: space-between; }
+.comment .del { color: #ef4444; font-size: 11px; cursor: pointer; }
+
+/* Kommentar-dialog */
+#commentDialog {
+  position: fixed; left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  width: 320px; max-width: 92vw;
+  z-index: 20;
+  display: none;
+}
+#commentDialog.open { display: block; }
+#commentDialog h3 { font-size: 14px; margin-bottom: 10px; }
+#commentDialog textarea {
+  width: 100%; height: 80px;
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px; font-size: 14px; resize: none;
+  font-family: inherit;
+}
+#commentDialog .actions { display: flex; gap: 8px; margin-top: 10px; justify-content: flex-end; }
+
+/* Startskjerm */
+#splash {
+  position: fixed; inset: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 16px; z-index: 5;
+  text-align: center; padding: 20px;
+}
+#splash h1 { font-size: 26px; }
+#splash h1 span { color: var(--accent); }
+#splash p { color: var(--muted); max-width: 420px; font-size: 14px; line-height: 1.5; }
+#splash label.btn { font-size: 16px; padding: 14px 26px; background: var(--accent); border-color: var(--accent); }
+
+#loading {
+  position: fixed; inset: 0;
+  background: rgba(20,24,31,.85);
+  display: none; align-items: center; justify-content: center;
+  flex-direction: column; gap: 14px;
+  z-index: 30;
+}
+#loading.open { display: flex; }
+.spinner {
+  width: 40px; height: 40px;
+  border: 4px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+#hint {
+  position: fixed; bottom: 12px; left: 12px;
+  font-size: 11px; color: var(--muted);
+  z-index: 9; max-width: 55vw;
+  background: rgba(20,24,31,.6); padding: 6px 10px; border-radius: 8px;
+  display: none;
+}
+/* Bibliotek */
+#libBody input[type=search] {
+  width: 100%; padding: 9px 10px;
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px;
+  font-size: 14px; margin-bottom: 10px;
+  font-family: inherit;
+}
+.lib-item {
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 11px;
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+.lib-item:active { transform: scale(.98); }
+.lib-item .n { font-size: 13px; word-break: break-word; }
+.lib-item .m { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+/* ⚙ Innstillingsmeny (høyreklikk) */
+#setMenu {
+  position: fixed;
+  width: 320px; max-width: 94vw;
+  max-height: 78vh;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  z-index: 25;
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 12px 34px rgba(0,0,0,.45);
+}
+#setMenu.open { display: flex; }
+#setMenu header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 9px 12px; background: var(--panel2);
+  font-size: 13px; font-weight: 600;
+}
+#setMenu header button { padding: 2px 9px; font-size: 14px; }
+#setMenu .body { overflow-y: auto; padding: 10px 12px; font-size: 13px; }
+#setMenu h4 {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .6px;
+  color: var(--muted); margin: 10px 0 4px; font-weight: 600;
+}
+#setMenu h4:first-child { margin-top: 0; }
+.set-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--border);
+}
+.set-row .n { color: var(--text); }
+.set-row input[type=range] { width: 120px; }
+.set-row select, .set-row input[type=number] {
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 4px 6px; font-size: 12px; font-family: inherit;
+}
+.keybtn { padding: 3px 10px; font-size: 12px; min-width: 62px; justify-content: center; }
+.keybtn.wait { background: var(--accent2); color: #14181f; font-weight: 600; }
+
+@media (max-width: 640px) {
+  #topbar { padding: 6px; gap: 5px; }
+  button, label.btn { padding: 7px 9px; font-size: 12px; }
+  .panel { width: 100vw; border-radius: 12px 12px 0 0; max-height: 55vh; }
+  #hint { display: none !important; }
+}
