@@ -185,7 +185,22 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
 }
 #markerPop .mp-meta span { flex: 1; }
 #markerPop .mp-text { white-space: pre-wrap; overflow-wrap: anywhere; }
-#markerPop .mp-act { display: flex; gap: 6px; margin-top: 8px; }
+#markerPop .mp-fields {
+  display: flex; flex-direction: column; gap: 5px;
+  margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);
+}
+#markerPop .mp-fields label {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  font-size: 11px; color: var(--muted);
+}
+#markerPop .mp-fields select,
+#markerPop .mp-fields input[type=date] {
+  background: var(--panel2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 3px 5px; font-size: 11px; max-width: 150px;
+}
+#markerPop .mp-late { color: #ef4444; font-size: 11px; margin-top: 6px; }
+#markerPop .mp-act { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
 #markerPop button { padding: 5px 8px; font-size: 11px; }
 #markerPop button.mp-x { padding: 2px 5px; border: 0; background: none; color: var(--muted); font-size: 13px; }
 #markerPop button.mp-del { border-color: #7f2b2b; }
