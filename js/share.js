@@ -126,6 +126,18 @@ export async function buildShareLink() {
   return { link, note };
 }
 
+// Lenke som åpner modellen med kameraet rettet mot en markering. Brukes i
+// Planner-oppgaver, så den som får oppgaven ser hva det gjelder med ett trykk.
+// Legges på S for å unngå sirkulær import fra markers.js.
+S.markerLink = async (c) => {
+  const v = collectView({ noCompare: true });
+  const dir = camera.position.clone().sub(controls.target);
+  if (dir.lengthSq() < 1e-6) dir.set(1, 0.7, 1);
+  dir.normalize().multiplyScalar(Math.max(S.modelSize * 0.06, 4));
+  v.cam = [r3(c.x + dir.x), r3(c.y + dir.y), r3(c.z + dir.z), r3(c.x), r3(c.y), r3(c.z)];
+  return location.origin + location.pathname + "#" + HASH_KEY + await pack(v);
+};
+
 // ---------- Legg en delt visning på plass ----------
 // silent overalt: mottakerens eget lagrede utseende røres ikke.
 export function applyView(v) {
