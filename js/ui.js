@@ -5,7 +5,6 @@ import { showClipBar, stopFacePick } from "./clip.js";
 import { DEFAULT_BG, resetColors } from "./display.js";
 import { refreshNumbers } from "./elements.js";
 import { applyMiniSize, setMini } from "./minimap.js";
-import { lagRaskKopiNå, raskKopiStatus } from "./lite.js";
 import { setMode } from "./modes.js";
 import { saveAppear, saveBg, saveSettings } from "./prefs.js";
 import { scene } from "./scene.js";
@@ -97,12 +96,6 @@ function renderSettings() {
     '<div class="set-row"><span class="n">Skriftstørrelse akser</span>' +
     '<input type="range" id="stAxFont" min="40" max="250" step="10" value="' + Math.round(S.axisFontF * 100) + '"></div>';
 
-  html += '<h4>⚡ Rask kopi</h4>' +
-    '<div class="set-row"><span class="n">Lag automatisk i bakgrunnen</span>' +
-    '<input type="checkbox" id="stAutoLite"' + (S.settings.autoLite ? " checked" : "") + '></div>' +
-    '<p id="stLiteStatus" style="color:var(--muted); font-size:11px; margin:2px 0 6px">Sjekker …</p>' +
-    '<div class="prop-actions"><button id="stLiteNow">⚡ Lag rask kopi nå</button></div>';
-
   html += '<h4>🗺 Minikart</h4>' +
     '<div class="set-row"><span class="n">Vis minikart</span>' +
     '<input type="checkbox" id="stMini"' + (S.miniOn ? " checked" : "") + '></div>' +
@@ -146,7 +139,6 @@ function renderSettings() {
     scene.background.set(e.target.value);
     saveBg(e.target.value);
   };
-  $("stAutoLite").onchange = (e) => { S.settings.autoLite = e.target.checked; saveSettings(); };
   $("stLight").onchange = () => $("btnLight").click();
   $("stAxFont").oninput = (e) => {
     S.axisFontF = e.target.value / 100;
@@ -163,9 +155,6 @@ function renderSettings() {
   $("setBody").querySelectorAll("button[data-key]").forEach(b => {
     b.onclick = () => { S.keyWaitFor = b.dataset.key; renderSettings(); };
   });
-  $("stLiteNow").onclick = () => { closeSettings(); lagRaskKopiNå(); };
-  raskKopiStatus().then(t => { if ($("stLiteStatus")) $("stLiteStatus").textContent = t; })
-    .catch(() => { if ($("stLiteStatus")) $("stLiteStatus").textContent = ""; });
   $("stReset").onclick = () => {
     S.settings = Object.assign({}, DEFAULT_SETTINGS, { keys: Object.assign({}, DEFAULT_KEYS) });
     saveSettings();

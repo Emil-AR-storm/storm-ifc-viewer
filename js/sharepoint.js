@@ -1,7 +1,6 @@
 // Microsoft Graph: innlogging og modellbibliotek fra SharePoint.
 import { $, S, esc, loadingEl, loadingText } from "./state.js";
 import { afterLoad, clearLoadFlag, ifcReady, loadGlb, loadModel, offerLightRetry, setLoadFlag } from "./ifc.js";
-import { hentFraBiblioteket, hentIndeks, sammeStempel, stempelAv } from "./lite.js";
 
 // ---------- SharePoint-bibliotek (Microsoft Graph) ----------
 export const SP = {
@@ -163,8 +162,6 @@ async function openLibrary() {
       return;
     }
     S.spFiles = files;
-    // hvilke modeller har en fersk rask kopi? Én forespørsel for hele lista.
-    S.liteIndeks = await hentIndeks();
     body.innerHTML =
       '<input type="search" id="libSearch" placeholder="🔍 Søk etter modell …" autocomplete="off">' +
       '<div id="libList"></div>';
@@ -191,61 +188,16 @@ function renderLibList(filter) {
   listEl.innerHTML = list.map(f => {
     const mb = f.size ? (f.size / 1048576).toFixed(1) + " MB" : "";
     const d = f.lastModifiedDateTime ? new Date(f.lastModifiedDateTime).toLocaleDateString("no-NO") : "";
-    const rask = raskKopiFor(f);
     return '<div class="lib-item" data-id="' + esc(f.id) + '">' +
       '<div class="n">' + esc(f.name) + '</div>' +
-      '<div class="m">' + mb + (d ? " · " + d : "") +
-        (rask ? ' · <span class="lite-badge" title="Det finnes en rask kopi av denne versjonen">⚡ rask kopi</span>' : "") +
-      '</div>' +
-      (rask ? '<button class="lib-lite" data-lite="' + esc(f.id) + '" ' +
-        'title="Åpner på sekunder. Uten full egenskapsliste – bruk originalen for psets.">⚡ Åpne rask</button>' : "") +
-      '</div>';
+      '<div class="m">' + mb + (d ? " · " + d : "") + '</div></div>';
   }).join("");
-  listEl.querySelectorAll("[data-lite]").forEach(b => {
-    b.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const f = S.spFiles.find(x => x.id === b.dataset.lite);
-      if (f) spOpenLite(f);
-    });
-  });
   listEl.querySelectorAll(".lib-item").forEach(el => {
     el.addEventListener("click", () => {
       const f = S.spFiles.find(x => x.id === el.dataset.id);
       if (f) spOpenFile(f);
     });
   });
-}
-
-// Har denne modellen en rask kopi som er laget av NÅVÆRENDE versjon?
-function raskKopiFor(f) {
-  const rad = S.liteIndeks && S.liteIndeks[f.name];
-  if (!rad) return null;
-  return sammeStempel(rad.stempel, stempelAv(f)) ? rad : null;
-}
-
-// ⚡ Åpne den raske kopien i stedet for IFC-en
-async function spOpenLite(f) {
-  const rad = raskKopiFor(f);
-  if (!rad) { spOpenFile(f); return; }
-  $("libPanel").classList.remove("open");
-  loadingEl.classList.add("open");
-  try {
-    loadingText.textContent = "Henter rask kopi av " + f.name + " …";
-    const bytes = await hentFraBiblioteket(rad.fil);
-    if (!bytes) throw new Error("Fikk ingen fil");
-    S.fileName = f.name;
-    S.lastBuffer = bytes;
-    setLoadFlag({ name: f.name, size: f.size, light: true, libId: f.id, lite: true });
-    await loadGlb(bytes);
-    afterLoad();
-    clearLoadFlag();
-    if (S.rememberModel) S.rememberModel({ kind: "lib", name: f.name, size: f.size, id: f.id });
-  } catch (err) {
-    clearLoadFlag();
-    if (confirm("Klarte ikke å åpne den raske kopien (" + err.message + ").\n\nÅpne originalmodellen i stedet?")) spOpenFile(f);
-  } finally {
-    loadingEl.classList.remove("open");
-  }
 }
 
 export async function spOpenFile(item) {
@@ -289,8 +241,6 @@ export async function spOpenFile(item) {
     await new Promise(r => setTimeout(r, 30));
     S.fileName = item.name;
     S.lastBuffer = buf;
-    // stempel fra selve IFC-en: brukes til å avgjøre om en rask kopi er fersk
-    S.liteKilde = stempelAv(meta) || stempelAv(item);
     setLoadFlag({ name: item.name, size: item.size, light: S.lightMode, libId: item.id });
     if (isGlb) await loadGlb(buf); else await loadModel(buf);
     afterLoad();
