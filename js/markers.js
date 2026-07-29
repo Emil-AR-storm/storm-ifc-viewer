@@ -1,7 +1,8 @@
 // 💬 Markeringer: lagring lokalt og deling via SharePoint.
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
-import { $, S, esc } from "./state.js";
-import { ANSATTE, PLANNER_DIR, PLANNER_PLAN_ID } from "./config.js";
+import { $, S, esc, loadingEl, loadingText } from "./state.js";
+import { ANSATTE } from "./config.js";
+import { fristTilISO, fullforOppgave, opprettOppgave, planUrl, plannerToken } from "./planner.js";
 import { setMode } from "./modes.js";
 import { camera, controls, frameHooks, markerGroup } from "./scene.js";
 import { GRAPH, SP, graphGet, spTokenSilent } from "./sharepoint.js";
@@ -152,6 +153,13 @@ function updateComment(c, patch) {
   if (patch.status !== undefined) {
     markerGroup.children.filter(s => s.userData.commentId == c.id).forEach(s => markerGroup.remove(s));
     addMarkerSprite(c);
+    // Løst markering → kryss av oppgaven i Planner også. Stille: har vi ikke
+    // tilgang der og da, lar vi det ligge i stedet for å avbryte brukeren.
+    if (patch.status === "Løst" && c.taskId) {
+      plannerToken(true)
+        .then(t => t && fullforOppgave(t, c.taskId))
+        .catch(err => console.warn("Kunne ikke fullføre Planner-oppgaven:", err.message));
+    }
   }
   persist();
   pushSharedComments();
@@ -213,14 +221,17 @@ export function openMarkerPopup(c) {
     '</div>' +
     (isOverdue(c) ? '<div class="mp-late">⚠️ Fristen er gått</div>' : "") +
     '<div class="mp-act"><button class="mp-go">🎯 Gå til</button>' +
-      '<button class="mp-task" title="Lag Teams Planner-oppgave">📋 Planner</button>' +
+      (c.taskId
+        ? '<button class="mp-open" title="Åpne oppgaven i Planner">📋 Se oppgave</button>'
+        : '<button class="mp-task" id="mp-task" title="Lag Teams Planner-oppgave">📋 Planner</button>') +
       '<button class="mp-del">🗑 Slett</button></div>';
   el.querySelector(".mp-x").onclick = closeMarkerPopup;
   el.querySelector(".mp-go").onclick = () => goToComment(c);
   el.querySelector(".mp-st").onchange = (e) => updateComment(c, { status: e.target.value });
   el.querySelector(".mp-ow").onchange = (e) => updateComment(c, { owner: e.target.value });
   el.querySelector(".mp-due").onchange = (e) => updateComment(c, { due: e.target.value });
-  el.querySelector(".mp-task").onclick = () => showPlannerCommand([c]);
+  if (el.querySelector(".mp-task")) el.querySelector(".mp-task").onclick = () => sendTilPlanner([c]);
+  if (el.querySelector(".mp-open")) el.querySelector(".mp-open").onclick = () => window.open(c.taskUrl || planUrl(), "_blank");
   el.querySelector(".mp-del").onclick = () => { deleteComment(c.id); closeMarkerPopup(); };
   el.classList.add("open");
   placePopup();
@@ -288,60 +299,80 @@ window.cancelComment = function() {
 };
 
 // ---------- 📋 Teams Planner ----------
-// Nettleseren kan ikke opprette Planner-oppgaver selv (viewer'en har bare
-// Sites/Files-tilgang), så vi lager den ferdige kommandoen slik em-flyten gjør.
+// Oppgaven opprettes rett fra nettleseren med brukerens egen Microsoft-innlogging.
 
-// Anførselstegn i PowerShell-argument dobles
-const pq = (s) => String(s == null ? "" : s).replace(/\s+/g, " ").replace(/"/g, '""').trim();
-
-export function plannerCommandFor(c, lenke) {
+export function oppgaveTittel(c) {
   const modell = (S.fileName || "modell").replace(/\.(ifc|glb)$/i, "");
   const kort = (c.text || "").replace(/\s+/g, " ").trim();
-  const tittel = "IFC " + modell + ": " + (kort.length > 60 ? kort.slice(0, 57) + "…" : kort);
-  const person = ANSATTE.find(a => a.navn === c.owner);
-  return "python markering_planner.py" +
-    ' --plan "' + PLANNER_PLAN_ID + '"' +
-    ' --oppgavenavn "' + pq(tittel) + '"' +
-    ' --frist "' + (c.due || "") + '"' +
-    ' --ansvarlig "' + pq(person ? person.id : (c.owner || "")) + '"' +
-    ' --status "' + statusOf(c) + '"' +
-    ' --modell "' + pq(S.fileName || "") + '"' +
-    ' --markering "' + c.id + '"' +
-    (lenke ? ' --lenke "' + lenke + '"' : "");
+  return "IFC " + modell + ": " + (kort.length > 60 ? kort.slice(0, 57) + "…" : kort);
 }
 
-async function showPlannerCommand(list) {
+export function oppgaveNotat(c, lenke) {
+  const l = [
+    "Markering i Storm IFC-Viewer",
+    "Modell: " + (S.fileName || "–"),
+    "Status: " + statusOf(c),
+    c.author ? "Satt av: " + c.author : "",
+    "",
+    (c.text || "").trim()
+  ];
+  if (lenke) { l.push("", "Åpne markeringen i modellen:", lenke); }
+  return l.filter((x, i) => x !== "" || i > 0).join("\n").trim();
+}
+
+// Tar en liste markeringer og lager én Planner-oppgave per markering
+async function sendTilPlanner(list) {
   const uten = list.filter(c => !c.due);
   if (uten.length) {
     alert((uten.length === 1 ? "Markeringen mangler frist." : uten.length + " markeringer mangler frist.") +
       " Sett frist først – Planner-oppgaven trenger en dato.");
     return;
   }
-  const lines = [];
-  for (const c of list) {
-    let lenke = "";
-    try { if (S.markerLink) lenke = await S.markerLink(c); } catch(_) {}
-    lines.push(plannerCommandFor(c, lenke));
+  const alt = list.filter(c => c.taskId);
+  if (alt.length && !confirm(alt.length === 1
+      ? "Denne markeringen har allerede en Planner-oppgave. Lage en ny?"
+      : alt.length + " av markeringene har allerede oppgaver. Lage nye for alle?")) return;
+
+  const btnIds = ["mp-task", "cmAllTasks"];
+  btnIds.forEach(id => { const b = $(id); if (b) b.disabled = true; });   // hindrer doble oppgaver
+  loadingText.textContent = "Lager Planner-oppgave …";
+  loadingEl.classList.add("open");
+  try {
+    const token = await plannerToken();
+    if (!token) return;   // på vei til samtykke, eller brukeren avbrøt
+    let laget = 0;
+    for (const c of list) {
+      loadingText.textContent = "Lager Planner-oppgave " + (laget + 1) + " av " + list.length + " …";
+      let lenke = "";
+      try { if (S.markerLink) lenke = await S.markerLink(c); } catch(_) {}
+      const person = ANSATTE.find(a => a.navn === c.owner);
+      const res = await opprettOppgave(token, {
+        title: oppgaveTittel(c),
+        dueISO: fristTilISO(c.due),
+        description: oppgaveNotat(c, lenke),
+        assignees: person ? [person.id] : []
+      });
+      c.taskId = res.id;
+      c.taskUrl = res.url;
+      laget++;
+    }
+    persist();
+    pushSharedComments();
+    renderCommentList();
+    if (popFor) openMarkerPopup(popFor);
+    loadingEl.classList.remove("open");
+    if (confirm("✅ " + laget + (laget === 1 ? " oppgave" : " oppgaver") +
+        " opprettet i Planner.\n\nÅpne Planner-tavla nå?")) window.open(planUrl(), "_blank");
+  } catch (err) {
+    loadingEl.classList.remove("open");
+    const m = /403|Forbidden/.test(err.message)
+      ? "Planner nektet. Vanligste årsak: den ansvarlige er ikke medlem av gruppen som eier planen."
+      : err.message;
+    alert("Klarte ikke å lage Planner-oppgave: " + m);
+  } finally {
+    loadingEl.classList.remove("open");
+    btnIds.forEach(id => { const b = $(id); if (b) b.disabled = false; });
   }
-  const cmd = 'cd "' + PLANNER_DIR + '"\r\n' + lines.join("\r\n");
-  const body = $("commentBody");
-  $("commentPanel").classList.add("open");
-  body.innerHTML =
-    '<div class="prop-actions"><button id="cmTilbake">← Tilbake til markeringer</button>' +
-      '<button id="cmCopy" class="primary">📋 Kopier kommando</button></div>' +
-    '<p style="color:var(--muted); font-size:11px; margin:0 0 8px">Lim inn i PowerShell på din maskin. ' +
-      'Oppgaven havner i Planner med frist, ansvarlig og en ⛓-lenke rett til markeringen i modellen.</p>' +
-    '<textarea id="cmCmd" readonly rows="' + Math.min(14, 3 + lines.length * 2) + '" style="width:100%; font-size:11px; ' +
-      'background:var(--panel2); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px">' +
-      esc(cmd) + '</textarea>';
-  $("cmTilbake").onclick = renderCommentList;
-  $("cmCopy").onclick = async () => {
-    try {
-      await navigator.clipboard.writeText(cmd);
-      $("cmCopy").textContent = "✅ Kopiert";
-      setTimeout(() => { if ($("cmCopy")) $("cmCopy").textContent = "📋 Kopier kommando"; }, 1500);
-    } catch(_) { $("cmCmd").select(); alert("Trykk Ctrl+C for å kopiere."); }
-  };
 }
 
 let listFilter = "alle";
@@ -367,10 +398,11 @@ export function renderCommentList() {
       Object.keys(STATUS).map(k => knapp(k, k)).join("") + '</div>';
 
   const vis = S.comments.filter(c => listFilter === "alle" || statusOf(c) === listFilter);
-  const apne = S.comments.filter(c => statusOf(c) !== "Løst" && c.due);
+  // uløste med frist, som ikke alt har fått en oppgave
+  const apne = S.comments.filter(c => statusOf(c) !== "Løst" && c.due && !c.taskId);
   if (apne.length > 1) {
-    html += '<div class="prop-actions"><button id="cmAllTasks">📋 Planner-kommandoer for ' +
-      apne.length + ' uløste</button></div>';
+    html += '<div class="prop-actions"><button id="cmAllTasks">📋 Lag ' +
+      apne.length + ' Planner-oppgaver</button></div>';
   }
 
   html += vis.map(c => {
@@ -384,6 +416,7 @@ export function renderCommentList() {
         (c.owner ? ' · ' + esc(c.owner) : "") +
         (c.due ? ' · frist ' + esc(c.due.split("-").reverse().join(".")) : "") +
         (isOverdue(c) ? ' <span style="color:#ef4444">⚠️ gått</span>' : "") +
+        (c.taskId ? ' · <span title="Har en Planner-oppgave">📋</span>' : "") +
       '</span></div></div>';
   }).join("") ||
     '<p style="color:var(--muted)">Ingen markeringer med status «' + esc(listFilter) + '».</p>';
@@ -392,7 +425,7 @@ export function renderCommentList() {
   body.querySelectorAll("button[data-flt]").forEach(b => {
     b.onclick = () => { listFilter = b.dataset.flt; renderCommentList(); };
   });
-  if ($("cmAllTasks")) $("cmAllTasks").onclick = () => showPlannerCommand(apne);
+  if ($("cmAllTasks")) $("cmAllTasks").onclick = () => sendTilPlanner(apne);
   body.querySelectorAll(".comment").forEach(el => {
     el.addEventListener("click", (e) => {
       const delId = e.target.getAttribute("data-del");

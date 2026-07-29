@@ -17,10 +17,10 @@ export const ANSATTE = [
 // ---------- Planner ----------
 // Planen markeringsoppgaver skal havne i. Hentet fra adressen til planen:
 // planner.cloud.microsoft/webui/plan/<PLAN_ID>/view/board
-// Denne sendes med som --plan i kommandoen, så det er bare her den står.
 export const PLANNER_PLAN_ID = "cy4sxJMQE0m6sgNvqhoLbpgAEPML";
 
-// Mappa der markering_planner.py ligger på Emils maskin. Brukes bare til å bygge
-// den ferdige copy-paste-kommandoen.
-export const PLANNER_DIR =
-  "C:\\Users\\emila\\OneDrive\\Dokumenter\\Claude\\Projects\\Prosjekt oversikt\\ifc-markeringer";
+// Kolonnen (bucket) på Planner-tavla. Opprettes automatisk hvis den mangler.
+export const PLANNER_BUCKET = "IFC-markeringer";
+
+// NB: alle som skal kunne få en oppgave må være medlem av gruppen som eier
+// planen – Planner nekter å tilordne oppgaver til folk utenfor gruppen.

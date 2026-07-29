@@ -35,42 +35,54 @@ async function msalInit() {
   }
   // Er vi logget inn? Hent brukerens personlige oppsett fra SharePoint.
   if (S.msalApp.getActiveAccount() && S.onSignedIn) S.onSignedIn();
-  // Kom vi nettopp tilbake fra innlogging? Åpne biblioteket igjen.
-  if (S.msalApp.getActiveAccount() && sessionStorage.getItem("storm-ifc-open-lib")) {
-    sessionStorage.removeItem("storm-ifc-open-lib");
-    openLibrary();
+  // Kom vi nettopp tilbake fra innlogging? Fortsett der brukeren var.
+  if (S.msalApp.getActiveAccount()) {
+    const after = sessionStorage.getItem("storm-ifc-open-lib");
+    if (after) {
+      sessionStorage.removeItem("storm-ifc-open-lib");
+      if (after === "markeringer") $("commentPanel").classList.add("open");
+      else openLibrary();
+    }
   }
   return S.msalApp;
+}
+
+// Token for et vilkårlig sett Graph-tillatelser. Egne scope-sett gir
+// «inkrementell samtykke»: brukeren spør bare om Planner-tilgang den dagen
+// hun faktisk lager en Planner-oppgave.
+//   silent: true  → gir null i stedet for å sende brukeren til innlogging
+//   after: "lib" | "markeringer" → hva som skal åpnes når vi kommer tilbake
+export async function graphToken(scopes, opts) {
+  const o = opts || {};
+  await msalInit();
+  const account = S.msalApp.getActiveAccount();
+  if (!account) {
+    if (o.silent) return null;
+    sessionStorage.setItem("storm-ifc-open-lib", o.after || "lib");
+    await S.msalApp.loginRedirect({ scopes });
+    return null;
+  }
+  try {
+    return (await S.msalApp.acquireTokenSilent({ scopes, account })).accessToken;
+  } catch (_) {
+    if (o.silent) return null;
+    if (o.confirmFirst && !confirm(o.confirmFirst)) return null;
+    sessionStorage.setItem("storm-ifc-open-lib", o.after || "lib");
+    await S.msalApp.acquireTokenRedirect({ scopes });
+    return null;
+  }
 }
 
 if (!SP.clientId.startsWith("FYLL")) msalInit().catch(() => {});
 
 async function spToken() {
-  await msalInit();
-  const account = S.msalApp.getActiveAccount();
-  if (!account) {
-    sessionStorage.setItem("storm-ifc-open-lib", "1");
-    await S.msalApp.loginRedirect({ scopes: SP_SCOPES });
-    return null;
-  }
-  try {
-    return (await S.msalApp.acquireTokenSilent({ scopes: SP_SCOPES, account })).accessToken;
-  } catch (_) {
-    sessionStorage.setItem("storm-ifc-open-lib", "1");
-    await S.msalApp.loginRedirect({ scopes: SP_SCOPES });
-    return null;
-  }
+  return graphToken(SP_SCOPES, { after: "lib" });
 }
 
 // Stille token-henting: brukes av bakgrunns-synk (delte markeringer).
 // Sender ALDRI brukeren til innlogging – gir null hvis vi ikke er logget inn.
 export async function spTokenSilent() {
-  try {
-    await msalInit();
-    const account = S.msalApp.getActiveAccount();
-    if (!account) return null;
-    return (await S.msalApp.acquireTokenSilent({ scopes: SP_SCOPES, account })).accessToken;
-  } catch(_) { return null; }
+  return graphToken(SP_SCOPES, { silent: true });
 }
 
 export async function graphGet(path, token) {
