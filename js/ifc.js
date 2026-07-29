@@ -18,8 +18,10 @@ ifcApi.SetWasmPath("https://cdn.jsdelivr.net/npm/web-ifc@0.0.57/", true);
 
 export const ifcReady = ifcApi.Init();
 
-// Åpner en fil fra disk – brukes både av 📂 Åpne-knappen og av dra-og-slipp
-export async function openLocalFile(file) {
+// Åpner en fil fra disk – brukes både av 📂 Åpne-knappen og av dra-og-slipp.
+// `handle` er et FileSystemFileHandle når nettleseren gir oss et; det lagres av
+// recent.js slik at «▶ Fortsett med …» kan lese filen på nytt senere.
+export async function openLocalFile(file, handle) {
   if (!file) return;
   if (!/\.(ifc|glb)$/i.test(file.name)) {
     alert("Dette ser ikke ut som en IFC- eller lett kopi-fil (" + file.name + "). Velg en fil som slutter på .ifc eller .glb");
@@ -41,6 +43,7 @@ export async function openLocalFile(file) {
     if (isGlb) await loadGlb(buffer); else loadModel(buffer);
     afterLoad();
     clearLoadFlag();
+    if (S.rememberModel) S.rememberModel({ kind: "local", name: file.name, size: file.size, handle: handle || null });
   } catch (err) {
     console.error(err);
     clearLoadFlag();
@@ -59,6 +62,34 @@ document.getElementById("fileInput").addEventListener("change", async (e) => {
   const file = e.target.files[0];
   await openLocalFile(file);
   e.target.value = "";
+});
+
+// 📂 Åpne: bruker showOpenFilePicker der den finnes, så vi får et filhåndtak og
+// kan tilby «▶ Fortsett med …» neste gang. Ellers den vanlige filvelgeren.
+export async function pickFile() {
+  if (!window.showOpenFilePicker) { $("fileInput").click(); return; }
+  let handle = null;
+  try {
+    [handle] = await window.showOpenFilePicker({
+      id: "storm-ifc",                 // nettleseren husker sist brukte mappe
+      multiple: false,
+      types: [{ description: "IFC-modell eller lett kopi", accept: { "application/octet-stream": [".ifc", ".glb"] } }]
+    });
+  } catch (err) {
+    if (err && err.name === "AbortError") return;   // brukeren avbrøt
+    $("fileInput").click();                          // noe uventet – fall tilbake
+    return;
+  }
+  try {
+    await openLocalFile(await handle.getFile(), handle);
+  } catch (err) {
+    alert("Klarte ikke å lese filen: " + err.message);
+  }
+}
+
+["btnOpen", "btnOpenSplash"].forEach(id => {
+  const b = $(id);
+  if (b) b.addEventListener("click", pickFile);
 });
 
 // ---------- Dra og slipp ----------
@@ -83,7 +114,16 @@ document.getElementById("fileInput").addEventListener("change", async (e) => {
   window.addEventListener("drop", async (e) => {
     if (!e.dataTransfer || !e.dataTransfer.files.length) return;
     e.preventDefault(); depth = 0; show(false);
-    await openLocalFile(e.dataTransfer.files[0]);
+    // Ta med filhåndtaket hvis nettleseren tilbyr det (gir «▶ Fortsett med …»)
+    let handle = null;
+    try {
+      const item = e.dataTransfer.items && e.dataTransfer.items[0];
+      if (item && item.getAsFileSystemHandle) {
+        const h = await item.getAsFileSystemHandle();
+        if (h && h.kind === "file") handle = h;
+      }
+    } catch(_) {}
+    await openLocalFile(e.dataTransfer.files[0], handle);
   });
 })();
 

@@ -17,6 +17,7 @@ import "./modes.js";
 import "./sharepoint.js";
 import "./ui.js";
 import "./compare.js";
+import "./recent.js";
 import "./usersync.js";   // personlig oppsett fra SharePoint – må lastes sist
 
 // JavaScript kjører – skjul advarselen
