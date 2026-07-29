@@ -23,24 +23,79 @@ export const DEFAULT_SETTINGS = {
 
 export const DEFAULT_APPEAR = { typeColorsOn: false, ghost: false, colors: {}, hiddenTypes: [] };
 
-export const SET_KEY = "storm-ifc-settings";
-export const APPEAR_KEY = "storm-ifc-utseende";
+// ---------- Alt oppsett i én versjonert nøkkel ----------
+// Før lå dette spredt på åtte storm-ifc-*-nøkler. Nå ligger alt i storm-ifc-prefs.
+// Gamle nøkler leses én gang ved oppstart og slettes deretter.
+export const PREFS_KEY = "storm-ifc-prefs";
+export const PREFS_VERSION = 2;
 
-// ---------- Innstillinger og utseende, lest fra localStorage ----------
-S.settings = Object.assign({}, DEFAULT_SETTINGS);
-try {
-  const raw = JSON.parse(localStorage.getItem(SET_KEY) || "{}");
-  S.settings = Object.assign({}, DEFAULT_SETTINGS, raw);
-  S.settings.keys = Object.assign({}, DEFAULT_KEYS, raw.keys || {});
-} catch(_) {}
+const LEGACY_KEYS = [
+  "storm-ifc-settings", "storm-ifc-utseende", "storm-ifc-light", "storm-ifc-snap",
+  "storm-ifc-snappx", "storm-ifc-axisfont", "storm-ifc-mini", "storm-ifc-bg",
+  "storm-ifc-prefs-updated"
+];
 
-S.appear = Object.assign({}, DEFAULT_APPEAR);
-try {
-  const raw = JSON.parse(localStorage.getItem(APPEAR_KEY) || "{}");
-  S.appear = Object.assign({}, DEFAULT_APPEAR, raw);
-  S.appear.colors = raw.colors || {};
-  S.appear.hiddenTypes = raw.hiddenTypes || [];
-} catch(_) {}
+function lsGet(k) { try { return localStorage.getItem(k); } catch(_) { return null; } }
+function lsJson(k) { try { return JSON.parse(lsGet(k) || "null"); } catch(_) { return null; } }
+
+function readPrefs() {
+  const p = lsJson(PREFS_KEY);
+  if (p && typeof p === "object") return p;
+
+  // Migrasjon fra de gamle nøklene (samme standardverdier som før)
+  const mig = {
+    v: PREFS_VERSION,
+    updated: lsGet("storm-ifc-prefs-updated") || "",
+    settings: lsJson("storm-ifc-settings") || {},
+    appear: lsJson("storm-ifc-utseende") || {},
+    bg: lsGet("storm-ifc-bg") || null,
+    axisFont: parseFloat(lsGet("storm-ifc-axisfont")) || 1,
+    snapOn: lsGet("storm-ifc-snap") !== "0",
+    snapPx: parseFloat(lsGet("storm-ifc-snappx")) || 18,
+    miniOn: lsGet("storm-ifc-mini") !== "0",
+    lightMode: lsGet("storm-ifc-light") === "1"
+  };
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify(mig));
+    LEGACY_KEYS.forEach(k => localStorage.removeItem(k));
+  } catch(_) {}
+  return mig;
+}
+
+const _prefs = readPrefs();
+
+// Alt som skal følge brukeren, samlet i ett objekt
+export function collectPrefs() {
+  return {
+    v: PREFS_VERSION,
+    updated: S.prefsUpdated || "",
+    settings: S.settings,
+    appear: S.appear,
+    bg: S.bg || null,
+    axisFont: S.axisFontF,
+    snapOn: S.snapOn,
+    snapPx: S.snapPx,
+    miniOn: S.miniOn,
+    lightMode: S.lightMode
+  };
+}
+
+// Skriver hele oppsettet. Kalles av alle som endrer noe lagret.
+export function writePrefs() {
+  try { localStorage.setItem(PREFS_KEY, JSON.stringify(collectPrefs())); } catch(_) {}
+}
+
+S.prefsUpdated = _prefs.updated || "";
+
+// ---------- Innstillinger og utseende ----------
+S.settings = Object.assign({}, DEFAULT_SETTINGS, _prefs.settings || {});
+S.settings.keys = Object.assign({}, DEFAULT_KEYS, (_prefs.settings && _prefs.settings.keys) || {});
+
+S.appear = Object.assign({}, DEFAULT_APPEAR, _prefs.appear || {});
+S.appear.colors = (_prefs.appear && _prefs.appear.colors) || {};
+S.appear.hiddenTypes = (_prefs.appear && _prefs.appear.hiddenTypes) || [];
+
+S.bg = _prefs.bg || null;   // valgt bakgrunnsfarge, null = standard
 
 // ---------- Modellen som er åpen ----------
 S.modelID = null;
@@ -55,15 +110,15 @@ S.qtyCache = null;
 S.lastLoadInfo = null;
 
 // Lastemodus: full, 🪶 lav kvalitet og 💾 lett kopi (.glb)
-S.lightMode = localStorage.getItem("storm-ifc-light") === "1";
+S.lightMode = _prefs.lightMode === true;
 S.lightLoaded = false;
 S.glbActive = false; S.glbProps = null; S.glbColumns = null; S.glbStoreys = null;
 
 // ---------- Verktøy og modus ----------
 S.mode = null;            // null | marker | measure | kote
 S.measureFirst = null;
-S.snapOn = localStorage.getItem("storm-ifc-snap") !== "0";
-S.snapPx = parseFloat(localStorage.getItem("storm-ifc-snappx")) || 18;
+S.snapOn = _prefs.snapOn !== false;
+S.snapPx = Number(_prefs.snapPx) || 18;
 S._snapPrevT = 0;
 S.downPos = null;
 S.keyWaitFor = null;
@@ -97,11 +152,11 @@ S.typeColorsOn = false;
 S.axesOn = false; S.axesBuilt = false;
 S.axisSources = null;
 S.axisSelection = new Set();
-S.axisFontF = parseFloat(localStorage.getItem("storm-ifc-axisfont")) || 1;
+S.axisFontF = Number(_prefs.axisFont) || 1;
 
 // ---------- Minikart ----------
 S.miniInfo = null; S.miniBase = null;
-S.miniOn = localStorage.getItem("storm-ifc-mini") !== "0";
+S.miniOn = _prefs.miniOn !== false;
 
 // ---------- Markeringer ----------
 S.comments = [];

@@ -2,13 +2,12 @@
 // ikke nettleseren. Én liten JSON-fil per person i IFC-modeller/Innstillinger.
 // localStorage brukes fortsatt som hurtigbuffer, så viewer'en starter umiddelbart
 // og virker fullt ut uten innlogging.
-import { DEFAULT_APPEAR, DEFAULT_KEYS, DEFAULT_SETTINGS, S } from "./state.js";
+import { DEFAULT_APPEAR, DEFAULT_KEYS, DEFAULT_SETTINGS, PREFS_VERSION, S, collectPrefs, writePrefs } from "./state.js";
 import { GRAPH, SP, graphGet, spTokenSilent } from "./sharepoint.js";
 import { saveAppear, saveSettings } from "./prefs.js";
 import { applyMiniSize, setMini } from "./minimap.js";
 import { applyAxisFont } from "./axes.js";
 
-const PREFS_VERSION = 1;
 let lastPushed = "";   // hindrer at vi skriver samme innhold flere ganger
 let pushTimer = null;
 
@@ -43,20 +42,12 @@ async function ensureFolder(token, sid) {
   }).catch(() => {});
 }
 
-// Alt som skal følge brukeren, samlet i ett objekt
-function collectPrefs() {
-  return {
+// Samme oppsett som lagres lokalt (state.js), med versjon og tidsstempel på toppen
+function cloudPrefs() {
+  return Object.assign({}, collectPrefs(), {
     version: PREFS_VERSION,
-    updated: new Date().toISOString(),
-    settings: S.settings,
-    appear: S.appear,
-    bg: localStorage.getItem("storm-ifc-bg") || null,
-    axisFont: S.axisFontF,
-    snapOn: S.snapOn,
-    snapPx: S.snapPx,
-    miniOn: S.miniOn,
-    lightMode: S.lightMode
-  };
+    updated: S.prefsUpdated || new Date().toISOString()
+  });
 }
 
 // Legger et hentet oppsett på plass i kjørende viewer
@@ -75,24 +66,19 @@ function applyPrefs(p) {
     saveAppear();
   }
   if (p.bg) {
-    try { localStorage.setItem("storm-ifc-bg", p.bg); } catch (_) {}
+    S.bg = p.bg;
     if (S.scene) S.scene.background.set(p.bg);
   }
   if (typeof p.axisFont === "number") {
     S.axisFontF = p.axisFont;
-    try { localStorage.setItem("storm-ifc-axisfont", p.axisFont); } catch (_) {}
     try { applyAxisFont(); } catch (_) {}
   }
-  if (typeof p.snapOn === "boolean") {
-    S.snapOn = p.snapOn;
-    try { localStorage.setItem("storm-ifc-snap", p.snapOn ? "1" : "0"); } catch (_) {}
-  }
-  if (typeof p.snapPx === "number") {
-    S.snapPx = p.snapPx;
-    try { localStorage.setItem("storm-ifc-snappx", p.snapPx); } catch (_) {}
-  }
+  if (typeof p.snapOn === "boolean") S.snapOn = p.snapOn;
+  if (typeof p.snapPx === "number") S.snapPx = p.snapPx;
   if (typeof p.miniOn === "boolean") setMini(p.miniOn);
+  S.prefsUpdated = p.updated || S.prefsUpdated;
   S.prefsSyncedAt = p.updated || null;
+  writePrefs();   // alt havner i den ene lokale nøkkelen
 }
 
 // Hentes ved innlogging. Nyeste versjon vinner: har skya et nyere tidsstempel
@@ -109,10 +95,9 @@ export async function pullUserPrefs() {
     if (r.status === 404) { S.prefsCloudOK = true; pushUserPrefs(true); return; }
     if (!r.ok) throw new Error("Graph " + r.status);
     const remote = await r.json();
-    const localStamp = localStorage.getItem("storm-ifc-prefs-updated") || "";
+    const localStamp = S.prefsUpdated || "";
     if (!localStamp || !remote.updated || remote.updated >= localStamp) {
       applyPrefs(remote);
-      try { localStorage.setItem("storm-ifc-prefs-updated", remote.updated || ""); } catch (_) {}
       lastPushed = JSON.stringify(Object.assign({}, remote, { updated: null }));
     } else {
       pushUserPrefs(true); // lokalt er nyere – send det opp
@@ -134,7 +119,7 @@ export function pushUserPrefs(now) {
 async function doPush() {
   const name = prefsFileName();
   if (!name) return;
-  const data = collectPrefs();
+  const data = cloudPrefs();
   const fingerprint = JSON.stringify(Object.assign({}, data, { updated: null }));
   if (fingerprint === lastPushed) return; // ingen reell endring
   const token = await spTokenSilent();
@@ -151,7 +136,8 @@ async function doPush() {
     if (!r.ok) throw new Error("Graph " + r.status);
     lastPushed = fingerprint;
     S.prefsCloudOK = true;
-    try { localStorage.setItem("storm-ifc-prefs-updated", data.updated); } catch (_) {}
+    S.prefsUpdated = data.updated;
+    writePrefs();
   } catch (err) {
     S.prefsCloudOK = false;
     console.warn("Kunne ikke lagre personlig oppsett:", err.message);
@@ -160,7 +146,8 @@ async function doPush() {
 
 // Alle steder som lagrer lokalt, kaller denne – da havner det også i skya.
 S.syncPrefs = () => {
-  try { localStorage.setItem("storm-ifc-prefs-updated", new Date().toISOString()); } catch (_) {}
+  S.prefsUpdated = new Date().toISOString();
+  writePrefs();
   pushUserPrefs();
 };
 

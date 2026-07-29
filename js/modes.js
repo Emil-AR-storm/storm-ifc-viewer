@@ -1,5 +1,5 @@
 // Modus-håndtering (markering / mål / kote) og den nedre kontrollinja.
-import { $, S } from "./state.js";
+import { $, S, writePrefs } from "./state.js";
 import { hideSnapPreview } from "./measure.js";
 import { koteGroup, measureGroup } from "./scene.js";
 
@@ -34,12 +34,12 @@ export function updateModeBar() {
     $("mbSnap").onclick = () => {
       S.snapOn = !S.snapOn;
       $("mbSnap").classList.toggle("active", S.snapOn);
-      try { localStorage.setItem("storm-ifc-snap", S.snapOn ? "1" : "0"); } catch(_){}
+      writePrefs();
       if (S.syncPrefs) S.syncPrefs();
     };
     $("mbSnapPx").oninput = (e) => {
       S.snapPx = Number(e.target.value);
-      try { localStorage.setItem("storm-ifc-snappx", S.snapPx); } catch(_){}
+      writePrefs();
       if (S.syncPrefs) S.syncPrefs();
     };
     $("mbClear").onclick = () => { measureGroup.clear(); S.measureFirst = null; };

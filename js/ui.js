@@ -1,5 +1,5 @@
 // ⚙ Innstillingsmeny og hurtigtaster.
-import { $, DEFAULT_APPEAR, DEFAULT_KEYS, DEFAULT_SETTINGS, S, esc } from "./state.js";
+import { $, DEFAULT_APPEAR, DEFAULT_KEYS, DEFAULT_SETTINGS, S, esc, writePrefs } from "./state.js";
 import { applyAxisFont } from "./axes.js";
 import { showClipBar, stopFacePick } from "./clip.js";
 import { DEFAULT_BG, resetColors } from "./display.js";
@@ -123,12 +123,12 @@ function renderSettings() {
   };
   $("stBg").oninput = (e) => {
     scene.background.set(e.target.value);
-    try { localStorage.setItem("storm-ifc-bg", e.target.value); } catch(_) {}
+    saveBg(e.target.value);
   };
   $("stLight").onchange = () => $("btnLight").click();
   $("stAxFont").oninput = (e) => {
     S.axisFontF = e.target.value / 100;
-    try { localStorage.setItem("storm-ifc-axisfont", S.axisFontF); } catch(_) {}
+    writePrefs();
     if (S.syncPrefs) S.syncPrefs();
     applyAxisFont();
   };
@@ -147,12 +147,8 @@ function renderSettings() {
     applyMiniSize();
     // utseende, snap, aksefont og bakgrunn tilbake til standard
     S.axisFontF = 1;
-    try {
-      localStorage.setItem("storm-ifc-axisfont", "1");
-      localStorage.setItem("storm-ifc-snap", "1");
-      localStorage.setItem("storm-ifc-snappx", "18");
-    } catch(_) {}
     S.snapOn = true; S.snapPx = 18;
+    writePrefs();
     applyAxisFont();
     setMini(true);
     if (S.typeInfo) resetColors(); else { scene.background.set(DEFAULT_BG); saveBg(DEFAULT_BG); S.appear = Object.assign({}, DEFAULT_APPEAR, { colors: {}, hiddenTypes: [] }); saveAppear(); }
@@ -161,10 +157,7 @@ function renderSettings() {
 }
 
 // Husk bakgrunnsfargen mellom økter
-try {
-  const savedBg = localStorage.getItem("storm-ifc-bg");
-  if (savedBg) scene.background.set(savedBg);
-} catch(_) {}
+try { if (S.bg) scene.background.set(S.bg); } catch(_) {}
 
 window.addEventListener("keydown", (e) => {
   // venter vi på ny hurtigtast?
