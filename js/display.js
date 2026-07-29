@@ -10,15 +10,18 @@ import { scene } from "./scene.js";
 
 const ghostCache = new Map();
 
-$("btnGhost").addEventListener("click", () => {
+// silent = ikke lagre i brukerens eget oppsett (brukes av delte visningslenker)
+export function setGhost(on, silent) {
   if (!S.modelGroup) return;
   clearSelection();
   $("propPanel").classList.remove("open");
-  S.ghostOn = !S.ghostOn;
+  S.ghostOn = on;
   $("btnGhost").classList.toggle("active", S.ghostOn);
-  S.appear.ghost = S.ghostOn;
-  if (S.ghostOn) S.appear.typeColorsOn = false;
-  saveAppear();
+  if (!silent) {
+    S.appear.ghost = S.ghostOn;
+    if (S.ghostOn) S.appear.typeColorsOn = false;
+    saveAppear();
+  }
   S.modelGroup.children.forEach(m => {
     if (S.ghostOn) {
       if (!ghostCache.has(m.userData.origMat)) {
@@ -31,7 +34,9 @@ $("btnGhost").addEventListener("click", () => {
       m.material = m.userData.origMat;
     }
   });
-});
+}
+
+$("btnGhost").addEventListener("click", () => setGhost(!S.ghostOn));
 
 // ---------- Skjul / vis ----------
 export const hiddenIDs = new Set();
@@ -149,6 +154,7 @@ $("btnColors").addEventListener("click", () => {
   $("searchPanel").classList.remove("open");
   $("comparePanel").classList.remove("open");
   $("clipPanel").classList.remove("open");
+  $("sharePanel").classList.remove("open");
   panel.classList.add("open");
 });
 
