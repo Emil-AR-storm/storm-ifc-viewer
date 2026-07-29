@@ -167,16 +167,6 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
 #setBody summary::before { content: "▸ "; color: var(--muted); }
 #setBody details[open] summary::before { content: "▾ "; }
 
-/* ⚡ Rask kopi i modell-lista */
-.lite-badge { color: #fbbf24; }
-.lib-item { position: relative; }
-.lib-item .lib-lite {
-  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
-  padding: 4px 8px; font-size: 11px;
-}
-.lib-item:has(.lib-lite) .n,
-.lib-item:has(.lib-lite) .m { padding-right: 100px; }
-
 /* 📦 Snitt-boks: seks skyvere */
 .clip-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
 .clip-row .n { color: var(--muted); min-width: 92px; font-size: 12px; }
