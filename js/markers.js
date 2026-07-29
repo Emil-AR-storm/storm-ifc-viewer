@@ -5,7 +5,7 @@ import { ANSATTE } from "./config.js";
 import { fristTilISO, fullforOppgave, opprettOppgave, planUrl, plannerToken } from "./planner.js";
 import { setMode } from "./modes.js";
 import { camera, controls, frameHooks, markerGroup } from "./scene.js";
-import { GRAPH, SP, graphGet, spTokenSilent } from "./sharepoint.js";
+import { GRAPH, SP, authHeaders, graphGet, spTokenSilent } from "./sharepoint.js";
 // ⛓-lenka til en markering hentes via S.markerLink (settes av share.js).
 // Direkte import ville gitt sirkel: markers → share → display → ifc → markers.
 
@@ -65,7 +65,7 @@ async function syncSharedComments() {
   try {
     const sid = await sharedSiteId(token);
     const r = await fetch(GRAPH + "/sites/" + sid + sharedFilePath() + ":/content",
-      { headers: { Authorization: "Bearer " + token } });
+      { headers: authHeaders(token, null, "markeringer") });
     let remote = [];
     if (r.ok) { const d = await r.json(); if (Array.isArray(d)) remote = d; }
     else if (r.status !== 404) throw new Error("Graph " + r.status);
@@ -93,7 +93,7 @@ async function pushSharedComments() {
     if (syncedFile() !== forFile) return;
     const r = await fetch(GRAPH + "/sites/" + sid + sharedFilePath() + ":/content", {
       method: "PUT",
-      headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+      headers: authHeaders(token, { "Content-Type": "application/json" }, "markeringer"),
       body
     });
     S.sharedOK = r.ok;

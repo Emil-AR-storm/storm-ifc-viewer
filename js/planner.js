@@ -8,7 +8,7 @@
 // Se OPPLASTING.md for oppsettet.
 import { S } from "./state.js";
 import { PLANNER_BUCKET, PLANNER_PLAN_ID } from "./config.js";
-import { GRAPH, graphToken } from "./sharepoint.js";
+import { GRAPH, authHeaders, graphToken } from "./sharepoint.js";
 
 export const PLANNER_SCOPES = ["Tasks.ReadWrite"];
 
@@ -29,7 +29,7 @@ export async function plannerToken(silent) {
 // tilfeldige feilmeldinger som ser ut som noe annet.
 async function gFetch(token, path, opts) {
   const o = opts || {};
-  const headers = Object.assign({ Authorization: "Bearer " + token }, o.headers || {});
+  const headers = authHeaders(token, o.headers, "Planner");
   if (o.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
   for (let forsok = 0; ; forsok++) {
     const r = await fetch(GRAPH + path, Object.assign({}, o, { headers }));
