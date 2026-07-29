@@ -64,7 +64,16 @@ export async function graphToken(scopes, opts) {
     return null;
   }
   try {
-    return (await S.msalApp.acquireTokenSilent({ scopes, account })).accessToken;
+    const t = (await S.msalApp.acquireTokenSilent({ scopes, account })).accessToken;
+    // MSAL kan svare med tom streng når en hurtigbufret oppføring er utløpt.
+    // Da må vi be om nytt token, ikke sende et tomt.
+    if (t && String(t).trim()) return t;
+    console.warn("MSAL ga tomt token for " + scopes.join(", ") + " – ber om nytt");
+    if (o.silent) return null;
+    if (o.confirmFirst && !confirm(o.confirmFirst)) return null;
+    sessionStorage.setItem("storm-ifc-open-lib", o.after || "lib");
+    await S.msalApp.acquireTokenRedirect({ scopes });
+    return null;
   } catch (_) {
     if (o.silent) return null;
     if (o.confirmFirst && !confirm(o.confirmFirst)) return null;
@@ -86,9 +95,32 @@ export async function spTokenSilent() {
   return graphToken(SP_SCOPES, { silent: true });
 }
 
+// Alle Graph-kall skal gå gjennom denne. Sender vi et tomt token, svarer Graph
+// «InvalidAuthenticationToken: Access token is empty» – en ubrukelig melding for
+// den som står der. Vi stopper før det, sier hva som mangler, og logger hvilken
+// forespørsel det gjaldt.
+export const IKKE_INNLOGGET =
+  "Du er ikke innlogget mot SharePoint (eller innloggingen er utløpt). " +
+  "Åpne 📚 Biblioteket og logg inn, så prøv igjen.";
+
+export function authHeaders(token, ekstra, hva) {
+  if (!token || !String(token).trim()) {
+    console.warn("Graph-kall stoppet uten token" + (hva ? " (" + hva + ")" : ""));
+    throw new Error(IKKE_INNLOGGET);
+  }
+  return Object.assign({ Authorization: "Bearer " + token }, ekstra || {});
+}
+
 export async function graphGet(path, token) {
-  const r = await fetch(GRAPH + path, { headers: { Authorization: "Bearer " + token } });
-  if (!r.ok) throw new Error("Graph " + r.status + ": " + (await r.text()).slice(0, 200));
+  const r = await fetch(GRAPH + path, { headers: authHeaders(token, null, path) });
+  if (!r.ok) {
+    const kropp = (await r.text()).slice(0, 200);
+    if (r.status === 401 || /InvalidAuthenticationToken/.test(kropp)) {
+      console.warn("Graph 401 på " + path);
+      throw new Error(IKKE_INNLOGGET);
+    }
+    throw new Error("Graph " + r.status + ": " + kropp);
+  }
   return r.json();
 }
 

@@ -14,7 +14,7 @@
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
 import { S, loadingText, statusEl } from "./state.js";
 import { kall, metaFor } from "./ifcrpc.js";
-import { GRAPH, SP, graphGet, spTokenSilent } from "./sharepoint.js";
+import { GRAPH, IKKE_INNLOGGET, SP, authHeaders, graphGet, spTokenSilent } from "./sharepoint.js";
 
 export const LETT_MAPPE = "Lette kopier";
 export const INDEKS_FIL = "_index.json";
@@ -200,6 +200,11 @@ export async function hentLokalt(navn, stempel) {
 }
 
 // ---------- SharePoint ----------
+// Graph svarer «Access token is empty» hvis vi sender et tomt token – en
+// ubrukelig melding for den som står der. Vi stopper før det og sier hva som
+// mangler i stedet.
+const auth = (token, ekstra) => authHeaders(token, ekstra, "lett kopi");
+
 function mappeSti(ekstra) {
   return "/drive/root:/" + SP.folder.split("/").map(encodeURIComponent).join("/") +
     "/" + encodeURIComponent(LETT_MAPPE) + (ekstra ? "/" + encodeURIComponent(ekstra) : "");
@@ -228,7 +233,7 @@ export async function hentIndeks(friskt) {
   try {
     const sid = await siteId(token);
     const r = await fetch(GRAPH + "/sites/" + sid + mappeSti(INDEKS_FIL) + ":/content",
-      { headers: { Authorization: "Bearer " + token } });
+      { headers: auth(token) });
     if (r.status === 404) {
       console.log("⚡ Ingen oversikt over raske kopier ennå – lages ved første kopi. (404 over er forventet.)");
       indeksBuffer = { verdi: {} };
@@ -247,13 +252,13 @@ async function skrivIndeks(token, sid, oppdatering) {
   let indeks = {};
   try {
     const r = await fetch(GRAPH + "/sites/" + sid + mappeSti(INDEKS_FIL) + ":/content",
-      { headers: { Authorization: "Bearer " + token } });
+      { headers: auth(token) });
     if (r.ok) indeks = await r.json();
   } catch(_) {}
   Object.assign(indeks, oppdatering);
   await fetch(GRAPH + "/sites/" + sid + mappeSti(INDEKS_FIL) + ":/content", {
     method: "PUT",
-    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+    headers: auth(token, { "Content-Type": "application/json" }),
     body: JSON.stringify(indeks)
   });
 }
@@ -264,7 +269,7 @@ async function lastOppFil(token, sid, filnavn, bytes, si) {
   if (bytes.byteLength <= 4e6) {
     const r = await fetch(GRAPH + "/sites/" + sid + sti + ":/content", {
       method: "PUT",
-      headers: { Authorization: "Bearer " + token, "Content-Type": "model/gltf-binary" },
+      headers: auth(token, { "Content-Type": "model/gltf-binary" }),
       body: bytes
     });
     if (!r.ok) throw new Error("Opplasting feilet (" + r.status + ")");
@@ -272,7 +277,7 @@ async function lastOppFil(token, sid, filnavn, bytes, si) {
   }
   const økt = await fetch(GRAPH + "/sites/" + sid + sti + ":/createUploadSession", {
     method: "POST",
-    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+    headers: auth(token, { "Content-Type": "application/json" }),
     body: JSON.stringify({ item: { "@microsoft.graph.conflictBehavior": "replace" } })
   });
   if (!økt.ok) throw new Error("Fikk ingen opplastingsøkt (" + økt.status + ")");
@@ -282,10 +287,9 @@ async function lastOppFil(token, sid, filnavn, bytes, si) {
     const slutt = Math.min(start + BIT, bytes.byteLength);
     const r = await fetch(uploadUrl, {
       method: "PUT",
-      headers: {
-        "Content-Length": String(slutt - start),
-        "Content-Range": "bytes " + start + "-" + (slutt - 1) + "/" + bytes.byteLength
-      },
+      // Content-Length settes av nettleseren selv (forbudt å sette manuelt).
+      // Bitene sendes til en ferdig autorisert uploadUrl – ingen Authorization her.
+      headers: { "Content-Range": "bytes " + start + "-" + (slutt - 1) + "/" + bytes.byteLength },
       body: bytes.subarray(start, slutt)
     });
     if (!r.ok && r.status !== 202) throw new Error("Opplasting feilet (" + r.status + ")");
@@ -296,14 +300,14 @@ async function lastOppFil(token, sid, filnavn, bytes, si) {
 // Legger kopien i biblioteket slik at HELE Storm får nytte av den
 export async function delILbiblioteket(modellnavn, stempel, bytes, si) {
   const token = await spTokenSilent();
-  if (!token) return false;
+  if (!token) return false;      // ikke innlogget – kopien blir liggende lokalt
   const sid = await siteId(token);
   const filnavn = lettNavn(modellnavn);
   // mappa opprettes hvis den mangler
   await fetch(GRAPH + "/sites/" + sid + "/drive/root:/" +
     SP.folder.split("/").map(encodeURIComponent).join("/") + ":/children", {
     method: "POST",
-    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+    headers: auth(token, { "Content-Type": "application/json" }),
     body: JSON.stringify({ name: LETT_MAPPE, folder: {}, "@microsoft.graph.conflictBehavior": "replace" })
   }).catch(() => {});
   await lastOppFil(token, sid, filnavn, bytes, si);
@@ -320,7 +324,7 @@ export async function hentFraBiblioteket(filnavn) {
   if (!token) return null;
   const sid = await siteId(token);
   const r = await fetch(GRAPH + "/sites/" + sid + mappeSti(filnavn) + ":/content",
-    { headers: { Authorization: "Bearer " + token } });
+    { headers: auth(token) });
   if (!r.ok) throw new Error("Kunne ikke hente rask kopi (" + r.status + ")");
   return new Uint8Array(await r.arrayBuffer());
 }
@@ -359,7 +363,11 @@ export async function lagRaskKopiNå() {
       ? " og lagt i biblioteket." : ". Den ligger lokalt – logg inn via 📚 for å dele den."));
   } catch (err) {
     visLite("⚡ mislyktes", err.message);
-    alert("Klarte ikke å lage rask kopi: " + err.message);
+    // Graphs egne feilmeldinger er engelsk JSON – kort dem ned til noe lesbart
+    const m = /InvalidAuthenticationToken|Access token is empty|401/.test(err.message)
+      ? IKKE_INNLOGGET
+      : err.message;
+    alert("Klarte ikke å lage rask kopi: " + m);
   } finally {
     jobbGår = false;
   }

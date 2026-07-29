@@ -3,7 +3,7 @@
 // localStorage brukes fortsatt som hurtigbuffer, så viewer'en starter umiddelbart
 // og virker fullt ut uten innlogging.
 import { DEFAULT_APPEAR, DEFAULT_KEYS, DEFAULT_SETTINGS, PREFS_VERSION, S, collectPrefs, writePrefs } from "./state.js";
-import { GRAPH, SP, graphGet, spTokenSilent } from "./sharepoint.js";
+import { GRAPH, SP, authHeaders, graphGet, spTokenSilent } from "./sharepoint.js";
 import { saveAppear, saveSettings } from "./prefs.js";
 import { applyMiniSize, setMini } from "./minimap.js";
 import { applyAxisFont } from "./axes.js";
@@ -37,7 +37,7 @@ async function ensureFolder(token, sid) {
   const parent = "/drive/root:/" + SP.folder.split("/").map(encodeURIComponent).join("/");
   await fetch(GRAPH + "/sites/" + sid + parent + ":/children", {
     method: "POST",
-    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+    headers: authHeaders(token, { "Content-Type": "application/json" }, "oppsett"),
     body: JSON.stringify({ name: "Innstillinger", folder: {}, "@microsoft.graph.conflictBehavior": "replace" })
   }).catch(() => {});
 }
@@ -91,7 +91,7 @@ export async function pullUserPrefs() {
   try {
     const sid = await siteId(token);
     const r = await fetch(GRAPH + "/sites/" + sid + prefsFilePath(name) + ":/content",
-      { headers: { Authorization: "Bearer " + token } });
+      { headers: authHeaders(token, null, "oppsett") });
     if (r.status === 404) { S.prefsCloudOK = true; pushUserPrefs(true); return; }
     if (!r.ok) throw new Error("Graph " + r.status);
     const remote = await r.json();
@@ -128,7 +128,7 @@ async function doPush() {
     const sid = await siteId(token);
     const put = () => fetch(GRAPH + "/sites/" + sid + prefsFilePath(name) + ":/content", {
       method: "PUT",
-      headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+      headers: authHeaders(token, { "Content-Type": "application/json" }, "oppsett"),
       body: JSON.stringify(data)
     });
     let r = await put();
