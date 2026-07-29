@@ -343,6 +343,28 @@ function visLite(tekst, tittel) {
   statusEl.title = tittel || "";
 }
 
+// Kort status om den raske kopien for modellen som er åpen – vises i ⚙-menyen
+export async function raskKopiStatus() {
+  if (!S.modelGroup) return "Åpne en modell først.";
+  if (S.glbActive) return "Denne modellen ER en rask kopi.";
+  if (S.modelID === null) return "Ingen IFC-data i det som er åpent.";
+  const stempel = S.liteKilde;
+  const lokal = stempel ? await hentLokalt(S.fileName, stempel) : null;
+  if (lokal) {
+    const mb = Math.round(lokal.byteLength / 1048576 * 10) / 10;
+    const indeks = await hentIndeks();
+    const delt = indeks && indeks[S.fileName] && sammeStempel(indeks[S.fileName].stempel, stempel);
+    return "✅ Finnes (" + mb + " MB) – " + (delt ? "delt i biblioteket." : "bare på denne maskinen.");
+  }
+  const indeks = await hentIndeks();
+  if (indeks && indeks[S.fileName]) {
+    return sammeStempel(indeks[S.fileName].stempel, stempel)
+      ? "✅ Finnes i biblioteket."
+      : "⚠️ Kopien i biblioteket er laget av en eldre versjon – lages på nytt.";
+  }
+  return "Ingen kopi ennå for «" + S.fileName + "».";
+}
+
 // Tvinger jobben i gang uten å vente, og uten å hoppe av på «finnes alt»
 export async function lagRaskKopiNå() {
   if (!S.modelGroup || S.glbActive || S.modelID === null) {
