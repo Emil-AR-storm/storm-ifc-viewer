@@ -148,6 +148,7 @@ $("btnColors").addEventListener("click", () => {
   $("axesPanel").classList.remove("open");
   $("searchPanel").classList.remove("open");
   $("comparePanel").classList.remove("open");
+  $("clipPanel").classList.remove("open");
   panel.classList.add("open");
 });
 

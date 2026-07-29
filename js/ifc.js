@@ -153,6 +153,7 @@ function clearModel() {
   document.getElementById("btnAxes").classList.remove("active");
   S.searchIndex = null; S.lastQuery = "";
   document.getElementById("searchPanel").classList.remove("open");
+  document.getElementById("clipPanel").classList.remove("open");
   S.storeyOn = false; S.storeyList = null; S.storeyIdx = -1;
   document.getElementById("btnStorey").classList.remove("active");
   S.sharedOK = false;
@@ -170,6 +171,7 @@ function clearModel() {
   document.getElementById("btnShowAll").style.display = "none";
   S.clipOn = false; S.clipMode = "axis"; S.clipFaceN = null; S.clipFaceP = null; S.clipFaceOff = 0; S.clipFlip = false;
   S.clipPickFace = false;
+  S.clipBox = { x0: 0, x1: 1, y0: 0, y1: 1, z0: 0, z1: 1 };
   renderer.domElement.style.cursor = "";
   document.getElementById("btnClip").classList.remove("active");
   document.getElementById("setMenu").classList.remove("open");

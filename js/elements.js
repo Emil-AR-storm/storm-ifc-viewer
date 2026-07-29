@@ -164,6 +164,7 @@ export function showProperties(expressID) {
   $("axesPanel").classList.remove("open");
   $("searchPanel").classList.remove("open");
   $("comparePanel").classList.remove("open");
+  $("clipPanel").classList.remove("open");
   $("propPanel").classList.add("open");
 }
 
@@ -430,6 +431,7 @@ $("btnQty").addEventListener("click", () => {
   $("axesPanel").classList.remove("open");
   $("searchPanel").classList.remove("open");
   $("comparePanel").classList.remove("open");
+  $("clipPanel").classList.remove("open");
   panel.classList.add("open");
 });
 
