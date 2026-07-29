@@ -17,6 +17,9 @@ export function setGhost(on, silent) {
   $("propPanel").classList.remove("open");
   S.ghostOn = on;
   $("btnGhost").classList.toggle("active", S.ghostOn);
+  // transparent overtar materialene, så fargelegging per type er ikke lenger på.
+  // Uten dette ble S.typeColorsOn hengende igjen som «true» og lurte bl.a. ⛓-lenka.
+  if (S.ghostOn) S.typeColorsOn = false;
   if (!silent) {
     S.appear.ghost = S.ghostOn;
     if (S.ghostOn) S.appear.typeColorsOn = false;

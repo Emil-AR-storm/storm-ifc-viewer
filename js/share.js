@@ -7,7 +7,8 @@
 // visningen legges på uten å lagres.
 import { $, S, esc } from "./state.js";
 import { applyClipState } from "./clip.js";
-import { buildTypeInfo, applyTypeColors, setGhost } from "./display.js";
+import { applySharedCompare, collectCompare } from "./compare.js";
+import { buildTypeInfo, applyTypeColors, hiddenIDs, setGhost } from "./display.js";
 import { camera, controls } from "./scene.js";
 import { spOpenFile } from "./sharepoint.js";
 
@@ -62,7 +63,8 @@ async function unpack(payload) {
 // ---------- Hva som deles ----------
 const r3 = (n) => Math.round(n * 1000) / 1000;
 
-export function collectView() {
+export function collectView(opt) {
+  const o = opt || {};
   const v = {
     v: VERSION,
     f: S.fileName || "",
@@ -91,15 +93,37 @@ export function collectView() {
     if (hid.length) v.hid = hid;
     if (Object.keys(col).length) v.col = col;
   }
+  // enkeltelementer skjult med «Skjul element» – dette er ikke det samme som
+  // skjulte typer, og ble glemt i første utgave
+  if (hiddenIDs.size) v.hidId = [...hiddenIDs];
   if (S.typeColorsOn) v.tc = 1;
   if (S.ghostOn) v.gh = 1;
   if (S.lightMode) v.light = 1;
+  if (!o.noCompare) {
+    const cmp = collectCompare(o.slimCompare);
+    if (cmp) v.cmp = cmp;
+  }
   return v;
 }
 
+// Lange adresser blir kuttet av e-post og Teams, så vi trapper ned i tre steg:
+// full sammenligning → uten navn og mål → uten sammenligning.
+const LIMIT_FULL = 20000;
+const LIMIT_SLIM = 60000;
+
 export async function buildShareLink() {
-  const payload = await pack(collectView());
-  return location.origin + location.pathname + "#" + HASH_KEY + payload;
+  const base = location.origin + location.pathname + "#" + HASH_KEY;
+  let link = base + await pack(collectView());
+  let note = "";
+  if (link.length > LIMIT_FULL && S.compareOn) {
+    link = base + await pack(collectView({ slimCompare: true }));
+    note = "Sammenligningen var stor, så navn og mål er utelatt – fargene og antallene er med.";
+    if (link.length > LIMIT_SLIM) {
+      link = base + await pack(collectView({ noCompare: true }));
+      note = "Sammenligningen var for stor for en adresse og er ikke med. Mottakeren må kjøre 🔄 selv.";
+    }
+  }
+  return { link, note };
 }
 
 // ---------- Legg en delt visning på plass ----------
@@ -129,7 +153,15 @@ export function applyView(v) {
       }
       if (v.tc) applyTypeColors(true);
     }
-    if (v.gh && !v.tc) setGhost(true, true);
+    // enkeltelementer som var skjult
+    if (Array.isArray(v.hidId) && v.hidId.length && S.modelGroup) {
+      v.hidId.forEach(id => hiddenIDs.add(id));
+      S.modelGroup.children.forEach(m => {
+        if (hiddenIDs.has(m.userData.expressID)) m.visible = false;
+      });
+      $("btnShowAll").style.display = "";
+    }
+    if (v.gh && !v.tc && !v.cmp) setGhost(true, true);
     if (v.clip) {
       applyClipState(v.clip);
       if (v.clip.mode === "none") {           // bare etasjefilter var på
@@ -138,6 +170,8 @@ export function applyView(v) {
         $("clipPanel").classList.remove("open");
       }
     }
+    // sammenligningen legges på sist – den overtar materialene
+    if (v.cmp) applySharedCompare(v.cmp);
   } catch (err) {
     console.warn("Klarte ikke å legge på hele den delte visningen:", err);
   }
@@ -146,12 +180,15 @@ export function applyView(v) {
 // ---------- ⛓-knappen ----------
 $("btnShare").addEventListener("click", async () => {
   if (!S.modelGroup) { alert("Åpne en modell først."); return; }
-  const link = await buildShareLink();
+  const { link, note } = await buildShareLink();
   const body = $("shareBody");
   const fromLib = !!(S.lastLoadInfo && S.lastLoadInfo.libId);
   body.innerHTML =
     '<p style="color:var(--muted); font-size:12px; margin:0 0 8px">Lenka gjenskaper kamera, snitt, etasje, ' +
-      'skjulte typer og fargelegging. Den inneholder ingen modellfil og virker uten innlogging.</p>' +
+      'skjulte typer og elementer, fargelegging, 👻 transparent' +
+      (S.compareOn ? ' og hele 🔄 sammenligningen' : '') +
+      '. Den inneholder ingen modellfil og virker uten innlogging.</p>' +
+    (note ? '<p style="color:var(--accent2); font-size:12px; margin:0 0 8px">⚠️ ' + esc(note) + '</p>' : '') +
     '<textarea id="shLink" readonly rows="4" style="width:100%; font-size:11px; background:var(--panel2); ' +
       'color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px; resize:vertical">' +
       esc(link) + '</textarea>' +
@@ -196,6 +233,7 @@ function showIncomingBanner(v) {
   if (!b) return;
   b.style.display = "block";
   b.innerHTML = '🔗 <b>Delt visning</b> av «' + esc(v.f || "en modell") + '»' +
+    (v.cmp ? '<br><span style="font-size:12px">🔄 Inneholder en sammenligning mot «' + esc(v.cmp.b || "forrige versjon") + '»</span>' : '') +
     (v.lib ? '<br><button id="shOpen" class="primary" style="margin-top:10px">📚 Åpne modellen</button>'
            : '<br><span style="color:var(--muted); font-size:12px">Åpne samme fil med 📂, så legges visningen på automatisk.</span>');
   const btn = $("shOpen");
