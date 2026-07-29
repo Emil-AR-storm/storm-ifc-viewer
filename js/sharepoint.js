@@ -201,6 +201,7 @@ export async function spOpenFile(item) {
     if (isGlb) await loadGlb(buf); else loadModel(buf);
     afterLoad();
     clearLoadFlag();
+    if (S.rememberModel) S.rememberModel({ kind: "lib", name: item.name, size: item.size, id: item.id });
   } catch (err) {
     console.error(err);
     clearLoadFlag();
