@@ -76,7 +76,8 @@ export function collectPrefs() {
     snapOn: S.snapOn,
     snapPx: S.snapPx,
     miniOn: S.miniOn,
-    lightMode: S.lightMode
+    lightMode: S.lightMode,
+    clips: S.clipStore
   };
 }
 
@@ -128,12 +129,19 @@ S.clipOn = false;
 S.clipAxis = "y";
 S.clipFlip = false;
 S.clipT = 1;
-S.clipMode = "axis";      // "axis" = X/Y/Z, "face" = langs markert flate
+S.clipMode = "axis";      // "axis" = X/Y/Z, "face" = langs markert flate, "box" = snitt-boks
 S.clipPickFace = false;
 S.clipFaceN = null;
 S.clipFaceP = null;
 S.clipFaceOff = 0;
 S.storeyOn = false; S.storeyList = null; S.storeyIdx = -1;
+
+// 📦 Snitt-boks: seks sider som andeler (0–1) av modellens utstrekning
+export const DEFAULT_CLIPBOX = { x0: 0, x1: 1, y0: 0, y1: 1, z0: 0, z1: 1 };
+S.clipBox = Object.assign({}, DEFAULT_CLIPBOX);
+
+// Navngitte lagrede snitt per modellfil: { "filnavn.ifc": [ {name, …} ] }
+S.clipStore = (_prefs.clips && typeof _prefs.clips === "object") ? _prefs.clips : {};
 
 // ---------- Valg og markeringsboks ----------
 S.selectedMeshes = [];
