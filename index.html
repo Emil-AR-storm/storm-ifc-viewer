@@ -118,6 +118,12 @@
 <div id="commentDialog">
   <h3>Ny markering</h3>
   <textarea id="commentText" placeholder="Skriv en kommentar …"></textarea>
+  <div class="cd-bilder">
+    <label class="cd-bildeknapp">📷 Legg ved bilde
+      <input type="file" id="commentFiles" accept="image/*" capture="environment" multiple hidden>
+    </label>
+    <span id="commentFileInfo"></span>
+  </div>
   <div class="actions">
     <button onclick="cancelComment()">Avbryt</button>
     <button class="primary" onclick="saveComment()">Lagre</button>
