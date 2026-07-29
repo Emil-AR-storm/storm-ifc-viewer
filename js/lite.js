@@ -12,7 +12,7 @@
 //     (eTag + størrelse). Stemmer ikke stempelet, er kopien foreldet og lages på
 //     nytt – bedre enn å vise gammel geometri.
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
-import { S, loadingText } from "./state.js";
+import { S, loadingText, statusEl } from "./state.js";
 import { kall, metaFor } from "./ifcrpc.js";
 import { GRAPH, SP, graphGet, spTokenSilent } from "./sharepoint.js";
 
@@ -214,17 +214,31 @@ async function siteId(token) {
 }
 
 // Hele oversikten i én forespørsel: modellnavn → { stempel, fil, laget }
-export async function hentIndeks() {
+//
+// Finnes ikke fila ennå, svarer Graph 404. Det er helt normalt første gang, men
+// Chrome logger alle 404-er som røde feil i konsollen – så vi husker svaret og
+// spør ikke igjen i samme økt. Etter at den første kopien er laget, finnes fila
+// og 404-en forsvinner for godt.
+let indeksBuffer = null;      // { verdi } når vi har svar
+
+export async function hentIndeks(friskt) {
+  if (indeksBuffer && !friskt) return indeksBuffer.verdi;
   const token = await spTokenSilent();
   if (!token) return null;
   try {
     const sid = await siteId(token);
     const r = await fetch(GRAPH + "/sites/" + sid + mappeSti(INDEKS_FIL) + ":/content",
       { headers: { Authorization: "Bearer " + token } });
-    if (r.status === 404) return {};
+    if (r.status === 404) {
+      console.log("⚡ Ingen oversikt over raske kopier ennå – lages ved første kopi. (404 over er forventet.)");
+      indeksBuffer = { verdi: {} };
+      return {};
+    }
     if (!r.ok) throw new Error("Graph " + r.status);
     const d = await r.json();
-    return (d && typeof d === "object") ? d : {};
+    const verdi = (d && typeof d === "object") ? d : {};
+    indeksBuffer = { verdi };
+    return verdi;
   } catch(_) { return null; }
 }
 
@@ -296,6 +310,7 @@ export async function delILbiblioteket(modellnavn, stempel, bytes, si) {
   await skrivIndeks(token, sid, {
     [modellnavn]: { stempel, fil: filnavn, laget: new Date().toISOString(), størrelse: bytes.byteLength }
   });
+  indeksBuffer = null;        // vår hurtigbuffer er utdatert nå
   return true;
 }
 
@@ -314,6 +329,41 @@ export async function hentFraBiblioteket(filnavn) {
 // Kjøres i bakgrunnen etter at en modell er åpnet i full kvalitet, hvis den ikke
 // alt har en fersk kopi. Ingenting av dette blokkerer brukeren.
 let jobbGår = false;
+
+// Liten melding øverst til høyre, så man ser at noe skjedde
+function visLite(tekst, tittel) {
+  if (!statusEl) return;
+  const grunn = statusEl.dataset.grunn || statusEl.textContent;
+  statusEl.dataset.grunn = grunn;
+  statusEl.textContent = grunn + " · " + tekst;
+  statusEl.title = tittel || "";
+}
+
+// Tvinger jobben i gang uten å vente, og uten å hoppe av på «finnes alt»
+export async function lagRaskKopiNå() {
+  if (!S.modelGroup || S.glbActive || S.modelID === null) {
+    alert("Åpne en IFC-modell først (en lett kopi kan ikke kopieres igjen).");
+    return;
+  }
+  jobbGår = true;
+  try {
+    visLite("⚡ lager rask kopi …", "");
+    const { bytes } = await byggLettKopi((t) => { loadingText.textContent = t; });
+    const stempel = S.liteKilde || { eTag: "manuell:" + Date.now(), size: 0 };
+    await lagreLokalt(S.fileName, stempel, bytes);
+    let delt = false;
+    try { delt = await delILbiblioteket(S.fileName, stempel, bytes); } catch (e) { console.warn("⚡ opplasting feilet:", e.message); }
+    const mb = Math.round(bytes.byteLength / 1048576 * 10) / 10;
+    visLite("⚡ rask kopi klar", mb + " MB" + (delt ? " – lagt i biblioteket" : " – bare lokalt"));
+    alert("⚡ Rask kopi laget (" + mb + " MB)" + (delt
+      ? " og lagt i biblioteket." : ". Den ligger lokalt – logg inn via 📚 for å dele den."));
+  } catch (err) {
+    visLite("⚡ mislyktes", err.message);
+    alert("Klarte ikke å lage rask kopi: " + err.message);
+  } finally {
+    jobbGår = false;
+  }
+}
 
 export async function kanskjeLagRaskKopi() {
   const hvorfor = (t) => console.log("⚡ rask kopi: " + t);
@@ -336,15 +386,21 @@ export async function kanskjeLagRaskKopi() {
     await new Promise(r => setTimeout(r, 4000));
     if (S.fileName !== navn) return;          // byttet modell underveis
     hvorfor("bygger …");
+    visLite("⚡ lager rask kopi …", "Bygges i bakgrunnen – du kan jobbe videre");
     const { bytes } = await byggLettKopi(() => {});
     if (S.fileName !== navn) return;
     await lagreLokalt(navn, stempel, bytes);
     let delt = false;
     try { delt = await delILbiblioteket(navn, stempel, bytes); } catch (e) { console.warn("⚡ opplasting feilet:", e.message); }
-    hvorfor("ferdig for " + navn + " – " + Math.round(bytes.byteLength / 1048576 * 10) / 10 + " MB" +
+    const mb = Math.round(bytes.byteLength / 1048576 * 10) / 10;
+    hvorfor("ferdig for " + navn + " – " + mb + " MB" +
       (delt ? ", lagt i biblioteket" : ", bare lokalt (ikke innlogget?)"));
+    visLite("⚡ rask kopi klar", mb + " MB" + (delt
+      ? " – lagt i biblioteket, hele Storm får nytte av den"
+      : " – lagret lokalt. Logg inn via 📚 for å dele den."));
   } catch (err) {
     console.warn("Klarte ikke å lage rask kopi:", err.message);
+    visLite("⚡ mislyktes", err.message);
   } finally {
     jobbGår = false;
   }

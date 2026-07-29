@@ -5,6 +5,7 @@ import { showClipBar, stopFacePick } from "./clip.js";
 import { DEFAULT_BG, resetColors } from "./display.js";
 import { refreshNumbers } from "./elements.js";
 import { applyMiniSize, setMini } from "./minimap.js";
+import { lagRaskKopiNå } from "./lite.js";
 import { setMode } from "./modes.js";
 import { saveAppear, saveBg, saveSettings } from "./prefs.js";
 import { scene } from "./scene.js";
@@ -117,7 +118,9 @@ function renderSettings() {
     '<p style="color:var(--muted); font-size:11px; margin:0 0 6px">💾 Alt over – pluss fargelegging, egne typefarger, skjulte typer, ' +
     '👻 transparent, 🧲 snap og 🪶 lav kvalitet – lagres automatisk og legges på neste gang du åpner en modell.</p>' +
     '<p style="font-size:11px; margin:0 0 6px" id="stSync">' + syncStatusText() + '</p>' +
-    '<div class="prop-actions" style="margin-top:10px"><button id="stReset">↺ Tilbakestill alt</button></div>';
+    '<div class="prop-actions" style="margin-top:10px">' +
+      '<button id="stLiteNow" title="Bygger .glb nå og legger den i biblioteket">⚡ Lag rask kopi nå</button>' +
+      '<button id="stReset">↺ Tilbakestill alt</button></div>';
 
   $("setBody").innerHTML = html;
 
@@ -155,6 +158,7 @@ function renderSettings() {
   $("setBody").querySelectorAll("button[data-key]").forEach(b => {
     b.onclick = () => { S.keyWaitFor = b.dataset.key; renderSettings(); };
   });
+  $("stLiteNow").onclick = () => { closeSettings(); lagRaskKopiNå(); };
   $("stReset").onclick = () => {
     S.settings = Object.assign({}, DEFAULT_SETTINGS, { keys: Object.assign({}, DEFAULT_KEYS) });
     saveSettings();
