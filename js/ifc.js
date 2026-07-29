@@ -165,6 +165,7 @@ function clearModel() {
   miniCanvas.style.display = "none";
   S.comments = [];
   S.qtyCache = null;
+  S.qtyType = "";
   S.typeInfo = null;
   S.typeColorsOn = false;
   hiddenIDs.clear();

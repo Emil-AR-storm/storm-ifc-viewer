@@ -112,6 +112,7 @@ export async function showProperties(expressID) {
     try {
       const q = elementQuantities(expressID);
       rows.push(["Mål L×B×H (ca)", q.dims.map(fmtDim).join(" × ") + " m"]);
+      rows.push(["Areal, fotavtrykk (ca)", fmtArea(q.area)]);
       rows.push(["Volum (ca)", fmtVol(q.vol)]);
     } catch(_){}
     rows.push(["Merk", "Lett kopi – åpne original-IFC-en for full egenskapsliste"]);
@@ -127,6 +128,7 @@ export async function showProperties(expressID) {
       try {
         const q = elementQuantities(expressID);
         rows.push(["Mål L×B×H (ca)", q.dims.map(fmtDim).join(" × ") + " m"]);
+        rows.push(["Areal, fotavtrykk (ca)", fmtArea(q.area)]);
         rows.push(["Volum (ca)", fmtVol(q.vol)]);
       } catch(_){}
       p.psets.forEach(([k, v]) => rows.push([k, v]));
@@ -191,7 +193,7 @@ export function elementBoxById(id) {
 }
 
 // ---------- 🧮 Mengder per element ----------
-const _qa = new THREE.Vector3(), _qb = new THREE.Vector3(), _qc = new THREE.Vector3(), _qt = new THREE.Vector3();
+const _qa = new THREE.Vector3(), _qb = new THREE.Vector3(), _qc = new THREE.Vector3();
 
 // Bounding box for alle elementer (bygges én gang per modell)
 
@@ -213,15 +215,44 @@ export function allElementBoxes() {
   return map;
 }
 
-// Beregner ytre mål og volum (m³) for et sett elementer i ÉN gjennomgang av geometrien
-// (signert tetraeder-sum – funker for lukkede volumer som betong og stålprofiler)
+// Bidraget fra ÉN trekant, som rene tall uten three.js – da kan matematikken
+// testes for seg selv.
+//   vol6  = 6 × signert volum av tetraederet origo–a–b–c (summen over et lukket
+//           legeme gir 6 × volumet, uansett hvor legemet står)
+//   proj2 = 2 × trekantens areal projisert ned i planet (Y er opp i scenen).
+//           Absoluttverdi, så vindingsretningen i modellen ikke spiller inn.
+export function triBidrag(ax, ay, az, bx, by, bz, cx, cy, cz) {
+  const vol6 = ax * (by * cz - bz * cy) + ay * (bz * cx - bx * cz) + az * (bx * cy - by * cx);
+  const proj2 = Math.abs((bz - az) * (cx - ax) - (bx - ax) * (cz - az));
+  return { vol6, proj2 };
+}
+
+// Gjør summene om til meter og m²/m³.
+// Et lukket legeme har både over- og underside, og begge kaster samme skygge –
+// derfor deles den projiserte summen på 2 til slutt (Σproj2 / 4). Flater uten
+// tykkelse (0 volum) har bare ÉN side og skal ikke halveres.
+export function sluttMengder(volSum, projSum, toM) {
+  const vol = Math.abs(volSum) * toM * toM * toM;
+  const lukket = vol > 1e-9;
+  return { vol, area: projSum / (lukket ? 4 : 2) * toM * toM };
+}
+
+// Beregner ytre mål, volum (m³) og fotavtrykk (m²) for et sett elementer i ÉN
+// gjennomgang av geometrien.
+// Volum: signert tetraeder-sum – funker for lukkede volumer som betong og stålprofiler.
+// Fotavtrykk: grunnflaten sett rett ovenfra – se triBidrag/sluttMengder over.
+//   NB: Skrå og hvelvede flater blir riktig projisert, men et element som
+//   overlapper seg selv i høyden (f.eks. en trapp) får skyggen regnet to ganger.
 export function quantitiesForSet(idSet) {
   const toM = S.modelSize > 1000 ? 0.001 : 1; // mm-modell → meter
   const vols = new Map();
+  const projs = new Map();   // Σ|n.y| per element – rå, før halvering
   const addTri = (p, i0, i1, i2, mtx, id) => {
     _qa.fromBufferAttribute(p, i0); _qb.fromBufferAttribute(p, i1); _qc.fromBufferAttribute(p, i2);
     if (mtx) { _qa.applyMatrix4(mtx); _qb.applyMatrix4(mtx); _qc.applyMatrix4(mtx); }
-    vols.set(id, (vols.get(id) || 0) + _qa.dot(_qt.copy(_qb).cross(_qc)) / 6);
+    const t = triBidrag(_qa.x, _qa.y, _qa.z, _qb.x, _qb.y, _qb.z, _qc.x, _qc.y, _qc.z);
+    vols.set(id, (vols.get(id) || 0) + t.vol6 / 6);
+    projs.set(id, (projs.get(id) || 0) + t.proj2);
   };
   S.modelGroup.children.forEach(m => {
     if (!m.isMesh) return;
@@ -247,13 +278,14 @@ export function quantitiesForSet(idSet) {
     let dims = [0, 0, 0];
     const b = boxes.get(id);
     if (b) { b.getSize(s); dims = [s.x * toM, s.y * toM, s.z * toM].sort((a, x) => x - a); }
-    out.set(id, { dims, vol: Math.abs(vols.get(id) || 0) * toM * toM * toM });
+    const m = sluttMengder(vols.get(id) || 0, projs.get(id) || 0, toM);
+    out.set(id, { dims, vol: m.vol, area: m.area });
   }
   return out;
 }
 
 function elementQuantities(id) {
-  return quantitiesForSet(new Set([id])).get(id) || { dims: [0, 0, 0], vol: 0 };
+  return quantitiesForSet(new Set([id])).get(id) || { dims: [0, 0, 0], vol: 0, area: 0 };
 }
 
 // Desimaler følger ⚙ Innstillinger. Små volumer får alltid nok desimaler til å
@@ -273,16 +305,18 @@ export function elemDisplayName(id) {
 // ---------- Flervalg (shift-klikk) med samlede mengder ----------
 
 function showMultiSummary() {
-  let totVol = 0, totLen = 0;
+  let totVol = 0, totLen = 0, totArea = 0;
   const items = [];
   for (const [id, q] of S.multiSel) {
     totVol += q.vol;
     totLen += q.dims[0];
+    totArea += q.area || 0;
     items.push({ id, name: elemDisplayName(id), vol: q.vol });
   }
   $("propTitle").textContent = "🧮 " + S.multiSel.size + " elementer valgt";
   $("propBody").innerHTML =
     '<div class="prop-row" style="font-weight:600"><div class="k">Sum volum</div><div class="v">' + fmtVol(totVol) + '</div></div>' +
+    '<div class="prop-row" style="font-weight:600"><div class="k">Sum areal (fotavtrykk)</div><div class="v">' + fmtArea(totArea) + '</div></div>' +
     '<div class="prop-row"><div class="k">Sum lengde (lengste mål)</div><div class="v">' + totLen.toFixed(2) + ' m</div></div>' +
     '<div class="prop-row"><div class="k">Antall</div><div class="v">' + S.multiSel.size + ' stk</div></div>' +
     items.slice(0, 100).map(it => '<div class="prop-row"><div class="k">' + esc(it.name) + '</div><div class="v">' + fmtVol(it.vol) + '</div></div>').join("") +
@@ -462,20 +496,75 @@ function computeQuantities() {
     // lengde: lengste dimensjon av elementets samlede boks, i meter
     box.getSize(sizeV);
     const len = Math.max(sizeV.x, sizeV.y, sizeV.z) * toM;
-    const q = vq.get(id) || { dims: [0, 0, 0], vol: 0 };
-    if (!groups.has(key)) groups.set(key, { count: 0, length: 0, vol: 0, type: typeName });
+    const q = vq.get(id) || { dims: [0, 0, 0], vol: 0, area: 0 };
+    if (!groups.has(key)) groups.set(key, { count: 0, length: 0, vol: 0, area: 0, type: typeName });
     const g = groups.get(key);
     g.count++;
     g.length += len;
     g.vol += q.vol;
+    g.area += q.area;
     rows.push({
       id, key, name, objType, type: typeName,
-      L: q.dims[0], B: q.dims[1], H: q.dims[2], len, vol: q.vol
+      L: q.dims[0], B: q.dims[1], H: q.dims[2], len, vol: q.vol, area: q.area
     });
   }
+  const sortedRows = rows.sort((a, b) => a.key.localeCompare(b.key, "no") || a.id - b.id);
   return {
     groups: [...groups.entries()].sort((a, b) => b[1].count - a[1].count),
-    rows: rows.sort((a, b) => a.key.localeCompare(b.key, "no") || a.id - b.id)
+    rows: sortedRows,
+    types: typeListe(sortedRows)
+  };
+}
+
+// ---------- Objekttyper (til nedtrekket) ----------
+// IFC-typenavnet er engelsk og står uten «Ifc» i dataene («Beam», «Footing»).
+// Her får de norske navn – ukjente typer vises som de er.
+const TYPE_NAVN = {
+  Footing: "Fundamenter", Pile: "Peler", Column: "Søyler", Beam: "Bjelker",
+  Member: "Staver", Plate: "Plater", Wall: "Vegger",
+  WallStandardCase: "Vegger", CurtainWall: "Glassfasader",
+  Slab: "Dekker", Roof: "Tak", Stair: "Trapper", StairFlight: "Trappeløp",
+  Ramp: "Ramper", RampFlight: "Rampeløp", Railing: "Rekkverk",
+  Covering: "Kledning", Door: "Dører", Window: "Vinduer",
+  Reinforcing: "Armering", ReinforcingBar: "Armeringsjern",
+  ReinforcingMesh: "Armeringsnett", Fastener: "Festemidler",
+  MechanicalFastener: "Festemidler", DiscreteAccessory: "Tilbehør",
+  BuildingElementProxy: "Øvrige bygningsdeler", ElementAssembly: "Sammenstillinger",
+  Pipe: "Rør", PipeSegment: "Rør", DuctSegment: "Kanaler",
+  Furniture: "Inventar", Space: "Rom", Site: "Tomt"
+};
+
+export function typeVisning(t) {
+  if (!t) return "Uten IFC-type";
+  return TYPE_NAVN[t] || t;
+}
+
+// Liste over objekttypene som faktisk finnes i modellen, flest først.
+function typeListe(rows) {
+  const m = new Map();
+  rows.forEach(r => {
+    const t = r.type || "";
+    if (!m.has(t)) m.set(t, { count: 0, vol: 0, area: 0 });
+    const e = m.get(t);
+    e.count++; e.vol += r.vol; e.area += r.area;
+  });
+  return [...m.entries()].sort((a, b) => b[1].count - a[1].count);
+}
+
+// Filtrerer en ferdig mengde-cache ned til én objekttype. Gruppene regnes på
+// nytt fra radene, så «Antall» i arket stemmer med det som eksporteres.
+export function qtyForType(cache, type) {
+  if (!type) return cache;
+  const rows = cache.rows.filter(r => (r.type || "") === type);
+  const groups = new Map();
+  rows.forEach(r => {
+    if (!groups.has(r.key)) groups.set(r.key, { count: 0, length: 0, vol: 0, area: 0, type: r.type });
+    const g = groups.get(r.key);
+    g.count++; g.length += r.len; g.vol += r.vol; g.area += r.area;
+  });
+  return {
+    groups: [...groups.entries()].sort((a, b) => b[1].count - a[1].count),
+    rows, types: cache.types
   };
 }
 
@@ -511,46 +600,81 @@ function baseName() {
 const csvLenDec = () => Math.max(dec(), 3);
 const csvVolDec = () => Math.max(dec(), 4);
 
+const csvAreaDec = () => Math.max(dec(), 3);
+
 export function qtyGroupRows(cache) {
-  const out = [["Gruppe", "IFC-type", "Antall", "Sum lengde (m)", "Sum volum (m3)"]];
-  cache.groups.forEach(([key, g]) => out.push([key, g.type || "", g.count, nb(g.length, csvLenDec()), nb(g.vol, csvVolDec())]));
-  const tot = cache.groups.reduce((s, [, g]) => [s[0] + g.count, s[1] + g.length, s[2] + g.vol], [0, 0, 0]);
+  const out = [["Gruppe", "IFC-type", "Antall", "Sum lengde (m)", "Sum areal (m2)", "Sum volum (m3)"]];
+  cache.groups.forEach(([key, g]) => out.push([key, g.type || "", g.count,
+    nb(g.length, csvLenDec()), nb(g.area, csvAreaDec()), nb(g.vol, csvVolDec())]));
+  const tot = cache.groups.reduce((s, [, g]) => [s[0] + g.count, s[1] + g.length, s[2] + g.vol, s[3] + g.area], [0, 0, 0, 0]);
   out.push([]);
-  out.push(["SUM", "", tot[0], nb(tot[1], csvLenDec()), nb(tot[2], csvVolDec())]);
+  out.push(["SUM", "", tot[0], nb(tot[1], csvLenDec()), nb(tot[3], csvAreaDec()), nb(tot[2], csvVolDec())]);
   return out;
 }
 
 export function qtyElementRows(cache) {
   const out = [["ElementID", "Gruppe", "Navn", "ObjectType", "IFC-type",
-    "Lengde (m)", "Bredde (m)", "Høyde (m)", "Lengste mål (m)", "Volum (m3)"]];
+    "Lengde (m)", "Bredde (m)", "Høyde (m)", "Lengste mål (m)", "Areal (m2)", "Volum (m3)"]];
   cache.rows.forEach(r => out.push([r.id, r.key, r.name, r.objType, r.type,
     nb(r.L, csvLenDec()), nb(r.B, csvLenDec()), nb(r.H, csvLenDec()),
-    nb(r.len, csvLenDec()), nb(r.vol, csvVolDec())]));
+    nb(r.len, csvLenDec()), nb(r.area, csvAreaDec()), nb(r.vol, csvVolDec())]));
   return out;
 }
 
-function renderQuantities(cache) {
+export function fmtArea(a) {
+  const d = Math.max(dec(), a > 0 && a < 0.01 ? 3 : 0);
+  return a.toFixed(d) + " m²";
+}
+
+function renderQuantities(full) {
+  // S.qtyType er valgt objekttype ("" = alle). Alt under – tabell, sum og
+  // eksport – gjelder det som er valgt, slik at CSV-fila blir «ett ark».
+  const valgt = S.qtyType || "";
+  const finnes = (full.types || []).some(([t]) => t === valgt);
+  const cache = finnes ? qtyForType(full, valgt) : full;
+  if (!finnes) S.qtyType = "";
+  const filnavnDel = S.qtyType ? " - " + typeVisning(S.qtyType) : "";
+
   const list = cache.groups;
   const total = list.reduce((s, [, g]) => s + g.count, 0);
   const totVol = list.reduce((s, [, g]) => s + g.vol, 0);
   const totLen = list.reduce((s, [, g]) => s + g.length, 0);
+  const totArea = list.reduce((s, [, g]) => s + g.area, 0);
+
+  const alleAntall = (full.types || []).reduce((s, [, t]) => s + t.count, 0);
+  const nedtrekk =
+    '<label class="qty-type-velg">Objekttype' +
+    '<select id="qtyType">' +
+      '<option value=""' + (S.qtyType ? "" : " selected") + '>Alle typer (' + alleAntall + ' stk)</option>' +
+      (full.types || []).map(([t, e]) =>
+        '<option value="' + esc(t) + '"' + (t === S.qtyType ? " selected" : "") + '>' +
+        esc(typeVisning(t)) + ' (' + e.count + ' stk)</option>').join("") +
+    '</select></label>';
+
   $("qtyBody").innerHTML =
+    nedtrekk +
     '<div class="prop-actions">' +
-      '<button id="qtyCsvG" class="primary" title="Én rad per gruppe">⬇ Grupper (CSV)</button>' +
-      '<button id="qtyCsvE" title="Én rad per element – for mengdeberegning">⬇ Alle elementer</button>' +
+      '<button id="qtyCsvG" class="primary" title="Én rad per gruppe, bare valgt objekttype">⬇ Grupper (CSV)</button>' +
+      '<button id="qtyCsvE" title="Én rad per element – for mengdeberegning og vareordre">⬇ Alle elementer</button>' +
       '<button id="qtyCopy" title="Lim rett inn i et åpent regneark">📋 Kopier</button>' +
     '</div>' +
-    '<div class="qty-row" style="font-weight:600"><div class="n">Totalt</div><div class="c">' + total +
-      ' stk · ' + totLen.toFixed(dec()) + ' m · ' + fmtVol(totVol) + '</div></div>' +
+    '<div class="qty-row" style="font-weight:600"><div class="n">' +
+      (S.qtyType ? esc(typeVisning(S.qtyType)) : "Totalt") + '</div><div class="c">' + total +
+      ' stk · ' + totLen.toFixed(dec()) + ' m · ' + fmtArea(totArea) + ' · ' + fmtVol(totVol) + '</div></div>' +
     list.map(([key, g]) =>
-      '<div class="qty-row"><div class="n">' + esc(key) + (g.type ? ' <span style="color:var(--muted);font-size:11px">(' + esc(g.type) + ')</span>' : "") + '</div>' +
-      '<div class="c">' + g.count + ' stk · ' + g.length.toFixed(dec()) + ' m · ' + fmtVol(g.vol) + '</div></div>').join("") +
+      '<div class="qty-row"><div class="n">' + esc(key) + (g.type ? ' <span style="color:var(--muted);font-size:11px">(' + esc(typeVisning(g.type)) + ')</span>' : "") + '</div>' +
+      '<div class="c">' + g.count + ' stk · ' + g.length.toFixed(dec()) + ' m · ' + fmtArea(g.area) + ' · ' + fmtVol(g.vol) + '</div></div>').join("") +
     '<p style="color:var(--muted); font-size:11px; margin-top:10px">Antall desimaler settes i ⚙ Innstillinger. ' +
+    'Velg objekttype for å få ett ark om gangen – nedlastingen inneholder bare det som står i lista nå. ' +
     'Lengde = lengste mål per element (ca-verdi, summert per gruppe). ' +
+    'Areal = fotavtrykk, altså grunnflaten sett rett ovenfra – det målet dekker, plater og fundamenter bestilles etter. ' +
     'Volum er regnet ut av geometrien og gjelder lukkede volumer – hule profiler blir riktige, flater uten tykkelse blir 0.</p>';
 
-  $("qtyCsvG").onclick = () => download(baseName() + " - mengder.csv", toCsv(qtyGroupRows(cache)));
-  $("qtyCsvE").onclick = () => download(baseName() + " - mengder per element.csv", toCsv(qtyElementRows(cache)));
+  const sel = $("qtyType");
+  if (sel) sel.onchange = () => { S.qtyType = sel.value; renderQuantities(full); };
+
+  $("qtyCsvG").onclick = () => download(baseName() + filnavnDel + " - mengder.csv", toCsv(qtyGroupRows(cache)));
+  $("qtyCsvE").onclick = () => download(baseName() + filnavnDel + " - mengder per element.csv", toCsv(qtyElementRows(cache)));
   $("qtyCopy").onclick = async () => {
     // tabulator lar deg lime rett inn i celler i et åpent ark
     const tsv = qtyGroupRows(cache).map(r => r.join("\t")).join("\r\n");

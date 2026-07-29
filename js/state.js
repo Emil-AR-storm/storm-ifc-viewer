@@ -109,6 +109,9 @@ S.modelSize = 10;
 S.koteMatrixInv = null;   // for å regne tilbake til opprinnelige koter
 S.coordMatrix = null;     // original modell → viewer (brukes av aksesystemet)
 S.qtyCache = null;
+S.qtyType = "";           // valgt objekttype i 📊 Mengder ("" = alle typer)
+S.bildeMappeOK = false;   // bilder-mappa i SharePoint er sjekket/opprettet
+S.nyeBilder = [];         // bilder valgt i «Ny markering», før den er lagret
 S.lastLoadInfo = null;
 
 // Elementdata hentet i én runde fra IFC-tråden: id → {name, objectType, tag,
