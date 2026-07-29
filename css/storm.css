@@ -315,9 +315,65 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
 .keybtn { padding: 3px 10px; font-size: 12px; min-width: 62px; justify-content: center; }
 .keybtn.wait { background: var(--accent2); color: #14181f; font-weight: 600; }
 
+/* ⋯ Mer-meny (bare på telefon – knappene flyttes hit av js/mobile.js) */
+#moreMenu {
+  position: fixed;
+  top: 92px; right: 6px; left: 6px;
+  display: none;
+  flex-wrap: wrap; gap: 6px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 8px;
+  z-index: 14;
+  box-shadow: 0 10px 30px rgba(0,0,0,.5);
+}
+#moreMenu.open { display: flex; }
+#moreMenu button { flex: 1 1 calc(50% - 3px); justify-content: flex-start; }
+
 @media (max-width: 640px) {
-  #topbar { padding: 6px; gap: 5px; }
+  #topbar {
+    padding: 6px; gap: 5px;
+    flex-wrap: nowrap;              /* én linje – ellers legger den seg under verktøylinja */
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  #topbar::-webkit-scrollbar { display: none; }
+  #topbar .logo { font-size: 13px; }
+  #status { display: none; }        /* antall elementer står i 📊 Mengder */
   button, label.btn { padding: 7px 9px; font-size: 12px; }
   .panel { width: 100vw; border-radius: 12px 12px 0 0; max-height: 55vh; }
   #hint { display: none !important; }
+
+  /* verktøylinja skal alltid være én linje */
+  #toolbar {
+    top: 46px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding: 4px 6px;
+  }
+  #toolbar::-webkit-scrollbar { display: none; }
+  #toolbar button { flex: 0 0 auto; }
+
+  /* minikartet tar for mye plass på en telefon – og flyttes til høyre, slik at
+     den nedre kontrollinja får plass ved siden av i stedet for oppå */
+  #miniMap {
+    width: 104px !important; height: 104px !important;
+    left: auto; right: 8px; bottom: 8px;
+  }
+
+  #modeBar {
+    left: 8px; right: auto; transform: none;
+    bottom: 8px;
+    max-width: calc(100vw - 128px);
+    padding: 8px 10px; gap: 6px;
+    overflow-x: auto; flex-wrap: nowrap;
+    scrollbar-width: none;
+  }
+  #modeBar::-webkit-scrollbar { display: none; }
+  #modeBar button, #modeBar .lbl { flex: 0 0 auto; }
+  #modeBar input[type=range] { width: 110px; flex: 0 0 auto; }
+
+  #markerPop { max-width: calc(100vw - 24px); }
 }
