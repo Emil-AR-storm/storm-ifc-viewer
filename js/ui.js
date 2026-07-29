@@ -91,6 +91,8 @@ function renderSettings() {
       (d === 0 ? " (hele meter)" : d === 3 ? " (mm)" : "") + '</option>').join("") + '</select></div>' +
     '<div class="set-row"><span class="n">Bakgrunnsfarge</span>' +
     '<input type="color" id="stBg" value="' + bgVal + '"></div>' +
+    '<div class="set-row"><span class="n">⚡ Lag rask kopi automatisk</span>' +
+    '<input type="checkbox" id="stAutoLite"' + (S.settings.autoLite ? " checked" : "") + '></div>' +
     '<div class="set-row"><span class="n">🪶 Lav kvalitet</span>' +
     '<input type="checkbox" id="stLight"' + (S.lightMode ? " checked" : "") + '></div>' +
     '<div class="set-row"><span class="n">Skriftstørrelse akser</span>' +
@@ -136,6 +138,7 @@ function renderSettings() {
     scene.background.set(e.target.value);
     saveBg(e.target.value);
   };
+  $("stAutoLite").onchange = (e) => { S.settings.autoLite = e.target.checked; saveSettings(); };
   $("stLight").onchange = () => $("btnLight").click();
   $("stAxFont").oninput = (e) => {
     S.axisFontF = e.target.value / 100;

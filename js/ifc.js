@@ -2,6 +2,7 @@
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
 import { $, S, esc, loadingEl, loadingText, statusEl, writePrefs } from "./state.js";
 import { harWorker, hentMeta, kall, metaFor, tømMeta } from "./ifcrpc.js";
+import { byggLettKopi, kanskjeLagRaskKopi, lettNavn } from "./lite.js";
 import { hiddenIDs } from "./display.js";
 import { clearSelection } from "./elements.js";
 import { loadComments, renderCommentList } from "./markers.js";
@@ -148,6 +149,7 @@ function clearModel() {
   axesGroup.visible = false;
   S.axesOn = false; S.axesBuilt = false;
   S.axisSources = null; S.axisSelection = new Set(); S.axisRaw = null;
+  S.liteKilde = null;
   document.getElementById("axesPanel").classList.remove("open");
   document.getElementById("btnAxes").classList.remove("active");
   S.searchIndex = null; S.lastQuery = "";
@@ -317,6 +319,31 @@ function bufferGeo(p) {
 // Geometrien bygges av byggFull()/byggLett() lenger opp, fra porsjonene
 // IFC-tråden sender. Den gamle koden som leste web-ifc her er borte.
 
+// Bounding box per element i sammenslått geometri (🪶 lav kvalitet og 💾 lett
+// kopi). Bruker `ranges`, så den trenger ingen IFC-data.
+const _lv = new THREE.Vector3();
+
+export function lightElementBoxes(idSet, out) {
+  const boxes = out || new Map();
+  if (!S.modelGroup) return boxes;
+  S.modelGroup.children.forEach(m => {
+    if (!m.userData.merged) return;
+    const p = m.geometry.getAttribute("position").array;
+    const ix = m.geometry.getIndex().array;
+    for (const r of (m.userData.ranges || [])) {
+      if (idSet && !idSet.has(r.id)) continue;
+      let b = boxes.get(r.id);
+      if (!b) { b = new THREE.Box3(); boxes.set(r.id, b); }
+      for (let i = r.start; i < r.start + r.count; i++) {
+        const vi = ix[i] * 3;
+        _lv.set(p[vi], p[vi + 1], p[vi + 2]);
+        b.expandByPoint(_lv);
+      }
+    }
+  });
+  return boxes;
+}
+
 // ---------- 💾 Lett kopi (.glb) ----------
 
 export async function loadGlb(buffer) {
@@ -366,69 +393,21 @@ export async function loadGlb(buffer) {
 }
 
 $("btnSaveLite").addEventListener("click", async () => {
-  if (!S.modelGroup || !S.lastBuffer) return;
+  if (!S.modelGroup) return;
   if (S.glbActive) { alert("Denne modellen er allerede en lett kopi."); return; }
-  if (!S.lightLoaded) {
-    if (!confirm("Lett kopi lages fra 🪶 lav kvalitet. Laste modellen på nytt i lav kvalitet først?")) return;
-    setLight(true);
-    loadingEl.classList.add("open");
-    loadingText.textContent = "Laster i lav kvalitet …";
-    await new Promise(r => setTimeout(r, 30));
-    try { await loadModel(S.lastBuffer); }
-    catch (err) { alert("Feil: " + err.message); loadingEl.classList.remove("open"); return; }
-  }
   loadingEl.classList.add("open");
-  loadingText.textContent = "Lager lett kopi …";
-  await new Promise(r => setTimeout(r, 30));
   try {
-    // metadata som bakes inn i fila: navn/profil per element, søyle-liste (til akser) og kote-matrise
-    const ids = new Set();
-    S.modelGroup.children.forEach(m => (m.userData.ranges || []).forEach(r => ids.add(r.id)));
-    const props = {};
-    for (const id of ids) {
-      const m = metaFor(id);
-      if (m) props[id] = [m.name || "", m.objectType || "", m.typeName ? "Ifc" + m.typeName : ""];
-    }
-    let columns = [];
-    try {
-      const kilder = await kall("axisSources");
-      columns = kilder.filter(k => k.t === "COLUMN").map(k => k.id);
-    } catch(_){}
-    let storeys = [];
-    try { storeys = (await kall("storeys")).map(s => ({ name: s.name, ids: s.ids })); } catch(_){}
-    // bygg en krympet kopi for eksport: normaler droppes (regnes ut ved åpning)
-    // og dupliserte punkter sveises sammen – gir mange ganger mindre fil
-    loadingText.textContent = "Komprimerer geometri …";
-    await new Promise(r => setTimeout(r, 30));
-    const { mergeVertices } = await import("three/addons/utils/BufferGeometryUtils.js");
-    const exportGroup = new THREE.Group();
-    for (const m of S.modelGroup.children) {
-      let g = new THREE.BufferGeometry();
-      g.setAttribute("position", m.geometry.getAttribute("position"));
-      g.setIndex(m.geometry.getIndex());
-      g = mergeVertices(g, 1e-4);
-      const em = new THREE.Mesh(g, m.material);
-      em.userData.merged = true;
-      em.userData.ranges = m.userData.ranges;
-      exportGroup.add(em);
-    }
-    exportGroup.userData.stormLite = {
-      v: 2, name: S.fileName,
-      kote: S.koteMatrixInv ? Array.from(S.koteMatrixInv.elements) : null,
-      columns, storeys, props
-    };
-    loadingText.textContent = "Lager lett kopi …";
-    await new Promise(r => setTimeout(r, 30));
-    const { GLTFExporter } = await import("three/addons/exporters/GLTFExporter.js");
-    const glb = await new Promise((res, rej) => new GLTFExporter().parse(exportGroup, res, rej, { binary: true }));
-    exportGroup.children.forEach(em => em.geometry.dispose());
-    const blob = new Blob([glb], { type: "model/gltf-binary" });
+    // Kopien bygges fra geometrien som alt ligger i scenen – modellen lastes
+    // IKKE om igjen i lav kvalitet, slik den måtte før.
+    const { bytes, ids, utelatt } = await byggLettKopi((t) => { loadingText.textContent = t; });
+    const blob = new Blob([bytes], { type: "model/gltf-binary" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = S.fileName.replace(/\.ifc$/i, "") + " LETT.glb";
+    a.download = lettNavn(S.fileName);
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 10000);
-    alert("Lett kopi lastet ned (" + (blob.size / 1048576).toFixed(1) + " MB).\n\nLast den opp i SharePoint-mappen «" + SP.folder + "», så dukker den opp i 📚 Biblioteket og kan åpnes på mobil.");
+    statusEl.textContent = ids.size + " elementer i lett kopi" +
+      (utelatt ? " (" + utelatt + " små/festemidler utelatt)" : "");
   } catch (err) {
     console.error(err);
     alert("Klarte ikke å lage lett kopi: " + err.message);
@@ -436,29 +415,6 @@ $("btnSaveLite").addEventListener("click", async () => {
     loadingEl.classList.remove("open");
   }
 });
-
-// Bounding box per element i lav kvalitet-modus (leses ut av de sammenslåtte objektene)
-const _lv = new THREE.Vector3();
-
-export function lightElementBoxes(idSet, out) {
-  const boxes = out || new Map();
-  S.modelGroup.children.forEach(m => {
-    if (!m.userData.merged) return;
-    const p = m.geometry.getAttribute("position").array;
-    const ix = m.geometry.getIndex().array;
-    for (const r of m.userData.ranges) {
-      if (idSet && !idSet.has(r.id)) continue;
-      let b = boxes.get(r.id);
-      if (!b) { b = new THREE.Box3(); boxes.set(r.id, b); }
-      for (let i = r.start; i < r.start + r.count; i++) {
-        const vi = ix[i] * 3;
-        _lv.set(p[vi], p[vi+1], p[vi+2]);
-        b.expandByPoint(_lv);
-      }
-    }
-  });
-  return boxes;
-}
 
 // ---------- 🪶 Lav kvalitet: bryter, krasjflagg og retry ----------
 
