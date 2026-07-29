@@ -18,6 +18,7 @@ export const DEFAULT_SETTINGS = {
   invertZoom: false,  // snu rullehjulets retning
   unit: "m",          // måleenhet i mål-/kotelapper: "m" eller "mm"
   decimals: 2,        // desimaler i mengder, mål og volum (0–4)
+  autoLite: true,     // lag rask kopi (.glb) automatisk i bakgrunnen
   miniSize: 180,      // minikartets størrelse i piksler
   keys: Object.assign({}, DEFAULT_KEYS)
 };
@@ -115,6 +116,7 @@ S.lastLoadInfo = null;
 // globalId, typeName}. Lar resten av koden slå opp synkront som før.
 S.meta = new Map();
 S.workerFeil = null;      // satt hvis IFC-tråden ikke kunne brukes
+S.liteKilde = null;      // stempel (eTag+størrelse) for IFC-en som er åpen
 
 // Lastemodus: full, 🪶 lav kvalitet og 💾 lett kopi (.glb)
 S.lightMode = _prefs.lightMode === true;
@@ -180,6 +182,7 @@ S.sharedOK = false;
 
 // ---------- SharePoint ----------
 S.msalApp = null; S.spSiteId = null; S.spFiles = null;
+S.liteIndeks = null;      // oversikt over raske kopier i biblioteket
 
 // ---------- Delt visningslenke ----------
 // Adressen leses her, i den første modulen som kjører, før MSAL får røre hashen.
