@@ -3,6 +3,7 @@ import { $, DEFAULT_APPEAR, DEFAULT_KEYS, DEFAULT_SETTINGS, S, esc, writePrefs }
 import { applyAxisFont } from "./axes.js";
 import { showClipBar, stopFacePick } from "./clip.js";
 import { DEFAULT_BG, resetColors } from "./display.js";
+import { refreshNumbers } from "./elements.js";
 import { applyMiniSize, setMini } from "./minimap.js";
 import { setMode } from "./modes.js";
 import { saveAppear, saveBg, saveSettings } from "./prefs.js";
@@ -84,6 +85,10 @@ function renderSettings() {
     '<div class="set-row"><span class="n">Måleenhet</span>' +
     '<select id="stUnit"><option value="m"' + (S.settings.unit === "m" ? " selected" : "") + '>Meter (m)</option>' +
     '<option value="mm"' + (S.settings.unit === "mm" ? " selected" : "") + '>Millimeter (mm)</option></select></div>' +
+    '<div class="set-row"><span class="n">Desimaler i mål og mengder</span>' +
+    '<select id="stDec">' + [0, 1, 2, 3, 4].map(d =>
+      '<option value="' + d + '"' + (S.settings.decimals === d ? " selected" : "") + '>' + d +
+      (d === 0 ? " (hele meter)" : d === 3 ? " (mm)" : "") + '</option>').join("") + '</select></div>' +
     '<div class="set-row"><span class="n">Bakgrunnsfarge</span>' +
     '<input type="color" id="stBg" value="' + bgVal + '"></div>' +
     '<div class="set-row"><span class="n">🪶 Lav kvalitet</span>' +
@@ -119,6 +124,12 @@ function renderSettings() {
   $("stInv").onchange = (e) => { S.settings.invertZoom = e.target.checked; saveSettings(); };
   $("stUnit").onchange = (e) => {
     S.settings.unit = e.target.value; saveSettings();
+    if (S.clipOn && S.clipMode === "face") showClipBar();
+  };
+  $("stDec").onchange = (e) => {
+    S.settings.decimals = Number(e.target.value);
+    saveSettings();
+    refreshNumbers();
     if (S.clipOn && S.clipMode === "face") showClipBar();
   };
   $("stBg").oninput = (e) => {

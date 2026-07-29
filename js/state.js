@@ -17,6 +17,7 @@ export const DEFAULT_SETTINGS = {
   zoomSpeed: 1,       // zoomhastighet
   invertZoom: false,  // snu rullehjulets retning
   unit: "m",          // måleenhet i mål-/kotelapper: "m" eller "mm"
+  decimals: 2,        // desimaler i mengder, mål og volum (0–4)
   miniSize: 180,      // minikartets størrelse i piksler
   keys: Object.assign({}, DEFAULT_KEYS)
 };
@@ -187,7 +188,15 @@ export const $ = (id) => document.getElementById(id);
 
 export function esc(s){ return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
 
+// Antall desimaler brukeren har valgt (⚙ Innstillinger → Visning)
+export function dec() {
+  const d = Number(S.settings && S.settings.decimals);
+  return isFinite(d) ? Math.max(0, Math.min(4, Math.round(d))) : 2;
+}
+
 // Lengde i valgt enhet (m eller mm)
 export function fmtLen(m) {
-  return S.settings.unit === "mm" ? Math.round(m * 1000).toLocaleString("no-NO") + " mm" : m.toFixed(2) + " m";
+  return S.settings.unit === "mm"
+    ? Math.round(m * 1000).toLocaleString("no-NO") + " mm"
+    : m.toFixed(dec()) + " m";
 }
