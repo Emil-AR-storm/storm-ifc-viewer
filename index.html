@@ -32,6 +32,7 @@
   <button id="btnQty">📊 Mengder</button>
   <button id="btnColors">🎨 Utseende</button>
   <button id="btnCompare" title="Sammenlign med en annen versjon av modellen">🔄 Sammenlign</button>
+  <button id="btnShare" title="Lag en lenke som gjenskaper denne visningen hos andre">⛓ Del visning</button>
   <button id="btnSaveLite" title="Eksporter forenklet modell (.glb) som funker på mobil">💾 Lett kopi</button>
   <button id="btnSettings" title="Innstillinger og hurtigtaster (høyreklikk i modellen)">⚙ Innstillinger</button>
   <button id="btnShowAll" style="display:none">👁 Vis alle</button>
@@ -47,6 +48,7 @@
   <p>Åpne en IFC-modell (BIM) direkte i nettleseren – på mobil eller PC.
      Naviger i 3D, trykk på elementer for info, mål, snitt og legg inn markeringer.</p>
   <div id="crashBanner" style="display:none; background:var(--panel); border:1px solid var(--accent2); border-radius:10px; padding:12px 14px; font-size:13px; max-width:420px; line-height:1.5"></div>
+  <div id="shareBanner" style="display:none; background:var(--panel); border:1px solid var(--accent); border-radius:10px; padding:12px 14px; font-size:13px; max-width:420px; line-height:1.5"></div>
   <div id="resumeBox" style="display:none"></div>
   <button class="btn" id="btnOpenSplash">📂 Velg IFC-fil</button>
   <p style="font-size:12px">… eller dra fila rett inn i vinduet. Ligger modellen i OneDrive med skyikon ☁ (bare på nett),
@@ -91,6 +93,11 @@
 <div class="panel" id="comparePanel">
   <header><span>🔄 Sammenlign versjoner</span><button onclick="document.getElementById('comparePanel').classList.remove('open')">✕</button></header>
   <div class="body" id="compareBody"></div>
+</div>
+
+<div class="panel" id="sharePanel">
+  <header><span>⛓ Del visning</span><button onclick="document.getElementById('sharePanel').classList.remove('open')">✕</button></header>
+  <div class="body" id="shareBody"></div>
 </div>
 
 <div class="panel" id="clipPanel">
