@@ -1,7 +1,7 @@
 // Valg, egenskaper, søk, mengder og markeringsboks.
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
 import * as WebIFC from "https://cdn.jsdelivr.net/npm/web-ifc@0.0.57/web-ifc-api.js";
-import { $, S, esc } from "./state.js";
+import { $, S, esc, loadingEl, loadingText } from "./state.js";
 import { hiddenIDs, hideElement } from "./display.js";
 import { ifcApi, lightElementBoxes } from "./ifc.js";
 import { axesGroup, camera, canvas, controls, grid, koteGroup, markerGroup, measureGroup, pointer, raycaster, renderer, scene, selGroup } from "./scene.js";
@@ -419,11 +419,18 @@ function renderSearchResults() {
 }
 
 // ---------- Mengder ----------
-$("btnQty").addEventListener("click", () => {
+$("btnQty").addEventListener("click", async () => {
   if (!S.modelGroup) return;
   const panel = $("qtyPanel");
   if (panel.classList.contains("open")) { panel.classList.remove("open"); return; }
-  if (!S.qtyCache) S.qtyCache = computeQuantities();
+  if (!S.qtyCache) {
+    // volumberegningen tar litt tid på store modeller – vis at det skjer noe
+    loadingText.textContent = "Regner ut mengder …";
+    loadingEl.classList.add("open");
+    await new Promise(r => setTimeout(r, 30));
+    try { S.qtyCache = computeQuantities(); }
+    finally { loadingEl.classList.remove("open"); }
+  }
   renderQuantities(S.qtyCache);
   $("propPanel").classList.remove("open");
   $("commentPanel").classList.remove("open");
@@ -437,6 +444,9 @@ $("btnQty").addEventListener("click", () => {
   panel.classList.add("open");
 });
 
+// Samler mengder både gruppert (til panelet) og per element (til regneark).
+// Volum regnes i samme gjennomgang som sammenligningen bruker, så det koster én
+// runde gjennom geometrien uansett hvor mange elementer modellen har.
 function computeQuantities() {
   // bounding box per element (funker i både full og lav kvalitet)
   const boxMap = new Map();
@@ -451,7 +461,10 @@ function computeQuantities() {
       if (b) b.union(tmp); else boxMap.set(id, tmp.clone());
     });
   }
+  const toM = S.modelSize > 1000 ? 0.001 : 1;   // mm-modell → meter
+  const vq = quantitiesForSet(new Set(boxMap.keys()));
   const groups = new Map();
+  const rows = [];
   const sizeV = new THREE.Vector3();
   for (const [id, box] of boxMap) {
     let name = "", objType = "", typeName = "";
@@ -466,25 +479,100 @@ function computeQuantities() {
     } catch(_){}
     // gruppenøkkel: ObjectType er oftest profilen (f.eks. CFSHS100x6), ellers navn uten løpenummer
     let key = objType || name.replace(/:\d+$/, "") || typeName || "Ukjent";
-    // lengde: lengste dimensjon av elementets samlede boks
+    // lengde: lengste dimensjon av elementets samlede boks, i meter
     box.getSize(sizeV);
-    const len = Math.max(sizeV.x, sizeV.y, sizeV.z);
-    if (!groups.has(key)) groups.set(key, { count: 0, length: 0, type: typeName });
+    const len = Math.max(sizeV.x, sizeV.y, sizeV.z) * toM;
+    const q = vq.get(id) || { dims: [0, 0, 0], vol: 0 };
+    if (!groups.has(key)) groups.set(key, { count: 0, length: 0, vol: 0, type: typeName });
     const g = groups.get(key);
     g.count++;
     g.length += len;
+    g.vol += q.vol;
+    rows.push({
+      id, key, name, objType, type: typeName,
+      L: q.dims[0], B: q.dims[1], H: q.dims[2], len, vol: q.vol
+    });
   }
-  return [...groups.entries()].sort((a, b) => b[1].count - a[1].count);
+  return {
+    groups: [...groups.entries()].sort((a, b) => b[1].count - a[1].count),
+    rows: rows.sort((a, b) => a.key.localeCompare(b.key, "no") || a.id - b.id)
+  };
 }
 
-function renderQuantities(list) {
+// ---------- Eksport til regneark ----------
+// Semikolon og desimalkomma, som norsk Excel forventer, og BOM foran så æøå
+// blir riktig. Da åpner fila rett i Excel uten importveiviser.
+const nb = (n, d) => (Number(n) || 0).toFixed(d === undefined ? 3 : d).replace(".", ",");
+
+function csvCell(v) {
+  const s = String(v == null ? "" : v);
+  return /[;"\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+export function toCsv(rows) {
+  return rows.map(r => r.map(csvCell).join(";")).join("\r\n");
+}
+
+function download(name, text, mime) {
+  const blob = new Blob(["﻿" + text], { type: (mime || "text/csv") + ";charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+function baseName() {
+  return (S.fileName || "modell").replace(/\.(ifc|glb)$/i, "");
+}
+
+export function qtyGroupRows(cache) {
+  const out = [["Gruppe", "IFC-type", "Antall", "Sum lengde (m)", "Sum volum (m3)"]];
+  cache.groups.forEach(([key, g]) => out.push([key, g.type || "", g.count, nb(g.length, 2), nb(g.vol, 3)]));
+  const tot = cache.groups.reduce((s, [, g]) => [s[0] + g.count, s[1] + g.length, s[2] + g.vol], [0, 0, 0]);
+  out.push([]);
+  out.push(["SUM", "", tot[0], nb(tot[1], 2), nb(tot[2], 3)]);
+  return out;
+}
+
+export function qtyElementRows(cache) {
+  const out = [["ElementID", "Gruppe", "Navn", "ObjectType", "IFC-type",
+    "Lengde (m)", "Bredde (m)", "Høyde (m)", "Lengste mål (m)", "Volum (m3)"]];
+  cache.rows.forEach(r => out.push([r.id, r.key, r.name, r.objType, r.type,
+    nb(r.L, 3), nb(r.B, 3), nb(r.H, 3), nb(r.len, 3), nb(r.vol, 4)]));
+  return out;
+}
+
+function renderQuantities(cache) {
+  const list = cache.groups;
   const total = list.reduce((s, [, g]) => s + g.count, 0);
+  const totVol = list.reduce((s, [, g]) => s + g.vol, 0);
+  const totLen = list.reduce((s, [, g]) => s + g.length, 0);
   $("qtyBody").innerHTML =
-    '<div class="qty-row" style="font-weight:600"><div class="n">Totalt</div><div class="c">' + total + ' stk</div></div>' +
+    '<div class="prop-actions">' +
+      '<button id="qtyCsvG" class="primary" title="Én rad per gruppe">⬇ Grupper (CSV)</button>' +
+      '<button id="qtyCsvE" title="Én rad per element – for mengdeberegning">⬇ Alle elementer</button>' +
+      '<button id="qtyCopy" title="Lim rett inn i et åpent regneark">📋 Kopier</button>' +
+    '</div>' +
+    '<div class="qty-row" style="font-weight:600"><div class="n">Totalt</div><div class="c">' + total +
+      ' stk · ' + totLen.toFixed(1) + ' m · ' + fmtVol(totVol) + '</div></div>' +
     list.map(([key, g]) =>
       '<div class="qty-row"><div class="n">' + esc(key) + (g.type ? ' <span style="color:var(--muted);font-size:11px">(' + esc(g.type) + ')</span>' : "") + '</div>' +
-      '<div class="c">' + g.count + ' stk · ' + g.length.toFixed(1) + ' m</div></div>').join("") +
-    '<p style="color:var(--muted); font-size:11px; margin-top:10px">Lengde = lengste mål per element (ca-verdi, summert per gruppe)</p>';
+      '<div class="c">' + g.count + ' stk · ' + g.length.toFixed(1) + ' m · ' + fmtVol(g.vol) + '</div></div>').join("") +
+    '<p style="color:var(--muted); font-size:11px; margin-top:10px">Lengde = lengste mål per element (ca-verdi, summert per gruppe). ' +
+    'Volum er regnet ut av geometrien og gjelder lukkede volumer – hule profiler blir riktige, flater uten tykkelse blir 0.</p>';
+
+  $("qtyCsvG").onclick = () => download(baseName() + " - mengder.csv", toCsv(qtyGroupRows(cache)));
+  $("qtyCsvE").onclick = () => download(baseName() + " - mengder per element.csv", toCsv(qtyElementRows(cache)));
+  $("qtyCopy").onclick = async () => {
+    // tabulator lar deg lime rett inn i celler i et åpent ark
+    const tsv = qtyGroupRows(cache).map(r => r.join("\t")).join("\r\n");
+    try {
+      await navigator.clipboard.writeText(tsv);
+      $("qtyCopy").textContent = "✅ Kopiert";
+      setTimeout(() => { if ($("qtyCopy")) $("qtyCopy").textContent = "📋 Kopier"; }, 1500);
+    } catch(_) { alert("Klarte ikke å kopiere. Bruk ⬇ Grupper (CSV) i stedet."); }
+  };
 }
 
 // ---------- Markeringsboks (shift + dra) ----------
