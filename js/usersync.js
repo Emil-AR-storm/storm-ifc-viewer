@@ -77,7 +77,6 @@ function applyPrefs(p) {
   if (typeof p.snapPx === "number") S.snapPx = p.snapPx;
   if (typeof p.miniOn === "boolean") setMini(p.miniOn);
   S.prefsUpdated = p.updated || S.prefsUpdated;
-  S.prefsSyncedAt = p.updated || null;
   writePrefs();   // alt havner i den ene lokale nøkkelen
 }
 
