@@ -11,7 +11,7 @@
 
 <div id="topbar">
   <div class="logo">STORM <span>IFC</span></div>
-  <label class="btn" for="fileInput">📂 Åpne</label>
+  <button class="btn" id="btnOpen">📂 Åpne</button>
   <input type="file" id="fileInput" accept=".ifc,.glb">
   <button id="btnLib">📚 Bibliotek</button>
   <button id="btnLight" title="Forenklet lasting for mobil og store modeller">🪶 Lav kvalitet</button>
@@ -47,7 +47,8 @@
   <p>Åpne en IFC-modell (BIM) direkte i nettleseren – på mobil eller PC.
      Naviger i 3D, trykk på elementer for info, mål, snitt og legg inn markeringer.</p>
   <div id="crashBanner" style="display:none; background:var(--panel); border:1px solid var(--accent2); border-radius:10px; padding:12px 14px; font-size:13px; max-width:420px; line-height:1.5"></div>
-  <label class="btn" for="fileInput">📂 Velg IFC-fil</label>
+  <div id="resumeBox" style="display:none"></div>
+  <button class="btn" id="btnOpenSplash">📂 Velg IFC-fil</button>
   <p style="font-size:12px">… eller dra fila rett inn i vinduet. Ligger modellen i OneDrive med skyikon ☁ (bare på nett),
      bruk 📚 Biblioteket – eller høyreklikk fila i Utforsker → «Behold alltid på denne enheten».</p>
   <button id="btnLibSplash" style="font-size:15px; padding:12px 22px">📚 Åpne fra biblioteket</button>
