@@ -12,7 +12,7 @@
 <div id="topbar">
   <div class="logo">STORM <span>IFC</span></div>
   <label class="btn" for="fileInput">📂 Åpne</label>
-  <input type="file" id="fileInput" accept=".ifc,.IFC,.glb,.GLB,application/octet-stream">
+  <input type="file" id="fileInput" accept=".ifc,.glb">
   <button id="btnLib">📚 Bibliotek</button>
   <button id="btnLight" title="Forenklet lasting for mobil og store modeller">🪶 Lav kvalitet</button>
   <button id="btnComments">💬 <span id="commentCount">0</span></button>
@@ -31,6 +31,7 @@
   <button id="btnGhost">👻 Transparent</button>
   <button id="btnQty">📊 Mengder</button>
   <button id="btnColors">🎨 Utseende</button>
+  <button id="btnCompare" title="Sammenlign med en annen versjon av modellen">🔄 Sammenlign</button>
   <button id="btnSaveLite" title="Eksporter forenklet modell (.glb) som funker på mobil">💾 Lett kopi</button>
   <button id="btnSettings" title="Innstillinger og hurtigtaster (høyreklikk i modellen)">⚙ Innstillinger</button>
   <button id="btnShowAll" style="display:none">👁 Vis alle</button>
@@ -47,7 +48,8 @@
      Naviger i 3D, trykk på elementer for info, mål, snitt og legg inn markeringer.</p>
   <div id="crashBanner" style="display:none; background:var(--panel); border:1px solid var(--accent2); border-radius:10px; padding:12px 14px; font-size:13px; max-width:420px; line-height:1.5"></div>
   <label class="btn" for="fileInput">📂 Velg IFC-fil</label>
-  <p style="font-size:12px">… eller dra fila rett inn i vinduet.</p>
+  <p style="font-size:12px">… eller dra fila rett inn i vinduet. Ligger modellen i OneDrive med skyikon ☁ (bare på nett),
+     bruk 📚 Biblioteket – eller høyreklikk fila i Utforsker → «Behold alltid på denne enheten».</p>
   <button id="btnLibSplash" style="font-size:15px; padding:12px 22px">📚 Åpne fra biblioteket</button>
   <p style="font-size:12px">Filen behandles kun lokalt i nettleseren din – ingenting lastes opp.</p>
   <p id="jsCheck" style="color:#ef4444; font-size:13px; font-weight:600">⚠️ JavaScript kjører ikke. Åpner du fila i forhåndsvisning (Filer/mail)? Åpne den i Safari eller Chrome i stedet.</p>
@@ -83,6 +85,11 @@
 <div class="panel" id="axesPanel">
   <header><span>🔠 Aksesystem</span><button onclick="document.getElementById('axesPanel').classList.remove('open')">✕</button></header>
   <div class="body" id="axesBody"></div>
+</div>
+
+<div class="panel" id="comparePanel">
+  <header><span>🔄 Sammenlign versjoner</span><button onclick="document.getElementById('comparePanel').classList.remove('open')">✕</button></header>
+  <div class="body" id="compareBody"></div>
 </div>
 
 <div class="panel" id="searchPanel">
