@@ -18,12 +18,11 @@ ifcApi.SetWasmPath("https://cdn.jsdelivr.net/npm/web-ifc@0.0.57/", true);
 
 export const ifcReady = ifcApi.Init();
 
-document.getElementById("fileInput").addEventListener("change", async (e) => {
-  const file = e.target.files[0];
+// Åpner en fil fra disk – brukes både av 📂 Åpne-knappen og av dra-og-slipp
+export async function openLocalFile(file) {
   if (!file) return;
   if (!/\.(ifc|glb)$/i.test(file.name)) {
     alert("Dette ser ikke ut som en IFC- eller lett kopi-fil (" + file.name + "). Velg en fil som slutter på .ifc eller .glb");
-    e.target.value = "";
     return;
   }
   S.fileName = file.name;
@@ -45,12 +44,48 @@ document.getElementById("fileInput").addEventListener("change", async (e) => {
   } catch (err) {
     console.error(err);
     clearLoadFlag();
-    if (!(await offerLightRetry(err))) alert("Klarte ikke å lese IFC-filen: " + err.message);
+    // Filer som bare finnes i skya (OneDrive «frigjør plass») kan ikke leses direkte
+    const msg = /permission|not.*readable|NotReadableError|NotFoundError/i.test(err.name + " " + err.message)
+      ? "Klarte ikke å lese fila. Ligger den i OneDrive og er merket «bare på nett»? " +
+        "Høyreklikk fila i Utforsker → «Behold alltid på denne enheten», og prøv igjen."
+      : "Klarte ikke å lese IFC-filen: " + err.message;
+    if (!(await offerLightRetry(err))) alert(msg);
   } finally {
     loadingEl.classList.remove("open");
-    e.target.value = "";
   }
+}
+
+document.getElementById("fileInput").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  await openLocalFile(file);
+  e.target.value = "";
 });
+
+// ---------- Dra og slipp ----------
+// Slipp en .ifc/.glb rett i vinduet. Nyttig når Windows-dialogen filtrerer bort
+// filer, og raskere enn å lete seg fram i mapper.
+(function enableDrop() {
+  const hint = document.createElement("div");
+  hint.id = "dropHint";
+  hint.textContent = "📥 Slipp IFC- eller .glb-fila her";
+  document.body.appendChild(hint);
+  let depth = 0;
+  const show = (on) => hint.classList.toggle("open", on);
+  window.addEventListener("dragenter", (e) => {
+    if (!e.dataTransfer || ![...e.dataTransfer.types].includes("Files")) return;
+    e.preventDefault(); depth++; show(true);
+  });
+  window.addEventListener("dragover", (e) => {
+    if (!e.dataTransfer || ![...e.dataTransfer.types].includes("Files")) return;
+    e.preventDefault(); e.dataTransfer.dropEffect = "copy";
+  });
+  window.addEventListener("dragleave", () => { depth = Math.max(0, depth - 1); if (!depth) show(false); });
+  window.addEventListener("drop", async (e) => {
+    if (!e.dataTransfer || !e.dataTransfer.files.length) return;
+    e.preventDefault(); depth = 0; show(false);
+    await openLocalFile(e.dataTransfer.files[0]);
+  });
+})();
 
 export function afterLoad() {
   $("splash").style.display = "none";
