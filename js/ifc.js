@@ -2,7 +2,7 @@
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
 import { $, S, esc, loadingEl, loadingText, statusEl, writePrefs } from "./state.js";
 import { harWorker, kall, metaFor, tømMeta } from "./ifcrpc.js";
-import { byggLettKopi, kanskjeLagRaskKopi, lettNavn } from "./lite.js";
+import { byggLettKopi, lettNavn } from "./lite.js";
 import { hiddenIDs } from "./display.js";
 import { clearSelection } from "./elements.js";
 import { loadComments, renderCommentList } from "./markers.js";
@@ -38,9 +38,6 @@ export async function openLocalFile(file, handle) {
     const buffer = new Uint8Array(await file.arrayBuffer());
     await new Promise(r => setTimeout(r, 30));
     S.lastBuffer = buffer;
-    // stempel for lokale filer: endringstidspunkt + størrelse. Uten dette kunne
-    // ⚡ bare lages for biblioteksmodeller, som var grunnen til at ingenting skjedde.
-    S.liteKilde = isGlb ? null : { eTag: "local:" + (file.lastModified || 0), size: file.size || 0 };
     setLoadFlag({ name: file.name, light: S.lightMode });
     if (isGlb) await loadGlb(buffer); else await loadModel(buffer);
     afterLoad();
@@ -152,7 +149,6 @@ function clearModel() {
   axesGroup.visible = false;
   S.axesOn = false; S.axesBuilt = false;
   S.axisSources = null; S.axisSelection = new Set(); S.axisRaw = null;
-  S.liteKilde = null;
   S.bufferITråd = false;
   document.getElementById("axesPanel").classList.remove("open");
   document.getElementById("btnAxes").classList.remove("active");
