@@ -612,6 +612,7 @@ function afterLoad() {
   $("hint").style.display = "block";
   $("toolbar").classList.add("open");
   loadComments();
+  restoreAppearance(); // legger på lagret fargelegging/skjuling/transparent
 }
 
 function clearModel() {
@@ -644,6 +645,8 @@ function clearModel() {
   typeColorsOn = false;
   hiddenIDs.clear();
   ghostOn = false;
+  document.getElementById("btnGhost").classList.remove("active");
+  document.getElementById("btnShowAll").style.display = "none";
   clipOn = false; clipMode = "axis"; clipFaceN = null; clipFaceP = null; clipFaceOff = 0; clipFlip = false;
   clipPickFace = false;
   renderer.domElement.style.cursor = "";
@@ -1662,6 +1665,9 @@ $("btnGhost").addEventListener("click", () => {
   $("propPanel").classList.remove("open");
   ghostOn = !ghostOn;
   $("btnGhost").classList.toggle("active", ghostOn);
+  appear.ghost = ghostOn;
+  if (ghostOn) appear.typeColorsOn = false;
+  saveAppear();
   modelGroup.children.forEach(m => {
     if (ghostOn) {
       if (!ghostCache.has(m.userData.origMat)) {
@@ -1688,6 +1694,7 @@ function hideElement(expressID) {
 $("btnShowAll").addEventListener("click", () => {
   hiddenIDs.clear();
   if (typeInfo) for (const [, g] of typeInfo) g.hidden = false;
+  appear.hiddenTypes = []; saveAppear();
   if (modelGroup) modelGroup.children.forEach(m => m.visible = true);
   $("btnShowAll").style.display = "none";
   if ($("colorPanel").classList.contains("open")) renderColorPanel();
@@ -2685,6 +2692,52 @@ const PALETTE = ["#e6194b","#3cb44b","#ffe119","#4363d8","#f58231","#911eb4",
 let typeInfo = null; // Map typeKey -> { label, meshes, color, mat }
 let typeColorsOn = false;
 
+// ---------- Lagret utseende (huskes mellom økter) ----------
+// Fargelegging, egendefinerte typefarger, skjulte typer, transparent og bakgrunn
+// legges i localStorage og legges automatisk på når en modell åpnes.
+const APPEAR_KEY = "storm-ifc-utseende";
+const DEFAULT_APPEAR = { typeColorsOn: false, ghost: false, colors: {}, hiddenTypes: [] };
+let appear = Object.assign({}, DEFAULT_APPEAR);
+try {
+  const raw = JSON.parse(localStorage.getItem(APPEAR_KEY) || "{}");
+  appear = Object.assign({}, DEFAULT_APPEAR, raw);
+  appear.colors = raw.colors || {};
+  appear.hiddenTypes = raw.hiddenTypes || [];
+} catch(_) {}
+function saveAppear() {
+  try { localStorage.setItem(APPEAR_KEY, JSON.stringify(appear)); } catch(_) {}
+}
+function saveBg(hex) {
+  try { localStorage.setItem("storm-ifc-bg", hex); } catch(_) {}
+}
+// Skriver dagens skjulte typer tilbake til lageret
+function syncHiddenTypes() {
+  if (!typeInfo) return;
+  appear.hiddenTypes = [...typeInfo.entries()].filter(([, g]) => g.hidden).map(([k]) => k);
+  saveAppear();
+}
+// Legger på lagret utseende etter at en modell er åpnet
+function restoreAppearance() {
+  if (!modelGroup || lightLoaded || glbActive || modelID === null) return;
+  const hasSaved = appear.typeColorsOn || appear.ghost ||
+    appear.hiddenTypes.length || Object.keys(appear.colors).length;
+  if (!hasSaved) return;
+  try {
+    if (!typeInfo) buildTypeInfo();
+    if (appear.typeColorsOn) applyTypeColors(true);
+    if (appear.hiddenTypes.length) {
+      let any = false;
+      for (const [k, g] of typeInfo) {
+        g.hidden = appear.hiddenTypes.includes(k);
+        if (g.hidden) any = true;
+        g.meshes.forEach(m => m.visible = !g.hidden);
+      }
+      if (any) $("btnShowAll").style.display = "";
+    }
+    if (appear.ghost && !appear.typeColorsOn) $("btnGhost").click();
+  } catch(err) { console.warn("Klarte ikke å gjenopprette utseende:", err); }
+}
+
 function buildTypeInfo() {
   typeInfo = new Map();
   const idType = new Map();
@@ -2697,11 +2750,12 @@ function buildTypeInfo() {
     }
     const key = idType.get(id);
     if (!typeInfo.has(key)) {
-      const color = PALETTE[typeInfo.size % PALETTE.length];
+      const color = appear.colors[key] || PALETTE[typeInfo.size % PALETTE.length];
       typeInfo.set(key, {
         label: TYPE_LABELS[key] || key,
         meshes: [],
         color,
+        hidden: appear.hiddenTypes.includes(key),
         mat: new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide })
       });
     }
@@ -2709,22 +2763,35 @@ function buildTypeInfo() {
   });
 }
 
-function applyTypeColors() {
+function applyTypeColors(silent) {
   clearSelection();
   $("propPanel").classList.remove("open");
   ghostOn = false;
   $("btnGhost").classList.remove("active");
   typeColorsOn = true;
   for (const [, g] of typeInfo) g.meshes.forEach(m => m.material = g.mat);
+  if (!silent) {
+    appear.typeColorsOn = true;
+    appear.ghost = false;
+    saveAppear();
+  }
 }
 
 function resetColors() {
   scene.background.set(DEFAULT_BG);
+  saveBg(DEFAULT_BG);
   typeColorsOn = false;
+  ghostOn = false;
+  $("btnGhost").classList.remove("active");
   if (modelGroup) {
     clearSelection();
-    modelGroup.children.forEach(m => m.material = m.userData.origMat);
+    modelGroup.children.forEach(m => { m.material = m.userData.origMat; m.visible = true; });
   }
+  hiddenIDs.clear();
+  if (typeInfo) for (const [, g] of typeInfo) g.hidden = false;
+  $("btnShowAll").style.display = "none";
+  appear = Object.assign({}, DEFAULT_APPEAR, { colors: {}, hiddenTypes: [] });
+  saveAppear();
   renderColorPanel();
 }
 
@@ -2737,7 +2804,7 @@ $("btnColors").addEventListener("click", () => {
     $("colorBody").innerHTML =
       '<div class="qty-row"><div class="n">Bakgrunn</div><div class="c"><input type="color" id="colBg" value="' + bgVal + '"></div></div>' +
       '<p style="color:var(--muted); font-size:11px; margin-top:10px">Fargelegging og skjuling per type er ikke tilgjengelig i 🪶 lav kvalitet. Last modellen i full kvalitet for å bruke det.</p>';
-    $("colBg").oninput = (e) => scene.background.set(e.target.value);
+    $("colBg").oninput = (e) => { scene.background.set(e.target.value); saveBg(e.target.value); };
   } else {
     if (!typeInfo) buildTypeInfo();
     renderColorPanel();
@@ -2768,14 +2835,17 @@ function renderColorPanel() {
       '<input type="color" data-type="' + i + '" value="' + g.color + '"></div></div>';
   });
   $("colorBody").innerHTML = html;
-  $("colBg").oninput = (e) => scene.background.set(e.target.value);
-  $("colApply").onclick = applyTypeColors;
+  $("colBg").oninput = (e) => { scene.background.set(e.target.value); saveBg(e.target.value); };
+  $("colApply").onclick = () => applyTypeColors();
   $("colReset").onclick = resetColors;
   $("colorBody").querySelectorAll("input[data-type]").forEach(inp => {
     inp.oninput = (e) => {
-      const g = typeInfo.get(keys[Number(e.target.dataset.type)]);
+      const key = keys[Number(e.target.dataset.type)];
+      const g = typeInfo.get(key);
       g.color = e.target.value;
       g.mat.color.set(e.target.value);
+      appear.colors[key] = e.target.value;
+      saveAppear();
       if (!typeColorsOn) applyTypeColors();
     };
   });
@@ -2785,6 +2855,7 @@ function renderColorPanel() {
       g.hidden = !g.hidden;
       g.meshes.forEach(m => m.visible = !g.hidden && !hiddenIDs.has(m.userData.expressID));
       e.currentTarget.textContent = g.hidden ? "🚫" : "👁";
+      syncHiddenTypes();
       const anyHidden = hiddenIDs.size > 0 || [...typeInfo.values()].some(t => t.hidden);
       $("btnShowAll").style.display = anyHidden ? "" : "none";
     };
@@ -3162,6 +3233,9 @@ function renderSettings() {
   }
   html += '<p style="color:var(--muted); font-size:11px; margin-top:8px">Esc avbryter modus og lukker paneler. ' +
     'Trykk på en tast-knapp og deretter ønsket tast for å endre.</p>' +
+    '<h4>Lagring</h4>' +
+    '<p style="color:var(--muted); font-size:11px; margin:0 0 6px">💾 Alt over – pluss fargelegging, egne typefarger, skjulte typer, ' +
+    '👻 transparent, 🧲 snap og 🪶 lav kvalitet – lagres automatisk i denne nettleseren og legges på neste gang du åpner en modell.</p>' +
     '<div class="prop-actions" style="margin-top:10px"><button id="stReset">↺ Tilbakestill alt</button></div>';
 
   $("setBody").innerHTML = html;
@@ -3196,6 +3270,17 @@ function renderSettings() {
     settings = Object.assign({}, DEFAULT_SETTINGS, { keys: Object.assign({}, DEFAULT_KEYS) });
     saveSettings();
     applyMiniSize();
+    // utseende, snap, aksefont og bakgrunn tilbake til standard
+    axisFontF = 1;
+    try {
+      localStorage.setItem("storm-ifc-axisfont", "1");
+      localStorage.setItem("storm-ifc-snap", "1");
+      localStorage.setItem("storm-ifc-snappx", "18");
+    } catch(_) {}
+    snapOn = true; snapPx = 18;
+    applyAxisFont();
+    setMini(true);
+    if (typeInfo) resetColors(); else { scene.background.set(DEFAULT_BG); saveBg(DEFAULT_BG); appear = Object.assign({}, DEFAULT_APPEAR, { colors: {}, hiddenTypes: [] }); saveAppear(); }
     renderSettings();
   };
 }
