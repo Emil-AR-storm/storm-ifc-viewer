@@ -12,7 +12,7 @@
 <div id="topbar">
   <div class="logo">STORM <span>IFC</span></div>
   <label class="btn" for="fileInput">📂 Åpne</label>
-  <input type="file" id="fileInput">
+  <input type="file" id="fileInput" accept=".ifc,.IFC,.glb,.GLB,application/octet-stream">
   <button id="btnLib">📚 Bibliotek</button>
   <button id="btnLight" title="Forenklet lasting for mobil og store modeller">🪶 Lav kvalitet</button>
   <button id="btnComments">💬 <span id="commentCount">0</span></button>
@@ -47,6 +47,7 @@
      Naviger i 3D, trykk på elementer for info, mål, snitt og legg inn markeringer.</p>
   <div id="crashBanner" style="display:none; background:var(--panel); border:1px solid var(--accent2); border-radius:10px; padding:12px 14px; font-size:13px; max-width:420px; line-height:1.5"></div>
   <label class="btn" for="fileInput">📂 Velg IFC-fil</label>
+  <p style="font-size:12px">… eller dra fila rett inn i vinduet.</p>
   <button id="btnLibSplash" style="font-size:15px; padding:12px 22px">📚 Åpne fra biblioteket</button>
   <p style="font-size:12px">Filen behandles kun lokalt i nettleseren din – ingenting lastes opp.</p>
   <p id="jsCheck" style="color:#ef4444; font-size:13px; font-weight:600">⚠️ JavaScript kjører ikke. Åpner du fila i forhåndsvisning (Filer/mail)? Åpne den i Safari eller Chrome i stedet.</p>
