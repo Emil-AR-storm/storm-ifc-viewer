@@ -1,9 +1,8 @@
 // 🔠 Aksesystem: finner akselinjer automatisk fra valgte elementtyper.
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
-import * as WebIFC from "https://cdn.jsdelivr.net/npm/web-ifc@0.0.57/web-ifc-api.js";
 import { $, S, esc, statusEl } from "./state.js";
 import { val } from "./elements.js";
-import { ifcApi, lightElementBoxes } from "./ifc.js";
+import { lightElementBoxes } from "./ifc.js";
 import { axesGroup, camera, frameHooks, makeLabel, renderer } from "./scene.js";
 
 // Zoom-avhengige akse-lapper: skjul lapper som ville blitt for små på skjermen.
@@ -62,25 +61,9 @@ function classifyAxisSources() {
       for (const id of S.glbColumns) add("COL_OTHER", "Søyler", id);
     }
   } else if (S.modelID !== null) {
-    const cand = [
-      ["COLUMN", WebIFC.IFCCOLUMN], ["FOOTING", WebIFC.IFCFOOTING],
-      ["PILE", WebIFC.IFCPILE], ["WALL", WebIFC.IFCWALL],
-      ["WALLSTANDARDCASE", WebIFC.IFCWALLSTANDARDCASE], ["BEAM", WebIFC.IFCBEAM]
-    ];
-    for (const [t, code] of cand) {
-      if (code === undefined) continue;
-      try {
-        const v = ifcApi.GetLineIDsWithType(S.modelID, code);
-        for (let i = 0; i < v.size(); i++) {
-          const id = v.get(i);
-          let objType = "", name = "";
-          if (t === "COLUMN") {
-            try { const line = ifcApi.GetLine(S.modelID, id); objType = val(line.ObjectType) || ""; name = val(line.Name) || ""; } catch(_){}
-          }
-          handle(t, id, objType, name);
-        }
-      } catch(_){}
-    }
+    // Lista ble hentet fra IFC-tråden da modellen ble åpnet (S.axisRaw),
+    // slik at denne funksjonen kan holde seg synkron som før.
+    for (const k of (S.axisRaw || [])) handle(k.t, k.id, k.objType, k.name);
   }
   // grupper med under 2 elementer kan ikke gi akselinjer
   for (const [k, g] of S.axisSources) if (g.ids.size < 2) S.axisSources.delete(k);

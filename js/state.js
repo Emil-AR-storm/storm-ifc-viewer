@@ -111,6 +111,11 @@ S.coordMatrix = null;     // original modell → viewer (brukes av aksesystemet)
 S.qtyCache = null;
 S.lastLoadInfo = null;
 
+// Elementdata hentet i én runde fra IFC-tråden: id → {name, objectType, tag,
+// globalId, typeName}. Lar resten av koden slå opp synkront som før.
+S.meta = new Map();
+S.workerFeil = null;      // satt hvis IFC-tråden ikke kunne brukes
+
 // Lastemodus: full, 🪶 lav kvalitet og 💾 lett kopi (.glb)
 S.lightMode = _prefs.lightMode === true;
 S.lightLoaded = false;
@@ -161,6 +166,7 @@ S.typeColorsOn = false;
 S.axesOn = false; S.axesBuilt = false;
 S.axisSources = null;
 S.axisSelection = new Set();
+S.axisRaw = null;        // kandidater til akser, hentet fra IFC-tråden ved lasting
 S.axisFontF = Number(_prefs.axisFont) || 1;
 
 // ---------- Minikart ----------

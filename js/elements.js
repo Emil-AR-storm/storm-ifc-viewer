@@ -1,9 +1,9 @@
 // Valg, egenskaper, søk, mengder og markeringsboks.
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
-import * as WebIFC from "https://cdn.jsdelivr.net/npm/web-ifc@0.0.57/web-ifc-api.js";
 import { $, S, dec, esc, loadingEl, loadingText } from "./state.js";
 import { hiddenIDs, hideElement } from "./display.js";
-import { ifcApi, lightElementBoxes } from "./ifc.js";
+import { lightElementBoxes } from "./ifc.js";
+import { kall, metaFor } from "./ifcrpc.js";
 import { axesGroup, camera, canvas, controls, grid, koteGroup, markerGroup, measureGroup, pointer, raycaster, renderer, scene, selGroup } from "./scene.js";
 
 const selMat = new THREE.MeshLambertMaterial({ color: 0x3b82f6, emissive: 0x1d4ed8, side: THREE.DoubleSide });
@@ -98,7 +98,9 @@ export function val(v) {
   return v;
 }
 
-export function showProperties(expressID) {
+// Asynkron fordi egenskapslista hentes fra IFC-tråden. Kallerne trenger ikke
+// vente – panelet fyller seg selv når svaret kommer.
+export async function showProperties(expressID) {
   const body = $("propBody");
   const rows = [];
   if (S.glbActive) {
@@ -113,45 +115,24 @@ export function showProperties(expressID) {
       rows.push(["Volum (ca)", fmtVol(q.vol)]);
     } catch(_){}
     rows.push(["Merk", "Lett kopi – åpne original-IFC-en for full egenskapsliste"]);
-  } else try {
-    const line = ifcApi.GetLine(S.modelID, expressID);
-    const typeCode = ifcApi.GetLineType(S.modelID, expressID);
-    let typeName = "";
-    try { typeName = ifcApi.GetNameFromTypeCode(typeCode) || ""; } catch(_) {}
-    $("propTitle").textContent = (typeName || "Element").replace(/^IFC/i, "Ifc");
-    rows.push(["ExpressID", expressID]);
-    for (const key of ["GlobalId","Name","ObjectType","Tag","Description","PredefinedType"]) {
-      const v = val(line[key]);
-      if (v !== null && v !== "" ) rows.push([key, v]);
+  } else {
+    // IFC-tråden svarer med hele egenskapslista i én runde
+    let p = null;
+    try { p = await kall("props", { id: expressID }); } catch(_) {}
+    if (!p || p.feil) rows.push(["Feil", "Kunne ikke lese egenskaper"]);
+    else {
+      $("propTitle").textContent = (p.typeName ? "Ifc" + p.typeName : "Element");
+      rows.push(["ExpressID", expressID]);
+      p.felt.forEach(([k, v]) => rows.push([k, v]));
+      try {
+        const q = elementQuantities(expressID);
+        rows.push(["Mål L×B×H (ca)", q.dims.map(fmtDim).join(" × ") + " m"]);
+        rows.push(["Volum (ca)", fmtVol(q.vol)]);
+      } catch(_){}
+      p.psets.forEach(([k, v]) => rows.push([k, v]));
     }
-    try {
-      const q = elementQuantities(expressID);
-      rows.push(["Mål L×B×H (ca)", q.dims.map(fmtDim).join(" × ") + " m"]);
-      rows.push(["Volum (ca)", fmtVol(q.vol)]);
-    } catch(_){}
-    try {
-      const relIDs = ifcApi.GetLineIDsWithType(S.modelID, WebIFC.IFCRELDEFINESBYPROPERTIES);
-      for (let i = 0; i < relIDs.size(); i++) {
-        const rel = ifcApi.GetLine(S.modelID, relIDs.get(i));
-        const related = (rel.RelatedObjects || []).map(o => o.value);
-        if (!related.includes(expressID)) continue;
-        const psetRef = rel.RelatingPropertyDefinition;
-        if (!psetRef) continue;
-        const pset = ifcApi.GetLine(S.modelID, psetRef.value);
-        if (!pset || !pset.HasProperties) continue;
-        const psetName = val(pset.Name) || "Pset";
-        for (const pRef of pset.HasProperties) {
-          try {
-            const p = ifcApi.GetLine(S.modelID, pRef.value);
-            const pv = val(p.NominalValue);
-            if (pv !== null) rows.push([psetName + " · " + val(p.Name), pv]);
-          } catch(_){}
-        }
-      }
-    } catch(_){}
-  } catch (err) {
-    rows.push(["Feil", "Kunne ikke lese egenskaper"]);
   }
+
   body.innerHTML =
     (S.lightLoaded ? "" : '<div class="prop-actions"><button id="paHide">🙈 Skjul element</button></div>') +
     rows.map(([k,v]) =>
@@ -190,12 +171,8 @@ function buildSearchIndex() {
       else if (m.userData.expressID !== undefined) ids.add(m.userData.expressID);
     });
     for (const id of ids) {
-      try {
-        const line = ifcApi.GetLine(S.modelID, id);
-        let tn = "";
-        try { tn = (ifcApi.GetNameFromTypeCode(ifcApi.GetLineType(S.modelID, id)) || "").replace(/^IFC/i, ""); } catch(_){}
-        push(id, val(line.Name), val(line.ObjectType), val(line.Tag), tn);
-      } catch(_){}
+      const m = metaFor(id);
+      if (m) push(id, m.name, m.objectType, m.tag, m.typeName);
     }
   }
 }
@@ -290,7 +267,7 @@ export function fmtDim(d) { return d.toFixed(dec()); }
 
 export function elemDisplayName(id) {
   if (S.glbActive) { const p = S.glbProps && S.glbProps.get(id); return (p && (p[0] || p[1])) || ("ID " + id); }
-  try { const line = ifcApi.GetLine(S.modelID, id); return val(line.Name) || val(line.ObjectType) || ("ID " + id); } catch(_) { return "ID " + id; }
+  try { const line = metaFor(id) || {}; return (line.name || null) || val(line.ObjectType) || ("ID " + id); } catch(_) { return "ID " + id; }
 }
 
 // ---------- Flervalg (shift-klikk) med samlede mengder ----------
@@ -476,12 +453,10 @@ function computeQuantities() {
     if (S.glbActive) {
       const p = S.glbProps ? S.glbProps.get(id) : null;
       if (p) { name = p[0] || ""; objType = p[1] || ""; typeName = (p[2] || "").replace(/^Ifc/, ""); }
-    } else try {
-      const line = ifcApi.GetLine(S.modelID, id);
-      name = val(line.Name) || "";
-      objType = val(line.ObjectType) || "";
-      try { typeName = (ifcApi.GetNameFromTypeCode(ifcApi.GetLineType(S.modelID, id)) || "").replace(/^IFC/, ""); } catch(_){}
-    } catch(_){}
+    } else {
+      const meta = metaFor(id);
+      if (meta) { name = meta.name || ""; objType = meta.objectType || ""; typeName = meta.typeName || ""; }
+    }
     // gruppenøkkel: ObjectType er oftest profilen (f.eks. CFSHS100x6), ellers navn uten løpenummer
     let key = objType || name.replace(/:\d+$/, "") || typeName || "Ukjent";
     // lengde: lengste dimensjon av elementets samlede boks, i meter

@@ -140,7 +140,7 @@ S.markerLink = async (c) => {
 
 // ---------- Legg en delt visning på plass ----------
 // silent overalt: mottakerens eget lagrede utseende røres ikke.
-export function applyView(v) {
+export async function applyView(v) {
   if (!v) return;
   try {
     if (Array.isArray(v.cam) && v.cam.length === 6) {
@@ -175,7 +175,7 @@ export function applyView(v) {
     }
     if (v.gh && !v.tc && !v.cmp) setGhost(true, true);
     if (v.clip) {
-      applyClipState(v.clip);
+      await applyClipState(v.clip);
       if (v.clip.mode === "none") {           // bare etasjefilter var på
         S.clipOn = false;
         $("btnClip").classList.remove("active");

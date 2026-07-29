@@ -210,7 +210,7 @@ export async function spOpenFile(item) {
     S.fileName = item.name;
     S.lastBuffer = buf;
     setLoadFlag({ name: item.name, size: item.size, light: S.lightMode, libId: item.id });
-    if (isGlb) await loadGlb(buf); else loadModel(buf);
+    if (isGlb) await loadGlb(buf); else await loadModel(buf);
     afterLoad();
     clearLoadFlag();
     if (S.rememberModel) S.rememberModel({ kind: "lib", name: item.name, size: item.size, id: item.id });

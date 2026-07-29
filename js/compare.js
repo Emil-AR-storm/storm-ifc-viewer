@@ -9,7 +9,7 @@
 // faller den tilbake på geometrisk match: type + posisjon + volum.
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
 import { $, S, esc, loadingEl, loadingText } from "./state.js";
-import { ifcApi } from "./ifc.js";
+import { guidFor, typeFor } from "./ifcrpc.js";
 import { allElementBoxes, elemDisplayName, elementBoxById, fmtVol, quantitiesForSet, val, zoomToElement } from "./elements.js";
 import { camera, controls, scene } from "./scene.js";
 
@@ -39,14 +39,9 @@ function elementIds() {
   return ids;
 }
 
-function guidOf(id) {
-  try { return val(ifcApi.GetLine(S.modelID, id).GlobalId) || null; } catch(_) { return null; }
-}
-
-function typeOf(id) {
-  try { return (ifcApi.GetNameFromTypeCode(ifcApi.GetLineType(S.modelID, id)) || "").replace(/^IFC/, ""); }
-  catch(_) { return ""; }
-}
+// Begge leses fra hurtigbufferen som ble fylt rett etter lasting
+const guidOf = (id) => guidFor(id);
+const typeOf = (id) => typeFor(id);
 
 export function snapshotModel() {
   if (!S.modelGroup || S.modelID === null) return null; // .glb har ikke IFC-data
