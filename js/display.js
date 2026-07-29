@@ -2,7 +2,7 @@
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
 import { $, DEFAULT_APPEAR, S, esc } from "./state.js";
 import { clearSelection } from "./elements.js";
-import { ifcApi } from "./ifc.js";
+import { typeFor } from "./ifcrpc.js";
 import { saveAppear, saveBg, syncHiddenTypes } from "./prefs.js";
 import { scene } from "./scene.js";
 
@@ -84,8 +84,7 @@ export function buildTypeInfo() {
   S.modelGroup.children.forEach(m => {
     const id = m.userData.expressID;
     if (!idType.has(id)) {
-      let t = "UKJENT";
-      try { t = (ifcApi.GetNameFromTypeCode(ifcApi.GetLineType(S.modelID, id)) || "UKJENT"); } catch(_){}
+      const t = typeFor(id) || "UKJENT";
       idType.set(id, t.toUpperCase().replace(/^IFC/, ""));
     }
     const key = idType.get(id);

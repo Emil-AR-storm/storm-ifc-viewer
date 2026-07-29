@@ -1,9 +1,9 @@
 // ✂️ Snitt (akse og fra flate) og 🏢 etasjefilter – begge bruker klippeplan.
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
-import * as WebIFC from "https://cdn.jsdelivr.net/npm/web-ifc@0.0.57/web-ifc-api.js";
 import { $, DEFAULT_CLIPBOX, S, esc, fmtLen, writePrefs } from "./state.js";
 import { val } from "./elements.js";
-import { ifcApi, lightElementBoxes } from "./ifc.js";
+import { lightElementBoxes } from "./ifc.js";
+import { kall } from "./ifcrpc.js";
 import { modeBar, modeButtons, updateModeBar } from "./modes.js";
 import { renderer } from "./scene.js";
 
@@ -286,7 +286,7 @@ function saveCurrentClip() {
   openSavedClips();
 }
 
-export function applyClipState(c) {
+export async function applyClipState(c) {
   if (!c) return;
   S.clipMode = c.mode || "axis";
   S.clipAxis = c.axis || "y";
@@ -301,7 +301,7 @@ export function applyClipState(c) {
   // etasjevalget følger med i snittet
   const st = typeof c.storey === "number" ? c.storey : -1;
   if (st >= 0) {
-    if (!S.storeyList) buildStoreyList();
+    if (!S.storeyList) await buildStoreyList();
     S.storeyOn = true; S.storeyIdx = st;
     $("btnStorey").classList.add("active");
   } else if (S.storeyOn) {
@@ -343,7 +343,7 @@ export function openSavedClips() {
         openSavedClips();
         return;
       }
-      applyClipState(clipList()[Number(el.dataset.i)]);
+      applyClipState(clipList()[Number(el.dataset.i)]);   // asynkron, men ingenting venter på den
     };
   });
 }
@@ -351,33 +351,16 @@ export function openSavedClips() {
 // ---------- 🏢 Etasjefilter ----------
 // Viser én etasje om gangen ved hjelp av to klippeplan (funker i full, lav og lett kopi-modus)
 
-// Leser IfcBuildingStorey + hvilke elementer som hører til hver etasje
-export function storeyDataIfc() {
-  try {
-    const byStorey = new Map();
-    const rels = ifcApi.GetLineIDsWithType(S.modelID, WebIFC.IFCRELCONTAINEDINSPATIALSTRUCTURE);
-    for (let i = 0; i < rels.size(); i++) {
-      const rel = ifcApi.GetLine(S.modelID, rels.get(i));
-      const sid = rel.RelatingStructure && rel.RelatingStructure.value;
-      if (!sid) continue;
-      try { if (ifcApi.GetLineType(S.modelID, sid) !== WebIFC.IFCBUILDINGSTOREY) continue; } catch(_) { continue; }
-      let e = byStorey.get(sid);
-      if (!e) {
-        const line = ifcApi.GetLine(S.modelID, sid);
-        e = { name: val(line.Name) || ("Etasje " + (byStorey.size + 1)), elev: Number(val(line.Elevation)) || 0, ids: [] };
-        byStorey.set(sid, e);
-      }
-      (rel.RelatedElements || []).forEach(o => e.ids.push(o.value));
-    }
-    return [...byStorey.values()].filter(s => s.ids.length).sort((a, b) => a.elev - b.elev);
-  } catch(_) { return []; }
+// Etasjene leses av IFC-tråden (js/ifc-worker.js → cmdStoreys)
+export async function storeyDataIfc() {
+  try { return await kall("storeys"); } catch(_) { return []; }
 }
 
-function buildStoreyList() {
+async function buildStoreyList() {
   S.storeyList = [];
   let defs = [];
   if (S.glbActive) defs = (S.glbStoreys || []).map(s => ({ name: s.name, ids: new Set(s.ids) }));
-  else if (S.modelID !== null) defs = storeyDataIfc().map(s => ({ name: s.name, ids: new Set(s.ids) }));
+  else if (S.modelID !== null) defs = (await storeyDataIfc()).map(s => ({ name: s.name, ids: new Set(s.ids) }));
   if (!defs.length) return;
   // bounding-bokser for alle etasje-elementer i én omgang
   const allIds = new Set();
@@ -422,7 +405,7 @@ function applyStorey(i) {
   applyClip();   // samler etasjeplan og et eventuelt aktivt snitt
 }
 
-$("btnStorey").addEventListener("click", () => {
+$("btnStorey").addEventListener("click", async () => {
   if (!S.modelGroup) return;
   S.storeyOn = !S.storeyOn;
   $("btnStorey").classList.toggle("active", S.storeyOn);
@@ -433,7 +416,7 @@ $("btnStorey").addEventListener("click", () => {
       $("btnClip").classList.remove("active");
       $("clipPanel").classList.remove("open");
     }
-    if (!S.storeyList) buildStoreyList();
+    if (!S.storeyList) await buildStoreyList();
     showStoreyBar();
     applyStorey(S.storeyIdx);
   } else {

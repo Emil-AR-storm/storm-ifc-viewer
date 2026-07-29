@@ -1,10 +1,9 @@
 // Innlasting av modeller: IFC (full og lav kvalitet) og lett kopi (.glb).
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
-import * as WebIFC from "https://cdn.jsdelivr.net/npm/web-ifc@0.0.57/web-ifc-api.js";
 import { $, S, esc, loadingEl, loadingText, statusEl, writePrefs } from "./state.js";
-import { storeyDataIfc } from "./clip.js";
+import { harWorker, hentMeta, kall, metaFor, tømMeta } from "./ifcrpc.js";
 import { hiddenIDs } from "./display.js";
-import { clearSelection, val } from "./elements.js";
+import { clearSelection } from "./elements.js";
 import { loadComments, renderCommentList } from "./markers.js";
 import { miniCanvas, renderMiniMap } from "./minimap.js";
 import { restoreAppearance } from "./prefs.js";
@@ -12,11 +11,10 @@ import { axesGroup, fitToModel, koteGroup, markerGroup, measureGroup, renderer, 
 import { SP, spOpenFile } from "./sharepoint.js";
 
 // ---------- IFC ----------
-export const ifcApi = new WebIFC.IfcAPI();
-
-ifcApi.SetWasmPath("https://cdn.jsdelivr.net/npm/web-ifc@0.0.57/", true);
-
-export const ifcReady = ifcApi.Init();
+// Selve IFC-motoren (web-ifc + wasm) lever nå i js/ifc-worker.js. Hovedtråden
+// laster den ikke i det hele tatt – det sparer 3 MB wasm og all parsing.
+// `ifcReady` beholdes som et løst løfte, siden lastekoden ventet på det før.
+export const ifcReady = Promise.resolve();
 
 // Åpner en fil fra disk – brukes både av 📂 Åpne-knappen og av dra-og-slipp.
 // `handle` er et FileSystemFileHandle når nettleseren gir oss et; det lagres av
@@ -40,7 +38,7 @@ export async function openLocalFile(file, handle) {
     await new Promise(r => setTimeout(r, 30));
     S.lastBuffer = buffer;
     setLoadFlag({ name: file.name, light: S.lightMode });
-    if (isGlb) await loadGlb(buffer); else loadModel(buffer);
+    if (isGlb) await loadGlb(buffer); else await loadModel(buffer);
     afterLoad();
     clearLoadFlag();
     if (S.rememberModel) S.rememberModel({ kind: "local", name: file.name, size: file.size, handle: handle || null });
@@ -149,7 +147,7 @@ function clearModel() {
   axesGroup.clear();
   axesGroup.visible = false;
   S.axesOn = false; S.axesBuilt = false;
-  S.axisSources = null; S.axisSelection = new Set();
+  S.axisSources = null; S.axisSelection = new Set(); S.axisRaw = null;
   document.getElementById("axesPanel").classList.remove("open");
   document.getElementById("btnAxes").classList.remove("active");
   S.searchIndex = null; S.lastQuery = "";
@@ -179,7 +177,8 @@ function clearModel() {
   document.getElementById("setMenu").classList.remove("open");
   renderer.clippingPlanes = [];
   renderCommentList();
-  if (S.modelID !== null) { try { ifcApi.CloseModel(S.modelID); } catch(_){} S.modelID = null; }
+  if (S.modelID !== null) { kall("close").catch(() => {}); S.modelID = null; }
+  tømMeta();
   S.glbActive = false;
   S.glbProps = null;
   S.glbColumns = null;
@@ -201,146 +200,122 @@ function getMaterial(c) {
   return matCache.get(key);
 }
 
-export function loadModel(buffer) {
+// Åpner modellen i IFC-tråden og bygger geometrien fra porsjonene den sender.
+// Hovedtråden gjør bare mesh-bygging, som er raskt – derfor blir fanen brukbar
+// mens en stor modell åpnes, og prosenten er en faktisk måling.
+export async function loadModel(buffer) {
   clearModel();
   S.lightLoaded = S.lightMode;
   renderer.setPixelRatio(S.lightLoaded ? 1 : Math.min(window.devicePixelRatio, 2));
-  S.modelID = ifcApi.OpenModel(buffer, S.lightLoaded
-    ? { COORDINATE_TO_ORIGIN: true, CIRCLE_SEGMENTS: 8 }
-    : { COORDINATE_TO_ORIGIN: true });
   S.modelGroup = new THREE.Group();
 
-  try {
-    const cm = ifcApi.GetCoordinationMatrix(S.modelID);
-    S.coordMatrix = new THREE.Matrix4().fromArray(cm);
-    S.koteMatrixInv = S.coordMatrix.clone().invert();
-  } catch(_) { S.koteMatrixInv = null; S.coordMatrix = null; }
+  const t0 = performance.now();
+  visFramdrift("Leser IFC-filen …", 0, 0);
 
-  const res = S.lightLoaded ? loadMeshesLight() : loadMeshesFull();
+  // Bufferen overføres til tråden (ikke kopieres). Vi beholder en kopi til
+  // 🪶/💾-omlasting, siden den overførte er borte etterpå.
+  const kopi = buffer.slice();
+  const info = await kall("open", { buffer: kopi.buffer, light: S.lightLoaded }, null, [kopi.buffer]);
+  S.modelID = 1;   // «en modell er åpen» – all lesing går nå gjennom IFC-tråden
+
+  if (info.coordMatrix) {
+    S.coordMatrix = new THREE.Matrix4().fromArray(info.coordMatrix);
+    S.koteMatrixInv = S.coordMatrix.clone().invert();
+  } else { S.koteMatrixInv = null; S.coordMatrix = null; }
+
+  const res = S.lightLoaded ? await byggLett(info) : await byggFull(info);
 
   scene.add(S.modelGroup);
   statusEl.textContent = res.shown + " elementer" +
     (S.lightLoaded ? " · 🪶" + (res.skipped ? " (" + res.skipped + " små utelatt)" : "") : "");
   S.modelBox = new THREE.Box3().setFromObject(S.modelGroup);
   S.modelSize = S.modelBox.getSize(new THREE.Vector3()).length() || 10;
+
+  // navn, type, tag og GlobalId for alle elementer i én runde – etterpå kan
+  // resten av viewer'en slå opp synkront som før
+  visFramdrift("Leser elementdata …", 0, 0);
+  await hentMeta(alleElementIder(), (n, av) => visFramdrift("Leser elementdata …", n, av));
+
+  // kandidater til aksesystemet hentes samtidig, så 🔠 Akser kan jobbe synkront
+  try { S.axisRaw = await kall("axisSources"); } catch(_) { S.axisRaw = null; }
+
   fitToModel();
   renderMiniMap();
+  console.log("Modell åpnet i " + Math.round(performance.now() - t0) + " ms" +
+    (harWorker() ? " (egen tråd)" : " (hovedtråden – " + (S.workerFeil || "ingen tråd") + ")"));
 }
 
-// Full kvalitet: ett objekt per element (alle funksjoner tilgjengelig)
-function loadMeshesFull() {
+// «Leser … 42 %» eller «… 1 240 av 3 100 elementer»
+function visFramdrift(tekst, gjort, av) {
+  if (!av) { loadingText.textContent = tekst; return; }
+  const pst = Math.min(99, Math.round(gjort / av * 100));
+  loadingText.textContent = tekst + " " + pst + " %";
+}
+
+function alleElementIder() {
+  const ids = new Set();
+  S.modelGroup.children.forEach(m => {
+    if (m.userData.merged) (m.userData.ranges || []).forEach(r => ids.add(r.id));
+    else if (m.userData.expressID !== undefined) ids.add(m.userData.expressID);
+  });
+  return ids;
+}
+
+// Lar nettleseren tegne mellom porsjonene
+const pust = () => new Promise(r => setTimeout(r, 0));
+
+// Full kvalitet: ett objekt per element
+// Porsjonene bygges med en gang de kommer inn, ikke samlet til slutt – ellers
+// ville vi holdt hele modellen i to utgaver i minnet samtidig.
+async function byggFull(info) {
   let count = 0;
-  ifcApi.StreamAllMeshes(S.modelID, (mesh) => {
-    const expressID = mesh.expressID;
-    for (let i = 0; i < mesh.geometries.size(); i++) {
-      const pg = mesh.geometries.get(i);
-      const geom = ifcApi.GetGeometry(S.modelID, pg.geometryExpressID);
-      const verts = ifcApi.GetVertexArray(geom.GetVertexData(), geom.GetVertexDataSize());
-      const indices = ifcApi.GetIndexArray(geom.GetIndexData(), geom.GetIndexDataSize());
-
-      const pos = new Float32Array(verts.length / 2);
-      const norm = new Float32Array(verts.length / 2);
-      for (let j = 0; j < verts.length; j += 6) {
-        const k = j / 2;
-        pos[k] = verts[j]; pos[k+1] = verts[j+1]; pos[k+2] = verts[j+2];
-        norm[k] = verts[j+3]; norm[k+1] = verts[j+4]; norm[k+2] = verts[j+5];
+  const svar = await kall("geometryFull", info, (m) => {
+    if (m.type === "progress") { visFramdrift("Bygger modellen …", m.done, m.total); return; }
+    if (m.type !== "geo") return;
+    for (const e of m.batch) {
+      for (const p of e.parts) {
+        const mesh = new THREE.Mesh(bufferGeo(p), getMaterial(p.color));
+        mesh.applyMatrix4(new THREE.Matrix4().fromArray(p.matrix));
+        mesh.userData.expressID = e.id;
+        mesh.userData.origMat = mesh.material;
+        S.modelGroup.add(mesh);
       }
-      const bg = new THREE.BufferGeometry();
-      bg.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-      bg.setAttribute("normal", new THREE.BufferAttribute(norm, 3));
-      bg.setIndex(new THREE.BufferAttribute(new Uint32Array(indices), 1));
-
-      const m = new THREE.Mesh(bg, getMaterial(pg.color));
-      const mtx = new THREE.Matrix4();
-      mtx.fromArray(pg.flatTransformation);
-      m.applyMatrix4(mtx);
-      m.userData.expressID = expressID;
-      m.userData.origMat = m.material;
-      S.modelGroup.add(m);
-      geom.delete();
+      count++;
     }
-    count++;
+    visFramdrift("Bygger modellen …", m.done, m.total);
   });
-  return { shown: count, skipped: 0 };
+  return { shown: svar.shown || count, skipped: svar.skipped || 0 };
 }
 
-// 🪶 Lav kvalitet: all geometri slås sammen per farge (mye mindre minne),
-// festemidler og veldig små elementer utelates
-function loadMeshesLight() {
-  const skipTypes = new Set([WebIFC.IFCMECHANICALFASTENER, WebIFC.IFCFASTENER, WebIFC.IFCDISCRETEACCESSORY].filter(t => t !== undefined));
-  const buckets = new Map(); // materiale -> { mat, segs, vtot, itot }
-  let shown = 0, skipped = 0;
-  const v = new THREE.Vector3();
-  const nMat = new THREE.Matrix3();
-
-  ifcApi.StreamAllMeshes(S.modelID, (mesh) => {
-    const expressID = mesh.expressID;
-    try { if (skipTypes.has(ifcApi.GetLineType(S.modelID, expressID))) { skipped++; return; } } catch(_){}
-    const parts = [];
-    let mnx = Infinity, mny = Infinity, mnz = Infinity, mxx = -Infinity, mxy = -Infinity, mxz = -Infinity;
-    for (let i = 0; i < mesh.geometries.size(); i++) {
-      const pg = mesh.geometries.get(i);
-      const geom = ifcApi.GetGeometry(S.modelID, pg.geometryExpressID);
-      const verts = ifcApi.GetVertexArray(geom.GetVertexData(), geom.GetVertexDataSize());
-      const indices = ifcApi.GetIndexArray(geom.GetIndexData(), geom.GetIndexDataSize());
-      const mtx = new THREE.Matrix4().fromArray(pg.flatTransformation);
-      nMat.getNormalMatrix(mtx);
-      const pos = new Float32Array(verts.length / 2);
-      const norm = new Float32Array(verts.length / 2);
-      for (let j = 0; j < verts.length; j += 6) {
-        const k = j / 2;
-        v.set(verts[j], verts[j+1], verts[j+2]).applyMatrix4(mtx);
-        pos[k] = v.x; pos[k+1] = v.y; pos[k+2] = v.z;
-        if (v.x < mnx) mnx = v.x; if (v.x > mxx) mxx = v.x;
-        if (v.y < mny) mny = v.y; if (v.y > mxy) mxy = v.y;
-        if (v.z < mnz) mnz = v.z; if (v.z > mxz) mxz = v.z;
-        v.set(verts[j+3], verts[j+4], verts[j+5]).applyMatrix3(nMat).normalize();
-        norm[k] = v.x; norm[k+1] = v.y; norm[k+2] = v.z;
-      }
-      parts.push({ mat: getMaterial(pg.color), pos, norm, idx: new Uint32Array(indices) });
-      geom.delete();
-    }
-    // dropp veldig små elementer (< 0,15 i modellens enheter, dvs. 15 cm i meter-modeller)
-    const diag = Math.hypot(mxx - mnx, mxy - mny, mxz - mnz);
-    if (diag < 0.15) { skipped++; return; }
-    for (const p of parts) {
-      const key = p.mat.uuid;
-      let b = buckets.get(key);
-      if (!b) { b = { mat: p.mat, segs: [], vtot: 0, itot: 0 }; buckets.set(key, b); }
-      b.segs.push({ pos: p.pos, norm: p.norm, idx: p.idx, id: expressID });
-      b.vtot += p.pos.length / 3;
-      b.itot += p.idx.length;
-    }
-    shown++;
-  });
-
-  for (const [, b] of buckets) {
-    const pos = new Float32Array(b.vtot * 3);
-    const norm = new Float32Array(b.vtot * 3);
-    const idx = new Uint32Array(b.itot);
-    const ranges = [];
-    let vo = 0, io = 0;
-    for (const s of b.segs) {
-      pos.set(s.pos, vo * 3);
-      norm.set(s.norm, vo * 3);
-      for (let i = 0; i < s.idx.length; i++) idx[io + i] = s.idx[i] + vo;
-      ranges.push({ start: io, count: s.idx.length, id: s.id });
-      vo += s.pos.length / 3;
-      io += s.idx.length;
-    }
-    b.segs = null;
+// 🪶 Lav kvalitet: tråden har alt slått sammen per farge
+async function byggLett(info) {
+  const svar = await kall("geometryLight", info, (m) => {
+    if (m.type === "progress") { visFramdrift("Forenkler geometri …", m.done, m.total); return; }
+    if (m.type !== "bucket") return;
     const bg = new THREE.BufferGeometry();
-    bg.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-    bg.setAttribute("normal", new THREE.BufferAttribute(norm, 3));
-    bg.setIndex(new THREE.BufferAttribute(idx, 1));
-    const m = new THREE.Mesh(bg, b.mat);
-    m.userData.merged = true;
-    m.userData.ranges = ranges;
-    m.userData.origMat = b.mat;
-    S.modelGroup.add(m);
-  }
-  return { shown, skipped };
+    bg.setAttribute("position", new THREE.BufferAttribute(m.pos, 3));
+    bg.setAttribute("normal", new THREE.BufferAttribute(m.norm, 3));
+    bg.setIndex(new THREE.BufferAttribute(m.idx, 1));
+    const mesh = new THREE.Mesh(bg, getMaterial(m.color));
+    mesh.userData.merged = true;
+    mesh.userData.ranges = m.ranges;
+    mesh.userData.origMat = mesh.material;
+    S.modelGroup.add(mesh);
+    visFramdrift("Bygger modellen …", m.nr + 1, m.av);
+  });
+  return svar;
 }
+
+function bufferGeo(p) {
+  const bg = new THREE.BufferGeometry();
+  bg.setAttribute("position", new THREE.BufferAttribute(p.pos, 3));
+  bg.setAttribute("normal", new THREE.BufferAttribute(p.norm, 3));
+  bg.setIndex(new THREE.BufferAttribute(p.idx, 1));
+  return bg;
+}
+
+// Geometrien bygges av byggFull()/byggLett() lenger opp, fra porsjonene
+// IFC-tråden sender. Den gamle koden som leste web-ifc her er borte.
 
 // ---------- 💾 Lett kopi (.glb) ----------
 
@@ -399,7 +374,7 @@ $("btnSaveLite").addEventListener("click", async () => {
     loadingEl.classList.add("open");
     loadingText.textContent = "Laster i lav kvalitet …";
     await new Promise(r => setTimeout(r, 30));
-    try { loadModel(S.lastBuffer); }
+    try { await loadModel(S.lastBuffer); }
     catch (err) { alert("Feil: " + err.message); loadingEl.classList.remove("open"); return; }
   }
   loadingEl.classList.add("open");
@@ -411,20 +386,16 @@ $("btnSaveLite").addEventListener("click", async () => {
     S.modelGroup.children.forEach(m => (m.userData.ranges || []).forEach(r => ids.add(r.id)));
     const props = {};
     for (const id of ids) {
-      try {
-        const line = ifcApi.GetLine(S.modelID, id);
-        let tn = "";
-        try { tn = (ifcApi.GetNameFromTypeCode(ifcApi.GetLineType(S.modelID, id)) || "").replace(/^IFC/i, "Ifc"); } catch(_){}
-        props[id] = [val(line.Name) || "", val(line.ObjectType) || "", tn];
-      } catch(_){}
+      const m = metaFor(id);
+      if (m) props[id] = [m.name || "", m.objectType || "", m.typeName ? "Ifc" + m.typeName : ""];
     }
-    const columns = [];
+    let columns = [];
     try {
-      const v = ifcApi.GetLineIDsWithType(S.modelID, WebIFC.IFCCOLUMN);
-      for (let i = 0; i < v.size(); i++) columns.push(v.get(i));
+      const kilder = await kall("axisSources");
+      columns = kilder.filter(k => k.t === "COLUMN").map(k => k.id);
     } catch(_){}
     let storeys = [];
-    try { storeys = storeyDataIfc().map(s => ({ name: s.name, ids: s.ids })); } catch(_){}
+    try { storeys = (await kall("storeys")).map(s => ({ name: s.name, ids: s.ids })); } catch(_){}
     // bygg en krympet kopi for eksport: normaler droppes (regnes ut ved åpning)
     // og dupliserte punkter sveises sammen – gir mange ganger mindre fil
     loadingText.textContent = "Komprimerer geometri …";
@@ -518,7 +489,7 @@ $("btnLight").addEventListener("click", async () => {
     await new Promise(r => setTimeout(r, 30));
     try {
       setLoadFlag(Object.assign({}, S.lastLoadInfo || { name: S.fileName }, { light: S.lightMode }));
-      loadModel(S.lastBuffer);
+      await loadModel(S.lastBuffer);
       clearLoadFlag();
     } catch (err) {
       clearLoadFlag();
@@ -539,7 +510,7 @@ export async function offerLightRetry(err) {
   await new Promise(r => setTimeout(r, 30));
   try {
     setLoadFlag(Object.assign({}, S.lastLoadInfo || { name: S.fileName }, { light: true }));
-    loadModel(S.lastBuffer);
+    await loadModel(S.lastBuffer);
     afterLoad();
     clearLoadFlag();
   } catch (e2) {

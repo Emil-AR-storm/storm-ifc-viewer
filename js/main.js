@@ -104,7 +104,7 @@ if (window.EMBEDDED_IFC) {
       for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
       S.fileName = window.EMBEDDED_NAME || "modell.ifc";
       S.lastBuffer = buf;
-      loadModel(buf);
+      await loadModel(buf);
       afterLoad();
     } catch (err) {
       alert("Klarte ikke å laste innebygd modell: " + err.message);
