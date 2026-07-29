@@ -3,6 +3,7 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
 import { $, S, esc, statusEl } from "./state.js";
 import { val } from "./elements.js";
 import { lightElementBoxes } from "./ifc.js";
+import { kall } from "./ifcrpc.js";
 import { axesGroup, camera, frameHooks, makeLabel, renderer } from "./scene.js";
 
 // Zoom-avhengige akse-lapper: skjul lapper som ville blitt for små på skjermen.
@@ -38,6 +39,12 @@ function axisColumnKey(objType, name) {
   // rene tverrsnittsmål som «300x300» er nesten alltid betong
   if (AXIS_CONC_RE.test(s) || /^\s*\d{2,4}\s*[x×]\s*\d{2,4}\b/.test(objType || "")) return "COL_CONC";
   return "COL_OTHER";
+}
+
+// Hentes ved første trykk på 🔠 Akser, ikke ved lasting
+export async function sikreAxisRaw() {
+  if (S.axisRaw || S.modelID === null) return;
+  try { S.axisRaw = await kall("axisSources"); } catch(_) { S.axisRaw = []; }
 }
 
 function classifyAxisSources() {
@@ -270,7 +277,7 @@ export function applyAxisFont() {
       o.scale.set(o.userData.baseScale.x * S.axisFontF, o.userData.baseScale.y * S.axisFontF, 1);
 }
 
-$("btnAxes").addEventListener("click", () => {
+$("btnAxes").addEventListener("click", async () => {
   if (!S.modelGroup) return;
   const panel = $("axesPanel");
   if (S.axesOn) {
@@ -280,6 +287,7 @@ $("btnAxes").addEventListener("click", () => {
     panel.classList.remove("open");
     return;
   }
+  await sikreAxisRaw();          // kildelista hentes ved første bruk
   if (!S.axisSources) classifyAxisSources();
   if (!S.axesBuilt) rebuildAxes();
   renderAxesPanel();

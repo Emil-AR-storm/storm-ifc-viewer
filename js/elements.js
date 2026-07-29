@@ -2,8 +2,8 @@
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
 import { $, S, dec, esc, loadingEl, loadingText } from "./state.js";
 import { hiddenIDs, hideElement } from "./display.js";
-import { lightElementBoxes } from "./ifc.js";
-import { kall, metaFor } from "./ifcrpc.js";
+import { alleElementIder, lightElementBoxes } from "./ifc.js";
+import { kall, metaFor, sikreMeta } from "./ifcrpc.js";
 import { axesGroup, camera, canvas, controls, grid, koteGroup, markerGroup, measureGroup, pointer, raycaster, renderer, scene, selGroup } from "./scene.js";
 
 const selMat = new THREE.MeshLambertMaterial({ color: 0x3b82f6, emissive: 0x1d4ed8, side: THREE.DoubleSide });
@@ -367,7 +367,7 @@ $("btnSearch").addEventListener("click", () => {
   panel.classList.add("open");
   if (!S.searchIndex) {
     $("searchBody").innerHTML = '<p style="color:var(--muted)">Bygger søkeindeks …</p>';
-    setTimeout(() => { buildSearchIndex(); renderSearchUI(); }, 30);
+    setTimeout(async () => { await sikreMeta(alleElementIder); buildSearchIndex(); renderSearchUI(); }, 30);
   } else renderSearchUI();
 });
 
@@ -410,7 +410,7 @@ $("btnQty").addEventListener("click", async () => {
     loadingText.textContent = "Regner ut mengder …";
     loadingEl.classList.add("open");
     await new Promise(r => setTimeout(r, 30));
-    try { S.qtyCache = computeQuantities(); }
+    try { await sikreMeta(alleElementIder); S.qtyCache = computeQuantities(); }
     finally { loadingEl.classList.remove("open"); }
   }
   renderQuantities(S.qtyCache);

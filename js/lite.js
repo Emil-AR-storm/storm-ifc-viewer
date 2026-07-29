@@ -316,13 +316,18 @@ export async function hentFraBiblioteket(filnavn) {
 let jobbGår = false;
 
 export async function kanskjeLagRaskKopi() {
-  if (jobbGår || !S.settings.autoLite) return;
-  if (!S.modelGroup || S.glbActive || S.modelID === null) return;
+  const hvorfor = (t) => console.log("⚡ rask kopi: " + t);
+  if (jobbGår) return hvorfor("en jobb går alt");
+  if (!S.settings.autoLite) return hvorfor("slått av i ⚙ Innstillinger");
+  if (!S.modelGroup) return hvorfor("ingen modell");
+  if (S.glbActive) return hvorfor("dette ER en lett kopi");
+  if (S.modelID === null) return hvorfor("ingen IFC-data");
   const stempel = S.liteKilde;
-  if (!stempel) return;                       // vet ikke hvilken versjon dette er
-  if (await hentLokalt(S.fileName, stempel)) return;   // har den alt lokalt
+  if (!stempel) return hvorfor("mangler stempel for filversjonen");
+  if (await hentLokalt(S.fileName, stempel)) return hvorfor("finnes alt lokalt");
   const indeks = await hentIndeks();
-  if (indeks && indeks[S.fileName] && sammeStempel(indeks[S.fileName].stempel, stempel)) return;
+  if (indeks && indeks[S.fileName] && sammeStempel(indeks[S.fileName].stempel, stempel))
+    return hvorfor("finnes alt i biblioteket");
 
   jobbGår = true;
   const navn = S.fileName;
@@ -330,11 +335,14 @@ export async function kanskjeLagRaskKopi() {
     // vent til brukeren har fått se modellen litt
     await new Promise(r => setTimeout(r, 4000));
     if (S.fileName !== navn) return;          // byttet modell underveis
+    hvorfor("bygger …");
     const { bytes } = await byggLettKopi(() => {});
     if (S.fileName !== navn) return;
     await lagreLokalt(navn, stempel, bytes);
-    try { await delILbiblioteket(navn, stempel, bytes); } catch(_) {}
-    console.log("Rask kopi laget for " + navn + " (" + Math.round(bytes.byteLength / 1048576 * 10) / 10 + " MB)");
+    let delt = false;
+    try { delt = await delILbiblioteket(navn, stempel, bytes); } catch (e) { console.warn("⚡ opplasting feilet:", e.message); }
+    hvorfor("ferdig for " + navn + " – " + Math.round(bytes.byteLength / 1048576 * 10) / 10 + " MB" +
+      (delt ? ", lagt i biblioteket" : ", bare lokalt (ikke innlogget?)"));
   } catch (err) {
     console.warn("Klarte ikke å lage rask kopi:", err.message);
   } finally {

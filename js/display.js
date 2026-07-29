@@ -2,7 +2,8 @@
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
 import { $, DEFAULT_APPEAR, S, esc } from "./state.js";
 import { clearSelection } from "./elements.js";
-import { typeFor } from "./ifcrpc.js";
+import { sikreMeta, typeFor } from "./ifcrpc.js";
+import { alleElementIder } from "./ifc.js";
 import { saveAppear, saveBg, syncHiddenTypes } from "./prefs.js";
 import { scene } from "./scene.js";
 
@@ -134,7 +135,7 @@ export function resetColors() {
   renderColorPanel();
 }
 
-$("btnColors").addEventListener("click", () => {
+$("btnColors").addEventListener("click", async () => {
   if (!S.modelGroup) return;
   const panel = $("colorPanel");
   if (panel.classList.contains("open")) { panel.classList.remove("open"); return; }
@@ -145,7 +146,7 @@ $("btnColors").addEventListener("click", () => {
       '<p style="color:var(--muted); font-size:11px; margin-top:10px">Fargelegging og skjuling per type er ikke tilgjengelig i 🪶 lav kvalitet. Last modellen i full kvalitet for å bruke det.</p>';
     $("colBg").oninput = (e) => { scene.background.set(e.target.value); saveBg(e.target.value); };
   } else {
-    if (!S.typeInfo) buildTypeInfo();
+    if (!S.typeInfo) { await sikreMeta(alleElementIder); buildTypeInfo(); }
     renderColorPanel();
   }
   $("propPanel").classList.remove("open");

@@ -105,8 +105,27 @@ export function guidFor(id) {
   return (m && m.globalId) || null;
 }
 
+// Sørger for at elementdata er hentet – første gang noe faktisk trenger dem.
+//
+// Dette var opprinnelig gjort ved lasting, men det gjorde hver eneste åpning
+// tregere: en 7 500-element-modell måtte lese 7 500 linjer og sende dem over
+// trådgrensen før du fikk se noe, selv om du bare skulle snurre på bygget.
+// Nå hentes de ved første trykk på 📊 Mengder, 🔎 Søk, 🎨 Utseende, 🔄
+// Sammenlign eller et element – og bare én gang per modell.
+let metaJobb = null;
+
+export function sikreMeta(idFn) {
+  if (S.meta && S.meta.size) return Promise.resolve(S.meta);
+  if (S.modelID === null) return Promise.resolve(S.meta);
+  if (!metaJobb) {
+    metaJobb = hentMeta(typeof idFn === "function" ? idFn() : idFn)
+      .finally(() => { metaJobb = null; });
+  }
+  return metaJobb;
+}
+
 // Henter meta for alle id-ene i porsjoner, så en stor modell ikke lager
-// én kjempemelding. Kalles av ifc.js etter at geometrien er på plass.
+// én kjempemelding.
 export async function hentMeta(ids, framdrift) {
   tømMeta();
   const alle = [...ids];
