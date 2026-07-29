@@ -5,7 +5,7 @@ import { showClipBar, stopFacePick } from "./clip.js";
 import { DEFAULT_BG, resetColors } from "./display.js";
 import { refreshNumbers } from "./elements.js";
 import { applyMiniSize, setMini } from "./minimap.js";
-import { lagRaskKopiNå } from "./lite.js";
+import { lagRaskKopiNå, raskKopiStatus } from "./lite.js";
 import { setMode } from "./modes.js";
 import { saveAppear, saveBg, saveSettings } from "./prefs.js";
 import { scene } from "./scene.js";
@@ -92,12 +92,16 @@ function renderSettings() {
       (d === 0 ? " (hele meter)" : d === 3 ? " (mm)" : "") + '</option>').join("") + '</select></div>' +
     '<div class="set-row"><span class="n">Bakgrunnsfarge</span>' +
     '<input type="color" id="stBg" value="' + bgVal + '"></div>' +
-    '<div class="set-row"><span class="n">⚡ Lag rask kopi automatisk</span>' +
-    '<input type="checkbox" id="stAutoLite"' + (S.settings.autoLite ? " checked" : "") + '></div>' +
     '<div class="set-row"><span class="n">🪶 Lav kvalitet</span>' +
     '<input type="checkbox" id="stLight"' + (S.lightMode ? " checked" : "") + '></div>' +
     '<div class="set-row"><span class="n">Skriftstørrelse akser</span>' +
     '<input type="range" id="stAxFont" min="40" max="250" step="10" value="' + Math.round(S.axisFontF * 100) + '"></div>';
+
+  html += '<h4>⚡ Rask kopi</h4>' +
+    '<div class="set-row"><span class="n">Lag automatisk i bakgrunnen</span>' +
+    '<input type="checkbox" id="stAutoLite"' + (S.settings.autoLite ? " checked" : "") + '></div>' +
+    '<p id="stLiteStatus" style="color:var(--muted); font-size:11px; margin:2px 0 6px">Sjekker …</p>' +
+    '<div class="prop-actions"><button id="stLiteNow">⚡ Lag rask kopi nå</button></div>';
 
   html += '<h4>🗺 Minikart</h4>' +
     '<div class="set-row"><span class="n">Vis minikart</span>' +
@@ -106,21 +110,22 @@ function renderSettings() {
     Math.round(S.settings.miniSize) + ' px</span></span>' +
     '<input type="range" id="stMiniSz" min="100" max="400" step="10" value="' + S.settings.miniSize + '"></div>';
 
-  html += '<h4>Hurtigtaster</h4>';
+  // Sammenleggbar: 11 tastrader gjorde menyen så lang at knappene nederst havnet
+  // utenfor synlig område uten at man skjønte at man måtte rulle.
+  html += '<details' + (S.keyWaitFor ? " open" : "") + '><summary><h4 style="display:inline">Hurtigtaster</h4>' +
+    ' <span style="color:var(--muted); font-size:11px">(' + Object.keys(ACTIONS).length + ')</span></summary>';
   for (const k in ACTIONS) {
     html += '<div class="set-row"><span class="n">' + ACTIONS[k].label + '</span>' +
       '<button class="keybtn' + (S.keyWaitFor === k ? " wait" : "") + '" data-key="' + k + '">' +
       (S.keyWaitFor === k ? "Trykk tast …" : keyLabel(S.settings.keys[k])) + '</button></div>';
   }
   html += '<p style="color:var(--muted); font-size:11px; margin-top:8px">Esc avbryter modus og lukker paneler. ' +
-    'Trykk på en tast-knapp og deretter ønsket tast for å endre.</p>' +
+    'Trykk på en tast-knapp og deretter ønsket tast for å endre.</p></details>' +
     '<h4>Lagring</h4>' +
     '<p style="color:var(--muted); font-size:11px; margin:0 0 6px">💾 Alt over – pluss fargelegging, egne typefarger, skjulte typer, ' +
     '👻 transparent, 🧲 snap og 🪶 lav kvalitet – lagres automatisk og legges på neste gang du åpner en modell.</p>' +
     '<p style="font-size:11px; margin:0 0 6px" id="stSync">' + syncStatusText() + '</p>' +
-    '<div class="prop-actions" style="margin-top:10px">' +
-      '<button id="stLiteNow" title="Bygger .glb nå og legger den i biblioteket">⚡ Lag rask kopi nå</button>' +
-      '<button id="stReset">↺ Tilbakestill alt</button></div>';
+    '<div class="prop-actions" style="margin-top:10px"><button id="stReset">↺ Tilbakestill alt</button></div>';
 
   $("setBody").innerHTML = html;
 
@@ -159,6 +164,8 @@ function renderSettings() {
     b.onclick = () => { S.keyWaitFor = b.dataset.key; renderSettings(); };
   });
   $("stLiteNow").onclick = () => { closeSettings(); lagRaskKopiNå(); };
+  raskKopiStatus().then(t => { if ($("stLiteStatus")) $("stLiteStatus").textContent = t; })
+    .catch(() => { if ($("stLiteStatus")) $("stLiteStatus").textContent = ""; });
   $("stReset").onclick = () => {
     S.settings = Object.assign({}, DEFAULT_SETTINGS, { keys: Object.assign({}, DEFAULT_KEYS) });
     saveSettings();
