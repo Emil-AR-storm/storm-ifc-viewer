@@ -1,13 +1,12 @@
 // Utseende: transparent, skjul/vis og fargelegging per elementtype.
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
-import { $, S, esc } from "./state.js";
+import { $, DEFAULT_APPEAR, S, esc } from "./state.js";
 import { clearSelection } from "./elements.js";
 import { ifcApi } from "./ifc.js";
-import { DEFAULT_APPEAR, saveAppear, saveBg, syncHiddenTypes } from "./prefs.js";
+import { saveAppear, saveBg, syncHiddenTypes } from "./prefs.js";
 import { scene } from "./scene.js";
 
 // ---------- Transparent (ghost) ----------
-S.ghostOn = false;
 
 const ghostCache = new Map();
 
@@ -70,10 +69,6 @@ const TYPE_LABELS = {
 const PALETTE = ["#e6194b","#3cb44b","#ffe119","#4363d8","#f58231","#911eb4",
   "#46f0f0","#f032e6","#bcf60c","#008080","#e6beff","#9a6324","#fffac8",
   "#800000","#aaffc3","#ffd8b1"];
-
-S.typeInfo = null;
-
-S.typeColorsOn = false;
 
 export function buildTypeInfo() {
   S.typeInfo = new Map();

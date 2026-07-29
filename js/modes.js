@@ -4,7 +4,6 @@ import { hideSnapPreview } from "./measure.js";
 import { koteGroup, measureGroup } from "./scene.js";
 
 // ---------- Modus-håndtering ----------
-S.mode = null;
 
 export const modeButtons = { marker: $("btnMarker"), measure: $("btnMeasure"), kote: $("btnKote") };
 

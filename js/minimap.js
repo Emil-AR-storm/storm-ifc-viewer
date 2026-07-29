@@ -6,10 +6,6 @@ import { axesGroup, camera, controls, frameHooks, grid, koteGroup, markerGroup, 
 // ---------- 🗺 Minikart (ovenfra, trykk for å flytte deg) ----------
 export const miniCanvas = $("miniMap");
 
-S.miniInfo = null; S.miniBase = null;
-
-S.miniOn = localStorage.getItem("storm-ifc-mini") !== "0";
-
 export function renderMiniMap() {
   S.miniInfo = null; S.miniBase = null;
   if (!S.modelGroup || !S.modelBox) { miniCanvas.style.display = "none"; return; }
@@ -90,7 +86,7 @@ export function setMini(on) {
 }
 
 export function applyMiniSize() {
-  const px = Math.max(100, Math.min(400, Number(S.settings.miniSize) || 180));
+  const px = Math.max(100, Math.min(400, Number(S.settings && S.settings.miniSize) || 180));
   miniCanvas.style.width = px + "px";
   miniCanvas.style.height = px + "px";
 }

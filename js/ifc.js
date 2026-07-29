@@ -18,24 +18,6 @@ ifcApi.SetWasmPath("https://cdn.jsdelivr.net/npm/web-ifc@0.0.57/", true);
 
 export const ifcReady = ifcApi.Init();
 
-S.modelID = null;
-
-S.modelGroup = null;
-
-S.fileName = "";
-
-S.lastBuffer = null;
-
-S.modelBox = null;
-
-S.modelSize = 10;
-
-S.koteMatrixInv = null;
-
-S.coordMatrix = null;
-
-S.qtyCache = null;
-
 document.getElementById("fileInput").addEventListener("change", async (e) => {
   const file = e.target.files[0];
   if (!file) return;
@@ -138,10 +120,6 @@ function getMaterial(c) {
   }
   return matCache.get(key);
 }
-
-S.lightMode = localStorage.getItem("storm-ifc-light") === "1";
-
-S.lightLoaded = false;
 
 export function loadModel(buffer) {
   clearModel();
@@ -285,7 +263,6 @@ function loadMeshesLight() {
 }
 
 // ---------- 💾 Lett kopi (.glb) ----------
-S.glbActive = false; S.glbProps = null; S.glbColumns = null; S.glbStoreys = null;
 
 export async function loadGlb(buffer) {
   const { GLTFLoader } = await import("three/addons/loaders/GLTFLoader.js");
@@ -433,7 +410,6 @@ export function lightElementBoxes(idSet, out) {
 }
 
 // ---------- 🪶 Lav kvalitet: bryter, krasjflagg og retry ----------
-S.lastLoadInfo = null;
 
 export function setLoadFlag(info) {
   S.lastLoadInfo = info;

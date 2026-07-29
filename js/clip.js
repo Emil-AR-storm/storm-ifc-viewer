@@ -8,24 +8,8 @@ import { modeBar, modeButtons, updateModeBar } from "./modes.js";
 import { renderer } from "./scene.js";
 
 // ---------- Snitt (clipping) ----------
-S.clipOn = false;
-
-S.clipAxis = "y";
-
-S.clipFlip = false;
-
-S.clipT = 1;
 
 // 📐 Fra flate: snittplanet legges parallelt med en flate brukeren trykker på
-S.clipMode = "axis";
-
-S.clipPickFace = false;
-
-S.clipFaceN = null;
-
-S.clipFaceP = null;
-
-S.clipFaceOff = 0;
 
 const axisVectors = { x: new THREE.Vector3(1,0,0), y: new THREE.Vector3(0,1,0), z: new THREE.Vector3(0,0,1) };
 
@@ -138,9 +122,6 @@ function applyClip() {
 
 // ---------- 🏢 Etasjefilter ----------
 // Viser én etasje om gangen ved hjelp av to klippeplan (funker i full, lav og lett kopi-modus)
-// ---------- 🏢 Etasjefilter ----------
-// Viser én etasje om gangen ved hjelp av to klippeplan (funker i full, lav og lett kopi-modus)
-S.storeyOn = false; S.storeyList = null; S.storeyIdx = -1;
 
 // Leser IfcBuildingStorey + hvilke elementer som hører til hver etasje
 export function storeyDataIfc() {

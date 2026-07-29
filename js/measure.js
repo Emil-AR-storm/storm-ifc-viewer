@@ -14,11 +14,6 @@ export function koteValue(point) {
 }
 
 // ---------- Mål ----------
-S.measureFirst = null;
-
-S.snapOn = localStorage.getItem("storm-ifc-snap") !== "0";
-
-S.snapPx = parseFloat(localStorage.getItem("storm-ifc-snappx")) || 18;
 
 // Forhåndsvisning i mål-modus: gjennomsiktig prikk som følger pekeren.
 // Diameteren = snap-radiusen (følger slideren), og prikken hopper til hjørnet + blir mer solid når snappen tar tak.
@@ -47,8 +42,6 @@ snapEdgeLine.visible = false;
 snapCursorGroup.add(snapEdgeLine);
 
 export function hideSnapPreview() { snapCursor.visible = false; snapEdgeLine.visible = false; }
-
-S._snapPrevT = 0;
 
 canvas.addEventListener("pointermove", (e) => {
   if (S.mode !== "measure" || e.buttons !== 0 || S.boxSel || !S.modelGroup) {

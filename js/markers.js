@@ -6,9 +6,6 @@ import { camera, controls, markerGroup } from "./scene.js";
 import { GRAPH, SP, graphGet, spTokenSilent } from "./sharepoint.js";
 
 // ---------- Markeringer / kommentarer ----------
-S.comments = [];
-
-S.pendingPoint = null;
 
 $("btnComments").addEventListener("click", () => {
   $("propPanel").classList.remove("open");
@@ -37,7 +34,6 @@ function persist() {
 }
 
 // ---- Delte markeringer (lagres som JSON i SharePoint: IFC-modeller/Markeringer) ----
-S.sharedOK = false;
 
 const syncedFile = () => S.fileName;
 
