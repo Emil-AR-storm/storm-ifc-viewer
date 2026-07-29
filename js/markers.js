@@ -6,6 +6,7 @@ import { fristTilISO, fullforOppgave, opprettOppgave, planUrl, plannerToken } fr
 import { setMode } from "./modes.js";
 import { camera, controls, frameHooks, markerGroup } from "./scene.js";
 import { GRAPH, SP, authHeaders, graphGet, spTokenSilent } from "./sharepoint.js";
+import { MAKS_PER_MARKERING, bildeUrl, erBildefil, leggTilBilder, slettBilder } from "./bilder.js";
 // ⛓-lenka til en markering hentes via S.markerLink (settes av share.js).
 // Direkte import ville gitt sirkel: markers → share → display → ifc → markers.
 
@@ -60,9 +61,10 @@ async function sharedSiteId(token) {
 async function syncSharedComments() {
   const forFile = syncedFile();
   if (!forFile) return;
-  const token = await spTokenSilent();
-  if (!token) { S.sharedOK = false; renderCommentList(); return; }
   try {
+    // spTokenSilent kan kaste hvis MSAL ikke lastet – da er vi bare offline
+    const token = await spTokenSilent();
+    if (!token) { S.sharedOK = false; renderCommentList(); return; }
     const sid = await sharedSiteId(token);
     const r = await fetch(GRAPH + "/sites/" + sid + sharedFilePath() + ":/content",
       { headers: authHeaders(token, null, "markeringer") });
@@ -85,9 +87,9 @@ async function syncSharedComments() {
 async function pushSharedComments() {
   const forFile = syncedFile();
   if (!forFile) return;
-  const token = await spTokenSilent();
-  if (!token) { S.sharedOK = false; renderCommentList(); return; }
   try {
+    const token = await spTokenSilent();
+    if (!token) { S.sharedOK = false; renderCommentList(); return; }
     const sid = await sharedSiteId(token);
     const body = JSON.stringify(S.comments);
     if (syncedFile() !== forFile) return;
@@ -167,6 +169,75 @@ function updateComment(c, patch) {
   if (popFor && popFor.id === c.id) openMarkerPopup(c);
 }
 
+// ---------- 📷 Bilder ----------
+// Bildene ligger i SharePoint (se js/bilder.js). Her er bare visningen: en
+// stripe med miniatyrbilder i bobla, og en 📷-knapp som åpner kamera/filvelger.
+
+function bildeStripeHtml(c, kanLeggeTil) {
+  const liste = c.bilder || [];
+  if (!liste.length && !kanLeggeTil) return "";
+  return '<div class="mp-bilder">' +
+    liste.map(f => '<span class="mp-bilde" data-bilde="' + esc(f) + '" title="Åpne bildet"></span>').join("") +
+    (kanLeggeTil && liste.length < MAKS_PER_MARKERING
+      ? '<label class="mp-bilde nytt" title="Ta bilde eller velg fil">📷' +
+        '<input type="file" accept="image/*" capture="environment" multiple hidden></label>'
+      : "") +
+    '</div>';
+}
+
+// Fyller miniatyrbildene etterpå – hvert bilde hentes fra SharePoint én gang.
+function fyllMiniatyrer(rot) {
+  rot.querySelectorAll(".mp-bilde[data-bilde]").forEach(async el => {
+    if (el.dataset.fylt) return;
+    el.dataset.fylt = "1";
+    const url = await bildeUrl(el.dataset.bilde);
+    if (!url) { el.classList.add("mangler"); el.textContent = "🔒"; el.title = "Logg inn for å se bildet"; return; }
+    const img = document.createElement("img");
+    img.src = url;
+    el.appendChild(img);
+    el.onclick = () => visStort(url);
+  });
+}
+
+// Bildet i full skjerm. Klikk eller Esc lukker.
+function visStort(url) {
+  let el = $("bildeVis");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "bildeVis";
+    document.body.appendChild(el);
+    el.addEventListener("click", () => el.classList.remove("open"));
+  }
+  el.innerHTML = '<img src="' + url + '" alt=""><button class="bv-x" title="Lukk">✕</button>';
+  el.classList.add("open");
+}
+
+function lukkBildeVis() { const el = $("bildeVis"); if (el) el.classList.remove("open"); }
+
+// Felles håndtering av valgte filer: komprimer, last opp, lagre filnavnene.
+async function taImotFiler(c, filer, etterpa) {
+  const gode = [...filer].filter(erBildefil);
+  if (!gode.length) { alert("Fant ingen bildefiler blant det du valgte."); return; }
+  const plass = MAKS_PER_MARKERING - (c.bilder || []).length;
+  if (plass <= 0) { alert("En markering kan ha maks " + MAKS_PER_MARKERING + " bilder."); return; }
+  loadingText.textContent = gode.length > 1 ? "Laster opp " + Math.min(gode.length, plass) + " bilder …" : "Laster opp bildet …";
+  loadingEl.classList.add("open");
+  try {
+    const navn = await leggTilBilder(c.id, gode, c.bilder);
+    c.bilder = (c.bilder || []).concat(navn);
+    persist();
+    pushSharedComments();
+    renderCommentList();
+    if (etterpa) etterpa();
+  } catch (err) {
+    alert(err.message === "IKKE_INNLOGGET"
+      ? "Bilder lagres i SharePoint, så du må være innlogget. Åpne 📚 Biblioteket og logg inn, så prøv igjen."
+      : "Klarte ikke å legge ved bildet: " + err.message);
+  } finally {
+    loadingEl.classList.remove("open");
+  }
+}
+
 // ---------- Trykk på en 🟡 markering for å lese teksten ----------
 // Bobla henges på selve markeringen og følger den når du roterer og zoomer.
 
@@ -208,6 +279,7 @@ export function openMarkerPopup(c) {
     '<div class="mp-meta"><span>' + esc((c.author ? c.author + " · " : "") + (c.date || "")) + '</span>' +
       '<button class="mp-x" title="Lukk">✕</button></div>' +
     '<div class="mp-text">' + esc(c.text) + '</div>' +
+    bildeStripeHtml(c, true) +
     '<div class="mp-fields">' +
       '<label>Status<select class="mp-st">' + Object.keys(STATUS).map(k =>
         '<option value="' + k + '"' + (k === st ? " selected" : "") + '>' + k + '</option>').join("") + '</select></label>' +
@@ -233,6 +305,13 @@ export function openMarkerPopup(c) {
   if (el.querySelector(".mp-task")) el.querySelector(".mp-task").onclick = () => sendTilPlanner([c]);
   if (el.querySelector(".mp-open")) el.querySelector(".mp-open").onclick = () => window.open(c.taskUrl || planUrl(), "_blank");
   el.querySelector(".mp-del").onclick = () => { deleteComment(c.id); closeMarkerPopup(); };
+  const filvelger = el.querySelector(".mp-bilder input[type=file]");
+  if (filvelger) filvelger.onchange = () => {
+    const filer = [...filvelger.files];
+    filvelger.value = "";                       // samme bilde skal kunne velges igjen
+    taImotFiler(c, filer, () => openMarkerPopup(c));
+  };
+  fyllMiniatyrer(el);
   el.classList.add("open");
   placePopup();
 }
@@ -260,18 +339,49 @@ export function goToComment(c) {
 }
 
 export function deleteComment(id) {
+  const c = S.comments.find(c => c.id == id);
+  // bildefilene i SharePoint ryddes med, så vi ikke samler opp foreldreløse filer
+  if (c && (c.bilder || []).length) slettBilder(c.bilder);
   S.comments = S.comments.filter(c => c.id != id);
   markerGroup.children.filter(s => s.userData.commentId == id).forEach(s => markerGroup.remove(s));
   persist(); pushSharedComments(); renderCommentList();
 }
 
-// Esc lukker bobla (tastetrykket håndteres ellers i ui.js)
-window.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMarkerPopup(); });
+// Esc lukker bildet i full skjerm først, deretter bobla
+// (tastetrykket håndteres ellers i ui.js)
+window.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  const bv = $("bildeVis");
+  if (bv && bv.classList.contains("open")) { lukkBildeVis(); return; }
+  closeMarkerPopup();
+});
+
+// Bilder valgt i «Ny markering» venter i S.nyeBilder til markeringen er lagret –
+// først da har vi en id å navngi filene etter.
+const filInput = $("commentFiles");
+if (filInput) filInput.onchange = () => {
+  S.nyeBilder = [...filInput.files].filter(erBildefil).slice(0, MAKS_PER_MARKERING);
+  visValgteFiler();
+};
+
+function visValgteFiler() {
+  const info = $("commentFileInfo");
+  if (!info) return;
+  const n = S.nyeBilder.length;
+  info.textContent = n ? (n === 1 ? "1 bilde valgt" : n + " bilder valgt") : "";
+}
+
+export function nullstillNyeBilder() {
+  S.nyeBilder = [];
+  const inp = $("commentFiles");
+  if (inp) inp.value = "";
+  visValgteFiler();
+}
 
 window.saveComment = function() {
   const text = $("commentText").value.trim();
   $("commentDialog").classList.remove("open");
-  if (!text || !S.pendingPoint) { S.pendingPoint = null; return; }
+  if (!text || !S.pendingPoint) { S.pendingPoint = null; nullstillNyeBilder(); return; }
   let author = "";
   try { const a = S.msalApp && S.msalApp.getActiveAccount(); author = (a && (a.name || a.username)) || ""; } catch(_){}
   const c = {
@@ -290,12 +400,19 @@ window.saveComment = function() {
   pushSharedComments();
   renderCommentList();
   S.pendingPoint = null;
+  // markeringen er lagret nå – bildene lastes opp i bakgrunnen etterpå
+  if (S.nyeBilder.length) {
+    const filer = S.nyeBilder;
+    nullstillNyeBilder();
+    taImotFiler(c, filer, () => { if (popFor && popFor.id === c.id) openMarkerPopup(c); });
+  } else nullstillNyeBilder();
   if (S.mode === "marker") setMode("marker"); // slå av markering-modus
 };
 
 window.cancelComment = function() {
   $("commentDialog").classList.remove("open");
   S.pendingPoint = null;
+  nullstillNyeBilder();
 };
 
 // ---------- 📋 Teams Planner ----------
@@ -417,6 +534,7 @@ export function renderCommentList() {
         (c.due ? ' · frist ' + esc(c.due.split("-").reverse().join(".")) : "") +
         (isOverdue(c) ? ' <span style="color:#ef4444">⚠️ gått</span>' : "") +
         (c.taskId ? ' · <span title="Har en Planner-oppgave">📋</span>' : "") +
+        ((c.bilder || []).length ? ' · <span title="Har bilder">📷 ' + c.bilder.length + '</span>' : "") +
       '</span></div></div>';
   }).join("") ||
     '<p style="color:var(--muted)">Ingen markeringer med status «' + esc(listFilter) + '».</p>';
