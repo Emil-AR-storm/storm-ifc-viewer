@@ -21,16 +21,8 @@ function updateAxisLOD() {
 }
 
 // ---------- Aksesystem (automatisk fra valgte elementtyper) ----------
-S.axesOn = false;
 
 // ---------- Aksesystem (automatisk fra valgte elementtyper) ----------
-S.axesOn = false; S.axesBuilt = false;
-
-S.axisSources = null;
-
-S.axisSelection = new Set();
-
-S.axisFontF = parseFloat(localStorage.getItem("storm-ifc-axisfont")) || 1;
 
 // Stålprofiler (HEA/HEB/IPE/HUP/VKR/SHS osv.) og betong-kjennetegn i ObjectType/navn
 const AXIS_STEEL_RE = /(\bHE\s?-?[ABM]\s?-?\d|\bIPE|\bINP|\bUNP|\bUPE|\bHUP|\bVKR|\bKVR|\bHSQ|\bWQ|\bSHS|\bRHS|\bCHS|\bCFRHS|\bCFSHS|\bCFCHS|\bKCKR|\bS\s?(235|275|355|420|460)\b|st[åa]l|steel)/i;

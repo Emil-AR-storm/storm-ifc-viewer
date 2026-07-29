@@ -1,11 +1,11 @@
 // ⚙ Innstillingsmeny og hurtigtaster.
-import { $, S, esc } from "./state.js";
+import { $, DEFAULT_APPEAR, DEFAULT_KEYS, DEFAULT_SETTINGS, S, esc } from "./state.js";
 import { applyAxisFont } from "./axes.js";
 import { showClipBar, stopFacePick } from "./clip.js";
 import { DEFAULT_BG, resetColors } from "./display.js";
 import { applyMiniSize, setMini } from "./minimap.js";
 import { setMode } from "./modes.js";
-import { DEFAULT_APPEAR, DEFAULT_KEYS, DEFAULT_SETTINGS, saveAppear, saveBg, saveSettings } from "./prefs.js";
+import { saveAppear, saveBg, saveSettings } from "./prefs.js";
 import { scene } from "./scene.js";
 
 // ---------- ⚙ Innstillingsmeny + hurtigtaster ----------
@@ -53,8 +53,6 @@ document.addEventListener("pointerdown", (e) => {
   if (e.button === 2) return; // høyreklikk flytter menyen i stedet (contextmenu-håndtereren)
   closeSettings();
 }, true);
-
-S.keyWaitFor = null;
 
 function keyLabel(k) {
   if (!k) return "–";

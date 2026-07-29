@@ -2,9 +2,9 @@
 // ikke nettleseren. Én liten JSON-fil per person i IFC-modeller/Innstillinger.
 // localStorage brukes fortsatt som hurtigbuffer, så viewer'en starter umiddelbart
 // og virker fullt ut uten innlogging.
-import { S } from "./state.js";
+import { DEFAULT_APPEAR, DEFAULT_KEYS, DEFAULT_SETTINGS, S } from "./state.js";
 import { GRAPH, SP, graphGet, spTokenSilent } from "./sharepoint.js";
-import { DEFAULT_APPEAR, DEFAULT_KEYS, DEFAULT_SETTINGS, saveAppear, saveSettings } from "./prefs.js";
+import { saveAppear, saveSettings } from "./prefs.js";
 import { applyMiniSize, setMini } from "./minimap.js";
 import { applyAxisFont } from "./axes.js";
 

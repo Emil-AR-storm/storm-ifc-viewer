@@ -6,10 +6,6 @@ import { hiddenIDs, hideElement } from "./display.js";
 import { ifcApi, lightElementBoxes } from "./ifc.js";
 import { axesGroup, camera, canvas, controls, grid, koteGroup, markerGroup, measureGroup, pointer, raycaster, renderer, scene, selGroup } from "./scene.js";
 
-S.selectedMeshes = [];
-
-S.currentPropID = null;
-
 const selMat = new THREE.MeshLambertMaterial({ color: 0x3b82f6, emissive: 0x1d4ed8, side: THREE.DoubleSide });
 
 const selMatLight = new THREE.MeshBasicMaterial({
@@ -171,10 +167,8 @@ export function showProperties(expressID) {
 }
 
 // ---------- 🔎 Elementsøk ----------
-S.searchIndex = null;
 
 // ---------- 🔎 Elementsøk ----------
-S.searchIndex = null; S.lastQuery = "";
 
 function buildSearchIndex() {
   S.searchIndex = [];
@@ -220,7 +214,6 @@ function elementBoxById(id) {
 const _qa = new THREE.Vector3(), _qb = new THREE.Vector3(), _qc = new THREE.Vector3(), _qt = new THREE.Vector3();
 
 // Bounding box for alle elementer (bygges én gang per modell)
-S.allBoxCache = null;
 
 function allElementBoxes() {
   if (S.allBoxCache) return S.allBoxCache;
@@ -293,7 +286,6 @@ function elemDisplayName(id) {
 }
 
 // ---------- Flervalg (shift-klikk) med samlede mengder ----------
-S.multiSel = new Map();
 
 function showMultiSummary() {
   let totVol = 0, totLen = 0;
@@ -491,11 +483,9 @@ function renderQuantities(list) {
 
 // ---------- Markeringsboks (shift + dra) ----------
 // Mot høyre (blå): kun elementer som er synlige i boksen. Mot venstre (grønn): alt innenfor, også skjult bak.
-S.boxSel = null;
 
 // ---------- Markeringsboks (shift + dra) ----------
 // Mot høyre (blå): kun elementer som er synlige i boksen. Mot venstre (grønn): alt innenfor, også skjult bak.
-S.boxSel = null; S._idMat = null;
 
 const boxSelEl = document.createElement("div");
 

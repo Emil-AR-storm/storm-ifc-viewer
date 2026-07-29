@@ -15,8 +15,6 @@ export const GRAPH = "https://graph.microsoft.com/v1.0";
 
 const SP_SCOPES = ["Sites.Read.All", "Files.Read.All", "Files.ReadWrite.All"];
 
-S.msalApp = null; S.spSiteId = null; S.spFiles = null;
-
 async function msalInit() {
   if (S.msalApp) return S.msalApp;
   if (!window.msal) throw new Error("Innloggings-biblioteket (MSAL) lastet ikke – sjekk nettforbindelsen");

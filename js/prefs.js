@@ -1,53 +1,16 @@
-// Innstillinger og utseende som huskes mellom økter.
-import { $, S } from "./state.js";
+// Lagring av innstillinger og utseende. Standardverdiene og innlesingen ved
+// oppstart ligger i state.js – her ligger bare skrivingen og gjenopprettingen.
+import { $, APPEAR_KEY, S, SET_KEY } from "./state.js";
 import { applyTypeColors, buildTypeInfo } from "./display.js";
-
-// ---------- ⚙ Innstillinger (lagres i localStorage) ----------
-const SET_KEY = "storm-ifc-settings";
-
-export const DEFAULT_KEYS = {
-  marker: "P", measure: "M", kote: "K", axes: "A", clip: "S",
-  storey: "E", search: "F", ghost: "T", qty: "D", fit: "G", settings: "I"
-};
-
-export const DEFAULT_SETTINGS = {
-  rotSpeed: 1,        // rotasjonshastighet (1 = som før)
-  zoomSpeed: 1,       // zoomhastighet
-  invertZoom: false,  // snu rullehjulets retning
-  unit: "m",          // måleenhet i mål-/kotelapper: "m" eller "mm"
-  miniSize: 180,      // minikartets størrelse i piksler
-  keys: Object.assign({}, DEFAULT_KEYS)
-};
-
-S.settings = Object.assign({}, DEFAULT_SETTINGS);
-
-try {
-  const raw = JSON.parse(localStorage.getItem(SET_KEY) || "{}");
-  S.settings = Object.assign({}, DEFAULT_SETTINGS, raw);
-  S.settings.keys = Object.assign({}, DEFAULT_KEYS, raw.keys || {});
-} catch(_) {}
 
 export function saveSettings() {
   try { localStorage.setItem(SET_KEY, JSON.stringify(S.settings)); } catch(_) {}
   if (S.syncPrefs) S.syncPrefs(); // send også til SharePoint (personlig oppsett)
 }
 
-// ---------- Lagret utseende (huskes mellom økter) ----------
+// ---------- Lagret utseende ----------
 // Fargelegging, egendefinerte typefarger, skjulte typer, transparent og bakgrunn
-// legges i localStorage og legges automatisk på når en modell åpnes.
-const APPEAR_KEY = "storm-ifc-utseende";
-
-export const DEFAULT_APPEAR = { typeColorsOn: false, ghost: false, colors: {}, hiddenTypes: [] };
-
-S.appear = Object.assign({}, DEFAULT_APPEAR);
-
-try {
-  const raw = JSON.parse(localStorage.getItem(APPEAR_KEY) || "{}");
-  S.appear = Object.assign({}, DEFAULT_APPEAR, raw);
-  S.appear.colors = raw.colors || {};
-  S.appear.hiddenTypes = raw.hiddenTypes || [];
-} catch(_) {}
-
+// lagres og legges automatisk på når en modell åpnes.
 export function saveAppear() {
   try { localStorage.setItem(APPEAR_KEY, JSON.stringify(S.appear)); } catch(_) {}
   if (S.syncPrefs) S.syncPrefs(); // send også til SharePoint (personlig oppsett)

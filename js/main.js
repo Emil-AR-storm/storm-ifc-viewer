@@ -24,7 +24,6 @@ const jsCheck = document.getElementById("jsCheck");
 if (jsCheck) jsCheck.style.display = "none";
 
 // ---------- Klikk / trykk ----------
-S.downPos = null;
 
 canvas.addEventListener("pointerdown", (e) => { S.downPos = { x: e.clientX, y: e.clientY }; });
 
