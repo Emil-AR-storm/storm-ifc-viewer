@@ -111,6 +111,15 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
 .qty-row .n { word-break: break-word; }
 .qty-row .c { color: var(--accent2); white-space: nowrap; text-align: right; }
 
+/* Nedtrekk for objekttype i 📊 Mengder – ett ark om gangen */
+.qty-type-velg { display: block; font-size: 11px; color: var(--muted); margin-bottom: 10px; }
+.qty-type-velg select {
+  display: block; width: 100%; margin-top: 4px;
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 5px 6px; font-size: 12px; font-family: inherit;
+}
+
 /* Kommentar-liste */
 .comment {
   background: var(--panel2);
@@ -206,6 +215,41 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
   border: 1px solid var(--border); border-radius: 6px;
   padding: 3px 5px; font-size: 11px; max-width: 150px;
 }
+/* 📷 Miniatyrbilder i bobla */
+#markerPop .mp-bilder { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; }
+.mp-bilde {
+  width: 52px; height: 52px; flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--panel2); border: 1px solid var(--border); border-radius: 6px;
+  overflow: hidden; cursor: pointer; font-size: 15px; color: var(--muted);
+}
+.mp-bilde img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mp-bilde.nytt { border-style: dashed; }
+.mp-bilde.nytt:hover { border-color: var(--accent2); color: var(--text); }
+.mp-bilde.mangler { cursor: default; }
+
+/* Bilde i full skjerm */
+#bildeVis {
+  display: none; position: fixed; inset: 0; z-index: 60;
+  background: rgba(0,0,0,.88); cursor: zoom-out;
+}
+#bildeVis.open { display: flex; align-items: center; justify-content: center; }
+#bildeVis img { max-width: 94vw; max-height: 94vh; object-fit: contain; }
+#bildeVis .bv-x {
+  position: absolute; top: 12px; right: 14px;
+  padding: 4px 10px; font-size: 16px;
+}
+
+/* Bildevalg i «Ny markering» */
+.cd-bilder { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.cd-bildeknapp {
+  display: inline-block; cursor: pointer; font-size: 12px;
+  background: var(--panel2); color: var(--text);
+  border: 1px dashed var(--border); border-radius: 6px; padding: 5px 9px;
+}
+.cd-bildeknapp:hover { border-color: var(--accent2); }
+#commentFileInfo { font-size: 11px; color: var(--muted); }
+
 #markerPop .mp-late { color: #ef4444; font-size: 11px; margin-top: 6px; }
 #markerPop .mp-act { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
 #markerPop button { padding: 5px 8px; font-size: 11px; }
