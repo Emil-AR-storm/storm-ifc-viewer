@@ -4,6 +4,7 @@ import { $, S, fmtLen, loadingEl, loadingText } from "./state.js";
 import { setClipFromFace } from "./clip.js";
 import { clearSelection, hitID, pick, selectElement, showProperties } from "./elements.js";
 import { afterLoad, ifcReady, loadModel } from "./ifc.js";
+import { closeMarkerPopup, openMarkerPopup, pickMarker } from "./markers.js";
 import { addMeasure, koteValue, snapPoint } from "./measure.js";
 import { canvas, koteGroup, makeLabel, measureGroup } from "./scene.js";
 
@@ -40,6 +41,13 @@ canvas.addEventListener("pointerup", (e) => {
     const fh = pick(e.clientX, e.clientY, true);
     if (fh) setClipFromFace(fh);
     return;
+  }
+  // 🟡 Trykk på en markering åpner teksten. Går foran valg av element, men ikke
+  // foran verktøyene – i 📌/📏/▲-modus skal trykket gjøre det modusen sier.
+  if (!S.mode) {
+    const mc = pickMarker(e.clientX, e.clientY);
+    if (mc) { openMarkerPopup(mc); return; }
+    closeMarkerPopup();
   }
   const hit = pick(e.clientX, e.clientY);
   if (!hit) {

@@ -2,7 +2,7 @@
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
 import { $, S, esc } from "./state.js";
 import { setMode } from "./modes.js";
-import { camera, controls, markerGroup } from "./scene.js";
+import { camera, controls, frameHooks, markerGroup } from "./scene.js";
 import { GRAPH, SP, graphGet, spTokenSilent } from "./sharepoint.js";
 
 // ---------- Markeringer / kommentarer ----------
@@ -120,6 +120,85 @@ function addMarkerSprite(comment) {
   markerGroup.add(sprite);
 }
 
+// ---------- Trykk på en 🟡 markering for å lese teksten ----------
+// Bobla henges på selve markeringen og følger den når du roterer og zoomer.
+
+const mRay = new THREE.Raycaster();
+const mPt = new THREE.Vector2();
+
+// Returnerer markeringen under punktet, eller null
+export function pickMarker(clientX, clientY) {
+  if (!markerGroup.children.length) return null;
+  mPt.x = (clientX / innerWidth) * 2 - 1;
+  mPt.y = -(clientY / innerHeight) * 2 + 1;
+  mRay.setFromCamera(mPt, camera);
+  const hits = mRay.intersectObjects(markerGroup.children, false);
+  if (!hits.length) return null;
+  const id = hits[0].object.userData.commentId;
+  return S.comments.find(c => c.id == id) || null;
+}
+
+let popFor = null;                        // markeringen bobla hører til
+const popAnchor = new THREE.Vector3();
+
+export function closeMarkerPopup() {
+  popFor = null;
+  const el = $("markerPop");
+  if (el) el.classList.remove("open");
+}
+
+export function openMarkerPopup(c) {
+  if (!c) return;
+  let el = $("markerPop");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "markerPop";
+    document.body.appendChild(el);
+  }
+  popFor = c;
+  el.innerHTML =
+    '<div class="mp-meta"><span>' + esc((c.author ? c.author + " · " : "") + (c.date || "")) + '</span>' +
+      '<button class="mp-x" title="Lukk">✕</button></div>' +
+    '<div class="mp-text">' + esc(c.text) + '</div>' +
+    '<div class="mp-act"><button class="mp-go">🎯 Gå til</button><button class="mp-del">🗑 Slett</button></div>';
+  el.querySelector(".mp-x").onclick = closeMarkerPopup;
+  el.querySelector(".mp-go").onclick = () => goToComment(c);
+  el.querySelector(".mp-del").onclick = () => { deleteComment(c.id); closeMarkerPopup(); };
+  el.classList.add("open");
+  placePopup();
+}
+
+// Flytter bobla dit markeringen er på skjermen nå
+function placePopup() {
+  const el = $("markerPop");
+  if (!el || !popFor) return;
+  popAnchor.set(popFor.x, popFor.y, popFor.z).project(camera);
+  if (popAnchor.z > 1) { el.style.visibility = "hidden"; return; }  // bak kameraet
+  el.style.visibility = "visible";
+  const x = (popAnchor.x * 0.5 + 0.5) * innerWidth;
+  const y = (-popAnchor.y * 0.5 + 0.5) * innerHeight;
+  const w = el.offsetWidth || 240, h = el.offsetHeight || 90;
+  el.style.left = Math.max(8, Math.min(innerWidth - w - 8, x - w / 2)) + "px";
+  el.style.top = Math.max(8, Math.min(innerHeight - h - 8, y - h - 18)) + "px";
+}
+
+frameHooks.push(() => { if (popFor) placePopup(); });
+
+export function goToComment(c) {
+  controls.target.set(c.x, c.y, c.z);
+  const off = camera.position.clone().sub(controls.target).normalize().multiplyScalar(8);
+  camera.position.set(c.x + off.x, c.y + off.y, c.z + off.z);
+}
+
+export function deleteComment(id) {
+  S.comments = S.comments.filter(c => c.id != id);
+  markerGroup.children.filter(s => s.userData.commentId == id).forEach(s => markerGroup.remove(s));
+  persist(); pushSharedComments(); renderCommentList();
+}
+
+// Esc lukker bobla (tastetrykket håndteres ellers i ui.js)
+window.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMarkerPopup(); });
+
 window.saveComment = function() {
   const text = $("commentText").value.trim();
   $("commentDialog").classList.remove("open");
@@ -165,18 +244,9 @@ export function renderCommentList() {
   body.querySelectorAll(".comment").forEach(el => {
     el.addEventListener("click", (e) => {
       const delId = e.target.getAttribute("data-del");
-      if (delId) {
-        S.comments = S.comments.filter(c => c.id != delId);
-        markerGroup.children.filter(s => s.userData.commentId == delId).forEach(s => markerGroup.remove(s));
-        persist(); pushSharedComments(); renderCommentList();
-        return;
-      }
+      if (delId) { deleteComment(delId); closeMarkerPopup(); return; }
       const c = S.comments.find(c => c.id == el.dataset.id);
-      if (c) {
-        controls.target.set(c.x, c.y, c.z);
-        const off = camera.position.clone().sub(controls.target).normalize().multiplyScalar(8);
-        camera.position.set(c.x + off.x, c.y + off.y, c.z + off.z);
-      }
+      if (c) { goToComment(c); openMarkerPopup(c); }
     });
   });
 }
