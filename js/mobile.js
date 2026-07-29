@@ -143,5 +143,3 @@ oppdaterOppsett();
 
 // Esc lukker menyen
 window.addEventListener("keydown", (e) => { if (e.key === "Escape") lukkMeny(); });
-
-S.lukkMerMeny = lukkMeny;

@@ -20,7 +20,6 @@ import "./ui.js";
 import "./compare.js";
 import "./recent.js";
 import "./share.js";
-import "./lite.js";
 import "./mobile.js";   // må lastes etter at alle knapper har fått lyttere
 import "./usersync.js";   // personlig oppsett fra SharePoint – må lastes sist
 

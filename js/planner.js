@@ -6,7 +6,6 @@
 //
 // Krever at app-registreringen har den delegerte tillatelsen Tasks.ReadWrite.
 // Se OPPLASTING.md for oppsettet.
-import { S } from "./state.js";
 import { PLANNER_BUCKET, PLANNER_PLAN_ID } from "./config.js";
 import { GRAPH, authHeaders, graphToken } from "./sharepoint.js";
 
@@ -113,10 +112,3 @@ export async function fullforOppgave(token, taskId) {
     body: JSON.stringify({ percentComplete: 100 })
   });
 }
-
-// Er brukeren innlogget med Planner-tilgang alt? (for å vise riktig knappetekst)
-export async function harPlannerTilgang() {
-  return !!(await plannerToken(true));
-}
-
-S.plannerReady = harPlannerTilgang;
