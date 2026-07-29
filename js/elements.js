@@ -1,7 +1,7 @@
 // Valg, egenskaper, søk, mengder og markeringsboks.
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
 import * as WebIFC from "https://cdn.jsdelivr.net/npm/web-ifc@0.0.57/web-ifc-api.js";
-import { $, S, esc, loadingEl, loadingText } from "./state.js";
+import { $, S, dec, esc, loadingEl, loadingText } from "./state.js";
 import { hiddenIDs, hideElement } from "./display.js";
 import { ifcApi, lightElementBoxes } from "./ifc.js";
 import { axesGroup, camera, canvas, controls, grid, koteGroup, markerGroup, measureGroup, pointer, raycaster, renderer, scene, selGroup } from "./scene.js";
@@ -279,9 +279,14 @@ function elementQuantities(id) {
   return quantitiesForSet(new Set([id])).get(id) || { dims: [0, 0, 0], vol: 0 };
 }
 
-export function fmtVol(v) { return (v >= 10 ? v.toFixed(1) : v >= 0.01 ? v.toFixed(2) : v.toFixed(3)) + " m³"; }
+// Desimaler følger ⚙ Innstillinger. Små volumer får alltid nok desimaler til å
+// vise noe – et 0,005 m³-element skal ikke stå som «0,00 m³».
+export function fmtVol(v) {
+  const d = Math.max(dec(), v > 0 && v < 0.01 ? 3 : 0);
+  return v.toFixed(d) + " m³";
+}
 
-export function fmtDim(d) { return d >= 10 ? d.toFixed(1) : d.toFixed(2); }
+export function fmtDim(d) { return d.toFixed(dec()); }
 
 export function elemDisplayName(id) {
   if (S.glbActive) { const p = S.glbProps && S.glbProps.get(id); return (p && (p[0] || p[1])) || ("ID " + id); }
@@ -526,12 +531,17 @@ function baseName() {
   return (S.fileName || "modell").replace(/\.(ifc|glb)$/i, "");
 }
 
+// Regnearket skal aldri være mindre presist enn skjermen, men heller ikke miste
+// presisjon om noen setter visningen til 0 desimaler.
+const csvLenDec = () => Math.max(dec(), 3);
+const csvVolDec = () => Math.max(dec(), 4);
+
 export function qtyGroupRows(cache) {
   const out = [["Gruppe", "IFC-type", "Antall", "Sum lengde (m)", "Sum volum (m3)"]];
-  cache.groups.forEach(([key, g]) => out.push([key, g.type || "", g.count, nb(g.length, 2), nb(g.vol, 3)]));
+  cache.groups.forEach(([key, g]) => out.push([key, g.type || "", g.count, nb(g.length, csvLenDec()), nb(g.vol, csvVolDec())]));
   const tot = cache.groups.reduce((s, [, g]) => [s[0] + g.count, s[1] + g.length, s[2] + g.vol], [0, 0, 0]);
   out.push([]);
-  out.push(["SUM", "", tot[0], nb(tot[1], 2), nb(tot[2], 3)]);
+  out.push(["SUM", "", tot[0], nb(tot[1], csvLenDec()), nb(tot[2], csvVolDec())]);
   return out;
 }
 
@@ -539,7 +549,8 @@ export function qtyElementRows(cache) {
   const out = [["ElementID", "Gruppe", "Navn", "ObjectType", "IFC-type",
     "Lengde (m)", "Bredde (m)", "Høyde (m)", "Lengste mål (m)", "Volum (m3)"]];
   cache.rows.forEach(r => out.push([r.id, r.key, r.name, r.objType, r.type,
-    nb(r.L, 3), nb(r.B, 3), nb(r.H, 3), nb(r.len, 3), nb(r.vol, 4)]));
+    nb(r.L, csvLenDec()), nb(r.B, csvLenDec()), nb(r.H, csvLenDec()),
+    nb(r.len, csvLenDec()), nb(r.vol, csvVolDec())]));
   return out;
 }
 
@@ -555,11 +566,12 @@ function renderQuantities(cache) {
       '<button id="qtyCopy" title="Lim rett inn i et åpent regneark">📋 Kopier</button>' +
     '</div>' +
     '<div class="qty-row" style="font-weight:600"><div class="n">Totalt</div><div class="c">' + total +
-      ' stk · ' + totLen.toFixed(1) + ' m · ' + fmtVol(totVol) + '</div></div>' +
+      ' stk · ' + totLen.toFixed(dec()) + ' m · ' + fmtVol(totVol) + '</div></div>' +
     list.map(([key, g]) =>
       '<div class="qty-row"><div class="n">' + esc(key) + (g.type ? ' <span style="color:var(--muted);font-size:11px">(' + esc(g.type) + ')</span>' : "") + '</div>' +
-      '<div class="c">' + g.count + ' stk · ' + g.length.toFixed(1) + ' m · ' + fmtVol(g.vol) + '</div></div>').join("") +
-    '<p style="color:var(--muted); font-size:11px; margin-top:10px">Lengde = lengste mål per element (ca-verdi, summert per gruppe). ' +
+      '<div class="c">' + g.count + ' stk · ' + g.length.toFixed(dec()) + ' m · ' + fmtVol(g.vol) + '</div></div>').join("") +
+    '<p style="color:var(--muted); font-size:11px; margin-top:10px">Antall desimaler settes i ⚙ Innstillinger. ' +
+    'Lengde = lengste mål per element (ca-verdi, summert per gruppe). ' +
     'Volum er regnet ut av geometrien og gjelder lukkede volumer – hule profiler blir riktige, flater uten tykkelse blir 0.</p>';
 
   $("qtyCsvG").onclick = () => download(baseName() + " - mengder.csv", toCsv(qtyGroupRows(cache)));
@@ -575,8 +587,16 @@ function renderQuantities(cache) {
   };
 }
 
-// ---------- Markeringsboks (shift + dra) ----------
-// Mot høyre (blå): kun elementer som er synlige i boksen. Mot venstre (grønn): alt innenfor, også skjult bak.
+// Tegner tall på nytt når desimalvalget endres i ⚙ Innstillinger.
+// Mål-lapper som alt er plassert i 3D beholder teksten de fikk – nye lapper
+// følger den nye innstillingen.
+export function refreshNumbers() {
+  if ($("qtyPanel").classList.contains("open") && S.qtyCache) renderQuantities(S.qtyCache);
+  if ($("propPanel").classList.contains("open")) {
+    if (S.multiSel.size) showMultiSummary();
+    else if (S.currentPropID != null) showProperties(S.currentPropID);
+  }
+}
 
 // ---------- Markeringsboks (shift + dra) ----------
 // Mot høyre (blå): kun elementer som er synlige i boksen. Mot venstre (grønn): alt innenfor, også skjult bak.
