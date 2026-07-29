@@ -203,6 +203,18 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
 .lib-item .n { font-size: 13px; word-break: break-word; }
 .lib-item .m { font-size: 11px; color: var(--muted); margin-top: 2px; }
 
+/* Dra-og-slipp-melding */
+#dropHint {
+  position: fixed; inset: 0;
+  display: none; align-items: center; justify-content: center;
+  background: rgba(20,24,31,.82);
+  border: 3px dashed var(--accent);
+  border-radius: 14px;
+  font-size: 20px; font-weight: 600; color: var(--text);
+  z-index: 40; pointer-events: none;
+}
+#dropHint.open { display: flex; }
+
 /* ⚙ Innstillingsmeny (høyreklikk) */
 #setMenu {
   position: fixed;
