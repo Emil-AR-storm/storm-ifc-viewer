@@ -300,7 +300,7 @@ $("btnAxes").addEventListener("click", () => {
   if (!S.axisSources) classifyAxisSources();
   if (!S.axesBuilt) rebuildAxes();
   renderAxesPanel();
-  ["propPanel", "commentPanel", "qtyPanel", "colorPanel", "libPanel", "searchPanel"].forEach(id => $(id).classList.remove("open"));
+  ["propPanel", "commentPanel", "qtyPanel", "colorPanel", "libPanel", "comparePanel", "searchPanel"].forEach(id => $(id).classList.remove("open"));
   panel.classList.add("open");
   S.axesOn = true;
   axesGroup.visible = true;

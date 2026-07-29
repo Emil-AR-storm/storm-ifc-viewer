@@ -14,6 +14,7 @@ $("btnComments").addEventListener("click", () => {
   $("libPanel").classList.remove("open");
   $("axesPanel").classList.remove("open");
   $("searchPanel").classList.remove("open");
+  $("comparePanel").classList.remove("open");
   $("commentPanel").classList.toggle("open");
 });
 

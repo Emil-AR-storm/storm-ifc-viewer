@@ -93,6 +93,7 @@ export function afterLoad() {
   $("toolbar").classList.add("open");
   loadComments();
   restoreAppearance(); // legger på lagret fargelegging/skjuling/transparent
+  if (S.onModelLoaded) S.onModelLoaded(); // 🔄 sammenligning, hvis et avtrykk er tatt
 }
 
 function clearModel() {
