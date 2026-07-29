@@ -1,6 +1,6 @@
 // 🗺 Minikart: toppvisning med kameraprikk, trykk for å flytte deg.
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
-import { $, S } from "./state.js";
+import { $, S, writePrefs } from "./state.js";
 import { axesGroup, camera, controls, frameHooks, grid, koteGroup, markerGroup, measureGroup, renderer, scene, selGroup } from "./scene.js";
 
 // ---------- 🗺 Minikart (ovenfra, trykk for å flytte deg) ----------
@@ -80,7 +80,7 @@ miniCanvas.addEventListener("pointerdown", (e) => {
 // Minikartet styres nå fra ⚙ Innstillinger (av/på + størrelse)
 export function setMini(on) {
   S.miniOn = on;
-  try { localStorage.setItem("storm-ifc-mini", S.miniOn ? "1" : "0"); } catch(_){}
+  writePrefs();
   miniCanvas.style.display = S.miniOn && S.miniBase ? "block" : "none";
   if (S.syncPrefs) S.syncPrefs(); // send også til SharePoint (personlig oppsett)
 }

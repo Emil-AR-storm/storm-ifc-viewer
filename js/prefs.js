@@ -1,10 +1,10 @@
 // Lagring av innstillinger og utseende. Standardverdiene og innlesingen ved
 // oppstart ligger i state.js – her ligger bare skrivingen og gjenopprettingen.
-import { $, APPEAR_KEY, S, SET_KEY } from "./state.js";
+import { $, S, writePrefs } from "./state.js";
 import { applyTypeColors, buildTypeInfo } from "./display.js";
 
 export function saveSettings() {
-  try { localStorage.setItem(SET_KEY, JSON.stringify(S.settings)); } catch(_) {}
+  writePrefs();
   if (S.syncPrefs) S.syncPrefs(); // send også til SharePoint (personlig oppsett)
 }
 
@@ -12,12 +12,13 @@ export function saveSettings() {
 // Fargelegging, egendefinerte typefarger, skjulte typer, transparent og bakgrunn
 // lagres og legges automatisk på når en modell åpnes.
 export function saveAppear() {
-  try { localStorage.setItem(APPEAR_KEY, JSON.stringify(S.appear)); } catch(_) {}
+  writePrefs();
   if (S.syncPrefs) S.syncPrefs(); // send også til SharePoint (personlig oppsett)
 }
 
 export function saveBg(hex) {
-  try { localStorage.setItem("storm-ifc-bg", hex); } catch(_) {}
+  S.bg = hex;
+  writePrefs();
   if (S.syncPrefs) S.syncPrefs(); // send også til SharePoint (personlig oppsett)
 }
 

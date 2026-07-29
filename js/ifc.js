@@ -1,7 +1,7 @@
 // Innlasting av modeller: IFC (full og lav kvalitet) og lett kopi (.glb).
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
 import * as WebIFC from "https://cdn.jsdelivr.net/npm/web-ifc@0.0.57/web-ifc-api.js";
-import { $, S, esc, loadingEl, loadingText, statusEl } from "./state.js";
+import { $, S, esc, loadingEl, loadingText, statusEl, writePrefs } from "./state.js";
 import { storeyDataIfc } from "./clip.js";
 import { hiddenIDs } from "./display.js";
 import { clearSelection, val } from "./elements.js";
@@ -458,7 +458,7 @@ export function clearLoadFlag() {
 
 function setLight(on) {
   S.lightMode = on;
-  try { localStorage.setItem("storm-ifc-light", on ? "1" : "0"); } catch(_){}
+  writePrefs();
   if (S.syncPrefs) S.syncPrefs();
   $("btnLight").classList.toggle("active", on);
 }
