@@ -134,6 +134,7 @@ export function afterLoad() {
   loadComments();
   restoreAppearance(); // legger på lagret fargelegging/skjuling/transparent
   if (S.onModelLoaded) S.onModelLoaded(); // 🔄 sammenligning, hvis et avtrykk er tatt
+  if (S.onSharedReady) S.onSharedReady(); // ⛓ delt visning, hvis lenka hadde en
 }
 
 function clearModel() {
@@ -154,6 +155,7 @@ function clearModel() {
   S.searchIndex = null; S.lastQuery = "";
   document.getElementById("searchPanel").classList.remove("open");
   document.getElementById("clipPanel").classList.remove("open");
+  document.getElementById("sharePanel").classList.remove("open");
   S.storeyOn = false; S.storeyList = null; S.storeyIdx = -1;
   document.getElementById("btnStorey").classList.remove("active");
   S.sharedOK = false;

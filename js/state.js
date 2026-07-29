@@ -174,6 +174,11 @@ S.sharedOK = false;
 // ---------- SharePoint ----------
 S.msalApp = null; S.spSiteId = null; S.spFiles = null;
 
+// ---------- Delt visningslenke ----------
+// Adressen leses her, i den første modulen som kjører, før MSAL får røre hashen.
+S.initialHash = (typeof location !== "undefined" && location.hash) || "";
+S.sharedView = null;      // tilstanden fra en delt lenke, venter på at modellen åpnes
+
 // ---------- DOM-hjelpere ----------
 export const statusEl = document.getElementById("status");
 export const loadingEl = document.getElementById("loading");
