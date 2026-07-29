@@ -168,7 +168,7 @@ const mm = (m) => m >= 1 ? m.toFixed(2) + " m" : Math.round(m * 1000) + " mm";
 
 function renderPanel() {
   const p = $("comparePanel");
-  ["propPanel","commentPanel","qtyPanel","colorPanel","libPanel","axesPanel","searchPanel"]
+  ["propPanel","commentPanel","qtyPanel","colorPanel","libPanel","axesPanel","searchPanel","clipPanel","sharePanel"]
     .forEach(id => $(id).classList.remove("open"));
   p.classList.add("open");
 
@@ -242,6 +242,67 @@ function renderPanel() {
       } else if (elementBoxById(e.id)) zoomToElement(e.id);
     };
   });
+}
+
+// ---------- ⛓ Deling av en sammenligning ----------
+// Bare det panelet og fargeleggingen trenger sendes. Uendrede elementer trengs
+// ikke som liste – de fargelegges som «alt som ikke er nytt eller endret» – så
+// bare antallet følger med. Slettede elementer finnes ikke i mottakerens modell,
+// derfor må senter og mål med, ellers kan ikke de røde boksene tegnes.
+const r3 = (n) => Math.round(n * 1000) / 1000;
+const r5 = (n) => Math.round(n * 100000) / 100000;
+
+export function collectCompare(slim) {
+  if (!S.compareOn || !result) return null;
+  const c = {
+    b: (S.compareBase && S.compareBase.file) || "forrige versjon",
+    m: result.metode,
+    ue: result.uendret.size
+  };
+  if (result.usikker) c.u = 1;
+  if (slim) {
+    // uten navn og mål: bare nok til å fargelegge og vise antall
+    c.n = result.ny.map(e => [e.id]);
+    c.e = result.endret.map(e => [e.id]);
+    c.d = result.slettet.map(e => ["", "", r3(e.c[0]), r3(e.c[1]), r3(e.c[2]), r3(e.d[0]), r3(e.d[1]), r3(e.d[2])]);
+    c.slim = 1;
+  } else {
+    c.n = result.ny.map(e => [e.id, e.name || "", e.type || ""]);
+    c.e = result.endret.map(e => [e.id, e.name || "", e.type || "",
+      r5(e.flyttet || 0), r5(e.dMax || 0), r5(e.dVol || 0), r3((e.fra && e.fra.v) || 0), r3(e.v || 0)]);
+    c.d = result.slettet.map(e => [e.name || "", e.type || "",
+      r3(e.c[0]), r3(e.c[1]), r3(e.c[2]), r3(e.d[0]), r3(e.d[1]), r3(e.d[2])]);
+  }
+  return c;
+}
+
+export function applySharedCompare(c) {
+  if (!c || !S.modelGroup) return;
+  S.compareBase = { file: c.b || "forrige versjon", count: 0 };
+  result = {
+    metode: c.m || "GlobalId",
+    usikker: !!c.u,
+    uendret: { size: c.ue || 0 },   // bare antallet trengs (renderPanel leser .size)
+    ny: (c.n || []).map(a => ({ id: a[0], name: a[1] || "", type: a[2] || "" })),
+    endret: (c.e || []).map(a => ({
+      id: a[0], name: a[1] || "", type: a[2] || "",
+      flyttet: a[3] || 0, dMax: a[4] || 0, dVol: a[5] || 0,
+      fra: { v: a[6] || 0 }, v: a[7] || 0
+    })),
+    slettet: (c.d || []).map(a => ({
+      name: a[0] || "", type: a[1] || "",
+      c: [a[2], a[3], a[4]], d: [a[5], a[6], a[7]]
+    }))
+  };
+  S.compareOn = true;
+  $("btnCompare").classList.add("active");
+  paint();
+  renderPanel();
+  if (c.slim) {
+    $("compareBody").insertAdjacentHTML("afterbegin",
+      '<p style="font-size:11px; color:var(--accent2); margin-bottom:8px">Lenka var for stor til å ta med ' +
+      'navn og mål – fargene og antallene stemmer, men lista er uten detaljer.</p>');
+  }
 }
 
 // ---------- Start / stopp ----------
