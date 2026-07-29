@@ -97,7 +97,7 @@ async function spFetchList() {
 $("btnLib").addEventListener("click", () => {
   const panel = $("libPanel");
   if (panel.classList.contains("open")) { panel.classList.remove("open"); return; }
-  ["propPanel", "commentPanel", "qtyPanel", "colorPanel", "axesPanel", "searchPanel"].forEach(id => $(id).classList.remove("open"));
+  ["propPanel", "commentPanel", "qtyPanel", "colorPanel", "axesPanel", "comparePanel", "searchPanel"].forEach(id => $(id).classList.remove("open"));
   openLibrary();
 });
 

@@ -189,7 +189,7 @@ window.addEventListener("keydown", (e) => {
     if ($("setMenu").classList.contains("open")) { closeSettings(); return; }
     if (S.clipPickFace) { stopFacePick(); showClipBar(); return; }
     if (S.mode) { setMode(S.mode); return; } // slår av gjeldende modus
-    ["propPanel","commentPanel","qtyPanel","colorPanel","libPanel","axesPanel","searchPanel"]
+    ["propPanel","commentPanel","qtyPanel","colorPanel","libPanel","axesPanel","comparePanel", "searchPanel"]
       .forEach(id => $(id).classList.remove("open"));
     return;
   }

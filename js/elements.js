@@ -163,6 +163,7 @@ export function showProperties(expressID) {
   $("libPanel").classList.remove("open");
   $("axesPanel").classList.remove("open");
   $("searchPanel").classList.remove("open");
+  $("comparePanel").classList.remove("open");
   $("propPanel").classList.add("open");
 }
 
@@ -197,7 +198,7 @@ function buildSearchIndex() {
   }
 }
 
-function elementBoxById(id) {
+export function elementBoxById(id) {
   if (S.lightLoaded) return lightElementBoxes(new Set([id])).get(id) || null;
   let box = null;
   const tmp = new THREE.Box3();
@@ -215,7 +216,7 @@ const _qa = new THREE.Vector3(), _qb = new THREE.Vector3(), _qc = new THREE.Vect
 
 // Bounding box for alle elementer (bygges én gang per modell)
 
-function allElementBoxes() {
+export function allElementBoxes() {
   if (S.allBoxCache) return S.allBoxCache;
   const map = new Map();
   if (S.lightLoaded) lightElementBoxes(null, map);
@@ -235,7 +236,7 @@ function allElementBoxes() {
 
 // Beregner ytre mål og volum (m³) for et sett elementer i ÉN gjennomgang av geometrien
 // (signert tetraeder-sum – funker for lukkede volumer som betong og stålprofiler)
-function quantitiesForSet(idSet) {
+export function quantitiesForSet(idSet) {
   const toM = S.modelSize > 1000 ? 0.001 : 1; // mm-modell → meter
   const vols = new Map();
   const addTri = (p, i0, i1, i2, mtx, id) => {
@@ -276,11 +277,11 @@ function elementQuantities(id) {
   return quantitiesForSet(new Set([id])).get(id) || { dims: [0, 0, 0], vol: 0 };
 }
 
-function fmtVol(v) { return (v >= 10 ? v.toFixed(1) : v >= 0.01 ? v.toFixed(2) : v.toFixed(3)) + " m³"; }
+export function fmtVol(v) { return (v >= 10 ? v.toFixed(1) : v >= 0.01 ? v.toFixed(2) : v.toFixed(3)) + " m³"; }
 
-function fmtDim(d) { return d >= 10 ? d.toFixed(1) : d.toFixed(2); }
+export function fmtDim(d) { return d >= 10 ? d.toFixed(1) : d.toFixed(2); }
 
-function elemDisplayName(id) {
+export function elemDisplayName(id) {
   if (S.glbActive) { const p = S.glbProps && S.glbProps.get(id); return (p && (p[0] || p[1])) || ("ID " + id); }
   try { const line = ifcApi.GetLine(S.modelID, id); return val(line.Name) || val(line.ObjectType) || ("ID " + id); } catch(_) { return "ID " + id; }
 }
@@ -303,7 +304,7 @@ function showMultiSummary() {
     items.slice(0, 100).map(it => '<div class="prop-row"><div class="k">' + esc(it.name) + '</div><div class="v">' + fmtVol(it.vol) + '</div></div>').join("") +
     (items.length > 100 ? '<p style="color:var(--muted); font-size:11px; margin-top:6px">… og ' + (items.length - 100) + ' til (summene øverst gjelder alle).</p>' : "") +
     '<p style="color:var(--muted); font-size:11px; margin-top:8px">Shift-klikk legger til/fjerner. Shift + dra lager markeringsboks: mot høyre = kun synlige, mot venstre = alt i boksen. Vanlig klikk nullstiller.</p>';
-  ["commentPanel", "qtyPanel", "colorPanel", "libPanel", "axesPanel", "searchPanel"].forEach(pid => $(pid).classList.remove("open"));
+  ["commentPanel", "qtyPanel", "colorPanel", "libPanel", "axesPanel", "comparePanel", "searchPanel"].forEach(pid => $(pid).classList.remove("open"));
   $("propPanel").classList.add("open");
 }
 
@@ -360,7 +361,7 @@ function shiftClickAt(x, y) {
   else $("propPanel").classList.remove("open");
 }
 
-function zoomToElement(id) {
+export function zoomToElement(id) {
   const box = elementBoxById(id);
   if (!box) return;
   const c = box.getCenter(new THREE.Vector3());
@@ -378,7 +379,7 @@ $("btnSearch").addEventListener("click", () => {
   if (!S.modelGroup) return;
   const panel = $("searchPanel");
   if (panel.classList.contains("open")) { panel.classList.remove("open"); return; }
-  ["propPanel", "commentPanel", "qtyPanel", "colorPanel", "libPanel", "axesPanel"].forEach(id => $(id).classList.remove("open"));
+  ["propPanel", "commentPanel", "qtyPanel", "colorPanel", "libPanel", "axesPanel", "comparePanel"].forEach(id => $(id).classList.remove("open"));
   panel.classList.add("open");
   if (!S.searchIndex) {
     $("searchBody").innerHTML = '<p style="color:var(--muted)">Bygger søkeindeks …</p>';
@@ -428,6 +429,7 @@ $("btnQty").addEventListener("click", () => {
   $("libPanel").classList.remove("open");
   $("axesPanel").classList.remove("open");
   $("searchPanel").classList.remove("open");
+  $("comparePanel").classList.remove("open");
   panel.classList.add("open");
 });
 
