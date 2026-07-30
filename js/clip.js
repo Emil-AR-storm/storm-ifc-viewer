@@ -1,6 +1,6 @@
 // ✂️ Snitt (akse og fra flate) og 🏢 etasjefilter – begge bruker klippeplan.
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
-import { $, DEFAULT_CLIPBOX, S, esc, fmtLen, writePrefs } from "./state.js";
+import { $, DEFAULT_CLIPBOX, S, apnePanel, esc, fmtLen, ikon, writePrefs } from "./state.js";
 import { val } from "./elements.js";
 import { lightElementBoxes } from "./ifc.js";
 import { kall } from "./ifcrpc.js";
@@ -61,9 +61,9 @@ export function showClipBar() {
   let html =
     '<span class="lbl">' + (S.clipPickFace ? "Trykk på en flate i modellen …" : "Snitt:") + '</span>' +
     '<button id="cx">X</button><button id="cy">Y (høyde)</button><button id="cz">Z</button>' +
-    '<button id="cfa" title="Legg snittet parallelt med en flate du trykker på – for skjeive bygg">📐 Fra flate</button>' +
-    '<button id="cbox" title="Seks plan du kan krympe hver for seg – isolerer et utsnitt av bygget">📦 Boks</button>' +
-    '<button id="csave" title="Lagrede snitt for denne modellen">💾 Snitt</button>';
+    '<button id="cfa" title="Legg snittet parallelt med en flate du trykker på – for skjeive bygg">' + ikon("flate") + ' Fra flate</button>' +
+    '<button id="cbox" title="Seks plan du kan krympe hver for seg – isolerer et utsnitt av bygget">' + ikon("boks") + ' Boks</button>' +
+    '<button id="csave" title="Lagrede snitt for denne modellen">' + ikon("lagre") + ' Snitt</button>';
   if (S.clipMode === "box") {
     modeBar.innerHTML = html;
     modeBar.classList.add("open");
@@ -72,11 +72,16 @@ export function showClipBar() {
     $("cy").onclick = () => setAxis("y");
     $("cz").onclick = () => setAxis("z");
     $("cfa").onclick = startFacePick;
-    $("cbox").onclick = () => { $("clipPanel").classList.toggle("open"); renderClipPanel(); };
+    $("cbox").onclick = () => {
+      const p = $("clipPanel");
+      if (p.classList.contains("open")) p.classList.remove("open");
+      else apnePanel("clipPanel");
+      renderClipPanel();
+    };
     $("csave").onclick = openSavedClips;
     return;
   }
-  html += '<button id="cf">↔ Snu</button>';
+  html += '<button id="cf">' + ikon("snu") + ' Snu</button>';
   if (faceReady) {
     const lim = Math.max(1, S.modelSize);
     html += '<input type="range" id="crf" min="' + (-lim) + '" max="' + lim + '" step="' + (lim / 500) +
@@ -138,7 +143,7 @@ export function startBoxClip() {
   stopFacePick();
   S.clipMode = "box";
   showClipBar();
-  $("clipPanel").classList.add("open");
+  apnePanel("clipPanel");
   renderClipPanel();
   applyClip();
 }
@@ -212,14 +217,14 @@ export function renderClipPanel() {
   if (!body) return;
   body.innerHTML =
     '<p style="color:var(--muted); font-size:11px; margin:0 0 8px">Krymp boksen fra hver av de seks sidene. ' +
-    'Alt utenfor skjules. Boksen kan stå sammen med 🏢 Etasjer.</p>' +
+    'Alt utenfor skjules. Boksen kan stå sammen med Etasjer.</p>' +
     clipRow("x0", "X fra", "x1", true) + clipRow("x1", "X til", "x0", false) +
     clipRow("y0", "Y fra (gulv)", "y1", true) + clipRow("y1", "Y til (tak)", "y0", false) +
     clipRow("z0", "Z fra", "z1", true) + clipRow("z1", "Z til", "z0", false) +
     '<div class="prop-actions" style="margin-top:12px">' +
-      '<button id="cbReset">↺ Hele modellen</button>' +
-      '<button id="cbHalf" title="Krymp alle sider 25 % inn">📦 Midten</button>' +
-      '<button id="cbSave" class="primary">💾 Lagre som …</button>' +
+      '<button id="cbReset">' + ikon("nullstill") + ' Hele modellen</button>' +
+      '<button id="cbHalf" title="Krymp alle sider 25 % inn">' + ikon("boks") + ' Midten</button>' +
+      '<button id="cbSave" class="primary">' + ikon("lagre") + ' Lagre som …</button>' +
     '</div>';
 
   body.querySelectorAll(".clip-sl").forEach(sl => {
@@ -309,7 +314,7 @@ export async function applyClipState(c) {
     $("btnStorey").classList.remove("active");
   }
   showClipBar();
-  if (S.clipMode === "box") { $("clipPanel").classList.add("open"); renderClipPanel(); }
+  if (S.clipMode === "box") { apnePanel("clipPanel"); renderClipPanel(); }
   else $("clipPanel").classList.remove("open");
   applyClip();
 }
@@ -317,14 +322,14 @@ export async function applyClipState(c) {
 export function openSavedClips() {
   const body = $("clipBody");
   if (!body) return;
-  $("clipPanel").classList.add("open");
+  apnePanel("clipPanel");
   const list = clipList();
-  let html = '<div class="prop-actions"><button id="clNew" class="primary">💾 Lagre nåværende snitt</button>' +
-    '<button id="clBack">📦 Tilbake til boksen</button></div>';
+  let html = '<div class="prop-actions"><button id="clNew" class="primary">' + ikon("lagre") + ' Lagre nåværende snitt</button>' +
+    '<button id="clBack">' + ikon("boks") + ' Tilbake til boksen</button></div>';
   html += list.length
     ? list.map((c, i) => {
-        const what = c.mode === "box" ? "📦 Boks" : c.mode === "face" ? "📐 Fra flate" : "✂️ " + String(c.axis || "y").toUpperCase();
-        const st = c.storey >= 0 && S.storeyList && S.storeyList[c.storey] ? " · 🏢 " + esc(S.storeyList[c.storey].name) : "";
+        const what = c.mode === "box" ? ikon("boks") + " Boks" : c.mode === "face" ? ikon("flate") + " Fra flate" : ikon("snitt") + " " + String(c.axis || "y").toUpperCase();
+        const st = c.storey >= 0 && S.storeyList && S.storeyList[c.storey] ? " · " + esc(S.storeyList[c.storey].name) : "";
         return '<div class="comment" data-i="' + i + '">' +
           '<div class="meta"><span>' + what + st + '</span><span class="del" data-del="' + i + '">Slett</span></div>' +
           '<div>' + esc(c.name) + '</div></div>';
@@ -438,9 +443,9 @@ function showStoreyBar() {
   modeBar.innerHTML = '<span class="lbl">Etasje:</span><button data-st="-1">Alle</button>' +
     S.storeyList.map((s, i) => '<button data-st="' + i + '">' + esc(s.name) + '</button>').join("") +
     // står snitt-boksen på samtidig, gir vi en vei tilbake til den
-    (S.clipOn && S.clipMode === "box" ? '<button id="stBox" title="Tilbake til snitt-boksen">📦 Boks</button>' : "");
+    (S.clipOn && S.clipMode === "box" ? '<button id="stBox" title="Tilbake til snitt-boksen">' + ikon("boks") + ' Boks</button>' : "");
   modeBar.classList.add("open");
-  if ($("stBox")) $("stBox").onclick = () => { showClipBar(); $("clipPanel").classList.add("open"); renderClipPanel(); };
+  if ($("stBox")) $("stBox").onclick = () => { showClipBar(); apnePanel("clipPanel"); renderClipPanel(); };
   const upd = () => modeBar.querySelectorAll("button[data-st]").forEach(b =>
     b.classList.toggle("active", Number(b.dataset.st) === S.storeyIdx));
   modeBar.querySelectorAll("button[data-st]").forEach(b =>

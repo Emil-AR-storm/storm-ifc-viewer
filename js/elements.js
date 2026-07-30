@@ -1,6 +1,6 @@
 // Valg, egenskaper, søk, mengder og markeringsboks.
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
-import { $, S, dec, esc, loadingEl, loadingText } from "./state.js";
+import { $, S, apnePanel, dec, esc, ikon, loadingEl, loadingText } from "./state.js";
 import { hiddenIDs, hideElement } from "./display.js";
 import { alleElementIder, lightElementBoxes } from "./ifc.js";
 import { kall, metaFor, sikreMeta } from "./ifcrpc.js";
@@ -139,20 +139,11 @@ export async function showProperties(expressID) {
   }
 
   body.innerHTML =
-    (S.lightLoaded ? "" : '<div class="prop-actions"><button id="paHide">🙈 Skjul element</button></div>') +
+    (S.lightLoaded ? "" : '<div class="prop-actions"><button id="paHide">' + ikon("skjul") + ' Skjul element</button></div>') +
     rows.map(([k,v]) =>
     `<div class="prop-row"><div class="k">${esc(String(k))}</div><div class="v">${esc(String(v))}</div></div>`).join("");
   if (!S.lightLoaded) $("paHide").onclick = () => hideElement(expressID);
-  $("commentPanel").classList.remove("open");
-  $("qtyPanel").classList.remove("open");
-  $("colorPanel").classList.remove("open");
-  $("libPanel").classList.remove("open");
-  $("axesPanel").classList.remove("open");
-  $("searchPanel").classList.remove("open");
-  $("comparePanel").classList.remove("open");
-  $("clipPanel").classList.remove("open");
-  $("sharePanel").classList.remove("open");
-  $("propPanel").classList.add("open");
+  apnePanel("propPanel");
 }
 
 // ---------- 🔎 Elementsøk ----------
@@ -316,7 +307,7 @@ function showMultiSummary() {
     totArea += q.area || 0;
     items.push({ id, name: elemDisplayName(id), vol: q.vol });
   }
-  $("propTitle").textContent = "🧮 " + S.multiSel.size + " elementer valgt";
+  $("propTitle").textContent = S.multiSel.size + " elementer valgt";
   $("propBody").innerHTML =
     '<div class="prop-row" style="font-weight:600"><div class="k">Sum volum</div><div class="v">' + fmtVol(totVol) + '</div></div>' +
     '<div class="prop-row" style="font-weight:600"><div class="k">Sum areal (fotavtrykk)</div><div class="v">' + fmtArea(totArea) + '</div></div>' +
@@ -325,8 +316,7 @@ function showMultiSummary() {
     items.slice(0, 100).map(it => '<div class="prop-row"><div class="k">' + esc(it.name) + '</div><div class="v">' + fmtVol(it.vol) + '</div></div>').join("") +
     (items.length > 100 ? '<p style="color:var(--muted); font-size:11px; margin-top:6px">… og ' + (items.length - 100) + ' til (summene øverst gjelder alle).</p>' : "") +
     '<p style="color:var(--muted); font-size:11px; margin-top:8px">Shift-klikk legger til/fjerner. Shift + dra lager markeringsboks: mot høyre = kun synlige, mot venstre = alt i boksen. Vanlig klikk nullstiller.</p>';
-  ["commentPanel", "qtyPanel", "colorPanel", "libPanel", "axesPanel", "comparePanel", "searchPanel"].forEach(pid => $(pid).classList.remove("open"));
-  $("propPanel").classList.add("open");
+  apnePanel("propPanel");
 }
 
 // Markerer et helt sett elementer i én gjennomgang (raskt også for hundrevis)
@@ -400,8 +390,7 @@ $("btnSearch").addEventListener("click", () => {
   if (!S.modelGroup) return;
   const panel = $("searchPanel");
   if (panel.classList.contains("open")) { panel.classList.remove("open"); return; }
-  ["propPanel", "commentPanel", "qtyPanel", "colorPanel", "libPanel", "axesPanel", "comparePanel"].forEach(id => $(id).classList.remove("open"));
-  panel.classList.add("open");
+  apnePanel("searchPanel");
   if (!S.searchIndex) {
     $("searchBody").innerHTML = '<p style="color:var(--muted)">Bygger søkeindeks …</p>';
     setTimeout(async () => { await sikreMeta(alleElementIder); buildSearchIndex(); renderSearchUI(); }, 30);
@@ -410,7 +399,7 @@ $("btnSearch").addEventListener("click", () => {
 
 function renderSearchUI() {
   $("searchBody").innerHTML =
-    '<input type="search" id="elSearch" placeholder="🔍 Navn, merke, profil eller ID …" autocomplete="off">' +
+    '<input type="search" id="elSearch" placeholder="Navn, merke, profil eller ID …" autocomplete="off">' +
     '<div id="searchList"></div>';
   const inp = $("elSearch");
   inp.value = S.lastQuery;
@@ -451,16 +440,7 @@ $("btnQty").addEventListener("click", async () => {
     finally { loadingEl.classList.remove("open"); }
   }
   renderQuantities(S.qtyCache);
-  $("propPanel").classList.remove("open");
-  $("commentPanel").classList.remove("open");
-  $("colorPanel").classList.remove("open");
-  $("libPanel").classList.remove("open");
-  $("axesPanel").classList.remove("open");
-  $("searchPanel").classList.remove("open");
-  $("comparePanel").classList.remove("open");
-  $("clipPanel").classList.remove("open");
-  $("sharePanel").classList.remove("open");
-  panel.classList.add("open");
+  apnePanel("qtyPanel");
 });
 
 // Samler mengder både gruppert (til panelet) og per element (til regneark).
@@ -753,9 +733,9 @@ function renderQuantities(full) {
   $("qtyBody").innerHTML =
     nedtrekk +
     '<div class="prop-actions">' +
-      '<button id="qtyCsvG" class="primary" title="Én rad per gruppe, bare valgt objekttype">⬇ Grupper (CSV)</button>' +
-      '<button id="qtyCsvE" title="Én rad per element – for mengdeberegning og vareordre">⬇ Alle elementer</button>' +
-      '<button id="qtyCopy" title="Lim rett inn i et åpent regneark">📋 Kopier</button>' +
+      '<button id="qtyCsvG" class="primary" title="Én rad per gruppe, bare valgt objekttype">' + ikon("lastned") + ' Grupper (CSV)</button>' +
+      '<button id="qtyCsvE" title="Én rad per element – for mengdeberegning og vareordre">' + ikon("lastned") + ' Alle elementer</button>' +
+      '<button id="qtyCopy" title="Lim rett inn i et åpent regneark">' + ikon("kopier") + ' Kopier</button>' +
     '</div>' +
     '<div class="qty-row" style="font-weight:600"><div class="n">' +
       esc([S.qtyType ? typeVisning(S.qtyType) : "", matNavnValgt].filter(Boolean).join(" · ") || "Totalt") +
@@ -764,7 +744,7 @@ function renderQuantities(full) {
     list.map(([key, g]) =>
       '<div class="qty-row"><div class="n">' + esc(key) + (g.type ? ' <span style="color:var(--muted);font-size:11px">(' + esc(typeVisning(g.type)) + ')</span>' : "") + '</div>' +
       '<div class="c">' + g.count + ' stk · ' + g.length.toFixed(dec()) + ' m · ' + fmtArea(g.area) + ' · ' + fmtVol(g.vol) + '</div></div>').join("") +
-    '<p style="color:var(--muted); font-size:11px; margin-top:10px">Antall desimaler settes i ⚙ Innstillinger. ' +
+    '<p style="color:var(--muted); font-size:11px; margin-top:10px">Antall desimaler settes i Innstillinger. ' +
     'Velg objekttype og materiale for å få ett ark om gangen – nedlastingen inneholder bare det som står i lista nå ' +
     '(f.eks. Søyler + Betong gir bare betongsøylene). ' +
     'Materialgruppene samler navn som betyr det samme: «B35», «C35/45» og «Concrete» havner alle under Betong. ' +
@@ -785,9 +765,9 @@ function renderQuantities(full) {
     const tsv = qtyGroupRows(cache).map(r => r.join("\t")).join("\r\n");
     try {
       await navigator.clipboard.writeText(tsv);
-      $("qtyCopy").textContent = "✅ Kopiert";
-      setTimeout(() => { if ($("qtyCopy")) $("qtyCopy").textContent = "📋 Kopier"; }, 1500);
-    } catch(_) { alert("Klarte ikke å kopiere. Bruk ⬇ Grupper (CSV) i stedet."); }
+      $("qtyCopy").textContent = "Kopiert";
+      setTimeout(() => { if ($("qtyCopy")) $("qtyCopy").innerHTML = ikon("kopier") + " Kopier"; }, 1500);
+    } catch(_) { alert("Klarte ikke å kopiere. Bruk Grupper (CSV) i stedet."); }
   };
 }
 

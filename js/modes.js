@@ -27,7 +27,7 @@ export function updateModeBar() {
   if (S.clipOn || S.storeyOn) return; // snitt-/etasjekontroller styrer modeBar
   if (S.mode === "measure") {
     modeBar.innerHTML = '<span class="lbl">Trykk på to punkter</span>' +
-      '<button id="mbSnap" title="Fest til nærmeste hjørne/kant">🧲 Snap</button>' +
+      '<button id="mbSnap" title="Fest til nærmeste hjørne/kant">Snap</button>' +
       '<input type="range" id="mbSnapPx" min="5" max="50" step="1" value="' + S.snapPx + '" title="Snap-følsomhet (piksler)" style="width:90px">' +
       '<button id="mbClear">Tøm mål</button>';
     $("mbSnap").classList.toggle("active", S.snapOn);

@@ -1,6 +1,6 @@
 // 🔠 Aksesystem: finner akselinjer automatisk fra valgte elementtyper.
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
-import { $, S, esc, statusEl } from "./state.js";
+import { $, S, apnePanel, esc, statusEl } from "./state.js";
 import { val } from "./elements.js";
 import { lightElementBoxes } from "./ifc.js";
 import { kall } from "./ifcrpc.js";
@@ -260,7 +260,7 @@ function renderAxesPanel() {
       '<div class="c"><input type="checkbox" data-axsrc="' + esc(k) + '"' + (S.axisSelection.has(k) ? " checked" : "") + '></div></label>';
   }
   html += '<p style="color:var(--muted); font-size:11px; margin-top:8px">Mål-lappene (gule) vises først når du zoomer nær nok – det holder store modeller ryddige. ' +
-    'Skriftstørrelsen justeres i ⚙ Innstillinger (høyreklikk).</p>';
+    'Skriftstørrelsen justeres i Innstillinger (høyreklikk).</p>';
   $("axesBody").innerHTML = html;
   $("axesBody").querySelectorAll("input[data-axsrc]").forEach(inp => {
     inp.onchange = (e) => {
@@ -291,8 +291,7 @@ $("btnAxes").addEventListener("click", async () => {
   if (!S.axisSources) classifyAxisSources();
   if (!S.axesBuilt) rebuildAxes();
   renderAxesPanel();
-  ["propPanel", "commentPanel", "qtyPanel", "colorPanel", "libPanel", "comparePanel", "searchPanel"].forEach(id => $(id).classList.remove("open"));
-  panel.classList.add("open");
+  apnePanel("axesPanel");
   S.axesOn = true;
   axesGroup.visible = true;
   $("btnAxes").classList.add("active");

@@ -1,5 +1,5 @@
 // Microsoft Graph: innlogging og modellbibliotek fra SharePoint.
-import { $, S, esc, loadingEl, loadingText } from "./state.js";
+import { $, S, esc, ikon, loadingEl, loadingText, lukkPaneler } from "./state.js";
 import { afterLoad, clearLoadFlag, ifcReady, loadGlb, loadModel, offerLightRetry, setLoadFlag } from "./ifc.js";
 
 // ---------- SharePoint-bibliotek (Microsoft Graph) ----------
@@ -16,8 +16,8 @@ export const SP = {
 // samme liste. Filtypen bestemmer hvilken fane en fil hører til – en .glb som
 // ligger løst i hovedmappa vises derfor under 🪶 Lette kopier, med en merknad.
 export const LIB_FANER = [
-  { key: "full", tittel: "📐 Modeller", mappe: () => SP.folder, filtype: /\.ifc$/i },
-  { key: "lett", tittel: "🪶 Lette kopier", mappe: () => SP.lightFolder, filtype: /\.glb$/i }
+  { key: "full", tittel: "Modeller", ikonNavn: "boks", mappe: () => SP.folder, filtype: /\.ifc$/i },
+  { key: "lett", tittel: "Lette kopier", ikonNavn: "lav", mappe: () => SP.lightFolder, filtype: /\.glb$/i }
 ];
 
 export const GRAPH = "https://graph.microsoft.com/v1.0";
@@ -109,7 +109,7 @@ export async function spTokenSilent() {
 // forespørsel det gjaldt.
 export const IKKE_INNLOGGET =
   "Du er ikke innlogget mot SharePoint (eller innloggingen er utløpt). " +
-  "Åpne 📚 Biblioteket og logg inn, så prøv igjen.";
+  "Åpne Biblioteket og logg inn, så prøv igjen.";
 
 export function authHeaders(token, ekstra, hva) {
   if (!token || !String(token).trim()) {
@@ -169,7 +169,7 @@ async function spFetchList(fane) {
 $("btnLib").addEventListener("click", () => {
   const panel = $("libPanel");
   if (panel.classList.contains("open")) { panel.classList.remove("open"); return; }
-  ["propPanel", "commentPanel", "qtyPanel", "colorPanel", "axesPanel", "comparePanel", "searchPanel"].forEach(id => $(id).classList.remove("open"));
+  lukkPaneler("libPanel");
   openLibrary();
 });
 
@@ -185,7 +185,7 @@ async function openLibrary() {
   const fane = LIB_FANER.find(x => x.key === S.libFane) || LIB_FANER[0];
   const faneHtml = '<div class="prop-actions lib-faner">' + LIB_FANER.map(f =>
     '<button data-fane="' + f.key + '"' + (f.key === fane.key ? ' class="active"' : "") + '>' +
-    esc(f.tittel) + '</button>').join("") + '</div>';
+    ikon(f.ikonNavn) + ' ' + esc(f.tittel) + '</button>').join("") + '</div>';
   const kobleFaner = () => {
     body.querySelectorAll("[data-fane]").forEach(b => {
       b.onclick = () => { if (b.dataset.fane !== S.libFane) { S.libFane = b.dataset.fane; openLibrary(); } };
@@ -203,7 +203,7 @@ async function openLibrary() {
     }
     S.spFiles = files;
     body.innerHTML = faneHtml +
-      '<input type="search" id="libSearch" placeholder="🔍 Søk etter modell …" autocomplete="off">' +
+      '<input type="search" id="libSearch" placeholder="Søk etter modell …" autocomplete="off">' +
       '<div id="libList"></div>';
     kobleFaner();
     $("libSearch").addEventListener("input", () => renderLibList($("libSearch").value));
@@ -223,7 +223,7 @@ function renderLibList(filter) {
   if (!S.spFiles || !S.spFiles.length) {
     listEl.innerHTML = '<p style="color:var(--muted)">Ingen filer i «' + esc(fane.mappe()) + '» ennå.' +
       (fane.key === "lett"
-        ? ' Lag en med 💾 Lett kopi og legg .glb-filen i denne mappa.'
+        ? ' Lag en med Lett kopi-knappen og legg .glb-filen i denne mappa.'
         : '') + '</p>';
     return;
   }

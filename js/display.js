@@ -1,6 +1,6 @@
 // Utseende: transparent, skjul/vis og fargelegging per elementtype.
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
-import { $, DEFAULT_APPEAR, S, esc } from "./state.js";
+import { $, DEFAULT_APPEAR, S, apnePanel, esc, ikon } from "./state.js";
 import { clearSelection } from "./elements.js";
 import { sikreMeta, typeFor } from "./ifcrpc.js";
 import { alleElementIder } from "./ifc.js";
@@ -143,29 +143,20 @@ $("btnColors").addEventListener("click", async () => {
     const bgVal = "#" + scene.background.getHexString();
     $("colorBody").innerHTML =
       '<div class="qty-row"><div class="n">Bakgrunn</div><div class="c"><input type="color" id="colBg" value="' + bgVal + '"></div></div>' +
-      '<p style="color:var(--muted); font-size:11px; margin-top:10px">Fargelegging og skjuling per type er ikke tilgjengelig i 🪶 lav kvalitet. Last modellen i full kvalitet for å bruke det.</p>';
+      '<p style="color:var(--muted); font-size:11px; margin-top:10px">Fargelegging og skjuling per type er ikke tilgjengelig i lav kvalitet. Last modellen i full kvalitet for å bruke det.</p>';
     $("colBg").oninput = (e) => { scene.background.set(e.target.value); saveBg(e.target.value); };
   } else {
     if (!S.typeInfo) { await sikreMeta(alleElementIder); buildTypeInfo(); }
     renderColorPanel();
   }
-  $("propPanel").classList.remove("open");
-  $("commentPanel").classList.remove("open");
-  $("qtyPanel").classList.remove("open");
-  $("libPanel").classList.remove("open");
-  $("axesPanel").classList.remove("open");
-  $("searchPanel").classList.remove("open");
-  $("comparePanel").classList.remove("open");
-  $("clipPanel").classList.remove("open");
-  $("sharePanel").classList.remove("open");
-  panel.classList.add("open");
+  apnePanel("colorPanel");
 });
 
 function renderColorPanel() {
   const bgVal = "#" + scene.background.getHexString();
   let html =
     '<div class="prop-actions">' +
-    '<button id="colApply" class="primary">🎨 Fargelegg etter type</button>' +
+    '<button id="colApply" class="primary">' + ikon("utseende") + ' Fargelegg etter type</button>' +
     '<button id="colReset">Originalfarger</button></div>' +
     '<div class="qty-row"><div class="n">Bakgrunn</div><div class="c"><input type="color" id="colBg" value="' + bgVal + '"></div></div>';
   const keys = [...S.typeInfo.keys()];
@@ -174,7 +165,7 @@ function renderColorPanel() {
     html += '<div class="qty-row"><div class="n">' + esc(g.label) +
       ' <span style="color:var(--muted);font-size:11px">(' + g.meshes.length + ')</span></div>' +
       '<div class="c" style="display:flex; align-items:center; gap:8px">' +
-      '<button data-hide="' + i + '" title="Skjul/vis" style="padding:3px 8px">' + (g.hidden ? "🚫" : "👁") + '</button>' +
+      '<button data-hide="' + i + '" title="Skjul/vis" style="padding:3px 8px">' + ikon(g.hidden ? "skjul" : "vis") + '</button>' +
       '<input type="color" data-type="' + i + '" value="' + g.color + '"></div></div>';
   });
   $("colorBody").innerHTML = html;
@@ -197,7 +188,7 @@ function renderColorPanel() {
       const g = S.typeInfo.get(keys[Number(e.currentTarget.dataset.hide)]);
       g.hidden = !g.hidden;
       g.meshes.forEach(m => m.visible = !g.hidden && !hiddenIDs.has(m.userData.expressID));
-      e.currentTarget.textContent = g.hidden ? "🚫" : "👁";
+      e.currentTarget.innerHTML = ikon(g.hidden ? "skjul" : "vis");
       syncHiddenTypes();
       const anyHidden = hiddenIDs.size > 0 || [...S.typeInfo.values()].some(t => t.hidden);
       $("btnShowAll").style.display = anyHidden ? "" : "none";

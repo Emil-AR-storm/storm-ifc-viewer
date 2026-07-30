@@ -14,7 +14,7 @@ export const PLANNER_SCOPES = ["Tasks.ReadWrite"];
 const SAMTYKKE =
   "For å lage Planner-oppgaver må du gi Storm IFC-Viewer tilgang til oppgavene dine – " +
   "det skjer én gang. Siden lastes på nytt, så modellen må åpnes igjen etterpå " +
-  "(«▶ Fortsett med …» på startskjermen).\n\nFortsette?";
+  "(«Fortsett med …» på startskjermen).\n\nFortsette?";
 
 export async function plannerToken(silent) {
   return graphToken(PLANNER_SCOPES, {
