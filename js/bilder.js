@@ -171,13 +171,17 @@ export async function slettBilder(navn) {
 // ---------- Hele veien fra valgt fil til lagret filnavn ----------
 // Gir en liste filnavn tilbake. Kaster med "IKKE_INNLOGGET" hvis brukeren ikke
 // er logget inn – da har vi ingen plass å legge bildene.
-export async function leggTilBilder(markeringId, filer, fraFor) {
-  const alt = (fraFor || []).length;
+//
+// `nummerFra` er hvor mange bilder markeringen alt har TIL SAMMEN (før + etter).
+// Nummereringen går på tvers av seksjonene, så to filer aldri kan få samme navn.
+// Hvor mange bilder en seksjon får ha, avgjøres av den som kaller.
+export async function leggTilBilder(markeringId, filer, nummerFra) {
+  const fra = Number(nummerFra) || 0;
   const ut = [];
-  const inn = [...filer].filter(erBildefil).slice(0, Math.max(0, MAKS_PER_MARKERING - alt));
+  const inn = [...filer].filter(erBildefil);
   for (let i = 0; i < inn.length; i++) {
     const blob = await komprimer(inn[i]);
-    ut.push(await lastOpp(blob, bildeNavn(markeringId, alt + i + 1)));
+    ut.push(await lastOpp(blob, bildeNavn(markeringId, fra + i + 1)));
   }
   return ut;
 }

@@ -4,7 +4,7 @@ import { $, S, esc, loadingEl, loadingText } from "./state.js";
 import { ANSATTE } from "./config.js";
 import { fristTilISO, fullforOppgave, opprettOppgave, planUrl, plannerToken } from "./planner.js";
 import { setMode } from "./modes.js";
-import { camera, controls, frameHooks, markerGroup } from "./scene.js";
+import { camera, controls, frameHooks, markerGroup, renderer } from "./scene.js";
 import { GRAPH, SP, authHeaders, graphGet, spTokenSilent } from "./sharepoint.js";
 import { MAKS_PER_MARKERING, bildeUrl, erBildefil, leggTilBilder, slettBilder } from "./bilder.js";
 // ⛓-lenka til en markering hentes via S.markerLink (settes av share.js).
@@ -139,14 +139,39 @@ function textureFor(status) {
   return markerTextures[status];
 }
 
+// ---------- Størrelsen på markeringene ----------
+// Før ble størrelsen satt til en brøkdel av modellen. På et datasenter på 200 m
+// ble markeringen digre, på en vaskehall bitte liten. Nå holdes den på samme
+// antall piksler på skjermen uansett modell og zoom, som en kartnål.
+export const MARKER_PX = 26;
+
+// Hvor stor må en sprite være i modellens enheter for å dekke `px` piksler på
+// skjermen, når den står `avstand` fra kameraet?
+export function markerSkala(avstand, fovGrader, hoydePx, px) {
+  const h = hoydePx || 800;
+  const synsfelt = 2 * Math.tan((fovGrader || 60) * Math.PI / 360);
+  return Math.max(1e-6, avstand) * synsfelt * ((px || MARKER_PX) / h);
+}
+
+function skalerMarkeringer() {
+  const n = markerGroup.children.length;
+  if (!n) return;
+  const h = (renderer.domElement && renderer.domElement.clientHeight) || 800;
+  for (const s of markerGroup.children) {
+    const k = markerSkala(camera.position.distanceTo(s.position), camera.fov, h);
+    s.scale.set(k, k, 1);
+  }
+}
+
+frameHooks.push(skalerMarkeringer);
+
 function addMarkerSprite(comment) {
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: textureFor(statusOf(comment)), depthTest: false }));
   sprite.position.set(comment.x, comment.y, comment.z);
   sprite.renderOrder = 999;
-  const s = S.modelSize * 0.012 || 0.3;
-  sprite.scale.set(s, s, 1);
   sprite.userData.commentId = comment.id;
   markerGroup.add(sprite);
+  skalerMarkeringer();   // riktig størrelse med en gang, ikke først ved neste bilde
 }
 
 // Endrer et felt på en markering og oppdaterer alt som viser den
@@ -173,16 +198,40 @@ function updateComment(c, patch) {
 // Bildene ligger i SharePoint (se js/bilder.js). Her er bare visningen: en
 // stripe med miniatyrbilder i bobla, og en 📷-knapp som åpner kamera/filvelger.
 
+// Bildene ligger i to seksjoner, så et avvik kan dokumenteres før og etter at
+// det er rettet. «Før» er den gamle lista (c.bilder), så markeringer som alt
+// har bilder beholder dem.
+export const SEKSJONER = [["for", "Før", "bilder"], ["etter", "Etter", "bilderEtter"]];
+
+export function bildeFelt(seksjon) {
+  const s = SEKSJONER.find(x => x[0] === seksjon);
+  return s ? s[2] : "bilder";
+}
+
+export function bilderI(c, seksjon) {
+  return (c && c[bildeFelt(seksjon)]) || [];
+}
+
+// Alle bildene til en markering, i rekkefølgen de vises – brukes til nummerering
+// av nye filnavn, til telleren i lista og til opprydding ved sletting.
+export function alleBilder(c) {
+  return SEKSJONER.reduce((ut, [s]) => ut.concat(bilderI(c, s)), []);
+}
+
 function bildeStripeHtml(c, kanLeggeTil) {
-  const liste = c.bilder || [];
-  if (!liste.length && !kanLeggeTil) return "";
-  return '<div class="mp-bilder">' +
-    liste.map(f => '<span class="mp-bilde" data-bilde="' + esc(f) + '" title="Åpne bildet"></span>').join("") +
-    (kanLeggeTil && liste.length < MAKS_PER_MARKERING
-      ? '<label class="mp-bilde nytt" title="Ta bilde eller velg fil">📷' +
-        '<input type="file" accept="image/*" capture="environment" multiple hidden></label>'
-      : "") +
-    '</div>';
+  return SEKSJONER.map(([seksjon, tittel]) => {
+    const liste = bilderI(c, seksjon);
+    if (!liste.length && !kanLeggeTil) return "";
+    return '<div class="mp-seksjon"><div class="mp-seksjon-tittel">' + tittel +
+      (liste.length ? ' <span>' + liste.length + '</span>' : "") + '</div>' +
+      '<div class="mp-bilder">' +
+      liste.map(f => '<span class="mp-bilde" data-bilde="' + esc(f) + '" data-seksjon="' + seksjon + '" title="Åpne bildet"></span>').join("") +
+      (kanLeggeTil && liste.length < MAKS_PER_MARKERING
+        ? '<label class="mp-bilde nytt" title="Ta bilde eller velg fil (' + tittel.toLowerCase() + ')">📷' +
+          '<input type="file" accept="image/*" capture="environment" multiple hidden data-seksjon="' + seksjon + '"></label>'
+        : "") +
+      '</div></div>';
+  }).join("");
 }
 
 // Fyller miniatyrbildene etterpå – hvert bilde hentes fra SharePoint én gang.
@@ -195,7 +244,9 @@ function fyllMiniatyrer(rot, c) {
     const img = document.createElement("img");
     img.src = url;
     el.appendChild(img);
-    el.onclick = () => visStort(c, (c.bilder || []).indexOf(el.dataset.bilde));
+    // du blar gjennom ALLE bildene i markeringen, så før og etter kan
+    // sammenlignes med piltastene
+    el.onclick = () => visStort(c, alleBilder(c).indexOf(el.dataset.bilde));
   });
 }
 
@@ -204,7 +255,18 @@ function fyllMiniatyrer(rot, c) {
 // Dra for å flytte når du er zoomet inn. Piltaster eller ‹ › blar mellom bildene
 // i markeringen.
 
-const BV = { navn: [], nr: 0, skala: 1, x: 0, y: 0, drar: false, px: 0, py: 0, pekere: new Map(), start: 0 };
+const BV = { navn: [], merker: [], nr: 0, skala: 1, x: 0, y: 0, drar: false, px: 0, py: 0, pekere: new Map(), start: 0 };
+
+// «Før 2 av 3» – teller innenfor seksjonen bildet hører til, siden det er slik
+// man leser en avviksdokumentasjon.
+export function bvTellerTekst(merker, nr) {
+  const alle = merker || [];
+  if (!alle.length) return "";
+  const merke = alle[nr];
+  const iSeksjon = alle.filter(m => m === merke);
+  const nrISeksjon = alle.slice(0, nr + 1).filter(m => m === merke).length;
+  return (merke ? merke + " " : "") + nrISeksjon + " av " + iSeksjon.length;
+}
 export const MIN_SKALA = 1, MAKS_SKALA = 8;
 
 // Zoomen stopper ved 100 % og 800 %. Egen funksjon, så grensene kan testes.
@@ -254,7 +316,8 @@ async function bvVis(nr) {
   BV.nr = bvNyttNr(nr, BV.navn.length);
   bvNullstill();
   const teller = $("bvTeller");
-  if (teller) teller.textContent = (BV.nr + 1) + " av " + BV.navn.length;
+  // teller innenfor seksjonen: «Etter 2 av 3», ikke «5 av 6»
+  if (teller) teller.textContent = bvTellerTekst(BV.merker, BV.nr);
   const img = $("bvBilde");
   if (img) {
     img.src = "";
@@ -343,7 +406,11 @@ function byggBildeVis() {
 
 function visStort(c, nr) {
   const el = byggBildeVis();
-  BV.navn = (c && c.bilder ? c.bilder.slice() : []).filter(Boolean);
+  BV.navn = [];
+  BV.merker = [];
+  SEKSJONER.forEach(([seksjon, tittel]) => {
+    bilderI(c, seksjon).filter(Boolean).forEach(f => { BV.navn.push(f); BV.merker.push(tittel); });
+  });
   el.classList.add("open");
   bvVis(Math.max(0, nr || 0));
 }
@@ -367,16 +434,18 @@ window.addEventListener("keydown", (e) => {
 });
 
 // Felles håndtering av valgte filer: komprimer, last opp, lagre filnavnene.
-async function taImotFiler(c, filer, etterpa) {
+async function taImotFiler(c, filer, seksjon, etterpa) {
+  const felt = bildeFelt(seksjon);
   const gode = [...filer].filter(erBildefil);
   if (!gode.length) { alert("Fant ingen bildefiler blant det du valgte."); return; }
-  const plass = MAKS_PER_MARKERING - (c.bilder || []).length;
-  if (plass <= 0) { alert("En markering kan ha maks " + MAKS_PER_MARKERING + " bilder."); return; }
+  const plass = MAKS_PER_MARKERING - bilderI(c, seksjon).length;
+  if (plass <= 0) { alert("Hver seksjon kan ha maks " + MAKS_PER_MARKERING + " bilder."); return; }
   loadingText.textContent = gode.length > 1 ? "Laster opp " + Math.min(gode.length, plass) + " bilder …" : "Laster opp bildet …";
   loadingEl.classList.add("open");
   try {
-    const navn = await leggTilBilder(c.id, gode, c.bilder);
-    c.bilder = (c.bilder || []).concat(navn);
+    // nummereringen går på TVERS av seksjonene, så to filer aldri får samme navn
+    const navn = await leggTilBilder(c.id, gode.slice(0, plass), alleBilder(c).length);
+    c[felt] = bilderI(c, seksjon).concat(navn);
     persist();
     pushSharedComments();
     renderCommentList();
@@ -457,12 +526,14 @@ export function openMarkerPopup(c) {
   if (el.querySelector(".mp-task")) el.querySelector(".mp-task").onclick = () => sendTilPlanner([c]);
   if (el.querySelector(".mp-open")) el.querySelector(".mp-open").onclick = () => window.open(c.taskUrl || planUrl(), "_blank");
   el.querySelector(".mp-del").onclick = () => { deleteComment(c.id); closeMarkerPopup(); };
-  const filvelger = el.querySelector(".mp-bilder input[type=file]");
-  if (filvelger) filvelger.onchange = () => {
-    const filer = [...filvelger.files];
-    filvelger.value = "";                       // samme bilde skal kunne velges igjen
-    taImotFiler(c, filer, () => openMarkerPopup(c));
-  };
+  el.querySelectorAll(".mp-bilder input[type=file]").forEach(inp => {
+    inp.onchange = () => {
+      const filer = [...inp.files];
+      const seksjon = inp.dataset.seksjon;
+      inp.value = "";                           // samme bilde skal kunne velges igjen
+      taImotFiler(c, filer, seksjon, () => openMarkerPopup(c));
+    };
+  });
   fyllMiniatyrer(el, c);
   el.classList.add("open");
   placePopup();
@@ -493,7 +564,7 @@ export function goToComment(c) {
 export function deleteComment(id) {
   const c = S.comments.find(c => c.id == id);
   // bildefilene i SharePoint ryddes med, så vi ikke samler opp foreldreløse filer
-  if (c && (c.bilder || []).length) slettBilder(c.bilder);
+  if (c && alleBilder(c).length) slettBilder(alleBilder(c));
   S.comments = S.comments.filter(c => c.id != id);
   markerGroup.children.filter(s => s.userData.commentId == id).forEach(s => markerGroup.remove(s));
   persist(); pushSharedComments(); renderCommentList();
@@ -556,7 +627,8 @@ window.saveComment = function() {
   if (S.nyeBilder.length) {
     const filer = S.nyeBilder;
     nullstillNyeBilder();
-    taImotFiler(c, filer, () => { if (popFor && popFor.id === c.id) openMarkerPopup(c); });
+    // bilder tatt når markeringen opprettes er «før»-tilstanden
+    taImotFiler(c, filer, "for", () => { if (popFor && popFor.id === c.id) openMarkerPopup(c); });
   } else nullstillNyeBilder();
   if (S.mode === "marker") setMode("marker"); // slå av markering-modus
 };
@@ -686,7 +758,10 @@ export function renderCommentList() {
         (c.due ? ' · frist ' + esc(c.due.split("-").reverse().join(".")) : "") +
         (isOverdue(c) ? ' <span style="color:#ef4444">⚠️ gått</span>' : "") +
         (c.taskId ? ' · <span title="Har en Planner-oppgave">📋</span>' : "") +
-        ((c.bilder || []).length ? ' · <span title="Har bilder">📷 ' + c.bilder.length + '</span>' : "") +
+        (alleBilder(c).length
+          ? ' · <span title="' + SEKSJONER.map(([s, t]) => t + ": " + bilderI(c, s).length).join(", ") +
+            '">📷 ' + alleBilder(c).length + (bilderI(c, "etter").length ? " (før/etter)" : "") + '</span>'
+          : "") +
       '</span></div></div>';
   }).join("") ||
     '<p style="color:var(--muted)">Ingen markeringer med status «' + esc(listFilter) + '».</p>';
