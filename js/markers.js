@@ -7,6 +7,7 @@ import { setMode } from "./modes.js";
 import { camera, controls, frameHooks, markerGroup, renderer } from "./scene.js";
 import { GRAPH, SP, authHeaders, graphGet, spTokenSilent } from "./sharepoint.js";
 import { MAKS_PER_MARKERING, bildeUrl, erBildefil, leggTilBilder, slettBilder } from "./bilder.js";
+import { ADVAR_MB, antallSider, gyldigSide, hentTegninger, mb, sideBilde, velgMappe, visStatus } from "./tegninger.js";
 // ⛓-lenka til en markering hentes via S.markerLink (settes av share.js).
 // Direkte import ville gitt sirkel: markers → share → display → ifc → markers.
 
@@ -250,12 +251,169 @@ function fyllMiniatyrer(rot, c) {
   });
 }
 
+// ---------- 📄 Arbeidstegninger på en markering ----------
+// Vedlegget er en henvisning: { fil, itemId, side, storrelse }. Fjerner du den,
+// forsvinner bare henvisningen – PDF-en ligger trygt i tegningsbiblioteket.
+
+export function tegningerI(c) {
+  return (c && c.tegninger) || [];
+}
+
+export function tegningTekst(v) {
+  return v.fil + (v.side > 1 ? " · s. " + v.side : "");
+}
+
+function tegningStripeHtml(c) {
+  const liste = tegningerI(c);
+  return '<div class="mp-seksjon"><div class="mp-seksjon-tittel">Arbeidstegninger' +
+    (liste.length ? ' <span>' + liste.length + '</span>' : "") + '</div>' +
+    '<div class="mp-tegninger">' +
+    liste.map((v, i) =>
+      '<span class="mp-tegning" data-tegning="' + i + '" title="Åpne ' + esc(v.fil) + '">' +
+      '📄 ' + esc(tegningTekst(v)) +
+      (mb(v.storrelse) > ADVAR_MB ? ' <span class="stor">' + mb(v.storrelse).toFixed(0) + ' MB</span>' : "") +
+      '<button class="mp-tegning-x" data-fjern="' + i + '" title="Fjern henvisningen (tegningen slettes ikke)">✕</button>' +
+      '</span>').join("") +
+    '<button class="mp-tegning nytt" id="mpTegning">📄 Legg til arbeidstegning</button>' +
+    '</div></div>';
+}
+
+// Velgeren: lista over PDF-ene som hører til modellen, med søk og sidetall.
+async function apneTegningVelger(c) {
+  let el = $("tegningVelg");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "tegningVelg";
+    document.body.appendChild(el);
+    el.addEventListener("click", (e) => { if (e.target === el) lukkTegningVelger(); });
+  }
+  el.innerHTML = '<div class="tv-boks"><div class="tv-topp">📄 Arbeidstegninger' +
+    '<button class="tv-x" title="Lukk">✕</button></div>' +
+    '<div class="tv-kropp"><p style="color:var(--muted)">Henter tegninger fra SharePoint …</p></div></div>';
+  el.querySelector(".tv-x").onclick = lukkTegningVelger;
+  el.classList.add("open");
+  const kropp = el.querySelector(".tv-kropp");
+
+  let svar;
+  try { svar = await hentTegninger(S.fileName); }
+  catch (err) { svar = { feil: err.message }; }
+  if (!el.classList.contains("open")) return;
+
+  if (svar.feil) {
+    kropp.innerHTML = '<p style="color:var(--muted)">' + (svar.feil === "IKKE_INNLOGGET"
+      ? "Tegningene ligger i SharePoint, så du må være innlogget. Åpne 📚 Biblioteket og logg inn."
+      : esc(svar.feil)) + '</p>';
+    return;
+  }
+
+  // Ingen mappe fant seg selv – la brukeren peke den ut én gang
+  if (svar.mangler) {
+    kropp.innerHTML = '<p style="color:var(--muted)">Fant ingen tegningsmappe for «' + esc(S.fileName) +
+      '». Mappa skal ligge i <b>' + esc(SP.folder) + '/Tegninger</b> og hete det samme som modellen.</p>' +
+      (svar.undermapper.length
+        ? '<p style="color:var(--muted);font-size:11px;margin:8px 0 4px">Velg mappa som hører til denne modellen:</p>' +
+          svar.undermapper.map(n => '<div class="lib-item" data-mappe="' + esc(n) + '"><div class="n">📁 ' + esc(n) + '</div></div>').join("")
+        : '<p style="color:var(--muted);font-size:11px;margin-top:8px">Det ligger ingen mapper der ennå.</p>');
+    kropp.querySelectorAll("[data-mappe]").forEach(d => {
+      d.onclick = async () => {
+        kropp.innerHTML = '<p style="color:var(--muted)">Henter tegninger …</p>';
+        await velgMappe(S.fileName, d.dataset.mappe);
+        apneTegningVelger(c);
+      };
+    });
+    return;
+  }
+
+  if (!svar.filer.length) {
+    kropp.innerHTML = '<p style="color:var(--muted)">Mappa <b>' + esc(svar.mappenavn) +
+      '</b> er tom. Legg PDF-ene inn i ' + esc(tegningsStiTekst(svar.mappenavn)) + '.</p>';
+    return;
+  }
+
+  kropp.innerHTML =
+    '<p class="tv-mappe">📁 ' + esc(svar.mappenavn) + ' · ' + svar.filer.length + ' tegninger</p>' +
+    '<input type="search" id="tvSok" placeholder="🔍 Søk etter tegning …" autocomplete="off">' +
+    '<div id="tvListe"></div>' +
+    '<div class="tv-bunn"><label>Side <input type="number" id="tvSide" min="1" value="1"></label>' +
+    '<button class="primary" id="tvLegg" disabled>Legg ved</button></div>';
+
+  let valgt = null;
+  const tegn = (q) => {
+    const treff = svar.filer.filter(f => f.name.toLowerCase().includes(q.trim().toLowerCase()));
+    $("tvListe").innerHTML = treff.length
+      ? treff.map(f => '<div class="lib-item' + (valgt && valgt.id === f.id ? " valgt" : "") + '" data-id="' + esc(f.id) + '">' +
+          '<div class="n">📄 ' + esc(f.name) + '</div>' +
+          '<div class="m">' + mb(f.size).toFixed(1) + ' MB' +
+          (mb(f.size) > ADVAR_MB ? ' · <span style="color:var(--accent2)">stor fil</span>' : "") + '</div></div>').join("")
+      : '<p style="color:var(--muted)">Ingen treff.</p>';
+    $("tvListe").querySelectorAll(".lib-item").forEach(d => {
+      d.onclick = () => {
+        valgt = svar.filer.find(f => f.id === d.dataset.id) || null;
+        $("tvLegg").disabled = !valgt;
+        tegn($("tvSok").value);
+      };
+    });
+  };
+  $("tvSok").addEventListener("input", () => tegn($("tvSok").value));
+  tegn("");
+
+  $("tvLegg").onclick = () => {
+    if (!valgt) return;
+    const side = Math.max(1, Math.round(Number($("tvSide").value) || 1));
+    c.tegninger = tegningerI(c).concat([{
+      fil: valgt.name, itemId: valgt.id, side, storrelse: valgt.size || 0
+    }]);
+    persist();
+    pushSharedComments();
+    renderCommentList();
+    lukkTegningVelger();
+    openMarkerPopup(c);
+  };
+}
+
+function tegningsStiTekst(mappenavn) {
+  return SP.folder + "/Tegninger/" + mappenavn;
+}
+
+function lukkTegningVelger() {
+  const el = $("tegningVelg");
+  if (el) el.classList.remove("open");
+}
+
+// Åpner en tegning i fullskjermvisningen, på siden markeringen peker på.
+async function visTegning(v) {
+  let antall = 0;
+  try {
+    antall = await antallSider(v, visStatus);
+  } catch (err) {
+    visStatus("");
+    alert(err.message === "IKKE_INNLOGGET"
+      ? "Du må være innlogget for å åpne tegninger fra SharePoint."
+      : "Klarte ikke å åpne tegningen: " + err.message);
+    return;
+  }
+  visStatus("");
+  if (!antall) return;                       // brukeren avbrøt en stor nedlasting
+  byggBildeVis();
+  bvSettKilde(
+    (nr) => sideBilde(v, nr + 1),
+    antall,
+    (nr) => v.fil + " · side " + (nr + 1) + " av " + antall
+  );
+  $("bildeVis").classList.add("open");
+  bvVis(gyldigSide(v.side, antall) - 1);
+}
+
 // ---------- Bildet i full skjerm: zoom, panorering og bla ----------
 // Zoom med rullehjul (mot pekeren), + / −, dobbeltklikk eller knipe på mobil.
 // Dra for å flytte når du er zoomet inn. Piltaster eller ‹ › blar mellom bildene
 // i markeringen.
 
-const BV = { navn: [], merker: [], nr: 0, skala: 1, x: 0, y: 0, drar: false, px: 0, py: 0, pekere: new Map(), start: 0 };
+const BV = {
+  navn: [], merker: [], nr: 0, antall: 0,
+  hent: () => null, tekst: () => "",
+  skala: 1, x: 0, y: 0, drar: false, px: 0, py: 0, pekere: new Map(), start: 0
+};
 
 // «Før 2 av 3» – teller innenfor seksjonen bildet hører til, siden det er slik
 // man leser en avviksdokumentasjon.
@@ -311,20 +469,30 @@ function bvZoomOm(faktor, klientX, klientY) {
   bvSett();
 }
 
+// Viseren vet ikke om den viser et foto eller en tegningsside – den får en
+// hent-funksjon, et antall og en tekst. Da virker zoom, dra og bla likt for
+// begge.
+function bvSettKilde(hent, antall, tekst) {
+  BV.hent = hent;
+  BV.antall = antall;
+  BV.tekst = tekst;
+}
+
 async function bvVis(nr) {
-  if (!BV.navn.length) return;
-  BV.nr = bvNyttNr(nr, BV.navn.length);
+  if (!BV.antall) return;
+  BV.nr = bvNyttNr(nr, BV.antall);
   bvNullstill();
   const teller = $("bvTeller");
-  // teller innenfor seksjonen: «Etter 2 av 3», ikke «5 av 6»
-  if (teller) teller.textContent = bvTellerTekst(BV.merker, BV.nr);
+  if (teller) teller.textContent = BV.tekst(BV.nr);
   const img = $("bvBilde");
   if (img) {
     img.src = "";
-    const url = await bildeUrl(BV.navn[BV.nr]);
-    if (url && $("bvBilde")) $("bvBilde").src = url;
+    const visesNa = BV.nr;
+    const url = await BV.hent(BV.nr);
+    // brukeren kan ha blad videre mens siden ble tegnet
+    if (url && $("bvBilde") && BV.nr === visesNa) $("bvBilde").src = url;
   }
-  const flere = BV.navn.length > 1;
+  const flere = BV.antall > 1;
   ["bvFor", "bvNeste"].forEach(id => { const b = $(id); if (b) b.style.display = flere ? "" : "none"; });
 }
 
@@ -411,6 +579,11 @@ function visStort(c, nr) {
   SEKSJONER.forEach(([seksjon, tittel]) => {
     bilderI(c, seksjon).filter(Boolean).forEach(f => { BV.navn.push(f); BV.merker.push(tittel); });
   });
+  bvSettKilde(
+    (i) => bildeUrl(BV.navn[i]),
+    BV.navn.length,
+    (i) => bvTellerTekst(BV.merker, i)   // «Etter 2 av 3», ikke «5 av 6»
+  );
   el.classList.add("open");
   bvVis(Math.max(0, nr || 0));
 }
@@ -501,6 +674,7 @@ export function openMarkerPopup(c) {
       '<button class="mp-x" title="Lukk">✕</button></div>' +
     '<div class="mp-text">' + esc(c.text) + '</div>' +
     bildeStripeHtml(c, true) +
+    tegningStripeHtml(c) +
     '<div class="mp-fields">' +
       '<label>Status<select class="mp-st">' + Object.keys(STATUS).map(k =>
         '<option value="' + k + '"' + (k === st ? " selected" : "") + '>' + k + '</option>').join("") + '</select></label>' +
@@ -532,6 +706,20 @@ export function openMarkerPopup(c) {
       const seksjon = inp.dataset.seksjon;
       inp.value = "";                           // samme bilde skal kunne velges igjen
       taImotFiler(c, filer, seksjon, () => openMarkerPopup(c));
+    };
+  });
+  if ($("mpTegning")) $("mpTegning").onclick = () => apneTegningVelger(c);
+  el.querySelectorAll(".mp-tegning[data-tegning]").forEach(t => {
+    t.onclick = (e) => {
+      const fjern = e.target.getAttribute("data-fjern");
+      if (fjern !== null) {
+        // bare henvisningen fjernes – PDF-en blir liggende i biblioteket
+        c.tegninger = tegningerI(c).filter((_, i) => i !== Number(fjern));
+        persist(); pushSharedComments(); renderCommentList(); openMarkerPopup(c);
+        return;
+      }
+      const v = tegningerI(c)[Number(t.dataset.tegning)];
+      if (v) visTegning(v);
     };
   });
   fyllMiniatyrer(el, c);
@@ -576,6 +764,8 @@ window.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   const bv = $("bildeVis");
   if (bv && bv.classList.contains("open")) { lukkBildeVis(); return; }
+  const tv = $("tegningVelg");
+  if (tv && tv.classList.contains("open")) { lukkTegningVelger(); return; }
   closeMarkerPopup();
 });
 
@@ -758,6 +948,8 @@ export function renderCommentList() {
         (c.due ? ' · frist ' + esc(c.due.split("-").reverse().join(".")) : "") +
         (isOverdue(c) ? ' <span style="color:#ef4444">⚠️ gått</span>' : "") +
         (c.taskId ? ' · <span title="Har en Planner-oppgave">📋</span>' : "") +
+        (tegningerI(c).length ? ' · <span title="' +
+          esc(tegningerI(c).map(tegningTekst).join(", ")) + '">📄 ' + tegningerI(c).length + '</span>' : "") +
         (alleBilder(c).length
           ? ' · <span title="' + SEKSJONER.map(([s, t]) => t + ": " + bilderI(c, s).length).join(", ") +
             '">📷 ' + alleBilder(c).length + (bilderI(c, "etter").length ? " (før/etter)" : "") + '</span>'
