@@ -1,6 +1,7 @@
 // 💬 Markeringer: lagring lokalt og deling via SharePoint.
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
 import { $, S, esc, ikon, loadingEl, loadingText, lukkPaneler } from "./state.js";
+import { t } from "./i18n.js";
 import { ANSATTE } from "./config.js";
 import { fristTilISO, fullforOppgave, opprettOppgave, planUrl, plannerToken } from "./planner.js";
 import { setMode } from "./modes.js";
@@ -263,12 +264,12 @@ function bildeStripeHtml(c, kanLeggeTil) {
   return SEKSJONER.map(([seksjon, tittel]) => {
     const liste = bilderI(c, seksjon);
     if (!liste.length && !kanLeggeTil) return "";
-    return '<div class="mp-seksjon"><div class="mp-seksjon-tittel">' + tittel +
+    return '<div class="mp-seksjon"><div class="mp-seksjon-tittel">' + t(tittel) +
       (liste.length ? ' <span>' + liste.length + '</span>' : "") + '</div>' +
       '<div class="mp-bilder">' +
-      liste.map(f => '<span class="mp-bilde" data-bilde="' + esc(f) + '" data-seksjon="' + seksjon + '" title="Åpne bildet"></span>').join("") +
+      liste.map(f => '<span class="mp-bilde" data-bilde="' + esc(f) + '" data-seksjon="' + seksjon + '" title="' + t("Åpne bildet") + '"></span>').join("") +
       (kanLeggeTil && liste.length < MAKS_PER_MARKERING
-        ? '<label class="mp-bilde nytt" title="Ta bilde eller velg fil (' + tittel.toLowerCase() + ')">' + ikon("kamera") +
+        ? '<label class="mp-bilde nytt" title="' + t("Ta bilde eller velg fil ({0})", t(tittel).toLowerCase()) + '">' + ikon("kamera") +
           '<input type="file" accept="image/*" capture="environment" multiple hidden data-seksjon="' + seksjon + '"></label>'
         : "") +
       '</div></div>';
@@ -281,7 +282,7 @@ function fyllMiniatyrer(rot, c) {
     if (el.dataset.fylt) return;
     el.dataset.fylt = "1";
     const url = await bildeUrl(el.dataset.bilde);
-    if (!url) { el.classList.add("mangler"); el.innerHTML = ikon("laas"); el.title = "Logg inn for å se bildet"; return; }
+    if (!url) { el.classList.add("mangler"); el.innerHTML = ikon("laas"); el.title = t("Logg inn for å se bildet"); return; }
     const img = document.createElement("img");
     img.src = url;
     el.appendChild(img);
@@ -300,21 +301,21 @@ export function tegningerI(c) {
 }
 
 export function tegningTekst(v) {
-  return v.fil + (v.side > 1 ? " · s. " + v.side : "");
+  return v.fil + (v.side > 1 ? t(" · s. ") + v.side : "");
 }
 
 function tegningStripeHtml(c) {
   const liste = tegningerI(c);
-  return '<div class="mp-seksjon"><div class="mp-seksjon-tittel">Arbeidstegninger' +
+  return '<div class="mp-seksjon"><div class="mp-seksjon-tittel">' + t("Arbeidstegninger") +
     (liste.length ? ' <span>' + liste.length + '</span>' : "") + '</div>' +
     '<div class="mp-tegninger">' +
     liste.map((v, i) =>
-      '<span class="mp-tegning" data-tegning="' + i + '" title="Åpne ' + esc(v.fil) + '">' +
+      '<span class="mp-tegning" data-tegning="' + i + '" title="' + t("Åpne {0}", esc(v.fil)) + '">' +
       ikon("tegning") + ' ' + esc(tegningTekst(v)) +
       (mb(v.storrelse) > ADVAR_MB ? ' <span class="stor">' + mb(v.storrelse).toFixed(0) + ' MB</span>' : "") +
-      '<button class="mp-tegning-x" data-fjern="' + i + '" title="Fjern henvisningen (tegningen slettes ikke)">' + ikon("lukk") + '</button>' +
+      '<button class="mp-tegning-x" data-fjern="' + i + '" title="' + t("Fjern henvisningen (tegningen slettes ikke)") + '">' + ikon("lukk") + '</button>' +
       '</span>').join("") +
-    '<button class="mp-tegning nytt" id="mpTegning">' + ikon("tegning") + ' Legg til arbeidstegning</button>' +
+    '<button class="mp-tegning nytt" id="mpTegning">' + ikon("tegning") + ' ' + t("Legg til arbeidstegning") + '</button>' +
     '</div></div>';
 }
 
@@ -327,9 +328,9 @@ async function apneTegningVelger(c) {
     document.body.appendChild(el);
     el.addEventListener("click", (e) => { if (e.target === el) lukkTegningVelger(); });
   }
-  el.innerHTML = '<div class="tv-boks"><div class="tv-topp">Arbeidstegninger' +
-    '<button class="tv-x" title="Lukk">' + ikon("lukk") + '</button></div>' +
-    '<div class="tv-kropp"><p style="color:var(--muted)">Henter tegninger fra SharePoint …</p></div></div>';
+  el.innerHTML = '<div class="tv-boks"><div class="tv-topp">' + t("Arbeidstegninger") +
+    '<button class="tv-x" title="' + t("Lukk") + '">' + ikon("lukk") + '</button></div>' +
+    '<div class="tv-kropp"><p style="color:var(--muted)">' + t("Henter tegninger fra SharePoint …") + '</p></div></div>';
   el.querySelector(".tv-x").onclick = lukkTegningVelger;
   el.classList.add("open");
   const kropp = el.querySelector(".tv-kropp");
@@ -341,22 +342,21 @@ async function apneTegningVelger(c) {
 
   if (svar.feil) {
     kropp.innerHTML = '<p style="color:var(--muted)">' + (svar.feil === "IKKE_INNLOGGET"
-      ? "Tegningene ligger i SharePoint, så du må være innlogget. Åpne Biblioteket og logg inn."
+      ? t("Tegningene ligger i SharePoint, så du må være innlogget. Åpne Biblioteket og logg inn.")
       : esc(svar.feil)) + '</p>';
     return;
   }
 
   // Ingen mappe fant seg selv – la brukeren peke den ut én gang
   if (svar.mangler) {
-    kropp.innerHTML = '<p style="color:var(--muted)">Fant ingen tegningsmappe for «' + esc(S.fileName) +
-      '». Mappa skal ligge i <b>' + esc(SP.folder) + '/Tegninger</b> og hete det samme som modellen.</p>' +
+    kropp.innerHTML = '<p style="color:var(--muted)">' + t("Fant ingen tegningsmappe for «{0}». Mappa skal ligge i <b>{1}</b>.", esc(S.fileName), esc(SP.folder) + "/Tegninger") + '</p>' +
       (svar.undermapper.length
-        ? '<p style="color:var(--muted);font-size:11px;margin:8px 0 4px">Velg mappa som hører til denne modellen:</p>' +
+        ? '<p style="color:var(--muted);font-size:11px;margin:8px 0 4px">' + t("Velg mappa som hører til denne modellen:") + '</p>' +
           svar.undermapper.map(n => '<div class="lib-item" data-mappe="' + esc(n) + '"><div class="n">' + ikon("apne") + ' ' + esc(n) + '</div></div>').join("")
-        : '<p style="color:var(--muted);font-size:11px;margin-top:8px">Det ligger ingen mapper der ennå.</p>');
+        : '<p style="color:var(--muted);font-size:11px;margin-top:8px">' + t("Det ligger ingen mapper der ennå.") + '</p>');
     kropp.querySelectorAll("[data-mappe]").forEach(d => {
       d.onclick = async () => {
-        kropp.innerHTML = '<p style="color:var(--muted)">Henter tegninger …</p>';
+        kropp.innerHTML = '<p style="color:var(--muted)">' + t("Henter tegninger …") + '</p>';
         await velgMappe(S.fileName, d.dataset.mappe);
         apneTegningVelger(c);
       };
@@ -365,17 +365,16 @@ async function apneTegningVelger(c) {
   }
 
   if (!svar.filer.length) {
-    kropp.innerHTML = '<p style="color:var(--muted)">Mappa <b>' + esc(svar.mappenavn) +
-      '</b> er tom. Legg PDF-ene inn i ' + esc(tegningsStiTekst(svar.mappenavn)) + '.</p>';
+    kropp.innerHTML = '<p style="color:var(--muted)">' + t("Mappa <b>{0}</b> er tom. Legg PDF-ene inn i {1}.", esc(svar.mappenavn), esc(tegningsStiTekst(svar.mappenavn))) + '</p>';
     return;
   }
 
   kropp.innerHTML =
-    '<p class="tv-mappe">' + esc(svar.mappenavn) + ' · ' + svar.filer.length + ' tegninger</p>' +
-    '<input type="search" id="tvSok" placeholder="Søk etter tegning …" autocomplete="off">' +
+    '<p class="tv-mappe">' + esc(svar.mappenavn) + ' · ' + t("{0} tegninger", svar.filer.length) + '</p>' +
+    '<input type="search" id="tvSok" placeholder="' + t("Søk etter tegning …") + '" autocomplete="off">' +
     '<div id="tvListe"></div>' +
-    '<div class="tv-bunn"><label>Side <input type="number" id="tvSide" min="1" value="1"></label>' +
-    '<button class="primary" id="tvLegg" disabled>Legg ved</button></div>';
+    '<div class="tv-bunn"><label>' + t("Side") + ' <input type="number" id="tvSide" min="1" value="1"></label>' +
+    '<button class="primary" id="tvLegg" disabled>' + t("Legg ved") + '</button></div>';
 
   let valgt = null;
   const tegn = (q) => {
@@ -384,8 +383,8 @@ async function apneTegningVelger(c) {
       ? treff.map(f => '<div class="lib-item' + (valgt && valgt.id === f.id ? " valgt" : "") + '" data-id="' + esc(f.id) + '">' +
           '<div class="n">' + ikon("tegning") + ' ' + esc(f.name) + '</div>' +
           '<div class="m">' + mb(f.size).toFixed(1) + ' MB' +
-          (mb(f.size) > ADVAR_MB ? ' · <span style="color:var(--accent2)">stor fil</span>' : "") + '</div></div>').join("")
-      : '<p style="color:var(--muted)">Ingen treff.</p>';
+          (mb(f.size) > ADVAR_MB ? ' · <span style="color:var(--accent2)">' + t("stor fil") + '</span>' : "") + '</div></div>').join("")
+      : '<p style="color:var(--muted)">' + t("Ingen treff.") + '</p>';
     $("tvListe").querySelectorAll(".lib-item").forEach(d => {
       d.onclick = () => {
         valgt = svar.filer.find(f => f.id === d.dataset.id) || null;
@@ -428,8 +427,8 @@ async function visTegning(v) {
   } catch (err) {
     visStatus("");
     alert(err.message === "IKKE_INNLOGGET"
-      ? "Du må være innlogget for å åpne tegninger fra SharePoint."
-      : "Klarte ikke å åpne tegningen: " + err.message);
+      ? t("Du må være innlogget for å åpne tegninger fra SharePoint.")
+      : t("Klarte ikke å åpne tegningen: ") + err.message);
     return;
   }
   visStatus("");
@@ -438,7 +437,7 @@ async function visTegning(v) {
   bvSettKilde(
     (nr) => sideBilde(v, nr + 1),
     antall,
-    (nr) => v.fil + " · side " + (nr + 1) + " av " + antall
+    (nr) => v.fil + t(" · side ") + t("{0} av {1}", nr + 1, antall)
   );
   $("bildeVis").classList.add("open");
   bvVis(gyldigSide(v.side, antall) - 1);
@@ -463,7 +462,7 @@ export function bvTellerTekst(merker, nr) {
   const merke = alle[nr];
   const iSeksjon = alle.filter(m => m === merke);
   const nrISeksjon = alle.slice(0, nr + 1).filter(m => m === merke).length;
-  return (merke ? merke + " " : "") + nrISeksjon + " av " + iSeksjon.length;
+  return (merke ? t(merke) + " " : "") + t("{0} av {1}", nrISeksjon, iSeksjon.length);
 }
 export const MIN_SKALA = 1, MAKS_SKALA = 8;
 
@@ -544,12 +543,12 @@ function byggBildeVis() {
   el.innerHTML =
     '<img id="bvBilde" alt="" draggable="false">' +
     '<div class="bv-topp"><span id="bvTeller"></span><span id="bvZoom"></span>' +
-      '<button class="bv-knapp" id="bvUt" title="Zoom ut (−)">−</button>' +
-      '<button class="bv-knapp" id="bvInn" title="Zoom inn (+)">+</button>' +
-      '<button class="bv-knapp" id="bvEn" title="Tilpass til skjermen (0)">' + ikon("fullskjerm") + '</button>' +
-      '<button class="bv-knapp bv-x" id="bvX" title="Lukk (Esc)">' + ikon("lukk") + '</button></div>' +
-    '<button class="bv-pil" id="bvFor" title="Forrige bilde (←)">' + ikon("forrige") + '</button>' +
-    '<button class="bv-pil" id="bvNeste" title="Neste bilde (→)">' + ikon("neste") + '</button>';
+      '<button class="bv-knapp" id="bvUt" title="' + t("Zoom ut (−)") + '">−</button>' +
+      '<button class="bv-knapp" id="bvInn" title="' + t("Zoom inn (+)") + '">+</button>' +
+      '<button class="bv-knapp" id="bvEn" title="' + t("Tilpass til skjermen (0)") + '">' + ikon("fullskjerm") + '</button>' +
+      '<button class="bv-knapp bv-x" id="bvX" title="' + t("Lukk (Esc)") + '">' + ikon("lukk") + '</button></div>' +
+    '<button class="bv-pil" id="bvFor" title="' + t("Forrige bilde (←)") + '">' + ikon("forrige") + '</button>' +
+    '<button class="bv-pil" id="bvNeste" title="' + t("Neste bilde (→)") + '">' + ikon("neste") + '</button>';
   document.body.appendChild(el);
 
   const stopp = (e) => e.stopPropagation();
@@ -650,10 +649,10 @@ window.addEventListener("keydown", (e) => {
 async function taImotFiler(c, filer, seksjon, etterpa) {
   const felt = bildeFelt(seksjon);
   const gode = [...filer].filter(erBildefil);
-  if (!gode.length) { alert("Fant ingen bildefiler blant det du valgte."); return; }
+  if (!gode.length) { alert(t("Fant ingen bildefiler blant det du valgte.")); return; }
   const plass = MAKS_PER_MARKERING - bilderI(c, seksjon).length;
-  if (plass <= 0) { alert("Hver seksjon kan ha maks " + MAKS_PER_MARKERING + " bilder."); return; }
-  loadingText.textContent = gode.length > 1 ? "Laster opp " + Math.min(gode.length, plass) + " bilder …" : "Laster opp bildet …";
+  if (plass <= 0) { alert(t("Hver seksjon kan ha maks {0} bilder.", MAKS_PER_MARKERING)); return; }
+  loadingText.textContent = gode.length > 1 ? t("Laster opp {0} bilder …", Math.min(gode.length, plass)) : t("Laster opp bildet …");
   loadingEl.classList.add("open");
   try {
     // nummereringen går på TVERS av seksjonene, så to filer aldri får samme navn
@@ -665,8 +664,8 @@ async function taImotFiler(c, filer, seksjon, etterpa) {
     if (etterpa) etterpa();
   } catch (err) {
     alert(err.message === "IKKE_INNLOGGET"
-      ? "Bilder lagres i SharePoint, så du må være innlogget. Åpne Biblioteket og logg inn, så prøv igjen."
-      : "Klarte ikke å legge ved bildet: " + err.message);
+      ? t("Bilder lagres i SharePoint, så du må være innlogget. Åpne Biblioteket og logg inn, så prøv igjen.")
+      : t("Klarte ikke å legge ved bildet: ") + err.message);
   } finally {
     loadingEl.classList.remove("open");
   }
@@ -711,27 +710,27 @@ export function openMarkerPopup(c) {
   const st = statusOf(c);
   el.innerHTML =
     '<div class="mp-meta"><span>' + esc((c.author ? c.author + " · " : "") + (c.date || "")) + '</span>' +
-      '<button class="mp-x" title="Lukk">' + ikon("lukk") + '</button></div>' +
+      '<button class="mp-x" title="' + t("Lukk") + '">' + ikon("lukk") + '</button></div>' +
     '<div class="mp-text">' + esc(c.text) + '</div>' +
     bildeStripeHtml(c, true) +
     tegningStripeHtml(c) +
     '<div class="mp-fields">' +
-      '<label>Status<select class="mp-st">' + Object.keys(STATUS).map(k =>
-        '<option value="' + k + '"' + (k === st ? " selected" : "") + '>' + k + '</option>').join("") + '</select></label>' +
-      '<label>Ansvarlig<select class="mp-ow"><option value="">– ingen –</option>' +
+      '<label>' + t("Status") + '<select class="mp-st">' + Object.keys(STATUS).map(k =>
+        '<option value="' + k + '"' + (k === st ? " selected" : "") + '>' + t(k) + '</option>').join("") + '</select></label>' +
+      '<label>' + t("Ansvarlig") + '<select class="mp-ow"><option value="">' + t("– ingen –") + '</option>' +
         ANSATTE.map(a => '<option value="' + esc(a.navn) + '"' + (c.owner === a.navn ? " selected" : "") + '>' +
           esc(a.navn) + '</option>').join("") +
         (c.owner && !ANSATTE.some(a => a.navn === c.owner)
           ? '<option value="' + esc(c.owner) + '" selected>' + esc(c.owner) + '</option>' : "") +
       '</select></label>' +
-      '<label>Frist<input type="date" class="mp-due" value="' + esc(c.due || "") + '"></label>' +
+      '<label>' + t("Frist") + '<input type="date" class="mp-due" value="' + esc(c.due || "") + '"></label>' +
     '</div>' +
-    (isOverdue(c) ? '<div class="mp-late">' + ikon("advarsel") + ' Fristen er gått</div>' : "") +
-    '<div class="mp-act"><button class="mp-go">' + ikon("fokus") + ' Gå til</button>' +
+    (isOverdue(c) ? '<div class="mp-late">' + ikon("advarsel") + ' ' + t("Fristen er gått") + '</div>' : "") +
+    '<div class="mp-act"><button class="mp-go">' + ikon("fokus") + ' ' + t("Gå til") + '</button>' +
       (c.taskId
-        ? '<button class="mp-open" title="Åpne oppgaven i Planner">' + ikon("planner") + ' Se oppgave</button>'
-        : '<button class="mp-task" id="mp-task" title="Lag Teams Planner-oppgave">' + ikon("planner") + ' Planner</button>') +
-      '<button class="mp-del">' + ikon("slett") + ' Slett</button></div>';
+        ? '<button class="mp-open" title="' + t("Åpne oppgaven i Planner") + '">' + ikon("planner") + ' ' + t("Se oppgave") + '</button>'
+        : '<button class="mp-task" id="mp-task" title="' + t("Lag Teams Planner-oppgave") + '">' + ikon("planner") + ' Planner</button>') +
+      '<button class="mp-del">' + ikon("slett") + ' ' + t("Slett") + '</button></div>';
   el.querySelector(".mp-x").onclick = closeMarkerPopup;
   el.querySelector(".mp-go").onclick = () => goToComment(c);
   el.querySelector(".mp-st").onchange = (e) => updateComment(c, { status: e.target.value });
@@ -821,7 +820,7 @@ function visValgteFiler() {
   const info = $("commentFileInfo");
   if (!info) return;
   const n = S.nyeBilder.length;
-  info.textContent = n ? (n === 1 ? "1 bilde valgt" : n + " bilder valgt") : "";
+  info.textContent = n ? (n === 1 ? t("1 bilde valgt") : t("{0} bilder valgt", n)) : "";
 }
 
 export function nullstillNyeBilder() {
@@ -897,25 +896,25 @@ export function oppgaveNotat(c, lenke) {
 async function sendTilPlanner(list) {
   const uten = list.filter(c => !c.due);
   if (uten.length) {
-    alert((uten.length === 1 ? "Markeringen mangler frist." : uten.length + " markeringer mangler frist.") +
-      " Sett frist først – Planner-oppgaven trenger en dato.");
+    alert((uten.length === 1 ? t("Markeringen mangler frist.") : t("{0} markeringer mangler frist.", uten.length)) +
+      t(" Sett frist først – Planner-oppgaven trenger en dato."));
     return;
   }
   const alt = list.filter(c => c.taskId);
   if (alt.length && !confirm(alt.length === 1
-      ? "Denne markeringen har allerede en Planner-oppgave. Lage en ny?"
-      : alt.length + " av markeringene har allerede oppgaver. Lage nye for alle?")) return;
+      ? t("Denne markeringen har allerede en Planner-oppgave. Lage en ny?")
+      : t("{0} av markeringene har allerede oppgaver. Lage nye for alle?", alt.length))) return;
 
   const btnIds = ["mp-task", "cmAllTasks"];
   btnIds.forEach(id => { const b = $(id); if (b) b.disabled = true; });   // hindrer doble oppgaver
-  loadingText.textContent = "Lager Planner-oppgave …";
+  loadingText.textContent = t("Lager Planner-oppgave …");
   loadingEl.classList.add("open");
   try {
     const token = await plannerToken();
     if (!token) return;   // på vei til samtykke, eller brukeren avbrøt
     let laget = 0;
     for (const c of list) {
-      loadingText.textContent = "Lager Planner-oppgave " + (laget + 1) + " av " + list.length + " …";
+      loadingText.textContent = t("Lager Planner-oppgave {0} av {1} …", laget + 1, list.length);
       let lenke = "";
       try { if (S.markerLink) lenke = await S.markerLink(c); } catch(_) {}
       const person = ANSATTE.find(a => a.navn === c.owner);
@@ -934,14 +933,14 @@ async function sendTilPlanner(list) {
     renderCommentList();
     if (popFor) openMarkerPopup(popFor);
     loadingEl.classList.remove("open");
-    if (confirm(laget + (laget === 1 ? " oppgave" : " oppgaver") +
-        " opprettet i Planner.\n\nÅpne Planner-tavla nå?")) window.open(planUrl(), "_blank");
+    if (confirm(t("{0} opprettet i Planner.\n\nÅpne Planner-tavla nå?",
+        laget + " " + (laget === 1 ? t("oppgave") : t("oppgaver"))))) window.open(planUrl(), "_blank");
   } catch (err) {
     loadingEl.classList.remove("open");
     const m = /403|Forbidden/.test(err.message)
-      ? "Planner nektet. Vanligste årsak: den ansvarlige er ikke medlem av gruppen som eier planen."
+      ? t("Planner nektet. Vanligste årsak: den ansvarlige er ikke medlem av gruppen som eier planen.")
       : err.message;
-    alert("Klarte ikke å lage Planner-oppgave: " + m);
+    alert(t("Klarte ikke å lage Planner-oppgave: ") + m);
   } finally {
     loadingEl.classList.remove("open");
     btnIds.forEach(id => { const b = $(id); if (b) b.disabled = false; });
@@ -954,10 +953,10 @@ export function renderCommentList() {
   $("commentCount").textContent = S.comments.length;
   const body = $("commentBody");
   const status = S.sharedOK
-    ? '<p style="color:var(--ok); font-size:11px; margin:0 0 8px">' + ikon("hake") + ' Delt via SharePoint – alle med tilgang ser disse</p>'
-    : '<p style="color:var(--muted); font-size:11px; margin:0 0 8px">' + ikon("laas") + ' Kun lagret på denne enheten – logg inn i Biblioteket for å dele</p>';
+    ? '<p style="color:var(--ok); font-size:11px; margin:0 0 8px">' + ikon("hake") + ' ' + t("Delt via SharePoint – alle med tilgang ser disse") + '</p>'
+    : '<p style="color:var(--muted); font-size:11px; margin:0 0 8px">' + ikon("laas") + ' ' + t("Kun lagret på denne enheten – logg inn i Biblioteket for å dele") + '</p>';
   if (!S.comments.length) {
-    body.innerHTML = status + '<p style="color:var(--muted)">Ingen markeringer ennå. Trykk på Markering og deretter på modellen.</p>';
+    body.innerHTML = status + '<p style="color:var(--muted)">' + t("Ingen markeringer ennå. Trykk på Markering og deretter på modellen.") + '</p>';
     return;
   }
 
@@ -967,38 +966,37 @@ export function renderCommentList() {
   const knapp = (key, tekst) => '<button data-flt="' + key + '"' +
     (listFilter === key ? ' class="active"' : "") + '>' + tekst + ' ' + (antall[key] || 0) + '</button>';
   let html = status +
-    '<div class="prop-actions">' + knapp("alle", "Alle") +
-      Object.keys(STATUS).map(k => knapp(k, k)).join("") + '</div>';
+    '<div class="prop-actions">' + knapp("alle", t("Alle")) +
+      Object.keys(STATUS).map(k => knapp(k, t(k))).join("") + '</div>';
 
   const vis = S.comments.filter(c => listFilter === "alle" || statusOf(c) === listFilter);
   // uløste med frist, som ikke alt har fått en oppgave
   const apne = S.comments.filter(c => statusOf(c) !== "Løst" && c.due && !c.taskId);
   if (apne.length > 1) {
-    html += '<div class="prop-actions"><button id="cmAllTasks">' + ikon("planner") + ' Lag ' +
-      apne.length + ' Planner-oppgaver</button></div>';
+    html += '<div class="prop-actions"><button id="cmAllTasks">' + ikon("planner") + ' ' + t("Lag {0} Planner-oppgaver", apne.length) + '</button></div>';
   }
 
   html += vis.map(c => {
     const st = statusOf(c);
     return '<div class="comment" data-id="' + esc(c.id) + '" style="border-left:3px solid ' + STATUS[st].col + '">' +
       '<div class="meta"><span>' + esc((c.author ? c.author + " · " : "") + (c.date || "")) + '</span>' +
-        '<span class="del" data-del="' + esc(c.id) + '">Slett</span></div>' +
+        '<span class="del" data-del="' + esc(c.id) + '">' + t("Slett") + '</span></div>' +
       '<div>' + esc(c.text) + '</div>' +
       '<div class="meta" style="margin-top:4px"><span>' +
-        '<span style="color:' + STATUS[st].col + '">●</span> ' + st +
+        '<span style="color:' + STATUS[st].col + '">●</span> ' + t(st) +
         (c.owner ? ' · ' + esc(c.owner) : "") +
-        (c.due ? ' · frist ' + esc(c.due.split("-").reverse().join(".")) : "") +
-        (isOverdue(c) ? ' <span style="color:var(--danger)">' + ikon("advarsel") + ' gått</span>' : "") +
+        (c.due ? ' ' + t("· frist ") + esc(c.due.split("-").reverse().join(".")) : "") +
+        (isOverdue(c) ? ' <span style="color:var(--danger)">' + ikon("advarsel") + ' ' + t("gått") + '</span>' : "") +
         (c.taskId ? ' · <span title="Har en Planner-oppgave">' + ikon("planner") + '</span>' : "") +
         (tegningerI(c).length ? ' · <span title="' +
           esc(tegningerI(c).map(tegningTekst).join(", ")) + '">' + ikon("tegning") + ' ' + tegningerI(c).length + '</span>' : "") +
         (alleBilder(c).length
           ? ' · <span title="' + SEKSJONER.map(([s, t]) => t + ": " + bilderI(c, s).length).join(", ") +
-            '">' + ikon("kamera") + ' ' + alleBilder(c).length + (bilderI(c, "etter").length ? " (før/etter)" : "") + '</span>'
+            '">' + ikon("kamera") + ' ' + alleBilder(c).length + (bilderI(c, "etter").length ? " " + t("(før/etter)") : "") + '</span>'
           : "") +
       '</span></div></div>';
   }).join("") ||
-    '<p style="color:var(--muted)">Ingen markeringer med status «' + esc(listFilter) + '».</p>';
+    '<p style="color:var(--muted)">' + t("Ingen markeringer med status «{0}».", esc(t(listFilter))) + '</p>';
 
   body.innerHTML = html;
   body.querySelectorAll("button[data-flt]").forEach(b => {

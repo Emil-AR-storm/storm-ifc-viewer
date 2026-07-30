@@ -1,5 +1,6 @@
 // ⚙ Innstillingsmeny og hurtigtaster.
 import { $, DEFAULT_APPEAR, DEFAULT_KEYS, DEFAULT_SETTINGS, S, esc, ikon, lukkPaneler, writePrefs } from "./state.js";
+import { SPRAK, setLang, t } from "./i18n.js";
 import { applyAxisFont } from "./axes.js";
 import { showClipBar, stopFacePick } from "./clip.js";
 import { DEFAULT_BG, resetColors } from "./display.js";
@@ -19,7 +20,7 @@ const ACTIONS = {
   clip:     { label: "Snitt",      run: () => $("btnClip").click() },
   storey:   { label: "Etasjer",    run: () => $("btnStorey").click() },
   search:   { label: "Søk",        run: () => $("btnSearch").click() },
-  ghost:    { label: "Transparent",run: () => $("btnGhost").click() },
+  ghost:    { label: "Gjennomsiktig",run: () => $("btnGhost").click() },
   qty:      { label: "Mengder",    run: () => $("btnQty").click() },
   fit:      { label: "Vis alt",    run: () => $("btnFit").click() },
   settings: { label: "Innstillinger", run: () => openSettings() }
@@ -57,7 +58,7 @@ document.addEventListener("pointerdown", (e) => {
 
 function keyLabel(k) {
   if (!k) return "–";
-  if (k === " ") return "Mellomrom";
+  if (k === " ") return t("Mellomrom");
   if (k === "Escape") return "Esc";
   return k.length === 1 ? k.toUpperCase() : k;
 }
@@ -65,63 +66,72 @@ function keyLabel(k) {
 // Forteller om oppsettet følger brukeren (SharePoint) eller bare denne nettleseren
 function syncStatusText() {
   const acc = S.msalApp && S.msalApp.getActiveAccount();
-  if (!acc) return '<span style="color:var(--muted)">Lagres bare i denne nettleseren. Logg inn via Biblioteket for at oppsettet skal følge deg på alle maskiner.</span>';
-  if (S.prefsCloudOK) return '<span style="color:var(--ok)">' + ikon("hake") + ' Følger kontoen din (' + esc(acc.username || "") + ')</span>';
-  return '<span style="color:var(--accent2)">Prøver å lagre til SharePoint …</span>';
+  if (!acc) return '<span style="color:var(--muted)">' + t("Lagres bare i denne nettleseren. Logg inn via Biblioteket for at oppsettet skal følge deg på alle maskiner.") + '</span>';
+  if (S.prefsCloudOK) return '<span style="color:var(--ok)">' + ikon("hake") + ' ' + t("Følger kontoen din ({0})", esc(acc.username || "")) + '</span>';
+  return '<span style="color:var(--accent2)">' + t("Prøver å lagre til SharePoint …") + '</span>';
 }
 
 function renderSettings() {
   const bgVal = "#" + scene.background.getHexString();
   let html = "";
-  html += '<h4>Kamera</h4>' +
-    '<div class="set-row"><span class="n">Rotasjonshastighet</span>' +
+  html += '<h4>' + t("Kamera") + '</h4>' +
+    '<div class="set-row"><span class="n">' + t("Rotasjonshastighet") + '</span>' +
     '<input type="range" id="stRot" min="0.3" max="3" step="0.1" value="' + S.settings.rotSpeed + '"></div>' +
-    '<div class="set-row"><span class="n">Zoomhastighet</span>' +
+    '<div class="set-row"><span class="n">' + t("Zoomhastighet") + '</span>' +
     '<input type="range" id="stZoom" min="0.3" max="3" step="0.1" value="' + S.settings.zoomSpeed + '"></div>' +
-    '<div class="set-row"><span class="n">Invertér zoom</span>' +
+    '<div class="set-row"><span class="n">' + t("Invertér zoom") + '</span>' +
     '<input type="checkbox" id="stInv"' + (S.settings.invertZoom ? " checked" : "") + '></div>';
 
-  html += '<h4>Visning</h4>' +
-    '<div class="set-row"><span class="n">Måleenhet</span>' +
-    '<select id="stUnit"><option value="m"' + (S.settings.unit === "m" ? " selected" : "") + '>Meter (m)</option>' +
-    '<option value="mm"' + (S.settings.unit === "mm" ? " selected" : "") + '>Millimeter (mm)</option></select></div>' +
-    '<div class="set-row"><span class="n">Desimaler i mål og mengder</span>' +
+  html += '<h4>' + t("Visning") + '</h4>' +
+    '<div class="set-row"><span class="n">' + t("Språk") + '</span>' +
+    '<select id="stLang">' + SPRAK.map(([k, navn]) =>
+      '<option value="' + k + '"' + (S.lang === k ? " selected" : "") + '>' + navn + '</option>').join("") + '</select></div>' +
+    '<div class="set-row"><span class="n">' + t("Måleenhet") + '</span>' +
+    '<select id="stUnit"><option value="m"' + (S.settings.unit === "m" ? " selected" : "") + '>' + t("Meter (m)") + '</option>' +
+    '<option value="mm"' + (S.settings.unit === "mm" ? " selected" : "") + '>' + t("Millimeter (mm)") + '</option></select></div>' +
+    '<div class="set-row"><span class="n">' + t("Desimaler i mål og mengder") + '</span>' +
     '<select id="stDec">' + [0, 1, 2, 3, 4].map(d =>
       '<option value="' + d + '"' + (S.settings.decimals === d ? " selected" : "") + '>' + d +
-      (d === 0 ? " (hele meter)" : d === 3 ? " (mm)" : "") + '</option>').join("") + '</select></div>' +
-    '<div class="set-row"><span class="n">Bakgrunnsfarge</span>' +
+      (d === 0 ? t(" (hele meter)") : d === 3 ? t(" (mm)") : "") + '</option>').join("") + '</select></div>' +
+    '<div class="set-row"><span class="n">' + t("Bakgrunnsfarge") + '</span>' +
     '<input type="color" id="stBg" value="' + bgVal + '"></div>' +
-    '<div class="set-row"><span class="n">Lav kvalitet</span>' +
+    '<div class="set-row"><span class="n">' + t("Lav kvalitet") + '</span>' +
     '<input type="checkbox" id="stLight"' + (S.lightMode ? " checked" : "") + '></div>' +
-    '<div class="set-row"><span class="n">Skriftstørrelse akser</span>' +
+    '<div class="set-row"><span class="n">' + t("Skriftstørrelse akser") + '</span>' +
     '<input type="range" id="stAxFont" min="40" max="250" step="10" value="' + Math.round(S.axisFontF * 100) + '"></div>';
 
-  html += '<h4>Minikart</h4>' +
-    '<div class="set-row"><span class="n">Vis minikart</span>' +
+  html += '<h4>' + t("Minikart") + '</h4>' +
+    '<div class="set-row"><span class="n">' + t("Vis minikart") + '</span>' +
     '<input type="checkbox" id="stMini"' + (S.miniOn ? " checked" : "") + '></div>' +
-    '<div class="set-row"><span class="n">Størrelse <span id="stMiniV" style="color:var(--muted)">' +
+    '<div class="set-row"><span class="n">' + t("Størrelse") + ' <span id="stMiniV" style="color:var(--muted)">' +
     Math.round(S.settings.miniSize) + ' px</span></span>' +
     '<input type="range" id="stMiniSz" min="100" max="400" step="10" value="' + S.settings.miniSize + '"></div>';
 
   // Sammenleggbar: 11 tastrader gjorde menyen så lang at knappene nederst havnet
   // utenfor synlig område uten at man skjønte at man måtte rulle.
-  html += '<details' + (S.keyWaitFor ? " open" : "") + '><summary><h4 style="display:inline">Hurtigtaster</h4>' +
+  html += '<details' + (S.keyWaitFor ? " open" : "") + '><summary><h4 style="display:inline">' + t("Hurtigtaster") + '</h4>' +
     ' <span style="color:var(--muted); font-size:11px">(' + Object.keys(ACTIONS).length + ')</span></summary>';
   for (const k in ACTIONS) {
-    html += '<div class="set-row"><span class="n">' + ACTIONS[k].label + '</span>' +
+    html += '<div class="set-row"><span class="n">' + t(ACTIONS[k].label) + '</span>' +
       '<button class="keybtn' + (S.keyWaitFor === k ? " wait" : "") + '" data-key="' + k + '">' +
-      (S.keyWaitFor === k ? "Trykk tast …" : keyLabel(S.settings.keys[k])) + '</button></div>';
+      (S.keyWaitFor === k ? t("Trykk tast …") : keyLabel(S.settings.keys[k])) + '</button></div>';
   }
-  html += '<p style="color:var(--muted); font-size:11px; margin-top:8px">Esc avbryter modus og lukker paneler. ' +
-    'Trykk på en tast-knapp og deretter ønsket tast for å endre.</p></details>' +
-    '<h4>Lagring</h4>' +
-    '<p style="color:var(--muted); font-size:11px; margin:0 0 6px">Alt over – pluss fargelegging, egne typefarger, skjulte typer, ' +
-    'transparent, snap og lav kvalitet – lagres automatisk og legges på neste gang du åpner en modell.</p>' +
+  html += '<p style="color:var(--muted); font-size:11px; margin-top:8px">' +
+    t("Esc avbryter modus og lukker paneler. Trykk på en tast-knapp og deretter ønsket tast for å endre.") + '</p></details>' +
+    '<h4>' + t("Lagring") + '</h4>' +
+    '<p style="color:var(--muted); font-size:11px; margin:0 0 6px">' +
+    t("Alt over – pluss fargelegging, egne typefarger, skjulte typer, gjennomsiktighet, snap og lav kvalitet – lagres automatisk og legges på neste gang du åpner en modell.") + '</p>' +
     '<p style="font-size:11px; margin:0 0 6px" id="stSync">' + syncStatusText() + '</p>' +
-    '<div class="prop-actions" style="margin-top:10px"><button id="stReset">' + ikon("nullstill") + ' Tilbakestill alt</button></div>';
+    '<div class="prop-actions" style="margin-top:10px"><button id="stReset">' + ikon("nullstill") + ' ' + t("Tilbakestill alt") + '</button></div>';
 
   $("setBody").innerHTML = html;
 
+  $("stLang").onchange = (e) => {
+    setLang(e.target.value);
+    const sv = $("sprakVelg");
+    if (sv) sv.value = S.lang;   // hold startskjerm-velgeren i takt
+    renderSettings();
+  };
   $("stRot").oninput = (e) => { S.settings.rotSpeed = Number(e.target.value); saveSettings(); };
   $("stZoom").oninput = (e) => { S.settings.zoomSpeed = Number(e.target.value); saveSettings(); };
   $("stInv").onchange = (e) => { S.settings.invertZoom = e.target.checked; saveSettings(); };

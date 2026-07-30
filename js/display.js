@@ -1,6 +1,7 @@
 // Utseende: transparent, skjul/vis og fargelegging per elementtype.
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
 import { $, DEFAULT_APPEAR, S, apnePanel, esc, ikon } from "./state.js";
+import { t } from "./i18n.js";
 import { clearSelection } from "./elements.js";
 import { sikreMeta, typeFor } from "./ifcrpc.js";
 import { alleElementIder } from "./ifc.js";
@@ -85,8 +86,8 @@ export function buildTypeInfo() {
   S.modelGroup.children.forEach(m => {
     const id = m.userData.expressID;
     if (!idType.has(id)) {
-      const t = typeFor(id) || "UKJENT";
-      idType.set(id, t.toUpperCase().replace(/^IFC/, ""));
+      const tp = typeFor(id) || "UKJENT";
+      idType.set(id, tp.toUpperCase().replace(/^IFC/, ""));
     }
     const key = idType.get(id);
     if (!S.typeInfo.has(key)) {
@@ -142,8 +143,8 @@ $("btnColors").addEventListener("click", async () => {
   if (S.lightLoaded) {
     const bgVal = "#" + scene.background.getHexString();
     $("colorBody").innerHTML =
-      '<div class="qty-row"><div class="n">Bakgrunn</div><div class="c"><input type="color" id="colBg" value="' + bgVal + '"></div></div>' +
-      '<p style="color:var(--muted); font-size:11px; margin-top:10px">Fargelegging og skjuling per type er ikke tilgjengelig i lav kvalitet. Last modellen i full kvalitet for å bruke det.</p>';
+      '<div class="qty-row"><div class="n">' + t("Bakgrunn") + '</div><div class="c"><input type="color" id="colBg" value="' + bgVal + '"></div></div>' +
+      '<p style="color:var(--muted); font-size:11px; margin-top:10px">' + t("Fargelegging og skjuling per type er ikke tilgjengelig i lav kvalitet. Last modellen i full kvalitet for å bruke det.") + '</p>';
     $("colBg").oninput = (e) => { scene.background.set(e.target.value); saveBg(e.target.value); };
   } else {
     if (!S.typeInfo) { await sikreMeta(alleElementIder); buildTypeInfo(); }
@@ -156,16 +157,16 @@ function renderColorPanel() {
   const bgVal = "#" + scene.background.getHexString();
   let html =
     '<div class="prop-actions">' +
-    '<button id="colApply" class="primary">' + ikon("utseende") + ' Fargelegg etter type</button>' +
-    '<button id="colReset">Originalfarger</button></div>' +
-    '<div class="qty-row"><div class="n">Bakgrunn</div><div class="c"><input type="color" id="colBg" value="' + bgVal + '"></div></div>';
+    '<button id="colApply" class="primary">' + ikon("utseende") + ' ' + t("Fargelegg etter type") + '</button>' +
+    '<button id="colReset">' + t("Originalfarger") + '</button></div>' +
+    '<div class="qty-row"><div class="n">' + t("Bakgrunn") + '</div><div class="c"><input type="color" id="colBg" value="' + bgVal + '"></div></div>';
   const keys = [...S.typeInfo.keys()];
   keys.forEach((key, i) => {
     const g = S.typeInfo.get(key);
-    html += '<div class="qty-row"><div class="n">' + esc(g.label) +
+    html += '<div class="qty-row"><div class="n">' + esc(t(g.label)) +
       ' <span style="color:var(--muted);font-size:11px">(' + g.meshes.length + ')</span></div>' +
       '<div class="c" style="display:flex; align-items:center; gap:8px">' +
-      '<button data-hide="' + i + '" title="Skjul/vis" style="padding:3px 8px">' + ikon(g.hidden ? "skjul" : "vis") + '</button>' +
+      '<button data-hide="' + i + '" title="' + t("Skjul/vis") + '" style="padding:3px 8px">' + ikon(g.hidden ? "skjul" : "vis") + '</button>' +
       '<input type="color" data-type="' + i + '" value="' + g.color + '"></div></div>';
   });
   $("colorBody").innerHTML = html;

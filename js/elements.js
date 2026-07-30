@@ -1,6 +1,7 @@
 // Valg, egenskaper, søk, mengder og markeringsboks.
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
 import { $, S, apnePanel, dec, esc, ikon, loadingEl, loadingText } from "./state.js";
+import { t } from "./i18n.js";
 import { hiddenIDs, hideElement } from "./display.js";
 import { alleElementIder, lightElementBoxes } from "./ifc.js";
 import { kall, metaFor, sikreMeta } from "./ifcrpc.js";
@@ -105,41 +106,41 @@ export async function showProperties(expressID) {
   const rows = [];
   if (S.glbActive) {
     const p = S.glbProps ? S.glbProps.get(expressID) : null;
-    $("propTitle").textContent = (p && p[2]) || "Element";
+    $("propTitle").textContent = (p && p[2]) || t("Element");
     rows.push(["ExpressID", expressID]);
     if (p && p[0]) rows.push(["Name", p[0]]);
     if (p && p[1]) rows.push(["ObjectType", p[1]]);
-    if (p && p[3]) rows.push(["Materiale", p[3]]);
+    if (p && p[3]) rows.push([t("Materiale"), p[3]]);
     try {
       const q = elementQuantities(expressID);
-      rows.push(["Mål L×B×H (ca)", q.dims.map(fmtDim).join(" × ") + " m"]);
-      rows.push(["Areal, fotavtrykk (ca)", fmtArea(q.area)]);
-      rows.push(["Volum (ca)", fmtVol(q.vol)]);
+      rows.push([t("Mål L×B×H (ca)"), q.dims.map(fmtDim).join(" × ") + " m"]);
+      rows.push([t("Areal, fotavtrykk (ca)"), fmtArea(q.area)]);
+      rows.push([t("Volum (ca)"), fmtVol(q.vol)]);
     } catch(_){}
-    rows.push(["Merk", "Lett kopi – åpne original-IFC-en for full egenskapsliste"]);
+    rows.push([t("Merk"), t("Lett kopi – åpne original-IFC-en for full egenskapsliste")]);
   } else {
     // IFC-tråden svarer med hele egenskapslista i én runde
     let p = null;
     try { p = await kall("props", { id: expressID }); } catch(_) {}
-    if (!p || p.feil) rows.push(["Feil", "Kunne ikke lese egenskaper"]);
+    if (!p || p.feil) rows.push([t("Feil"), t("Kunne ikke lese egenskaper")]);
     else {
-      $("propTitle").textContent = (p.typeName ? "Ifc" + p.typeName : "Element");
+      $("propTitle").textContent = (p.typeName ? "Ifc" + p.typeName : t("Element"));
       rows.push(["ExpressID", expressID]);
       p.felt.forEach(([k, v]) => rows.push([k, v]));
       const mMeta = metaFor(expressID);
-      if (mMeta && mMeta.material) rows.push(["Materiale", mMeta.material]);
+      if (mMeta && mMeta.material) rows.push([t("Materiale"), mMeta.material]);
       try {
         const q = elementQuantities(expressID);
-        rows.push(["Mål L×B×H (ca)", q.dims.map(fmtDim).join(" × ") + " m"]);
-        rows.push(["Areal, fotavtrykk (ca)", fmtArea(q.area)]);
-        rows.push(["Volum (ca)", fmtVol(q.vol)]);
+        rows.push([t("Mål L×B×H (ca)"), q.dims.map(fmtDim).join(" × ") + " m"]);
+        rows.push([t("Areal, fotavtrykk (ca)"), fmtArea(q.area)]);
+        rows.push([t("Volum (ca)"), fmtVol(q.vol)]);
       } catch(_){}
       p.psets.forEach(([k, v]) => rows.push([k, v]));
     }
   }
 
   body.innerHTML =
-    (S.lightLoaded ? "" : '<div class="prop-actions"><button id="paHide">' + ikon("skjul") + ' Skjul element</button></div>') +
+    (S.lightLoaded ? "" : '<div class="prop-actions"><button id="paHide">' + ikon("skjul") + ' ' + t("Skjul element") + '</button></div>') +
     rows.map(([k,v]) =>
     `<div class="prop-row"><div class="k">${esc(String(k))}</div><div class="v">${esc(String(v))}</div></div>`).join("");
   if (!S.lightLoaded) $("paHide").onclick = () => hideElement(expressID);
@@ -307,15 +308,15 @@ function showMultiSummary() {
     totArea += q.area || 0;
     items.push({ id, name: elemDisplayName(id), vol: q.vol });
   }
-  $("propTitle").textContent = S.multiSel.size + " elementer valgt";
+  $("propTitle").textContent = t("{0} elementer valgt", S.multiSel.size);
   $("propBody").innerHTML =
-    '<div class="prop-row" style="font-weight:600"><div class="k">Sum volum</div><div class="v">' + fmtVol(totVol) + '</div></div>' +
-    '<div class="prop-row" style="font-weight:600"><div class="k">Sum areal (fotavtrykk)</div><div class="v">' + fmtArea(totArea) + '</div></div>' +
-    '<div class="prop-row"><div class="k">Sum lengde (lengste mål)</div><div class="v">' + totLen.toFixed(2) + ' m</div></div>' +
-    '<div class="prop-row"><div class="k">Antall</div><div class="v">' + S.multiSel.size + ' stk</div></div>' +
+    '<div class="prop-row" style="font-weight:600"><div class="k">' + t("Sum volum") + '</div><div class="v">' + fmtVol(totVol) + '</div></div>' +
+    '<div class="prop-row" style="font-weight:600"><div class="k">' + t("Sum areal (fotavtrykk)") + '</div><div class="v">' + fmtArea(totArea) + '</div></div>' +
+    '<div class="prop-row"><div class="k">' + t("Sum lengde (lengste mål)") + '</div><div class="v">' + totLen.toFixed(2) + ' m</div></div>' +
+    '<div class="prop-row"><div class="k">' + t("Antall") + '</div><div class="v">' + S.multiSel.size + t(" stk") + '</div></div>' +
     items.slice(0, 100).map(it => '<div class="prop-row"><div class="k">' + esc(it.name) + '</div><div class="v">' + fmtVol(it.vol) + '</div></div>').join("") +
-    (items.length > 100 ? '<p style="color:var(--muted); font-size:11px; margin-top:6px">… og ' + (items.length - 100) + ' til (summene øverst gjelder alle).</p>' : "") +
-    '<p style="color:var(--muted); font-size:11px; margin-top:8px">Shift-klikk legger til/fjerner. Shift + dra lager markeringsboks: mot høyre = kun synlige, mot venstre = alt i boksen. Vanlig klikk nullstiller.</p>';
+    (items.length > 100 ? '<p style="color:var(--muted); font-size:11px; margin-top:6px">' + t("… og {0} til (summene øverst gjelder alle).", items.length - 100) + '</p>' : "") +
+    '<p style="color:var(--muted); font-size:11px; margin-top:8px">' + t("Shift-klikk legger til/fjerner. Shift + dra lager markeringsboks: mot høyre = kun synlige, mot venstre = alt i boksen. Vanlig klikk nullstiller.") + '</p>';
   apnePanel("propPanel");
 }
 
@@ -392,14 +393,14 @@ $("btnSearch").addEventListener("click", () => {
   if (panel.classList.contains("open")) { panel.classList.remove("open"); return; }
   apnePanel("searchPanel");
   if (!S.searchIndex) {
-    $("searchBody").innerHTML = '<p style="color:var(--muted)">Bygger søkeindeks …</p>';
+    $("searchBody").innerHTML = '<p style="color:var(--muted)">' + t("Bygger søkeindeks …") + '</p>';
     setTimeout(async () => { await sikreMeta(alleElementIder); buildSearchIndex(); renderSearchUI(); }, 30);
   } else renderSearchUI();
 });
 
 function renderSearchUI() {
   $("searchBody").innerHTML =
-    '<input type="search" id="elSearch" placeholder="Navn, merke, profil eller ID …" autocomplete="off">' +
+    '<input type="search" id="elSearch" placeholder="' + t("Navn, merke, profil eller ID …") + '" autocomplete="off">' +
     '<div id="searchList"></div>';
   const inp = $("elSearch");
   inp.value = S.lastQuery;
@@ -412,16 +413,16 @@ function renderSearchResults() {
   const el = $("searchList");
   const q = S.lastQuery.trim().toLowerCase();
   if (q.length < 2) {
-    el.innerHTML = '<p style="color:var(--muted); font-size:12px; margin-top:8px">Skriv minst 2 tegn – søker i navn, merke (Tag), profil og ExpressID. ' + S.searchIndex.length + ' elementer i indeksen.</p>';
+    el.innerHTML = '<p style="color:var(--muted); font-size:12px; margin-top:8px">' + t("Skriv minst 2 tegn – søker i navn, merke (Tag), profil og ExpressID. {0} elementer i indeksen.", S.searchIndex.length) + '</p>';
     return;
   }
   const hits = S.searchIndex.filter(e => e.s.includes(q));
-  if (!hits.length) { el.innerHTML = '<p style="color:var(--muted); margin-top:8px">Ingen treff på «' + esc(S.lastQuery) + '».</p>'; return; }
+  if (!hits.length) { el.innerHTML = '<p style="color:var(--muted); margin-top:8px">' + t("Ingen treff på «{0}».", esc(S.lastQuery)) + '</p>'; return; }
   el.innerHTML = hits.slice(0, 50).map(h =>
     '<div class="lib-item" data-eid="' + h.id + '">' +
     '<div class="n">' + esc(h.name || h.objType || String(h.id)) + '</div>' +
-    '<div class="m">' + esc([h.type, h.objType, h.tag && ("Merk: " + h.tag)].filter(Boolean).join(" · ")) + '</div></div>').join("") +
-    (hits.length > 50 ? '<p style="color:var(--muted); font-size:11px; margin-top:6px">Viser 50 av ' + hits.length + ' treff – skriv mer for å avgrense.</p>' : "");
+    '<div class="m">' + esc([h.type, h.objType, h.tag && (t("Merk: ") + h.tag)].filter(Boolean).join(" · ")) + '</div></div>').join("") +
+    (hits.length > 50 ? '<p style="color:var(--muted); font-size:11px; margin-top:6px">' + t("Viser 50 av {0} treff – skriv mer for å avgrense.", hits.length) + '</p>' : "");
   el.querySelectorAll(".lib-item").forEach(d =>
     d.addEventListener("click", () => zoomToElement(Number(d.dataset.eid))));
 }
@@ -433,7 +434,7 @@ $("btnQty").addEventListener("click", async () => {
   if (panel.classList.contains("open")) { panel.classList.remove("open"); return; }
   if (!S.qtyCache) {
     // volumberegningen tar litt tid på store modeller – vis at det skjer noe
-    loadingText.textContent = "Regner ut mengder …";
+    loadingText.textContent = t("Regner ut mengder …");
     loadingEl.classList.add("open");
     await new Promise(r => setTimeout(r, 30));
     try { await sikreMeta(alleElementIder); S.qtyCache = computeQuantities(); }
@@ -521,9 +522,9 @@ const TYPE_NAVN = {
   Furniture: "Inventar", Space: "Rom", Site: "Tomt"
 };
 
-export function typeVisning(t) {
-  if (!t) return "Uten IFC-type";
-  return TYPE_NAVN[t] || t;
+export function typeVisning(typ) {
+  if (!typ) return t("Uten IFC-type");
+  return TYPE_NAVN[typ] ? t(TYPE_NAVN[typ]) : typ;
 }
 
 // Liste over objekttypene som faktisk finnes i modellen, flest først.
@@ -563,7 +564,7 @@ export function materialGruppe(navn) {
 }
 
 export function materialVisning(mat) {
-  return mat ? mat : "Uten materiale";
+  return mat ? mat : t("Uten materiale");
 }
 
 // Materialene som faktisk fins i modellen, med grovgruppe og antall.
@@ -637,18 +638,18 @@ const csvVolDec = () => Math.max(dec(), 4);
 const csvAreaDec = () => Math.max(dec(), 3);
 
 export function qtyGroupRows(cache) {
-  const out = [["Gruppe", "IFC-type", "Materiale", "Antall", "Sum lengde (m)", "Sum areal (m2)", "Sum volum (m3)"]];
+  const out = [[t("Gruppe"), t("IFC-type"), t("Materiale"), t("Antall"), t("Sum lengde (m)"), t("Sum areal (m2)"), t("Sum volum (m3)")]];
   cache.groups.forEach(([key, g]) => out.push([key, g.type || "", g.material || "", g.count,
     nb(g.length, csvLenDec()), nb(g.area, csvAreaDec()), nb(g.vol, csvVolDec())]));
   const tot = cache.groups.reduce((s, [, g]) => [s[0] + g.count, s[1] + g.length, s[2] + g.vol, s[3] + g.area], [0, 0, 0, 0]);
   out.push([]);
-  out.push(["SUM", "", "", tot[0], nb(tot[1], csvLenDec()), nb(tot[3], csvAreaDec()), nb(tot[2], csvVolDec())]);
+  out.push([t("SUM"), "", "", tot[0], nb(tot[1], csvLenDec()), nb(tot[3], csvAreaDec()), nb(tot[2], csvVolDec())]);
   return out;
 }
 
 export function qtyElementRows(cache) {
-  const out = [["ElementID", "Gruppe", "Navn", "ObjectType", "IFC-type", "Materiale",
-    "Lengde (m)", "Bredde (m)", "Høyde (m)", "Lengste mål (m)", "Areal (m2)", "Volum (m3)"]];
+  const out = [["ElementID", t("Gruppe"), t("Navn"), "ObjectType", t("IFC-type"), t("Materiale"),
+    t("Lengde (m)"), t("Bredde (m)"), t("Høyde (m)"), t("Lengste mål (m)"), t("Areal (m2)"), t("Volum (m3)")]];
   cache.rows.forEach(r => out.push([r.id, r.key, r.name, r.objType, r.type, r.material || "",
     nb(r.L, csvLenDec()), nb(r.B, csvLenDec()), nb(r.H, csvLenDec()),
     nb(r.len, csvLenDec()), nb(r.area, csvAreaDec()), nb(r.vol, csvVolDec())]));
@@ -672,7 +673,7 @@ function renderQuantities(full) {
     (mv.slice(0, 2) === "m:" && (full.materialer || []).some(([m]) => m === mv.slice(2)));
   if (!matFinnes) S.qtyMat = "";
   const cache = (S.qtyType || S.qtyMat) ? qtyForType(full, S.qtyType, S.qtyMat) : full;
-  const matNavnValgt = S.qtyMat ? S.qtyMat.slice(2) || "Uten materiale" : "";
+  const matNavnValgt = S.qtyMat ? S.qtyMat.slice(2) || t("Uten materiale") : "";
   const filnavnDel = (S.qtyType ? " - " + typeVisning(S.qtyType) : "") +
     (matNavnValgt ? " - " + matNavnValgt : "");
 
@@ -707,25 +708,25 @@ function renderQuantities(full) {
 
   const nedtrekk =
     '<div class="qty-filtre">' +
-    '<label class="qty-type-velg">Objekttype' +
+    '<label class="qty-type-velg">' + t("Objekttype") +
     '<select id="qtyType">' +
-      '<option value=""' + (S.qtyType ? "" : " selected") + '>Alle typer (' + forType.length + ' stk)</option>' +
-      typeValg.map(([t, n]) =>
-        '<option value="' + esc(t) + '"' + (t === S.qtyType ? " selected" : "") + '>' +
-        esc(typeVisning(t)) + ' (' + n + ' stk)</option>').join("") +
+      '<option value=""' + (S.qtyType ? "" : " selected") + '>' + t("Alle typer ({0} stk)", forType.length) + '</option>' +
+      typeValg.map(([typ, n]) =>
+        '<option value="' + esc(typ) + '"' + (typ === S.qtyType ? " selected" : "") + '>' +
+        esc(typeVisning(typ)) + ' (' + n + t(" stk") + ')</option>').join("") +
     '</select></label>' +
     (harMateriale
-      ? '<label class="qty-type-velg">Materiale' +
+      ? '<label class="qty-type-velg">' + t("Materiale") +
         '<select id="qtyMat">' +
-          '<option value=""' + (S.qtyMat ? "" : " selected") + '>Alle materialer (' + forMat.length + ' stk)</option>' +
+          '<option value=""' + (S.qtyMat ? "" : " selected") + '>' + t("Alle materialer ({0} stk)", forMat.length) + '</option>' +
           (gruppeValg.length
-            ? '<optgroup label="Materialgrupper">' + gruppeValg.map(([g, n]) =>
+            ? '<optgroup label="' + t("Materialgrupper") + '">' + gruppeValg.map(([g, n]) =>
                 '<option value="g:' + esc(g) + '"' + ("g:" + g === S.qtyMat ? " selected" : "") + '>' +
-                esc(g) + ' (' + n + ' stk)</option>').join("") + '</optgroup>'
+                esc(t(g)) + ' (' + n + t(" stk") + ')</option>').join("") + '</optgroup>'
             : "") +
-          '<optgroup label="Enkeltmaterialer">' + matValg.map(([m, n]) =>
+          '<optgroup label="' + t("Enkeltmaterialer") + '">' + matValg.map(([m, n]) =>
             '<option value="m:' + esc(m) + '"' + ("m:" + m === S.qtyMat ? " selected" : "") + '>' +
-            esc(materialVisning(m)) + ' (' + n + ' stk)</option>').join("") + '</optgroup>' +
+            esc(materialVisning(m)) + ' (' + n + t(" stk") + ')</option>').join("") + '</optgroup>' +
         '</select></label>'
       : "") +
     '</div>';
@@ -733,25 +734,19 @@ function renderQuantities(full) {
   $("qtyBody").innerHTML =
     nedtrekk +
     '<div class="prop-actions">' +
-      '<button id="qtyCsvG" class="primary" title="Én rad per gruppe, bare valgt objekttype">' + ikon("lastned") + ' Grupper (CSV)</button>' +
-      '<button id="qtyCsvE" title="Én rad per element – for mengdeberegning og vareordre">' + ikon("lastned") + ' Alle elementer</button>' +
-      '<button id="qtyCopy" title="Lim rett inn i et åpent regneark">' + ikon("kopier") + ' Kopier</button>' +
+      '<button id="qtyCsvG" class="primary" title="' + t("Én rad per gruppe, bare valgt objekttype") + '">' + ikon("lastned") + ' ' + t("Grupper (CSV)") + '</button>' +
+      '<button id="qtyCsvE" title="' + t("Én rad per element – for mengdeberegning og vareordre") + '">' + ikon("lastned") + ' ' + t("Alle elementer") + '</button>' +
+      '<button id="qtyCopy" title="' + t("Lim rett inn i et åpent regneark") + '">' + ikon("kopier") + ' ' + t("Kopier") + '</button>' +
     '</div>' +
     '<div class="qty-row" style="font-weight:600"><div class="n">' +
-      esc([S.qtyType ? typeVisning(S.qtyType) : "", matNavnValgt].filter(Boolean).join(" · ") || "Totalt") +
+      esc([S.qtyType ? typeVisning(S.qtyType) : "", matNavnValgt].filter(Boolean).join(" · ") || t("Totalt")) +
       '</div><div class="c">' + total +
-      ' stk · ' + totLen.toFixed(dec()) + ' m · ' + fmtArea(totArea) + ' · ' + fmtVol(totVol) + '</div></div>' +
+      t(" stk") + ' · ' + totLen.toFixed(dec()) + ' m · ' + fmtArea(totArea) + ' · ' + fmtVol(totVol) + '</div></div>' +
     list.map(([key, g]) =>
       '<div class="qty-row"><div class="n">' + esc(key) + (g.type ? ' <span style="color:var(--muted);font-size:11px">(' + esc(typeVisning(g.type)) + ')</span>' : "") + '</div>' +
-      '<div class="c">' + g.count + ' stk · ' + g.length.toFixed(dec()) + ' m · ' + fmtArea(g.area) + ' · ' + fmtVol(g.vol) + '</div></div>').join("") +
-    '<p style="color:var(--muted); font-size:11px; margin-top:10px">Antall desimaler settes i Innstillinger. ' +
-    'Velg objekttype og materiale for å få ett ark om gangen – nedlastingen inneholder bare det som står i lista nå ' +
-    '(f.eks. Søyler + Betong gir bare betongsøylene). ' +
-    'Materialgruppene samler navn som betyr det samme: «B35», «C35/45» og «Concrete» havner alle under Betong. ' +
-    'Mangler materiale på et element, står det ikke i IFC-fila. ' +
-    'Lengde = lengste mål per element (ca-verdi, summert per gruppe). ' +
-    'Areal = fotavtrykk, altså grunnflaten sett rett ovenfra – det målet dekker, plater og fundamenter bestilles etter. ' +
-    'Volum er regnet ut av geometrien og gjelder lukkede volumer – hule profiler blir riktige, flater uten tykkelse blir 0.</p>';
+      '<div class="c">' + g.count + t(" stk") + ' · ' + g.length.toFixed(dec()) + ' m · ' + fmtArea(g.area) + ' · ' + fmtVol(g.vol) + '</div></div>').join("") +
+    '<p style="color:var(--muted); font-size:11px; margin-top:10px">' +
+    t("Antall desimaler settes i Innstillinger. Velg objekttype og materiale for å få ett ark om gangen – nedlastingen inneholder bare det som står i lista nå (f.eks. Søyler + Betong gir bare betongsøylene). Materialgruppene samler navn som betyr det samme: «B35», «C35/45» og «Concrete» havner alle under Betong. Mangler materiale på et element, står det ikke i IFC-fila. Lengde = lengste mål per element (ca-verdi, summert per gruppe). Areal = fotavtrykk, altså grunnflaten sett rett ovenfra – det målet dekker, plater og fundamenter bestilles etter. Volum er regnet ut av geometrien og gjelder lukkede volumer – hule profiler blir riktige, flater uten tykkelse blir 0.") + '</p>';
 
   const sel = $("qtyType");
   if (sel) sel.onchange = () => { S.qtyType = sel.value; renderQuantities(full); };
@@ -765,9 +760,9 @@ function renderQuantities(full) {
     const tsv = qtyGroupRows(cache).map(r => r.join("\t")).join("\r\n");
     try {
       await navigator.clipboard.writeText(tsv);
-      $("qtyCopy").textContent = "Kopiert";
-      setTimeout(() => { if ($("qtyCopy")) $("qtyCopy").innerHTML = ikon("kopier") + " Kopier"; }, 1500);
-    } catch(_) { alert("Klarte ikke å kopiere. Bruk Grupper (CSV) i stedet."); }
+      $("qtyCopy").textContent = t("Kopiert");
+      setTimeout(() => { if ($("qtyCopy")) $("qtyCopy").innerHTML = ikon("kopier") + " " + t("Kopier"); }, 1500);
+    } catch(_) { alert(t("Klarte ikke å kopiere. Bruk Grupper (CSV) i stedet.")); }
   };
 }
 

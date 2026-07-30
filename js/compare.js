@@ -9,6 +9,7 @@
 // faller den tilbake på geometrisk match: type + posisjon + volum.
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
 import { $, S, apnePanel, esc, ikon, loadingEl, loadingText } from "./state.js";
+import { t } from "./i18n.js";
 import { guidFor, sikreMeta, typeFor } from "./ifcrpc.js";
 import { alleElementIder } from "./ifc.js";
 import { allElementBoxes, elemDisplayName, elementBoxById, fmtVol, quantitiesForSet, val, zoomToElement } from "./elements.js";
@@ -155,9 +156,9 @@ function unpaint() {
 
 function endre(e) {
   const d = [];
-  if (e.flyttet > 0) d.push("flyttet " + mm(e.flyttet));
-  if (e.dMax > 0) d.push("mål endret " + mm(e.dMax));
-  if (e.dVol > 0.005) d.push("volum " + fmtVol(e.fra.v) + " → " + fmtVol(e.v));
+  if (e.flyttet > 0) d.push(t("flyttet ") + mm(e.flyttet));
+  if (e.dMax > 0) d.push(t("mål endret ") + mm(e.dMax));
+  if (e.dVol > 0.005) d.push(t("volum ") + fmtVol(e.fra.v) + " → " + fmtVol(e.v));
   return d.join(" · ");
 }
 const mm = (m) => m >= 1 ? m.toFixed(2) + " m" : Math.round(m * 1000) + " mm";
@@ -168,31 +169,30 @@ function renderPanel() {
   if (!result) {
     const base = S.compareBase;
     $("compareBody").innerHTML = base
-      ? '<p style="font-size:13px">Avtrykk tatt av <b>' + esc(base.file) + '</b> (' + base.count + ' elementer).</p>' +
-        '<p style="color:var(--muted); font-size:12px; margin-top:8px">Åpne nå den nye versjonen – med Åpne eller Biblioteket. ' +
-        'Endringene fargelegges automatisk når modellen er lastet.</p>' +
-        '<div class="prop-actions" style="margin-top:12px"><button id="cmpAvbryt">Avbryt sammenligning</button></div>'
-      : '<p style="font-size:13px">Sammenligning krever en IFC-modell i full eller lav kvalitet – ikke lett kopi.</p>';
+      ? '<p style="font-size:13px">' + t("Avtrykk tatt av <b>{0}</b> ({1} elementer).", esc(base.file), base.count) + '</p>' +
+        '<p style="color:var(--muted); font-size:12px; margin-top:8px">' +
+        t("Åpne nå den nye versjonen – med Åpne eller Biblioteket. Endringene fargelegges automatisk når modellen er lastet.") + '</p>' +
+        '<div class="prop-actions" style="margin-top:12px"><button id="cmpAvbryt">' + t("Avbryt sammenligning") + '</button></div>'
+      : '<p style="font-size:13px">' + t("Sammenligning krever en IFC-modell i full eller lav kvalitet – ikke lett kopi.") + '</p>';
     if ($("cmpAvbryt")) $("cmpAvbryt").onclick = stopCompare;
     return;
   }
 
   const r = result;
   let html = '<div class="prop-actions">' +
-    '<button id="cmpOnlyChanged">' + ikon("vis") + ' Bare endringer</button>' +
-    '<button id="cmpStopp">' + ikon("lukk") + ' Avslutt</button></div>' +
+    '<button id="cmpOnlyChanged">' + ikon("vis") + ' ' + t("Bare endringer") + '</button>' +
+    '<button id="cmpStopp">' + ikon("lukk") + ' ' + t("Avslutt") + '</button></div>' +
     '<p style="font-size:12px; color:var(--muted); margin-bottom:8px">' +
     esc(S.compareBase.file) + ' → ' + esc(S.fileName) +
-    ' · gjenkjent på ' + r.metode + '</p>' +
-    (r.usikker ? '<p style="font-size:12px; color:var(--accent2); margin-bottom:8px">' + ikon("advarsel") + ' Under halvparten av elementene lot seg parre. ' +
-      'Er dette to versjoner av samme modell? Ellers har eksporten byttet både GlobalId og geometri.</p>' : '') +
-    '<div class="qty-row"><div class="n"><span style="color:var(--ok)">●</span> Nye</div><div class="c">' + r.ny.length + '</div></div>' +
-    '<div class="qty-row"><div class="n"><span style="color:var(--danger)">●</span> Slettet</div><div class="c">' + r.slettet.length + '</div></div>' +
-    '<div class="qty-row"><div class="n"><span style="color:#fbbf24">●</span> Endret</div><div class="c">' + r.endret.length + '</div></div>' +
-    '<div class="qty-row"><div class="n">Uendret</div><div class="c">' + r.uendret.size + '</div></div>';
+    t(" · gjenkjent på ") + r.metode + '</p>' +
+    (r.usikker ? '<p style="font-size:12px; color:var(--accent2); margin-bottom:8px">' + ikon("advarsel") + ' ' + t("Under halvparten av elementene lot seg parre. Er dette to versjoner av samme modell? Ellers har eksporten byttet både GlobalId og geometri.") + '</p>' : '') +
+    '<div class="qty-row"><div class="n"><span style="color:var(--ok)">●</span> ' + t("Nye") + '</div><div class="c">' + r.ny.length + '</div></div>' +
+    '<div class="qty-row"><div class="n"><span style="color:var(--danger)">●</span> ' + t("Slettet") + '</div><div class="c">' + r.slettet.length + '</div></div>' +
+    '<div class="qty-row"><div class="n"><span style="color:#fbbf24">●</span> ' + t("Endret") + '</div><div class="c">' + r.endret.length + '</div></div>' +
+    '<div class="qty-row"><div class="n">' + t("Uendret") + '</div><div class="c">' + r.uendret.size + '</div></div>';
 
   if (!r.ny.length && !r.slettet.length && !r.endret.length)
-    html += '<p style="margin-top:12px; font-size:13px">' + ikon("hake") + ' Ingen forskjeller funnet.</p>';
+    html += '<p style="margin-top:12px; font-size:13px">' + ikon("hake") + ' ' + t("Ingen forskjeller funnet.") + '</p>';
 
   const liste = (tittel, arr, farge, type) => {
     if (!arr.length) return "";
@@ -202,14 +202,14 @@ function renderPanel() {
         '<div class="n">' + esc(e.name || ("ID " + e.id)) + '</div>' +
         '<div class="m">' + esc(e.type || "") +
         (type === "endret" ? " · " + esc(endre(e)) : "") +
-        (type === "slettet" ? " · fantes i forrige versjon" : "") + '</div></div>';
+        (type === "slettet" ? t(" · fantes i forrige versjon") : "") + '</div></div>';
     });
-    if (arr.length > 300) h += '<p style="color:var(--muted); font-size:11px">… og ' + (arr.length - 300) + ' flere</p>';
+    if (arr.length > 300) h += '<p style="color:var(--muted); font-size:11px">' + t("… og {0} flere", arr.length - 300) + '</p>';
     return h;
   };
-  html += liste("Endret", r.endret, "#fbbf24", "endret") +
-          liste("Nye", r.ny, "#3cb44b", "ny") +
-          liste("Slettet", r.slettet, "#ef4444", "slettet");
+  html += liste(t("Endret"), r.endret, "#fbbf24", "endret") +
+          liste(t("Nye"), r.ny, "#3cb44b", "ny") +
+          liste(t("Slettet"), r.slettet, "#ef4444", "slettet");
 
   $("compareBody").innerHTML = html;
   $("cmpStopp").onclick = stopCompare;
@@ -293,14 +293,14 @@ export function applySharedCompare(c) {
   renderPanel();
   if (c.slim) {
     $("compareBody").insertAdjacentHTML("afterbegin",
-      '<p style="font-size:11px; color:var(--accent2); margin-bottom:8px">Lenka var for stor til å ta med ' +
-      'navn og mål – fargene og antallene stemmer, men lista er uten detaljer.</p>');
+      '<p style="font-size:11px; color:var(--accent2); margin-bottom:8px">' +
+      t("Lenka var for stor til å ta med navn og mål – fargene og antallene stemmer, men lista er uten detaljer.") + '</p>');
   }
 }
 
 // ---------- Start / stopp ----------
 async function startSnapshot() {
-  loadingText.textContent = "Leser modellen …";
+  loadingText.textContent = t("Leser modellen …");
   loadingEl.classList.add("open");
   const snap = await snapshotModel();
   loadingEl.classList.remove("open");
@@ -329,7 +329,7 @@ S.onModelLoaded = async () => {
   compareGroup.clear();
   const base = S.compareBase;
   if (!base || base.file === S.fileName) return;
-  loadingText.textContent = "Sammenligner versjoner …";
+  loadingText.textContent = t("Sammenligner versjoner …");
   loadingEl.classList.add("open");
   const now = await snapshotModel();
   loadingEl.classList.remove("open");

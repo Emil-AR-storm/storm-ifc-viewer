@@ -54,7 +54,8 @@ function readPrefs() {
     snapOn: lsGet("storm-ifc-snap") !== "0",
     snapPx: parseFloat(lsGet("storm-ifc-snappx")) || 18,
     miniOn: lsGet("storm-ifc-mini") !== "0",
-    lightMode: lsGet("storm-ifc-light") === "1"
+    lightMode: lsGet("storm-ifc-light") === "1",
+    lang: "no"
   };
   try {
     localStorage.setItem(PREFS_KEY, JSON.stringify(mig));
@@ -78,6 +79,7 @@ export function collectPrefs() {
     snapPx: S.snapPx,
     miniOn: S.miniOn,
     lightMode: S.lightMode,
+    lang: S.lang,
     clips: S.clipStore
   };
 }
@@ -174,6 +176,9 @@ S.workerFeil = null;      // satt hvis IFC-tråden ikke kunne brukes
 // Lastemodus: full, 🪶 lav kvalitet og 💾 lett kopi (.glb)
 S.lightMode = _prefs.lightMode === true;
 S.lightLoaded = false;
+
+// Språk (no | en | pl | lt). Ordboken og t() ligger i i18n.js.
+S.lang = typeof _prefs.lang === "string" ? _prefs.lang : "no";
 
 // ---------- Verktøy og modus ----------
 S.mode = null;            // null | marker | measure | kote
