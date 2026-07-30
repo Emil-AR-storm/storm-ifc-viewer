@@ -115,7 +115,8 @@ export async function byggLettKopi(melding) {
   const props = {};
   for (const id of ids) {
     const m = metaFor(id);
-    if (m) props[id] = [m.name || "", m.objectType || "", m.typeName ? "Ifc" + m.typeName : ""];
+    // fjerde plass er materialet – lett kopi har ingen IFC-data å slå opp i
+    if (m) props[id] = [m.name || "", m.objectType || "", m.typeName ? "Ifc" + m.typeName : "", m.material || ""];
   }
   let columns = [], storeys = [];
   try { columns = (await kall("axisSources")).filter(k => k.t === "COLUMN").map(k => k.id); } catch(_) {}

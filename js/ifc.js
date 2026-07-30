@@ -166,6 +166,7 @@ function clearModel() {
   S.comments = [];
   S.qtyCache = null;
   S.qtyType = "";
+  S.qtyMat = "";
   S.typeInfo = null;
   S.typeColorsOn = false;
   hiddenIDs.clear();

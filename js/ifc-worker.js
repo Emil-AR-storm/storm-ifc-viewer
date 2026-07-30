@@ -29,6 +29,7 @@ async function cmdOpen({ buffer, light }) {
   if (!klar) klar = ifcApi.Init();
   await klar;
   if (modelID !== null) { try { ifcApi.CloseModel(modelID); } catch(_) {} modelID = null; }
+  matKart = null;                 // materialkartet hører til forrige modell
   fil = new Uint8Array(buffer);
   modelID = ifcApi.OpenModel(fil, light
     ? { COORDINATE_TO_ORIGIN: true, CIRCLE_SEGMENTS: 8 }
@@ -182,9 +183,72 @@ function cmdGeometryLight({ maxId, basis }, post) {
   return { shown, skipped };
 }
 
-// Navn, type, tag og GlobalId for mange elementer i én runde. Hovedtråden
-// hurtigbufrer dette, så resten av viewer'en kan slå opp synkront som før.
+// ---------- Materiale per element ----------
+// Materialet står ikke på elementet selv, men i IfcRelAssociatesMaterial, og kan
+// peke på et helt tre av lag- og profilsett. Kartet bygges én gang, ved første
+// gang noe spør etter meta – ikke ved åpning, så en modell som bare skal ses på
+// ikke betaler for det.
+let matKart = null;
+
+// Følger materialkjeden til det fins et navn. Lagsett og profilsett kan ha
+// flere materialer (f.eks. «Betong + Isolasjon») – da tas alle med.
+const MAT_LISTER = ["Materials", "MaterialLayers", "MaterialProfiles", "MaterialConstituents"];
+const MAT_REFS = ["Material", "ForLayerSet", "ForProfileSet"];
+
+function matNavn(id, dybde) {
+  if (!id || dybde > 5) return "";
+  let line;
+  try { line = ifcApi.GetLine(modelID, id); } catch(_) { return ""; }
+  if (!line) return "";
+  const ut = [];
+  for (const f of MAT_LISTER)
+    for (const r of (line[f] || [])) {
+      const n = matNavn(r && r.value, dybde + 1);
+      if (n) ut.push(n);
+    }
+  for (const f of MAT_REFS)
+    if (line[f] && line[f].value) {
+      const n = matNavn(line[f].value, dybde + 1);
+      if (n) ut.push(n);
+    }
+  if (ut.length) return [...new Set(ut)].join(" + ");
+  const eget = val(line.Name);
+  return eget ? String(eget).trim() : "";
+}
+
+function byggMatKart() {
+  if (matKart) return matKart;
+  matKart = new Map();
+  try {
+    const rels = ifcApi.GetLineIDsWithType(modelID, WebIFC.IFCRELASSOCIATESMATERIAL);
+    for (let i = 0; i < rels.size(); i++) {
+      const rel = ifcApi.GetLine(modelID, rels.get(i));
+      const navn = matNavn(rel.RelatingMaterial && rel.RelatingMaterial.value, 0);
+      if (!navn) continue;
+      (rel.RelatedObjects || []).forEach(o => { if (o && o.value) matKart.set(o.value, navn); });
+    }
+  } catch(_) {}
+  // Mange modeller henger materialet på typeobjektet (IfcColumnType) i stedet
+  // for på hver søyle. Da arver elementene fra typen sin.
+  try {
+    const rels = ifcApi.GetLineIDsWithType(modelID, WebIFC.IFCRELDEFINESBYTYPE);
+    for (let i = 0; i < rels.size(); i++) {
+      const rel = ifcApi.GetLine(modelID, rels.get(i));
+      const t = rel.RelatingType && rel.RelatingType.value;
+      const navn = t ? matKart.get(t) : null;
+      if (!navn) continue;
+      (rel.RelatedObjects || []).forEach(o => {
+        if (o && o.value && !matKart.has(o.value)) matKart.set(o.value, navn);
+      });
+    }
+  } catch(_) {}
+  return matKart;
+}
+
+// Navn, type, tag, GlobalId og materiale for mange elementer i én runde.
+// Hovedtråden hurtigbufrer dette, så resten av viewer'en kan slå opp synkront.
 function cmdMeta({ ids }) {
+  const mat = byggMatKart();
   const out = [];
   for (const id of ids) {
     let name = "", objectType = "", tag = "", globalId = "";
@@ -195,7 +259,8 @@ function cmdMeta({ ids }) {
       tag = val(line.Tag) || "";
       globalId = val(line.GlobalId) || "";
     } catch(_) {}
-    out.push({ id, name, objectType, tag, globalId, typeName: typeNavn(id) });
+    out.push({ id, name, objectType, tag, globalId, typeName: typeNavn(id),
+      material: mat.get(id) || "" });
   }
   return out;
 }
@@ -296,6 +361,7 @@ function cmdBuffer(_a, post) {
 function cmdClose() {
   if (modelID !== null) { try { ifcApi.CloseModel(modelID); } catch(_) {} }
   modelID = null;
+  matKart = null;
   fil = null;
   return { ok: true };
 }

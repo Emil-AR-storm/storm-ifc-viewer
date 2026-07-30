@@ -110,6 +110,7 @@ S.koteMatrixInv = null;   // for å regne tilbake til opprinnelige koter
 S.coordMatrix = null;     // original modell → viewer (brukes av aksesystemet)
 S.qtyCache = null;
 S.qtyType = "";           // valgt objekttype i 📊 Mengder ("" = alle typer)
+S.qtyMat = "";             // valgt materiale: "" | "g:<gruppe>" | "m:<navn>"
 S.bildeMappeOK = false;   // bilder-mappa i SharePoint er sjekket/opprettet
 S.nyeBilder = [];         // bilder valgt i «Ny markering», før den er lagret
 S.lastLoadInfo = null;

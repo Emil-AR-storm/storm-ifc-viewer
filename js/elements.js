@@ -109,6 +109,7 @@ export async function showProperties(expressID) {
     rows.push(["ExpressID", expressID]);
     if (p && p[0]) rows.push(["Name", p[0]]);
     if (p && p[1]) rows.push(["ObjectType", p[1]]);
+    if (p && p[3]) rows.push(["Materiale", p[3]]);
     try {
       const q = elementQuantities(expressID);
       rows.push(["Mål L×B×H (ca)", q.dims.map(fmtDim).join(" × ") + " m"]);
@@ -125,6 +126,8 @@ export async function showProperties(expressID) {
       $("propTitle").textContent = (p.typeName ? "Ifc" + p.typeName : "Element");
       rows.push(["ExpressID", expressID]);
       p.felt.forEach(([k, v]) => rows.push([k, v]));
+      const mMeta = metaFor(expressID);
+      if (mMeta && mMeta.material) rows.push(["Materiale", mMeta.material]);
       try {
         const q = elementQuantities(expressID);
         rows.push(["Mål L×B×H (ca)", q.dims.map(fmtDim).join(" × ") + " m"]);
@@ -483,13 +486,13 @@ function computeQuantities() {
   const rows = [];
   const sizeV = new THREE.Vector3();
   for (const [id, box] of boxMap) {
-    let name = "", objType = "", typeName = "";
+    let name = "", objType = "", typeName = "", material = "";
     if (S.glbActive) {
       const p = S.glbProps ? S.glbProps.get(id) : null;
-      if (p) { name = p[0] || ""; objType = p[1] || ""; typeName = (p[2] || "").replace(/^Ifc/, ""); }
+      if (p) { name = p[0] || ""; objType = p[1] || ""; typeName = (p[2] || "").replace(/^Ifc/, ""); material = p[3] || ""; }
     } else {
       const meta = metaFor(id);
-      if (meta) { name = meta.name || ""; objType = meta.objectType || ""; typeName = meta.typeName || ""; }
+      if (meta) { name = meta.name || ""; objType = meta.objectType || ""; typeName = meta.typeName || ""; material = meta.material || ""; }
     }
     // gruppenøkkel: ObjectType er oftest profilen (f.eks. CFSHS100x6), ellers navn uten løpenummer
     let key = objType || name.replace(/:\d+$/, "") || typeName || "Ukjent";
@@ -497,14 +500,17 @@ function computeQuantities() {
     box.getSize(sizeV);
     const len = Math.max(sizeV.x, sizeV.y, sizeV.z) * toM;
     const q = vq.get(id) || { dims: [0, 0, 0], vol: 0, area: 0 };
-    if (!groups.has(key)) groups.set(key, { count: 0, length: 0, vol: 0, area: 0, type: typeName });
-    const g = groups.get(key);
+    // Gruppene skilles også på materiale: en betongsøyle og en stålsøyle med
+    // samme mål skal ikke havne på samme rad i en vareordre.
+    const gkey = key + (material ? " · " + material : "");
+    if (!groups.has(gkey)) groups.set(gkey, { count: 0, length: 0, vol: 0, area: 0, type: typeName, material });
+    const g = groups.get(gkey);
     g.count++;
     g.length += len;
     g.vol += q.vol;
     g.area += q.area;
     rows.push({
-      id, key, name, objType, type: typeName,
+      id, key: gkey, name, objType, type: typeName, material,
       L: q.dims[0], B: q.dims[1], H: q.dims[2], len, vol: q.vol, area: q.area
     });
   }
@@ -512,7 +518,8 @@ function computeQuantities() {
   return {
     groups: [...groups.entries()].sort((a, b) => b[1].count - a[1].count),
     rows: sortedRows,
-    types: typeListe(sortedRows)
+    types: typeListe(sortedRows),
+    materialer: materialListe(sortedRows)
   };
 }
 
@@ -551,20 +558,67 @@ function typeListe(rows) {
   return [...m.entries()].sort((a, b) => b[1].count - a[1].count);
 }
 
-// Filtrerer en ferdig mengde-cache ned til én objekttype. Gruppene regnes på
-// nytt fra radene, så «Antall» i arket stemmer med det som eksporteres.
-export function qtyForType(cache, type) {
-  if (!type) return cache;
-  const rows = cache.rows.filter(r => (r.type || "") === type);
+// ---------- Materiale ----------
+// Materialnavnene i en IFC-modell er ikke standardiserte: «B35», «C35/45»,
+// «Concrete - Cast-in-Place», «Betong». For å kunne ta ut ALLE betongsøyler i én
+// fil, uansett hva prosjekterende har kalt betongen, kjennes navnet igjen på
+// nøkkelord og havner i en grovgruppe. Enkeltmaterialene kan fortsatt velges.
+const MAT_GRUPPER = [
+  ["Betong", /betong|concrete|\bc\d{2}\/\d{2}\b|\bb\d{2}\b|elementbetong|lettbetong/i],
+  ["Stål", /\bstål\b|\bstal\b|steel|\bs\d{3}\b|\bhup\b|\bheb?\b|\bipe\b|galvanis|jern(?!bane)/i],
+  ["Armering", /armering|reinforc|\bkamstål\b|\bb500\b/i],
+  ["Tre", /\btre\b|\btrevirke\b|timber|wood|limtre|kerto|\bc24\b|\bgl30\b|kryssfin/i],
+  ["Mur", /mur|brick|tegl|blokk|leca|betongstein/i],
+  ["Isolasjon", /isolasjon|insulat|mineralull|glava|rockwool|eps\b|xps\b/i],
+  ["Aluminium", /aluminium|alu\b/i],
+  ["Glass", /glass|glazing/i],
+  ["Gips", /gips|plaster|gypsum/i]
+];
+
+export function materialGruppe(navn) {
+  const s = String(navn || "").trim();
+  if (!s) return "";
+  for (const [gruppe, m] of MAT_GRUPPER) if (m.test(s)) return gruppe;
+  return "Annet";
+}
+
+export function materialVisning(mat) {
+  return mat ? mat : "Uten materiale";
+}
+
+// Materialene som faktisk fins i modellen, med grovgruppe og antall.
+function materialListe(rows) {
+  const m = new Map();
+  rows.forEach(r => {
+    const mat = r.material || "";
+    if (!m.has(mat)) m.set(mat, { count: 0, gruppe: materialGruppe(mat) });
+    m.get(mat).count++;
+  });
+  return [...m.entries()].sort((a, b) => b[1].count - a[1].count);
+}
+
+// Filtrerer en ferdig mengde-cache ned til én objekttype og/eller ett materiale.
+// `mat` er "" (alle), "g:Betong" (hele grovgruppen) eller "m:B35" (nøyaktig
+// materialnavn). Gruppene regnes på nytt fra radene, så «Antall» i arket
+// stemmer med det som faktisk eksporteres.
+export function qtyForType(cache, type, mat) {
+  if (!type && !mat) return cache;
+  const rows = cache.rows.filter(r => {
+    if (type && (r.type || "") !== type) return false;
+    if (!mat) return true;
+    if (mat.slice(0, 2) === "g:") return materialGruppe(r.material) === mat.slice(2);
+    if (mat.slice(0, 2) === "m:") return (r.material || "") === mat.slice(2);
+    return true;
+  });
   const groups = new Map();
   rows.forEach(r => {
-    if (!groups.has(r.key)) groups.set(r.key, { count: 0, length: 0, vol: 0, area: 0, type: r.type });
+    if (!groups.has(r.key)) groups.set(r.key, { count: 0, length: 0, vol: 0, area: 0, type: r.type, material: r.material });
     const g = groups.get(r.key);
     g.count++; g.length += r.len; g.vol += r.vol; g.area += r.area;
   });
   return {
     groups: [...groups.entries()].sort((a, b) => b[1].count - a[1].count),
-    rows, types: cache.types
+    rows, types: cache.types, materialer: cache.materialer
   };
 }
 
@@ -603,19 +657,19 @@ const csvVolDec = () => Math.max(dec(), 4);
 const csvAreaDec = () => Math.max(dec(), 3);
 
 export function qtyGroupRows(cache) {
-  const out = [["Gruppe", "IFC-type", "Antall", "Sum lengde (m)", "Sum areal (m2)", "Sum volum (m3)"]];
-  cache.groups.forEach(([key, g]) => out.push([key, g.type || "", g.count,
+  const out = [["Gruppe", "IFC-type", "Materiale", "Antall", "Sum lengde (m)", "Sum areal (m2)", "Sum volum (m3)"]];
+  cache.groups.forEach(([key, g]) => out.push([key, g.type || "", g.material || "", g.count,
     nb(g.length, csvLenDec()), nb(g.area, csvAreaDec()), nb(g.vol, csvVolDec())]));
   const tot = cache.groups.reduce((s, [, g]) => [s[0] + g.count, s[1] + g.length, s[2] + g.vol, s[3] + g.area], [0, 0, 0, 0]);
   out.push([]);
-  out.push(["SUM", "", tot[0], nb(tot[1], csvLenDec()), nb(tot[3], csvAreaDec()), nb(tot[2], csvVolDec())]);
+  out.push(["SUM", "", "", tot[0], nb(tot[1], csvLenDec()), nb(tot[3], csvAreaDec()), nb(tot[2], csvVolDec())]);
   return out;
 }
 
 export function qtyElementRows(cache) {
-  const out = [["ElementID", "Gruppe", "Navn", "ObjectType", "IFC-type",
+  const out = [["ElementID", "Gruppe", "Navn", "ObjectType", "IFC-type", "Materiale",
     "Lengde (m)", "Bredde (m)", "Høyde (m)", "Lengste mål (m)", "Areal (m2)", "Volum (m3)"]];
-  cache.rows.forEach(r => out.push([r.id, r.key, r.name, r.objType, r.type,
+  cache.rows.forEach(r => out.push([r.id, r.key, r.name, r.objType, r.type, r.material || "",
     nb(r.L, csvLenDec()), nb(r.B, csvLenDec()), nb(r.H, csvLenDec()),
     nb(r.len, csvLenDec()), nb(r.area, csvAreaDec()), nb(r.vol, csvVolDec())]));
   return out;
@@ -630,10 +684,17 @@ function renderQuantities(full) {
   // S.qtyType er valgt objekttype ("" = alle). Alt under – tabell, sum og
   // eksport – gjelder det som er valgt, slik at CSV-fila blir «ett ark».
   const valgt = S.qtyType || "";
-  const finnes = (full.types || []).some(([t]) => t === valgt);
-  const cache = finnes ? qtyForType(full, valgt) : full;
-  if (!finnes) S.qtyType = "";
-  const filnavnDel = S.qtyType ? " - " + typeVisning(S.qtyType) : "";
+  if (!(full.types || []).some(([t]) => t === valgt)) S.qtyType = "";
+  // materialvalget kan være g:<gruppe> eller m:<nøyaktig navn>
+  const mv = S.qtyMat || "";
+  const matFinnes = !mv ||
+    (mv.slice(0, 2) === "g:" && (full.materialer || []).some(([m]) => materialGruppe(m) === mv.slice(2))) ||
+    (mv.slice(0, 2) === "m:" && (full.materialer || []).some(([m]) => m === mv.slice(2)));
+  if (!matFinnes) S.qtyMat = "";
+  const cache = (S.qtyType || S.qtyMat) ? qtyForType(full, S.qtyType, S.qtyMat) : full;
+  const matNavnValgt = S.qtyMat ? S.qtyMat.slice(2) || "Uten materiale" : "";
+  const filnavnDel = (S.qtyType ? " - " + typeVisning(S.qtyType) : "") +
+    (matNavnValgt ? " - " + matNavnValgt : "");
 
   const list = cache.groups;
   const total = list.reduce((s, [, g]) => s + g.count, 0);
@@ -641,15 +702,53 @@ function renderQuantities(full) {
   const totLen = list.reduce((s, [, g]) => s + g.length, 0);
   const totArea = list.reduce((s, [, g]) => s + g.area, 0);
 
-  const alleAntall = (full.types || []).reduce((s, [, t]) => s + t.count, 0);
+  // Nedtrekkene teller innenfor det ANDRE valget: har du valgt Søyler, viser
+  // materiallista hvor mange søyler som er betong – ikke hvor mange elementer i
+  // hele modellen som er betong. Ellers kan du velge en kombinasjon som gir 0.
+  const forType = S.qtyMat ? qtyForType(full, "", S.qtyMat).rows : full.rows;
+  const forMat = S.qtyType ? qtyForType(full, S.qtyType, "").rows : full.rows;
+  const tell = (rader, passer) => rader.reduce((s, r) => s + (passer(r) ? 1 : 0), 0);
+
+  const typeValg = (full.types || []).map(([t]) => [t, tell(forType, r => (r.type || "") === t)])
+    .filter(([, n]) => n > 0);
+
+  // materialer: grovgrupper først, deretter de nøyaktige navnene
+  // NB: tell én gang PER GRUPPE. Å summere per materialnavn ville tellet hver
+  // rad på nytt for hvert navn i gruppen (tre betongnavn ⇒ tre ganger for høyt).
+  const grupper = new Set();
+  (full.materialer || []).forEach(([m]) => { const g = materialGruppe(m); if (g) grupper.add(g); });
+  const gruppeValg = [...grupper]
+    .map(g => [g, tell(forMat, r => materialGruppe(r.material) === g)])
+    .filter(([, n]) => n > 0)
+    .sort((a, b) => b[1] - a[1]);
+  const matValg = (full.materialer || []).map(([m]) => [m, tell(forMat, r => (r.material || "") === m)])
+    .filter(([, n]) => n > 0);
+  const harMateriale = (full.materialer || []).some(([m]) => m);
+
   const nedtrekk =
+    '<div class="qty-filtre">' +
     '<label class="qty-type-velg">Objekttype' +
     '<select id="qtyType">' +
-      '<option value=""' + (S.qtyType ? "" : " selected") + '>Alle typer (' + alleAntall + ' stk)</option>' +
-      (full.types || []).map(([t, e]) =>
+      '<option value=""' + (S.qtyType ? "" : " selected") + '>Alle typer (' + forType.length + ' stk)</option>' +
+      typeValg.map(([t, n]) =>
         '<option value="' + esc(t) + '"' + (t === S.qtyType ? " selected" : "") + '>' +
-        esc(typeVisning(t)) + ' (' + e.count + ' stk)</option>').join("") +
-    '</select></label>';
+        esc(typeVisning(t)) + ' (' + n + ' stk)</option>').join("") +
+    '</select></label>' +
+    (harMateriale
+      ? '<label class="qty-type-velg">Materiale' +
+        '<select id="qtyMat">' +
+          '<option value=""' + (S.qtyMat ? "" : " selected") + '>Alle materialer (' + forMat.length + ' stk)</option>' +
+          (gruppeValg.length
+            ? '<optgroup label="Materialgrupper">' + gruppeValg.map(([g, n]) =>
+                '<option value="g:' + esc(g) + '"' + ("g:" + g === S.qtyMat ? " selected" : "") + '>' +
+                esc(g) + ' (' + n + ' stk)</option>').join("") + '</optgroup>'
+            : "") +
+          '<optgroup label="Enkeltmaterialer">' + matValg.map(([m, n]) =>
+            '<option value="m:' + esc(m) + '"' + ("m:" + m === S.qtyMat ? " selected" : "") + '>' +
+            esc(materialVisning(m)) + ' (' + n + ' stk)</option>').join("") + '</optgroup>' +
+        '</select></label>'
+      : "") +
+    '</div>';
 
   $("qtyBody").innerHTML =
     nedtrekk +
@@ -659,19 +758,25 @@ function renderQuantities(full) {
       '<button id="qtyCopy" title="Lim rett inn i et åpent regneark">📋 Kopier</button>' +
     '</div>' +
     '<div class="qty-row" style="font-weight:600"><div class="n">' +
-      (S.qtyType ? esc(typeVisning(S.qtyType)) : "Totalt") + '</div><div class="c">' + total +
+      esc([S.qtyType ? typeVisning(S.qtyType) : "", matNavnValgt].filter(Boolean).join(" · ") || "Totalt") +
+      '</div><div class="c">' + total +
       ' stk · ' + totLen.toFixed(dec()) + ' m · ' + fmtArea(totArea) + ' · ' + fmtVol(totVol) + '</div></div>' +
     list.map(([key, g]) =>
       '<div class="qty-row"><div class="n">' + esc(key) + (g.type ? ' <span style="color:var(--muted);font-size:11px">(' + esc(typeVisning(g.type)) + ')</span>' : "") + '</div>' +
       '<div class="c">' + g.count + ' stk · ' + g.length.toFixed(dec()) + ' m · ' + fmtArea(g.area) + ' · ' + fmtVol(g.vol) + '</div></div>').join("") +
     '<p style="color:var(--muted); font-size:11px; margin-top:10px">Antall desimaler settes i ⚙ Innstillinger. ' +
-    'Velg objekttype for å få ett ark om gangen – nedlastingen inneholder bare det som står i lista nå. ' +
+    'Velg objekttype og materiale for å få ett ark om gangen – nedlastingen inneholder bare det som står i lista nå ' +
+    '(f.eks. Søyler + Betong gir bare betongsøylene). ' +
+    'Materialgruppene samler navn som betyr det samme: «B35», «C35/45» og «Concrete» havner alle under Betong. ' +
+    'Mangler materiale på et element, står det ikke i IFC-fila. ' +
     'Lengde = lengste mål per element (ca-verdi, summert per gruppe). ' +
     'Areal = fotavtrykk, altså grunnflaten sett rett ovenfra – det målet dekker, plater og fundamenter bestilles etter. ' +
     'Volum er regnet ut av geometrien og gjelder lukkede volumer – hule profiler blir riktige, flater uten tykkelse blir 0.</p>';
 
   const sel = $("qtyType");
   if (sel) sel.onchange = () => { S.qtyType = sel.value; renderQuantities(full); };
+  const selM = $("qtyMat");
+  if (selM) selM.onchange = () => { S.qtyMat = selM.value; renderQuantities(full); };
 
   $("qtyCsvG").onclick = () => download(baseName() + filnavnDel + " - mengder.csv", toCsv(qtyGroupRows(cache)));
   $("qtyCsvE").onclick = () => download(baseName() + filnavnDel + " - mengder per element.csv", toCsv(qtyElementRows(cache)));
