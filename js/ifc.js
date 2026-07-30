@@ -213,7 +213,7 @@ export async function loadModel(buffer) {
   S.modelGroup = new THREE.Group();
 
   const t0 = performance.now();
-  visFramdrift("Leser IFC-filen …", 0, 0);
+  visFramdrift("Åpner IFC-filen …", 0, 0);
 
   // Bufferen OVERFØRES til tråden – ingen kopi. Tråden beholder den, så vi kan
   // få den tilbake ved behov (🪶-omlasting). Før holdt vi filen i to utgaver
@@ -222,6 +222,7 @@ export async function loadModel(buffer) {
   S.lastBuffer = null;
   S.bufferITråd = true;
   const info = await kall("open", { buffer: ab, light: S.lightLoaded }, null, [ab]);
+  const tApnet = performance.now();
   S.modelID = 1;   // «en modell er åpen» – all lesing går nå gjennom IFC-tråden
 
   if (info.coordMatrix) {
@@ -230,6 +231,13 @@ export async function loadModel(buffer) {
   } else { S.koteMatrixInv = null; S.coordMatrix = null; }
 
   const res = S.lightLoaded ? await byggLett(info) : await byggFull(info);
+  const tGeo = performance.now();
+
+  // Etterarbeidet (samlet boks over alle mesh, innramming, minikart) tar flere
+  // sekunder på en modell med tusenvis av elementer. Uten denne linja sto
+  // prosenten stille på 98 % og det så ut som om den hang.
+  loadingText.textContent = "Fullfører …";
+  await pust();
 
   scene.add(S.modelGroup);
   statusEl.textContent = res.shown + " elementer" +
@@ -243,8 +251,15 @@ export async function loadModel(buffer) {
 
   fitToModel();
   renderMiniMap();
+  // Tidsbruk per fase, så vi kan se HVOR tiden går på store modeller i stedet
+  // for å gjette. Les den i konsollen (F12) etter at en modell er åpnet.
+  const ms = (a, b) => Math.round(b - a) + " ms";
   console.log("Modell åpnet i " + Math.round(performance.now() - t0) + " ms" +
-    (harWorker() ? " (egen tråd)" : " (hovedtråden – " + (S.workerFeil || "ingen tråd") + ")"));
+    (harWorker() ? " (egen tråd)" : " (hovedtråden – " + (S.workerFeil || "ingen tråd") + ")") +
+    "\n  1. web-ifc åpner filen:      " + ms(t0, tApnet) +
+    "\n  2. geometri + mesh-bygging:  " + ms(tApnet, tGeo) +
+    "\n  3. boks, innramming, kart:   " + ms(tGeo, performance.now()) +
+    "\n  elementer: " + res.shown + (res.skipped ? ", utelatt: " + res.skipped : ""));
 }
 
 // Bufferen ligger i IFC-tråden etter lasting. Denne henter den tilbake når
@@ -285,7 +300,7 @@ const pust = () => new Promise(r => setTimeout(r, 0));
 async function byggFull(info) {
   let count = 0;
   const svar = await kall("geometryFull", info, (m) => {
-    if (m.type === "progress") { visFramdrift("Bygger modellen …", m.done, m.total); return; }
+    if (m.type === "progress") { visFramdrift("Leser geometrien …", m.done, m.total); return; }
     if (m.type !== "geo") return;
     for (const e of m.batch) {
       for (const p of e.parts) {
@@ -297,7 +312,7 @@ async function byggFull(info) {
       }
       count++;
     }
-    visFramdrift("Bygger modellen …", m.done, m.total);
+    visFramdrift("Leser geometrien …", m.done, m.total);
   });
   return { shown: svar.shown || count, skipped: svar.skipped || 0 };
 }
@@ -316,7 +331,7 @@ async function byggLett(info) {
     mesh.userData.ranges = m.ranges;
     mesh.userData.origMat = mesh.material;
     S.modelGroup.add(mesh);
-    visFramdrift("Bygger modellen …", m.nr + 1, m.av);
+    visFramdrift("Setter sammen geometrien …", m.nr + 1, m.av);
   });
   return svar;
 }

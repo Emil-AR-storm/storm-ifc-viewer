@@ -204,7 +204,7 @@ export async function spOpenFile(item) {
   $("libPanel").classList.remove("open");
   loadingEl.classList.add("open");
   try {
-    loadingText.textContent = "Henter " + item.name + " …";
+    loadingText.textContent = "Laster ned " + item.name + " …";
     const token = await spToken();
     if (!token) return;
     if (!S.spSiteId) {
@@ -227,7 +227,11 @@ export async function spOpenFile(item) {
         if (done) break;
         chunks.push(value);
         got += value.length;
-        loadingText.textContent = "Henter " + item.name + " … " + Math.min(100, Math.round(got / total * 100)) + " %";
+        // «Laster ned» sier tydelig at dette er nedlastingen fra SharePoint, og
+        // ikke selve lesingen av modellen. To prosentvisninger etter hverandre
+        // så ut som om modellen ble lastet to ganger.
+        loadingText.textContent = "Laster ned " + item.name + " … " +
+          Math.min(100, Math.round(got / total * 100)) + " %";
       }
       buf = new Uint8Array(got);
       let o = 0;
