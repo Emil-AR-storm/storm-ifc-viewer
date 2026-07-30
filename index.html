@@ -61,49 +61,57 @@
 
 <div id="topbar">
   <div class="logo">STORM <span>IFC</span></div>
-  <button class="btn" id="btnOpen"><svg class="ikon"><use href="#i-apne"/></svg><span class="btn-t">Åpne</span></button>
+  <button class="btn" id="btnOpen"><svg class="ikon"><use href="#i-apne"/></svg><span class="btn-t" data-i18n>Åpne</span></button>
   <input type="file" id="fileInput" accept=".ifc,.IFC,.glb,.GLB">
-  <button id="btnLib"><svg class="ikon"><use href="#i-bibliotek"/></svg><span class="btn-t">Bibliotek</span></button>
-  <button id="btnLight" title="Forenklet lasting for mobil og store modeller"><svg class="ikon"><use href="#i-lav"/></svg><span class="btn-t">Lav kvalitet</span></button>
+  <button id="btnLib"><svg class="ikon"><use href="#i-bibliotek"/></svg><span class="btn-t" data-i18n>Bibliotek</span></button>
+  <button id="btnLight" title="Forenklet lasting for mobil og store modeller" data-i18n-title><svg class="ikon"><use href="#i-lav"/></svg><span class="btn-t" data-i18n>Lav kvalitet</span></button>
   <button id="btnComments"><svg class="ikon"><use href="#i-markeringer"/></svg> <span id="commentCount">0</span></button>
-  <button id="btnFit" title="Vis hele modellen"><svg class="ikon"><use href="#i-fokus"/></svg></button>
+  <button id="btnFit" title="Vis hele modellen" data-i18n-title><svg class="ikon"><use href="#i-fokus"/></svg></button>
   <div id="status"></div>
 </div>
 
 <div id="toolbar">
-  <button id="btnMarker"><svg class="ikon"><use href="#i-markering"/></svg><span class="btn-t">Markering</span></button>
-  <button id="btnMeasure"><svg class="ikon"><use href="#i-maal"/></svg><span class="btn-t">Mål</span></button>
-  <button id="btnKote"><svg class="ikon"><use href="#i-kote"/></svg><span class="btn-t">Kote</span></button>
-  <button id="btnAxes"><svg class="ikon"><use href="#i-akser"/></svg><span class="btn-t">Akser</span></button>
-  <button id="btnClip"><svg class="ikon"><use href="#i-snitt"/></svg><span class="btn-t">Snitt</span></button>
-  <button id="btnStorey"><svg class="ikon"><use href="#i-etasjer"/></svg><span class="btn-t">Etasjer</span></button>
-  <button id="btnSearch"><svg class="ikon"><use href="#i-sok"/></svg><span class="btn-t">Søk</span></button>
-  <button id="btnGhost"><svg class="ikon"><use href="#i-transparent"/></svg><span class="btn-t">Transparent</span></button>
-  <button id="btnQty"><svg class="ikon"><use href="#i-mengder"/></svg><span class="btn-t">Mengder</span></button>
-  <button id="btnColors"><svg class="ikon"><use href="#i-utseende"/></svg><span class="btn-t">Utseende</span></button>
-  <button id="btnCompare" title="Sammenlign med en annen versjon av modellen"><svg class="ikon"><use href="#i-sammenlign"/></svg><span class="btn-t">Sammenlign</span></button>
-  <button id="btnShare" title="Lag en lenke som gjenskaper denne visningen hos andre"><svg class="ikon"><use href="#i-del"/></svg><span class="btn-t">Del visning</span></button>
-  <button id="btnSaveLite" title="Eksporter forenklet modell (.glb) som funker på mobil"><svg class="ikon"><use href="#i-lagre"/></svg><span class="btn-t">Lett kopi</span></button>
-  <button id="btnSettings" title="Innstillinger og hurtigtaster (høyreklikk i modellen)"><svg class="ikon"><use href="#i-innstillinger"/></svg><span class="btn-t">Innstillinger</span></button>
-  <button id="btnShowAll" style="display:none"><svg class="ikon"><use href="#i-vis"/></svg><span class="btn-t">Vis alle</span></button>
+  <button id="btnMarker"><svg class="ikon"><use href="#i-markering"/></svg><span class="btn-t" data-i18n>Markering</span></button>
+  <button id="btnMeasure"><svg class="ikon"><use href="#i-maal"/></svg><span class="btn-t" data-i18n>Mål</span></button>
+  <button id="btnKote"><svg class="ikon"><use href="#i-kote"/></svg><span class="btn-t" data-i18n>Kote</span></button>
+  <button id="btnAxes"><svg class="ikon"><use href="#i-akser"/></svg><span class="btn-t" data-i18n>Akser</span></button>
+  <button id="btnClip"><svg class="ikon"><use href="#i-snitt"/></svg><span class="btn-t" data-i18n>Snitt</span></button>
+  <button id="btnStorey"><svg class="ikon"><use href="#i-etasjer"/></svg><span class="btn-t" data-i18n>Etasjer</span></button>
+  <button id="btnSearch"><svg class="ikon"><use href="#i-sok"/></svg><span class="btn-t" data-i18n>Søk</span></button>
+  <button id="btnGhost"><svg class="ikon"><use href="#i-transparent"/></svg><span class="btn-t" data-i18n>Gjennomsiktig</span></button>
+  <button id="btnQty"><svg class="ikon"><use href="#i-mengder"/></svg><span class="btn-t" data-i18n>Mengder</span></button>
+  <button id="btnColors"><svg class="ikon"><use href="#i-utseende"/></svg><span class="btn-t" data-i18n>Utseende</span></button>
+  <button id="btnCompare" title="Sammenlign med en annen versjon av modellen" data-i18n-title><svg class="ikon"><use href="#i-sammenlign"/></svg><span class="btn-t" data-i18n>Sammenlign</span></button>
+  <button id="btnShare" title="Lag en lenke som gjenskaper denne visningen hos andre" data-i18n-title><svg class="ikon"><use href="#i-del"/></svg><span class="btn-t" data-i18n>Del visning</span></button>
+  <button id="btnSaveLite" title="Eksporter forenklet modell (.glb) som funker på mobil" data-i18n-title><svg class="ikon"><use href="#i-lagre"/></svg><span class="btn-t" data-i18n>Lett kopi</span></button>
+  <button id="btnSettings" title="Innstillinger og hurtigtaster (høyreklikk i modellen)" data-i18n-title><svg class="ikon"><use href="#i-innstillinger"/></svg><span class="btn-t" data-i18n>Innstillinger</span></button>
+  <button id="btnShowAll" style="display:none"><svg class="ikon"><use href="#i-vis"/></svg><span class="btn-t" data-i18n>Vis alle</span></button>
 </div>
 
-<canvas id="miniMap" width="256" height="256" title="Trykk for å flytte deg dit"
+<canvas id="miniMap" width="256" height="256" title="Trykk for å flytte deg dit" data-i18n-title
   style="position:fixed; left:12px; bottom:12px; width:180px; height:180px; border:1px solid #2c3442; border-radius:10px; background:#14181f; display:none; z-index:5; cursor:crosshair; opacity:.92"></canvas>
 
 <div id="modeBar"></div>
 
 <div id="splash">
+  <label id="sprakBoks" title="Språk / Language / Język / Kalba">
+    <select id="sprakVelg">
+      <option value="no">Norsk</option>
+      <option value="en">English</option>
+      <option value="pl">Polski</option>
+      <option value="lt">Lietuvių</option>
+    </select>
+  </label>
   <h1>STORM <span>IFC-VIEWER</span></h1>
   <p>Åpne en IFC-modell (BIM) direkte i nettleseren – på mobil eller PC.
      Naviger i 3D, trykk på elementer for info, mål, snitt og legg inn markeringer.</p>
   <div id="crashBanner" style="display:none"></div>
   <div id="shareBanner" style="display:none"></div>
   <div id="resumeBox" style="display:none"></div>
-  <button class="btn" id="btnOpenSplash"><svg class="ikon"><use href="#i-apne"/></svg><span class="btn-t">Velg IFC-fil</span></button>
+  <button class="btn" id="btnOpenSplash"><svg class="ikon"><use href="#i-apne"/></svg><span class="btn-t" data-i18n>Velg IFC-fil</span></button>
   <p class="liten">… eller dra fila rett inn i vinduet. Ligger modellen i OneDrive med skyikon (bare på nett),
      bruk Biblioteket – eller høyreklikk fila i Utforsker → «Behold alltid på denne enheten».</p>
-  <button id="btnLibSplash"><svg class="ikon"><use href="#i-bibliotek"/></svg><span class="btn-t">Åpne fra biblioteket</span></button>
+  <button id="btnLibSplash"><svg class="ikon"><use href="#i-bibliotek"/></svg><span class="btn-t" data-i18n>Åpne fra biblioteket</span></button>
   <p class="liten">Filen behandles kun lokalt i nettleseren din – ingenting lastes opp.</p>
   <p id="jsCheck">JavaScript kjører ikke. Åpner du fila i forhåndsvisning (Filer/mail)? Åpne den i Safari eller Chrome i stedet.</p>
 </div>
@@ -111,57 +119,57 @@
 <div id="loading"><div class="spinner"></div><div id="loadingText">Laster modell …</div></div>
 
 <div class="panel" id="propPanel">
-  <header><span id="propTitle">Egenskaper</span><button onclick="document.getElementById('propPanel').classList.remove('open')" title="Lukk"><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <header><span id="propTitle">Egenskaper</span><button onclick="document.getElementById('propPanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="propBody"></div>
 </div>
 
 <div class="panel" id="commentPanel">
-  <header><span>Markeringer</span><button onclick="document.getElementById('commentPanel').classList.remove('open')" title="Lukk"><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <header><span data-i18n>Markeringer</span><button onclick="document.getElementById('commentPanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="commentBody"></div>
 </div>
 
 <div class="panel" id="qtyPanel">
-  <header><span>Mengder</span><button onclick="document.getElementById('qtyPanel').classList.remove('open')" title="Lukk"><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <header><span data-i18n>Mengder</span><button onclick="document.getElementById('qtyPanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="qtyBody"></div>
 </div>
 
 <div class="panel" id="libPanel">
-  <header><span>Modellbibliotek</span><button onclick="document.getElementById('libPanel').classList.remove('open')" title="Lukk"><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <header><span data-i18n>Modellbibliotek</span><button onclick="document.getElementById('libPanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="libBody"></div>
 </div>
 
 <div class="panel" id="colorPanel">
-  <header><span>Utseende</span><button onclick="document.getElementById('colorPanel').classList.remove('open')" title="Lukk"><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <header><span data-i18n>Utseende</span><button onclick="document.getElementById('colorPanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="colorBody"></div>
 </div>
 
 <div class="panel" id="axesPanel">
-  <header><span>Aksesystem</span><button onclick="document.getElementById('axesPanel').classList.remove('open')" title="Lukk"><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <header><span data-i18n>Aksesystem</span><button onclick="document.getElementById('axesPanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="axesBody"></div>
 </div>
 
 <div class="panel" id="comparePanel">
-  <header><span>Sammenlign versjoner</span><button onclick="document.getElementById('comparePanel').classList.remove('open')" title="Lukk"><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <header><span data-i18n>Sammenlign versjoner</span><button onclick="document.getElementById('comparePanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="compareBody"></div>
 </div>
 
 <div class="panel" id="sharePanel">
-  <header><span>Del visning</span><button onclick="document.getElementById('sharePanel').classList.remove('open')" title="Lukk"><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <header><span data-i18n>Del visning</span><button onclick="document.getElementById('sharePanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="shareBody"></div>
 </div>
 
 <div class="panel" id="clipPanel">
-  <header><span>Snitt-boks</span><button onclick="document.getElementById('clipPanel').classList.remove('open')" title="Lukk"><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <header><span data-i18n>Snitt-boks</span><button onclick="document.getElementById('clipPanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="clipBody"></div>
 </div>
 
 <div class="panel" id="searchPanel">
-  <header><span>Elementsøk</span><button onclick="document.getElementById('searchPanel').classList.remove('open')" title="Lukk"><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <header><span data-i18n>Elementsøk</span><button onclick="document.getElementById('searchPanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="searchBody"></div>
 </div>
 
 <div id="setMenu">
-  <header><span>Innstillinger</span><button onclick="document.getElementById('setMenu').classList.remove('open')" title="Lukk"><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <header><span data-i18n>Innstillinger</span><button onclick="document.getElementById('setMenu').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="setBody"></div>
 </div>
 
