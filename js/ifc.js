@@ -1,6 +1,7 @@
 // Innlasting av modeller: IFC (full og lav kvalitet) og lett kopi (.glb).
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
 import { $, S, esc, loadingEl, loadingText, lukkPaneler, nullstillModellState, statusEl, writePrefs } from "./state.js";
+import { t } from "./i18n.js";
 import { harWorker, kall, metaFor, tømMeta } from "./ifcrpc.js";
 import { byggLettKopi, lettNavn } from "./lite.js";
 import { hiddenIDs } from "./display.js";
@@ -24,7 +25,7 @@ export const ifcReady = Promise.resolve();
 export async function openLocalFile(file, handle) {
   if (!file) return;
   if (!/\.(ifc|glb)$/i.test(file.name)) {
-    alert("Dette ser ikke ut som en IFC- eller lett kopi-fil (" + file.name + "). Velg en fil som slutter på .ifc eller .glb");
+    alert(t("Dette ser ikke ut som en IFC- eller lett kopi-fil ({0}). Velg en fil som slutter på .ifc eller .glb", file.name));
     return;
   }
   S.fileName = file.name;
@@ -32,10 +33,10 @@ export async function openLocalFile(file, handle) {
   try {
     const isGlb = /\.glb$/i.test(file.name);
     if (!isGlb) {
-      loadingText.textContent = "Starter IFC-motor …";
+      loadingText.textContent = t("Starter IFC-motor …");
       await ifcReady;
     }
-    loadingText.textContent = "Leser " + file.name + " …";
+    loadingText.textContent = t("Leser {0} …", file.name);
     const buffer = new Uint8Array(await file.arrayBuffer());
     await new Promise(r => setTimeout(r, 30));
     S.lastBuffer = buffer;
@@ -49,9 +50,8 @@ export async function openLocalFile(file, handle) {
     clearLoadFlag();
     // Filer som bare finnes i skya (OneDrive «frigjør plass») kan ikke leses direkte
     const msg = /permission|not.*readable|NotReadableError|NotFoundError/i.test(err.name + " " + err.message)
-      ? "Klarte ikke å lese fila. Ligger den i OneDrive og er merket «bare på nett»? " +
-        "Høyreklikk fila i Utforsker → «Behold alltid på denne enheten», og prøv igjen."
-      : "Klarte ikke å lese IFC-filen: " + err.message;
+      ? t("Klarte ikke å lese fila. Ligger den i OneDrive og er merket «bare på nett»? Høyreklikk fila i Utforsker → «Behold alltid på denne enheten», og prøv igjen.")
+      : t("Klarte ikke å lese IFC-filen: ") + err.message;
     if (!(await offerLightRetry(err))) alert(msg);
   } finally {
     loadingEl.classList.remove("open");
@@ -73,7 +73,7 @@ export async function pickFile() {
     [handle] = await window.showOpenFilePicker({
       id: "storm-ifc",                 // nettleseren husker sist brukte mappe
       multiple: false,
-      types: [{ description: "IFC-modell eller lett kopi", accept: { "application/octet-stream": [".ifc", ".glb"] } }]
+      types: [{ description: t("IFC-modell eller lett kopi"), accept: { "application/octet-stream": [".ifc", ".glb"] } }]
     });
   } catch (err) {
     if (err && err.name === "AbortError") return;   // brukeren avbrøt
@@ -83,7 +83,7 @@ export async function pickFile() {
   try {
     await openLocalFile(await handle.getFile(), handle);
   } catch (err) {
-    alert("Klarte ikke å lese filen: " + err.message);
+    alert(t("Klarte ikke å lese filen: ") + err.message);
   }
 }
 
@@ -98,7 +98,7 @@ export async function pickFile() {
 (function enableDrop() {
   const hint = document.createElement("div");
   hint.id = "dropHint";
-  hint.textContent = "Slipp IFC- eller .glb-fila her";
+  hint.textContent = t("Slipp IFC- eller .glb-fila her");
   document.body.appendChild(hint);
   let depth = 0;
   const show = (on) => hint.classList.toggle("open", on);
@@ -197,7 +197,7 @@ export async function loadModel(buffer) {
   S.modelGroup = new THREE.Group();
 
   const t0 = performance.now();
-  visFramdrift("Åpner IFC-filen …", 0, 0);
+  visFramdrift(t("Åpner IFC-filen …"), 0, 0);
 
   // Bufferen OVERFØRES til tråden – ingen kopi. Tråden beholder den, så vi kan
   // få den tilbake ved behov (🪶-omlasting). Før holdt vi filen i to utgaver
@@ -220,12 +220,12 @@ export async function loadModel(buffer) {
   // Etterarbeidet (samlet boks over alle mesh, innramming, minikart) tar flere
   // sekunder på en modell med tusenvis av elementer. Uten denne linja sto
   // prosenten stille på 98 % og det så ut som om den hang.
-  loadingText.textContent = "Fullfører …";
+  loadingText.textContent = t("Fullfører …");
   await pust();
 
   scene.add(S.modelGroup);
-  statusEl.textContent = res.shown + " elementer" +
-    (S.lightLoaded ? " · lav kvalitet" + (res.skipped ? " (" + res.skipped + " små utelatt)" : "") : "");
+  statusEl.textContent = res.shown + t(" elementer") +
+    (S.lightLoaded ? t(" · lav kvalitet") + (res.skipped ? " (" + res.skipped + t(" små utelatt)") : "") : "");
   S.modelBox = new THREE.Box3().setFromObject(S.modelGroup);
   S.modelSize = S.modelBox.getSize(new THREE.Vector3()).length() || 10;
 
@@ -284,7 +284,7 @@ const pust = () => new Promise(r => setTimeout(r, 0));
 async function byggFull(info) {
   let count = 0;
   const svar = await kall("geometryFull", info, (m) => {
-    if (m.type === "progress") { visFramdrift("Leser geometrien …", m.done, m.total); return; }
+    if (m.type === "progress") { visFramdrift(t("Leser geometrien …"), m.done, m.total); return; }
     if (m.type !== "geo") return;
     for (const e of m.batch) {
       for (const p of e.parts) {
@@ -296,7 +296,7 @@ async function byggFull(info) {
       }
       count++;
     }
-    visFramdrift("Leser geometrien …", m.done, m.total);
+    visFramdrift(t("Leser geometrien …"), m.done, m.total);
   });
   return { shown: svar.shown || count, skipped: svar.skipped || 0 };
 }
@@ -304,7 +304,7 @@ async function byggFull(info) {
 // 🪶 Lav kvalitet: tråden har alt slått sammen per farge
 async function byggLett(info) {
   const svar = await kall("geometryLight", info, (m) => {
-    if (m.type === "progress") { visFramdrift("Forenkler geometri …", m.done, m.total); return; }
+    if (m.type === "progress") { visFramdrift(t("Forenkler geometri …"), m.done, m.total); return; }
     if (m.type !== "bucket") return;
     const bg = new THREE.BufferGeometry();
     bg.setAttribute("position", new THREE.BufferAttribute(m.pos, 3));
@@ -315,7 +315,7 @@ async function byggLett(info) {
     mesh.userData.ranges = m.ranges;
     mesh.userData.origMat = mesh.material;
     S.modelGroup.add(mesh);
-    visFramdrift("Setter sammen geometrien …", m.nr + 1, m.av);
+    visFramdrift(t("Setter sammen geometrien …"), m.nr + 1, m.av);
   });
   return svar;
 }
@@ -397,7 +397,7 @@ export async function loadGlb(buffer) {
     S.glbProps = new Map();
   }
   scene.add(S.modelGroup);
-  statusEl.textContent = idSet.size + " elementer · lett kopi";
+  statusEl.textContent = idSet.size + t(" elementer · lett kopi");
   S.modelBox = new THREE.Box3().setFromObject(S.modelGroup);
   S.modelSize = S.modelBox.getSize(new THREE.Vector3()).length() || 10;
   fitToModel();
@@ -406,7 +406,7 @@ export async function loadGlb(buffer) {
 
 $("btnSaveLite").addEventListener("click", async () => {
   if (!S.modelGroup) return;
-  if (S.glbActive) { alert("Denne modellen er allerede en lett kopi."); return; }
+  if (S.glbActive) { alert(t("Denne modellen er allerede en lett kopi.")); return; }
   loadingEl.classList.add("open");
   try {
     // Kopien bygges fra geometrien som alt ligger i scenen – modellen lastes
@@ -418,11 +418,11 @@ $("btnSaveLite").addEventListener("click", async () => {
     a.download = lettNavn(S.fileName);
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 10000);
-    statusEl.textContent = ids.size + " elementer i lett kopi" +
-      (utelatt ? " (" + utelatt + " små/festemidler utelatt)" : "");
+    statusEl.textContent = ids.size + t(" elementer i lett kopi") +
+      (utelatt ? " (" + utelatt + t(" små/festemidler utelatt)") : "");
   } catch (err) {
     console.error(err);
-    alert("Klarte ikke å lage lett kopi: " + err.message);
+    alert(t("Klarte ikke å lage lett kopi: ") + err.message);
   } finally {
     loadingEl.classList.remove("open");
   }
@@ -451,19 +451,19 @@ setLight(S.lightMode);
 $("btnLight").addEventListener("click", async () => {
   setLight(!S.lightMode);
   if (S.modelGroup && (S.lastBuffer || S.bufferITråd) && S.lightMode !== S.lightLoaded &&
-      confirm("Laste modellen på nytt i " + (S.lightMode ? "lav" : "full") + " kvalitet?")) {
+      confirm(t("Laste modellen på nytt i {0} kvalitet?", S.lightMode ? t("lav") : t("full")))) {
     loadingEl.classList.add("open");
-    loadingText.textContent = "Laster på nytt …";
+    loadingText.textContent = t("Laster på nytt …");
     await new Promise(r => setTimeout(r, 30));
     try {
       setLoadFlag(Object.assign({}, S.lastLoadInfo || { name: S.fileName }, { light: S.lightMode }));
       const buf = await hentBuffer();
-      if (!buf) throw new Error("Fant ikke modellfilen igjen – åpne den på nytt");
+      if (!buf) throw new Error(t("Fant ikke modellfilen igjen – åpne den på nytt"));
       await loadModel(buf);
       clearLoadFlag();
     } catch (err) {
       clearLoadFlag();
-      alert("Klarte ikke å laste på nytt: " + err.message);
+      alert(t("Klarte ikke å laste på nytt: ") + err.message);
     } finally {
       loadingEl.classList.remove("open");
     }
@@ -473,21 +473,21 @@ $("btnLight").addEventListener("click", async () => {
 // Tilbud om nytt forsøk i lav kvalitet når lasting feiler
 export async function offerLightRetry(err) {
   if (S.lightMode || !(S.lastBuffer || S.bufferITråd)) return false;
-  if (!confirm("Klarte ikke å laste modellen (" + ((err && err.message) || err) + ").\n\nPrøve på nytt i lav kvalitet?")) return false;
+  if (!confirm(t("Klarte ikke å laste modellen ({0}).\n\nPrøve på nytt i lav kvalitet?", (err && err.message) || err))) return false;
   setLight(true);
   loadingEl.classList.add("open");
-  loadingText.textContent = "Prøver i lav kvalitet …";
+  loadingText.textContent = t("Prøver i lav kvalitet …");
   await new Promise(r => setTimeout(r, 30));
   try {
     setLoadFlag(Object.assign({}, S.lastLoadInfo || { name: S.fileName }, { light: true }));
     const buf = await hentBuffer();
-    if (!buf) throw new Error("Fant ikke modellfilen igjen");
+    if (!buf) throw new Error(t("Fant ikke modellfilen igjen"));
     await loadModel(buf);
     afterLoad();
     clearLoadFlag();
   } catch (e2) {
     clearLoadFlag();
-    alert("Gikk ikke i lav kvalitet heller: " + e2.message);
+    alert(t("Gikk ikke i lav kvalitet heller: ") + e2.message);
   } finally {
     loadingEl.classList.remove("open");
   }
@@ -502,15 +502,15 @@ export async function offerLightRetry(err) {
   clearLoadFlag();
   const b = $("crashBanner");
   b.style.display = "block";
-  b.innerHTML = "Forrige forsøk på å åpne <b>" + esc(String(info.name || "modellen")) + "</b> ser ut til å ha krasjet nettleseren." +
+  b.innerHTML = t("Forrige forsøk på å åpne <b>{0}</b> ser ut til å ha krasjet nettleseren.", esc(String(info.name || "modellen"))) +
     (info.light
-      ? " Den var allerede i lav kvalitet – modellen er trolig for stor for denne enheten."
-      : "<br><button id='crashRetry' class='primary' style='margin-top:10px'>Prøv igjen i lav kvalitet</button>");
+      ? t(" Den var allerede i lav kvalitet – modellen er trolig for stor for denne enheten.")
+      : "<br><button id='crashRetry' class='primary' style='margin-top:10px'>" + t("Prøv igjen i lav kvalitet") + "</button>");
   const btn = $("crashRetry");
   if (btn) btn.onclick = () => {
     setLight(true);
     b.style.display = "none";
     if (info.libId) spOpenFile({ id: info.libId, name: info.name, size: info.size });
-    else alert("Velg «" + (info.name || "filen") + "» på nytt – den åpnes nå i lav kvalitet.");
+    else alert(t("Velg «{0}» på nytt – den åpnes nå i lav kvalitet.", info.name || "filen"));
   };
 })();

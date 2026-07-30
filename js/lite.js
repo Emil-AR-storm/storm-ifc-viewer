@@ -11,6 +11,7 @@
 // forenkle modeller når det trengs. Historikken ligger i OPPLASTING.md.
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
 import { S, loadingText, statusEl } from "./state.js";
+import { t } from "./i18n.js";
 import { kall, metaFor, sikreMeta } from "./ifcrpc.js";
 
 export const lettNavn = (modellnavn) =>
@@ -95,7 +96,7 @@ export async function byggLettKopi(melding) {
 
   // Navnene er det som gjør kopien nyttig (søk og egenskaper), så vi sørger for
   // at elementdata er hentet før vi begynner.
-  si("Leser elementdata …");
+  si(t("Leser elementdata …"));
   await sikreMeta(() => {
     const s = new Set();
     S.modelGroup.children.forEach(m => {
@@ -105,13 +106,13 @@ export async function byggLettKopi(melding) {
     return s;
   });
 
-  si("Slår sammen geometri …");
+  si(t("Slår sammen geometri …"));
   const { bøtter, utelatt } = slåSammenScene(S.modelGroup.children);
 
   const ids = new Set();
   bøtter.forEach(b => b.ranges.forEach(r => ids.add(r.id)));
 
-  si("Henter elementdata …");
+  si(t("Henter elementdata …"));
   const props = {};
   for (const id of ids) {
     const m = metaFor(id);
@@ -123,14 +124,14 @@ export async function byggLettKopi(melding) {
   try { storeys = (await kall("storeys")).map(s => ({ name: s.name, ids: s.ids })); } catch(_) {}
 
   // sveis sammen dupliserte punkter – gir mange ganger mindre fil
-  si("Komprimerer geometri …");
+  si(t("Komprimerer geometri …"));
   await new Promise(r => setTimeout(r, 0));
   const { mergeVertices } = await import("three/addons/utils/BufferGeometryUtils.js");
   const gruppe = new THREE.Group();
   let nr = 0;
   for (const b of bøtter) {
     // mergeVertices er tung og synkron – slipp nettleseren til mellom hver bøtte
-    si("Komprimerer geometri … " + (++nr) + "/" + bøtter.length);
+    si(t("Komprimerer geometri …") + " " + (++nr) + "/" + bøtter.length);
     await new Promise(r => setTimeout(r, 0));
     let g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.BufferAttribute(b.pos, 3));
@@ -149,7 +150,7 @@ export async function byggLettKopi(melding) {
     columns, storeys, props
   };
 
-  si("Skriver .glb …");
+  si(t("Skriver .glb …"));
   await new Promise(r => setTimeout(r, 0));
   const { GLTFExporter } = await import("three/addons/exporters/GLTFExporter.js");
   const glb = await new Promise((res, rej) => new GLTFExporter().parse(gruppe, res, rej, { binary: true }));

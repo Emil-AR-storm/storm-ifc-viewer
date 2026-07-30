@@ -1,6 +1,7 @@
 // Oppstart: kobler sammen modulene og håndterer klikk i modellen.
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
 import { $, S, fmtLen, loadingEl, loadingText } from "./state.js";
+import { oversettDom, setLang, t } from "./i18n.js";
 import { setClipFromFace } from "./clip.js";
 import { clearSelection, hitID, pick, selectElement, showProperties } from "./elements.js";
 import { afterLoad, ifcReady, loadModel } from "./ifc.js";
@@ -27,6 +28,16 @@ import "./usersync.js";   // personlig oppsett fra SharePoint – må lastes sis
 const jsCheck = document.getElementById("jsCheck");
 
 if (jsCheck) jsCheck.style.display = "none";
+
+// ---------- Språk ----------
+// Lagret valg legges på HTML-en med en gang, og velgeren på startskjermen
+// holdes i takt med den i ⚙ Innstillinger (begge kaller setLang).
+oversettDom();
+const sprakVelg = $("sprakVelg");
+if (sprakVelg) {
+  sprakVelg.value = S.lang;
+  sprakVelg.onchange = () => setLang(sprakVelg.value);
+}
 
 // ---------- Klikk / trykk ----------
 
@@ -95,7 +106,7 @@ canvas.addEventListener("pointerup", (e) => {
 // ---------- Automatisk innlasting av innebygd modell ----------
 if (window.EMBEDDED_IFC) {
   (async () => {
-    loadingText.textContent = "Laster innebygd modell …";
+    loadingText.textContent = t("Laster innebygd modell …");
     loadingEl.classList.add("open");
     try {
       await ifcReady;
@@ -107,7 +118,7 @@ if (window.EMBEDDED_IFC) {
       await loadModel(buf);
       afterLoad();
     } catch (err) {
-      alert("Klarte ikke å laste innebygd modell: " + err.message);
+      alert(t("Klarte ikke å laste innebygd modell: ") + err.message);
     } finally {
       loadingEl.classList.remove("open");
     }

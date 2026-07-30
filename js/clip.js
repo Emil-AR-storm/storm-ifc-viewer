@@ -1,6 +1,7 @@
 // ✂️ Snitt (akse og fra flate) og 🏢 etasjefilter – begge bruker klippeplan.
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
 import { $, DEFAULT_CLIPBOX, S, apnePanel, esc, fmtLen, ikon, writePrefs } from "./state.js";
+import { t } from "./i18n.js";
 import { val } from "./elements.js";
 import { lightElementBoxes } from "./ifc.js";
 import { kall } from "./ifcrpc.js";
@@ -59,11 +60,11 @@ function startFacePick() {
 export function showClipBar() {
   const faceReady = S.clipMode === "face" && S.clipFaceN;
   let html =
-    '<span class="lbl">' + (S.clipPickFace ? "Trykk på en flate i modellen …" : "Snitt:") + '</span>' +
-    '<button id="cx">X</button><button id="cy">Y (høyde)</button><button id="cz">Z</button>' +
-    '<button id="cfa" title="Legg snittet parallelt med en flate du trykker på – for skjeive bygg">' + ikon("flate") + ' Fra flate</button>' +
-    '<button id="cbox" title="Seks plan du kan krympe hver for seg – isolerer et utsnitt av bygget">' + ikon("boks") + ' Boks</button>' +
-    '<button id="csave" title="Lagrede snitt for denne modellen">' + ikon("lagre") + ' Snitt</button>';
+    '<span class="lbl">' + (S.clipPickFace ? t("Trykk på en flate i modellen …") : t("Snitt:")) + '</span>' +
+    '<button id="cx">X</button><button id="cy">Y (' + t("høyde") + ')</button><button id="cz">Z</button>' +
+    '<button id="cfa" title="' + t("Legg snittet parallelt med en flate du trykker på – for skjeive bygg") + '">' + ikon("flate") + ' ' + t("Fra flate") + '</button>' +
+    '<button id="cbox" title="' + t("Seks plan du kan krympe hver for seg – isolerer et utsnitt av bygget") + '">' + ikon("boks") + ' ' + t("Boks") + '</button>' +
+    '<button id="csave" title="' + t("Lagrede snitt for denne modellen") + '">' + ikon("lagre") + ' ' + t("Snitt") + '</button>';
   if (S.clipMode === "box") {
     modeBar.innerHTML = html;
     modeBar.classList.add("open");
@@ -81,11 +82,11 @@ export function showClipBar() {
     $("csave").onclick = openSavedClips;
     return;
   }
-  html += '<button id="cf">' + ikon("snu") + ' Snu</button>';
+  html += '<button id="cf">' + ikon("snu") + ' ' + t("Snu") + '</button>';
   if (faceReady) {
     const lim = Math.max(1, S.modelSize);
     html += '<input type="range" id="crf" min="' + (-lim) + '" max="' + lim + '" step="' + (lim / 500) +
-      '" value="' + S.clipFaceOff + '" title="Skyv snittet langs flatens normal">' +
+      '" value="' + S.clipFaceOff + '" title="' + t("Skyv snittet langs flatens normal") + '">' +
       '<span class="lbl" id="crfv">' + fmtLen(S.clipFaceOff) + '</span>';
   } else {
     html += '<input type="range" id="cr" min="0" max="1000" value="' + Math.round(S.clipT * 1000) + '">';
@@ -216,15 +217,15 @@ export function renderClipPanel() {
   const body = $("clipBody");
   if (!body) return;
   body.innerHTML =
-    '<p style="color:var(--muted); font-size:11px; margin:0 0 8px">Krymp boksen fra hver av de seks sidene. ' +
-    'Alt utenfor skjules. Boksen kan stå sammen med Etasjer.</p>' +
+    '<p style="color:var(--muted); font-size:11px; margin:0 0 8px">' +
+    t("Krymp boksen fra hver av de seks sidene. Alt utenfor skjules. Boksen kan stå sammen med Etasjer.") + '</p>' +
     clipRow("x0", "X fra", "x1", true) + clipRow("x1", "X til", "x0", false) +
     clipRow("y0", "Y fra (gulv)", "y1", true) + clipRow("y1", "Y til (tak)", "y0", false) +
     clipRow("z0", "Z fra", "z1", true) + clipRow("z1", "Z til", "z0", false) +
     '<div class="prop-actions" style="margin-top:12px">' +
-      '<button id="cbReset">' + ikon("nullstill") + ' Hele modellen</button>' +
-      '<button id="cbHalf" title="Krymp alle sider 25 % inn">' + ikon("boks") + ' Midten</button>' +
-      '<button id="cbSave" class="primary">' + ikon("lagre") + ' Lagre som …</button>' +
+      '<button id="cbReset">' + ikon("nullstill") + ' ' + t("Hele modellen") + '</button>' +
+      '<button id="cbHalf" title="' + t("Krymp alle sider 25 % inn") + '">' + ikon("boks") + ' ' + t("Midten") + '</button>' +
+      '<button id="cbSave" class="primary">' + ikon("lagre") + ' ' + t("Lagre som …") + '</button>' +
     '</div>';
 
   body.querySelectorAll(".clip-sl").forEach(sl => {
@@ -282,8 +283,8 @@ function currentClipState() {
 }
 
 function saveCurrentClip() {
-  if (!S.fileName) { alert("Åpne en modell først."); return; }
-  const name = (prompt("Navn på snittet:", "Snitt " + (clipList().length + 1)) || "").trim();
+  if (!S.fileName) { alert(t("Åpne en modell først.")); return; }
+  const name = (prompt(t("Navn på snittet:"), t("Snitt") + " " + (clipList().length + 1)) || "").trim();
   if (!name) return;
   const list = clipList().filter(c => c.name !== name);
   list.unshift(Object.assign({ name }, currentClipState()));
@@ -324,17 +325,17 @@ export function openSavedClips() {
   if (!body) return;
   apnePanel("clipPanel");
   const list = clipList();
-  let html = '<div class="prop-actions"><button id="clNew" class="primary">' + ikon("lagre") + ' Lagre nåværende snitt</button>' +
-    '<button id="clBack">' + ikon("boks") + ' Tilbake til boksen</button></div>';
+  let html = '<div class="prop-actions"><button id="clNew" class="primary">' + ikon("lagre") + ' ' + t("Lagre nåværende snitt") + '</button>' +
+    '<button id="clBack">' + ikon("boks") + ' ' + t("Tilbake til boksen") + '</button></div>';
   html += list.length
     ? list.map((c, i) => {
-        const what = c.mode === "box" ? ikon("boks") + " Boks" : c.mode === "face" ? ikon("flate") + " Fra flate" : ikon("snitt") + " " + String(c.axis || "y").toUpperCase();
+        const what = c.mode === "box" ? ikon("boks") + " " + t("Boks") : c.mode === "face" ? ikon("flate") + " " + t("Fra flate") : ikon("snitt") + " " + String(c.axis || "y").toUpperCase();
         const st = c.storey >= 0 && S.storeyList && S.storeyList[c.storey] ? " · " + esc(S.storeyList[c.storey].name) : "";
         return '<div class="comment" data-i="' + i + '">' +
-          '<div class="meta"><span>' + what + st + '</span><span class="del" data-del="' + i + '">Slett</span></div>' +
+          '<div class="meta"><span>' + what + st + '</span><span class="del" data-del="' + i + '">' + t("Slett") + '</span></div>' +
           '<div>' + esc(c.name) + '</div></div>';
       }).join("")
-    : '<p style="color:var(--muted)">Ingen lagrede snitt for <b>' + esc(S.fileName || "modellen") + '</b> ennå.</p>';
+    : '<p style="color:var(--muted)">' + t("Ingen lagrede snitt for <b>{0}</b> ennå.", esc(S.fileName || "modellen")) + '</p>';
   body.innerHTML = html;
   $("clNew").onclick = saveCurrentClip;
   $("clBack").onclick = () => { S.clipMode = "box"; showClipBar(); renderClipPanel(); applyClip(); };
@@ -435,15 +436,15 @@ $("btnStorey").addEventListener("click", async () => {
 
 function showStoreyBar() {
   if (!S.storeyList || !S.storeyList.length) {
-    modeBar.innerHTML = '<span class="lbl">Fant ingen etasjer (IfcBuildingStorey) i modellen' +
-      (S.glbActive ? ' – lag en ny lett kopi fra original-IFC-en for å få med etasjedata' : '') + '</span>';
+    modeBar.innerHTML = '<span class="lbl">' + t("Fant ingen etasjer (IfcBuildingStorey) i modellen") +
+      (S.glbActive ? t(" – lag en ny lett kopi fra original-IFC-en for å få med etasjedata") : '') + '</span>';
     modeBar.classList.add("open");
     return;
   }
-  modeBar.innerHTML = '<span class="lbl">Etasje:</span><button data-st="-1">Alle</button>' +
+  modeBar.innerHTML = '<span class="lbl">' + t("Etasje:") + '</span><button data-st="-1">' + t("Alle") + '</button>' +
     S.storeyList.map((s, i) => '<button data-st="' + i + '">' + esc(s.name) + '</button>').join("") +
     // står snitt-boksen på samtidig, gir vi en vei tilbake til den
-    (S.clipOn && S.clipMode === "box" ? '<button id="stBox" title="Tilbake til snitt-boksen">' + ikon("boks") + ' Boks</button>' : "");
+    (S.clipOn && S.clipMode === "box" ? '<button id="stBox" title="' + t("Tilbake til snitt-boksen") + '">' + ikon("boks") + ' ' + t("Boks") + '</button>' : "");
   modeBar.classList.add("open");
   if ($("stBox")) $("stBox").onclick = () => { showClipBar(); apnePanel("clipPanel"); renderClipPanel(); };
   const upd = () => modeBar.querySelectorAll("button[data-st]").forEach(b =>

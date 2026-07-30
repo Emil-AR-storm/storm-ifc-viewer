@@ -8,6 +8,7 @@
 //  • uten håndtak (Safari/Firefox, eller fil valgt via den gamle filvelgeren)
 //    viser knappen navnet og åpner filvelgeren i stedet.
 import { $, S, esc, ikon } from "./state.js";
+import { t } from "./i18n.js";
 import { openLocalFile } from "./ifc.js";
 import { spOpenFile } from "./sharepoint.js";
 
@@ -86,27 +87,27 @@ function fmtSize(bytes) {
 
 // «i dag 09:14», «i går», «for 3 dager siden»
 function fmtWhen(iso) {
-  const t = Date.parse(iso);
-  if (!t) return "";
-  const days = Math.floor((Date.now() - t) / 86400000);
-  if (days <= 0) return "sist åpnet i dag";
-  if (days === 1) return "sist åpnet i går";
-  if (days < 30) return "sist åpnet for " + days + " dager siden";
-  return "sist åpnet " + new Date(t).toLocaleDateString("no-NO");
+  const ts = Date.parse(iso);
+  if (!ts) return "";
+  const days = Math.floor((Date.now() - ts) / 86400000);
+  if (days <= 0) return t("sist åpnet i dag");
+  if (days === 1) return t("sist åpnet i går");
+  if (days < 30) return t("sist åpnet for {0} dager siden", days);
+  return t("sist åpnet {0}", new Date(ts).toLocaleDateString("no-NO"));
 }
 
 export function render(rec) {
   const box = $("resumeBox");
   if (!box) return;
   if (!rec) { box.style.display = "none"; box.innerHTML = ""; return; }
-  const where = rec.kind === "lib" ? "Biblioteket" : "Din maskin" + (rec.handle ? "" : " – må velges på nytt");
+  const where = rec.kind === "lib" ? t("Biblioteket") : t("Din maskin") + (rec.handle ? "" : t(" – må velges på nytt"));
   box.style.display = "";
   box.innerHTML =
     '<button id="resumeBtn" class="primary" style="font-size:15px; padding:12px 20px; max-width:100%">' +
-      ikon("fortsett") + ' Fortsett med <b style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:260px; display:inline-block; vertical-align:bottom">' +
+      ikon("fortsett") + ' ' + t("Fortsett med") + ' <b style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:260px; display:inline-block; vertical-align:bottom">' +
       esc(rec.name) + '</b></button>' +
     '<div style="color:var(--muted); font-size:11px; margin-top:6px">' + where + fmtSize(rec.size) +
-      ' · ' + fmtWhen(rec.at) + ' · <a href="#" id="resumeForget" style="color:var(--muted)">glem</a></div>';
+      ' · ' + fmtWhen(rec.at) + ' · <a href="#" id="resumeForget" style="color:var(--muted)">' + t("glem") + '</a></div>';
 
   $("resumeBtn").onclick = () => resume(rec);
   $("resumeForget").onclick = (e) => { e.preventDefault(); idbDel(); render(null); };
@@ -119,7 +120,7 @@ export async function resume(rec) {
   }
   // Lokal fil uten håndtak: vi kan ikke åpne den selv, så vi hjelper på vei
   if (!rec.handle || !rec.handle.getFile) {
-    alert("Velg «" + rec.name + "» på nytt – nettleseren tillater ikke at siden åpner en lokal fil av seg selv.");
+    alert(t("Velg «{0}» på nytt – nettleseren tillater ikke at siden åpner en lokal fil av seg selv.", rec.name));
     $("fileInput").click();
     return;
   }
@@ -130,7 +131,7 @@ export async function resume(rec) {
       perm = await rec.handle.requestPermission({ mode: "read" });
     }
     if (perm !== "granted") {
-      alert("Fikk ikke tilgang til filen. Velg den på nytt med Åpne-knappen.");
+      alert(t("Fikk ikke tilgang til filen. Velg den på nytt med Åpne-knappen."));
       return;
     }
     const file = await rec.handle.getFile();
@@ -138,10 +139,10 @@ export async function resume(rec) {
   } catch (err) {
     console.warn("Kunne ikke gjenåpne:", err);
     if (/NotFound|NotAllowed/i.test(err.name || "")) {
-      alert("Fant ikke «" + rec.name + "» der den lå sist. Er den flyttet eller slettet? Velg den på nytt med Åpne-knappen.");
+      alert(t("Fant ikke «{0}» der den lå sist. Er den flyttet eller slettet? Velg den på nytt med Åpne-knappen.", rec.name));
       idbDel(); render(null);
     } else {
-      alert("Klarte ikke å gjenåpne filen: " + err.message);
+      alert(t("Klarte ikke å gjenåpne filen: ") + err.message);
     }
   }
 }

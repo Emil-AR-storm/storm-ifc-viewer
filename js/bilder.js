@@ -10,6 +10,7 @@
 // lengste side og lagrer som JPEG før opplasting – det holder rikelig for å se
 // hva som er galt på byggeplassen, og gir filer på noen hundre kB.
 import { S } from "./state.js";
+import { t } from "./i18n.js";
 import { GRAPH, SP, authHeaders, graphGet, spTokenSilent } from "./sharepoint.js";
 
 export const MAKS_PX = 1600;      // lengste side etter nedskalering
@@ -66,7 +67,7 @@ export async function komprimer(file) {
   c.getContext("2d").drawImage(bmp, 0, 0, m.w, m.h);
   if (bmp.close) bmp.close();
   const blob = await new Promise(res => c.toBlob(res, "image/jpeg", JPEG_KVALITET));
-  if (!blob) throw new Error("Klarte ikke å lage bildefil av dette bildet");
+  if (!blob) throw new Error(t("Klarte ikke å lage bildefil av dette bildet"));
   return blob;
 }
 
@@ -84,7 +85,7 @@ function viaImgTag(file) {
     const url = URL.createObjectURL(file);
     const img = new Image();
     img.onload = () => { URL.revokeObjectURL(url); res(img); };
-    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error("Kunne ikke lese bildefilen")); };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error(t("Kunne ikke lese bildefilen"))); };
     img.src = url;
   });
 }

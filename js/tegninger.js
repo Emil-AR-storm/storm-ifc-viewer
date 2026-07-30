@@ -11,6 +11,7 @@
 // pdf.js hentes med dynamisk import FØRST når noen faktisk åpner en tegning, så
 // en vanlig økt uten PDF-er ikke betaler for biblioteket.
 import { S, loadingEl, loadingText } from "./state.js";
+import { t } from "./i18n.js";
 import { GRAPH, SP, authHeaders, graphGet, spTokenSilent } from "./sharepoint.js";
 
 export const PDFJS_URL = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.2.67/build/pdf.min.mjs";
@@ -88,7 +89,7 @@ async function lesMappe(mappe, token) {
 // Henter tegningene for en modell.
 // Svar: { mappenavn, filer } · { mangler: true, undermapper } · { feil }
 export async function hentTegninger(modell) {
-  if (!modell) return { feil: "Ingen modell er åpen" };
+  if (!modell) return { feil: t("Ingen modell er åpen") };
   let token;
   try { token = await spTokenSilent(); } catch(_) { token = null; }
   if (!token) return { feil: "IKKE_INNLOGGET" };
@@ -144,23 +145,23 @@ export function erNedlastet(vedlegg) {
 export async function pdfDokument(vedlegg, spor) {
   if (dokBuffer.has(vedlegg.itemId)) return dokBuffer.get(vedlegg.itemId);
   if (mb(vedlegg.storrelse) > ADVAR_MB && !confirm(
-      vedlegg.fil + " er " + mb(vedlegg.storrelse).toFixed(0) +
-      " MB. Over mobilnett kan nedlastingen ta et minutt. Åpne likevel?")) {
+      t("{0} er {1} MB. Over mobilnett kan nedlastingen ta et minutt. Åpne likevel?",
+        vedlegg.fil, mb(vedlegg.storrelse).toFixed(0)))) {
     return null;
   }
   let token;
   try { token = await spTokenSilent(); } catch(_) { token = null; }
   if (!token) throw new Error("IKKE_INNLOGGET");
   await siteId(token);
-  if (spor) spor("Henter " + vedlegg.fil + " …");
+  if (spor) spor(t("Henter {0} …", vedlegg.fil));
   const r = await fetch(GRAPH + "/sites/" + S.spSiteId + "/drive/items/" +
     encodeURIComponent(vedlegg.itemId) + "/content",
     { headers: authHeaders(token, null, "tegning") });
   if (!r.ok) throw new Error(r.status === 404
-    ? "Tegningen finnes ikke i SharePoint lenger"
-    : "Kunne ikke hente tegningen (Graph " + r.status + ")");
+    ? t("Tegningen finnes ikke i SharePoint lenger")
+    : t("Kunne ikke hente tegningen (Graph {0})", r.status));
   const data = new Uint8Array(await r.arrayBuffer());
-  if (spor) spor("Åpner " + vedlegg.fil + " …");
+  if (spor) spor(t("Åpner {0} …", vedlegg.fil));
   const lib = await lastPdfLib();
   const doc = await lib.getDocument({ data }).promise;
   dokBuffer.set(vedlegg.itemId, doc);
@@ -187,7 +188,7 @@ export async function sideBilde(vedlegg, side, spor) {
   const nr = gyldigSide(side, doc.numPages);
   const nokkel = vedlegg.itemId + ":" + nr;
   if (sideBuffer.has(nokkel)) return sideBuffer.get(nokkel);
-  if (spor) spor("Tegner side " + nr + " …");
+  if (spor) spor(t("Tegner side {0} …", nr));
   const page = await doc.getPage(nr);
   const basis = page.getViewport({ scale: 1 });
   // tegn stort nok til at zoom i visningen fortsatt er lesbart
@@ -198,7 +199,7 @@ export async function sideBilde(vedlegg, side, spor) {
   c.height = Math.max(1, Math.round(vp.height));
   await page.render({ canvasContext: c.getContext("2d"), viewport: vp }).promise;
   const blob = await new Promise(res => c.toBlob(res, "image/jpeg", 0.92));
-  if (!blob) throw new Error("Klarte ikke å tegne siden");
+  if (!blob) throw new Error(t("Klarte ikke å tegne siden"));
   const url = URL.createObjectURL(blob);
   sideBuffer.set(nokkel, url);
   return url;

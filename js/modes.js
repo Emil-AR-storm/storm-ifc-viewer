@@ -1,5 +1,6 @@
 // Modus-håndtering (markering / mål / kote) og den nedre kontrollinja.
 import { $, S, writePrefs } from "./state.js";
+import { t } from "./i18n.js";
 import { hideSnapPreview } from "./measure.js";
 import { koteGroup, measureGroup } from "./scene.js";
 
@@ -26,10 +27,10 @@ $("btnKote").addEventListener("click", () => setMode("kote"));
 export function updateModeBar() {
   if (S.clipOn || S.storeyOn) return; // snitt-/etasjekontroller styrer modeBar
   if (S.mode === "measure") {
-    modeBar.innerHTML = '<span class="lbl">Trykk på to punkter</span>' +
-      '<button id="mbSnap" title="Fest til nærmeste hjørne/kant">Snap</button>' +
-      '<input type="range" id="mbSnapPx" min="5" max="50" step="1" value="' + S.snapPx + '" title="Snap-følsomhet (piksler)" style="width:90px">' +
-      '<button id="mbClear">Tøm mål</button>';
+    modeBar.innerHTML = '<span class="lbl">' + t("Trykk på to punkter") + '</span>' +
+      '<button id="mbSnap" title="' + t("Fest til nærmeste hjørne/kant") + '">' + t("Snap") + '</button>' +
+      '<input type="range" id="mbSnapPx" min="5" max="50" step="1" value="' + S.snapPx + '" title="' + t("Snap-følsomhet (piksler)") + '" style="width:90px">' +
+      '<button id="mbClear">' + t("Tøm mål") + '</button>';
     $("mbSnap").classList.toggle("active", S.snapOn);
     $("mbSnap").onclick = () => {
       S.snapOn = !S.snapOn;
@@ -45,11 +46,11 @@ export function updateModeBar() {
     $("mbClear").onclick = () => { measureGroup.clear(); S.measureFirst = null; };
     modeBar.classList.add("open");
   } else if (S.mode === "kote") {
-    modeBar.innerHTML = '<span class="lbl">Trykk på et punkt for å vise kotehøyde</span><button id="mbClear">Tøm koter</button>';
+    modeBar.innerHTML = '<span class="lbl">' + t("Trykk på et punkt for å vise kotehøyde") + '</span><button id="mbClear">' + t("Tøm koter") + '</button>';
     $("mbClear").onclick = () => koteGroup.clear();
     modeBar.classList.add("open");
   } else if (S.mode === "marker") {
-    modeBar.innerHTML = '<span class="lbl">Trykk på modellen for å plassere markering</span>';
+    modeBar.innerHTML = '<span class="lbl">' + t("Trykk på modellen for å plassere markering") + '</span>';
     modeBar.classList.add("open");
   } else {
     modeBar.classList.remove("open");

@@ -7,14 +7,14 @@
 // Krever at app-registreringen har den delegerte tillatelsen Tasks.ReadWrite.
 // Se OPPLASTING.md for oppsettet.
 import { PLANNER_BUCKET, PLANNER_PLAN_ID } from "./config.js";
+import { t } from "./i18n.js";
 import { GRAPH, authHeaders, graphToken } from "./sharepoint.js";
 
 export const PLANNER_SCOPES = ["Tasks.ReadWrite"];
 
-const SAMTYKKE =
-  "For å lage Planner-oppgaver må du gi Storm IFC-Viewer tilgang til oppgavene dine – " +
-  "det skjer én gang. Siden lastes på nytt, så modellen må åpnes igjen etterpå " +
-  "(«Fortsett med …» på startskjermen).\n\nFortsette?";
+// funksjon, ikke konstant: teksten skal følge språket som er valgt NÅ
+const SAMTYKKE = () =>
+  t("For å lage Planner-oppgaver må du gi Storm IFC-Viewer tilgang til oppgavene dine – det skjer én gang. Siden lastes på nytt, så modellen må åpnes igjen etterpå («Fortsett med …» på startskjermen).\n\nFortsette?");
 
 export async function plannerToken(silent) {
   return graphToken(PLANNER_SCOPES, {

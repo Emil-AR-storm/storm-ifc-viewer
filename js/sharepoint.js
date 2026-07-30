@@ -1,5 +1,6 @@
 // Microsoft Graph: innlogging og modellbibliotek fra SharePoint.
 import { $, S, esc, ikon, loadingEl, loadingText, lukkPaneler } from "./state.js";
+import { t } from "./i18n.js";
 import { afterLoad, clearLoadFlag, ifcReady, loadGlb, loadModel, offerLightRetry, setLoadFlag } from "./ifc.js";
 
 // ---------- SharePoint-bibliotek (Microsoft Graph) ----------
@@ -26,7 +27,7 @@ const SP_SCOPES = ["Sites.Read.All", "Files.Read.All", "Files.ReadWrite.All"];
 
 async function msalInit() {
   if (S.msalApp) return S.msalApp;
-  if (!window.msal) throw new Error("Innloggings-biblioteket (MSAL) lastet ikke – sjekk nettforbindelsen");
+  if (!window.msal) throw new Error(t("Innloggings-biblioteket (MSAL) lastet ikke – sjekk nettforbindelsen"));
   S.msalApp = new msal.PublicClientApplication({
     auth: {
       clientId: SP.clientId,
@@ -78,13 +79,13 @@ export async function graphToken(scopes, opts) {
     if (t && String(t).trim()) return t;
     console.warn("MSAL ga tomt token for " + scopes.join(", ") + " – ber om nytt");
     if (o.silent) return null;
-    if (o.confirmFirst && !confirm(o.confirmFirst)) return null;
+    if (o.confirmFirst && !confirm(typeof o.confirmFirst === "function" ? o.confirmFirst() : o.confirmFirst)) return null;
     sessionStorage.setItem("storm-ifc-open-lib", o.after || "lib");
     await S.msalApp.acquireTokenRedirect({ scopes });
     return null;
   } catch (_) {
     if (o.silent) return null;
-    if (o.confirmFirst && !confirm(o.confirmFirst)) return null;
+    if (o.confirmFirst && !confirm(typeof o.confirmFirst === "function" ? o.confirmFirst() : o.confirmFirst)) return null;
     sessionStorage.setItem("storm-ifc-open-lib", o.after || "lib");
     await S.msalApp.acquireTokenRedirect({ scopes });
     return null;
@@ -108,8 +109,7 @@ export async function spTokenSilent() {
 // den som står der. Vi stopper før det, sier hva som mangler, og logger hvilken
 // forespørsel det gjaldt.
 export const IKKE_INNLOGGET =
-  "Du er ikke innlogget mot SharePoint (eller innloggingen er utløpt). " +
-  "Åpne Biblioteket og logg inn, så prøv igjen.";
+  t("Du er ikke innlogget mot SharePoint (eller innloggingen er utløpt). Åpne Biblioteket og logg inn, så prøv igjen.");
 
 export function authHeaders(token, ekstra, hva) {
   if (!token || !String(token).trim()) {
@@ -179,38 +179,38 @@ async function openLibrary() {
   const body = $("libBody");
   $("libPanel").classList.add("open");
   if (SP.clientId.startsWith("FYLL")) {
-    body.innerHTML = '<p style="color:var(--muted)">Biblioteket er ikke satt opp ennå – client-ID mangler i konfigurasjonen.</p>';
+    body.innerHTML = '<p style="color:var(--muted)">' + t("Biblioteket er ikke satt opp ennå – client-ID mangler i konfigurasjonen.") + '</p>';
     return;
   }
   const fane = LIB_FANER.find(x => x.key === S.libFane) || LIB_FANER[0];
   const faneHtml = '<div class="prop-actions lib-faner">' + LIB_FANER.map(f =>
     '<button data-fane="' + f.key + '"' + (f.key === fane.key ? ' class="active"' : "") + '>' +
-    ikon(f.ikonNavn) + ' ' + esc(f.tittel) + '</button>').join("") + '</div>';
+    ikon(f.ikonNavn) + ' ' + esc(t(f.tittel)) + '</button>').join("") + '</div>';
   const kobleFaner = () => {
     body.querySelectorAll("[data-fane]").forEach(b => {
       b.onclick = () => { if (b.dataset.fane !== S.libFane) { S.libFane = b.dataset.fane; openLibrary(); } };
     });
   };
 
-  body.innerHTML = faneHtml + '<p style="color:var(--muted)">Henter fil-liste fra SharePoint …</p>';
+  body.innerHTML = faneHtml + '<p style="color:var(--muted)">' + t("Henter fil-liste fra SharePoint …") + '</p>';
   kobleFaner();
   try {
     const files = await spFetchList(fane.key);
     if (files === null) {
-      body.innerHTML = faneHtml + '<p style="color:var(--muted)">Sender deg til Microsoft-innlogging …</p>';
+      body.innerHTML = faneHtml + '<p style="color:var(--muted)">' + t("Sender deg til Microsoft-innlogging …") + '</p>';
       kobleFaner();
       return;
     }
     S.spFiles = files;
     body.innerHTML = faneHtml +
-      '<input type="search" id="libSearch" placeholder="Søk etter modell …" autocomplete="off">' +
+      '<input type="search" id="libSearch" placeholder="' + t("Søk etter modell …") + '" autocomplete="off">' +
       '<div id="libList"></div>';
     kobleFaner();
     $("libSearch").addEventListener("input", () => renderLibList($("libSearch").value));
     renderLibList("");
   } catch (err) {
-    body.innerHTML = faneHtml + '<p style="color:#ef4444">Feil: ' + esc(err.message) + '</p>' +
-      '<p style="color:var(--muted); font-size:11px; margin-top:8px">Sjekk at mappen «' + esc(fane.mappe()) + '» finnes på ' + esc(SP.sitePath) + ' og at du har tilgang.</p>';
+    body.innerHTML = faneHtml + '<p style="color:var(--danger)">' + t("Feil: ") + esc(err.message) + '</p>' +
+      '<p style="color:var(--muted); font-size:11px; margin-top:8px">' + t("Sjekk at mappen «{0}» finnes på {1} og at du har tilgang.", esc(fane.mappe()), esc(SP.sitePath)) + '</p>';
     kobleFaner();
   }
 }
@@ -221,14 +221,14 @@ function renderLibList(filter) {
   const q = filter.trim().toLowerCase();
   const list = (S.spFiles || []).filter(f => f.name.toLowerCase().includes(q));
   if (!S.spFiles || !S.spFiles.length) {
-    listEl.innerHTML = '<p style="color:var(--muted)">Ingen filer i «' + esc(fane.mappe()) + '» ennå.' +
+    listEl.innerHTML = '<p style="color:var(--muted)">' + t("Ingen filer i «{0}» ennå.", esc(fane.mappe())) +
       (fane.key === "lett"
-        ? ' Lag en med Lett kopi-knappen og legg .glb-filen i denne mappa.'
+        ? t(" Lag en med Lett kopi-knappen og legg .glb-filen i denne mappa.")
         : '') + '</p>';
     return;
   }
   if (!list.length) {
-    listEl.innerHTML = '<p style="color:var(--muted)">Ingen treff på «' + esc(filter) + '».</p>';
+    listEl.innerHTML = '<p style="color:var(--muted)">' + t("Ingen treff på «{0}».", esc(filter)) + '</p>';
     return;
   }
   listEl.innerHTML = list.map(f => {
@@ -237,7 +237,7 @@ function renderLibList(filter) {
     return '<div class="lib-item" data-id="' + esc(f.id) + '">' +
       '<div class="n">' + esc(f.name) + '</div>' +
       '<div class="m">' + mb + (d ? " · " + d : "") +
-      (f.løs ? ' · <span style="color:var(--accent2)">ligger i ' + esc(SP.folder) + '</span>' : "") +
+      (f.løs ? t(" · <span style=\"color:var(--accent2)\">ligger i {0}</span>", esc(SP.folder)) : "") +
       '</div></div>';
   }).join("");
   listEl.querySelectorAll(".lib-item").forEach(el => {
@@ -252,7 +252,7 @@ export async function spOpenFile(item) {
   $("libPanel").classList.remove("open");
   loadingEl.classList.add("open");
   try {
-    loadingText.textContent = "Laster ned " + item.name + " …";
+    loadingText.textContent = t("Laster ned {0} …", item.name);
     const token = await spToken();
     if (!token) return;
     if (!S.spSiteId) {
@@ -261,9 +261,9 @@ export async function spOpenFile(item) {
     }
     const meta = await graphGet("/sites/" + S.spSiteId + "/drive/items/" + item.id, token);
     const url = meta["@microsoft.graph.downloadUrl"];
-    if (!url) throw new Error("Fikk ingen nedlastingslenke fra SharePoint");
+    if (!url) throw new Error(t("Fikk ingen nedlastingslenke fra SharePoint"));
     const resp = await fetch(url);
-    if (!resp.ok) throw new Error("Nedlasting feilet (" + resp.status + ")");
+    if (!resp.ok) throw new Error(t("Nedlasting feilet ({0})", resp.status));
     let buf;
     const total = Number(resp.headers.get("Content-Length")) || item.size || 0;
     if (resp.body && total) {
@@ -278,8 +278,8 @@ export async function spOpenFile(item) {
         // «Laster ned» sier tydelig at dette er nedlastingen fra SharePoint, og
         // ikke selve lesingen av modellen. To prosentvisninger etter hverandre
         // så ut som om modellen ble lastet to ganger.
-        loadingText.textContent = "Laster ned " + item.name + " … " +
-          Math.min(100, Math.round(got / total * 100)) + " %";
+        loadingText.textContent = t("Laster ned {0} … {1} %", item.name,
+          Math.min(100, Math.round(got / total * 100)));
       }
       buf = new Uint8Array(got);
       let o = 0;
@@ -288,7 +288,7 @@ export async function spOpenFile(item) {
       buf = new Uint8Array(await resp.arrayBuffer());
     }
     const isGlb = /\.glb$/i.test(item.name);
-    loadingText.textContent = "Leser " + item.name + " …";
+    loadingText.textContent = t("Leser {0} …", item.name);
     if (!isGlb) await ifcReady;
     await new Promise(r => setTimeout(r, 30));
     S.fileName = item.name;
@@ -301,7 +301,7 @@ export async function spOpenFile(item) {
   } catch (err) {
     console.error(err);
     clearLoadFlag();
-    if (!(await offerLightRetry(err))) alert("Klarte ikke å åpne fra biblioteket: " + err.message);
+    if (!(await offerLightRetry(err))) alert(t("Klarte ikke å åpne fra biblioteket: ") + err.message);
   } finally {
     loadingEl.classList.remove("open");
   }

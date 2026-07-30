@@ -1,6 +1,7 @@
 // 🔠 Aksesystem: finner akselinjer automatisk fra valgte elementtyper.
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
 import { $, S, apnePanel, esc, statusEl } from "./state.js";
+import { t } from "./i18n.js";
 import { val } from "./elements.js";
 import { lightElementBoxes } from "./ifc.js";
 import { kall } from "./ifcrpc.js";
@@ -246,21 +247,21 @@ function rebuildAxes() {
   axesGroup.clear();
   buildAxes();
   if (!axesGroup.children.length)
-    statusEl.textContent = "Fant ikke nok elementer på linje til å lage akser fra valgt kilde";
+    statusEl.textContent = t("Fant ikke nok elementer på linje til å lage akser fra valgt kilde");
 }
 
 function renderAxesPanel() {
   if (!S.axisSources) classifyAxisSources();
-  let html = '<p style="color:var(--muted); font-size:12px; margin:0 0 8px">Velg hvilke elementtyper aksene lages fra:</p>';
+  let html = '<p style="color:var(--muted); font-size:12px; margin:0 0 8px">' + t("Velg hvilke elementtyper aksene lages fra:") + '</p>';
   if (!S.axisSources.size)
-    html += '<p style="font-size:13px">Fant ingen egnede elementtyper (søyler, fundamenter, peler, vegger, bjelker) i modellen.</p>';
+    html += '<p style="font-size:13px">' + t("Fant ingen egnede elementtyper (søyler, fundamenter, peler, vegger, bjelker) i modellen.") + '</p>';
   for (const [k, g] of S.axisSources) {
-    html += '<label class="qty-row" style="cursor:pointer"><div class="n">' + esc(g.label) +
+    html += '<label class="qty-row" style="cursor:pointer"><div class="n">' + esc(t(g.label)) +
       ' <span style="color:var(--muted);font-size:11px">(' + g.ids.size + ')</span></div>' +
       '<div class="c"><input type="checkbox" data-axsrc="' + esc(k) + '"' + (S.axisSelection.has(k) ? " checked" : "") + '></div></label>';
   }
-  html += '<p style="color:var(--muted); font-size:11px; margin-top:8px">Mål-lappene (gule) vises først når du zoomer nær nok – det holder store modeller ryddige. ' +
-    'Skriftstørrelsen justeres i Innstillinger (høyreklikk).</p>';
+  html += '<p style="color:var(--muted); font-size:11px; margin-top:8px">' +
+    t("Mål-lappene (gule) vises først når du zoomer nær nok – det holder store modeller ryddige. Skriftstørrelsen justeres i Innstillinger (høyreklikk).") + '</p>';
   $("axesBody").innerHTML = html;
   $("axesBody").querySelectorAll("input[data-axsrc]").forEach(inp => {
     inp.onchange = (e) => {
