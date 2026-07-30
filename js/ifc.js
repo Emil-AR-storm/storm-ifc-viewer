@@ -10,6 +10,7 @@ import { miniCanvas, renderMiniMap } from "./minimap.js";
 import { restoreAppearance } from "./prefs.js";
 import { axesGroup, fitToModel, koteGroup, markerGroup, measureGroup, renderer, scene } from "./scene.js";
 import { SP, spOpenFile } from "./sharepoint.js";
+import { tomTegningsbuffer } from "./tegninger.js";
 
 // ---------- IFC ----------
 // Selve IFC-motoren (web-ifc + wasm) lever nå i js/ifc-worker.js. Hovedtråden
@@ -164,6 +165,7 @@ function clearModel() {
   S.miniInfo = null; S.miniBase = null;
   miniCanvas.style.display = "none";
   S.comments = [];
+  tomTegningsbuffer();      // tegninger hører til forrige modell
   S.qtyCache = null;
   S.qtyType = "";
   S.qtyMat = "";
