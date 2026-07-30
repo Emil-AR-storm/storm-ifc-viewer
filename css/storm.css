@@ -111,6 +111,10 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
 .qty-row .n { word-break: break-word; }
 .qty-row .c { color: var(--accent2); white-space: nowrap; text-align: right; }
 
+/* 📚 Bibliotekets to faner: fulle modeller og lette kopier */
+.lib-faner { margin-bottom: 8px; }
+.lib-faner button { flex: 1; justify-content: center; }
+
 /* Nedtrekk for objekttype og materiale i 📊 Mengder – ett ark om gangen */
 .qty-filtre { display: flex; gap: 8px; margin-bottom: 10px; }
 .qty-filtre .qty-type-velg { flex: 1; min-width: 0; margin-bottom: 0; }
@@ -217,8 +221,14 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
   border: 1px solid var(--border); border-radius: 6px;
   padding: 3px 5px; font-size: 11px; max-width: 150px;
 }
-/* 📷 Miniatyrbilder i bobla */
-#markerPop .mp-bilder { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; }
+/* 📷 Miniatyrbilder i bobla, delt i Før og Etter */
+#markerPop .mp-seksjon { margin-top: 8px; }
+#markerPop .mp-seksjon-tittel {
+  font-size: 10px; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 3px;
+}
+#markerPop .mp-seksjon-tittel span { color: var(--accent2); }
+#markerPop .mp-bilder { display: flex; gap: 5px; flex-wrap: wrap; }
 .mp-bilde {
   width: 52px; height: 52px; flex: 0 0 auto;
   display: flex; align-items: center; justify-content: center;
