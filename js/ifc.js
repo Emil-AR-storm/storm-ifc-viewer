@@ -98,6 +98,9 @@ export async function pickFile() {
 (function enableDrop() {
   const hint = document.createElement("div");
   hint.id = "dropHint";
+  // data-i18n + data-no: oversettDom() oversetter den ved oppstart og språkbytte
+  hint.setAttribute("data-i18n", "");
+  hint.dataset.no = "Slipp IFC- eller .glb-fila her";
   hint.textContent = t("Slipp IFC- eller .glb-fila her");
   document.body.appendChild(hint);
   let depth = 0;

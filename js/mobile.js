@@ -7,6 +7,7 @@
 // Knappene FLYTTES (appendChild) – de bygges ikke på nytt. Da beholder de alle
 // hendelseslyttere modulene har satt på dem.
 import { $, ikon } from "./state.js";
+import { t } from "./i18n.js";
 
 const SMAL = 640;
 
@@ -45,8 +46,12 @@ function lagMerKnapp() {
   if ($("btnMore")) return $("btnMore");
   const b = document.createElement("button");
   b.id = "btnMore";
-  b.innerHTML = ikon("mer") + '<span class="btn-t">Mer</span>';
-  b.title = "Flere verktøy – hold inne for Innstillinger";
+  // data-i18n + data-no: knappen bygges gjerne ETTER språkbytte, så originalen
+  // (norsk nøkkel) må oppgis eksplisitt for at oversettDom() skal treffe riktig
+  b.innerHTML = ikon("mer") + '<span class="btn-t" data-i18n data-no="Mer">' + t("Mer") + '</span>';
+  b.title = t("Flere verktøy – hold inne for Innstillinger");
+  b.setAttribute("data-i18n-title", "");
+  b.dataset.noTitle = "Flere verktøy – hold inne for Innstillinger";
   b.onclick = () => (menyÅpen ? lukkMeny() : åpneMeny());
 
   // Langtrykk = ⚙ Innstillinger, som avtalt
