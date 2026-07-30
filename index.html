@@ -7,35 +7,85 @@
 <link rel="stylesheet" href="css/storm.css">
 </head>
 <body>
+
+<!-- Ikonsettet: Lucide (ISC-lisens), lagt inn som én sprite så alt virker uten
+     byggesteg og uten ekstra nedlastinger. Ikonene tegnes med currentColor og
+     følger dermed tekstfargen. Brukes med <svg class="ikon"><use href="#i-…"/></svg>
+     i HTML, og via ikon("…") fra js/state.js i dynamisk bygd HTML. -->
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+  <symbol id="i-apne" viewBox="0 0 24 24"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2" /></symbol>
+  <symbol id="i-bibliotek" viewBox="0 0 24 24"><rect width="8" height="18" x="3" y="3" rx="1" /><path d="M7 3v18" /><path d="M20.4 18.9c.2.5-.1 1.1-.6 1.3l-1.9.7c-.5.2-1.1-.1-1.3-.6L11.1 5.1c-.2-.5.1-1.1.6-1.3l1.9-.7c.5-.2 1.1.1 1.3.6Z" /></symbol>
+  <symbol id="i-lav" viewBox="0 0 24 24"><path d="M14.086 18.412A2 2 0 0112.67 19H5v-7.672a2 2 0 01.586-1.414L11.75 3.75a6 6 0 118.49 8.49z" /><path d="M16 8 2 22" /><path d="M17.488 15H9" /></symbol>
+  <symbol id="i-markeringer" viewBox="0 0 24 24"><path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z" /></symbol>
+  <symbol id="i-fokus" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><line x1="22" x2="18" y1="12" y2="12" /><line x1="6" x2="2" y1="12" y2="12" /><line x1="12" x2="12" y1="6" y2="2" /><line x1="12" x2="12" y1="22" y2="18" /></symbol>
+  <symbol id="i-markering" viewBox="0 0 24 24"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0" /><circle cx="12" cy="10" r="3" /></symbol>
+  <symbol id="i-maal" viewBox="0 0 24 24"><path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z" /><path d="m14.5 12.5 2-2" /><path d="m11.5 9.5 2-2" /><path d="m8.5 6.5 2-2" /><path d="m17.5 15.5 2-2" /></symbol>
+  <symbol id="i-kote" viewBox="0 0 24 24"><path d="m8 3 4 8 5-5 5 15H2L8 3z" /></symbol>
+  <symbol id="i-akser" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2" /><path d="M3 9h18" /><path d="M3 15h18" /><path d="M9 3v18" /><path d="M15 3v18" /></symbol>
+  <symbol id="i-snitt" viewBox="0 0 24 24"><circle cx="6" cy="6" r="3" /><path d="M8.12 8.12 12 12" /><path d="M20 4 8.12 15.88" /><circle cx="6" cy="18" r="3" /><path d="M14.8 14.8 20 20" /></symbol>
+  <symbol id="i-etasjer" viewBox="0 0 24 24"><path d="M10 12h4" /><path d="M10 8h4" /><path d="M14 21v-3a2 2 0 0 0-4 0v3" /><path d="M6 10H4a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-2" /><path d="M6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16" /></symbol>
+  <symbol id="i-sok" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></symbol>
+  <symbol id="i-transparent" viewBox="0 0 24 24"><path d="M9 10h.01" /><path d="M15 10h.01" /><path d="M12 2a8 8 0 0 0-8 8v12l3-3 2.5 2.5L12 19l2.5 2.5L17 19l3 3V10a8 8 0 0 0-8-8z" /></symbol>
+  <symbol id="i-mengder" viewBox="0 0 24 24"><path d="M3 3v16a2 2 0 0 0 2 2h16" /><path d="M18 17V9" /><path d="M13 17V5" /><path d="M8 17v-3" /></symbol>
+  <symbol id="i-utseende" viewBox="0 0 24 24"><path d="M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z" /><circle cx="13.5" cy="6.5" r=".5" fill="currentColor" /><circle cx="17.5" cy="10.5" r=".5" fill="currentColor" /><circle cx="6.5" cy="12.5" r=".5" fill="currentColor" /><circle cx="8.5" cy="7.5" r=".5" fill="currentColor" /></symbol>
+  <symbol id="i-sammenlign" viewBox="0 0 24 24"><circle cx="5" cy="6" r="3" /><path d="M12 6h5a2 2 0 0 1 2 2v7" /><path d="m15 9-3-3 3-3" /><circle cx="19" cy="18" r="3" /><path d="M12 18H7a2 2 0 0 1-2-2V9" /><path d="m9 15 3 3-3 3" /></symbol>
+  <symbol id="i-del" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></symbol>
+  <symbol id="i-lagre" viewBox="0 0 24 24"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" /><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7" /><path d="M7 3v4a1 1 0 0 0 1 1h7" /></symbol>
+  <symbol id="i-innstillinger" viewBox="0 0 24 24"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" /><circle cx="12" cy="12" r="3" /></symbol>
+  <symbol id="i-vis" viewBox="0 0 24 24"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" /><circle cx="12" cy="12" r="3" /></symbol>
+  <symbol id="i-skjul" viewBox="0 0 24 24"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49" /><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242" /><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143" /><path d="m2 2 20 20" /></symbol>
+  <symbol id="i-kamera" viewBox="0 0 24 24"><path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z" /><circle cx="12" cy="13" r="3" /></symbol>
+  <symbol id="i-tegning" viewBox="0 0 24 24"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z" /><path d="M14 2v5a1 1 0 0 0 1 1h5" /><path d="M10 9H8" /><path d="M16 13H8" /><path d="M16 17H8" /></symbol>
+  <symbol id="i-lastned" viewBox="0 0 24 24"><path d="M12 15V3" /><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m7 10 5 5 5-5" /></symbol>
+  <symbol id="i-planner" viewBox="0 0 24 24"><rect width="8" height="4" x="8" y="2" rx="1" ry="1" /><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" /><path d="M12 11h4" /><path d="M12 16h4" /><path d="M8 11h.01" /><path d="M8 16h.01" /></symbol>
+  <symbol id="i-kopier" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></symbol>
+  <symbol id="i-slett" viewBox="0 0 24 24"><path d="M10 11v6" /><path d="M14 11v6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M3 6h18" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></symbol>
+  <symbol id="i-lukk" viewBox="0 0 24 24"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></symbol>
+  <symbol id="i-boks" viewBox="0 0 24 24"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" /></symbol>
+  <symbol id="i-flate" viewBox="0 0 24 24"><path d="M13.73 4a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" /></symbol>
+  <symbol id="i-fortsett" viewBox="0 0 24 24"><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z" /></symbol>
+  <symbol id="i-advarsel" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /><path d="M12 9v4" /><path d="M12 17h.01" /></symbol>
+  <symbol id="i-hake" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5" /></symbol>
+  <symbol id="i-snu" viewBox="0 0 24 24"><path d="M8 3 4 7l4 4" /><path d="M4 7h16" /><path d="m16 21 4-4-4-4" /><path d="M20 17H4" /></symbol>
+  <symbol id="i-mer" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /><circle cx="5" cy="12" r="1" /></symbol>
+  <symbol id="i-laas" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></symbol>
+  <symbol id="i-forrige" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6" /></symbol>
+  <symbol id="i-neste" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></symbol>
+  <symbol id="i-pluss" viewBox="0 0 24 24"><path d="M5 12h14" /><path d="M12 5v14" /></symbol>
+  <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14" /></symbol>
+  <symbol id="i-fullskjerm" viewBox="0 0 24 24"><path d="M15 3h6v6" /><path d="m21 3-7 7" /><path d="m3 21 7-7" /><path d="M9 21H3v-6" /></symbol>
+  <symbol id="i-nullstill" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></symbol>
+</svg>
+
 <canvas id="viewer"></canvas>
 
 <div id="topbar">
   <div class="logo">STORM <span>IFC</span></div>
-  <button class="btn" id="btnOpen">📂 Åpne</button>
-  <input type="file" id="fileInput" accept=".ifc,.glb">
-  <button id="btnLib">📚 Bibliotek</button>
-  <button id="btnLight" title="Forenklet lasting for mobil og store modeller">🪶 Lav kvalitet</button>
-  <button id="btnComments">💬 <span id="commentCount">0</span></button>
-  <button id="btnFit">🎯</button>
+  <button class="btn" id="btnOpen"><svg class="ikon"><use href="#i-apne"/></svg><span class="btn-t">Åpne</span></button>
+  <input type="file" id="fileInput" accept=".ifc,.IFC,.glb,.GLB">
+  <button id="btnLib"><svg class="ikon"><use href="#i-bibliotek"/></svg><span class="btn-t">Bibliotek</span></button>
+  <button id="btnLight" title="Forenklet lasting for mobil og store modeller"><svg class="ikon"><use href="#i-lav"/></svg><span class="btn-t">Lav kvalitet</span></button>
+  <button id="btnComments"><svg class="ikon"><use href="#i-markeringer"/></svg> <span id="commentCount">0</span></button>
+  <button id="btnFit" title="Vis hele modellen"><svg class="ikon"><use href="#i-fokus"/></svg></button>
   <div id="status"></div>
 </div>
 
 <div id="toolbar">
-  <button id="btnMarker">📌 Markering</button>
-  <button id="btnMeasure">📏 Mål</button>
-  <button id="btnKote">⛰ Kote</button>
-  <button id="btnAxes">🔠 Akser</button>
-  <button id="btnClip">✂️ Snitt</button>
-  <button id="btnStorey">🏢 Etasjer</button>
-  <button id="btnSearch">🔎 Søk</button>
-  <button id="btnGhost">👻 Transparent</button>
-  <button id="btnQty">📊 Mengder</button>
-  <button id="btnColors">🎨 Utseende</button>
-  <button id="btnCompare" title="Sammenlign med en annen versjon av modellen">🔄 Sammenlign</button>
-  <button id="btnShare" title="Lag en lenke som gjenskaper denne visningen hos andre">⛓ Del visning</button>
-  <button id="btnSaveLite" title="Eksporter forenklet modell (.glb) som funker på mobil">💾 Lett kopi</button>
-  <button id="btnSettings" title="Innstillinger og hurtigtaster (høyreklikk i modellen)">⚙ Innstillinger</button>
-  <button id="btnShowAll" style="display:none">👁 Vis alle</button>
+  <button id="btnMarker"><svg class="ikon"><use href="#i-markering"/></svg><span class="btn-t">Markering</span></button>
+  <button id="btnMeasure"><svg class="ikon"><use href="#i-maal"/></svg><span class="btn-t">Mål</span></button>
+  <button id="btnKote"><svg class="ikon"><use href="#i-kote"/></svg><span class="btn-t">Kote</span></button>
+  <button id="btnAxes"><svg class="ikon"><use href="#i-akser"/></svg><span class="btn-t">Akser</span></button>
+  <button id="btnClip"><svg class="ikon"><use href="#i-snitt"/></svg><span class="btn-t">Snitt</span></button>
+  <button id="btnStorey"><svg class="ikon"><use href="#i-etasjer"/></svg><span class="btn-t">Etasjer</span></button>
+  <button id="btnSearch"><svg class="ikon"><use href="#i-sok"/></svg><span class="btn-t">Søk</span></button>
+  <button id="btnGhost"><svg class="ikon"><use href="#i-transparent"/></svg><span class="btn-t">Transparent</span></button>
+  <button id="btnQty"><svg class="ikon"><use href="#i-mengder"/></svg><span class="btn-t">Mengder</span></button>
+  <button id="btnColors"><svg class="ikon"><use href="#i-utseende"/></svg><span class="btn-t">Utseende</span></button>
+  <button id="btnCompare" title="Sammenlign med en annen versjon av modellen"><svg class="ikon"><use href="#i-sammenlign"/></svg><span class="btn-t">Sammenlign</span></button>
+  <button id="btnShare" title="Lag en lenke som gjenskaper denne visningen hos andre"><svg class="ikon"><use href="#i-del"/></svg><span class="btn-t">Del visning</span></button>
+  <button id="btnSaveLite" title="Eksporter forenklet modell (.glb) som funker på mobil"><svg class="ikon"><use href="#i-lagre"/></svg><span class="btn-t">Lett kopi</span></button>
+  <button id="btnSettings" title="Innstillinger og hurtigtaster (høyreklikk i modellen)"><svg class="ikon"><use href="#i-innstillinger"/></svg><span class="btn-t">Innstillinger</span></button>
+  <button id="btnShowAll" style="display:none"><svg class="ikon"><use href="#i-vis"/></svg><span class="btn-t">Vis alle</span></button>
 </div>
 
 <canvas id="miniMap" width="256" height="256" title="Trykk for å flytte deg dit"
@@ -47,71 +97,71 @@
   <h1>STORM <span>IFC-VIEWER</span></h1>
   <p>Åpne en IFC-modell (BIM) direkte i nettleseren – på mobil eller PC.
      Naviger i 3D, trykk på elementer for info, mål, snitt og legg inn markeringer.</p>
-  <div id="crashBanner" style="display:none; background:var(--panel); border:1px solid var(--accent2); border-radius:10px; padding:12px 14px; font-size:13px; max-width:420px; line-height:1.5"></div>
-  <div id="shareBanner" style="display:none; background:var(--panel); border:1px solid var(--accent); border-radius:10px; padding:12px 14px; font-size:13px; max-width:420px; line-height:1.5"></div>
+  <div id="crashBanner" style="display:none"></div>
+  <div id="shareBanner" style="display:none"></div>
   <div id="resumeBox" style="display:none"></div>
-  <button class="btn" id="btnOpenSplash">📂 Velg IFC-fil</button>
-  <p style="font-size:12px">… eller dra fila rett inn i vinduet. Ligger modellen i OneDrive med skyikon ☁ (bare på nett),
-     bruk 📚 Biblioteket – eller høyreklikk fila i Utforsker → «Behold alltid på denne enheten».</p>
-  <button id="btnLibSplash" style="font-size:15px; padding:12px 22px">📚 Åpne fra biblioteket</button>
-  <p style="font-size:12px">Filen behandles kun lokalt i nettleseren din – ingenting lastes opp.</p>
-  <p id="jsCheck" style="color:#ef4444; font-size:13px; font-weight:600">⚠️ JavaScript kjører ikke. Åpner du fila i forhåndsvisning (Filer/mail)? Åpne den i Safari eller Chrome i stedet.</p>
+  <button class="btn" id="btnOpenSplash"><svg class="ikon"><use href="#i-apne"/></svg><span class="btn-t">Velg IFC-fil</span></button>
+  <p class="liten">… eller dra fila rett inn i vinduet. Ligger modellen i OneDrive med skyikon (bare på nett),
+     bruk Biblioteket – eller høyreklikk fila i Utforsker → «Behold alltid på denne enheten».</p>
+  <button id="btnLibSplash"><svg class="ikon"><use href="#i-bibliotek"/></svg><span class="btn-t">Åpne fra biblioteket</span></button>
+  <p class="liten">Filen behandles kun lokalt i nettleseren din – ingenting lastes opp.</p>
+  <p id="jsCheck">JavaScript kjører ikke. Åpner du fila i forhåndsvisning (Filer/mail)? Åpne den i Safari eller Chrome i stedet.</p>
 </div>
 
 <div id="loading"><div class="spinner"></div><div id="loadingText">Laster modell …</div></div>
 
 <div class="panel" id="propPanel">
-  <header><span id="propTitle">Egenskaper</span><button onclick="document.getElementById('propPanel').classList.remove('open')">✕</button></header>
+  <header><span id="propTitle">Egenskaper</span><button onclick="document.getElementById('propPanel').classList.remove('open')" title="Lukk"><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="propBody"></div>
 </div>
 
 <div class="panel" id="commentPanel">
-  <header><span>Markeringer</span><button onclick="document.getElementById('commentPanel').classList.remove('open')">✕</button></header>
+  <header><span>Markeringer</span><button onclick="document.getElementById('commentPanel').classList.remove('open')" title="Lukk"><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="commentBody"></div>
 </div>
 
 <div class="panel" id="qtyPanel">
-  <header><span>Mengder</span><button onclick="document.getElementById('qtyPanel').classList.remove('open')">✕</button></header>
+  <header><span>Mengder</span><button onclick="document.getElementById('qtyPanel').classList.remove('open')" title="Lukk"><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="qtyBody"></div>
 </div>
 
 <div class="panel" id="libPanel">
-  <header><span>📚 Modellbibliotek</span><button onclick="document.getElementById('libPanel').classList.remove('open')">✕</button></header>
+  <header><span>Modellbibliotek</span><button onclick="document.getElementById('libPanel').classList.remove('open')" title="Lukk"><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="libBody"></div>
 </div>
 
 <div class="panel" id="colorPanel">
-  <header><span>Utseende</span><button onclick="document.getElementById('colorPanel').classList.remove('open')">✕</button></header>
+  <header><span>Utseende</span><button onclick="document.getElementById('colorPanel').classList.remove('open')" title="Lukk"><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="colorBody"></div>
 </div>
 
 <div class="panel" id="axesPanel">
-  <header><span>🔠 Aksesystem</span><button onclick="document.getElementById('axesPanel').classList.remove('open')">✕</button></header>
+  <header><span>Aksesystem</span><button onclick="document.getElementById('axesPanel').classList.remove('open')" title="Lukk"><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="axesBody"></div>
 </div>
 
 <div class="panel" id="comparePanel">
-  <header><span>🔄 Sammenlign versjoner</span><button onclick="document.getElementById('comparePanel').classList.remove('open')">✕</button></header>
+  <header><span>Sammenlign versjoner</span><button onclick="document.getElementById('comparePanel').classList.remove('open')" title="Lukk"><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="compareBody"></div>
 </div>
 
 <div class="panel" id="sharePanel">
-  <header><span>⛓ Del visning</span><button onclick="document.getElementById('sharePanel').classList.remove('open')">✕</button></header>
+  <header><span>Del visning</span><button onclick="document.getElementById('sharePanel').classList.remove('open')" title="Lukk"><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="shareBody"></div>
 </div>
 
 <div class="panel" id="clipPanel">
-  <header><span>📦 Snitt-boks</span><button onclick="document.getElementById('clipPanel').classList.remove('open')">✕</button></header>
+  <header><span>Snitt-boks</span><button onclick="document.getElementById('clipPanel').classList.remove('open')" title="Lukk"><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="clipBody"></div>
 </div>
 
 <div class="panel" id="searchPanel">
-  <header><span>🔎 Elementsøk</span><button onclick="document.getElementById('searchPanel').classList.remove('open')">✕</button></header>
+  <header><span>Elementsøk</span><button onclick="document.getElementById('searchPanel').classList.remove('open')" title="Lukk"><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="searchBody"></div>
 </div>
 
 <div id="setMenu">
-  <header><span>⚙ Innstillinger</span><button onclick="document.getElementById('setMenu').classList.remove('open')">✕</button></header>
+  <header><span>Innstillinger</span><button onclick="document.getElementById('setMenu').classList.remove('open')" title="Lukk"><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="setBody"></div>
 </div>
 
@@ -119,7 +169,7 @@
   <h3>Ny markering</h3>
   <textarea id="commentText" placeholder="Skriv en kommentar …"></textarea>
   <div class="cd-bilder">
-    <label class="cd-bildeknapp">📷 Legg ved bilde (før)
+    <label class="cd-bildeknapp"><svg class="ikon"><use href="#i-kamera"/></svg> Legg ved bilde (før)
       <input type="file" id="commentFiles" accept="image/*" capture="environment" multiple hidden>
     </label>
     <span id="commentFileInfo"></span>
@@ -130,7 +180,7 @@
   </div>
 </div>
 
-<div id="hint">🖱️/👆 Dra: roter · Midtklikk / to fingre: panorer · Rullehjul: zoom · Høyreklikk: ⚙ innstillinger · Trykk på element: info</div>
+<div id="hint">Dra: roter · Midtklikk / to fingre: panorer · Rullehjul: zoom · Høyreklikk: innstillinger · Trykk på element: info</div>
 
 <script>
 // Fanger feil og viser dem på skjermen (nyttig på mobil uten konsoll)
