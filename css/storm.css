@@ -111,7 +111,9 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
 .qty-row .n { word-break: break-word; }
 .qty-row .c { color: var(--accent2); white-space: nowrap; text-align: right; }
 
-/* Nedtrekk for objekttype i 📊 Mengder – ett ark om gangen */
+/* Nedtrekk for objekttype og materiale i 📊 Mengder – ett ark om gangen */
+.qty-filtre { display: flex; gap: 8px; margin-bottom: 10px; }
+.qty-filtre .qty-type-velg { flex: 1; min-width: 0; margin-bottom: 0; }
 .qty-type-velg { display: block; font-size: 11px; color: var(--muted); margin-bottom: 10px; }
 .qty-type-velg select {
   display: block; width: 100%; margin-top: 4px;
@@ -228,16 +230,42 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
 .mp-bilde.nytt:hover { border-color: var(--accent2); color: var(--text); }
 .mp-bilde.mangler { cursor: default; }
 
-/* Bilde i full skjerm */
+/* Bilde i full skjerm, med zoom og bla */
 #bildeVis {
   display: none; position: fixed; inset: 0; z-index: 60;
-  background: rgba(0,0,0,.88); cursor: zoom-out;
+  background: rgba(0,0,0,.9); cursor: zoom-out;
+  overflow: hidden; touch-action: none;   /* vi styrer knip og dra selv */
+  user-select: none;
 }
 #bildeVis.open { display: flex; align-items: center; justify-content: center; }
-#bildeVis img { max-width: 94vw; max-height: 94vh; object-fit: contain; }
-#bildeVis .bv-x {
-  position: absolute; top: 12px; right: 14px;
-  padding: 4px 10px; font-size: 16px;
+#bildeVis.zoomet { cursor: default; }
+#bildeVis #bvBilde {
+  max-width: 96vw; max-height: 96vh; object-fit: contain;
+  transform-origin: center center;
+  transition: transform .08s linear;
+  -webkit-user-drag: none;
+}
+#bildeVis .bv-topp {
+  position: absolute; top: 10px; right: 12px;
+  display: flex; align-items: center; gap: 6px;
+  background: rgba(20,24,31,.82); border: 1px solid var(--border);
+  border-radius: 8px; padding: 5px 8px;
+  font-size: 12px; color: var(--text);
+}
+#bildeVis .bv-topp #bvZoom { color: var(--muted); min-width: 42px; text-align: right; }
+#bildeVis .bv-knapp {
+  padding: 2px 9px; font-size: 15px; line-height: 1.3; min-width: 30px;
+}
+#bildeVis .bv-pil {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  padding: 6px 14px; font-size: 26px; line-height: 1;
+  background: rgba(20,24,31,.82);
+}
+#bildeVis #bvFor { left: 14px; }
+#bildeVis #bvNeste { right: 14px; }
+@media (max-width: 640px) {
+  #bildeVis .bv-pil { font-size: 22px; padding: 10px 12px; }
+  #bildeVis .bv-topp { left: 12px; right: 12px; justify-content: flex-end; }
 }
 
 /* Bildevalg i «Ny markering» */
