@@ -8,8 +8,17 @@ export const SP = {
   tenantId: "4daa24b2-8144-4c77-b00d-5a91bf914e73",  // Storm Entreprenør AS
   hostname: "stormentrepreno.sharepoint.com",        // SharePoint-adressen
   sitePath: "/sites/StormProsjektTegninger",         // området med modellene
-  folder: "IFC-modeller"                             // mappe i Dokumenter-biblioteket
+  folder: "IFC-modeller",                            // mappe i Dokumenter-biblioteket
+  lightFolder: "IFC-modeller/Lette kopier"           // 💾 lette kopier (.glb) ligger her
 };
+
+// Biblioteket har to faner, så fulle modeller og lette kopier ikke ligger i
+// samme liste. Filtypen bestemmer hvilken fane en fil hører til – en .glb som
+// ligger løst i hovedmappa vises derfor under 🪶 Lette kopier, med en merknad.
+export const LIB_FANER = [
+  { key: "full", tittel: "📐 Modeller", mappe: () => SP.folder, filtype: /\.ifc$/i },
+  { key: "lett", tittel: "🪶 Lette kopier", mappe: () => SP.lightFolder, filtype: /\.glb$/i }
+];
 
 export const GRAPH = "https://graph.microsoft.com/v1.0";
 
@@ -123,19 +132,38 @@ export async function graphGet(path, token) {
   return r.json();
 }
 
-async function spFetchList() {
+// Leser én mappe. Mangler mappa (404) svarer vi med tom liste i stedet for feil –
+// «Lette kopier» finnes ikke i alle prosjekter.
+async function spFetchFolder(mappe, token) {
+  const folderPath = mappe.split("/").map(encodeURIComponent).join("/");
+  try {
+    const data = await graphGet("/sites/" + S.spSiteId + "/drive/root:/" + folderPath +
+      ":/children?$top=999&$select=id,name,size,lastModifiedDateTime,file,eTag,cTag", token);
+    return (data.value || []).filter(f => f.file);
+  } catch (err) {
+    if (/Graph 404/.test(err.message)) return [];
+    throw err;
+  }
+}
+
+async function spFetchList(fane) {
   const token = await spToken();
   if (!token) return null; // på vei til innlogging
   if (!S.spSiteId) {
     const site = await graphGet("/sites/" + SP.hostname + ":" + SP.sitePath, token);
     S.spSiteId = site.id;
   }
-  const folderPath = SP.folder.split("/").map(encodeURIComponent).join("/");
-  const data = await graphGet("/sites/" + S.spSiteId + "/drive/root:/" + folderPath +
-    ":/children?$top=999&$select=id,name,size,lastModifiedDateTime,file,eTag,cTag", token);
-  return (data.value || [])
-    .filter(f => f.file && /\.(ifc|glb)$/i.test(f.name))
-    .sort((a, b) => a.name.localeCompare(b.name, "no"));
+  const f = LIB_FANER.find(x => x.key === fane) || LIB_FANER[0];
+  const egne = (await spFetchFolder(f.mappe(), token)).filter(x => f.filtype.test(x.name));
+  // Lette kopier som ligger løst i hovedmappa skal ikke bli usynlige – de vises
+  // i lett-fanen, merket, så de kan brukes og etter hvert ryddes på plass.
+  let løse = [];
+  if (f.key === "lett") {
+    løse = (await spFetchFolder(SP.folder, token))
+      .filter(x => f.filtype.test(x.name))
+      .map(x => Object.assign({}, x, { løs: true }));
+  }
+  return egne.concat(løse).sort((a, b) => a.name.localeCompare(b.name, "no"));
 }
 
 $("btnLib").addEventListener("click", () => {
@@ -154,31 +182,49 @@ async function openLibrary() {
     body.innerHTML = '<p style="color:var(--muted)">Biblioteket er ikke satt opp ennå – client-ID mangler i konfigurasjonen.</p>';
     return;
   }
-  body.innerHTML = '<p style="color:var(--muted)">Henter fil-liste fra SharePoint …</p>';
+  const fane = LIB_FANER.find(x => x.key === S.libFane) || LIB_FANER[0];
+  const faneHtml = '<div class="prop-actions lib-faner">' + LIB_FANER.map(f =>
+    '<button data-fane="' + f.key + '"' + (f.key === fane.key ? ' class="active"' : "") + '>' +
+    esc(f.tittel) + '</button>').join("") + '</div>';
+  const kobleFaner = () => {
+    body.querySelectorAll("[data-fane]").forEach(b => {
+      b.onclick = () => { if (b.dataset.fane !== S.libFane) { S.libFane = b.dataset.fane; openLibrary(); } };
+    });
+  };
+
+  body.innerHTML = faneHtml + '<p style="color:var(--muted)">Henter fil-liste fra SharePoint …</p>';
+  kobleFaner();
   try {
-    const files = await spFetchList();
+    const files = await spFetchList(fane.key);
     if (files === null) {
-      body.innerHTML = '<p style="color:var(--muted)">Sender deg til Microsoft-innlogging …</p>';
+      body.innerHTML = faneHtml + '<p style="color:var(--muted)">Sender deg til Microsoft-innlogging …</p>';
+      kobleFaner();
       return;
     }
     S.spFiles = files;
-    body.innerHTML =
+    body.innerHTML = faneHtml +
       '<input type="search" id="libSearch" placeholder="🔍 Søk etter modell …" autocomplete="off">' +
       '<div id="libList"></div>';
+    kobleFaner();
     $("libSearch").addEventListener("input", () => renderLibList($("libSearch").value));
     renderLibList("");
   } catch (err) {
-    body.innerHTML = '<p style="color:#ef4444">Feil: ' + esc(err.message) + '</p>' +
-      '<p style="color:var(--muted); font-size:11px; margin-top:8px">Sjekk at mappen «' + esc(SP.folder) + '» finnes på ' + esc(SP.sitePath) + ' og at du har tilgang.</p>';
+    body.innerHTML = faneHtml + '<p style="color:#ef4444">Feil: ' + esc(err.message) + '</p>' +
+      '<p style="color:var(--muted); font-size:11px; margin-top:8px">Sjekk at mappen «' + esc(fane.mappe()) + '» finnes på ' + esc(SP.sitePath) + ' og at du har tilgang.</p>';
+    kobleFaner();
   }
 }
 
 function renderLibList(filter) {
   const listEl = $("libList");
+  const fane = LIB_FANER.find(x => x.key === S.libFane) || LIB_FANER[0];
   const q = filter.trim().toLowerCase();
   const list = (S.spFiles || []).filter(f => f.name.toLowerCase().includes(q));
   if (!S.spFiles || !S.spFiles.length) {
-    listEl.innerHTML = '<p style="color:var(--muted)">Ingen IFC-filer i mappen «' + esc(SP.folder) + '» ennå.</p>';
+    listEl.innerHTML = '<p style="color:var(--muted)">Ingen filer i «' + esc(fane.mappe()) + '» ennå.' +
+      (fane.key === "lett"
+        ? ' Lag en med 💾 Lett kopi og legg .glb-filen i denne mappa.'
+        : '') + '</p>';
     return;
   }
   if (!list.length) {
@@ -190,7 +236,9 @@ function renderLibList(filter) {
     const d = f.lastModifiedDateTime ? new Date(f.lastModifiedDateTime).toLocaleDateString("no-NO") : "";
     return '<div class="lib-item" data-id="' + esc(f.id) + '">' +
       '<div class="n">' + esc(f.name) + '</div>' +
-      '<div class="m">' + mb + (d ? " · " + d : "") + '</div></div>';
+      '<div class="m">' + mb + (d ? " · " + d : "") +
+      (f.løs ? ' · <span style="color:var(--accent2)">ligger i ' + esc(SP.folder) + '</span>' : "") +
+      '</div></div>';
   }).join("");
   listEl.querySelectorAll(".lib-item").forEach(el => {
     el.addEventListener("click", () => {

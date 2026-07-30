@@ -112,6 +112,7 @@ S.qtyCache = null;
 S.qtyType = "";           // valgt objekttype i 📊 Mengder ("" = alle typer)
 S.qtyMat = "";             // valgt materiale: "" | "g:<gruppe>" | "m:<navn>"
 S.bildeMappeOK = false;   // bilder-mappa i SharePoint er sjekket/opprettet
+S.libFane = "full";       // 📚 Biblioteket: "full" (.ifc) eller "lett" (.glb)
 S.nyeBilder = [];         // bilder valgt i «Ny markering», før den er lagret
 S.lastLoadInfo = null;
 
@@ -196,7 +197,11 @@ export const loadingEl = document.getElementById("loading");
 export const loadingText = document.getElementById("loadingText");
 export const $ = (id) => document.getElementById(id);
 
-export function esc(s){ return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+// Tåler også tall, null og undefined: en markering fra SharePoint som mangler et
+// felt skal ikke kunne velte hele panelet.
+export function esc(s){
+  return String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
 
 // Antall desimaler brukeren har valgt (⚙ Innstillinger → Visning)
 export function dec() {
