@@ -103,20 +103,20 @@
     </select>
   </label>
   <h1>STORM <span>IFC-VIEWER</span></h1>
-  <p>Åpne en IFC-modell (BIM) direkte i nettleseren – på mobil eller PC.
+  <p data-i18n>Åpne en IFC-modell (BIM) direkte i nettleseren – på mobil eller PC.
      Naviger i 3D, trykk på elementer for info, mål, snitt og legg inn markeringer.</p>
   <div id="crashBanner" style="display:none"></div>
   <div id="shareBanner" style="display:none"></div>
   <div id="resumeBox" style="display:none"></div>
   <button class="btn" id="btnOpenSplash"><svg class="ikon"><use href="#i-apne"/></svg><span class="btn-t" data-i18n>Velg IFC-fil</span></button>
-  <p class="liten">… eller dra fila rett inn i vinduet. Ligger modellen i OneDrive med skyikon (bare på nett),
+  <p class="liten" data-i18n>… eller dra fila rett inn i vinduet. Ligger modellen i OneDrive med skyikon (bare på nett),
      bruk Biblioteket – eller høyreklikk fila i Utforsker → «Behold alltid på denne enheten».</p>
   <button id="btnLibSplash"><svg class="ikon"><use href="#i-bibliotek"/></svg><span class="btn-t" data-i18n>Åpne fra biblioteket</span></button>
-  <p class="liten">Filen behandles kun lokalt i nettleseren din – ingenting lastes opp.</p>
-  <p id="jsCheck">JavaScript kjører ikke. Åpner du fila i forhåndsvisning (Filer/mail)? Åpne den i Safari eller Chrome i stedet.</p>
+  <p class="liten" data-i18n>Filen behandles kun lokalt i nettleseren din – ingenting lastes opp.</p>
+  <p id="jsCheck" data-i18n>JavaScript kjører ikke. Åpner du fila i forhåndsvisning (Filer/mail)? Åpne den i Safari eller Chrome i stedet.</p>
 </div>
 
-<div id="loading"><div class="spinner"></div><div id="loadingText">Laster modell …</div></div>
+<div id="loading"><div class="spinner"></div><div id="loadingText" data-i18n>Laster modell …</div></div>
 
 <div class="panel" id="propPanel">
   <header><span id="propTitle">Egenskaper</span><button onclick="document.getElementById('propPanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
@@ -174,21 +174,21 @@
 </div>
 
 <div id="commentDialog">
-  <h3>Ny markering</h3>
-  <textarea id="commentText" placeholder="Skriv en kommentar …"></textarea>
+  <h3 data-i18n>Ny markering</h3>
+  <textarea id="commentText" placeholder="Skriv en kommentar …" data-i18n-ph></textarea>
   <div class="cd-bilder">
-    <label class="cd-bildeknapp"><svg class="ikon"><use href="#i-kamera"/></svg> Legg ved bilde (før)
+    <label class="cd-bildeknapp"><svg class="ikon"><use href="#i-kamera"/></svg> <span data-i18n>Legg ved bilde (før)</span>
       <input type="file" id="commentFiles" accept="image/*" capture="environment" multiple hidden>
     </label>
     <span id="commentFileInfo"></span>
   </div>
   <div class="actions">
-    <button onclick="cancelComment()">Avbryt</button>
-    <button class="primary" onclick="saveComment()">Lagre</button>
+    <button onclick="cancelComment()" data-i18n>Avbryt</button>
+    <button class="primary" onclick="saveComment()" data-i18n>Lagre</button>
   </div>
 </div>
 
-<div id="hint">Dra: roter · Midtklikk / to fingre: panorer · Rullehjul: zoom · Høyreklikk: innstillinger · Trykk på element: info</div>
+<div id="hint" data-i18n>Dra: roter · Midtklikk / to fingre: panorer · Rullehjul: zoom · Høyreklikk: innstillinger · Trykk på element: info</div>
 
 <script>
 // Fanger feil og viser dem på skjermen (nyttig på mobil uten konsoll)
