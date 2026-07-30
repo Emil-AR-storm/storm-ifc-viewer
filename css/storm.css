@@ -231,6 +231,13 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
 #splash #btnLibSplash { font-size: 15px; padding: 12px 22px; }
 #splash #btnLibSplash .ikon { width: 17px; height: 17px; }
 #splash #jsCheck { color: var(--danger); font-size: 13px; font-weight: 600; }
+/* Språkvelgeren oppe til høyre på startskjermen */
+#sprakBoks { position: absolute; top: 14px; right: 14px; }
+#sprakBoks select {
+  background: var(--panel2); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 6px 8px; font-size: 12px; font-family: inherit; cursor: pointer;
+}
 #crashBanner, #shareBanner {
   background: var(--panel); border: 1px solid var(--accent2);
   border-radius: var(--radius-stor); padding: 12px 14px;
