@@ -186,7 +186,7 @@ function bildeStripeHtml(c, kanLeggeTil) {
 }
 
 // Fyller miniatyrbildene etterpå – hvert bilde hentes fra SharePoint én gang.
-function fyllMiniatyrer(rot) {
+function fyllMiniatyrer(rot, c) {
   rot.querySelectorAll(".mp-bilde[data-bilde]").forEach(async el => {
     if (el.dataset.fylt) return;
     el.dataset.fylt = "1";
@@ -195,24 +195,176 @@ function fyllMiniatyrer(rot) {
     const img = document.createElement("img");
     img.src = url;
     el.appendChild(img);
-    el.onclick = () => visStort(url);
+    el.onclick = () => visStort(c, (c.bilder || []).indexOf(el.dataset.bilde));
   });
 }
 
-// Bildet i full skjerm. Klikk eller Esc lukker.
-function visStort(url) {
-  let el = $("bildeVis");
-  if (!el) {
-    el = document.createElement("div");
-    el.id = "bildeVis";
-    document.body.appendChild(el);
-    el.addEventListener("click", () => el.classList.remove("open"));
-  }
-  el.innerHTML = '<img src="' + url + '" alt=""><button class="bv-x" title="Lukk">✕</button>';
-  el.classList.add("open");
+// ---------- Bildet i full skjerm: zoom, panorering og bla ----------
+// Zoom med rullehjul (mot pekeren), + / −, dobbeltklikk eller knipe på mobil.
+// Dra for å flytte når du er zoomet inn. Piltaster eller ‹ › blar mellom bildene
+// i markeringen.
+
+const BV = { navn: [], nr: 0, skala: 1, x: 0, y: 0, drar: false, px: 0, py: 0, pekere: new Map(), start: 0 };
+export const MIN_SKALA = 1, MAKS_SKALA = 8;
+
+// Zoomen stopper ved 100 % og 800 %. Egen funksjon, så grensene kan testes.
+export function bvNySkala(skala, faktor) {
+  return Math.max(MIN_SKALA, Math.min(MAKS_SKALA, skala * faktor));
 }
 
-function lukkBildeVis() { const el = $("bildeVis"); if (el) el.classList.remove("open"); }
+// Blar rundt: etter siste bilde kommer det første igjen.
+export function bvNyttNr(nr, antall) {
+  if (!antall) return 0;
+  return ((nr % antall) + antall) % antall;
+}
+
+function bvSett() {
+  const img = $("bvBilde");
+  if (!img) return;
+  img.style.transform = "translate(" + BV.x + "px," + BV.y + "px) scale(" + BV.skala + ")";
+  img.style.cursor = BV.skala > 1 ? (BV.drar ? "grabbing" : "grab") : "zoom-in";
+  const el = $("bildeVis");
+  if (el) el.classList.toggle("zoomet", BV.skala > 1);
+  const t = $("bvZoom");
+  if (t) t.textContent = Math.round(BV.skala * 100) + " %";
+}
+
+function bvNullstill() { BV.skala = 1; BV.x = 0; BV.y = 0; bvSett(); }
+
+// Zoomer om et punkt på skjermen, så det du peker på blir stående
+function bvZoomOm(faktor, klientX, klientY) {
+  const img = $("bvBilde");
+  if (!img) return;
+  const ny = bvNySkala(BV.skala, faktor);
+  if (ny === BV.skala) return;
+  const r = img.getBoundingClientRect();
+  const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+  const dx = (klientX === undefined ? cx : klientX) - cx;
+  const dy = (klientY === undefined ? cy : klientY) - cy;
+  const k = ny / BV.skala;
+  BV.x = BV.x - dx * (k - 1);
+  BV.y = BV.y - dy * (k - 1);
+  BV.skala = ny;
+  if (BV.skala === 1) { BV.x = 0; BV.y = 0; }
+  bvSett();
+}
+
+async function bvVis(nr) {
+  if (!BV.navn.length) return;
+  BV.nr = bvNyttNr(nr, BV.navn.length);
+  bvNullstill();
+  const teller = $("bvTeller");
+  if (teller) teller.textContent = (BV.nr + 1) + " av " + BV.navn.length;
+  const img = $("bvBilde");
+  if (img) {
+    img.src = "";
+    const url = await bildeUrl(BV.navn[BV.nr]);
+    if (url && $("bvBilde")) $("bvBilde").src = url;
+  }
+  const flere = BV.navn.length > 1;
+  ["bvFor", "bvNeste"].forEach(id => { const b = $(id); if (b) b.style.display = flere ? "" : "none"; });
+}
+
+function byggBildeVis() {
+  let el = $("bildeVis");
+  if (el) return el;
+  el = document.createElement("div");
+  el.id = "bildeVis";
+  el.innerHTML =
+    '<img id="bvBilde" alt="" draggable="false">' +
+    '<div class="bv-topp"><span id="bvTeller"></span><span id="bvZoom"></span>' +
+      '<button class="bv-knapp" id="bvUt" title="Zoom ut (−)">−</button>' +
+      '<button class="bv-knapp" id="bvInn" title="Zoom inn (+)">+</button>' +
+      '<button class="bv-knapp" id="bvEn" title="Tilpass til skjermen (0)">⤢</button>' +
+      '<button class="bv-knapp bv-x" id="bvX" title="Lukk (Esc)">✕</button></div>' +
+    '<button class="bv-pil" id="bvFor" title="Forrige bilde (←)">‹</button>' +
+    '<button class="bv-pil" id="bvNeste" title="Neste bilde (→)">›</button>';
+  document.body.appendChild(el);
+
+  const stopp = (e) => e.stopPropagation();
+  el.querySelector(".bv-topp").addEventListener("pointerdown", stopp);
+  $("bvX").onclick = lukkBildeVis;
+  $("bvInn").onclick = () => bvZoomOm(1.4);
+  $("bvUt").onclick = () => bvZoomOm(1 / 1.4);
+  $("bvEn").onclick = bvNullstill;
+  $("bvFor").onclick = (e) => { stopp(e); bvVis(BV.nr - 1); };
+  $("bvNeste").onclick = (e) => { stopp(e); bvVis(BV.nr + 1); };
+
+  // rullehjul zoomer, og siden viewer'en ligger bak må vi stoppe hjulet der
+  el.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    bvZoomOm(e.deltaY < 0 ? 1.15 : 1 / 1.15, e.clientX, e.clientY);
+  }, { passive: false });
+
+  const img = $("bvBilde");
+  img.addEventListener("dblclick", (e) => {
+    e.stopPropagation();
+    if (BV.skala > 1) bvNullstill(); else bvZoomOm(2.5, e.clientX, e.clientY);
+  });
+
+  // dra for å panorere, og to fingre for å knipe
+  el.addEventListener("pointerdown", (e) => {
+    BV.pekere.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (BV.pekere.size === 2) {
+      const [a, b] = [...BV.pekere.values()];
+      BV.start = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+      BV.drar = false;
+      return;
+    }
+    if (BV.skala > 1) { BV.drar = true; BV.px = e.clientX; BV.py = e.clientY; bvSett(); }
+  });
+  el.addEventListener("pointermove", (e) => {
+    if (!BV.pekere.has(e.pointerId)) return;
+    BV.pekere.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (BV.pekere.size === 2) {
+      const [a, b] = [...BV.pekere.values()];
+      const d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+      bvZoomOm(d / BV.start, (a.x + b.x) / 2, (a.y + b.y) / 2);
+      BV.start = d;
+      return;
+    }
+    if (!BV.drar) return;
+    BV.x += e.clientX - BV.px; BV.y += e.clientY - BV.py;
+    BV.px = e.clientX; BV.py = e.clientY;
+    bvSett();
+  });
+  const slutt = (e) => {
+    BV.pekere.delete(e.pointerId);
+    // klikk på bakgrunnen lukker – men bare når vi ikke har dratt eller zoomet
+    const dratt = BV.drar;
+    BV.drar = false;
+    bvSett();
+    if (!dratt && BV.skala === 1 && e.target === el) lukkBildeVis();
+  };
+  el.addEventListener("pointerup", slutt);
+  el.addEventListener("pointercancel", slutt);
+  return el;
+}
+
+function visStort(c, nr) {
+  const el = byggBildeVis();
+  BV.navn = (c && c.bilder ? c.bilder.slice() : []).filter(Boolean);
+  el.classList.add("open");
+  bvVis(Math.max(0, nr || 0));
+}
+
+function lukkBildeVis() {
+  const el = $("bildeVis");
+  if (el) el.classList.remove("open");
+  BV.pekere.clear();
+  BV.drar = false;
+}
+
+// Tastatur i bildeviseren: piler blar, +/− zoomer, 0 tilpasser
+window.addEventListener("keydown", (e) => {
+  const el = $("bildeVis");
+  if (!el || !el.classList.contains("open")) return;
+  if (e.key === "ArrowLeft") { bvVis(BV.nr - 1); e.preventDefault(); }
+  else if (e.key === "ArrowRight") { bvVis(BV.nr + 1); e.preventDefault(); }
+  else if (e.key === "+" || e.key === "=") { bvZoomOm(1.4); e.preventDefault(); }
+  else if (e.key === "-") { bvZoomOm(1 / 1.4); e.preventDefault(); }
+  else if (e.key === "0") { bvNullstill(); e.preventDefault(); }
+});
 
 // Felles håndtering av valgte filer: komprimer, last opp, lagre filnavnene.
 async function taImotFiler(c, filer, etterpa) {
@@ -311,7 +463,7 @@ export function openMarkerPopup(c) {
     filvelger.value = "";                       // samme bilde skal kunne velges igjen
     taImotFiler(c, filer, () => openMarkerPopup(c));
   };
-  fyllMiniatyrer(el);
+  fyllMiniatyrer(el, c);
   el.classList.add("open");
   placePopup();
 }
