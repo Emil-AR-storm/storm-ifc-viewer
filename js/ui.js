@@ -1,5 +1,5 @@
 // ⚙ Innstillingsmeny og hurtigtaster.
-import { $, DEFAULT_APPEAR, DEFAULT_KEYS, DEFAULT_SETTINGS, S, esc, writePrefs } from "./state.js";
+import { $, DEFAULT_APPEAR, DEFAULT_KEYS, DEFAULT_SETTINGS, S, esc, ikon, lukkPaneler, writePrefs } from "./state.js";
 import { applyAxisFont } from "./axes.js";
 import { showClipBar, stopFacePick } from "./clip.js";
 import { DEFAULT_BG, resetColors } from "./display.js";
@@ -12,17 +12,17 @@ import { scene } from "./scene.js";
 // ---------- ⚙ Innstillingsmeny + hurtigtaster ----------
 // Åpnes med høyreklikk i modellen eller ⚙-knappen i verktøylinja.
 const ACTIONS = {
-  marker:   { label: "📌 Markering",  run: () => $("btnMarker").click() },
-  measure:  { label: "📏 Mål",        run: () => $("btnMeasure").click() },
-  kote:     { label: "⛰ Kote",        run: () => $("btnKote").click() },
-  axes:     { label: "🔠 Akser",      run: () => $("btnAxes").click() },
-  clip:     { label: "✂️ Snitt",      run: () => $("btnClip").click() },
-  storey:   { label: "🏢 Etasjer",    run: () => $("btnStorey").click() },
-  search:   { label: "🔎 Søk",        run: () => $("btnSearch").click() },
-  ghost:    { label: "👻 Transparent",run: () => $("btnGhost").click() },
-  qty:      { label: "📊 Mengder",    run: () => $("btnQty").click() },
-  fit:      { label: "🎯 Vis alt",    run: () => $("btnFit").click() },
-  settings: { label: "⚙ Innstillinger", run: () => openSettings() }
+  marker:   { label: "Markering",  run: () => $("btnMarker").click() },
+  measure:  { label: "Mål",        run: () => $("btnMeasure").click() },
+  kote:     { label: "Kote",       run: () => $("btnKote").click() },
+  axes:     { label: "Akser",      run: () => $("btnAxes").click() },
+  clip:     { label: "Snitt",      run: () => $("btnClip").click() },
+  storey:   { label: "Etasjer",    run: () => $("btnStorey").click() },
+  search:   { label: "Søk",        run: () => $("btnSearch").click() },
+  ghost:    { label: "Transparent",run: () => $("btnGhost").click() },
+  qty:      { label: "Mengder",    run: () => $("btnQty").click() },
+  fit:      { label: "Vis alt",    run: () => $("btnFit").click() },
+  settings: { label: "Innstillinger", run: () => openSettings() }
 };
 
 function openSettings(x, y) {
@@ -65,9 +65,9 @@ function keyLabel(k) {
 // Forteller om oppsettet følger brukeren (SharePoint) eller bare denne nettleseren
 function syncStatusText() {
   const acc = S.msalApp && S.msalApp.getActiveAccount();
-  if (!acc) return '<span style="color:var(--muted)">🖥 Lagres bare i denne nettleseren. Logg inn via 📚 Bibliotek for at oppsettet skal følge deg på alle maskiner.</span>';
-  if (S.prefsCloudOK) return '<span style="color:#3cb44b">☁ Følger kontoen din (' + esc(acc.username || "") + ')</span>';
-  return '<span style="color:var(--accent2)">☁ Prøver å lagre til SharePoint …</span>';
+  if (!acc) return '<span style="color:var(--muted)">Lagres bare i denne nettleseren. Logg inn via Biblioteket for at oppsettet skal følge deg på alle maskiner.</span>';
+  if (S.prefsCloudOK) return '<span style="color:var(--ok)">' + ikon("hake") + ' Følger kontoen din (' + esc(acc.username || "") + ')</span>';
+  return '<span style="color:var(--accent2)">Prøver å lagre til SharePoint …</span>';
 }
 
 function renderSettings() {
@@ -91,12 +91,12 @@ function renderSettings() {
       (d === 0 ? " (hele meter)" : d === 3 ? " (mm)" : "") + '</option>').join("") + '</select></div>' +
     '<div class="set-row"><span class="n">Bakgrunnsfarge</span>' +
     '<input type="color" id="stBg" value="' + bgVal + '"></div>' +
-    '<div class="set-row"><span class="n">🪶 Lav kvalitet</span>' +
+    '<div class="set-row"><span class="n">Lav kvalitet</span>' +
     '<input type="checkbox" id="stLight"' + (S.lightMode ? " checked" : "") + '></div>' +
     '<div class="set-row"><span class="n">Skriftstørrelse akser</span>' +
     '<input type="range" id="stAxFont" min="40" max="250" step="10" value="' + Math.round(S.axisFontF * 100) + '"></div>';
 
-  html += '<h4>🗺 Minikart</h4>' +
+  html += '<h4>Minikart</h4>' +
     '<div class="set-row"><span class="n">Vis minikart</span>' +
     '<input type="checkbox" id="stMini"' + (S.miniOn ? " checked" : "") + '></div>' +
     '<div class="set-row"><span class="n">Størrelse <span id="stMiniV" style="color:var(--muted)">' +
@@ -115,10 +115,10 @@ function renderSettings() {
   html += '<p style="color:var(--muted); font-size:11px; margin-top:8px">Esc avbryter modus og lukker paneler. ' +
     'Trykk på en tast-knapp og deretter ønsket tast for å endre.</p></details>' +
     '<h4>Lagring</h4>' +
-    '<p style="color:var(--muted); font-size:11px; margin:0 0 6px">💾 Alt over – pluss fargelegging, egne typefarger, skjulte typer, ' +
-    '👻 transparent, 🧲 snap og 🪶 lav kvalitet – lagres automatisk og legges på neste gang du åpner en modell.</p>' +
+    '<p style="color:var(--muted); font-size:11px; margin:0 0 6px">Alt over – pluss fargelegging, egne typefarger, skjulte typer, ' +
+    'transparent, snap og lav kvalitet – lagres automatisk og legges på neste gang du åpner en modell.</p>' +
     '<p style="font-size:11px; margin:0 0 6px" id="stSync">' + syncStatusText() + '</p>' +
-    '<div class="prop-actions" style="margin-top:10px"><button id="stReset">↺ Tilbakestill alt</button></div>';
+    '<div class="prop-actions" style="margin-top:10px"><button id="stReset">' + ikon("nullstill") + ' Tilbakestill alt</button></div>';
 
   $("setBody").innerHTML = html;
 
@@ -196,8 +196,7 @@ window.addEventListener("keydown", (e) => {
     if ($("setMenu").classList.contains("open")) { closeSettings(); return; }
     if (S.clipPickFace) { stopFacePick(); showClipBar(); return; }
     if (S.mode) { setMode(S.mode); return; } // slår av gjeldende modus
-    ["propPanel","commentPanel","qtyPanel","colorPanel","libPanel","axesPanel","comparePanel", "searchPanel"]
-      .forEach(id => $(id).classList.remove("open"));
+    lukkPaneler();   // alle ti – før manglet clipPanel og sharePanel her
     return;
   }
   const key = e.key.length === 1 ? e.key.toUpperCase() : e.key;

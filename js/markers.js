@@ -1,6 +1,6 @@
 // 💬 Markeringer: lagring lokalt og deling via SharePoint.
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
-import { $, S, esc, loadingEl, loadingText } from "./state.js";
+import { $, S, esc, ikon, loadingEl, loadingText, lukkPaneler } from "./state.js";
 import { ANSATTE } from "./config.js";
 import { fristTilISO, fullforOppgave, opprettOppgave, planUrl, plannerToken } from "./planner.js";
 import { setMode } from "./modes.js";
@@ -14,15 +14,7 @@ import { ADVAR_MB, antallSider, gyldigSide, hentTegninger, mb, sideBilde, velgMa
 // ---------- Markeringer / kommentarer ----------
 
 $("btnComments").addEventListener("click", () => {
-  $("propPanel").classList.remove("open");
-  $("qtyPanel").classList.remove("open");
-  $("colorPanel").classList.remove("open");
-  $("libPanel").classList.remove("open");
-  $("axesPanel").classList.remove("open");
-  $("searchPanel").classList.remove("open");
-  $("comparePanel").classList.remove("open");
-  $("clipPanel").classList.remove("open");
-  $("sharePanel").classList.remove("open");
+  lukkPaneler("commentPanel");
   $("commentPanel").classList.toggle("open");
 });
 
@@ -59,6 +51,30 @@ async function sharedSiteId(token) {
   return S.spSiteId;
 }
 
+// Feltvask for markeringer som kommer utenfra (den delte JSON-fila i
+// SharePoint): bare kjente felter slipper inn, og alt som skal være tekst
+// gjøres om til tekst. Da kan ikke et rart felt i fila – med vilje eller ved
+// uhell – nå innerHTML eller window.open med noe annet enn det vi forventer.
+const MARKERING_TEKSTFELT = ["text", "author", "status", "owner", "due", "date", "taskId", "taskUrl"];
+
+export function vaskMarkering(r) {
+  if (!r || typeof r !== "object" || r.id == null) return null;
+  const c = { id: typeof r.id === "number" ? r.id : String(r.id) };
+  for (const k of MARKERING_TEKSTFELT) if (r[k] != null) c[k] = String(r[k]);
+  for (const k of ["x", "y", "z"]) c[k] = Number(r[k]) || 0;
+  // frist skal være en ren dato – alt annet forkastes
+  if (c.due && !/^\d{4}-\d{2}-\d{2}$/.test(c.due)) c.due = "";
+  // oppgavelenka åpnes med window.open – slipp bare gjennom https
+  if (c.taskUrl && !/^https:\/\//i.test(c.taskUrl)) delete c.taskUrl;
+  if (Array.isArray(r.bilder)) c.bilder = r.bilder.filter(b => typeof b === "string");
+  if (Array.isArray(r.bilderEtter)) c.bilderEtter = r.bilderEtter.filter(b => typeof b === "string");
+  if (Array.isArray(r.tegninger)) c.tegninger = r.tegninger
+    .filter(t => t && typeof t === "object")
+    .map(t => ({ fil: String(t.fil || ""), itemId: String(t.itemId || ""),
+                 side: Number(t.side) || 0, storrelse: Number(t.storrelse) || 0 }));
+  return c;
+}
+
 async function syncSharedComments() {
   const forFile = syncedFile();
   if (!forFile) return;
@@ -70,7 +86,7 @@ async function syncSharedComments() {
     const r = await fetch(GRAPH + "/sites/" + sid + sharedFilePath() + ":/content",
       { headers: authHeaders(token, null, "markeringer") });
     let remote = [];
-    if (r.ok) { const d = await r.json(); if (Array.isArray(d)) remote = d; }
+    if (r.ok) { const d = await r.json(); if (Array.isArray(d)) remote = d.map(vaskMarkering).filter(Boolean); }
     else if (r.status !== 404) throw new Error("Graph " + r.status);
     if (syncedFile() !== forFile) return; // brukeren byttet modell underveis
     const have = new Set(remote.map(c => c.id));
@@ -120,16 +136,40 @@ export function isOverdue(c) {
   return c.due < new Date().toISOString().slice(0, 10);
 }
 
+// Glyfen TEGNES med linjer i stedet for fillText: fonttegn som ➜ og ✓ finnes
+// ikke i alle sans-serif-fallbacker, og en tofu-boks inne i 3D-scenen er
+// vanskelig å feilsøke. Strektegning gir samme resultat på alle plattformer.
+const MARKER_KANT = "#14181f";   // samme mørke som bakgrunnen (scene.js)
+
+function tegnGlyf(ctx, glyph) {
+  ctx.strokeStyle = MARKER_KANT;
+  ctx.fillStyle = MARKER_KANT;
+  ctx.lineWidth = 13;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.beginPath();
+  if (glyph === "!") {                    // Åpen: utropstegn
+    ctx.moveTo(64, 34); ctx.lineTo(64, 72);
+    ctx.stroke();
+    ctx.beginPath(); ctx.arc(64, 93, 8, 0, Math.PI * 2); ctx.fill();
+  } else if (glyph === "➜") {             // Pågår: pil mot høyre
+    ctx.moveTo(36, 64); ctx.lineTo(86, 64);
+    ctx.moveTo(64, 42); ctx.lineTo(88, 64); ctx.lineTo(64, 86);
+    ctx.stroke();
+  } else {                                // Løst: hake
+    ctx.moveTo(38, 66); ctx.lineTo(56, 84); ctx.lineTo(90, 46);
+    ctx.stroke();
+  }
+}
+
 function makeMarkerTexture(col, glyph) {
   const c = document.createElement("canvas");
   c.width = c.height = 128;
   const ctx = c.getContext("2d");
   ctx.beginPath(); ctx.arc(64, 64, 52, 0, Math.PI * 2);
   ctx.fillStyle = col; ctx.fill();
-  ctx.lineWidth = 10; ctx.strokeStyle = "#14181f"; ctx.stroke();
-  ctx.fillStyle = "#14181f"; ctx.font = "bold 64px sans-serif";
-  ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.fillText(glyph, 64, 68);
+  ctx.lineWidth = 10; ctx.strokeStyle = MARKER_KANT; ctx.stroke();
+  tegnGlyf(ctx, glyph);
   return new THREE.CanvasTexture(c);
 }
 
@@ -228,7 +268,7 @@ function bildeStripeHtml(c, kanLeggeTil) {
       '<div class="mp-bilder">' +
       liste.map(f => '<span class="mp-bilde" data-bilde="' + esc(f) + '" data-seksjon="' + seksjon + '" title="Åpne bildet"></span>').join("") +
       (kanLeggeTil && liste.length < MAKS_PER_MARKERING
-        ? '<label class="mp-bilde nytt" title="Ta bilde eller velg fil (' + tittel.toLowerCase() + ')">📷' +
+        ? '<label class="mp-bilde nytt" title="Ta bilde eller velg fil (' + tittel.toLowerCase() + ')">' + ikon("kamera") +
           '<input type="file" accept="image/*" capture="environment" multiple hidden data-seksjon="' + seksjon + '"></label>'
         : "") +
       '</div></div>';
@@ -241,7 +281,7 @@ function fyllMiniatyrer(rot, c) {
     if (el.dataset.fylt) return;
     el.dataset.fylt = "1";
     const url = await bildeUrl(el.dataset.bilde);
-    if (!url) { el.classList.add("mangler"); el.textContent = "🔒"; el.title = "Logg inn for å se bildet"; return; }
+    if (!url) { el.classList.add("mangler"); el.innerHTML = ikon("laas"); el.title = "Logg inn for å se bildet"; return; }
     const img = document.createElement("img");
     img.src = url;
     el.appendChild(img);
@@ -270,11 +310,11 @@ function tegningStripeHtml(c) {
     '<div class="mp-tegninger">' +
     liste.map((v, i) =>
       '<span class="mp-tegning" data-tegning="' + i + '" title="Åpne ' + esc(v.fil) + '">' +
-      '📄 ' + esc(tegningTekst(v)) +
+      ikon("tegning") + ' ' + esc(tegningTekst(v)) +
       (mb(v.storrelse) > ADVAR_MB ? ' <span class="stor">' + mb(v.storrelse).toFixed(0) + ' MB</span>' : "") +
-      '<button class="mp-tegning-x" data-fjern="' + i + '" title="Fjern henvisningen (tegningen slettes ikke)">✕</button>' +
+      '<button class="mp-tegning-x" data-fjern="' + i + '" title="Fjern henvisningen (tegningen slettes ikke)">' + ikon("lukk") + '</button>' +
       '</span>').join("") +
-    '<button class="mp-tegning nytt" id="mpTegning">📄 Legg til arbeidstegning</button>' +
+    '<button class="mp-tegning nytt" id="mpTegning">' + ikon("tegning") + ' Legg til arbeidstegning</button>' +
     '</div></div>';
 }
 
@@ -287,8 +327,8 @@ async function apneTegningVelger(c) {
     document.body.appendChild(el);
     el.addEventListener("click", (e) => { if (e.target === el) lukkTegningVelger(); });
   }
-  el.innerHTML = '<div class="tv-boks"><div class="tv-topp">📄 Arbeidstegninger' +
-    '<button class="tv-x" title="Lukk">✕</button></div>' +
+  el.innerHTML = '<div class="tv-boks"><div class="tv-topp">Arbeidstegninger' +
+    '<button class="tv-x" title="Lukk">' + ikon("lukk") + '</button></div>' +
     '<div class="tv-kropp"><p style="color:var(--muted)">Henter tegninger fra SharePoint …</p></div></div>';
   el.querySelector(".tv-x").onclick = lukkTegningVelger;
   el.classList.add("open");
@@ -301,7 +341,7 @@ async function apneTegningVelger(c) {
 
   if (svar.feil) {
     kropp.innerHTML = '<p style="color:var(--muted)">' + (svar.feil === "IKKE_INNLOGGET"
-      ? "Tegningene ligger i SharePoint, så du må være innlogget. Åpne 📚 Biblioteket og logg inn."
+      ? "Tegningene ligger i SharePoint, så du må være innlogget. Åpne Biblioteket og logg inn."
       : esc(svar.feil)) + '</p>';
     return;
   }
@@ -312,7 +352,7 @@ async function apneTegningVelger(c) {
       '». Mappa skal ligge i <b>' + esc(SP.folder) + '/Tegninger</b> og hete det samme som modellen.</p>' +
       (svar.undermapper.length
         ? '<p style="color:var(--muted);font-size:11px;margin:8px 0 4px">Velg mappa som hører til denne modellen:</p>' +
-          svar.undermapper.map(n => '<div class="lib-item" data-mappe="' + esc(n) + '"><div class="n">📁 ' + esc(n) + '</div></div>').join("")
+          svar.undermapper.map(n => '<div class="lib-item" data-mappe="' + esc(n) + '"><div class="n">' + ikon("apne") + ' ' + esc(n) + '</div></div>').join("")
         : '<p style="color:var(--muted);font-size:11px;margin-top:8px">Det ligger ingen mapper der ennå.</p>');
     kropp.querySelectorAll("[data-mappe]").forEach(d => {
       d.onclick = async () => {
@@ -331,8 +371,8 @@ async function apneTegningVelger(c) {
   }
 
   kropp.innerHTML =
-    '<p class="tv-mappe">📁 ' + esc(svar.mappenavn) + ' · ' + svar.filer.length + ' tegninger</p>' +
-    '<input type="search" id="tvSok" placeholder="🔍 Søk etter tegning …" autocomplete="off">' +
+    '<p class="tv-mappe">' + esc(svar.mappenavn) + ' · ' + svar.filer.length + ' tegninger</p>' +
+    '<input type="search" id="tvSok" placeholder="Søk etter tegning …" autocomplete="off">' +
     '<div id="tvListe"></div>' +
     '<div class="tv-bunn"><label>Side <input type="number" id="tvSide" min="1" value="1"></label>' +
     '<button class="primary" id="tvLegg" disabled>Legg ved</button></div>';
@@ -342,7 +382,7 @@ async function apneTegningVelger(c) {
     const treff = svar.filer.filter(f => f.name.toLowerCase().includes(q.trim().toLowerCase()));
     $("tvListe").innerHTML = treff.length
       ? treff.map(f => '<div class="lib-item' + (valgt && valgt.id === f.id ? " valgt" : "") + '" data-id="' + esc(f.id) + '">' +
-          '<div class="n">📄 ' + esc(f.name) + '</div>' +
+          '<div class="n">' + ikon("tegning") + ' ' + esc(f.name) + '</div>' +
           '<div class="m">' + mb(f.size).toFixed(1) + ' MB' +
           (mb(f.size) > ADVAR_MB ? ' · <span style="color:var(--accent2)">stor fil</span>' : "") + '</div></div>').join("")
       : '<p style="color:var(--muted)">Ingen treff.</p>';
@@ -506,10 +546,10 @@ function byggBildeVis() {
     '<div class="bv-topp"><span id="bvTeller"></span><span id="bvZoom"></span>' +
       '<button class="bv-knapp" id="bvUt" title="Zoom ut (−)">−</button>' +
       '<button class="bv-knapp" id="bvInn" title="Zoom inn (+)">+</button>' +
-      '<button class="bv-knapp" id="bvEn" title="Tilpass til skjermen (0)">⤢</button>' +
-      '<button class="bv-knapp bv-x" id="bvX" title="Lukk (Esc)">✕</button></div>' +
-    '<button class="bv-pil" id="bvFor" title="Forrige bilde (←)">‹</button>' +
-    '<button class="bv-pil" id="bvNeste" title="Neste bilde (→)">›</button>';
+      '<button class="bv-knapp" id="bvEn" title="Tilpass til skjermen (0)">' + ikon("fullskjerm") + '</button>' +
+      '<button class="bv-knapp bv-x" id="bvX" title="Lukk (Esc)">' + ikon("lukk") + '</button></div>' +
+    '<button class="bv-pil" id="bvFor" title="Forrige bilde (←)">' + ikon("forrige") + '</button>' +
+    '<button class="bv-pil" id="bvNeste" title="Neste bilde (→)">' + ikon("neste") + '</button>';
   document.body.appendChild(el);
 
   const stopp = (e) => e.stopPropagation();
@@ -625,7 +665,7 @@ async function taImotFiler(c, filer, seksjon, etterpa) {
     if (etterpa) etterpa();
   } catch (err) {
     alert(err.message === "IKKE_INNLOGGET"
-      ? "Bilder lagres i SharePoint, så du må være innlogget. Åpne 📚 Biblioteket og logg inn, så prøv igjen."
+      ? "Bilder lagres i SharePoint, så du må være innlogget. Åpne Biblioteket og logg inn, så prøv igjen."
       : "Klarte ikke å legge ved bildet: " + err.message);
   } finally {
     loadingEl.classList.remove("open");
@@ -671,7 +711,7 @@ export function openMarkerPopup(c) {
   const st = statusOf(c);
   el.innerHTML =
     '<div class="mp-meta"><span>' + esc((c.author ? c.author + " · " : "") + (c.date || "")) + '</span>' +
-      '<button class="mp-x" title="Lukk">✕</button></div>' +
+      '<button class="mp-x" title="Lukk">' + ikon("lukk") + '</button></div>' +
     '<div class="mp-text">' + esc(c.text) + '</div>' +
     bildeStripeHtml(c, true) +
     tegningStripeHtml(c) +
@@ -684,14 +724,14 @@ export function openMarkerPopup(c) {
         (c.owner && !ANSATTE.some(a => a.navn === c.owner)
           ? '<option value="' + esc(c.owner) + '" selected>' + esc(c.owner) + '</option>' : "") +
       '</select></label>' +
-      '<label>Frist<input type="date" class="mp-due" value="' + (c.due || "") + '"></label>' +
+      '<label>Frist<input type="date" class="mp-due" value="' + esc(c.due || "") + '"></label>' +
     '</div>' +
-    (isOverdue(c) ? '<div class="mp-late">⚠️ Fristen er gått</div>' : "") +
-    '<div class="mp-act"><button class="mp-go">🎯 Gå til</button>' +
+    (isOverdue(c) ? '<div class="mp-late">' + ikon("advarsel") + ' Fristen er gått</div>' : "") +
+    '<div class="mp-act"><button class="mp-go">' + ikon("fokus") + ' Gå til</button>' +
       (c.taskId
-        ? '<button class="mp-open" title="Åpne oppgaven i Planner">📋 Se oppgave</button>'
-        : '<button class="mp-task" id="mp-task" title="Lag Teams Planner-oppgave">📋 Planner</button>') +
-      '<button class="mp-del">🗑 Slett</button></div>';
+        ? '<button class="mp-open" title="Åpne oppgaven i Planner">' + ikon("planner") + ' Se oppgave</button>'
+        : '<button class="mp-task" id="mp-task" title="Lag Teams Planner-oppgave">' + ikon("planner") + ' Planner</button>') +
+      '<button class="mp-del">' + ikon("slett") + ' Slett</button></div>';
   el.querySelector(".mp-x").onclick = closeMarkerPopup;
   el.querySelector(".mp-go").onclick = () => goToComment(c);
   el.querySelector(".mp-st").onchange = (e) => updateComment(c, { status: e.target.value });
@@ -798,7 +838,9 @@ window.saveComment = function() {
   let author = "";
   try { const a = S.msalApp && S.msalApp.getActiveAccount(); author = (a && (a.name || a.username)) || ""; } catch(_){}
   const c = {
-    id: Date.now(),
+    // klokkeslett + tilfeldig hale: to som lager markering i samme millisekund
+    // (delt fil, hele Storm) skal ikke få samme ID
+    id: Date.now() + "-" + Math.random().toString(36).slice(2, 8),
     text,
     author,
     status: "Åpen",
@@ -892,7 +934,7 @@ async function sendTilPlanner(list) {
     renderCommentList();
     if (popFor) openMarkerPopup(popFor);
     loadingEl.classList.remove("open");
-    if (confirm("✅ " + laget + (laget === 1 ? " oppgave" : " oppgaver") +
+    if (confirm(laget + (laget === 1 ? " oppgave" : " oppgaver") +
         " opprettet i Planner.\n\nÅpne Planner-tavla nå?")) window.open(planUrl(), "_blank");
   } catch (err) {
     loadingEl.classList.remove("open");
@@ -912,10 +954,10 @@ export function renderCommentList() {
   $("commentCount").textContent = S.comments.length;
   const body = $("commentBody");
   const status = S.sharedOK
-    ? '<p style="color:#3cb44b; font-size:11px; margin:0 0 8px">🟢 Delt via SharePoint – alle med tilgang ser disse</p>'
-    : '<p style="color:var(--muted); font-size:11px; margin:0 0 8px">⚪ Kun lagret på denne enheten – logg inn i 📚 Biblioteket for å dele</p>';
+    ? '<p style="color:var(--ok); font-size:11px; margin:0 0 8px">' + ikon("hake") + ' Delt via SharePoint – alle med tilgang ser disse</p>'
+    : '<p style="color:var(--muted); font-size:11px; margin:0 0 8px">' + ikon("laas") + ' Kun lagret på denne enheten – logg inn i Biblioteket for å dele</p>';
   if (!S.comments.length) {
-    body.innerHTML = status + '<p style="color:var(--muted)">Ingen markeringer ennå. Trykk på 📌 Markering og deretter på modellen.</p>';
+    body.innerHTML = status + '<p style="color:var(--muted)">Ingen markeringer ennå. Trykk på Markering og deretter på modellen.</p>';
     return;
   }
 
@@ -932,27 +974,27 @@ export function renderCommentList() {
   // uløste med frist, som ikke alt har fått en oppgave
   const apne = S.comments.filter(c => statusOf(c) !== "Løst" && c.due && !c.taskId);
   if (apne.length > 1) {
-    html += '<div class="prop-actions"><button id="cmAllTasks">📋 Lag ' +
+    html += '<div class="prop-actions"><button id="cmAllTasks">' + ikon("planner") + ' Lag ' +
       apne.length + ' Planner-oppgaver</button></div>';
   }
 
   html += vis.map(c => {
     const st = statusOf(c);
-    return '<div class="comment" data-id="' + c.id + '" style="border-left:3px solid ' + STATUS[st].col + '">' +
+    return '<div class="comment" data-id="' + esc(c.id) + '" style="border-left:3px solid ' + STATUS[st].col + '">' +
       '<div class="meta"><span>' + esc((c.author ? c.author + " · " : "") + (c.date || "")) + '</span>' +
-        '<span class="del" data-del="' + c.id + '">Slett</span></div>' +
+        '<span class="del" data-del="' + esc(c.id) + '">Slett</span></div>' +
       '<div>' + esc(c.text) + '</div>' +
       '<div class="meta" style="margin-top:4px"><span>' +
         '<span style="color:' + STATUS[st].col + '">●</span> ' + st +
         (c.owner ? ' · ' + esc(c.owner) : "") +
         (c.due ? ' · frist ' + esc(c.due.split("-").reverse().join(".")) : "") +
-        (isOverdue(c) ? ' <span style="color:#ef4444">⚠️ gått</span>' : "") +
-        (c.taskId ? ' · <span title="Har en Planner-oppgave">📋</span>' : "") +
+        (isOverdue(c) ? ' <span style="color:var(--danger)">' + ikon("advarsel") + ' gått</span>' : "") +
+        (c.taskId ? ' · <span title="Har en Planner-oppgave">' + ikon("planner") + '</span>' : "") +
         (tegningerI(c).length ? ' · <span title="' +
-          esc(tegningerI(c).map(tegningTekst).join(", ")) + '">📄 ' + tegningerI(c).length + '</span>' : "") +
+          esc(tegningerI(c).map(tegningTekst).join(", ")) + '">' + ikon("tegning") + ' ' + tegningerI(c).length + '</span>' : "") +
         (alleBilder(c).length
           ? ' · <span title="' + SEKSJONER.map(([s, t]) => t + ": " + bilderI(c, s).length).join(", ") +
-            '">📷 ' + alleBilder(c).length + (bilderI(c, "etter").length ? " (før/etter)" : "") + '</span>'
+            '">' + ikon("kamera") + ' ' + alleBilder(c).length + (bilderI(c, "etter").length ? " (før/etter)" : "") + '</span>'
           : "") +
       '</span></div></div>';
   }).join("") ||

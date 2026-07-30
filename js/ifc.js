@@ -1,6 +1,6 @@
 // Innlasting av modeller: IFC (full og lav kvalitet) og lett kopi (.glb).
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
-import { $, S, esc, loadingEl, loadingText, statusEl, writePrefs } from "./state.js";
+import { $, S, esc, loadingEl, loadingText, lukkPaneler, nullstillModellState, statusEl, writePrefs } from "./state.js";
 import { harWorker, kall, metaFor, tømMeta } from "./ifcrpc.js";
 import { byggLettKopi, lettNavn } from "./lite.js";
 import { hiddenIDs } from "./display.js";
@@ -98,7 +98,7 @@ export async function pickFile() {
 (function enableDrop() {
   const hint = document.createElement("div");
   hint.id = "dropHint";
-  hint.textContent = "📥 Slipp IFC- eller .glb-fila her";
+  hint.textContent = "Slipp IFC- eller .glb-fila her";
   document.body.appendChild(hint);
   let depth = 0;
   const show = (on) => hint.classList.toggle("open", on);
@@ -138,56 +138,37 @@ export function afterLoad() {
 }
 
 function clearModel() {
+  // three.js: fjern og frigi geometrien til forrige modell
   if (S.modelGroup) {
     scene.remove(S.modelGroup);
     S.modelGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); });
-    S.modelGroup = null;
   }
   markerGroup.clear();
   measureGroup.clear();
   koteGroup.clear();
   axesGroup.clear();
   axesGroup.visible = false;
-  S.axesOn = false; S.axesBuilt = false;
-  S.axisSources = null; S.axisSelection = new Set(); S.axisRaw = null;
-  S.bufferITråd = false;
-  document.getElementById("axesPanel").classList.remove("open");
-  document.getElementById("btnAxes").classList.remove("active");
-  S.searchIndex = null; S.lastQuery = "";
-  document.getElementById("searchPanel").classList.remove("open");
-  document.getElementById("clipPanel").classList.remove("open");
-  document.getElementById("sharePanel").classList.remove("open");
-  S.storeyOn = false; S.storeyList = null; S.storeyIdx = -1;
-  document.getElementById("btnStorey").classList.remove("active");
-  S.sharedOK = false;
-  S.multiSel.clear();
-  S.allBoxCache = null;
-  S.miniInfo = null; S.miniBase = null;
-  miniCanvas.style.display = "none";
-  S.comments = [];
-  tomTegningsbuffer();      // tegninger hører til forrige modell
-  S.qtyCache = null;
-  S.qtyType = "";
-  S.qtyMat = "";
-  S.typeInfo = null;
-  S.typeColorsOn = false;
-  hiddenIDs.clear();
-  S.ghostOn = false;
-  document.getElementById("btnGhost").classList.remove("active");
-  document.getElementById("btnShowAll").style.display = "none";
-  S.clipOn = false; S.clipMode = "axis"; S.clipFaceN = null; S.clipFaceP = null; S.clipFaceOff = 0; S.clipFlip = false;
-  S.clipPickFace = false;
-  S.clipBox = { x0: 0, x1: 1, y0: 0, y1: 1, z0: 0, z1: 1 };
-  renderer.domElement.style.cursor = "";
-  document.getElementById("btnClip").classList.remove("active");
-  document.getElementById("setMenu").classList.remove("open");
-  renderer.clippingPlanes = [];
-  renderCommentList();
-  if (S.modelID !== null) { kall("close").catch(() => {}); S.modelID = null; }
+
+  // be IFC-tråden lukke modellen FØR tilstanden nullstilles
+  if (S.modelID !== null) kall("close").catch(() => {});
   tømMeta();
-  S.glbActive = false;
-  S.glbProps = null;
-  S.glbColumns = null;
+
+  // all S-tilstand som hører til modellen – samlet på ETT sted (state.js).
+  // Nye modell-felter legges i modellStartverdier(), ikke i en liste her.
+  nullstillModellState();
+
+  // DOM: paneler, knapper og markører hører også til forrige modell
+  lukkPaneler();
+  document.getElementById("setMenu").classList.remove("open");
+  ["btnAxes", "btnStorey", "btnGhost", "btnClip"].forEach(id =>
+    document.getElementById(id).classList.remove("active"));
+  document.getElementById("btnShowAll").style.display = "none";
+  miniCanvas.style.display = "none";
+  renderer.domElement.style.cursor = "";
+  renderer.clippingPlanes = [];
+  hiddenIDs.clear();
+  tomTegningsbuffer();      // tegninger hører til forrige modell
+  renderCommentList();
   clearSelection();
 }
 
@@ -244,7 +225,7 @@ export async function loadModel(buffer) {
 
   scene.add(S.modelGroup);
   statusEl.textContent = res.shown + " elementer" +
-    (S.lightLoaded ? " · 🪶" + (res.skipped ? " (" + res.skipped + " små utelatt)" : "") : "");
+    (S.lightLoaded ? " · lav kvalitet" + (res.skipped ? " (" + res.skipped + " små utelatt)" : "") : "");
   S.modelBox = new THREE.Box3().setFromObject(S.modelGroup);
   S.modelSize = S.modelBox.getSize(new THREE.Vector3()).length() || 10;
 
@@ -416,7 +397,7 @@ export async function loadGlb(buffer) {
     S.glbProps = new Map();
   }
   scene.add(S.modelGroup);
-  statusEl.textContent = idSet.size + " elementer · 💾 lett kopi";
+  statusEl.textContent = idSet.size + " elementer · lett kopi";
   S.modelBox = new THREE.Box3().setFromObject(S.modelGroup);
   S.modelSize = S.modelBox.getSize(new THREE.Vector3()).length() || 10;
   fitToModel();
@@ -470,7 +451,7 @@ setLight(S.lightMode);
 $("btnLight").addEventListener("click", async () => {
   setLight(!S.lightMode);
   if (S.modelGroup && (S.lastBuffer || S.bufferITråd) && S.lightMode !== S.lightLoaded &&
-      confirm("Laste modellen på nytt i " + (S.lightMode ? "🪶 lav" : "full") + " kvalitet?")) {
+      confirm("Laste modellen på nytt i " + (S.lightMode ? "lav" : "full") + " kvalitet?")) {
     loadingEl.classList.add("open");
     loadingText.textContent = "Laster på nytt …";
     await new Promise(r => setTimeout(r, 30));
@@ -492,7 +473,7 @@ $("btnLight").addEventListener("click", async () => {
 // Tilbud om nytt forsøk i lav kvalitet når lasting feiler
 export async function offerLightRetry(err) {
   if (S.lightMode || !(S.lastBuffer || S.bufferITråd)) return false;
-  if (!confirm("Klarte ikke å laste modellen (" + ((err && err.message) || err) + ").\n\nPrøve på nytt i 🪶 lav kvalitet?")) return false;
+  if (!confirm("Klarte ikke å laste modellen (" + ((err && err.message) || err) + ").\n\nPrøve på nytt i lav kvalitet?")) return false;
   setLight(true);
   loadingEl.classList.add("open");
   loadingText.textContent = "Prøver i lav kvalitet …";
@@ -521,15 +502,15 @@ export async function offerLightRetry(err) {
   clearLoadFlag();
   const b = $("crashBanner");
   b.style.display = "block";
-  b.innerHTML = "⚠️ Forrige forsøk på å åpne <b>" + esc(String(info.name || "modellen")) + "</b> ser ut til å ha krasjet nettleseren." +
+  b.innerHTML = "Forrige forsøk på å åpne <b>" + esc(String(info.name || "modellen")) + "</b> ser ut til å ha krasjet nettleseren." +
     (info.light
-      ? " Den var allerede i 🪶 lav kvalitet – modellen er trolig for stor for denne enheten."
-      : "<br><button id='crashRetry' class='primary' style='margin-top:10px'>🪶 Prøv igjen i lav kvalitet</button>");
+      ? " Den var allerede i lav kvalitet – modellen er trolig for stor for denne enheten."
+      : "<br><button id='crashRetry' class='primary' style='margin-top:10px'>Prøv igjen i lav kvalitet</button>");
   const btn = $("crashRetry");
   if (btn) btn.onclick = () => {
     setLight(true);
     b.style.display = "none";
     if (info.libId) spOpenFile({ id: info.libId, name: info.name, size: info.size });
-    else alert("Velg «" + (info.name || "filen") + "» på nytt – den åpnes nå i 🪶 lav kvalitet.");
+    else alert("Velg «" + (info.name || "filen") + "» på nytt – den åpnes nå i lav kvalitet.");
   };
 })();

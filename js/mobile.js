@@ -2,24 +2,27 @@
 //
 // På telefon brøt de 15 verktøyknappene over fire linjer og la seg oppå
 // toppbaren. Her flyttes de sjeldnere knappene inn i en ⋯-meny, og toppbaren
-// får korte etiketter så den holder seg på én linje.
+// viser bare ikonene så den holder seg på én linje.
 //
 // Knappene FLYTTES (appendChild) – de bygges ikke på nytt. Da beholder de alle
 // hendelseslyttere modulene har satt på dem.
-import { $, S } from "./state.js";
+import { $, ikon } from "./state.js";
 
 const SMAL = 640;
 
 // Disse blir liggende i verktøylinja på telefon – resten går i ⋯-menyen.
 const PRIMÆRE = ["btnMarker", "btnMeasure", "btnClip", "btnStorey"];
 
-// Kortere etiketter i toppbaren når skjermen er smal
-const KORT = {
-  btnOpen: "📂",
-  btnLib: "📚",
-  btnLight: "🪶",
-  btnFit: "🎯"
-};
+// Disse toppbar-knappene viser bare ikonet når skjermen er smal.
+// Teksten (<span class="btn-t">) skjules – ikonet i knappen står igjen.
+const KORTE = ["btnOpen", "btnLib", "btnLight", "btnFit"];
+
+function settKort(på) {
+  KORTE.forEach(id => {
+    const b = $(id);
+    if (b) b.querySelectorAll(".btn-t").forEach(t => { t.style.display = på ? "none" : ""; });
+  });
+}
 
 let mobilNå = null;      // null = ikke bestemt ennå
 let menyÅpen = false;
@@ -42,8 +45,8 @@ function lagMerKnapp() {
   if ($("btnMore")) return $("btnMore");
   const b = document.createElement("button");
   b.id = "btnMore";
-  b.textContent = "⋯ Mer";
-  b.title = "Flere verktøy – hold inne for ⚙ Innstillinger";
+  b.innerHTML = ikon("mer") + '<span class="btn-t">Mer</span>';
+  b.title = "Flere verktøy – hold inne for Innstillinger";
   b.onclick = () => (menyÅpen ? lukkMeny() : åpneMeny());
 
   // Langtrykk = ⚙ Innstillinger, som avtalt
@@ -98,11 +101,7 @@ function tilMobil() {
     else meny.appendChild(b);
   });
   bar.appendChild(lagMerKnapp());
-
-  for (const id in KORT) {
-    const b = $(id);
-    if (b && !b.dataset.lang) { b.dataset.lang = b.textContent; b.textContent = KORT[id]; }
-  }
+  settKort(true);
 }
 
 function tilPC() {
@@ -114,11 +113,7 @@ function tilPC() {
   if (mer) mer.remove();
   const meny = $("moreMenu");
   if (meny) meny.remove();
-
-  for (const id in KORT) {
-    const b = $(id);
-    if (b && b.dataset.lang) { b.textContent = b.dataset.lang; delete b.dataset.lang; }
-  }
+  settKort(false);
 }
 
 export function oppdaterOppsett() {

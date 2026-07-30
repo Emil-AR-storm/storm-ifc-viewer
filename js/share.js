@@ -5,7 +5,7 @@
 // lenken virker uten innlogging så lenge mottakeren kan åpne selve modellen.
 // Mottakeren får aldri sitt eget lagrede oppsett overskrevet: den delte
 // visningen legges på uten å lagres.
-import { $, S, esc } from "./state.js";
+import { $, S, apnePanel, esc, ikon } from "./state.js";
 import { applyClipState } from "./clip.js";
 import { applySharedCompare, collectCompare } from "./compare.js";
 import { buildTypeInfo, applyTypeColors, hiddenIDs, setGhost } from "./display.js";
@@ -122,7 +122,7 @@ export async function buildShareLink() {
     note = "Sammenligningen var stor, så navn og mål er utelatt – fargene og antallene er med.";
     if (link.length > LIMIT_SLIM) {
       link = base + await pack(collectView({ noCompare: true }));
-      note = "Sammenligningen var for stor for en adresse og er ikke med. Mottakeren må kjøre 🔄 selv.";
+      note = "Sammenligningen var for stor for en adresse og er ikke med. Mottakeren må kjøre Sammenlign selv.";
     }
   }
   return { link, note };
@@ -199,34 +199,32 @@ $("btnShare").addEventListener("click", async () => {
   const fromLib = !!(S.lastLoadInfo && S.lastLoadInfo.libId);
   body.innerHTML =
     '<p style="color:var(--muted); font-size:12px; margin:0 0 8px">Lenka gjenskaper kamera, snitt, etasje, ' +
-      'skjulte typer og elementer, fargelegging, 👻 transparent' +
-      (S.compareOn ? ' og hele 🔄 sammenligningen' : '') +
+      'skjulte typer og elementer, fargelegging, transparent' +
+      (S.compareOn ? ' og hele sammenligningen' : '') +
       '. Den inneholder ingen modellfil og virker uten innlogging.</p>' +
-    (note ? '<p style="color:var(--accent2); font-size:12px; margin:0 0 8px">⚠️ ' + esc(note) + '</p>' : '') +
+    (note ? '<p style="color:var(--accent2); font-size:12px; margin:0 0 8px">' + ikon("advarsel") + ' ' + esc(note) + '</p>' : '') +
     '<textarea id="shLink" readonly rows="4" style="width:100%; font-size:11px; background:var(--panel2); ' +
       'color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px; resize:vertical">' +
       esc(link) + '</textarea>' +
-    '<div class="prop-actions" style="margin-top:10px"><button id="shCopy" class="primary">📋 Kopier lenke</button></div>' +
+    '<div class="prop-actions" style="margin-top:10px"><button id="shCopy" class="primary">' + ikon("kopier") + ' Kopier lenke</button></div>' +
     '<p style="font-size:11px; color:var(--muted); margin:0">' +
       (fromLib
-        ? '📚 Modellen ligger i biblioteket, så mottakeren kan åpne den med ett trykk.'
-        : '💻 Modellen ble åpnet fra din maskin. Mottakeren må ha samme fil – legg den i 📚 Biblioteket hvis flere skal se den.') +
+        ? 'Modellen ligger i biblioteket, så mottakeren kan åpne den med ett trykk.'
+        : 'Modellen ble åpnet fra din maskin. Mottakeren må ha samme fil – legg den i Biblioteket hvis flere skal se den.') +
       '<br>Lengde: ' + link.length + ' tegn.' +
       (link.length > 8000 ? ' <b>Så lange adresser kan bli kuttet i noen program – skjul færre typer.</b>' : '') +
     '</p>';
   $("shCopy").onclick = async () => {
     try {
       await navigator.clipboard.writeText(link);
-      $("shCopy").textContent = "✅ Kopiert";
-      setTimeout(() => { if ($("shCopy")) $("shCopy").textContent = "📋 Kopier lenke"; }, 1500);
+      $("shCopy").textContent = "Kopiert";
+      setTimeout(() => { if ($("shCopy")) $("shCopy").innerHTML = ikon("kopier") + " Kopier lenke"; }, 1500);
     } catch(_) {
       $("shLink").select();
       alert("Trykk Ctrl+C for å kopiere lenka.");
     }
   };
-  ["propPanel","commentPanel","qtyPanel","colorPanel","libPanel","axesPanel","searchPanel","comparePanel","clipPanel"]
-    .forEach(id => $(id).classList.remove("open"));
-  $("sharePanel").classList.add("open");
+  apnePanel("sharePanel");
   $("shLink").select();
 });
 
@@ -246,10 +244,10 @@ function showIncomingBanner(v) {
   const b = $("shareBanner");
   if (!b) return;
   b.style.display = "block";
-  b.innerHTML = '🔗 <b>Delt visning</b> av «' + esc(v.f || "en modell") + '»' +
-    (v.cmp ? '<br><span style="font-size:12px">🔄 Inneholder en sammenligning mot «' + esc(v.cmp.b || "forrige versjon") + '»</span>' : '') +
-    (v.lib ? '<br><button id="shOpen" class="primary" style="margin-top:10px">📚 Åpne modellen</button>'
-           : '<br><span style="color:var(--muted); font-size:12px">Åpne samme fil med 📂, så legges visningen på automatisk.</span>');
+  b.innerHTML = ikon("del") + ' <b>Delt visning</b> av «' + esc(v.f || "en modell") + '»' +
+    (v.cmp ? '<br><span style="font-size:12px">Inneholder en sammenligning mot «' + esc(v.cmp.b || "forrige versjon") + '»</span>' : '') +
+    (v.lib ? '<br><button id="shOpen" class="primary" style="margin-top:10px">' + ikon("bibliotek") + ' Åpne modellen</button>'
+           : '<br><span style="color:var(--muted); font-size:12px">Åpne samme fil med Åpne-knappen, så legges visningen på automatisk.</span>');
   const btn = $("shOpen");
   if (btn) btn.onclick = () => spOpenFile({ id: v.lib, name: v.f });
 }

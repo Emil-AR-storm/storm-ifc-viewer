@@ -99,32 +99,81 @@ S.appear.hiddenTypes = (_prefs.appear && _prefs.appear.hiddenTypes) || [];
 
 S.bg = _prefs.bg || null;   // valgt bakgrunnsfarge, null = standard
 
+// 📦 Snitt-boks: seks sider som andeler (0–1) av modellens utstrekning
+export const DEFAULT_CLIPBOX = { x0: 0, x1: 1, y0: 0, y1: 1, z0: 0, z1: 1 };
+
 // ---------- Modellen som er åpen ----------
-S.modelID = null;
-S.modelGroup = null;
+// ALT som hører til den åpne modellen ligger i denne fabrikken, og nullstilles
+// SAMLET av nullstillModellState() når en ny modell åpnes (clearModel i ifc.js).
+// Nytt felt som gjelder den åpne modellen? Legg det HER – da kan det ikke
+// glemmes ved modellbytte. (S.glbStoreys ble i sin tid glemt i den håndskrevne
+// lista i clearModel, og etasjene fra forrige .glb hang igjen i neste.)
+export function modellStartverdier() {
+  return {
+    modelID: null,            // IFC-trådens modellnummer
+    modelGroup: null,         // three.js-gruppa (clearModel disposer geometrien først)
+    koteMatrixInv: null,      // for å regne tilbake til opprinnelige koter
+    coordMatrix: null,        // original modell → viewer (brukes av aksesystemet)
+    qtyCache: null,
+    qtyType: "",              // valgt objekttype i 📊 Mengder ("" = alle typer)
+    qtyMat: "",               // valgt materiale: "" | "g:<gruppe>" | "m:<navn>"
+    lastLoadInfo: null,
+    bufferITråd: false,       // IFC-tråden holder på filbufferen (🪶-omlasting)
+
+    // 💾 lett kopi (.glb)
+    glbActive: false, glbProps: null, glbColumns: null, glbStoreys: null,
+
+    // søk, valg og visning
+    searchIndex: null, lastQuery: "",
+    multiSel: new Map(),
+    allBoxCache: null,
+    typeInfo: null, typeColorsOn: false,
+    ghostOn: false,
+    miniInfo: null, miniBase: null,
+
+    // snitt og etasjer (clipAxis og clipT er brukerens valg og beholdes)
+    clipOn: false,
+    clipMode: "axis",         // "axis" = X/Y/Z, "face" = langs flate, "box" = boks
+    clipPickFace: false,
+    clipFaceN: null, clipFaceP: null, clipFaceOff: 0, clipFlip: false,
+    clipBox: Object.assign({}, DEFAULT_CLIPBOX),
+    storeyOn: false, storeyList: null, storeyIdx: -1,
+
+    // aksesystem
+    axesOn: false, axesBuilt: false,
+    axisSources: null, axisSelection: new Set(),
+    axisRaw: null,            // kandidater til akser, hentet fra IFC-tråden
+
+    // markeringer
+    comments: [],
+    sharedOK: false
+  };
+}
+
+// Nullstiller modell-feltene samlet. Kalles av clearModel() i ifc.js.
+export function nullstillModellState() { Object.assign(S, modellStartverdier()); }
+
+Object.assign(S, modellStartverdier());
+
+// Felter rundt selve fila – settes FØR/UNDER lasting og nullstilles derfor
+// ikke av clearModel (openLocalFile setter f.eks. S.fileName før loadModel).
 S.fileName = "";
 S.lastBuffer = null;
 S.modelBox = null;
 S.modelSize = 10;
-S.koteMatrixInv = null;   // for å regne tilbake til opprinnelige koter
-S.coordMatrix = null;     // original modell → viewer (brukes av aksesystemet)
-S.qtyCache = null;
-S.qtyType = "";           // valgt objekttype i 📊 Mengder ("" = alle typer)
-S.qtyMat = "";             // valgt materiale: "" | "g:<gruppe>" | "m:<navn>"
 S.bildeMappeOK = false;   // bilder-mappa i SharePoint er sjekket/opprettet
 S.libFane = "full";       // 📚 Biblioteket: "full" (.ifc) eller "lett" (.glb)
 S.nyeBilder = [];         // bilder valgt i «Ny markering», før den er lagret
-S.lastLoadInfo = null;
 
 // Elementdata hentet i én runde fra IFC-tråden: id → {name, objectType, tag,
 // globalId, typeName}. Lar resten av koden slå opp synkront som før.
+// (Tømmes av tømMeta() i ifcrpc.js ved modellbytte.)
 S.meta = new Map();
 S.workerFeil = null;      // satt hvis IFC-tråden ikke kunne brukes
 
 // Lastemodus: full, 🪶 lav kvalitet og 💾 lett kopi (.glb)
 S.lightMode = _prefs.lightMode === true;
 S.lightLoaded = false;
-S.glbActive = false; S.glbProps = null; S.glbColumns = null; S.glbStoreys = null;
 
 // ---------- Verktøy og modus ----------
 S.mode = null;            // null | marker | measure | kote
@@ -135,21 +184,9 @@ S._snapPrevT = 0;
 S.downPos = null;
 S.keyWaitFor = null;
 
-// ---------- Snitt og etasjefilter ----------
-S.clipOn = false;
+// ---------- Snitt: brukerens valg (beholdes mellom modeller) ----------
 S.clipAxis = "y";
-S.clipFlip = false;
 S.clipT = 1;
-S.clipMode = "axis";      // "axis" = X/Y/Z, "face" = langs markert flate, "box" = snitt-boks
-S.clipPickFace = false;
-S.clipFaceN = null;
-S.clipFaceP = null;
-S.clipFaceOff = 0;
-S.storeyOn = false; S.storeyList = null; S.storeyIdx = -1;
-
-// 📦 Snitt-boks: seks sider som andeler (0–1) av modellens utstrekning
-export const DEFAULT_CLIPBOX = { x0: 0, x1: 1, y0: 0, y1: 1, z0: 0, z1: 1 };
-S.clipBox = Object.assign({}, DEFAULT_CLIPBOX);
 
 // Navngitte lagrede snitt per modellfil: { "filnavn.ifc": [ {name, …} ] }
 S.clipStore = (_prefs.clips && typeof _prefs.clips === "object") ? _prefs.clips : {};
@@ -157,34 +194,37 @@ S.clipStore = (_prefs.clips && typeof _prefs.clips === "object") ? _prefs.clips 
 // ---------- Valg og markeringsboks ----------
 S.selectedMeshes = [];
 S.currentPropID = null;
-S.multiSel = new Map();
 S.boxSel = null; S._idMat = null;
-S.allBoxCache = null;
-S.searchIndex = null; S.lastQuery = "";
 
-// ---------- Utseende ----------
-S.ghostOn = false;
-S.typeInfo = null;
-S.typeColorsOn = false;
-
-// ---------- Aksesystem ----------
-S.axesOn = false; S.axesBuilt = false;
-S.axisSources = null;
-S.axisSelection = new Set();
-S.axisRaw = null;        // kandidater til akser, hentet fra IFC-tråden ved lasting
+// ---------- Aksesystem / minikart: brukerens valg ----------
 S.axisFontF = Number(_prefs.axisFont) || 1;
-
-// ---------- Minikart ----------
-S.miniInfo = null; S.miniBase = null;
 S.miniOn = _prefs.miniOn !== false;
 
 // ---------- Markeringer ----------
-S.comments = [];
 S.pendingPoint = null;
-S.sharedOK = false;
 
 // ---------- SharePoint ----------
 S.msalApp = null; S.spSiteId = null; S.spFiles = null;
+
+// ---------- 🔄 Sammenligning (brukes av compare.js) ----------
+S.compareBase = null;     // avtrykk av forrige modell
+S.compareOn = false;
+
+// ---------- Felter som andre moduler eier, deklarert her for oversikt ----------
+S.scene = null;           // settes av scene.js
+S.prefsCloudOK = false;   // settes av usersync.js når skyoppsettet er lest
+
+// ---------- Callbacks mellom moduler ----------
+// Settes av modulen som eier funksjonen, for å unngå sirkulære importer.
+// Alle kall er beskyttet med if (S.x) – en modul som ikke er lastet gir
+// stille ingen effekt.
+S.onModelLoaded = null;   // compare.js  ← kalles av ifc.js etter lasting
+S.onSharedReady = null;   // share.js    ← kalles av ifc.js etter lasting
+S.onSignedIn = null;      // usersync.js ← kalles av sharepoint.js ved innlogging
+S.onContextMenu = null;   // ui.js       ← kalles av scene.js ved høyreklikk
+S.syncPrefs = null;       // usersync.js ← kalles av alle som lagrer oppsett
+S.rememberModel = null;   // recent.js   ← kalles av ifc.js og sharepoint.js
+S.markerLink = null;      // share.js    ← kalles av markers.js (Planner-notatet)
 
 // ---------- Delt visningslenke ----------
 // Adressen leses her, i den første modulen som kjører, før MSAL får røre hashen.
@@ -197,10 +237,46 @@ export const loadingEl = document.getElementById("loading");
 export const loadingText = document.getElementById("loadingText");
 export const $ = (id) => document.getElementById(id);
 
+// ---------- Panelregister ----------
+// De ti panelene som skal lukke hverandre. Nye paneler legges KUN til her –
+// da lukkes de riktig overalt (knapper og Esc) uten flere kopier av
+// lukkelogikken. Før lå denne lista håndskrevet 11 steder, og fem av kopiene
+// manglet clipPanel/sharePanel.
+export const PANELER = [
+  "propPanel", "commentPanel", "qtyPanel", "libPanel", "colorPanel",
+  "axesPanel", "searchPanel", "comparePanel", "clipPanel", "sharePanel"
+];
+
+// Lukker alle paneler – eventuelt med ett unntak (panelet som skal stå igjen)
+export function lukkPaneler(unntak) {
+  for (const id of PANELER) {
+    if (id === unntak) continue;
+    const el = document.getElementById(id);
+    if (el) el.classList.remove("open");
+  }
+}
+
+// Åpner ett panel og lukker resten – felles vei for alle panelknappene
+export function apnePanel(id) {
+  lukkPaneler(id);
+  const el = document.getElementById(id);
+  if (el) el.classList.add("open");
+}
+
+// Ikon fra Lucide-spriten i index.html, til dynamisk bygd HTML.
+// Eks: ikon("kamera") → <svg class="ikon"><use href="#i-kamera"/></svg>
+export function ikon(navn) {
+  return '<svg class="ikon" aria-hidden="true"><use href="#i-' + navn + '"/></svg>';
+}
+
 // Tåler også tall, null og undefined: en markering fra SharePoint som mangler et
-// felt skal ikke kunne velte hele panelet.
+// felt skal ikke kunne velte hele panelet. Escaper også anførselstegn, siden
+// esc() brukes inne i HTML-attributter (title="…", value="…", data-id="…") –
+// uten det kunne et filnavn med " bryte seg ut av attributtet.
 export function esc(s){
-  return String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  return String(s == null ? "" : s)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
 }
 
 // Antall desimaler brukeren har valgt (⚙ Innstillinger → Visning)
