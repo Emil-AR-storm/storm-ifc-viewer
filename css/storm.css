@@ -1,4 +1,13 @@
-/* Storm IFC-Viewer – all stil samlet her */
+/* Storm IFC-Viewer – all stil samlet her.
+
+   Designsystemet i korte trekk:
+   - Farger ligger i variablene under. --accent = handling/aktiv, --warn = advarsel,
+     --ok = grønt, --danger = rødt. --accent2 beholdes som navn (mye kode peker på
+     den) og brukes til aktive verktøy og tallverdier.
+   - Typografi: 13 px er grunnstørrelsen, 12 px for sekundært, 11 px for metadata.
+     Overskrifter i paneler er 14 px / 600.
+   - Ikoner: Lucide-spriten i index.html. <svg class="ikon"><use href="#i-…"/></svg>
+     tegnes med currentColor og arver tekstfargen. Størrelsen settes her. */
 :root {
   --bg: #14181f;
   --panel: #1e242e;
@@ -8,6 +17,12 @@
   --accent: #3b82f6;
   --accent2: #f59e0b;
   --border: #333c4c;
+  --ok: #3cb44b;
+  --warn: #f59e0b;
+  --danger: #ef4444;
+  --radius: 8px;
+  --radius-stor: 12px;
+  --skygge: 0 10px 30px rgba(0, 0, 0, .45);
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; overflow: hidden; }
@@ -15,10 +30,26 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   background: var(--bg);
   color: var(--text);
+  font-size: 13px;
+  line-height: 1.45;
 }
 #viewer { position: fixed; inset: 0; touch-action: none; }
 
-/* Toppbar */
+/* ---------- Ikoner ---------- */
+.ikon {
+  width: 15px; height: 15px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vertical-align: -2px;
+  pointer-events: none;   /* klikk går til knappen, ikke ikonet */
+}
+.ikon.stor { width: 18px; height: 18px; }
+
+/* ---------- Toppbar ---------- */
 #topbar {
   position: fixed; top: 0; left: 0; right: 0;
   display: flex; align-items: center; gap: 6px;
@@ -29,25 +60,35 @@ body {
 }
 #topbar .logo { font-weight: 700; font-size: 15px; letter-spacing: .5px; margin-right: 2px; }
 #topbar .logo span { color: var(--accent); }
+
 button, label.btn {
   background: var(--panel2);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius);
   padding: 8px 12px;
   font-size: 13px;
+  font-family: inherit;
   cursor: pointer;
-  display: inline-flex; align-items: center; gap: 5px;
+  display: inline-flex; align-items: center; gap: 6px;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
+  transition: background .12s, border-color .12s;
 }
+button:hover, label.btn:hover { border-color: #46536a; }
 button:active, label.btn:active { transform: scale(.97); }
+button:focus-visible, label.btn:focus-visible,
+input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
 button.primary { background: var(--accent); border-color: var(--accent); }
+button.primary:hover { border-color: var(--accent); filter: brightness(1.1); }
 button.active { background: var(--accent2); border-color: var(--accent2); color: #14181f; font-weight: 600; }
 #fileInput { display: none; }
 #status { font-size: 12px; color: var(--muted); margin-left: auto; }
 
-/* Verktøylinje (etter innlasting) */
+/* ---------- Verktøylinje (etter innlasting) ---------- */
 #toolbar {
   position: fixed;
   top: 52px; left: 0; right: 0;
@@ -59,27 +100,29 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
 }
 #toolbar.open { display: flex; }
 #toolbar button { padding: 7px 10px; font-size: 12px; }
+#toolbar .ikon { width: 14px; height: 14px; }
 
-/* Kontekst-kontroller nederst (snitt/mål) */
+/* ---------- Kontekst-kontroller nederst (snitt/mål/etasje) ---------- */
 #modeBar {
   position: fixed;
   bottom: 14px; left: 50%; transform: translateX(-50%);
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-stor);
   padding: 10px 14px;
   z-index: 12;
   display: none;
   align-items: center; gap: 8px;
   flex-wrap: wrap;
   max-width: 94vw;
+  box-shadow: var(--skygge);
 }
 #modeBar.open { display: flex; }
 #modeBar .lbl { font-size: 12px; color: var(--muted); }
 #modeBar input[type=range] { width: 180px; }
 #modeBar button { padding: 6px 10px; font-size: 12px; }
 
-/* Panel (egenskaper / kommentarer / mengder) */
+/* ---------- Panel (egenskaper / markeringer / mengder …) ---------- */
 .panel {
   position: fixed;
   right: 0; bottom: 0;
@@ -87,11 +130,12 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
   max-height: 60vh;
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 12px 0 0 0;
+  border-radius: var(--radius-stor) 0 0 0;
   z-index: 11;
   display: none;
   flex-direction: column;
   overflow: hidden;
+  box-shadow: var(--skygge);
 }
 .panel.open { display: flex; }
 .panel header {
@@ -100,7 +144,11 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
   background: var(--panel2);
   font-size: 14px; font-weight: 600;
 }
-.panel header button { padding: 2px 10px; font-size: 15px; }
+.panel header button {
+  padding: 3px 7px; font-size: 13px;
+  background: none; border: 0; color: var(--muted);
+}
+.panel header button:hover { color: var(--text); }
 .panel .body { overflow-y: auto; padding: 12px 14px; font-size: 13px; }
 .prop-row { display: flex; padding: 5px 0; border-bottom: 1px solid var(--border); gap: 10px; }
 .prop-row .k { color: var(--muted); min-width: 110px; flex-shrink: 0; }
@@ -109,13 +157,13 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
 
 .qty-row { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border); }
 .qty-row .n { word-break: break-word; }
-.qty-row .c { color: var(--accent2); white-space: nowrap; text-align: right; }
+.qty-row .c { color: var(--accent2); white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
 
-/* 📚 Bibliotekets to faner: fulle modeller og lette kopier */
-.lib-faner { margin-bottom: 8px; }
+/* Bibliotekets to faner: fulle modeller og lette kopier */
+.lib-faner { margin-bottom: 8px; display: flex; gap: 6px; }
 .lib-faner button { flex: 1; justify-content: center; }
 
-/* Nedtrekk for objekttype og materiale i 📊 Mengder – ett ark om gangen */
+/* Nedtrekk for objekttype og materiale i Mengder – ett ark om gangen */
 .qty-filtre { display: flex; gap: 8px; margin-bottom: 10px; }
 .qty-filtre .qty-type-velg { flex: 1; min-width: 0; margin-bottom: 0; }
 .qty-type-velg { display: block; font-size: 11px; color: var(--muted); margin-bottom: 10px; }
@@ -126,69 +174,84 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
   padding: 5px 6px; font-size: 12px; font-family: inherit;
 }
 
-/* Kommentar-liste */
+/* ---------- Markeringsliste ---------- */
 .comment {
   background: var(--panel2);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius);
   padding: 8px 10px;
   margin-bottom: 8px;
   cursor: pointer;
 }
-.comment .meta { font-size: 11px; color: var(--muted); margin-bottom: 3px; display:flex; justify-content: space-between; }
-.comment .del { color: #ef4444; font-size: 11px; cursor: pointer; }
+.comment:hover { border-color: #46536a; }
+.comment .meta { font-size: 11px; color: var(--muted); margin-bottom: 3px; display: flex; justify-content: space-between; }
+.comment .del { color: var(--danger); font-size: 11px; cursor: pointer; }
 
-/* Kommentar-dialog */
+/* ---------- Ny markering-dialogen ---------- */
 #commentDialog {
   position: fixed; left: 50%; top: 50%;
   transform: translate(-50%, -50%);
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-stor);
   padding: 16px;
   width: 320px; max-width: 92vw;
   z-index: 20;
   display: none;
+  box-shadow: var(--skygge);
 }
 #commentDialog.open { display: block; }
 #commentDialog h3 { font-size: 14px; margin-bottom: 10px; }
 #commentDialog textarea {
   width: 100%; height: 80px;
   background: var(--bg); color: var(--text);
-  border: 1px solid var(--border); border-radius: 8px;
+  border: 1px solid var(--border); border-radius: var(--radius);
   padding: 8px; font-size: 14px; resize: none;
   font-family: inherit;
 }
 #commentDialog .actions { display: flex; gap: 8px; margin-top: 10px; justify-content: flex-end; }
 
-/* Startskjerm */
+/* ---------- Startskjerm ---------- */
+/* Mørkt slør over 3D-rutenettet, ellers er den grå teksten uleselig på den
+   lyse bakgrunnen. Sløret forsvinner sammen med startskjermen. */
 #splash {
   position: fixed; inset: 0;
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
   gap: 16px; z-index: 5;
   text-align: center; padding: 20px;
+  background: radial-gradient(ellipse at center, rgba(20,24,31,.88) 0%, rgba(20,24,31,.72) 100%);
 }
-#splash h1 { font-size: 26px; }
+#splash h1 { font-size: 26px; letter-spacing: .5px; }
 #splash h1 span { color: var(--accent); }
-#splash p { color: var(--muted); max-width: 420px; font-size: 14px; line-height: 1.5; }
-#splash label.btn,
+#splash p { color: var(--muted); max-width: 420px; font-size: 14px; }
+#splash p.liten { font-size: 12px; }
 #splash #btnOpenSplash { font-size: 16px; padding: 14px 26px; background: var(--accent); border-color: var(--accent); }
+#splash #btnOpenSplash .ikon { width: 18px; height: 18px; }
+#splash #btnLibSplash { font-size: 15px; padding: 12px 22px; }
+#splash #btnLibSplash .ikon { width: 17px; height: 17px; }
+#splash #jsCheck { color: var(--danger); font-size: 13px; font-weight: 600; }
+#crashBanner, #shareBanner {
+  background: var(--panel); border: 1px solid var(--accent2);
+  border-radius: var(--radius-stor); padding: 12px 14px;
+  font-size: 13px; max-width: 420px; line-height: 1.5;
+}
+#shareBanner { border-color: var(--accent); }
 
-/* Sammenleggbare seksjoner i ⚙-menyen */
+/* ---------- Sammenleggbare seksjoner i innstillingsmenyen ---------- */
 #setBody details { border-top: 1px solid var(--border); margin-top: 8px; padding-top: 4px; }
 #setBody summary { cursor: pointer; list-style: none; padding: 4px 0; }
 #setBody summary::-webkit-details-marker { display: none; }
 #setBody summary::before { content: "▸ "; color: var(--muted); }
 #setBody details[open] summary::before { content: "▾ "; }
 
-/* 📦 Snitt-boks: seks skyvere */
+/* ---------- Snitt-boks: seks skyvere ---------- */
 .clip-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
 .clip-row .n { color: var(--muted); min-width: 92px; font-size: 12px; }
 .clip-row input[type=range] { flex: 1; min-width: 80px; }
-.clip-row .v { color: var(--accent2); font-size: 12px; min-width: 42px; text-align: right; }
+.clip-row .v { color: var(--accent2); font-size: 12px; min-width: 42px; text-align: right; font-variant-numeric: tabular-nums; }
 
-/* 🟡 Boble når du trykker på en markering – følger markeringen i bildet */
+/* ---------- Boble på markeringen ---------- */
 #markerPop {
   position: fixed; z-index: 22;
   display: none;
@@ -197,8 +260,8 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
   border: 1px solid var(--accent2);
   border-radius: 10px;
   padding: 8px 10px 9px;
-  box-shadow: 0 8px 24px rgba(0,0,0,.45);
-  font-size: 13px; line-height: 1.45;
+  box-shadow: var(--skygge);
+  font-size: 13px;
 }
 #markerPop.open { display: block; }
 #markerPop .mp-meta {
@@ -220,8 +283,9 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
   background: var(--panel2); color: var(--text);
   border: 1px solid var(--border); border-radius: 6px;
   padding: 3px 5px; font-size: 11px; max-width: 150px;
+  font-family: inherit;
 }
-/* 📷 Miniatyrbilder i bobla, delt i Før og Etter */
+/* Miniatyrbilder i bobla, delt i Før og Etter */
 #markerPop .mp-seksjon { margin-top: 8px; }
 #markerPop .mp-seksjon-tittel {
   font-size: 10px; letter-spacing: .04em; text-transform: uppercase;
@@ -240,7 +304,7 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
 .mp-bilde.nytt:hover { border-color: var(--accent2); color: var(--text); }
 .mp-bilde.mangler { cursor: default; }
 
-/* 📄 Arbeidstegninger i bobla */
+/* Arbeidstegninger i bobla */
 #markerPop .mp-tegninger { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
 .mp-tegning {
   display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
@@ -254,7 +318,7 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
   padding: 0 3px; border: 0; background: none; color: var(--muted);
   font-size: 11px; line-height: 1; cursor: pointer;
 }
-.mp-tegning-x:hover { color: #ef4444; }
+.mp-tegning-x:hover { color: var(--danger); }
 .mp-tegning.nytt { border-style: dashed; color: var(--muted); }
 .mp-tegning.nytt:hover { color: var(--text); }
 
@@ -267,7 +331,7 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
 #tegningVelg .tv-boks {
   width: min(460px, 94vw); max-height: 84vh; display: flex; flex-direction: column;
   background: var(--panel); border: 1px solid var(--accent2); border-radius: 10px;
-  box-shadow: 0 8px 30px rgba(0,0,0,.5);
+  box-shadow: var(--skygge);
 }
 #tegningVelg .tv-topp {
   display: flex; align-items: center; justify-content: space-between;
@@ -290,7 +354,7 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
 }
 #tegningVelg .tv-bunn button { margin-left: auto; }
 
-/* Bilde i full skjerm, med zoom og bla */
+/* ---------- Bilde i full skjerm, med zoom og bla ---------- */
 #bildeVis {
   display: none; position: fixed; inset: 0; z-index: 60;
   background: rgba(0,0,0,.9); cursor: zoom-out;
@@ -309,39 +373,42 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
   position: absolute; top: 10px; right: 12px;
   display: flex; align-items: center; gap: 6px;
   background: rgba(20,24,31,.82); border: 1px solid var(--border);
-  border-radius: 8px; padding: 5px 8px;
+  border-radius: var(--radius); padding: 5px 8px;
   font-size: 12px; color: var(--text);
 }
-#bildeVis .bv-topp #bvZoom { color: var(--muted); min-width: 42px; text-align: right; }
+#bildeVis .bv-topp #bvZoom { color: var(--muted); min-width: 42px; text-align: right; font-variant-numeric: tabular-nums; }
 #bildeVis .bv-knapp {
-  padding: 2px 9px; font-size: 15px; line-height: 1.3; min-width: 30px;
+  padding: 4px 9px; font-size: 13px; line-height: 1.3; min-width: 30px; justify-content: center;
 }
 #bildeVis .bv-pil {
   position: absolute; top: 50%; transform: translateY(-50%);
-  padding: 6px 14px; font-size: 26px; line-height: 1;
+  padding: 10px 12px;
   background: rgba(20,24,31,.82);
 }
+#bildeVis .bv-pil .ikon { width: 22px; height: 22px; }
 #bildeVis #bvFor { left: 14px; }
 #bildeVis #bvNeste { right: 14px; }
 @media (max-width: 640px) {
-  #bildeVis .bv-pil { font-size: 22px; padding: 10px 12px; }
+  #bildeVis .bv-pil { padding: 12px 10px; }
   #bildeVis .bv-topp { left: 12px; right: 12px; justify-content: flex-end; }
 }
 
-/* Bildevalg i «Ny markering» */
+/* ---------- Bildevalg i «Ny markering» ---------- */
 .cd-bilder { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .cd-bildeknapp {
-  display: inline-block; cursor: pointer; font-size: 12px;
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12px;
   background: var(--panel2); color: var(--text);
   border: 1px dashed var(--border); border-radius: 6px; padding: 5px 9px;
 }
 .cd-bildeknapp:hover { border-color: var(--accent2); }
+.cd-bildeknapp .ikon { width: 14px; height: 14px; }
 #commentFileInfo { font-size: 11px; color: var(--muted); }
 
-#markerPop .mp-late { color: #ef4444; font-size: 11px; margin-top: 6px; }
+#markerPop .mp-late { color: var(--danger); font-size: 11px; margin-top: 6px; display: flex; align-items: center; gap: 5px; }
 #markerPop .mp-act { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
 #markerPop button { padding: 5px 8px; font-size: 11px; }
-#markerPop button.mp-x { padding: 2px 5px; border: 0; background: none; color: var(--muted); font-size: 13px; }
+#markerPop button .ikon { width: 12px; height: 12px; }
+#markerPop button.mp-x { padding: 2px 5px; border: 0; background: none; color: var(--muted); }
 #markerPop button.mp-del { border-color: #7f2b2b; }
 /* liten pil ned mot selve markeringen */
 #markerPop::after {
@@ -352,10 +419,10 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
   transform: rotate(45deg);
 }
 
-/* ▶ Fortsett med … (sist brukte modell) */
+/* ---------- ▶ Fortsett med … (sist brukte modell) ---------- */
 #resumeBox { text-align: center; max-width: 100%; }
 #resumeBox #resumeBtn { max-width: 90vw; }
-#resumeBox a { text-decoration: underline; }
+#resumeBox a { text-decoration: underline; color: inherit; }
 
 #loading {
   position: fixed; inset: 0;
@@ -378,30 +445,32 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
   position: fixed; bottom: 12px; left: 12px;
   font-size: 11px; color: var(--muted);
   z-index: 9; max-width: 55vw;
-  background: rgba(20,24,31,.6); padding: 6px 10px; border-radius: 8px;
+  background: rgba(20,24,31,.6); padding: 6px 10px; border-radius: var(--radius);
   display: none;
 }
-/* Bibliotek */
+
+/* ---------- Bibliotek ---------- */
 #libBody input[type=search] {
   width: 100%; padding: 9px 10px;
   background: var(--bg); color: var(--text);
-  border: 1px solid var(--border); border-radius: 8px;
+  border: 1px solid var(--border); border-radius: var(--radius);
   font-size: 14px; margin-bottom: 10px;
   font-family: inherit;
 }
 .lib-item {
   background: var(--panel2);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius);
   padding: 9px 11px;
   margin-bottom: 8px;
   cursor: pointer;
 }
+.lib-item:hover { border-color: #46536a; }
 .lib-item:active { transform: scale(.98); }
 .lib-item .n { font-size: 13px; word-break: break-word; }
 .lib-item .m { font-size: 11px; color: var(--muted); margin-top: 2px; }
 
-/* Dra-og-slipp-melding */
+/* ---------- Dra-og-slipp-melding ---------- */
 #dropHint {
   position: fixed; inset: 0;
   display: none; align-items: center; justify-content: center;
@@ -413,19 +482,19 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
 }
 #dropHint.open { display: flex; }
 
-/* ⚙ Innstillingsmeny (høyreklikk) */
+/* ---------- Innstillingsmeny (høyreklikk) ---------- */
 #setMenu {
   position: fixed;
   width: 320px; max-width: 94vw;
   max-height: 78vh;
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-stor);
   z-index: 25;
   display: none;
   flex-direction: column;
   overflow: hidden;
-  box-shadow: 0 12px 34px rgba(0,0,0,.45);
+  box-shadow: var(--skygge);
 }
 #setMenu.open { display: flex; }
 #setMenu header {
@@ -433,7 +502,8 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
   padding: 9px 12px; background: var(--panel2);
   font-size: 13px; font-weight: 600;
 }
-#setMenu header button { padding: 2px 9px; font-size: 14px; }
+#setMenu header button { padding: 2px 6px; background: none; border: 0; color: var(--muted); }
+#setMenu header button:hover { color: var(--text); }
 #setMenu .body { overflow-y: auto; padding: 10px 12px; font-size: 13px; }
 #setMenu h4 {
   font-size: 11px; text-transform: uppercase; letter-spacing: .6px;
@@ -454,7 +524,7 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
 .keybtn { padding: 3px 10px; font-size: 12px; min-width: 62px; justify-content: center; }
 .keybtn.wait { background: var(--accent2); color: #14181f; font-weight: 600; }
 
-/* ⋯ Mer-meny (bare på telefon – knappene flyttes hit av js/mobile.js) */
+/* ---------- ⋯ Mer-meny (bare på telefon – js/mobile.js flytter knappene hit) ---------- */
 #moreMenu {
   position: fixed;
   top: 92px; right: 6px; left: 6px;
@@ -462,10 +532,10 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
   flex-wrap: wrap; gap: 6px;
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-stor);
   padding: 8px;
   z-index: 14;
-  box-shadow: 0 10px 30px rgba(0,0,0,.5);
+  box-shadow: var(--skygge);
 }
 #moreMenu.open { display: flex; }
 #moreMenu button { flex: 1 1 calc(50% - 3px); justify-content: flex-start; }
@@ -479,9 +549,9 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
   }
   #topbar::-webkit-scrollbar { display: none; }
   #topbar .logo { font-size: 13px; }
-  #status { display: none; }        /* antall elementer står i 📊 Mengder */
+  #status { display: none; }        /* antall elementer står i Mengder */
   button, label.btn { padding: 7px 9px; font-size: 12px; }
-  .panel { width: 100vw; border-radius: 12px 12px 0 0; max-height: 55vh; }
+  .panel { width: 100vw; border-radius: var(--radius-stor) var(--radius-stor) 0 0; max-height: 55vh; }
   #hint { display: none !important; }
 
   /* verktøylinja skal alltid være én linje */
