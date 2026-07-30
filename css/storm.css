@@ -240,6 +240,56 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
 .mp-bilde.nytt:hover { border-color: var(--accent2); color: var(--text); }
 .mp-bilde.mangler { cursor: default; }
 
+/* 📄 Arbeidstegninger i bobla */
+#markerPop .mp-tegninger { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.mp-tegning {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
+  background: var(--panel2); border: 1px solid var(--border); border-radius: 6px;
+  padding: 4px 7px; font-size: 11px; color: var(--text); cursor: pointer;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mp-tegning:hover { border-color: var(--accent2); }
+.mp-tegning .stor { color: var(--accent2); }
+.mp-tegning-x {
+  padding: 0 3px; border: 0; background: none; color: var(--muted);
+  font-size: 11px; line-height: 1; cursor: pointer;
+}
+.mp-tegning-x:hover { color: #ef4444; }
+.mp-tegning.nytt { border-style: dashed; color: var(--muted); }
+.mp-tegning.nytt:hover { color: var(--text); }
+
+/* Velgeren for arbeidstegninger */
+#tegningVelg {
+  display: none; position: fixed; inset: 0; z-index: 55;
+  background: rgba(0,0,0,.6);
+}
+#tegningVelg.open { display: flex; align-items: center; justify-content: center; }
+#tegningVelg .tv-boks {
+  width: min(460px, 94vw); max-height: 84vh; display: flex; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--accent2); border-radius: 10px;
+  box-shadow: 0 8px 30px rgba(0,0,0,.5);
+}
+#tegningVelg .tv-topp {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 12px; border-bottom: 1px solid var(--border); font-weight: 600;
+}
+#tegningVelg .tv-x { border: 0; background: none; color: var(--muted); font-size: 14px; padding: 2px 5px; }
+#tegningVelg .tv-kropp { padding: 10px 12px; overflow: auto; }
+#tegningVelg .tv-mappe { color: var(--muted); font-size: 11px; margin: 0 0 8px; }
+#tegningVelg #tvListe { max-height: 46vh; overflow: auto; }
+#tegningVelg .lib-item.valgt { border-color: var(--accent2); background: var(--panel2); }
+#tegningVelg .tv-bunn {
+  display: flex; align-items: center; gap: 10px;
+  margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);
+}
+#tegningVelg .tv-bunn label { font-size: 11px; color: var(--muted); }
+#tegningVelg .tv-bunn input[type=number] {
+  width: 62px; margin-left: 5px;
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; font-family: inherit;
+}
+#tegningVelg .tv-bunn button { margin-left: auto; }
+
 /* Bilde i full skjerm, med zoom og bla */
 #bildeVis {
   display: none; position: fixed; inset: 0; z-index: 60;
