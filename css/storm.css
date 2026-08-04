@@ -259,10 +259,15 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
 .clip-row .v { color: var(--accent2); font-size: 12px; min-width: 42px; text-align: right; font-variant-numeric: tabular-nums; }
 
 /* ---------- Boble på markeringen ---------- */
+/* Bobla har FAST maks-høyde. En markering kan inneholde en hel tegningsliste,
+   og uten taket her vokser den rett ut av skjermen – da havner både statusfelt
+   og Slett-knapp utenfor rekkevidde. Toppen (hvem/når) og knappene står i ro,
+   mens innholdet mellom dem rulles. */
 #markerPop {
   position: fixed; z-index: 22;
-  display: none;
+  display: none; flex-direction: column;
   max-width: 280px; min-width: 170px;
+  max-height: min(70vh, 620px);
   background: var(--panel);
   border: 1px solid var(--accent2);
   border-radius: 10px;
@@ -270,7 +275,21 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
   box-shadow: var(--skygge);
   font-size: 13px;
 }
-#markerPop.open { display: block; }
+#markerPop.open { display: flex; }
+#markerPop .mp-meta, #markerPop .mp-act { flex: 0 0 auto; }
+#markerPop .mp-kropp {
+  flex: 1 1 auto;
+  min-height: 0;                 /* uten denne nekter flex å krympe innholdet */
+  overflow-y: auto;
+  overscroll-behavior: contain;  /* rulling stopper i bobla, siden bak står stille */
+  /* rullefeltet legges helt ut til kanten, så teksten ikke får dobbel marg */
+  margin: 0 -10px; padding: 0 10px;
+}
+#markerPop .mp-kropp::-webkit-scrollbar { width: 8px; }
+#markerPop .mp-kropp::-webkit-scrollbar-thumb {
+  background: var(--border); border-radius: 4px;
+}
+#markerPop .mp-kropp::-webkit-scrollbar-thumb:hover { background: var(--muted); }
 #markerPop .mp-meta {
   display: flex; align-items: center; gap: 8px;
   color: var(--muted); font-size: 11px; margin-bottom: 4px;
@@ -450,7 +469,10 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
 #commentFileInfo { font-size: 11px; color: var(--muted); }
 
 #markerPop .mp-late { color: var(--danger); font-size: 11px; margin-top: 6px; display: flex; align-items: center; gap: 5px; }
-#markerPop .mp-act { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+#markerPop .mp-act {
+  display: flex; gap: 6px; flex-wrap: wrap;
+  margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);
+}
 #markerPop button { padding: 5px 8px; font-size: 11px; }
 #markerPop button .ikon { width: 12px; height: 12px; }
 #markerPop button.mp-x { padding: 2px 5px; border: 0; background: none; color: var(--muted); }
