@@ -20,12 +20,29 @@ const REC_KEY = "last";
 function openDb() {
   return new Promise((resolve, reject) => {
     if (!window.indexedDB) return reject(new Error("IndexedDB mangler"));
-    const req = indexedDB.open(DB_NAME, 1);
+    // ÅPNE UTEN VERSJONSNUMMER: basen åpnes slik den er. Å be om en fast
+    // versjon (1) som er LAVERE enn den som finnes (2), gir VersionError –
+    // og «▶ Fortsett med …»-knappen dukker aldri opp.
+    const req = indexedDB.open(DB_NAME);
     req.onupgradeneeded = () => {
+      // Helt ny base: lag lageret med en gang.
       const db = req.result;
       if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
     };
-    req.onsuccess = () => resolve(req.result);
+    req.onsuccess = () => {
+      const db = req.result;
+      if (db.objectStoreNames.contains(STORE)) return resolve(db);
+      // Basen finnes (laget av noe annet), men mangler lageret vårt:
+      // åpne på nytt med versjon+1, som er eneste måte å lage det på.
+      const v = db.version + 1;
+      db.close();
+      const req2 = indexedDB.open(DB_NAME, v);
+      req2.onupgradeneeded = () => {
+        if (!req2.result.objectStoreNames.contains(STORE)) req2.result.createObjectStore(STORE);
+      };
+      req2.onsuccess = () => resolve(req2.result);
+      req2.onerror = () => reject(req2.error || new Error("Kunne ikke åpne IndexedDB"));
+    };
     req.onerror = () => reject(req.error || new Error("Kunne ikke åpne IndexedDB"));
   });
 }

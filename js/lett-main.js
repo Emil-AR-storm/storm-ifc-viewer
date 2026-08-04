@@ -1,0 +1,127 @@
+// Oppstart for LETTMODUS (bygg.html): som main.js, men uten bibliotek,
+// sammenligning, «Fortsett med»-knapp og personlig oppsett fra SharePoint.
+// Innlogging startes aldri – se LETT-flagget i lett.js og gaten i sharepoint.js.
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
+import { $, S, fmtLen, loadingEl, loadingText } from "./state.js";
+import { oversettDom, setLang, t } from "./i18n.js";
+import { setClipFromFace } from "./clip.js";
+import { clearSelection, hitID, pick, selectElement, showProperties } from "./elements.js";
+import { afterLoad, ifcReady, loadGlb } from "./ifc.js";
+import { closeMarkerPopup, openMarkerPopup, pickMarker } from "./markers.js";
+import { addMeasure, koteValue, snapPoint } from "./measure.js";
+import { canvas, koteGroup, makeLabel, measureGroup } from "./scene.js";
+
+// last inn resten av modulene (rekkefølgen bestemmer oppstart)
+// UTELATT i lettmodus: ./compare.js, ./recent.js, ./usersync.js
+// (share.js drar inn compare.js selv – det er greit, knappen er skjult i CSS)
+import "./prefs.js";
+import "./display.js";
+import "./markers.js";
+import "./minimap.js";
+import "./axes.js";
+import "./modes.js";
+import "./sharepoint.js";
+import "./ui.js";
+import "./share.js";
+import "./mobile.js";   // må lastes etter at alle knapper har fått lyttere
+
+// JavaScript kjører – skjul advarselen
+const jsCheck = document.getElementById("jsCheck");
+
+if (jsCheck) jsCheck.style.display = "none";
+
+// ---------- Språk ----------
+// Lagret valg legges på HTML-en med en gang, og velgeren på startskjermen
+// holdes i takt med den i ⚙ Innstillinger (begge kaller setLang).
+oversettDom();
+const sprakVelg = $("sprakVelg");
+if (sprakVelg) {
+  sprakVelg.value = S.lang;
+  sprakVelg.onchange = () => setLang(sprakVelg.value);
+}
+
+// ---------- Klikk / trykk ----------
+
+canvas.addEventListener("pointerdown", (e) => { S.downPos = { x: e.clientX, y: e.clientY }; });
+
+canvas.addEventListener("pointerup", (e) => {
+  if (!S.downPos) return;
+  const moved = Math.hypot(e.clientX - S.downPos.x, e.clientY - S.downPos.y);
+  S.downPos = null;
+  if (moved > 8) return;
+  if (e.button === 2) return; // høyreklikk håndteres av innstillingsmenyen
+  // 📐 Fra flate: neste trykk setter snittplanet (ignorer gjeldende snitt så flaten kan treffes)
+  if (S.clipPickFace) {
+    const fh = pick(e.clientX, e.clientY, true);
+    if (fh) setClipFromFace(fh);
+    return;
+  }
+  // 🟡 Trykk på en markering åpner teksten. Går foran valg av element, men ikke
+  // foran verktøyene – i 📌/📏/▲-modus skal trykket gjøre det modusen sier.
+  if (!S.mode) {
+    const mc = pickMarker(e.clientX, e.clientY);
+    if (mc) { openMarkerPopup(mc); return; }
+    closeMarkerPopup();
+  }
+  const hit = pick(e.clientX, e.clientY);
+  if (!hit) {
+    if (!S.mode) { clearSelection(); $("propPanel").classList.remove("open"); }
+    return;
+  }
+  if (S.mode === "marker") {
+    S.pendingPoint = hit.point.clone();
+    $("commentText").value = "";
+    $("commentDialog").classList.add("open");
+    setTimeout(() => $("commentText").focus(), 50);
+  } else if (S.mode === "measure") {
+    const mp = snapPoint(hit).point; // fester seg til nærmeste kant/hjørne
+    if (!S.measureFirst) {
+      S.measureFirst = mp.clone();
+      const dot = new THREE.Mesh(new THREE.SphereGeometry(1), new THREE.MeshBasicMaterial({ color: 0xf59e0b, depthTest: false }));
+      dot.renderOrder = 997;
+      dot.position.copy(S.measureFirst);
+      dot.userData.temp = true;
+      dot.userData.px = 8;
+      measureGroup.add(dot);
+    } else {
+      measureGroup.children.filter(o => o.userData.temp).forEach(o => measureGroup.remove(o));
+      addMeasure(S.measureFirst, mp.clone());
+      S.measureFirst = null;
+    }
+  } else if (S.mode === "kote") {
+    const label = makeLabel("▲ " + fmtLen(koteValue(hit.point)), "#22d3ee");
+    label.userData.px = 30; // konstant skjermstørrelse
+    label.userData.aspect = label.scale.x / label.scale.y;
+    label.position.copy(hit.point);
+    koteGroup.add(label);
+  } else {
+    if (e.shiftKey) return; // shift håndteres av markeringsboks-logikken (shiftClickAt / finishBoxSelect)
+    const id = hitID(hit);
+    if (id == null) return;
+    S.multiSel.clear();
+    selectElement(id);
+    showProperties(id);
+  }
+});
+
+// ---------- Innlasting av modell fra en vanlig URL ----------
+// Erstatter «Automatisk innlasting av innebygd modell» fra main.js.
+// Trinn 3 (Workeren) kaller denne etter riktig kode. Fram til da kan den
+// kjøres for hånd i konsollen: åpneFraUrl("test.glb")
+async function åpneFraUrl(url) {
+  loadingText.textContent = t("Laster modell …");
+  loadingEl.classList.add("open");
+  try {
+    await ifcReady;
+    const r = await fetch(url);
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    S.fileName = url.split("/").pop() || "modell.glb";
+    await loadGlb(new Uint8Array(await r.arrayBuffer()));
+    afterLoad();
+  } catch (err) {
+    alert(t("Klarte ikke å laste modellen: ") + err.message);
+  } finally {
+    loadingEl.classList.remove("open");
+  }
+}
+window.åpneFraUrl = åpneFraUrl;   // trinn 3 kaller denne
