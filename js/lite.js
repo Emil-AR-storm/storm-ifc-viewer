@@ -117,7 +117,8 @@ export async function byggLettKopi(melding) {
   for (const id of ids) {
     const m = metaFor(id);
     // fjerde plass er materialet – lett kopi har ingen IFC-data å slå opp i
-    if (m) props[id] = [m.name || "", m.objectType || "", m.typeName ? "Ifc" + m.typeName : "", m.material || ""];
+    // femte plass er GlobalId — nøkkelen som gjenkjenner elementet mellom revisjoner
+    if (m) props[id] = [m.name || "", m.objectType || "", m.typeName ? "Ifc" + m.typeName : "", m.material || "", m.globalId || ""];
   }
   let columns = [], storeys = [];
   try { columns = (await kall("axisSources")).filter(k => k.t === "COLUMN").map(k => k.id); } catch(_) {}
@@ -143,7 +144,7 @@ export async function byggLettKopi(melding) {
     gruppe.add(em);
   }
   gruppe.userData.stormLite = {
-    v: 3,
+    v: 4,   // v4 = props har GlobalId på femte plass
     name: S.fileName,
     kote: S.koteMatrixInv ? Array.from(S.koteMatrixInv.elements) : null,
     laget: new Date().toISOString(),
