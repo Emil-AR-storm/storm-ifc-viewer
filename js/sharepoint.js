@@ -1,6 +1,7 @@
 // Microsoft Graph: innlogging og modellbibliotek fra SharePoint.
 import { $, S, esc, ikon, loadingEl, loadingText, lukkPaneler } from "./state.js";
 import { t } from "./i18n.js";
+import { LETT } from "./lett.js";
 import { afterLoad, clearLoadFlag, ifcReady, loadGlb, loadModel, offerLightRetry, setLoadFlag } from "./ifc.js";
 
 // ---------- SharePoint-bibliotek (Microsoft Graph) ----------
@@ -137,7 +138,9 @@ export async function graphToken(scopes, opts) {
   }
 }
 
-if (!SP.clientId.startsWith("FYLL")) msalInit().catch(() => {});
+// LETTMODUS (bygg.html): aldri start innlogging. Dette er den ENESTE linja
+// i hele kodebasen som starter MSAL av seg selv – den gates, ikke fjernes.
+if (!LETT && !SP.clientId.startsWith("FYLL")) msalInit().catch(() => {});
 
 async function spToken() {
   return graphToken(SP_SCOPES, { after: "lib" });
