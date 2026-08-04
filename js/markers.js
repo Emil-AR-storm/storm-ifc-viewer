@@ -56,12 +56,48 @@ async function sharedSiteId(token) {
 // SharePoint): bare kjente felter slipper inn, og alt som skal være tekst
 // gjøres om til tekst. Da kan ikke et rart felt i fila – med vilje eller ved
 // uhell – nå innerHTML eller window.open med noe annet enn det vi forventer.
-const MARKERING_TEKSTFELT = ["text", "author", "status", "owner", "due", "date", "taskId", "taskUrl"];
+const MARKERING_TEKSTFELT = ["text", "author", "status", "owner", "due", "date", "taskId", "taskUrl",
+  "endret", "endretAv"];
+
+// ID som ikke kolliderer selv om to på hver sin maskin skriver i samme
+// millisekund – samme oppskrift som markeringene selv bruker.
+export function nyId() {
+  return Date.now() + "-" + Math.random().toString(36).slice(2, 8);
+}
+
+// Navnet på den innloggede, til «skrevet av» og «endret av».
+export function innloggetNavn() {
+  try {
+    const a = S.msalApp && S.msalApp.getActiveAccount();
+    return (a && (a.name || a.username)) || "";
+  } catch(_) { return ""; }
+}
+
+export function naaTekst() {
+  return new Date().toLocaleString("no-NO",
+    { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit" });
+}
+
+// Feltvask for ett svar i tråden under en markering. Samme tanke som for
+// markeringen selv: bare kjente felter, og alt som skal være tekst blir tekst.
+export function vaskSvar(r) {
+  if (!r || typeof r !== "object") return null;
+  const tekst = String(r.tekst == null ? "" : r.tekst).trim();
+  if (!tekst) return null;                        // tomme svar kastes
+  return {
+    id: r.id == null ? nyId() : String(r.id),
+    tekst,
+    forfatter: String(r.forfatter == null ? "" : r.forfatter),
+    dato: String(r.dato == null ? "" : r.dato),
+    endret: String(r.endret == null ? "" : r.endret)
+  };
+}
 
 export function vaskMarkering(r) {
   if (!r || typeof r !== "object" || r.id == null) return null;
   const c = { id: typeof r.id === "number" ? r.id : String(r.id) };
   for (const k of MARKERING_TEKSTFELT) if (r[k] != null) c[k] = String(r[k]);
+  if (Array.isArray(r.svar)) c.svar = r.svar.map(vaskSvar).filter(Boolean);
   for (const k of ["x", "y", "z"]) c[k] = Number(r[k]) || 0;
   // frist skal være en ren dato – alt annet forkastes
   if (c.due && !/^\d{4}-\d{2}-\d{2}$/.test(c.due)) c.due = "";
@@ -92,6 +128,16 @@ async function syncSharedComments() {
     if (syncedFile() !== forFile) return; // brukeren byttet modell underveis
     const have = new Set(remote.map(c => c.id));
     const localOnly = S.comments.filter(c => !have.has(c.id));
+    // Den delte fila vinner på markeringen, men svar går aldri tapt: skrev to
+    // personer hvert sitt svar før noen rakk å synke, beholdes begge.
+    const lokaleSvar = new Map(S.comments.map(c => [String(c.id), svarI(c)]));
+    remote.forEach(c => {
+      const mine = lokaleSvar.get(String(c.id));
+      if (!mine || !mine.length) return;
+      const kjent = new Set(svarI(c).map(s => String(s.id)));
+      const nye = mine.filter(s => !kjent.has(String(s.id)));
+      if (nye.length) c.svar = svarI(c).concat(nye);
+    });
     S.comments = remote.concat(localOnly);
     markerGroup.clear();
     S.comments.forEach(addMarkerSprite);
@@ -234,6 +280,51 @@ function updateComment(c, patch) {
   pushSharedComments();
   renderCommentList();
   if (popFor && popFor.id === c.id) openMarkerPopup(c);
+}
+
+// ---------- ✏️ Redigering av markeringsteksten ----------
+// Teksten kan rettes etter at markeringen er laget. Vi overskriver ikke
+// «skrevet av» og opprinnelig dato – de forteller hvem som fant avviket. I
+// stedet noteres hvem som endret og når, så historikken ikke forsvinner.
+
+export function redigerMarkeringstekst(c, nyTekst) {
+  const tekst = String(nyTekst == null ? "" : nyTekst).trim();
+  if (!c || !tekst || tekst === c.text) return false;   // tom tekst sletter ikke
+  updateComment(c, { text: tekst, endret: naaTekst(), endretAv: innloggetNavn() });
+  return true;
+}
+
+// ---------- 💬 Svar på en markering ----------
+// Svarene ligger i markeringen selv (c.svar), så de følger med i den samme
+// delte JSON-fila og trenger ingen ny lagringsplass i SharePoint.
+
+export const svarI = (c) => (c && Array.isArray(c.svar) ? c.svar : []);
+
+export function leggTilSvar(c, tekst) {
+  const rent = String(tekst == null ? "" : tekst).trim();
+  if (!c || !rent) return null;
+  const s = { id: nyId(), tekst: rent, forfatter: innloggetNavn(), dato: naaTekst(), endret: "" };
+  c.svar = svarI(c).concat([s]);
+  updateComment(c, {});
+  return s;
+}
+
+export function endreSvar(c, svarId, tekst) {
+  const rent = String(tekst == null ? "" : tekst).trim();
+  const s = svarI(c).find(x => x.id == svarId);
+  if (!s || !rent || rent === s.tekst) return false;
+  s.tekst = rent;
+  s.endret = naaTekst();
+  updateComment(c, {});
+  return true;
+}
+
+export function slettSvar(c, svarId) {
+  const f = svarI(c).length;
+  c.svar = svarI(c).filter(x => x.id != svarId);
+  if (c.svar.length === f) return false;
+  updateComment(c, {});
+  return true;
 }
 
 // ---------- 📷 Bilder ----------
@@ -671,6 +762,102 @@ async function taImotFiler(c, filer, seksjon, etterpa) {
   }
 }
 
+// ---------- 💬 Svartråden i bobla ----------
+
+// Hvilken tekst redigeres akkurat nå? null = ingen, "" = selve markeringen,
+// ellers ID-en til svaret. Ligger utenfor openMarkerPopup fordi bobla tegnes
+// på nytt hver gang noe endres, og redigeringen skal overleve det.
+let redigerer = null;
+
+// «Emil · 04.08.2026, 09:12 (endret 04.08.2026, 10:30)»
+export function svarMetaTekst(s) {
+  const hode = (s.forfatter ? s.forfatter + " · " : "") + (s.dato || "");
+  return s.endret ? hode + " " + t("(endret {0})", s.endret) : hode;
+}
+
+export function markeringMetaTekst(c) {
+  const hode = (c.author ? c.author + " · " : "") + (c.date || "");
+  if (!c.endret) return hode;
+  return hode + " " + (c.endretAv
+    ? t("(endret av {0} {1})", c.endretAv, c.endret)
+    : t("(endret {0})", c.endret));
+}
+
+// Et tekstfelt med Lagre/Avbryt – brukes både til markeringen og til svar.
+function redigerFeltHtml(verdi, klasse) {
+  return '<div class="mp-rediger ' + klasse + '">' +
+    '<textarea class="mp-rediger-tekst" rows="3">' + esc(verdi) + '</textarea>' +
+    '<div class="mp-rediger-knapper">' +
+      '<button class="mp-lagre">' + ikon("lagre") + ' ' + t("Lagre") + '</button>' +
+      '<button class="mp-avbryt">' + t("Avbryt") + '</button>' +
+    '</div></div>';
+}
+
+function svarSeksjonHtml(c) {
+  const liste = svarI(c);
+  let html = '<div class="mp-seksjon mp-svar-seksjon"><div class="mp-seksjon-tittel">' +
+    t("Kommentarer") + (liste.length ? ' <span>' + liste.length + '</span>' : "") + '</div>';
+
+  html += liste.map(s => '<div class="mp-svar" data-svar="' + esc(s.id) + '">' +
+      '<div class="mp-svar-meta"><span>' + esc(svarMetaTekst(s)) + '</span>' +
+        '<span class="mp-svar-verktoy">' +
+          '<button class="mp-svar-rediger" title="' + t("Endre kommentaren") + '">' + ikon("rediger") + '</button>' +
+          '<button class="mp-svar-slett" title="' + t("Slett kommentaren") + '">' + ikon("slett") + '</button>' +
+        '</span></div>' +
+      (redigerer === s.id
+        ? redigerFeltHtml(s.tekst, "for-svar")
+        : '<div class="mp-svar-tekst">' + esc(s.tekst) + '</div>') +
+    '</div>').join("");
+
+  html += redigerer === "nytt"
+    ? redigerFeltHtml("", "for-nytt")
+    : '<button class="mp-tegning nytt mp-svar-nytt">' + ikon("svar") + ' ' + t("Skriv en kommentar") + '</button>';
+  return html + '</div>';
+}
+
+// Kobler opp Lagre/Avbryt i ett redigeringsfelt. `lagre(tekst)` gjør jobben.
+function koblRedigering(rot, lagre) {
+  const boks = rot.querySelector(".mp-rediger");
+  if (!boks) return;
+  const felt = boks.querySelector(".mp-rediger-tekst");
+  const ferdig = () => { redigerer = null; };
+  boks.querySelector(".mp-avbryt").onclick = () => { ferdig(); openMarkerPopup(popFor); };
+  boks.querySelector(".mp-lagre").onclick = () => {
+    const tekst = felt.value;
+    ferdig();
+    // lagre() kaller updateComment, som tegner bobla på nytt. Endret den
+    // ingenting (tom tekst, eller helt lik den gamle), tegner vi selv.
+    if (!lagre(tekst)) openMarkerPopup(popFor);
+  };
+  // Ctrl/Cmd+Enter lagrer, Esc avbryter – Esc stoppes så den ikke lukker bobla
+  felt.onkeydown = (e) => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); boks.querySelector(".mp-lagre").click(); }
+    else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); boks.querySelector(".mp-avbryt").click(); }
+  };
+  felt.focus();
+  felt.setSelectionRange(felt.value.length, felt.value.length);
+}
+
+function koblSvarSeksjon(el, c) {
+  const seksjon = el.querySelector(".mp-svar-seksjon");
+  if (!seksjon) return;
+
+  const nyttKnapp = seksjon.querySelector(".mp-svar-nytt");
+  if (nyttKnapp) nyttKnapp.onclick = () => { redigerer = "nytt"; openMarkerPopup(c); };
+
+  if (redigerer === "nytt") koblRedigering(seksjon, (tekst) => !!leggTilSvar(c, tekst));
+
+  seksjon.querySelectorAll(".mp-svar").forEach(rad => {
+    const id = rad.dataset.svar;
+    rad.querySelector(".mp-svar-rediger").onclick = () => { redigerer = id; openMarkerPopup(c); };
+    rad.querySelector(".mp-svar-slett").onclick = () => {
+      if (!confirm(t("Slette denne kommentaren?"))) return;
+      slettSvar(c, id);
+    };
+    if (redigerer === id) koblRedigering(rad, (tekst) => endreSvar(c, id, tekst));
+  });
+}
+
 // ---------- Trykk på en 🟡 markering for å lese teksten ----------
 // Bobla henges på selve markeringen og følger den når du roterer og zoomer.
 
@@ -694,6 +881,7 @@ const popAnchor = new THREE.Vector3();
 
 export function closeMarkerPopup() {
   popFor = null;
+  redigerer = null;
   const el = $("markerPop");
   if (el) el.classList.remove("open");
 }
@@ -706,14 +894,20 @@ export function openMarkerPopup(c) {
     el.id = "markerPop";
     document.body.appendChild(el);
   }
+  // Bytter du markering, skal en påbegynt redigering ikke følge med over
+  if (popFor && popFor.id !== c.id) redigerer = null;
   popFor = c;
   const st = statusOf(c);
   el.innerHTML =
-    '<div class="mp-meta"><span>' + esc((c.author ? c.author + " · " : "") + (c.date || "")) + '</span>' +
+    '<div class="mp-meta"><span>' + esc(markeringMetaTekst(c)) + '</span>' +
+      '<button class="mp-endre" title="' + t("Endre teksten") + '">' + ikon("rediger") + '</button>' +
       '<button class="mp-x" title="' + t("Lukk") + '">' + ikon("lukk") + '</button></div>' +
-    '<div class="mp-text">' + esc(c.text) + '</div>' +
+    (redigerer === ""
+      ? redigerFeltHtml(c.text, "for-markering")
+      : '<div class="mp-text">' + esc(c.text) + '</div>') +
     bildeStripeHtml(c, true) +
     tegningStripeHtml(c) +
+    svarSeksjonHtml(c) +
     '<div class="mp-fields">' +
       '<label>' + t("Status") + '<select class="mp-st">' + Object.keys(STATUS).map(k =>
         '<option value="' + k + '"' + (k === st ? " selected" : "") + '>' + t(k) + '</option>').join("") + '</select></label>' +
@@ -732,6 +926,11 @@ export function openMarkerPopup(c) {
         : '<button class="mp-task" id="mp-task" title="' + t("Lag Teams Planner-oppgave") + '">' + ikon("planner") + ' Planner</button>') +
       '<button class="mp-del">' + ikon("slett") + ' ' + t("Slett") + '</button></div>';
   el.querySelector(".mp-x").onclick = closeMarkerPopup;
+  el.querySelector(".mp-endre").onclick = () => { redigerer = ""; openMarkerPopup(c); };
+  if (redigerer === "") {
+    koblRedigering(el, (tekst) => redigerMarkeringstekst(c, tekst));
+  }
+  koblSvarSeksjon(el, c);
   el.querySelector(".mp-go").onclick = () => goToComment(c);
   el.querySelector(".mp-st").onchange = (e) => updateComment(c, { status: e.target.value });
   el.querySelector(".mp-ow").onchange = (e) => updateComment(c, { owner: e.target.value });
@@ -834,19 +1033,18 @@ window.saveComment = function() {
   const text = $("commentText").value.trim();
   $("commentDialog").classList.remove("open");
   if (!text || !S.pendingPoint) { S.pendingPoint = null; nullstillNyeBilder(); return; }
-  let author = "";
-  try { const a = S.msalApp && S.msalApp.getActiveAccount(); author = (a && (a.name || a.username)) || ""; } catch(_){}
   const c = {
     // klokkeslett + tilfeldig hale: to som lager markering i samme millisekund
     // (delt fil, hele Storm) skal ikke få samme ID
-    id: Date.now() + "-" + Math.random().toString(36).slice(2, 8),
+    id: nyId(),
     text,
-    author,
+    author: innloggetNavn(),
     status: "Åpen",
     owner: (ANSATTE[0] && ANSATTE[0].navn) || "",
     due: "",
+    svar: [],
     x: S.pendingPoint.x, y: S.pendingPoint.y, z: S.pendingPoint.z,
-    date: new Date().toLocaleString("no-NO", { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit" })
+    date: naaTekst()
   };
   S.comments.push(c);
   addMarkerSprite(c);
@@ -988,6 +1186,8 @@ export function renderCommentList() {
         (c.due ? ' ' + t("· frist ") + esc(c.due.split("-").reverse().join(".")) : "") +
         (isOverdue(c) ? ' <span style="color:var(--danger)">' + ikon("advarsel") + ' ' + t("gått") + '</span>' : "") +
         (c.taskId ? ' · <span title="Har en Planner-oppgave">' + ikon("planner") + '</span>' : "") +
+        (svarI(c).length ? ' · <span title="' + t("{0} kommentarer", svarI(c).length) + '">' +
+          ikon("svar") + ' ' + svarI(c).length + '</span>' : "") +
         (tegningerI(c).length ? ' · <span title="' +
           esc(tegningerI(c).map(tegningTekst).join(", ")) + '">' + ikon("tegning") + ' ' + tegningerI(c).length + '</span>' : "") +
         (alleBilder(c).length
