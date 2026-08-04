@@ -902,6 +902,10 @@ export function openMarkerPopup(c) {
     '<div class="mp-meta"><span>' + esc(markeringMetaTekst(c)) + '</span>' +
       '<button class="mp-endre" title="' + t("Endre teksten") + '">' + ikon("rediger") + '</button>' +
       '<button class="mp-x" title="' + t("Lukk") + '">' + ikon("lukk") + '</button></div>' +
+    // Alt mellom toppen og knappene ligger i en egen kropp som kan rulles.
+    // Uten den vokser bobla ut av skjermen så snart teksten blir lang – og da
+    // er både feltene og Slett-knappen utenfor rekkevidde.
+    '<div class="mp-kropp">' +
     (redigerer === ""
       ? redigerFeltHtml(c.text, "for-markering")
       : '<div class="mp-text">' + esc(c.text) + '</div>') +
@@ -920,6 +924,7 @@ export function openMarkerPopup(c) {
       '<label>' + t("Frist") + '<input type="date" class="mp-due" value="' + esc(c.due || "") + '"></label>' +
     '</div>' +
     (isOverdue(c) ? '<div class="mp-late">' + ikon("advarsel") + ' ' + t("Fristen er gått") + '</div>' : "") +
+    '</div>' +
     '<div class="mp-act"><button class="mp-go">' + ikon("fokus") + ' ' + t("Gå til") + '</button>' +
       (c.taskId
         ? '<button class="mp-open" title="' + t("Åpne oppgaven i Planner") + '">' + ikon("planner") + ' ' + t("Se oppgave") + '</button>'
