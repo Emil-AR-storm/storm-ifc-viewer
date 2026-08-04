@@ -1,0 +1,10 @@
+# Storm byggeplass-Worker. INGEN hemmeligheter her — fila er offentlig.
+# ADMIN_TOKEN legges inn i Cloudflare-panelet (Settings → Variables and Secrets),
+# eller med: wrangler secret put ADMIN_TOKEN
+name = "storm-byggeplass"
+main = "worker.js"
+compatibility_date = "2026-08-04"
+
+[[r2_buckets]]
+binding = "MODELLER"
+bucket_name = "storm-modeller"
