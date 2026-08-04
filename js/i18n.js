@@ -232,6 +232,18 @@ export const ORDBOK = {
   // ---------- Arbeidstegninger ----------
   "Arbeidstegninger": { en: "Drawings", pl: "Rysunki", lt: "Brėžiniai" },
   "Legg til arbeidstegning": { en: "Add drawing", pl: "Dodaj rysunek", lt: "Pridėti brėžinį" },
+
+  // ---------- ✏️ Redigering og 💬 kommentarer på en markering ----------
+  "Endre teksten": { en: "Edit the text", pl: "Edytuj tekst", lt: "Redaguoti tekstą" },
+  "Avbryt": { en: "Cancel", pl: "Anuluj", lt: "Atšaukti" },
+  "(endret {0})": { en: "(edited {0})", pl: "(edytowano {0})", lt: "(redaguota {0})" },
+  "(endret av {0} {1})": { en: "(edited by {0} {1})", pl: "(edytowane przez {0} {1})", lt: "(redagavo {0} {1})" },
+  "Kommentarer": { en: "Comments", pl: "Komentarze", lt: "Komentarai" },
+  "Skriv en kommentar": { en: "Write a comment", pl: "Napisz komentarz", lt: "Rašyti komentarą" },
+  "Endre kommentaren": { en: "Edit the comment", pl: "Edytuj komentarz", lt: "Redaguoti komentarą" },
+  "Slett kommentaren": { en: "Delete the comment", pl: "Usuń komentarz", lt: "Ištrinti komentarą" },
+  "Slette denne kommentaren?": { en: "Delete this comment?", pl: "Usunąć ten komentarz?", lt: "Ištrinti šį komentarą?" },
+  "{0} kommentarer": { en: "{0} comments", pl: "Komentarze: {0}", lt: "Komentarai: {0}" },
   "Åpne {0}": { en: "Open {0}", pl: "Otwórz {0}", lt: "Atidaryti {0}" },
   "Fjern henvisningen (tegningen slettes ikke)": { en: "Remove the reference (the drawing is not deleted)", pl: "Usuń odwołanie (rysunek nie zostanie usunięty)", lt: "Pašalinti nuorodą (brėžinys neištrinamas)" },
   "Henter tegninger fra SharePoint …": { en: "Fetching drawings from SharePoint …", pl: "Pobieranie rysunków z SharePoint …", lt: "Gaunami brėžiniai iš „SharePoint“ …" },
