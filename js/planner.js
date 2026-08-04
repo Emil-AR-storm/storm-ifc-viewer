@@ -12,7 +12,10 @@ import { GRAPH, authHeaders, graphToken } from "./sharepoint.js";
 
 export const PLANNER_SCOPES = ["Tasks.ReadWrite"];
 
-// funksjon, ikke konstant: teksten skal følge språket som er valgt NÅ
+// funksjon, ikke konstant: teksten skal følge språket som er valgt NÅ.
+// Vises BARE når vi må omdirigere (telefon, eller blokkert popup). På PC går
+// samtykket i et lite vindu som lukker seg selv, og da er det ingenting å
+// advare om – derfor ligger spørsmålet i sharepoint.js, ikke her.
 const SAMTYKKE = () =>
   t("For å lage Planner-oppgaver må du gi Storm IFC-Viewer tilgang til oppgavene dine – det skjer én gang. Siden lastes på nytt, så modellen må åpnes igjen etterpå («Fortsett med …» på startskjermen).\n\nFortsette?");
 
