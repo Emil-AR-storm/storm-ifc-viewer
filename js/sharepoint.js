@@ -57,20 +57,71 @@ async function msalInit() {
   return S.msalApp;
 }
 
+// ---------- Popup eller omdirigering? ----------
+// Omdirigering sender hele siden til Microsoft og tilbake igjen – da må
+// modellen åpnes på nytt, og brukeren mister det hun holdt på med. Popup gjør
+// det samme i et lite vindu som lukker seg selv, så siden aldri forlates.
+//
+// Popup krever at vinduet åpnes rett fra et museklikk. Alle stedene vi ber om
+// token er knappetrykk, så det holder. På telefon er popup upålitelig (Safari
+// og innebygde nettlesere i Teams/Outlook blokkerer den), og der er omdirigering
+// fortsatt riktig – siden lastes uansett raskt på nytt på en liten skjerm.
+export function brukPopup() {
+  try {
+    if (!window.open) return false;
+    if (window.innerWidth <= 640) return false;
+    // grovt, men treffer: en skjerm uten presis peker er en berøringsskjerm
+    if (window.matchMedia && !window.matchMedia("(pointer: fine)").matches) return false;
+    return true;
+  } catch(_) { return false; }
+}
+
+// Brukeren lukket vinduet selv – da skal vi IKKE sende henne videre til en
+// omdirigering. Det ville vært å overstyre et nei.
+// Blokkert popup (popup_window_error, empty_window_error) treffer IKKE her –
+// det er ikke et nei fra brukeren, og da skal vi prøve omdirigering i stedet.
+export function avbruttAvBruker(err) {
+  const kode = String((err && (err.errorCode || err.message)) || "");
+  return /user_cancelled|user_canceled|access_denied/i.test(kode);
+}
+
+// Henter token med popup, og faller tilbake til omdirigering hvis popup ikke
+// går. `metode` er "login" (ingen konto ennå) eller "token" (ny tillatelse).
+async function loggInn(scopes, o, metode) {
+  if (brukPopup()) {
+    try {
+      const r = metode === "login"
+        ? await S.msalApp.loginPopup({ scopes })
+        : await S.msalApp.acquireTokenPopup({ scopes, account: S.msalApp.getActiveAccount() });
+      if (r && r.account) S.msalApp.setActiveAccount(r.account);
+      if (metode === "login" && S.onSignedIn) S.onSignedIn();
+      const tk = r && r.accessToken;
+      if (tk && String(tk).trim()) return tk;      // ← kalleren fortsetter med én gang
+    } catch (err) {
+      if (avbruttAvBruker(err)) return null;
+      console.warn("Popup-innlogging gikk ikke, faller tilbake til omdirigering:", (err && err.message) || err);
+    }
+  }
+  // Omdirigering: her forlater vi siden, så nå er advarselen på sin plass
+  if (o.confirmFirst && !confirm(typeof o.confirmFirst === "function" ? o.confirmFirst() : o.confirmFirst)) return null;
+  sessionStorage.setItem("storm-ifc-open-lib", o.after || "lib");
+  if (metode === "login") await S.msalApp.loginRedirect({ scopes });
+  else await S.msalApp.acquireTokenRedirect({ scopes });
+  return null;
+}
+
 // Token for et vilkårlig sett Graph-tillatelser. Egne scope-sett gir
 // «inkrementell samtykke»: brukeren spør bare om Planner-tilgang den dagen
 // hun faktisk lager en Planner-oppgave.
-//   silent: true  → gir null i stedet for å sende brukeren til innlogging
-//   after: "lib" | "markeringer" → hva som skal åpnes når vi kommer tilbake
+//   silent: true  → gir null i stedet for å be brukeren logge inn
+//   after: "lib" | "markeringer" → hva som skal åpnes hvis vi MÅ omdirigere
 export async function graphToken(scopes, opts) {
   const o = opts || {};
   await msalInit();
   const account = S.msalApp.getActiveAccount();
   if (!account) {
     if (o.silent) return null;
-    sessionStorage.setItem("storm-ifc-open-lib", o.after || "lib");
-    await S.msalApp.loginRedirect({ scopes });
-    return null;
+    return loggInn(scopes, o, "login");
   }
   try {
     const t = (await S.msalApp.acquireTokenSilent({ scopes, account })).accessToken;
@@ -79,16 +130,10 @@ export async function graphToken(scopes, opts) {
     if (t && String(t).trim()) return t;
     console.warn("MSAL ga tomt token for " + scopes.join(", ") + " – ber om nytt");
     if (o.silent) return null;
-    if (o.confirmFirst && !confirm(typeof o.confirmFirst === "function" ? o.confirmFirst() : o.confirmFirst)) return null;
-    sessionStorage.setItem("storm-ifc-open-lib", o.after || "lib");
-    await S.msalApp.acquireTokenRedirect({ scopes });
-    return null;
+    return loggInn(scopes, o, "token");
   } catch (_) {
     if (o.silent) return null;
-    if (o.confirmFirst && !confirm(typeof o.confirmFirst === "function" ? o.confirmFirst() : o.confirmFirst)) return null;
-    sessionStorage.setItem("storm-ifc-open-lib", o.after || "lib");
-    await S.msalApp.acquireTokenRedirect({ scopes });
-    return null;
+    return loggInn(scopes, o, "token");
   }
 }
 
