@@ -275,8 +275,46 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
   display: flex; align-items: center; gap: 8px;
   color: var(--muted); font-size: 11px; margin-bottom: 4px;
 }
-#markerPop .mp-meta span { flex: 1; }
+#markerPop .mp-meta > span:first-child { flex: 1; }
 #markerPop .mp-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+#markerPop button.mp-endre { padding: 2px 5px; border: 0; background: none; color: var(--muted); }
+#markerPop button.mp-endre:hover { color: var(--accent2); }
+
+/* ✏️ Tekstfelt for redigering – både på markeringen og på en kommentar */
+#markerPop .mp-rediger { margin: 2px 0 4px; }
+#markerPop .mp-rediger-tekst {
+  width: 100%; box-sizing: border-box; resize: vertical;
+  background: var(--panel2); color: var(--text);
+  border: 1px solid var(--accent2); border-radius: 6px;
+  padding: 5px 6px; font-size: 12px; font-family: inherit; line-height: 1.4;
+}
+#markerPop .mp-rediger-knapper { display: flex; gap: 6px; margin-top: 4px; }
+
+/* 💬 Kommentarer under en markering */
+#markerPop .mp-svar {
+  border-left: 2px solid var(--border); padding-left: 7px; margin-bottom: 6px;
+}
+#markerPop .mp-svar-meta {
+  display: flex; align-items: center; gap: 6px;
+  color: var(--muted); font-size: 10px; margin-bottom: 2px;
+}
+#markerPop .mp-svar-meta > span:first-child { flex: 1; overflow-wrap: anywhere; }
+#markerPop .mp-svar-verktoy { display: flex; gap: 2px; opacity: 0; transition: opacity .12s; }
+#markerPop .mp-svar:hover .mp-svar-verktoy,
+#markerPop .mp-svar:focus-within .mp-svar-verktoy { opacity: 1; }
+#markerPop .mp-svar-verktoy button {
+  padding: 1px 3px; border: 0; background: none; color: var(--muted);
+}
+#markerPop .mp-svar-rediger:hover { color: var(--accent2); }
+#markerPop .mp-svar-slett:hover { color: var(--danger); }
+#markerPop .mp-svar-tekst {
+  font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.4;
+}
+/* På berøringsskjerm finnes ingen hover – da står knappene alltid framme. */
+@media (hover: none) {
+  #markerPop .mp-svar-verktoy { opacity: 1; }
+}
+
 #markerPop .mp-fields {
   display: flex; flex-direction: column; gap: 5px;
   margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);
