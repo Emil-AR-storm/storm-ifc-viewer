@@ -125,3 +125,58 @@ async function åpneFraUrl(url) {
   }
 }
 window.åpneFraUrl = åpneFraUrl;   // trinn 3 kaller denne
+
+
+// ---------- Landingsside (trinn 4): prosjekt fra adressen, kode fra montøren ----------
+// QR-en peker på /20653 — Workeren serverer bygg.html der, og vi leser nummeret her.
+(function () {
+  const boks = $("kodeBoks");
+  if (!boks) return;
+  const prosjInp = $("prosjektInput"), inp = $("kodeInput"),
+        feilEl = $("kodeFeil"), knapp = $("kodeKnapp");
+  const fraUrl = (location.pathname.match(/^\/(\d{5})$/) || [])[1] || "";
+  if (fraUrl) { prosjInp.value = fraUrl; prosjInp.style.display = "none"; }
+
+  async function prøv() {
+    const prosjekt = (prosjInp.value || "").trim();
+    const kode = (inp.value || "").trim().toUpperCase();
+    if (!/^\d{5}$/.test(prosjekt)) { feilEl.textContent = t("Prosjektnummeret må være 5 siffer."); return; }
+    if (kode.length !== 6) { feilEl.textContent = ""; return; }
+    feilEl.textContent = "";
+    knapp.disabled = true;
+    try {
+      const r = await fetch("/åpne", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ prosjekt, kode })
+      });
+      const svar = await r.json().catch(() => ({}));
+      if (!r.ok) { feilEl.textContent = t(svar.feil || "Feil kode eller prosjekt."); return; }
+      if (!svar.modeller || !svar.modeller.length) { feilEl.textContent = t("Ingen modeller i prosjektet ennå."); return; }
+      if (svar.modeller.length === 1) { åpneFraUrl(svar.modeller[0].url); return; }
+      // Flere modeller: vis en knapp per modell
+      let valg = $("kodeValg");
+      if (!valg) { valg = document.createElement("div"); valg.id = "kodeValg"; boks.appendChild(valg); }
+      valg.innerHTML = "<p class='liten' style='display:block !important'>" + t("Velg modell") + ":</p>";
+      svar.modeller.forEach(m => {
+        const b = document.createElement("button");
+        b.className = "btn";
+        b.textContent = m.navn.replace(/\.lett\.glb$/i, "").replace(/\.glb$/i, "") +
+          (m.størrelse ? " · " + Math.round(m.størrelse / 1048576) + " MB" : "");
+        b.onclick = () => åpneFraUrl(m.url);
+        valg.appendChild(b);
+      });
+    } catch (_) {
+      feilEl.textContent = t("Fikk ikke kontakt – sjekk nettet og prøv igjen.");
+    } finally {
+      knapp.disabled = false;
+    }
+  }
+
+  // Ingen Enter-knapp nødvendig: seks tegn skrevet → prøv med en gang
+  inp.addEventListener("input", () => {
+    inp.value = inp.value.toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 6);
+    if (inp.value.length === 6 && /^\d{5}$/.test(prosjInp.value)) prøv();
+  });
+  knapp.addEventListener("click", prøv);
+})();
