@@ -11,6 +11,7 @@
 // pdf.js hentes med dynamisk import FØRST når noen faktisk åpner en tegning, så
 // en vanlig økt uten PDF-er ikke betaler for biblioteket.
 import { S, loadingEl, loadingText } from "./state.js";
+import { LETT } from "./lett.js";
 import { t } from "./i18n.js";
 import { GRAPH, SP, authHeaders, graphGet, spTokenSilent } from "./sharepoint.js";
 
@@ -142,12 +143,33 @@ export function erNedlastet(vedlegg) {
 
 // Laster ned PDF-en og åpner den med pdf.js. Store filer får en advarsel først –
 // på byggeplass over mobilnett er 40 MB nesten et minutt.
+// R2-nøkkelen for en tegning: itemId-en vasket til trygge tegn.
+// MÅ være identisk med tegningNavn() i byggeplass.js.
+export function tegningNavn(itemId) {
+  return String(itemId).replace(/[^0-9a-zA-Z_-]/g, "_") + ".pdf";
+}
+
 export async function pdfDokument(vedlegg, spor) {
   if (dokBuffer.has(vedlegg.itemId)) return dokBuffer.get(vedlegg.itemId);
   if (mb(vedlegg.storrelse) > ADVAR_MB && !confirm(
       t("{0} er {1} MB. Over mobilnett kan nedlastingen ta et minutt. Åpne likevel?",
         vedlegg.fil, mb(vedlegg.storrelse).toFixed(0)))) {
     return null;
+  }
+  if (LETT) {
+    // Byggeplassen: tegningen ble lagt i R2 av Byggeplass-knappen, og hentes
+    // fra Workeren med beviset fra kodefeltet. Ingen innlogging.
+    if (spor) spor(t("Henter {0} …", vedlegg.fil));
+    const r = await fetch("/tegning/" + (S.lettProsjekt || "00000") + "/" + tegningNavn(vedlegg.itemId));
+    if (!r.ok) throw new Error(r.status === 404
+      ? t("Tegningen er ikke lastet opp til byggeplass-lenka ennå")
+      : t("Kunne ikke hente tegningen (Graph {0})", r.status));
+    const data = new Uint8Array(await r.arrayBuffer());
+    if (spor) spor(t("Åpner {0} …", vedlegg.fil));
+    const lib = await lastPdfLib();
+    const doc = await lib.getDocument({ data }).promise;
+    dokBuffer.set(vedlegg.itemId, doc);
+    return doc;
   }
   let token;
   try { token = await spTokenSilent(); } catch(_) { token = null; }

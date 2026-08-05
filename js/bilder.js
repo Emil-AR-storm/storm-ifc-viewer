@@ -120,7 +120,8 @@ async function sikreMappe(token, sid) {
 // innlogget. Prosjektet leses av Workeren fra beviset (kaka fra kodefeltet).
 export async function lastOpp(blob, navn) {
   if (LETT) {
-    const r = await fetch("/kvitter?fil=" + encodeURIComponent(navn), {
+    const r = await fetch("/kvitter?fil=" + encodeURIComponent(navn) +
+      "&seksjon=" + (S._lettSeksjon === "for" ? "for" : "etter"), {
       method: "POST", headers: { "content-type": "image/jpeg" }, body: blob
     });
     if (!r.ok) throw new Error(t("Fikk ikke sendt bildet") + " (" + r.status + ")");
