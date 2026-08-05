@@ -208,7 +208,12 @@ export async function loadModel(buffer) {
   const ab = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
   S.lastBuffer = null;
   S.bufferITråd = true;
-  const info = await kall("open", { buffer: ab, light: S.lightLoaded }, null, [ab]);
+  const info = await kall("open", {
+    buffer: ab,
+    light: S.lightLoaded,
+    minst: Number(localStorage.getItem("storm-ifc-test-minst")) || 0.15,
+    sirkel: Number(localStorage.getItem("storm-ifc-test-sirkel")) || 8
+  }, null, [ab]);
   const tApnet = performance.now();
   S.modelID = 1;   // «en modell er åpen» – all lesing går nå gjennom IFC-tråden
 

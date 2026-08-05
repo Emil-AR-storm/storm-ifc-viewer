@@ -25,14 +25,17 @@ function typeNavn(id) {
 
 // ---------- Kommandoer ----------
 
-async function cmdOpen({ buffer, light }) {
+let testMinst = 0.15;   // settes av cmdOpen, leses av cmdGeometryLight
+
+async function cmdOpen({ buffer, light, minst, sirkel }) {
+  testMinst = minst || 0.15;
   if (!klar) klar = ifcApi.Init();
   await klar;
   if (modelID !== null) { try { ifcApi.CloseModel(modelID); } catch(_) {} modelID = null; }
   matKart = null;                 // materialkartet hører til forrige modell
   fil = new Uint8Array(buffer);
   modelID = ifcApi.OpenModel(fil, light
-    ? { COORDINATE_TO_ORIGIN: true, CIRCLE_SEGMENTS: 8 }
+    ? { COORDINATE_TO_ORIGIN: true, CIRCLE_SEGMENTS: sirkel || 8 }
     : { COORDINATE_TO_ORIGIN: true });
 
   let coordMatrix = null;
@@ -146,7 +149,7 @@ function cmdGeometryLight({ maxId, basis }, post) {
       }
     }
     // dropp veldig små elementer (< 0,15 i modellens enheter)
-    if (Math.hypot(mxx - mnx, mxy - mny, mxz - mnz) < 0.15) { skipped++; return; }
+    if (Math.hypot(mxx - mnx, mxy - mny, mxz - mnz) < testMinst) { skipped++; return; }
 
     for (const p of parts) {
       const key = [p.color.x, p.color.y, p.color.z, p.color.w].join(",");
