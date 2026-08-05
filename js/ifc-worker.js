@@ -35,7 +35,7 @@ async function cmdOpen({ buffer, light, minst, sirkel }) {
   matKart = null;                 // materialkartet hører til forrige modell
   fil = new Uint8Array(buffer);
   modelID = ifcApi.OpenModel(fil, light
-    ? { COORDINATE_TO_ORIGIN: true, CIRCLE_SEGMENTS: sirkel || 8 }
+    ? { COORDINATE_TO_ORIGIN: true, CIRCLE_SEGMENTS: sirkel || 6 }
     : { COORDINATE_TO_ORIGIN: true });
 
   let coordMatrix = null;
