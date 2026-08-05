@@ -30,6 +30,13 @@
 #kodeInput { letter-spacing: 10px; text-transform: uppercase; font-weight: 700; }
 #kodeKnapp { width: 100%; font-size: 18px; padding: 14px 0; margin-top: 4px; justify-content: center; }
 #kodeFeil { color: #f87171; min-height: 20px; font-size: 14px; margin-top: 4px; }
+/* Historikk-panelet (trinn 6): velg revisjon */
+#histPanel { position: fixed; top: 96px; right: 12px; z-index: 40; background: #1a2029;
+  border: 1px solid #2c3442; border-radius: 12px; padding: 14px; max-width: 300px; }
+#histPanel h3 { margin: 0 0 10px; font-size: 14px; }
+#histPanel button { display: block; width: 100%; margin: 6px 0; text-align: left;
+  font-size: 13px; padding: 10px 12px; }
+#histPanel .gjeldende { border-color: #3b82f6; }
 #kodeValg button { display: block; width: 100%; margin: 6px 0; font-size: 16px; padding: 12px; }
 /* TRINN 5 — montørens rettigheter i markeringsbobla: ALT er tillegg, aldri endring.
    Skjules med CSS (aldri fjernes) — og Workeren har uansett ingen rute som kan
@@ -129,6 +136,7 @@
   <button id="btnSaveLite" title="Eksporter forenklet modell (.glb) som funker på mobil" data-i18n-title><svg class="ikon"><use href="#i-lagre"/></svg><span class="btn-t" data-i18n>Lett kopi</span></button>
   <button id="btnSettings" title="Innstillinger og hurtigtaster (høyreklikk i modellen)" data-i18n-title><svg class="ikon"><use href="#i-innstillinger"/></svg><span class="btn-t" data-i18n>Innstillinger</span></button>
   <button id="btnShowAll" style="display:none"><svg class="ikon"><use href="#i-vis"/></svg><span class="btn-t" data-i18n>Vis alle</span></button>
+  <button id="btnHistorikk"><svg class="ikon"><use href="#i-nullstill"/></svg><span class="btn-t" data-i18n>Historikk</span></button>
 </div>
 
 <canvas id="miniMap" width="256" height="256" title="Trykk for å flytte deg dit" data-i18n-title
