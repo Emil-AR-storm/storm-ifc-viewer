@@ -237,7 +237,8 @@ export default {
     // Workeren henter filene fra GitHub Pages og sender dem videre. Da finnes det
     // bare ÉN utrulling (GitHub, som i dag) — og siden + modellen deler domene.
     if (req.method === "GET") {
-      let hent = sti === "/" ? "/bygg.html" : sti;
+      // QR-adressen /20653 og rota / serverer begge landingssiden
+      let hent = (sti === "/" || /^\/\d{5}$/.test(sti)) ? "/bygg.html" : sti;
       if (/^\/(bygg\.html|js\/|css\/|vendor\/)/.test(hent)) {
         const svar = await fetch(GITHUB_PAGES + hent, { cf: { cacheTtl: 300, cacheEverything: true } });
         if (svar.ok) {
