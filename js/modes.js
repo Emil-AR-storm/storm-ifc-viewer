@@ -29,9 +29,15 @@ export function updateModeBar() {
   if (S.mode === "measure") {
     modeBar.innerHTML = '<span class="lbl">' + t("Trykk på to punkter") + '</span>' +
       '<button id="mbSnap" title="' + t("Fest til nærmeste hjørne/kant") + '">' + t("Snap") + '</button>' +
+      '<button id="mbRett" title="' + t("Lås målet til rett linje langs nærmeste akse (vannrett eller loddrett)") + '">' + t("Rett strek") + '</button>' +
       '<input type="range" id="mbSnapPx" min="5" max="50" step="1" value="' + S.snapPx + '" title="' + t("Snap-følsomhet (piksler)") + '" style="width:90px">' +
       '<button id="mbClear">' + t("Tøm mål") + '</button>';
     $("mbSnap").classList.toggle("active", S.snapOn);
+    $("mbRett").classList.toggle("active", !!S.rettOn);
+    $("mbRett").onclick = () => {
+      S.rettOn = !S.rettOn;
+      $("mbRett").classList.toggle("active", S.rettOn);
+    };
     $("mbSnap").onclick = () => {
       S.snapOn = !S.snapOn;
       $("mbSnap").classList.toggle("active", S.snapOn);

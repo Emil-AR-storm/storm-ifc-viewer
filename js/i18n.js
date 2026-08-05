@@ -134,6 +134,10 @@ export const ORDBOK = {
   "Fikk ikke sendt dette til prosjektlederen – sjekk nettet og prøv igjen.": { en: "Could not send this to the project manager – check your connection and try again.", pl: "Nie udało się wysłać do kierownika projektu – sprawdź sieć i spróbuj ponownie.", lt: "Nepavyko išsiųsti projekto vadovui – patikrinkite ryšį ir bandykite dar kartą." },
   "Laster opp arbeidstegningene …": { en: "Uploading drawings …", pl: "Przesyłanie rysunków …", lt: "Įkeliami brėžiniai …" },
   "Tegningen er ikke lastet opp til byggeplass-lenka ennå": { en: "The drawing has not been uploaded to the site link yet", pl: "Rysunek nie został jeszcze przesłany do linku budowy", lt: "Brėžinys dar neįkeltas į statybvietės nuorodą" },
+  // Rett strek i måleverktøyet + rød teller på Byggeplass-knappen
+  "Rett strek": { en: "Straight line", pl: "Prosta linia", lt: "Tiesi linija" },
+  "Lås målet til rett linje langs nærmeste akse (vannrett eller loddrett)": { en: "Lock the measurement to a straight line along the nearest axis (horizontal or vertical)", pl: "Zablokuj pomiar w prostej linii wzdłuż najbliższej osi (poziomo lub pionowo)", lt: "Užfiksuoti matavimą tiesia linija pagal artimiausią ašį (horizontaliai arba vertikaliai)" },
+  "nye ting fra byggeplassen – trykk Byggeplass for å hente dem inn": { en: "new items from the site – press Byggeplass to fetch them", pl: "nowe elementy z budowy – naciśnij Byggeplass, aby je pobrać", lt: "nauji elementai iš statybvietės – spauskite Byggeplass, kad juos gautumėte" },
   "Språk": { en: "Language", pl: "Język", lt: "Kalba" },
   "Slipp IFC- eller .glb-fila her": { en: "Drop the IFC or .glb file here", pl: "Upuść tutaj plik IFC lub .glb", lt: "Numeskite IFC arba .glb failą čia" },
   "Fortsett med": { en: "Continue with", pl: "Kontynuuj z", lt: "Tęsti su" },

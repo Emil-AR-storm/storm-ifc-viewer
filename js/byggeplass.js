@@ -66,6 +66,7 @@ if (btn) btn.addEventListener("click", async () => {
       throw new Error(t("Feil opplastingsnøkkel – trykk på knappen og skriv den på nytt."));
     }
     if (!r.ok) throw new Error("HTTP " + r.status + ": " + (await r.text()).slice(0, 200));
+    huskProsjektFor(fil, prosjekt);   // den røde telleren vet nå hvilket prosjekt modellen hører til
 
     // 3) Markeringene, VASKET: eier, frist, Planner-kobling, svar og tegninger
     //    holdes igjen med vilje — montøren skal se hva som skal gjøres, ikke
@@ -109,6 +110,7 @@ if (btn) btn.addEventListener("click", async () => {
     const antTegninger = await lastOppTegninger(prosjekt, token);
 
     await visQr(prosjekt, fil, ids.size, vaskede.length, bildeteller, antallInn, antTegninger);
+    oppdaterBadge();   // innboksen er tømt nå — telleren skal bort
   } catch (err) {
     console.error(err);
     alert(t("Opplastingen feilet: ") + err.message);
@@ -117,6 +119,48 @@ if (btn) btn.addEventListener("click", async () => {
   }
 });
 
+
+// ---------- Rød teller: er det noe nytt fra byggeplassen? ----------
+// Prosjektlederen skal ikke måtte GJETTE at innboksen har innhold. Ved åpning
+// og hvert minutt sjekkes innboksen for modellen som er åpen, og Byggeplass-
+// knappen får en rød teller. Trykk på knappen henter som vanlig alt hjem.
+function huskProsjektFor(fil, prosjekt) {
+  try {
+    const m = JSON.parse(localStorage.getItem("storm-bp-kart") || "{}");
+    m[fil] = prosjekt;
+    localStorage.setItem("storm-bp-kart", JSON.stringify(m));
+  } catch (_) {}
+}
+
+function prosjektFor(fil) {
+  try { return (JSON.parse(localStorage.getItem("storm-bp-kart") || "{}"))[fil] || ""; } catch (_) { return ""; }
+}
+
+async function oppdaterBadge() {
+  if (!btn) return;
+  const prosjekt = prosjektFor(lettNavn(S.fileName || ""));
+  const token = localStorage.getItem("storm-bp-token") || "";
+  let antall = 0;
+  if (prosjekt && token) {
+    try {
+      const r = await fetch(WORKER + "/innboks/" + prosjekt, { headers: { "x-token": token } });
+      // teller bare selve innholdet — ikke sidekortene (.jpg.json)
+      if (r.ok) antall = (await r.json()).filter(n => /\.jpg$/i.test(n) || /^h-.*\.json$/.test(n)).length;
+    } catch (_) {}
+  }
+  let b = btn.querySelector(".bp-badge");
+  if (!antall) { if (b) b.remove(); return; }
+  if (!b) {
+    b = document.createElement("span");
+    b.className = "bp-badge";
+    b.style.cssText = "background:#ef4444;color:#fff;border-radius:9px;padding:0 6px;font-size:11px;margin-left:6px;font-weight:700";
+    btn.appendChild(b);
+  }
+  b.textContent = antall;
+  btn.title = antall + " " + t("nye ting fra byggeplassen – trykk Byggeplass for å hente dem inn");
+}
+setTimeout(oppdaterBadge, 4000);      // like etter oppstart (modellen kan alt være åpen)
+setInterval(oppdaterBadge, 60000);    // og hvert minutt
 
 // ---------- Innboksen (trinn 5) ----------
 // Montørenes kvitteringsbilder ligger i R2 til noen med nøkkelen henter dem.
