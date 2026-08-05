@@ -4,6 +4,8 @@
 import { $, S, loadingEl, loadingText } from "./state.js";
 import { t } from "./i18n.js";
 import { byggLettKopi, lettNavn } from "./lite.js";
+import { bildeUrl, lastOpp } from "./bilder.js";
+import { lagreOgSynk } from "./markers.js";
 
 // Fylles inn når Workeren er publisert, f.eks.:
 // "https://storm-byggeplass.dittkontonavn.workers.dev"
@@ -39,6 +41,12 @@ if (btn) btn.addEventListener("click", async () => {
 
   loadingEl.classList.add("open");
   try {
+    // 1) Hent montørenes kvitteringsbilder fra innboksen FØR vi bygger, så den
+    //    ferske markerings-JSON-en får med seg de nye etter-bildene
+    loadingText.textContent = t("Henter kvitteringer fra byggeplassen …");
+    const antallInn = await hentInnboks(prosjekt, token);
+
+    // 2) Bygg og last opp modellen
     const { bytes, ids, utelatt } = await byggLettKopi((txt) => { loadingText.textContent = txt; });
     loadingText.textContent = t("Laster opp …");
     const fil = lettNavn(S.fileName);
@@ -56,7 +64,42 @@ if (btn) btn.addEventListener("click", async () => {
       throw new Error(t("Feil opplastingsnøkkel – trykk på knappen og skriv den på nytt."));
     }
     if (!r.ok) throw new Error("HTTP " + r.status + ": " + (await r.text()).slice(0, 200));
-    await visQr(prosjekt, fil, ids.size);
+
+    // 3) Markeringene, VASKET: eier, frist, Planner-kobling, svar og tegninger
+    //    holdes igjen med vilje — montøren skal se hva som skal gjøres, ikke
+    //    hvem som har ansvaret internt eller hva som ligger i Teams
+    loadingText.textContent = t("Laster opp markeringene …");
+    const vaskede = (S.comments || []).map(c => ({
+      id: c.id, text: c.text || "", author: c.author || "", date: c.date || "",
+      status: c.status || "Åpen", x: c.x, y: c.y, z: c.z,
+      bilder: c.bilder || [], bilderEtter: c.bilderEtter || []
+    }));
+    await fetch(WORKER + "/last-opp?fil=" + encodeURIComponent(fil + ".markeringer.json"), {
+      method: "PUT",
+      headers: { "content-type": "application/json", "x-prosjekt": prosjekt, "x-token": token },
+      body: JSON.stringify(vaskede)
+    });
+
+    // 4) Bildene på markeringene, så montøren ser dem (hentes fra SharePoint her,
+    //    hvor vi ER innlogget, og legges i R2). Feiler ett bilde, fortsetter resten.
+    let bildeteller = 0;
+    for (const c of vaskede) {
+      for (const navn of [...c.bilder, ...c.bilderEtter]) {
+        try {
+          const url = await bildeUrl(navn);
+          if (!url) continue;
+          const blob = await (await fetch(url)).blob();
+          const br = await fetch(WORKER + "/last-opp?fil=" + encodeURIComponent(navn) + "&mappe=bilder", {
+            method: "PUT",
+            headers: { "content-type": "image/jpeg", "x-prosjekt": prosjekt, "x-token": token },
+            body: blob
+          });
+          if (br.ok) bildeteller++;
+        } catch (_) {}
+      }
+    }
+
+    await visQr(prosjekt, fil, ids.size, vaskede.length, bildeteller, antallInn);
   } catch (err) {
     console.error(err);
     alert(t("Opplastingen feilet: ") + err.message);
@@ -66,11 +109,41 @@ if (btn) btn.addEventListener("click", async () => {
 });
 
 
+// ---------- Innboksen (trinn 5) ----------
+// Montørenes kvitteringsbilder ligger i R2 til noen med nøkkelen henter dem.
+// Hvert bilde: lastes ned → skrives til Storms SharePoint (vi er innlogget her)
+// → henges på riktig markering som etter-bilde → slettes fra innboksen.
+// Filnavnet koder markerings-ID-en (bildeNavn i bilder.js), så vi vet hvor det hører til.
+async function hentInnboks(prosjekt, token) {
+  let inn = 0;
+  try {
+    const r = await fetch(WORKER + "/innboks/" + prosjekt, { headers: { "x-token": token } });
+    if (!r.ok) return 0;
+    const navneliste = await r.json();
+    for (const navn of navneliste) {
+      const deler = navn.replace(/\.jpg$/i, "").split("-");
+      if (deler.length < 3) continue;
+      const renId = deler.slice(0, deler.length - 2).join("-");
+      const c = (S.comments || []).find(k => String(k.id).replace(/[^0-9a-zA-Z]/g, "") === renId);
+      if (!c) continue; // hører til en annen modell i samme prosjekt — la den ligge
+      const bi = await fetch(WORKER + "/innboks/" + prosjekt + "/" + encodeURIComponent(navn), { headers: { "x-token": token } });
+      if (!bi.ok) continue;
+      const blob = await bi.blob();
+      await lastOpp(blob, navn);   // til Storms SharePoint — sluttilstanden er at alt ligger her
+      if (!(c.bilderEtter || []).includes(navn)) c.bilderEtter = (c.bilderEtter || []).concat(navn);
+      await fetch(WORKER + "/innboks/" + prosjekt + "/" + encodeURIComponent(navn), { method: "DELETE", headers: { "x-token": token } });
+      inn++;
+    }
+    if (inn) lagreOgSynk();
+  } catch (_) {}
+  return inn;
+}
+
 // ---------- QR-plakat (trinn 4) ----------
 // Vises etter vellykket opplasting: QR-en peker på WORKER/<prosjektnr>.
 // Koden er IKKE i QR-en — montøren skal skrive den selv. Last ned som PNG
 // og lim inn i en arbeidstegning eller heng på brakkeveggen.
-async function visQr(prosjekt, fil, antall) {
+async function visQr(prosjekt, fil, antall, antMark, antBilder, antInn) {
   if (!window.QRCode) {
     await new Promise((res, rej) => {
       const s = document.createElement("script");
@@ -85,7 +158,9 @@ async function visQr(prosjekt, fil, antall) {
   const kort = document.createElement("div");
   kort.style.cssText = "background:#fff;color:#111;border-radius:14px;padding:28px;text-align:center;max-width:380px";
   kort.innerHTML = "<h2 style='margin:0 0 4px'>Prosjekt " + prosjekt + "</h2>" +
-    "<p style='margin:0 0 14px;font-size:13px;color:#555'>" + fil + " · " + antall + " elementer</p>" +
+    "<p style='margin:0 0 14px;font-size:13px;color:#555'>" + fil + " · " + antall + " elementer · " +
+      (antMark || 0) + " markeringer · " + (antBilder || 0) + " bilder" +
+      (antInn ? " · " + antInn + " kvitteringer hentet inn" : "") + "</p>" +
     "<div id='qrRute' style='display:flex;justify-content:center'></div>" +
     "<p style='font-size:13px;color:#555;margin:12px 0 2px'>" + adresse + "</p>" +
     "<p style='font-size:13px;color:#555;margin:2px 0 14px'>Skann → skriv prosjektkoden → se modellen</p>";
