@@ -10,6 +10,7 @@
 // lengste side og lagrer som JPEG før opplasting – det holder rikelig for å se
 // hva som er galt på byggeplassen, og gir filer på noen hundre kB.
 import { S } from "./state.js";
+import { LETT } from "./lett.js";
 import { t } from "./i18n.js";
 import { GRAPH, SP, authHeaders, graphGet, spTokenSilent } from "./sharepoint.js";
 
@@ -114,7 +115,17 @@ async function sikreMappe(token, sid) {
 }
 
 // Laster opp én blob. Gir filnavnet tilbake.
+// LETTMODUS: montørens kvitteringsbilde går til Workerens innboks i R2 —
+// prosjektlederen henter det til SharePoint neste gang han åpner modellen
+// innlogget. Prosjektet leses av Workeren fra beviset (kaka fra kodefeltet).
 export async function lastOpp(blob, navn) {
+  if (LETT) {
+    const r = await fetch("/kvitter?fil=" + encodeURIComponent(navn), {
+      method: "POST", headers: { "content-type": "image/jpeg" }, body: blob
+    });
+    if (!r.ok) throw new Error(t("Fikk ikke sendt bildet") + " (" + r.status + ")");
+    return navn;
+  }
   const token = await spTokenSilent();
   if (!token) throw new Error("IKKE_INNLOGGET");
   const sid = await siteId(token);
@@ -136,6 +147,15 @@ export async function bildeUrl(navn) {
   const n = trygtNavn(navn);
   if (!n) return null;
   if (urlBuffer.has(n)) return urlBuffer.get(n);
+  if (LETT) {
+    try {
+      const r = await fetch("/bilde/" + (S.lettProsjekt || "00000") + "/" + encodeURIComponent(n));
+      if (!r.ok) return null;
+      const url = URL.createObjectURL(await r.blob());
+      urlBuffer.set(n, url);
+      return url;
+    } catch (_) { return null; }
+  }
   try {
     const token = await spTokenSilent();
     if (!token) return null;
