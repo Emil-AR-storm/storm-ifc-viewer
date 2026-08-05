@@ -119,6 +119,14 @@ export const ORDBOK = {
   "Ingen modeller i prosjektet ennå.": { en: "No models in this project yet.", pl: "W tym projekcie nie ma jeszcze modeli.", lt: "Šiame projekte dar nėra modelių." },
   "Fikk ikke kontakt – sjekk nettet og prøv igjen.": { en: "No connection – check your network and try again.", pl: "Brak połączenia – sprawdź sieć i spróbuj ponownie.", lt: "Nėra ryšio – patikrinkite tinklą ir bandykite dar kartą." },
   "Velg modell": { en: "Choose model", pl: "Wybierz model", lt: "Pasirinkite modelį" },
+  // Byggeplass-lenka (trinn 5): kvitteringsbilder
+  "Bildet er sendt. Det blir synlig for prosjektlederen neste gang han åpner modellen.": {
+    en: "The photo has been sent. The project manager will see it the next time he opens the model.",
+    pl: "Zdjęcie zostało wysłane. Kierownik projektu zobaczy je przy następnym otwarciu modelu.",
+    lt: "Nuotrauka išsiųsta. Projekto vadovas ją pamatys kitą kartą atidaręs modelį." },
+  "Fikk ikke sendt bildet": { en: "Could not send the photo", pl: "Nie udało się wysłać zdjęcia", lt: "Nepavyko išsiųsti nuotraukos" },
+  "Henter kvitteringer fra byggeplassen …": { en: "Fetching site photos …", pl: "Pobieranie zdjęć z budowy …", lt: "Gaunamos nuotraukos iš statybvietės …" },
+  "Laster opp markeringene …": { en: "Uploading markers …", pl: "Przesyłanie oznaczeń …", lt: "Įkeliamos žymos …" },
   "Språk": { en: "Language", pl: "Język", lt: "Kalba" },
   "Slipp IFC- eller .glb-fila her": { en: "Drop the IFC or .glb file here", pl: "Upuść tutaj plik IFC lub .glb", lt: "Numeskite IFC arba .glb failą čia" },
   "Fortsett med": { en: "Continue with", pl: "Kontynuuj z", lt: "Tęsti su" },
