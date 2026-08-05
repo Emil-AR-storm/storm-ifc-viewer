@@ -22,7 +22,8 @@ const MAT = {
   uendret: new THREE.MeshLambertMaterial({ color: COL.uendret, side: THREE.DoubleSide, transparent: true, opacity: 0.25, depthWrite: false })
 };
 
-// røde bokser der elementer er BORTE i den nye versjonen
+// bokser i modellen: røde der elementer er BORTE i den nye versjonen,
+// og på lette kopier (GLB) også grønne rundt nye og gule rundt endrede
 const compareGroup = new THREE.Group();
 scene.add(compareGroup);
 
@@ -149,7 +150,29 @@ function paint() {
     h.renderOrder = 996;
     compareGroup.add(h);
   }
-  if (S.lightLoaded) return; // sammenslått geometri kan ikke fargelegges per element
+  // Sammenslått geometri (lett kopi) kan ikke fargelegges per element.
+  // I stedet tegnes bokser rundt elementene – grønn rundt nye, gul rundt
+  // endrede – på samme måte som de røde over. Boksene hentes fra modellen
+  // som er lastet nå (den nye versjonen), der begge gruppene finnes.
+  if (S.lightLoaded) {
+    const boxes = allElementBoxes();
+    const tegnBokser = (arr, farge) => {
+      for (const e of arr) {
+        const b = boxes.get(e.id);
+        if (!b) continue;
+        const c = b.getCenter(new THREE.Vector3());
+        const d = b.getSize(new THREE.Vector3());
+        const box = new THREE.Box3().setFromCenterAndSize(c, d.max(new THREE.Vector3(0.05, 0.05, 0.05)));
+        const h = new THREE.Box3Helper(box, farge);
+        h.material.depthTest = false;
+        h.renderOrder = 996;
+        compareGroup.add(h);
+      }
+    };
+    tegnBokser(result.ny, COL.ny);
+    tegnBokser(result.endret, COL.endret);
+    return;
+  }
   const status = new Map();
   result.ny.forEach(e => status.set(e.id, "ny"));
   result.endret.forEach(e => status.set(e.id, "endret"));
