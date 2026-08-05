@@ -136,6 +136,11 @@ export const ORDBOK = {
   "Tegningen er ikke lastet opp til byggeplass-lenka ennå": { en: "The drawing has not been uploaded to the site link yet", pl: "Rysunek nie został jeszcze przesłany do linku budowy", lt: "Brėžinys dar neįkeltas į statybvietės nuorodą" },
   // Rett strek i måleverktøyet + rød teller på Byggeplass-knappen
   "Rett strek": { en: "Straight line", pl: "Prosta linia", lt: "Tiesi linija" },
+  "Historikk": { en: "History", pl: "Historia", lt: "Istorija" },
+  "Nyeste versjon": { en: "Latest version", pl: "Najnowsza wersja", lt: "Naujausia versija" },
+  "Revisjon": { en: "Revision", pl: "Rewizja", lt: "Revizija" },
+  "Ingen tidligere revisjoner ennå.": { en: "No earlier revisions yet.", pl: "Brak wcześniejszych rewizji.", lt: "Ankstesnių revizijų dar nėra." },
+  "Skriv koden først.": { en: "Enter the code first.", pl: "Najpierw wpisz kod.", lt: "Pirmiausia įveskite kodą." },
   "Lås målet til rett linje langs nærmeste akse (vannrett eller loddrett)": { en: "Lock the measurement to a straight line along the nearest axis (horizontal or vertical)", pl: "Zablokuj pomiar w prostej linii wzdłuż najbliższej osi (poziomo lub pionowo)", lt: "Užfiksuoti matavimą tiesia linija pagal artimiausią ašį (horizontaliai arba vertikaliai)" },
   "nye ting fra byggeplassen – trykk Byggeplass for å hente dem inn": { en: "new items from the site – press Byggeplass to fetch them", pl: "nowe elementy z budowy – naciśnij Byggeplass, aby je pobrać", lt: "nauji elementai iš statybvietės – spauskite Byggeplass, kad juos gautumėte" },
   "Språk": { en: "Language", pl: "Język", lt: "Kalba" },
