@@ -30,6 +30,11 @@ scene.add(compareGroup);
 // S.compareBase og S.compareOn er deklarert i state.js, som all annen S-tilstand
 let result = null;      // { ny:[], slettet:[], endret:[], uendret:Set, metode }
 
+// Fargefilter: overlappende bokser kan skjule hverandre, så radene i panelet
+// kan trykkes for å vise ÉN farge om gangen. null = vis alle.
+let boksFilter = null;  // null | "ny" | "slettet" | "endret"
+const vis = (hva) => !boksFilter || boksFilter === hva;
+
 // ---------- Avtrykk ----------
 // Samler GlobalId, navn, type, senterpunkt, ytre mål og volum for hvert element.
 function elementIds() {
@@ -142,7 +147,7 @@ export function compare(base, now) {
 function paint() {
   compareGroup.clear();
   // røde bokser der noe er fjernet
-  for (const e of result.slettet) {
+  if (vis("slettet")) for (const e of result.slettet) {
     const c = new THREE.Vector3(...e.c), d = new THREE.Vector3(...e.d);
     const box = new THREE.Box3().setFromCenterAndSize(c, d.max(new THREE.Vector3(0.05, 0.05, 0.05)));
     const h = new THREE.Box3Helper(box, COL.slettet);
@@ -169,8 +174,8 @@ function paint() {
         compareGroup.add(h);
       }
     };
-    tegnBokser(result.ny, COL.ny);
-    tegnBokser(result.endret, COL.endret);
+    if (vis("ny")) tegnBokser(result.ny, COL.ny);
+    if (vis("endret")) tegnBokser(result.endret, COL.endret);
     return;
   }
   const status = new Map();
@@ -178,7 +183,7 @@ function paint() {
   result.endret.forEach(e => status.set(e.id, "endret"));
   S.modelGroup.children.forEach(m => {
     const st = status.get(m.userData.expressID);
-    m.material = st ? MAT[st] : MAT.uendret;
+    m.material = (st && vis(st)) ? MAT[st] : MAT.uendret;
   });
 }
 
@@ -220,9 +225,13 @@ function renderPanel() {
     esc(S.compareBase.file) + ' → ' + esc(S.fileName) +
     t(" · gjenkjent på ") + r.metode + '</p>' +
     (r.usikker ? '<p style="font-size:12px; color:var(--accent2); margin-bottom:8px">' + ikon("advarsel") + ' ' + t("Under halvparten av elementene lot seg parre. Er dette to versjoner av samme modell? Ellers har eksporten byttet både GlobalId og geometri.") + '</p>' : '') +
-    '<div class="qty-row"><div class="n"><span style="color:var(--ok)">●</span> ' + t("Nye") + '</div><div class="c">' + r.ny.length + '</div></div>' +
-    '<div class="qty-row"><div class="n"><span style="color:var(--danger)">●</span> ' + t("Slettet") + '</div><div class="c">' + r.slettet.length + '</div></div>' +
-    '<div class="qty-row"><div class="n"><span style="color:#fbbf24">●</span> ' + t("Endret") + '</div><div class="c">' + r.endret.length + '</div></div>' +
+    // Radene under er også FILTER: overlappende bokser kan skjule hverandre,
+    // så et trykk på Nye/Slettet/Endret viser bare den fargen i modellen.
+    // «Se alle» (eller et nytt trykk på samme rad) viser alt igjen.
+    '<div class="qty-row cmp-filter" data-filter="" style="cursor:pointer"><div class="n">' + ikon("vis") + ' ' + t("Se alle") + '</div><div class="c"></div></div>' +
+    '<div class="qty-row cmp-filter" data-filter="ny" style="cursor:pointer"><div class="n"><span style="color:var(--ok)">●</span> ' + t("Nye") + '</div><div class="c">' + r.ny.length + '</div></div>' +
+    '<div class="qty-row cmp-filter" data-filter="slettet" style="cursor:pointer"><div class="n"><span style="color:var(--danger)">●</span> ' + t("Slettet") + '</div><div class="c">' + r.slettet.length + '</div></div>' +
+    '<div class="qty-row cmp-filter" data-filter="endret" style="cursor:pointer"><div class="n"><span style="color:#fbbf24">●</span> ' + t("Endret") + '</div><div class="c">' + r.endret.length + '</div></div>' +
     '<div class="qty-row"><div class="n">' + t("Uendret") + '</div><div class="c">' + r.uendret.size + '</div></div>';
 
   if (!r.ny.length && !r.slettet.length && !r.endret.length)
@@ -247,6 +256,23 @@ function renderPanel() {
 
   $("compareBody").innerHTML = html;
   $("cmpStopp").onclick = stopCompare;
+  // fargefilteret: marker aktiv rad og tegn boksene på nytt
+  const merkFilter = () => {
+    $("compareBody").querySelectorAll(".cmp-filter").forEach(el => {
+      const aktiv = (el.dataset.filter || null) === boksFilter;
+      el.style.background = aktiv ? "rgba(128,128,128,.25)" : "";
+      el.style.borderRadius = aktiv ? "6px" : "";
+    });
+  };
+  $("compareBody").querySelectorAll(".cmp-filter").forEach(el => {
+    el.onclick = () => {
+      const valgt = el.dataset.filter || null;
+      boksFilter = (boksFilter === valgt) ? null : valgt;   // samme rad igjen = vis alle
+      paint();
+      merkFilter();
+    };
+  });
+  merkFilter();
   $("cmpOnlyChanged").onclick = () => {
     const skjul = !$("cmpOnlyChanged").classList.contains("active");
     $("cmpOnlyChanged").classList.toggle("active", skjul);
@@ -321,6 +347,7 @@ export function applySharedCompare(c) {
       c: [a[2], a[3], a[4]], d: [a[5], a[6], a[7]]
     }))
   };
+  boksFilter = null;
   S.compareOn = true;
   $("btnCompare").classList.add("active");
   paint();
@@ -352,6 +379,7 @@ export function stopCompare() {
   S.compareOn = false;
   S.compareBase = null;
   result = null;
+  boksFilter = null;
   unpaint();
   if (S.modelGroup) S.modelGroup.children.forEach(m => m.visible = true);
   $("comparePanel").classList.remove("open");
@@ -369,6 +397,7 @@ S.onModelLoaded = async () => {
   loadingEl.classList.remove("open");
   if (!now) return;
   result = compare(base, now);
+  boksFilter = null;   // ny sammenligning starter alltid med alle fargene
   S.compareOn = true;
   $("btnCompare").classList.add("active");
   paint();
