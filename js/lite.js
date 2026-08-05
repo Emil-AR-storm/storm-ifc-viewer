@@ -26,7 +26,7 @@ const HOPP_TYPER = new Set(["MECHANICALFASTENER", "FASTENER", "DISCRETEACCESSORY
 // Returnerer en liste { pos, idx, material, ranges }.
 export function slåSammenScene(children, opts) {
   const o = opts || {};
-  const minst = o.minst !== undefined ? o.minst : 0.15;
+  const minst = o.minst !== undefined ? o.minst : (Number(localStorage.getItem("storm-ifc-test-minst")) || 0.15);
   const bøtter = new Map();
   const boks = new THREE.Box3();
   let utelatt = 0;
