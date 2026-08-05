@@ -8,6 +8,7 @@ import { setClipFromFace } from "./clip.js";
 import { clearSelection, hitID, pick, selectElement, showProperties } from "./elements.js";
 import { afterLoad, ifcReady, loadGlb } from "./ifc.js";
 import { closeMarkerPopup, openMarkerPopup, pickMarker } from "./markers.js";
+import { snapshotModel } from "./compare.js";
 import { addMeasure, koteValue, rettPunkt, snapPoint } from "./measure.js";
 import { canvas, koteGroup, makeLabel, measureGroup } from "./scene.js";
 
@@ -224,6 +225,23 @@ window.åpneFraUrl = åpneFraUrl;   // trinn 3 kaller denne
       k.onclick = () => { panel.remove(); btn.classList.remove("active");
         åpneFraUrl("/modell/" + S.lettProsjekt + "/rev/" + rv.rev + "/" + encodeURIComponent(S.fileName)); };
       panel.appendChild(k);
+      // ⇄ Sammenlign: åpner revisjonen, tar avtrykk, åpner nyeste — endringene
+      // fargelegges og listes automatisk (S.onModelLoaded i compare.js)
+      const s = document.createElement("button");
+      s.className = "btn";
+      s.style.cssText = "font-size:12px; opacity:.85";
+      s.textContent = "⇄ " + t("Sammenlign med nyeste");
+      s.onclick = async () => {
+        panel.remove(); btn.classList.remove("active");
+        const fil = S.fileName;
+        await åpneFraUrl("/modell/" + S.lettProsjekt + "/rev/" + rv.rev + "/" + encodeURIComponent(fil));
+        const snap = await snapshotModel();
+        if (!snap) { alert(t("Fikk ikke lest revisjonen for sammenligning.")); return; }
+        snap.file = t("Revisjon") + " " + rv.rev;   // må hete noe annet enn nyeste, ellers starter ikke sammenligningen
+        S.compareBase = snap;
+        await åpneFraUrl("/modell/" + S.lettProsjekt + "/" + encodeURIComponent(fil) + "?v=" + Date.now());
+      };
+      panel.appendChild(s);
     });
     document.body.appendChild(panel);
     btn.classList.add("active");
