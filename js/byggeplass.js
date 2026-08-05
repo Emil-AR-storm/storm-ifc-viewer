@@ -52,12 +52,17 @@ if (btn) btn.addEventListener("click", async () => {
     const { bytes, ids, utelatt } = await byggLettKopi((txt) => { loadingText.textContent = txt; });
     loadingText.textContent = t("Laster opp …");
     const fil = lettNavn(S.fileName);
+    // SHA-256 av innholdet: er modellen uendret siden sist, lager Workeren
+    // IKKE en ny revisjon (og slipper å skrive fila på nytt)
+    const hashBuf = await crypto.subtle.digest("SHA-256", bytes);
+    const hash = [...new Uint8Array(hashBuf)].map(b => b.toString(16).padStart(2, "0")).join("");
     const r = await fetch(WORKER + "/last-opp?fil=" + encodeURIComponent(fil), {
       method: "PUT",
       headers: {
         "content-type": "model/gltf-binary",
         "x-prosjekt": prosjekt,
-        "x-token": token
+        "x-token": token,
+        "x-innhold-hash": hash
       },
       body: bytes
     });
@@ -66,6 +71,7 @@ if (btn) btn.addEventListener("click", async () => {
       throw new Error(t("Feil opplastingsnøkkel – trykk på knappen og skriv den på nytt."));
     }
     if (!r.ok) throw new Error("HTTP " + r.status + ": " + (await r.text()).slice(0, 200));
+    const uendret = (await r.text()).startsWith("UENDRET");
     huskProsjektFor(fil, prosjekt);   // den røde telleren vet nå hvilket prosjekt modellen hører til
 
     // 3) Markeringene, VASKET: eier, frist, Planner-kobling, svar og tegninger
@@ -109,7 +115,7 @@ if (btn) btn.addEventListener("click", async () => {
     loadingText.textContent = t("Laster opp arbeidstegningene …");
     const antTegninger = await lastOppTegninger(prosjekt, token);
 
-    await visQr(prosjekt, fil, ids.size, vaskede.length, bildeteller, antallInn, antTegninger);
+    await visQr(prosjekt, fil, ids.size, vaskede.length, bildeteller, antallInn, antTegninger, uendret);
     oppdaterBadge();   // innboksen er tømt nå — telleren skal bort
   } catch (err) {
     console.error(err);
@@ -264,7 +270,7 @@ async function lastOppTegninger(prosjekt, token) {
 // Vises etter vellykket opplasting: QR-en peker på WORKER/<prosjektnr>.
 // Koden er IKKE i QR-en — montøren skal skrive den selv. Last ned som PNG
 // og lim inn i en arbeidstegning eller heng på brakkeveggen.
-async function visQr(prosjekt, fil, antall, antMark, antBilder, antInn, antTegninger) {
+async function visQr(prosjekt, fil, antall, antMark, antBilder, antInn, antTegninger, uendret) {
   if (!window.QRCode) {
     await new Promise((res, rej) => {
       const s = document.createElement("script");
@@ -282,7 +288,8 @@ async function visQr(prosjekt, fil, antall, antMark, antBilder, antInn, antTegni
     "<p style='margin:0 0 14px;font-size:13px;color:#555'>" + fil + " · " + antall + " elementer · " +
       (antMark || 0) + " markeringer · " + (antBilder || 0) + " bilder" +
       (antTegninger ? " · " + antTegninger + " tegninger" : "") +
-      (antInn ? " · " + antInn + " fra byggeplassen hentet inn" : "") + "</p>" +
+      (antInn ? " · " + antInn + " fra byggeplassen hentet inn" : "") +
+      (uendret ? "<br><span style='color:#16a34a'>Modellen er uendret — ingen ny revisjon laget</span>" : "") + "</p>" +
     "<div id='qrRute' style='display:flex;justify-content:center'></div>" +
     "<p style='font-size:13px;color:#555;margin:12px 0 2px'>" + adresse + "</p>" +
     "<p style='font-size:13px;color:#555;margin:2px 0 14px'>Skann → skriv prosjektkoden → se modellen</p>";
