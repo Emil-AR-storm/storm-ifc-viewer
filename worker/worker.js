@@ -90,12 +90,26 @@ async function logg(env, prosjekt, hva) {
 // Valgfritt varsel til prosjektlederen (f.eks. en Teams-arbeidsflyt med
 // "When a Teams webhook request is received"). Uten VARSEL_URL skjer ingenting.
 // Sendes i bakgrunnen — feiler den, merker ingen på byggeplassen noe.
+// Teams-arbeidsflytene viser ikke ren tekst — de krever meldingen pakket som
+// et «adaptive card» (funnet 5. aug 2026: flyten kjørte, men feilet på format).
 function varsle(env, ctx, tekst) {
   if (!env.VARSEL_URL || !ctx) return;
   ctx.waitUntil(fetch(env.VARSEL_URL, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ text: tekst, tekst })
+    body: JSON.stringify({
+      type: "message",
+      attachments: [{
+        contentType: "application/vnd.microsoft.card.adaptive",
+        contentUrl: null,
+        content: {
+          $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
+          type: "AdaptiveCard",
+          version: "1.4",
+          body: [{ type: "TextBlock", text: tekst, wrap: true }]
+        }
+      }]
+    })
   }).catch(() => {}));
 }
 
