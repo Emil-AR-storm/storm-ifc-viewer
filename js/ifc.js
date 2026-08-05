@@ -212,7 +212,7 @@ export async function loadModel(buffer) {
     buffer: ab,
     light: S.lightLoaded,
     minst: Number(localStorage.getItem("storm-ifc-test-minst")) || 0.15,
-    sirkel: Number(localStorage.getItem("storm-ifc-test-sirkel")) || 8
+    sirkel: Number(localStorage.getItem("storm-ifc-test-sirkel")) || 6
   }, null, [ab]);
   const tApnet = performance.now();
   S.modelID = 1;   // «en modell er åpen» – all lesing går nå gjennom IFC-tråden
