@@ -40,13 +40,24 @@ function elementIds() {
   return ids;
 }
 
-// Begge leses fra hurtigbufferen som ble fylt rett etter lasting
-const guidOf = (id) => guidFor(id);
-const typeOf = (id) => typeFor(id);
+// Begge leses fra hurtigbufferen som ble fylt rett etter lasting.
+// På en lett kopi (GLB) finnes ingen IFC-tråd — da leses de fra props som
+// ble bakt inn da kopien ble laget: [navn, objekttype, IfcType, materiale, GlobalId]
+const guidOf = (id) => {
+  if (S.glbActive) { const p = S.glbProps && S.glbProps.get(id); return (p && p[4]) || ""; }
+  return guidFor(id);
+};
+const typeOf = (id) => {
+  if (S.glbActive) { const p = S.glbProps && S.glbProps.get(id); return (p && p[2]) || ""; }
+  return typeFor(id);
+};
 
 export async function snapshotModel() {
   await sikreMeta(alleElementIder);
-  if (!S.modelGroup || S.modelID === null) return null; // .glb har ikke IFC-data
+  // Lette kopier (GLB) KAN sammenlignes: siden v4 bærer de GlobalId i props,
+  // og volum regnes fra trekantene. Kommentaren under var sann da den ble
+  // skrevet — før GlobalId ble lagret i den lette kopien.
+  if (!S.modelGroup || (S.modelID === null && !S.glbActive)) return null;
   const ids = elementIds();
   const boxes = allElementBoxes();
   const vols = quantitiesForSet(ids);
@@ -173,7 +184,7 @@ function renderPanel() {
         '<p style="color:var(--muted); font-size:12px; margin-top:8px">' +
         t("Åpne nå den nye versjonen – med Åpne eller Biblioteket. Endringene fargelegges automatisk når modellen er lastet.") + '</p>' +
         '<div class="prop-actions" style="margin-top:12px"><button id="cmpAvbryt">' + t("Avbryt sammenligning") + '</button></div>'
-      : '<p style="font-size:13px">' + t("Sammenligning krever en IFC-modell i full eller lav kvalitet – ikke lett kopi.") + '</p>';
+      : '<p style="font-size:13px">' + t("Fikk ikke lest modellen for sammenligning – er dette en svært gammel lett kopi uten elementdata?") + '</p>';
     if ($("cmpAvbryt")) $("cmpAvbryt").onclick = stopCompare;
     return;
   }
