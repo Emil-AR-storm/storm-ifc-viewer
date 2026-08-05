@@ -19,6 +19,17 @@
 /* Startskjerm-tekst som handler om å åpne egne filer gir ikke mening her */
 [data-lett="1"] #splash > p:not(.liten):not(#jsCheck),
 [data-lett="1"] #splash .liten { display: none !important; }
+/* Kodefeltet (trinn 4): store tegn, god treffflate for hansker */
+#kodeBoks { margin: 18px auto 8px; max-width: 320px; }
+#prosjektInput, #kodeInput {
+  display: block; width: 100%; box-sizing: border-box; margin: 8px 0;
+  font-size: 26px; text-align: center; padding: 12px 8px; border-radius: 10px;
+  border: 1px solid #2c3442; background: #14181f; color: #e8edf5;
+}
+#kodeInput { letter-spacing: 10px; text-transform: uppercase; font-weight: 700; }
+#kodeKnapp { width: 100%; font-size: 18px; padding: 14px 0; margin-top: 4px; justify-content: center; }
+#kodeFeil { color: #f87171; min-height: 20px; font-size: 14px; margin-top: 4px; }
+#kodeValg button { display: block; width: 100%; margin: 6px 0; font-size: 16px; padding: 12px; }
 </style>
 </head>
 <body>
@@ -125,7 +136,13 @@
   <div id="crashBanner" style="display:none"></div>
   <div id="shareBanner" style="display:none"></div>
   <div id="resumeBox" style="display:none"></div>
-  <p class="liten" style="display:block !important">Skann QR-koden fra Storm for å åpne modellen. Kodefeltet kommer her (trinn 4).</p>
+  <div id="kodeBoks" style="display:block !important">
+    <input id="prosjektInput" inputmode="numeric" maxlength="5" placeholder="Prosjektnummer" data-i18n-ph>
+    <input id="kodeInput" inputmode="text" autocapitalize="characters" autocomplete="one-time-code" spellcheck="false" maxlength="6" placeholder="KODE">
+    <div id="kodeFeil"></div>
+    <button class="btn" id="kodeKnapp" data-i18n>Åpne modellen</button>
+    <p class="liten" style="display:block !important" data-i18n>Koden står på QR-plakaten fra Storm.</p>
+  </div>
   <button class="btn" id="btnOpenSplash"><svg class="ikon"><use href="#i-apne"/></svg><span class="btn-t" data-i18n>Velg IFC-fil</span></button>
   <p class="liten" data-i18n>… eller dra fila rett inn i vinduet. Ligger modellen i OneDrive med skyikon (bare på nett),
      bruk Biblioteket – eller høyreklikk fila i Utforsker → «Behold alltid på denne enheten».</p>
