@@ -127,6 +127,13 @@ export const ORDBOK = {
   "Fikk ikke sendt bildet": { en: "Could not send the photo", pl: "Nie udało się wysłać zdjęcia", lt: "Nepavyko išsiųsti nuotraukos" },
   "Henter kvitteringer fra byggeplassen …": { en: "Fetching site photos …", pl: "Pobieranie zdjęć z budowy …", lt: "Gaunamos nuotraukos iš statybvietės …" },
   "Laster opp markeringene …": { en: "Uploading markers …", pl: "Przesyłanie oznaczeń …", lt: "Įkeliamos žymos …" },
+  // Byggeplass-lenka (trinn 5b): avvik, kommentarer og tegninger fra byggeplassen
+  "Navnet ditt (vises på markeringen):": { en: "Your name (shown on the marker):", pl: "Twoje imię (widoczne na oznaczeniu):", lt: "Jūsų vardas (rodomas žymoje):" },
+  "Byggeplass": { en: "Site", pl: "Budowa", lt: "Statybvietė" },
+  "Markeringen er sendt til prosjektlederen.": { en: "The marker has been sent to the project manager.", pl: "Oznaczenie zostało wysłane do kierownika projektu.", lt: "Žyma išsiųsta projekto vadovui." },
+  "Fikk ikke sendt dette til prosjektlederen – sjekk nettet og prøv igjen.": { en: "Could not send this to the project manager – check your connection and try again.", pl: "Nie udało się wysłać do kierownika projektu – sprawdź sieć i spróbuj ponownie.", lt: "Nepavyko išsiųsti projekto vadovui – patikrinkite ryšį ir bandykite dar kartą." },
+  "Laster opp arbeidstegningene …": { en: "Uploading drawings …", pl: "Przesyłanie rysunków …", lt: "Įkeliami brėžiniai …" },
+  "Tegningen er ikke lastet opp til byggeplass-lenka ennå": { en: "The drawing has not been uploaded to the site link yet", pl: "Rysunek nie został jeszcze przesłany do linku budowy", lt: "Brėžinys dar neįkeltas į statybvietės nuorodą" },
   "Språk": { en: "Language", pl: "Język", lt: "Kalba" },
   "Slipp IFC- eller .glb-fila her": { en: "Drop the IFC or .glb file here", pl: "Upuść tutaj plik IFC lub .glb", lt: "Numeskite IFC arba .glb failą čia" },
   "Fortsett med": { en: "Continue with", pl: "Kontynuuj z", lt: "Tęsti su" },

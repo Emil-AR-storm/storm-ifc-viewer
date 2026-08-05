@@ -58,6 +58,31 @@ function persist() {
 // Brukes av byggeplass.js når kvitteringsbilder fra innboksen henges på markeringene
 export function lagreOgSynk() { persist(); pushSharedComments(); renderCommentList(); }
 
+// Brukes av byggeplass.js når hendelser fra byggeplassen (ny markering, kommentar)
+// tas inn i den delte lista
+export function leggTilImportertMarkering(c) {
+  S.comments.push(c);
+  addMarkerSprite(c);
+}
+
+// LETTMODUS: nye markeringer og kommentarer sendes til Workerens innboks.
+// Feiler sendingen, sier vi fra — en stille feil her ville sett ut som at
+// avviket ble meldt, uten at det noen gang kom fram.
+async function sendHendelse(hendelse) {
+  try {
+    const r = await fetch("/hendelse", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(hendelse)
+    });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    return true;
+  } catch (_) {
+    alert(t("Fikk ikke sendt dette til prosjektlederen – sjekk nettet og prøv igjen."));
+    return false;
+  }
+}
+
 // ---- Delte markeringer (lagres som JSON i SharePoint: IFC-modeller/Markeringer) ----
 
 const syncedFile = () => S.fileName;
@@ -90,6 +115,16 @@ export function nyId() {
 
 // Navnet på den innloggede, til «skrevet av» og «endret av».
 export function innloggetNavn() {
+  if (LETT) {
+    // Montøren har ingen konto — navnet spørres én gang og huskes i nettleseren
+    let navn = "";
+    try { navn = localStorage.getItem("storm-bp-navn") || ""; } catch(_) {}
+    if (!navn) {
+      navn = (prompt(t("Navnet ditt (vises på markeringen):")) || "").trim().slice(0, 40);
+      if (navn) try { localStorage.setItem("storm-bp-navn", navn); } catch(_) {}
+    }
+    return navn || t("Byggeplass");
+  }
   try {
     const a = S.msalApp && S.msalApp.getActiveAccount();
     return (a && (a.name || a.username)) || "";
@@ -330,6 +365,7 @@ export function leggTilSvar(c, tekst) {
   const s = { id: nyId(), tekst: rent, forfatter: innloggetNavn(), dato: naaTekst(), endret: "" };
   c.svar = svarI(c).concat([s]);
   updateComment(c, {});
+  if (LETT) sendHendelse({ type: "svar", markering: c.id, svar: s });
   return s;
 }
 
@@ -770,6 +806,7 @@ async function taImotFiler(c, filer, seksjon, etterpa) {
   loadingText.textContent = gode.length > 1 ? t("Laster opp {0} bilder …", Math.min(gode.length, plass)) : t("Laster opp bildet …");
   loadingEl.classList.add("open");
   try {
+    if (LETT) S._lettSeksjon = seksjon;   // leses av lastOpp i bilder.js
     // nummereringen går på TVERS av seksjonene, så to filer aldri får samme navn
     const navn = await leggTilBilder(c.id, gode.slice(0, plass), alleBilder(c).length);
     c[felt] = bilderI(c, seksjon).concat(navn);
@@ -1081,6 +1118,12 @@ window.saveComment = function() {
   persist();
   pushSharedComments();
   renderCommentList();
+  if (LETT) {
+    sendHendelse({ type: "ny-markering", markering: {
+      id: c.id, text: c.text, author: c.author, date: c.date,
+      status: "Åpen", x: c.x, y: c.y, z: c.z
+    } }).then(ok => { if (ok) alert(t("Markeringen er sendt til prosjektlederen.")); });
+  }
   S.pendingPoint = null;
   // markeringen er lagret nå – bildene lastes opp i bakgrunnen etterpå
   if (S.nyeBilder.length) {
