@@ -67,14 +67,18 @@ async function lagBevis(env, prosjekt) {
   return prosjekt + "." + utløper + "." + sig;
 }
 
-async function sjekkBevis(env, req, prosjekt) {
+async function lesBevis(env, req) {
   const kaker = req.headers.get("Cookie") || "";
   const m = kaker.match(/storm_bp=([^;]+)/);
-  if (!m) return false;
+  if (!m) return null;
   const [p, utløper, sig] = m[1].split(".");
-  if (p !== prosjekt) return false;
-  if (!utløper || Date.now() > Number(utløper)) return false;
-  return sig === await sha256hex(p + "|" + utløper + "|" + env.ADMIN_TOKEN);
+  if (!utløper || Date.now() > Number(utløper)) return null;
+  if (sig !== await sha256hex(p + "|" + utløper + "|" + env.ADMIN_TOKEN)) return null;
+  return p;
+}
+
+async function sjekkBevis(env, req, prosjekt) {
+  return (await lesBevis(env, req)) === prosjekt;
 }
 
 async function logg(env, prosjekt, hva) {
@@ -114,9 +118,12 @@ export default {
       if (!/^[\wæøåÆØÅ .,()–-]+\.(glb|json|jpg|jpeg)$/i.test(fil) || fil.includes("..")) {
         return new Response("Ugyldig filnavn: " + fil, { status: 400, headers: cors });
       }
-      await env.MODELLER.put(prosjekt + "/" + fil, req.body);
-      await logg(env, prosjekt, { ok: true, hva: "opplasting", fil });
-      return new Response("OK: " + prosjekt + "/" + fil, { headers: cors });
+      const mappe = url.searchParams.get("mappe") || "";
+      if (mappe && mappe !== "bilder") return new Response("Ugyldig mappe", { status: 400, headers: cors });
+      const nøkkel = prosjekt + "/" + (mappe ? mappe + "/" : "") + fil;
+      await env.MODELLER.put(nøkkel, req.body);
+      await logg(env, prosjekt, { ok: true, hva: "opplasting", fil: nøkkel });
+      return new Response("OK: " + nøkkel, { headers: cors });
     }
 
     // ---------- Admin: lag (eller bytt) kode for et prosjekt ----------
@@ -231,6 +238,80 @@ export default {
         rader.push({ tid: n.name.split(":").slice(2).join(":"), ...(v ? JSON.parse(v) : {}) });
       }
       return Response.json(rader);
+    }
+
+    // ---------- Trinn 5: markeringer ut, kvittering inn ----------
+
+    // GET /markeringer/20653/X.lett.glb.markeringer.json — krever beviset
+    if (req.method === "GET" && sti.startsWith("/markeringer/")) {
+      const rest = sti.slice("/markeringer/".length);
+      const skille = rest.indexOf("/");
+      const prosjekt = rest.slice(0, skille);
+      const fil = rest.slice(skille + 1);
+      if (!/^\d{5}$/.test(prosjekt) || !fil.endsWith(".markeringer.json") || fil.includes("..")) {
+        return new Response("Ugyldig", { status: 400 });
+      }
+      if (!await sjekkBevis(env, req, prosjekt)) return new Response("Skriv koden først", { status: 403 });
+      const obj = await env.MODELLER.get(prosjekt + "/" + fil);
+      if (!obj) return Response.json([]); // ingen markeringer lastet opp ennå — tom liste, ikke feil
+      // Markeringer endres mellom opplastinger — aldri hurtigbufre
+      return new Response(obj.body, { headers: { "content-type": "application/json", "Cache-Control": "no-store" } });
+    }
+
+    // GET /bilde/20653/<navn>.jpg — før-bildene på markeringene. Krever beviset
+    if (req.method === "GET" && sti.startsWith("/bilde/")) {
+      const rest = sti.slice("/bilde/".length);
+      const skille = rest.indexOf("/");
+      const prosjekt = rest.slice(0, skille);
+      const navn = rest.slice(skille + 1);
+      if (!/^\d{5}$/.test(prosjekt) || !/^[0-9a-zA-Z_-]+\.jpg$/.test(navn)) return new Response("Ugyldig", { status: 400 });
+      if (!await sjekkBevis(env, req, prosjekt)) return new Response("Skriv koden først", { status: 403 });
+      const obj = await env.MODELLER.get(prosjekt + "/bilder/" + navn);
+      if (!obj) return new Response("Fant ikke bildet", { status: 404 });
+      // filnavn er unike (slump på slutten) — trygt å bufre for alltid
+      return new Response(obj.body, { headers: { "content-type": "image/jpeg", "Cache-Control": "private, max-age=31536000, immutable" } });
+    }
+
+    // POST /kvitter?fil=<navn>.jpg — montørens kvitteringsbilde til innboksen.
+    // Prosjektet leses fra BEVISET (kaka) — montøren kan bare levere til det
+    // prosjektet han har skrevet kode for. Kan bare LEGGE TIL — det finnes
+    // ingen rute som endrer eller sletter markeringer eller bilder herfra.
+    if (req.method === "POST" && sti === "/kvitter") {
+      const prosjekt = await lesBevis(env, req);
+      if (!prosjekt) return new Response("Skriv koden først", { status: 403 });
+      const fil = decodeURIComponent(url.searchParams.get("fil") || "").trim();
+      if (!/^[0-9a-zA-Z_-]+\.jpg$/.test(fil)) return new Response("Ugyldig filnavn", { status: 400 });
+      const str = Number(req.headers.get("content-length") || 0);
+      if (str > 8_000_000) return new Response("Bildet er for stort", { status: 413 });
+      await env.MODELLER.put(prosjekt + "/innboks/" + fil, req.body);
+      await logg(env, prosjekt, { ok: true, hva: "kvittering", fil });
+      return new Response("OK", { status: 200 });
+    }
+
+    // ---------- Admin: innboksen (prosjektlederen henter, så tømmes den) ----------
+    if (sti.startsWith("/innboks/")) {
+      const token = req.headers.get("x-token") || "";
+      if (!env.ADMIN_TOKEN || token !== env.ADMIN_TOKEN) return new Response("Feil nøkkel", { status: 403 });
+      const rest = sti.slice("/innboks/".length);
+      const skille = rest.indexOf("/");
+      const prosjekt = skille === -1 ? rest : rest.slice(0, skille);
+      if (!/^\d{5}$/.test(prosjekt)) return new Response("Ugyldig", { status: 400 });
+      if (req.method === "GET" && skille === -1) {
+        const liste = await env.MODELLER.list({ prefix: prosjekt + "/innboks/" });
+        return Response.json((liste.objects || []).map(o => o.key.slice((prosjekt + "/innboks/").length)));
+      }
+      const navn = skille === -1 ? "" : rest.slice(skille + 1);
+      if (!/^[0-9a-zA-Z_-]+\.jpg$/.test(navn)) return new Response("Ugyldig filnavn", { status: 400 });
+      if (req.method === "GET") {
+        const obj = await env.MODELLER.get(prosjekt + "/innboks/" + navn);
+        if (!obj) return new Response("Fant ikke", { status: 404 });
+        return new Response(obj.body, { headers: { "content-type": "image/jpeg" } });
+      }
+      if (req.method === "DELETE") {
+        await env.MODELLER.delete(prosjekt + "/innboks/" + navn);
+        return new Response("OK");
+      }
+      return new Response("Ikke funnet", { status: 404 });
     }
 
     // ---------- Lettmodus-siden serveres fra samme domene ----------
