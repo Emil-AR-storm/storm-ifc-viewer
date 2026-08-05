@@ -111,6 +111,18 @@ export function snapPoint(hit) {
   } catch(_) { return { point: hit.point, edge: null }; }
 }
 
+// «Rett strek»: låser andrepunktet så målet går langs nærmeste akse
+// (X, Y = høyde, eller Z). Slås av og på i målelinja, som Snap.
+export function rettPunkt(fra, til) {
+  const d = [Math.abs(til.x - fra.x), Math.abs(til.y - fra.y), Math.abs(til.z - fra.z)];
+  const størst = d.indexOf(Math.max(d[0], d[1], d[2]));
+  const p = til.clone();
+  if (størst === 0) { p.y = fra.y; p.z = fra.z; }
+  else if (størst === 1) { p.x = fra.x; p.z = fra.z; }
+  else { p.x = fra.x; p.y = fra.y; }
+  return p;
+}
+
 export function addMeasure(p1, p2) {
   const d = p1.distanceTo(p2);
   const geo = new THREE.BufferGeometry().setFromPoints([p1, p2]);

@@ -8,7 +8,7 @@ import { setClipFromFace } from "./clip.js";
 import { clearSelection, hitID, pick, selectElement, showProperties } from "./elements.js";
 import { afterLoad, ifcReady, loadGlb } from "./ifc.js";
 import { closeMarkerPopup, openMarkerPopup, pickMarker } from "./markers.js";
-import { addMeasure, koteValue, snapPoint } from "./measure.js";
+import { addMeasure, koteValue, rettPunkt, snapPoint } from "./measure.js";
 import { canvas, koteGroup, makeLabel, measureGroup } from "./scene.js";
 
 // last inn resten av modulene (rekkefølgen bestemmer oppstart)
@@ -74,7 +74,9 @@ canvas.addEventListener("pointerup", (e) => {
     $("commentDialog").classList.add("open");
     setTimeout(() => $("commentText").focus(), 50);
   } else if (S.mode === "measure") {
-    const mp = snapPoint(hit).point; // fester seg til nærmeste kant/hjørne
+    const mp0 = snapPoint(hit).point; // fester seg til nærmeste kant/hjørne
+    // «Rett strek» på: andrepunktet låses til nærmeste akse fra førstepunktet
+    const mp = (S.measureFirst && S.rettOn) ? rettPunkt(S.measureFirst, mp0) : mp0;
     if (!S.measureFirst) {
       S.measureFirst = mp.clone();
       const dot = new THREE.Mesh(new THREE.SphereGeometry(1), new THREE.MeshBasicMaterial({ color: 0xf59e0b, depthTest: false }));
