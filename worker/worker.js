@@ -33,7 +33,7 @@ function corsHeaders(req) {
   if (!KILDER.includes(origin)) return {};
   return {
     "Access-Control-Allow-Origin": origin,
-    "Access-Control-Allow-Methods": "PUT, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, PUT, POST, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "content-type, x-prosjekt, x-token",
     "Access-Control-Max-Age": "86400"
   };
@@ -340,25 +340,25 @@ export default {
     // ---------- Admin: innboksen (prosjektlederen henter, så tømmes den) ----------
     if (sti.startsWith("/innboks/")) {
       const token = req.headers.get("x-token") || "";
-      if (!env.ADMIN_TOKEN || token !== env.ADMIN_TOKEN) return new Response("Feil nøkkel", { status: 403 });
+      if (!env.ADMIN_TOKEN || token !== env.ADMIN_TOKEN) return new Response("Feil nøkkel", { status: 403, headers: cors });
       const rest = sti.slice("/innboks/".length);
       const skille = rest.indexOf("/");
       const prosjekt = skille === -1 ? rest : rest.slice(0, skille);
       if (!/^\d{5}$/.test(prosjekt)) return new Response("Ugyldig", { status: 400 });
       if (req.method === "GET" && skille === -1) {
         const liste = await env.MODELLER.list({ prefix: prosjekt + "/innboks/" });
-        return Response.json((liste.objects || []).map(o => o.key.slice((prosjekt + "/innboks/").length)));
+        return Response.json((liste.objects || []).map(o => o.key.slice((prosjekt + "/innboks/").length)), { headers: cors });
       }
       const navn = skille === -1 ? "" : rest.slice(skille + 1);
       if (!/^[0-9a-zA-Z_.-]+\.(jpg|json)$/.test(navn) || navn.includes("..")) return new Response("Ugyldig filnavn", { status: 400 });
       if (req.method === "GET") {
         const obj = await env.MODELLER.get(prosjekt + "/innboks/" + navn);
-        if (!obj) return new Response("Fant ikke", { status: 404 });
-        return new Response(obj.body, { headers: { "content-type": navn.endsWith(".json") ? "application/json" : "image/jpeg" } });
+        if (!obj) return new Response("Fant ikke", { status: 404, headers: cors });
+        return new Response(obj.body, { headers: { ...cors, "content-type": navn.endsWith(".json") ? "application/json" : "image/jpeg" } });
       }
       if (req.method === "DELETE") {
         await env.MODELLER.delete(prosjekt + "/innboks/" + navn);
-        return new Response("OK");
+        return new Response("OK", { headers: cors });
       }
       return new Response("Ikke funnet", { status: 404 });
     }
