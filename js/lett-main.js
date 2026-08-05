@@ -2,7 +2,7 @@
 // sammenligning, «Fortsett med»-knapp og personlig oppsett fra SharePoint.
 // Innlogging startes aldri – se LETT-flagget i lett.js og gaten i sharepoint.js.
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
-import { $, S, fmtLen, loadingEl, loadingText } from "./state.js";
+import { $, S, esc, fmtLen, loadingEl, loadingText } from "./state.js";
 import { oversettDom, setLang, t } from "./i18n.js";
 import { setClipFromFace } from "./clip.js";
 import { clearSelection, hitID, pick, selectElement, showProperties } from "./elements.js";
@@ -182,4 +182,50 @@ window.åpneFraUrl = åpneFraUrl;   // trinn 3 kaller denne
     if (inp.value.length === 6 && /^\d{5}$/.test(prosjInp.value)) prøv();
   });
   knapp.addEventListener("click", prøv);
+})();
+
+
+// ---------- 🕐 Historikk (trinn 6): se og åpne tidligere revisjoner ----------
+// Koden åpner ALLTID nyeste modell. Gamle revisjoner ligger bak denne knappen,
+// arkivert automatisk av Workeren hver gang en ENDRET modell lastes opp.
+(function () {
+  const btn = $("btnHistorikk");
+  if (!btn) return;
+  btn.addEventListener("click", async () => {
+    const gammelt = $("histPanel");
+    if (gammelt) { gammelt.remove(); btn.classList.remove("active"); return; }
+    if (!S.lettProsjekt) { alert(t("Skriv koden først.")); return; }
+    let idx = { liste: [] };
+    try {
+      const r = await fetch("/revisjoner/" + S.lettProsjekt);
+      if (r.ok) idx = await r.json();
+    } catch (_) {}
+    const rader = (idx.liste || []).filter(x => x.fil === S.fileName).reverse();
+    const panel = document.createElement("div");
+    panel.id = "histPanel";
+    panel.innerHTML = "<h3>" + t("Historikk") + " · " + esc(S.fileName || "") + "</h3>";
+    const nå = document.createElement("button");
+    nå.className = "btn gjeldende";
+    nå.textContent = "▶ " + t("Nyeste versjon");
+    nå.onclick = () => { panel.remove(); btn.classList.remove("active");
+      åpneFraUrl("/modell/" + S.lettProsjekt + "/" + encodeURIComponent(S.fileName) + "?v=" + Date.now()); };
+    panel.appendChild(nå);
+    if (!rader.length) {
+      const p = document.createElement("p");
+      p.className = "liten"; p.style.cssText = "display:block !important";
+      p.textContent = t("Ingen tidligere revisjoner ennå.");
+      panel.appendChild(p);
+    }
+    rader.forEach(rv => {
+      const k = document.createElement("button");
+      k.className = "btn";
+      const dato = rv.arkivert ? new Date(rv.arkivert).toLocaleString("no-NO", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+      k.textContent = t("Revisjon") + " " + rv.rev + (dato ? " · " + dato : "");
+      k.onclick = () => { panel.remove(); btn.classList.remove("active");
+        åpneFraUrl("/modell/" + S.lettProsjekt + "/rev/" + rv.rev + "/" + encodeURIComponent(S.fileName)); };
+      panel.appendChild(k);
+    });
+    document.body.appendChild(panel);
+    btn.classList.add("active");
+  });
 })();
