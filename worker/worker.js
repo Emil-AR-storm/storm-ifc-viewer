@@ -34,7 +34,7 @@ function corsHeaders(req) {
   return {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "GET, PUT, POST, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "content-type, x-prosjekt, x-token",
+    "Access-Control-Allow-Headers": "content-type, x-prosjekt, x-token, x-innhold-hash",
     "Access-Control-Max-Age": "86400"
   };
 }
@@ -135,11 +135,19 @@ export default {
       const nøkkel = prosjekt + "/" + (mappe ? mappe + "/" : "") + fil;
 
       // TRINN 6-FUNDAMENT: skrives en .glb som alt finnes over, arkiveres den
-      // gamle først som Rev 1, Rev 2 … sammen med markeringene sine. Uten dette
-      // finnes det ingen historikk å sammenligne senere. (Filer over ~90 MB
-      // arkiveres ikke — Workeren kan ikke holde dem i minnet under kopiering.)
+      // gamle først som Rev 1, Rev 2 … sammen med markeringene sine.
+      // MEN: bare når modellen FAKTISK er endret. Byggeplass-knappen trykkes
+      // også for å hente innboksen og oppdatere markeringer — det skal ikke
+      // lage en ny revisjon. Klienten sender SHA-256 av innholdet, og er den
+      // lik hashen på fila som ligger der, hopper vi over både arkivering og
+      // overskriving. (Filer over ~90 MB arkiveres ikke — Workerens minne.)
       if (!mappe && /\.glb$/i.test(fil)) {
+        const hash = req.headers.get("x-innhold-hash") || "";
         const gammel = await env.MODELLER.get(nøkkel);
+        if (gammel && hash && gammel.customMetadata && gammel.customMetadata.hash === hash) {
+          await logg(env, prosjekt, { ok: true, hva: "opplasting (uendret)", fil });
+          return new Response("UENDRET: " + nøkkel, { headers: cors });
+        }
         if (gammel && gammel.size < 90_000_000) {
           const idxNøkkel = prosjekt + "/rev/index.json";
           let idx = { neste: 1, liste: [] };
@@ -156,7 +164,9 @@ export default {
         }
       }
 
-      await env.MODELLER.put(nøkkel, req.body);
+      const innholdsHash = req.headers.get("x-innhold-hash") || "";
+      await env.MODELLER.put(nøkkel, req.body,
+        (!mappe && /\.glb$/i.test(fil) && innholdsHash) ? { customMetadata: { hash: innholdsHash } } : undefined);
       await logg(env, prosjekt, { ok: true, hva: "opplasting", fil: nøkkel });
       return new Response("OK: " + nøkkel, { headers: cors });
     }
@@ -219,7 +229,11 @@ export default {
       // Riktig kode: list modellene og gi nettleseren et signert bevis (kake).
       const liste = await env.MODELLER.list({ prefix: prosjekt + "/" });
       const modeller = (liste.objects || [])
-        .filter(o => o.key.toLowerCase().endsWith(".glb"))
+        .filter(o => {
+          const rest = o.key.slice(prosjekt.length + 1);
+          // bare .glb i rota — revisjoner (rev/…) og undermapper skal IKKE i valglista
+          return rest.toLowerCase().endsWith(".glb") && !rest.includes("/");
+        })
         .map(o => ({
           navn: o.key.slice(prosjekt.length + 1),
           // ?v= gjør adressen unik per opplasting → nettleseren kan hurtigbufre
