@@ -2,6 +2,7 @@
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
 import { $, S, esc, ikon, loadingEl, loadingText, lukkPaneler } from "./state.js";
 import { t } from "./i18n.js";
+import { LETT } from "./lett.js";
 import { ANSATTE } from "./config.js";
 import { fristTilISO, fullforOppgave, opprettOppgave, planUrl, plannerToken } from "./planner.js";
 import { setMode } from "./modes.js";
@@ -22,6 +23,7 @@ $("btnComments").addEventListener("click", () => {
 function storageKey(){ return "storm-ifc-comments::" + S.fileName; }
 
 export function loadComments() {
+  if (LETT) { lastLettMarkeringer(); return; }
   try {
     const raw = localStorage.getItem(storageKey());
     S.comments = raw ? JSON.parse(raw) : [];
@@ -31,9 +33,30 @@ export function loadComments() {
   syncSharedComments(); // hent delte markeringer fra SharePoint i bakgrunnen
 }
 
+// LETTMODUS: markeringene kommer som vasket JSON fra Workeren (lagt der av
+// Byggeplass-knappen i det interne verktøyet). Samme feltvask som for den
+// delte SharePoint-fila — ukjente felter slipper aldri inn.
+async function lastLettMarkeringer() {
+  S.comments = [];
+  try {
+    const r = await fetch("/markeringer/" + (S.lettProsjekt || "00000") + "/" +
+      encodeURIComponent(S.fileName + ".markeringer.json"));
+    if (r.ok) {
+      const d = await r.json();
+      if (Array.isArray(d)) S.comments = d.map(vaskMarkering).filter(Boolean);
+    }
+  } catch (_) {}
+  markerGroup.clear();
+  S.comments.forEach(addMarkerSprite);
+  renderCommentList();
+}
+
 function persist() {
   try { localStorage.setItem(storageKey(), JSON.stringify(S.comments)); } catch(_){}
 }
+
+// Brukes av byggeplass.js når kvitteringsbilder fra innboksen henges på markeringene
+export function lagreOgSynk() { persist(); pushSharedComments(); renderCommentList(); }
 
 // ---- Delte markeringer (lagres som JSON i SharePoint: IFC-modeller/Markeringer) ----
 
@@ -148,7 +171,8 @@ async function syncSharedComments() {
   } catch(_) { S.sharedOK = false; renderCommentList(); }
 }
 
-async function pushSharedComments() {
+export async function pushSharedComments() {
+  if (LETT) return; // lettmodus skriver aldri markeringer — kvitteringer går via innboksen
   const forFile = syncedFile();
   if (!forFile) return;
   try {
@@ -753,6 +777,7 @@ async function taImotFiler(c, filer, seksjon, etterpa) {
     pushSharedComments();
     renderCommentList();
     if (etterpa) etterpa();
+    if (LETT) alert(t("Bildet er sendt. Det blir synlig for prosjektlederen neste gang han åpner modellen."));
   } catch (err) {
     alert(err.message === "IKKE_INNLOGGET"
       ? t("Bilder lagres i SharePoint, så du må være innlogget. Åpne Biblioteket og logg inn, så prøv igjen.")
