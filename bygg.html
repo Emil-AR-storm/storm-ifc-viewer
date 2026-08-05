@@ -34,17 +34,17 @@
 /* TRINN 5 — montørens rettigheter i markeringsbobla: ALT er tillegg, aldri endring.
    Skjules med CSS (aldri fjernes) — og Workeren har uansett ingen rute som kan
    endre eller slette markeringer, så dette er visning, ikke sikkerhet. */
-[data-lett="1"] #btnMarker { display: none !important; }          /* ikke lage nye markeringer */
-[data-lett="1"] .mp-endre,                                         /* ikke endre teksten */
-[data-lett="1"] .mp-del,                                           /* ikke slette */
-[data-lett="1"] .mp-fields,                                        /* ikke status, ansvarlig, frist */
-[data-lett="1"] .mp-task,                                          /* ikke Planner */
+/* Trinn 5b: montøren KAN nå lage markeringer (melde avvik), kommentere,
+   ta både før- og etter-bilder, og ÅPNE arbeidstegninger.
+   Fortsatt skjult: endre/slette andres tekst, status, ansvarlig, frist,
+   Planner, LEGGE TIL tegningsvedlegg, og endre/slette kommentarer. */
+[data-lett="1"] .mp-endre,
+[data-lett="1"] .mp-del,
+[data-lett="1"] .mp-fields,
+[data-lett="1"] .mp-task,
 [data-lett="1"] .mp-open,
-[data-lett="1"] #mpTegning,                                        /* ikke tegningsvedlegg */
-[data-lett="1"] .mp-tegning,
-[data-lett="1"] .mp-svar-seksjon { display: none !important; }     /* svartråden er intern */
-/* Bare ETTER-bilder kan legges til — kamera-knappen i Før-seksjonen skjules */
-[data-lett="1"] label.mp-bilde.nytt:has(input[data-seksjon="for"]) { display: none !important; }
+[data-lett="1"] #mpTegning,
+[data-lett="1"] .mp-svar-verktoy { display: none !important; }
 </style>
 </head>
 <body>
