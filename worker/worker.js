@@ -87,6 +87,18 @@ async function logg(env, prosjekt, hva) {
   await env.KODER.put(nøkkel, JSON.stringify(hva), { expirationTtl: 31536000 });
 }
 
+// Valgfritt varsel til prosjektlederen (f.eks. en Teams-arbeidsflyt med
+// "When a Teams webhook request is received"). Uten VARSEL_URL skjer ingenting.
+// Sendes i bakgrunnen — feiler den, merker ingen på byggeplassen noe.
+function varsle(env, ctx, tekst) {
+  if (!env.VARSEL_URL || !ctx) return;
+  ctx.waitUntil(fetch(env.VARSEL_URL, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ text: tekst, tekst })
+  }).catch(() => {}));
+}
+
 function ipFra(req) {
   return req.headers.get("CF-Connecting-IP") || "ukjent";
 }
@@ -94,7 +106,7 @@ function ipFra(req) {
 // ---------- Selve Workeren ----------
 
 export default {
-  async fetch(req, env) {
+  async fetch(req, env, ctx) {
     const url = new URL(req.url);
     // Nettlesere koder æøå i adresser (/åpne → /%C3%A5pne) — dekod før sammenligning
     let sti; try { sti = decodeURIComponent(url.pathname); } catch { sti = url.pathname; }
@@ -115,11 +127,11 @@ export default {
         return new Response("Prosjektnummeret må være 5 siffer", { status: 400, headers: cors });
       }
       const fil = decodeURIComponent(url.searchParams.get("fil") || "").trim();
-      if (!/^[\wæøåÆØÅ .,()–-]+\.(glb|json|jpg|jpeg)$/i.test(fil) || fil.includes("..")) {
+      if (!/^[\wæøåÆØÅ .,()–-]+\.(glb|json|jpg|jpeg|pdf)$/i.test(fil) || fil.includes("..")) {
         return new Response("Ugyldig filnavn: " + fil, { status: 400, headers: cors });
       }
       const mappe = url.searchParams.get("mappe") || "";
-      if (mappe && mappe !== "bilder") return new Response("Ugyldig mappe", { status: 400, headers: cors });
+      if (mappe && mappe !== "bilder" && mappe !== "tegninger") return new Response("Ugyldig mappe", { status: 400, headers: cors });
       const nøkkel = prosjekt + "/" + (mappe ? mappe + "/" : "") + fil;
       await env.MODELLER.put(nøkkel, req.body);
       await logg(env, prosjekt, { ok: true, hva: "opplasting", fil: nøkkel });
@@ -283,9 +295,46 @@ export default {
       if (!/^[0-9a-zA-Z_-]+\.jpg$/.test(fil)) return new Response("Ugyldig filnavn", { status: 400 });
       const str = Number(req.headers.get("content-length") || 0);
       if (str > 8_000_000) return new Response("Bildet er for stort", { status: 413 });
+      const seksjon = url.searchParams.get("seksjon") === "for" ? "for" : "etter";
       await env.MODELLER.put(prosjekt + "/innboks/" + fil, req.body);
-      await logg(env, prosjekt, { ok: true, hva: "kvittering", fil });
+      await env.MODELLER.put(prosjekt + "/innboks/" + fil + ".json",
+        JSON.stringify({ seksjon, tid: new Date().toISOString() }));
+      await logg(env, prosjekt, { ok: true, hva: "kvittering", fil, seksjon });
+      varsle(env, ctx, "📷 Nytt bilde fra byggeplassen på prosjekt " + prosjekt);
       return new Response("OK", { status: 200 });
+    }
+
+    // POST /hendelse — ny markering eller kommentar fra byggeplassen.
+    // Som /kvitter: bare TILLEGG. Hendelsen legges i innboksen som JSON og
+    // hentes hjem av prosjektlederen. Ingenting endres eller slettes herfra.
+    if (req.method === "POST" && sti === "/hendelse") {
+      const prosjekt = await lesBevis(env, req);
+      if (!prosjekt) return new Response("Skriv koden først", { status: 403 });
+      if (Number(req.headers.get("content-length") || 0) > 65536) {
+        return new Response("For stor", { status: 413 });
+      }
+      let inn; try { inn = await req.json(); } catch { return new Response("Ugyldig JSON", { status: 400 }); }
+      if (inn.type !== "ny-markering" && inn.type !== "svar") return new Response("Ukjent type", { status: 400 });
+      const navn = "h-" + Date.now() + "-" + crypto.randomUUID().slice(0, 8) + ".json";
+      await env.MODELLER.put(prosjekt + "/innboks/" + navn,
+        JSON.stringify({ ...inn, mottatt: new Date().toISOString() }));
+      await logg(env, prosjekt, { ok: true, hva: inn.type });
+      varsle(env, ctx, (inn.type === "ny-markering" ? "📌 Ny markering" : "💬 Ny kommentar") +
+        " fra byggeplassen på prosjekt " + prosjekt);
+      return new Response("OK");
+    }
+
+    // GET /tegning/20653/<itemId>.pdf — arbeidstegninger. Krever beviset
+    if (req.method === "GET" && sti.startsWith("/tegning/")) {
+      const rest = sti.slice("/tegning/".length);
+      const skille = rest.indexOf("/");
+      const prosjekt = rest.slice(0, skille);
+      const navn = rest.slice(skille + 1);
+      if (!/^\d{5}$/.test(prosjekt) || !/^[0-9a-zA-Z_-]+\.pdf$/.test(navn)) return new Response("Ugyldig", { status: 400 });
+      if (!await sjekkBevis(env, req, prosjekt)) return new Response("Skriv koden først", { status: 403 });
+      const obj = await env.MODELLER.get(prosjekt + "/tegninger/" + navn);
+      if (!obj) return new Response("Fant ikke tegningen", { status: 404 });
+      return new Response(obj.body, { headers: { "content-type": "application/pdf", "Cache-Control": "private, max-age=86400" } });
     }
 
     // ---------- Admin: innboksen (prosjektlederen henter, så tømmes den) ----------
@@ -301,11 +350,11 @@ export default {
         return Response.json((liste.objects || []).map(o => o.key.slice((prosjekt + "/innboks/").length)));
       }
       const navn = skille === -1 ? "" : rest.slice(skille + 1);
-      if (!/^[0-9a-zA-Z_-]+\.jpg$/.test(navn)) return new Response("Ugyldig filnavn", { status: 400 });
+      if (!/^[0-9a-zA-Z_.-]+\.(jpg|json)$/.test(navn) || navn.includes("..")) return new Response("Ugyldig filnavn", { status: 400 });
       if (req.method === "GET") {
         const obj = await env.MODELLER.get(prosjekt + "/innboks/" + navn);
         if (!obj) return new Response("Fant ikke", { status: 404 });
-        return new Response(obj.body, { headers: { "content-type": "image/jpeg" } });
+        return new Response(obj.body, { headers: { "content-type": navn.endsWith(".json") ? "application/json" : "image/jpeg" } });
       }
       if (req.method === "DELETE") {
         await env.MODELLER.delete(prosjekt + "/innboks/" + navn);
