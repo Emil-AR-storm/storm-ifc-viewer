@@ -133,6 +133,29 @@ export default {
       const mappe = url.searchParams.get("mappe") || "";
       if (mappe && mappe !== "bilder" && mappe !== "tegninger") return new Response("Ugyldig mappe", { status: 400, headers: cors });
       const nøkkel = prosjekt + "/" + (mappe ? mappe + "/" : "") + fil;
+
+      // TRINN 6-FUNDAMENT: skrives en .glb som alt finnes over, arkiveres den
+      // gamle først som Rev 1, Rev 2 … sammen med markeringene sine. Uten dette
+      // finnes det ingen historikk å sammenligne senere. (Filer over ~90 MB
+      // arkiveres ikke — Workeren kan ikke holde dem i minnet under kopiering.)
+      if (!mappe && /\.glb$/i.test(fil)) {
+        const gammel = await env.MODELLER.get(nøkkel);
+        if (gammel && gammel.size < 90_000_000) {
+          const idxNøkkel = prosjekt + "/rev/index.json";
+          let idx = { neste: 1, liste: [] };
+          const rå = await env.MODELLER.get(idxNøkkel);
+          if (rå) { try { idx = JSON.parse(await rå.text()); } catch (_) {} }
+          const n = idx.neste || 1;
+          await env.MODELLER.put(prosjekt + "/rev/" + n + "/" + fil, await gammel.arrayBuffer());
+          const gmlMark = await env.MODELLER.get(nøkkel + ".markeringer.json");
+          if (gmlMark) await env.MODELLER.put(prosjekt + "/rev/" + n + "/" + fil + ".markeringer.json", await gmlMark.arrayBuffer());
+          idx.neste = n + 1;
+          idx.liste = (idx.liste || []).concat([{ rev: n, fil, arkivert: new Date().toISOString() }]);
+          await env.MODELLER.put(idxNøkkel, JSON.stringify(idx));
+          await logg(env, prosjekt, { ok: true, hva: "arkivert", fil, rev: n });
+        }
+      }
+
       await env.MODELLER.put(nøkkel, req.body);
       await logg(env, prosjekt, { ok: true, hva: "opplasting", fil: nøkkel });
       return new Response("OK: " + nøkkel, { headers: cors });
@@ -335,6 +358,18 @@ export default {
       const obj = await env.MODELLER.get(prosjekt + "/tegninger/" + navn);
       if (!obj) return new Response("Fant ikke tegningen", { status: 404 });
       return new Response(obj.body, { headers: { "content-type": "application/pdf", "Cache-Control": "private, max-age=86400" } });
+    }
+
+    // GET /revisjoner/20645 — arkiverte revisjoner. Bevis eller admin-nøkkel.
+    // Selve de gamle modellene hentes via /modell/20645/rev/2/X.glb (samme rute som i dag).
+    if (req.method === "GET" && sti.startsWith("/revisjoner/")) {
+      const prosjekt = sti.slice("/revisjoner/".length);
+      if (!/^\d{5}$/.test(prosjekt)) return new Response("Ugyldig", { status: 400, headers: cors });
+      const admin = env.ADMIN_TOKEN && (req.headers.get("x-token") || "") === env.ADMIN_TOKEN;
+      if (!admin && !await sjekkBevis(env, req, prosjekt)) return new Response("Skriv koden først", { status: 403, headers: cors });
+      const rå = await env.MODELLER.get(prosjekt + "/rev/index.json");
+      if (!rå) return Response.json({ neste: 1, liste: [] }, { headers: cors });
+      return new Response(rå.body, { headers: { ...cors, "content-type": "application/json", "Cache-Control": "no-store" } });
     }
 
     // ---------- Admin: innboksen (prosjektlederen henter, så tømmes den) ----------
