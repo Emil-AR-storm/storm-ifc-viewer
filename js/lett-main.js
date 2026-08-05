@@ -115,7 +115,7 @@ async function åpneFraUrl(url) {
     await ifcReady;
     const r = await fetch(url);
     if (!r.ok) throw new Error("HTTP " + r.status);
-    S.fileName = url.split("/").pop() || "modell.glb";
+    S.fileName = decodeURIComponent((url.split("/").pop() || "modell.glb").split("?")[0]);
     await loadGlb(new Uint8Array(await r.arrayBuffer()));
     afterLoad();
   } catch (err) {
@@ -152,6 +152,7 @@ window.åpneFraUrl = åpneFraUrl;   // trinn 3 kaller denne
       });
       const svar = await r.json().catch(() => ({}));
       if (!r.ok) { feilEl.textContent = t(svar.feil || "Feil kode eller prosjekt."); return; }
+      S.lettProsjekt = prosjekt;   // trinn 5: markeringer og bilder hentes per prosjekt
       if (!svar.modeller || !svar.modeller.length) { feilEl.textContent = t("Ingen modeller i prosjektet ennå."); return; }
       if (svar.modeller.length === 1) { åpneFraUrl(svar.modeller[0].url); return; }
       // Flere modeller: vis en knapp per modell
