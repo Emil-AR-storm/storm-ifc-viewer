@@ -14,6 +14,7 @@ import "./prefs.js";
 import "./display.js";
 import "./markers.js";
 import "./minimap.js";
+import "./viewcube.js";
 import "./axes.js";
 import "./modes.js";
 import "./sharepoint.js";
