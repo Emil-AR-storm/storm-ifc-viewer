@@ -17,6 +17,7 @@ import "./minimap.js";
 import "./viewcube.js";
 import "./axes.js";
 import "./modes.js";
+import "./angre.js";   // ↩ angre/gjenopprett – må lastes før ui.js (hurtigtastene)
 import "./sharepoint.js";
 import "./ui.js";
 import "./compare.js";
@@ -50,7 +51,10 @@ canvas.addEventListener("pointerup", (e) => {
   const moved = Math.hypot(e.clientX - S.downPos.x, e.clientY - S.downPos.y);
   S.downPos = null;
   if (moved > 8) return;
-  if (e.button === 2) return; // høyreklikk håndteres av innstillingsmenyen
+  // Bare venstre knapp og berøring velger. Berøring gir button 0; midtknappen
+  // (1) panorerer i SimpleControls og skal ikke sette markering eller målepunkt
+  // når draget er under 8 px. Høyre (2) gir innstillingsmenyen.
+  if (e.button > 0) return;
   // 📐 Fra flate: neste trykk setter snittplanet (ignorer gjeldende snitt så flaten kan treffes)
   if (S.clipPickFace) {
     const fh = pick(e.clientX, e.clientY, true);
@@ -97,6 +101,11 @@ canvas.addEventListener("pointerup", (e) => {
     label.userData.aspect = label.scale.x / label.scale.y;
     label.position.copy(hit.point);
     koteGroup.add(label);
+    if (S.pushAngre) S.pushAngre({
+      tekst: "Kote",
+      angre: () => koteGroup.remove(label),
+      gjenopprett: () => koteGroup.add(label)
+    });
   } else {
     if (e.shiftKey) return; // shift håndteres av markeringsboks-logikken (shiftClickAt / finishBoxSelect)
     const id = hitID(hit);
