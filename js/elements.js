@@ -2,7 +2,7 @@
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
 import { $, S, apnePanel, dec, esc, ikon, loadingEl, loadingText } from "./state.js";
 import { t } from "./i18n.js";
-import { hiddenIDs, hideElement } from "./display.js";
+import { hiddenIDs, hideElement, hideElements } from "./display.js";
 import { alleElementIder, lightElementBoxes } from "./ifc.js";
 import { kall, metaFor, sikreMeta } from "./ifcrpc.js";
 import { axesGroup, camera, canvas, controls, grid, koteGroup, markerGroup, measureGroup, pointer, raycaster, renderer, scene, selGroup } from "./scene.js";
@@ -330,7 +330,13 @@ function showMultiSummary() {
   const grense = listeGrense();
   const vist = grense > 0 ? items.slice(0, grense) : items;
   $("propTitle").textContent = t("{0} elementer valgt", S.multiSel.size);
+  // Samme «Skjul»-knapp som når ett element er valgt – her skjuler den hele
+  // utvalget. Ikke i lav kvalitet / lett kopi: der er geometrien slått sammen,
+  // så enkeltelementer kan ikke skjules (samme grunn som i showProperties).
+  const antall = S.multiSel.size;
   $("propBody").innerHTML =
+    (S.lightLoaded ? "" : '<div class="prop-actions"><button id="paHideSel">' + ikon("skjul") + ' ' +
+      t("Skjul {0} valgte", antall) + '</button></div>') +
     '<div class="prop-row" style="font-weight:600"><div class="k">' + t("Sum volum") + '</div><div class="v">' + fmtVol(totVol) + '</div></div>' +
     '<div class="prop-row" style="font-weight:600"><div class="k">' + t("Sum areal (fotavtrykk)") + '</div><div class="v">' + fmtArea(totArea) + '</div></div>' +
     '<div class="prop-row"><div class="k">' + t("Sum lengde (lengste mål)") + '</div><div class="v">' + totLen.toFixed(2) + ' m</div></div>' +
@@ -338,6 +344,7 @@ function showMultiSummary() {
     vist.map(it => '<div class="prop-row"><div class="k">' + esc(it.name) + '</div><div class="v">' + fmtVol(it.vol) + '</div></div>').join("") +
     (items.length > vist.length ? '<p style="color:var(--muted); font-size:11px; margin-top:6px">' + t("… og {0} til (summene øverst gjelder alle). Endre grensen i ⚙ Innstillinger → Visning.", items.length - vist.length) + '</p>' : "") +
     '<p style="color:var(--muted); font-size:11px; margin-top:8px">' + t("Shift-klikk legger til/fjerner. Shift + dra lager markeringsboks: mot høyre = kun synlige, mot venstre = alt i boksen. Vanlig klikk nullstiller.") + '</p>';
+  if (!S.lightLoaded) $("paHideSel").onclick = () => hideElements(new Set(S.multiSel.keys()));
   apnePanel("propPanel");
 }
 
