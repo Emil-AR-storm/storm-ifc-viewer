@@ -274,7 +274,15 @@ async function visQr(prosjekt, fil, antall, antMark, antBilder, antInn, antTegni
   if (!window.QRCode) {
     await new Promise((res, rej) => {
       const s = document.createElement("script");
-      s.src = "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js";
+      // Flyttet fra cdnjs til jsDelivr. Samme bibliotek (davidshimjs/qrcodejs
+      // 1.0.0), men jsDelivr serverer npm-pakken uendret – og da kan hashen
+      // regnes ut fra npm og verifiseres. cdnjs har ingen slik kilde vi kan
+      // sjekke mot. Det gir dessuten én CDN mindre å stole på.
+      //   npm pack qrcodejs@1.0.0 && tar xf *.tgz
+      //   openssl dgst -sha384 -binary package/qrcode.min.js | openssl base64 -A
+      s.src = "https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js";
+      s.integrity = "sha384-3zSEDfvllQohrq0PHL1fOXJuC/jSOO34H46t6UQfobFOmxE5BpjjaIJY5F2/bMnU";
+      s.crossOrigin = "anonymous";
       s.onload = res; s.onerror = () => rej(new Error("Fikk ikke lastet QR-biblioteket"));
       document.head.appendChild(s);
     });
