@@ -208,7 +208,18 @@ window.addEventListener("unhandledrejection", function(e) {
   if (s) s.textContent = "Feil: " + (e.reason && e.reason.message ? e.reason.message : e.reason);
 });
 </script>
-<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.30.0/lib/msal-browser.min.js"></script>
+<!-- integrity: nettleseren nekter å kjøre fila hvis innholdet er endret på CDN-en.
+     Hashen er regnet ut fra npm-pakken @azure/msal-browser@3.30.0, som jsDelivr
+     serverer uendret. Bytter du versjon MÅ hashen regnes ut på nytt, ellers
+     laster ikke MSAL og innloggingen dør:
+       npm pack @azure/msal-browser@<ver> && tar xf *.tgz
+       openssl dgst -sha384 -binary package/lib/msal-browser.min.js | openssl base64 -A
+     Merk: three.js, web-ifc og pdf.js lastes som ES-modul-import, og
+     import-URL-er kan ikke ha integrity. Eneste egentlige løsning der er å
+     selvhoste dem under vendor/ – Workeren slipper alt gjennom den stien alt. -->
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.30.0/lib/msal-browser.min.js"
+        integrity="sha384-YnOjsoOxSYo65h1BXWnSq24bFbqW8HfzMWSEQxYEMRmjW9Vl1J3HZI3iZxqNYvIi"
+        crossorigin="anonymous"></script>
 <script type="importmap">
 {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
 </script>
