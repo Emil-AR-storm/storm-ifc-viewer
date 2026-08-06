@@ -3,10 +3,48 @@
 // og Workeren serverer selve lettmodus-siden (samme domene → ingen CORS,
 // og ingen annen dør inn til modellen enn kodesjekken).
 //
+// ---------------------------------------------------------------------------
+// v8 — 6. august 2026. Tre rettinger, alle testet mot workerd + R2:
+//   1) Arkiveringen strømmer (gammel.body) i stedet for å lese hele modellen
+//      inn i Workerens 128 MB minne. 90 MB-vakten er fjernet.       (~linje 175)
+//   2) Revisjonsnummeret reserveres med betinget skriving (onlyIf/etag), så to
+//      samtidige opplastinger ikke kan overskrive hverandres arkiv. (~linje 185)
+//   3) /åpne lister med delimiter, så bilder og revisjoner ikke kan
+//      skyve modellene ut av valglista.                             (~linje 290)
+//   4) Proxyen normaliserer adressen før henting — stopper
+//      /js/%2e%2e/… som ellers serverer hele GitHub-kontoen fra
+//      Workerens domene.                                            (~linje 485)
+//
+// v9 — 6. august 2026:
+//   5) Påloggingsbeviset signeres med en EGEN nøkkel (BEVIS_NOKKEL), ikke
+//      opplastingsnøkkelen. Ekte HMAC og konstanttids sammenligning. Flere
+//      nøkler godtas samtidig, så nøkkelen kan byttes uten at en eneste
+//      montør blir kastet ut midt i arbeidsdagen.                    (~linje 85)
+//   6) Opprydding: /filer (se hva som ligger der), /fil (slett én) og
+//      /prosjekt (slett alt + koden). Uten disse fantes det ingen måte å
+//      slette et byggeplassbilde på — en plikt som kommer med
+//      databehandleravtalen.                                        (~linje 430)
+//   7) Sikkerhetsheadere på det proxyen serverer.                   (~linje 560)
+// ---------------------------------------------------------------------------
+//
 // Bindinger som må finnes (Settings → Bindings):
-//   MODELLER    = R2-bøtta storm-modeller
-//   KODER       = KV-navnerom (lagrer koder, rate limiting og logg)
-//   ADMIN_TOKEN = Secret (opplastingsnøkkelen — brukes også til å signere påloggingsbeviset)
+//   MODELLER          = R2-bøtta storm-modeller
+//   KODER             = KV-navnerom (lagrer koder, rate limiting og logg)
+//   ADMIN_TOKEN       = Secret. Opplastings- og adminnøkkelen. Denne ligger i
+//                       klartekst i localStorage hos hver prosjektleder.
+//   BEVIS_NOKKEL      = Secret. Signerer påloggingskaka. VALGFRI: er den ikke
+//                       satt, brukes ADMIN_TOKEN som før, og alt virker
+//                       nøyaktig som i v8. Se «Bytte av signeringsnøkkel».
+//   BEVIS_NOKKEL_GAMMEL = Secret. Valgfri. Godtas i tillegg til BEVIS_NOKKEL i
+//                       en overgangsperiode.
+//
+// Bytte av signeringsnøkkel UTEN avbrudd — rekkefølgen er alt:
+//   1. Rull ut denne koden med BEVIS_NOKKEL usatt. Ingenting endrer seg.
+//   2. wrangler secret put BEVIS_NOKKEL_GAMMEL  → dagens ADMIN_TOKEN-verdi
+//      wrangler secret put BEVIS_NOKKEL         → 32 nye tilfeldige byte
+//   3. Vent 12+ timer. Kaka varer 12 timer, så overlappet dekker alle levende.
+//   4. wrangler secret delete BEVIS_NOKKEL_GAMMEL
+//   Etter dette kan ADMIN_TOKEN roteres fritt uten å røre en montør.
 //
 // Datamodell i KV:
 //   prosjekt:20653            → { kodehash, salt, navn, laget, utløper }
@@ -59,12 +97,38 @@ function tilfeldigHex(n) {
 }
 
 // Påloggingsbevis: en signert kake (cookie) som sier «denne nettleseren har
-// skrevet riktig kode for prosjekt X». Signeres med ADMIN_TOKEN, gyldig 12 timer.
+// skrevet riktig kode for prosjekt X». Gyldig 12 timer.
 // Ingen adresse å lekke: uten kaka gir /modell bare 403.
+//
+// Signeringsnøkkelen er skilt fra opplastingsnøkkelen (v9). Før var de samme,
+// og siden ADMIN_TOKEN ligger i klartekst i localStorage hos hver
+// prosjektleder, kunne den som fikk tak i den forfalske en gyldig sesjon for
+// ET HVILKET SOM HELST prosjekt – uten å kjenne noen prosjektkode.
+//
+// Første nøkkel SIGNERER. Resten GODTAS fortsatt, så kaker utstedt før et
+// nøkkelbytte lever ut sine 12 timer i fred.
+function bevisNøkler(env) {
+  return [env.BEVIS_NOKKEL || env.ADMIN_TOKEN, env.BEVIS_NOKKEL_GAMMEL].filter(Boolean);
+}
+
+async function signer(nøkkel, data) {
+  const k = await crypto.subtle.importKey("raw", new TextEncoder().encode(nøkkel),
+    { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const b = await crypto.subtle.sign("HMAC", k, new TextEncoder().encode(data));
+  return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, "0")).join("");
+}
+
+// Konstant tid: sammenligningen skal ikke avsløre hvor mange tegn som stemte.
+function likeStrenger(a, b) {
+  if (typeof a !== "string" || typeof b !== "string" || a.length !== b.length) return false;
+  let d = 0;
+  for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return d === 0;
+}
+
 async function lagBevis(env, prosjekt) {
   const utløper = Date.now() + 12 * 3600 * 1000;
-  const sig = await sha256hex(prosjekt + "|" + utløper + "|" + env.ADMIN_TOKEN);
-  return prosjekt + "." + utløper + "." + sig;
+  return prosjekt + "." + utløper + "." + await signer(bevisNøkler(env)[0], prosjekt + "|" + utløper);
 }
 
 async function lesBevis(env, req) {
@@ -72,9 +136,17 @@ async function lesBevis(env, req) {
   const m = kaker.match(/storm_bp=([^;]+)/);
   if (!m) return null;
   const [p, utløper, sig] = m[1].split(".");
-  if (!utløper || Date.now() > Number(utløper)) return null;
-  if (sig !== await sha256hex(p + "|" + utløper + "|" + env.ADMIN_TOKEN)) return null;
-  return p;
+  if (!p || !utløper || !sig) return null;
+  if (Date.now() > Number(utløper)) return null;
+  const data = p + "|" + utløper;
+  for (const n of bevisNøkler(env)) {
+    if (likeStrenger(sig, await signer(n, data))) return p;
+    // Overgang: kaker utstedt av v8 og eldre bruker sha256 med nøkkelen
+    // bakerst. De skal fortsatt virke ut sine 12 timer etter utrulling.
+    // Denne grenen kan fjernes en dag etter at v9 er ute.
+    if (likeStrenger(sig, await sha256hex(data + "|" + n))) return p;
+  }
+  return null;
 }
 
 async function sjekkBevis(env, req, prosjekt) {
@@ -133,7 +205,7 @@ export default {
     // ---------- Opplasting (fra trinn 2, uendret oppførsel) ----------
     if (req.method === "PUT" && sti === "/last-opp") {
       const token = req.headers.get("x-token") || "";
-      if (!env.ADMIN_TOKEN || token !== env.ADMIN_TOKEN) {
+      if (!env.ADMIN_TOKEN || !likeStrenger(token, env.ADMIN_TOKEN)) {
         return new Response("Feil eller manglende opplastingsnøkkel", { status: 403, headers: cors });
       }
       const prosjekt = (req.headers.get("x-prosjekt") || "").trim();
@@ -154,7 +226,22 @@ export default {
       // også for å hente innboksen og oppdatere markeringer — det skal ikke
       // lage en ny revisjon. Klienten sender SHA-256 av innholdet, og er den
       // lik hashen på fila som ligger der, hopper vi over både arkivering og
-      // overskriving. (Filer over ~90 MB arkiveres ikke — Workerens minne.)
+      // overskriving.
+      //
+      // 6. aug 2026 — to endringer her:
+      //
+      //  1) Arkiveringen STRØMMER fila fra R2 til R2 (gammel.body) i stedet for
+      //     å lese den inn i minnet (await gammel.arrayBuffer()). Workeren har
+      //     128 MB minne; en 83 MB modell sprengte det og ga «Error 1102» uten
+      //     forklaring. Med strøm spiller størrelsen ingen rolle, og den gamle
+      //     90 MB-vakten er derfor tatt bort — den hoppet stille over
+      //     arkiveringen for store modeller.
+      //
+      //  2) Revisjonsnummeret RESERVERES med betinget skriving (onlyIf/etag).
+      //     Før kunne to samtidige opplastinger lese samme «neste», skrive til
+      //     samme rev-mappe og overskrive hverandres arkiv. Rekkefølgen er nå
+      //     reserver → kopier → før opp i lista, slik at et tapt kappløp aldri
+      //     rekker å skrive noe.
       if (!mappe && /\.glb$/i.test(fil)) {
         const hash = req.headers.get("x-innhold-hash") || "";
         const gammel = await env.MODELLER.get(nøkkel);
@@ -162,19 +249,48 @@ export default {
           await logg(env, prosjekt, { ok: true, hva: "opplasting (uendret)", fil });
           return new Response("UENDRET: " + nøkkel, { headers: cors });
         }
-        if (gammel && gammel.size < 90_000_000) {
+        if (gammel) {
           const idxNøkkel = prosjekt + "/rev/index.json";
-          let idx = { neste: 1, liste: [] };
-          const rå = await env.MODELLER.get(idxNøkkel);
-          if (rå) { try { idx = JSON.parse(await rå.text()); } catch (_) {} }
-          const n = idx.neste || 1;
-          await env.MODELLER.put(prosjekt + "/rev/" + n + "/" + fil, await gammel.arrayBuffer());
+
+          // Fase 1 — reserver et revisjonsnummer. Taper vi kappløpet mot en
+          // annen opplasting, avviser R2 skrivingen (put returnerer null), og
+          // vi leser på nytt og prøver igjen.
+          let n = null;
+          for (let forsøk = 0; forsøk < 5 && n === null; forsøk++) {
+            const rå = await env.MODELLER.get(idxNøkkel);
+            let idx = { neste: 1, liste: [] };
+            if (rå) { try { idx = JSON.parse(await rå.text()); } catch (_) {} }
+            const kandidat = idx.neste || 1;
+            idx.neste = kandidat + 1;
+            const ok = await env.MODELLER.put(idxNøkkel, JSON.stringify(idx),
+              rå ? { onlyIf: { etagMatches: rå.etag } } : { onlyIf: { etagDoesNotMatch: "*" } });
+            if (ok) n = kandidat;
+          }
+          // Klarer vi ikke å reservere, STOPPER vi hele opplastingen. Å skrive
+          // den nye modellen uten å arkivere ville slettet den gamle for godt.
+          if (n === null) {
+            await logg(env, prosjekt, { ok: false, hva: "arkivering – kunne ikke reservere revisjon", fil });
+            return new Response("Klarte ikke å arkivere forrige versjon. Prøv igjen om litt.",
+              { status: 503, headers: cors });
+          }
+
+          // Fase 2 — kopier fila og markeringene. Strøm, aldri i minnet.
+          await env.MODELLER.put(prosjekt + "/rev/" + n + "/" + fil, gammel.body);
           const gmlMark = await env.MODELLER.get(nøkkel + ".markeringer.json");
-          if (gmlMark) await env.MODELLER.put(prosjekt + "/rev/" + n + "/" + fil + ".markeringer.json", await gmlMark.arrayBuffer());
-          idx.neste = n + 1;
-          idx.liste = (idx.liste || []).concat([{ rev: n, fil, arkivert: new Date().toISOString() }]);
-          await env.MODELLER.put(idxNøkkel, JSON.stringify(idx));
-          await logg(env, prosjekt, { ok: true, hva: "arkivert", fil, rev: n });
+          if (gmlMark) await env.MODELLER.put(prosjekt + "/rev/" + n + "/" + fil + ".markeringer.json", gmlMark.body);
+
+          // Fase 3 — før revisjonen opp i lista. Feiler dette, ligger filene der
+          // men vises ikke i historikken. Det er bedre enn en oppføring i lista
+          // som peker på en fil som ikke finnes.
+          let ført = false;
+          for (let forsøk = 0; forsøk < 5 && !ført; forsøk++) {
+            const rå = await env.MODELLER.get(idxNøkkel);
+            if (!rå) break;
+            let idx; try { idx = JSON.parse(await rå.text()); } catch (_) { break; }
+            idx.liste = (idx.liste || []).concat([{ rev: n, fil, arkivert: new Date().toISOString() }]);
+            if (await env.MODELLER.put(idxNøkkel, JSON.stringify(idx), { onlyIf: { etagMatches: rå.etag } })) ført = true;
+          }
+          await logg(env, prosjekt, { ok: ført, hva: ført ? "arkivert" : "arkivert (ikke ført i lista)", fil, rev: n });
         }
       }
 
@@ -191,7 +307,7 @@ export default {
     // Å kjøre den på nytt for samme prosjekt gir ny kode, og den gamle QR-en dør.
     if (req.method === "POST" && sti === "/ny-kode") {
       const token = req.headers.get("x-token") || "";
-      if (!env.ADMIN_TOKEN || token !== env.ADMIN_TOKEN) return new Response("Feil nøkkel", { status: 403 });
+      if (!env.ADMIN_TOKEN || !likeStrenger(token, env.ADMIN_TOKEN)) return new Response("Feil nøkkel", { status: 403 });
       let inn; try { inn = await req.json(); } catch { return new Response("Ugyldig JSON", { status: 400 }); }
       const prosjekt = String(inn.prosjekt || "").trim();
       if (!/^\d{5}$/.test(prosjekt)) return new Response("Prosjektnummeret må være 5 siffer", { status: 400 });
@@ -241,7 +357,12 @@ export default {
       }
 
       // Riktig kode: list modellene og gi nettleseren et signert bevis (kake).
-      const liste = await env.MODELLER.list({ prefix: prosjekt + "/" });
+      // delimiter: "/" ruller sammen alt under bilder/, rev/, innboks/ og
+      // tegninger/ til prefikser i stedet for objekter. Uten den fyller bildene
+      // opp de 1000 plassene R2 gir i ett svar, og modellen i rota kan falle
+      // utenfor. Målt: 1200 bilder → 2 av 3 modeller forsvant fra valglista,
+      // uten noen feilmelding. Filteret under er beholdt som ekstra sikring.
+      const liste = await env.MODELLER.list({ prefix: prosjekt + "/", delimiter: "/" });
       const modeller = (liste.objects || [])
         .filter(o => {
           const rest = o.key.slice(prosjekt.length + 1);
@@ -292,7 +413,7 @@ export default {
     // ---------- Admin: les loggen for et prosjekt ----------
     if (req.method === "GET" && sti.startsWith("/logg/")) {
       const token = req.headers.get("x-token") || "";
-      if (!env.ADMIN_TOKEN || token !== env.ADMIN_TOKEN) return new Response("Feil nøkkel", { status: 403 });
+      if (!env.ADMIN_TOKEN || !likeStrenger(token, env.ADMIN_TOKEN)) return new Response("Feil nøkkel", { status: 403 });
       const prosjekt = sti.slice("/logg/".length);
       const liste = await env.KODER.list({ prefix: "logg:" + prosjekt + ":", limit: 1000 });
       const rader = [];
@@ -393,17 +514,94 @@ export default {
     if (req.method === "GET" && sti.startsWith("/revisjoner/")) {
       const prosjekt = sti.slice("/revisjoner/".length);
       if (!/^\d{5}$/.test(prosjekt)) return new Response("Ugyldig", { status: 400, headers: cors });
-      const admin = env.ADMIN_TOKEN && (req.headers.get("x-token") || "") === env.ADMIN_TOKEN;
+      const admin = !!env.ADMIN_TOKEN && likeStrenger(req.headers.get("x-token") || "", env.ADMIN_TOKEN);
       if (!admin && !await sjekkBevis(env, req, prosjekt)) return new Response("Skriv koden først", { status: 403, headers: cors });
       const rå = await env.MODELLER.get(prosjekt + "/rev/index.json");
       if (!rå) return Response.json({ neste: 1, liste: [] }, { headers: cors });
       return new Response(rå.body, { headers: { ...cors, "content-type": "application/json", "Cache-Control": "no-store" } });
     }
 
+    // ---------- Admin: opprydding ----------
+    // GET    /filer/20653              – hva ligger der, med størrelse og alder
+    // DELETE /fil/20653/bilder/x.jpg   – slett én fil
+    // DELETE /prosjekt/20653           – slett ALT på prosjektet, inkludert koden
+    //
+    // Hvorfor dette måtte inn: bilder skrevet til <prosjekt>/bilder/ hadde
+    // ingen slettemekanisme i det hele tatt. Bildene inneholder identifiserbare
+    // personer, og GDPR art. 17 krever at sletting faktisk er mulig – ikke bare
+    // i SharePoint, men også i R2-kopien. slettBilder() i js/bilder.js treffer
+    // bare SharePoint.
+    //
+    // Alltid ADMIN_TOKEN, aldri montørens kake: den som har prosjektkoden fra
+    // en QR-plakat skal kunne LEGGE TIL, aldri fjerne.
+    if (sti.startsWith("/filer/") || sti.startsWith("/fil/") || sti.startsWith("/prosjekt/")) {
+      const token = req.headers.get("x-token") || "";
+      if (!env.ADMIN_TOKEN || !likeStrenger(token, env.ADMIN_TOKEN)) {
+        return new Response("Feil nøkkel", { status: 403, headers: cors });
+      }
+
+      if (req.method === "GET" && sti.startsWith("/filer/")) {
+        const prosjekt = sti.slice("/filer/".length);
+        if (!/^\d{5}$/.test(prosjekt)) return new Response("Ugyldig", { status: 400, headers: cors });
+        const ut = [];
+        let markør;
+        do {
+          const l = await env.MODELLER.list({ prefix: prosjekt + "/", cursor: markør, limit: 1000 });
+          (l.objects || []).forEach(o => ut.push({ nøkkel: o.key, størrelse: o.size, lastet: o.uploaded }));
+          markør = l.truncated ? l.cursor : null;
+        } while (markør);
+        return Response.json(ut, { headers: cors });
+      }
+
+      if (req.method === "DELETE" && sti.startsWith("/fil/")) {
+        const rest = sti.slice("/fil/".length);
+        const skille = rest.indexOf("/");
+        if (skille < 1) return new Response("Ugyldig", { status: 400, headers: cors });
+        const prosjekt = rest.slice(0, skille);
+        const nøkkel = rest.slice(skille + 1);
+        // Det som faktisk verner mot sletting på tvers av prosjekter, er at
+        // prefikset settes sammen HER av et prosjektnummer som må være fem
+        // siffer. R2-nøkler er dessuten flate strenger uten mappebetydning, så
+        // «..» inni en nøkkel peker ingen steder – den lager bare et rart navn.
+        //
+        // Merk: et ekte «..» i adressen er allerede løst opp av new URL() på
+        // linje 124, FØR koden her kjører. /fil/20653/../20999/x.glb blir til
+        // /fil/20999/x.glb, altså en helt vanlig forespørsel mot 20999. Det er
+        // ikke noe å avvise – den er ikke til å skille fra at noen skrev den
+        // adressen selv. Sjekkene under er derfor for å unngå søppelnøkler,
+        // ikke for å stoppe et angrep.
+        if (!/^\d{5}$/.test(prosjekt) || !nøkkel ||
+            nøkkel.includes("..") || /%2e/i.test(nøkkel)) {
+          return new Response("Ugyldig", { status: 400, headers: cors });
+        }
+        await env.MODELLER.delete(prosjekt + "/" + nøkkel);
+        await logg(env, prosjekt, { ok: true, hva: "slettet", fil: nøkkel });
+        return new Response("OK", { headers: cors });
+      }
+
+      if (req.method === "DELETE" && sti.startsWith("/prosjekt/")) {
+        const prosjekt = sti.slice("/prosjekt/".length);
+        if (!/^\d{5}$/.test(prosjekt)) return new Response("Ugyldig", { status: 400, headers: cors });
+        let markør, antall = 0;
+        do {
+          const l = await env.MODELLER.list({ prefix: prosjekt + "/", cursor: markør, limit: 1000 });
+          const nøkler = (l.objects || []).map(o => o.key);
+          if (nøkler.length) { await env.MODELLER.delete(nøkler); antall += nøkler.length; }
+          markør = l.truncated ? l.cursor : null;
+        } while (markør);
+        // Koden dør med prosjektet – QR-plakaten slutter å virke samme sekund
+        await env.KODER.delete("prosjekt:" + prosjekt);
+        await logg(env, prosjekt, { ok: true, hva: "prosjekt slettet", antall });
+        return new Response("OK: " + antall + " filer slettet", { headers: cors });
+      }
+
+      return new Response("Ikke funnet", { status: 404, headers: cors });
+    }
+
     // ---------- Admin: innboksen (prosjektlederen henter, så tømmes den) ----------
     if (sti.startsWith("/innboks/")) {
       const token = req.headers.get("x-token") || "";
-      if (!env.ADMIN_TOKEN || token !== env.ADMIN_TOKEN) return new Response("Feil nøkkel", { status: 403, headers: cors });
+      if (!env.ADMIN_TOKEN || !likeStrenger(token, env.ADMIN_TOKEN)) return new Response("Feil nøkkel", { status: 403, headers: cors });
       const rest = sti.slice("/innboks/".length);
       const skille = rest.indexOf("/");
       const prosjekt = skille === -1 ? rest : rest.slice(0, skille);
@@ -433,10 +631,33 @@ export default {
       // QR-adressen /20653 og rota / serverer begge landingssiden
       let hent = (sti === "/" || /^\/\d{5}$/.test(sti)) ? "/bygg.html" : sti;
       if (/^\/(bygg\.html|js\/|css\/|vendor\/)/.test(hent)) {
-        const svar = await fetch(GITHUB_PAGES + hent, { cf: { cacheTtl: 300, cacheEverything: true } });
+        // Adressen bygges og NORMALISERES før vi henter, og vi sjekker at
+        // resultatet fortsatt ligger under /storm-ifc-viewer/. Uten dette
+        // slipper /js/%2e%2e/%2e%2e/… gjennom filteret over, og fetch()
+        // normaliserer den ut av repoet — da kan hva som helst på GitHub-kontoen
+        // serveres fra Workerens domene, altså samme opphav som storm_bp-kaka.
+        // En ren .includes("..")-sjekk er IKKE nok: %252e%252e slipper forbi den,
+        // fordi decodeURIComponent over gjør den om til %2e%2e (ingen punktum å
+        // se etter), mens new URL() likevel tolker den som et punktumsegment.
+        let mål;
+        try { mål = new URL(GITHUB_PAGES + hent); }
+        catch (_) { return new Response("Ugyldig", { status: 400 }); }
+        if (mål.origin !== "https://emil-ar-storm.github.io" ||
+            !mål.pathname.startsWith("/storm-ifc-viewer/")) {
+          return new Response("Ugyldig", { status: 400 });
+        }
+        const svar = await fetch(mål.href, { cf: { cacheTtl: 300, cacheEverything: true } });
         if (svar.ok) {
           const h = new Headers(svar.headers);
           h.set("Cache-Control", "public, max-age=300"); // 5 min — ny GitHub-opplasting synes raskt
+          // Sikkerhetsheadere. Her koster de nesten ingenting, fordi vi eier
+          // proxyen – GitHub Pages kan ikke sette svarheadere i det hele tatt,
+          // så index.html må klare seg med <meta http-equiv> hvis den skal ha
+          // noe tilsvarende. (Full CSP er bevisst utsatt: de 13 onclick=""-ene
+          // i HTML-en krever 'unsafe-inline', og da gjør CSP-en lite nytte.)
+          h.set("X-Content-Type-Options", "nosniff");
+          h.set("Referrer-Policy", "no-referrer");
+          h.set("X-Frame-Options", "DENY");
           return new Response(svar.body, { status: svar.status, headers: h });
         }
         return new Response("Fant ikke " + hent, { status: 404 });
