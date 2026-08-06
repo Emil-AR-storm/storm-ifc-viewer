@@ -46,13 +46,20 @@ $("btnGhost").addEventListener("click", () => setGhost(!S.ghostOn));
 // ---------- Skjul / vis ----------
 export const hiddenIDs = new Set();
 
-export function hideElement(expressID) {
-  hiddenIDs.add(expressID);
-  S.modelGroup.children.forEach(m => { if (m.userData.expressID === expressID) m.visible = false; });
-  clearSelection();
+// Skjuler et helt sett i ÉN gjennomgang av meshene. Å kalle hideElement per
+// element ville gått gjennom hele modellen én gang per id – med noen hundre
+// markerte elementer i en modell på tusenvis blir det merkbart tregt.
+export function hideElements(ider) {
+  const sett = ider instanceof Set ? ider : new Set(ider);
+  if (!sett.size || !S.modelGroup) return;
+  sett.forEach(id => hiddenIDs.add(id));
+  S.modelGroup.children.forEach(m => { if (sett.has(m.userData.expressID)) m.visible = false; });
+  clearSelection();   // tømmer også S.multiSel – de skjulte skal ikke bli liggende i utvalget
   $("propPanel").classList.remove("open");
   $("btnShowAll").style.display = "";
 }
+
+export function hideElement(expressID) { hideElements([expressID]); }
 
 $("btnShowAll").addEventListener("click", () => {
   hiddenIDs.clear();
