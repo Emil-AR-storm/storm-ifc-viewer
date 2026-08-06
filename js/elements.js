@@ -842,37 +842,53 @@ function idsVisibleInRect(x0, y0, x1, y1) {
   const w = renderer.domElement.clientWidth, h = renderer.domElement.clientHeight;
   const scale = Math.min(1, 1400 / Math.max(w, h));
   const rw = Math.max(1, Math.round(w * scale)), rh = Math.max(1, Math.round(h * scale));
-  const rt = new THREE.WebGLRenderTarget(rw, rh);
   if (!S._idMat) S._idMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, toneMapped: false });
+
+  // Sju tilstander byttes ut under her, blant annet materialet på ALLE mesh.
+  // Kaster readRenderTargetPixels (kontekst tapt, driverfeil), ville modellen
+  // før blitt stående i flate ID-farger på svart bakgrunn – permanent, uten
+  // feilmelding. Derfor leses alt FØR try, og settes tilbake i finally.
   const overlays = [markerGroup, measureGroup, koteGroup, axesGroup, selGroup];
   const vis = overlays.map(g => g.visible);
-  overlays.forEach(g => g.visible = false);
-  const gridVis = grid.visible; grid.visible = false;
-  const bg = scene.background; scene.background = new THREE.Color(0x000000);
-  const prevCS = renderer.outputColorSpace; renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+  const gridVis = grid.visible;
+  const bg = scene.background;
+  const prevCS = renderer.outputColorSpace;
   const swaps = [];
-  S.modelGroup.children.forEach(m => { if (m.isMesh) { swaps.push([m, m.material]); m.material = S._idMat; } });
-  renderer.setRenderTarget(rt);
-  renderer.render(scene, camera);
-  // aller første render etter at fargeattributter er lagt til blir svart (VAO-oppdatering) – render en gang til
-  if (freshAttrs) renderer.render(scene, camera);
-  const sx = Math.max(0, Math.round(Math.min(x0, x1) * scale));
-  const sy = Math.max(0, Math.round((h - Math.max(y0, y1)) * scale));
-  const sw = Math.max(1, Math.min(rw - sx, Math.round(Math.abs(x1 - x0) * scale)));
-  const sh = Math.max(1, Math.min(rh - sy, Math.round(Math.abs(y1 - y0) * scale)));
-  const buf = new Uint8Array(sw * sh * 4);
-  renderer.readRenderTargetPixels(rt, sx, sy, sw, sh, buf);
-  renderer.setRenderTarget(null);
-  swaps.forEach(([m, mat]) => m.material = mat);
-  overlays.forEach((g, i) => g.visible = vis[i]);
-  grid.visible = gridVis;
-  scene.background = bg;
-  renderer.outputColorSpace = prevCS;
-  rt.dispose();
+  let rt = null;
   const ids = new Set();
-  for (let i = 0; i < buf.length; i += 4) {
-    const id = (buf[i] << 16) | (buf[i+1] << 8) | buf[i+2];
-    if (id) ids.add(id);
+
+  try {
+    rt = new THREE.WebGLRenderTarget(rw, rh);
+    overlays.forEach(g => g.visible = false);
+    grid.visible = false;
+    scene.background = new THREE.Color(0x000000);
+    renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+    S.modelGroup.children.forEach(m => { if (m.isMesh) { swaps.push([m, m.material]); m.material = S._idMat; } });
+    renderer.setRenderTarget(rt);
+    renderer.render(scene, camera);
+    // aller første render etter at fargeattributter er lagt til blir svart (VAO-oppdatering) – render en gang til
+    if (freshAttrs) renderer.render(scene, camera);
+    const sx = Math.max(0, Math.round(Math.min(x0, x1) * scale));
+    const sy = Math.max(0, Math.round((h - Math.max(y0, y1)) * scale));
+    const sw = Math.max(1, Math.min(rw - sx, Math.round(Math.abs(x1 - x0) * scale)));
+    const sh = Math.max(1, Math.min(rh - sy, Math.round(Math.abs(y1 - y0) * scale)));
+    const buf = new Uint8Array(sw * sh * 4);
+    renderer.readRenderTargetPixels(rt, sx, sy, sw, sh, buf);
+    for (let i = 0; i < buf.length; i += 4) {
+      const id = (buf[i] << 16) | (buf[i+1] << 8) | buf[i+2];
+      if (id) ids.add(id);
+    }
+  } catch (err) {
+    // Tomt utvalg er riktig svar her – bedre enn å velge feil elementer.
+    console.warn("Markeringsboksen kunne ikke leses av:", err);
+  } finally {
+    renderer.setRenderTarget(null);
+    swaps.forEach(([m, mat]) => m.material = mat);
+    overlays.forEach((g, i) => g.visible = vis[i]);
+    grid.visible = gridVis;
+    scene.background = bg;
+    renderer.outputColorSpace = prevCS;
+    if (rt) rt.dispose();
   }
   return ids;
 }

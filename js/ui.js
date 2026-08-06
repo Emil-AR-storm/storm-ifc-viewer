@@ -1,6 +1,7 @@
 // ⚙ Innstillingsmeny og hurtigtaster.
 import { $, DEFAULT_APPEAR, DEFAULT_KEYS, DEFAULT_SETTINGS, S, esc, ikon, lukkPaneler, writePrefs } from "./state.js";
 import { SPRAK, setLang, t } from "./i18n.js";
+import { angre, gjenopprett } from "./angre.js";
 import { applyAxisFont } from "./axes.js";
 import { showClipBar, stopFacePick } from "./clip.js";
 import { DEFAULT_BG, resetColors } from "./display.js";
@@ -229,7 +230,19 @@ window.addEventListener("keydown", (e) => {
   }
   const t = e.target;
   if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
-  if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+  // ↩ Angre og gjenopprett. MÅ ligge foran ctrl-sperren under – uten dette
+  // slippes ingen Ctrl-kombinasjon gjennom i det hele tatt. Ctrl+Shift+Z er
+  // med fordi det er gjenopprett på Mac og Linux, der Ctrl+Y ofte er noe annet.
+  if (e.ctrlKey || e.metaKey) {
+    if (!e.altKey) {
+      const k = e.key.length === 1 ? e.key.toUpperCase() : e.key;
+      if (k === "Z" && !e.shiftKey) { e.preventDefault(); angre(); return; }
+      if (k === "Y" || (k === "Z" && e.shiftKey)) { e.preventDefault(); gjenopprett(); return; }
+    }
+    return;
+  }
+  if (e.altKey) return;
 
   if (e.key === "Escape") {
     if ($("commentDialog").classList.contains("open")) { $("commentDialog").classList.remove("open"); return; }

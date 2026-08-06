@@ -11,7 +11,10 @@ export const SP = {
   hostname: "stormentrepreno.sharepoint.com",        // SharePoint-adressen
   sitePath: "/sites/StormProsjektTegninger",         // området med modellene
   folder: "IFC-modeller",                            // mappe i Dokumenter-biblioteket
-  lightFolder: "IFC-modeller/Lette kopier"           // 💾 lette kopier (.glb) ligger her
+  // 💾 lette kopier (.glb). AVLEDET av folder, ikke skrevet ut – ellers peker
+  // den mot Storms egen mappe hos en kunde som kaller biblioteksrota noe annet.
+  // Getter og ikke konstant, så den også følger med hvis folder settes ved kjøring.
+  get lightFolder() { return this.folder + "/Lette kopier"; }
 };
 
 // Biblioteket har to faner, så fulle modeller og lette kopier ikke ligger i

@@ -125,23 +125,31 @@ export function rettPunkt(fra, til) {
 
 export function addMeasure(p1, p2) {
   const d = p1.distanceTo(p2);
+  const nye = [];   // de fire objektene dette målet består av – til ↩ Angre
   const geo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
   const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xf59e0b, depthTest: false }));
   line.renderOrder = 997;
-  measureGroup.add(line);
+  measureGroup.add(line); nye.push(line);
   const mkDot = (p) => {
     const dot = new THREE.Mesh(new THREE.SphereGeometry(1), new THREE.MeshBasicMaterial({ color: 0xf59e0b, depthTest: false }));
     dot.renderOrder = 997;
     dot.position.copy(p);
     dot.userData.px = 8; // konstant skjermstørrelse
-    measureGroup.add(dot);
+    measureGroup.add(dot); nye.push(dot);
   };
   mkDot(p1); mkDot(p2);
   const label = makeLabel(fmtLen(d));
   label.userData.px = 30; // konstant skjermstørrelse
   label.userData.aspect = label.scale.x / label.scale.y;
   label.position.copy(p1).add(p2).multiplyScalar(0.5);
-  measureGroup.add(label);
+  measureGroup.add(label); nye.push(label);
+  // Group.remove() disposer ikke, så objektene kan legges rett inn igjen.
+  if (S.pushAngre) S.pushAngre({
+    tekst: "Mål",
+    angre: () => nye.forEach(o => measureGroup.remove(o)),
+    gjenopprett: () => nye.forEach(o => measureGroup.add(o))
+  });
+  return nye;
 }
 
 // hold måle-/kotelapper og snap-prikk i konstant skjermstørrelse

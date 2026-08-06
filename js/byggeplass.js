@@ -1,7 +1,7 @@
 // «Byggeplass-lenke»: bygger en lett kopi og laster den opp til Storms
 // Cloudflare-lager (R2) gjennom Workeren. Importeres BARE fra main.js –
 // bygg.html (lettmodus) laster aldri denne fila.
-import { $, S, loadingEl, loadingText } from "./state.js";
+import { $, S, esc, loadingEl, loadingText } from "./state.js";
 import { t } from "./i18n.js";
 import { byggLettKopi, lettNavn } from "./lite.js";
 import { bildeUrl, lastOpp } from "./bilder.js";
@@ -285,7 +285,12 @@ async function visQr(prosjekt, fil, antall, antMark, antBilder, antInn, antTegni
   const kort = document.createElement("div");
   kort.style.cssText = "background:#fff;color:#111;border-radius:14px;padding:28px;text-align:center;max-width:380px";
   kort.innerHTML = "<h2 style='margin:0 0 4px'>Prosjekt " + prosjekt + "</h2>" +
-    "<p style='margin:0 0 14px;font-size:13px;color:#555'>" + fil + " · " + antall + " elementer · " +
+    // esc() på filnavnet: det kommer fra S.fileName, som kan være satt fra en
+    // fil noen ANNEN har lastet opp i SharePoint. Uten escaping kan et filnavn
+    // med <img onerror=…> kjøre kode i denne fanen – der både SharePoint-token
+    // og opplastingsnøkkelen ligger. Resten av verdiene under er tall eller
+    // validerte (prosjekt er sjekket mot /^\d{5}$/ over).
+    "<p style='margin:0 0 14px;font-size:13px;color:#555'>" + esc(fil) + " · " + antall + " elementer · " +
       (antMark || 0) + " markeringer · " + (antBilder || 0) + " bilder" +
       (antTegninger ? " · " + antTegninger + " tegninger" : "") +
       (antInn ? " · " + antInn + " fra byggeplassen hentet inn" : "") +

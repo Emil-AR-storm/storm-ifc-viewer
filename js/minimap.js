@@ -10,6 +10,17 @@ export function renderMiniMap() {
   S.miniInfo = null; S.miniBase = null;
   if (!S.modelGroup || !S.modelBox) { miniCanvas.style.display = "none"; return; }
   const size = 256;
+
+  // Alt som skal settes tilbake leses FØR try-blokka. Leste vi det inne i try
+  // og heiste variablene med null-verdier, ville en feil på første linje gitt
+  // renderer.clippingPlanes = null i finally – og three.js venter et array.
+  // Da hadde vi byttet et sjeldent svart skjerm mot et garantert et.
+  const overlays = [markerGroup, measureGroup, koteGroup, axesGroup, selGroup];
+  const vis = overlays.map(g => g.visible);
+  const gridVis = grid.visible;
+  const prevClip = renderer.clippingPlanes;
+  let rt = null;
+
   try {
     const c = S.modelBox.getCenter(new THREE.Vector3());
     const half = (Math.max(S.modelBox.max.x - S.modelBox.min.x, S.modelBox.max.z - S.modelBox.min.z) / 2) * 1.06 || 1;
@@ -19,21 +30,14 @@ export function renderMiniMap() {
     cam.lookAt(c.x, S.modelBox.min.y, c.z);
     cam.updateMatrixWorld(true);
     // render toppvisning uten overlegg/klipping til en offscreen-buffer
-    const rt = new THREE.WebGLRenderTarget(size, size);
-    const overlays = [markerGroup, measureGroup, koteGroup, axesGroup, selGroup];
-    const vis = overlays.map(g => g.visible);
+    rt = new THREE.WebGLRenderTarget(size, size);
     overlays.forEach(g => g.visible = false);
-    const gridVis = grid.visible; grid.visible = false;
-    const prevClip = renderer.clippingPlanes; renderer.clippingPlanes = [];
+    grid.visible = false;
+    renderer.clippingPlanes = [];
     renderer.setRenderTarget(rt);
     renderer.render(scene, cam);
     const px = new Uint8Array(size * size * 4);
     renderer.readRenderTargetPixels(rt, 0, 0, size, size, px);
-    renderer.setRenderTarget(null);
-    renderer.clippingPlanes = prevClip;
-    overlays.forEach((g, i) => g.visible = vis[i]);
-    grid.visible = gridVis;
-    rt.dispose();
     const ctx = miniCanvas.getContext("2d");
     const img = ctx.createImageData(size, size);
     for (let y = 0; y < size; y++)
@@ -43,7 +47,22 @@ export function renderMiniMap() {
     drawMiniOverlay(true);
     miniCanvas.style.display = S.miniOn ? "block" : "none";
     if (S.applyCubePos) S.applyCubePos();
-  } catch(_) { miniCanvas.style.display = "none"; }
+  } catch (err) {
+    // Kartet er en hjelp, ikke en forutsetning – men feilen skal være synlig.
+    // Den stumme catch(_) her er grunnen til at dette aldri ble oppdaget før.
+    console.warn("Minikartet kunne ikke tegnes:", err);
+    // MÅ nullstilles: drawMiniOverlay ligger i frameHooks og kaster ellers
+    // 60 ganger i sekundet hvis vi rakk å sette miniBase før feilen.
+    S.miniInfo = null; S.miniBase = null;
+    miniCanvas.style.display = "none";
+  } finally {
+    // Rekkefølgen betyr noe: løs bufferen FØR den disponeres.
+    renderer.setRenderTarget(null);
+    renderer.clippingPlanes = prevClip;
+    overlays.forEach((g, i) => g.visible = vis[i]);
+    grid.visible = gridVis;
+    if (rt) rt.dispose();
+  }
 }
 
 const _miniLast = { tx: NaN, tz: NaN, kx: NaN, kz: NaN };

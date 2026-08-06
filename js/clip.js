@@ -15,6 +15,7 @@ import { renderer } from "./scene.js";
 const axisVectors = { x: new THREE.Vector3(1,0,0), y: new THREE.Vector3(0,1,0), z: new THREE.Vector3(0,0,1) };
 
 $("btnClip").addEventListener("click", () => {
+  const førSnitt = snittAvtrykk();
   S.clipOn = !S.clipOn;
   $("btnClip").classList.toggle("active", S.clipOn);
   if (S.clipOn) {
@@ -34,7 +35,35 @@ $("btnClip").addEventListener("click", () => {
     applyClip();
     if (S.storeyOn) showStoreyBar();
   }
+  meldSnittAngre(førSnitt, S.clipOn ? "Snitt på" : "Snitt av");
 });
+
+// ---------- ↩ Angre for snitt ----------
+// applyClipState alene holder ikke: den slår ALLTID snittet på, så den kan
+// ikke gjenopprette «snitt av». Avtrykket bærer derfor med seg av/på.
+export function snittAvtrykk() {
+  return Object.assign({ on: S.clipOn }, currentClipState());
+}
+
+export async function settSnitt(a) {
+  if (!a) return;
+  if (a.on) { await applyClipState(a); return; }
+  // Av: samme opprydding som knappen gjør
+  S.clipOn = false;
+  $("btnClip").classList.remove("active");
+  stopFacePick();
+  $("clipPanel").classList.remove("open");
+  modeBar.classList.remove("open");
+  modeBar.innerHTML = "";
+  applyClip();
+  if (S.storeyOn) showStoreyBar();
+}
+
+function meldSnittAngre(før, tekst) {
+  if (!S.pushAngre) return;
+  const etter = snittAvtrykk();
+  S.pushAngre({ tekst, angre: () => settSnitt(før), gjenopprett: () => settSnitt(etter) });
+}
 
 export function stopFacePick() {
   S.clipPickFace = false;
