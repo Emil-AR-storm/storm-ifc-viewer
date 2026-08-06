@@ -49,11 +49,28 @@ export function updateModeBar() {
       writePrefs();
       if (S.syncPrefs) S.syncPrefs();
     };
-    $("mbClear").onclick = () => { measureGroup.clear(); S.measureFirst = null; };
+    $("mbClear").onclick = () => {
+      const barn = measureGroup.children.slice();
+      measureGroup.clear();
+      S.measureFirst = null;
+      if (barn.length && S.pushAngre) S.pushAngre({
+        tekst: "Tøm mål",
+        angre: () => barn.forEach(o => measureGroup.add(o)),
+        gjenopprett: () => barn.forEach(o => measureGroup.remove(o))
+      });
+    };
     modeBar.classList.add("open");
   } else if (S.mode === "kote") {
     modeBar.innerHTML = '<span class="lbl">' + t("Trykk på et punkt for å vise kotehøyde") + '</span><button id="mbClear">' + t("Tøm koter") + '</button>';
-    $("mbClear").onclick = () => koteGroup.clear();
+    $("mbClear").onclick = () => {
+      const barn = koteGroup.children.slice();
+      koteGroup.clear();
+      if (barn.length && S.pushAngre) S.pushAngre({
+        tekst: "Tøm koter",
+        angre: () => barn.forEach(o => koteGroup.add(o)),
+        gjenopprett: () => barn.forEach(o => koteGroup.remove(o))
+      });
+    };
     modeBar.classList.add("open");
   } else if (S.mode === "marker") {
     modeBar.innerHTML = '<span class="lbl">' + t("Trykk på modellen for å plassere markering") + '</span>';

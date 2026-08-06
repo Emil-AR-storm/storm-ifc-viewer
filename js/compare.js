@@ -67,6 +67,11 @@ export async function snapshotModel() {
   const ids = elementIds();
   const boxes = allElementBoxes();
   const vols = quantitiesForSet(ids);
+  // quantitiesForSet gir Map<id, {dims, vol, area}> – et OBJEKT, ikke et tall.
+  // Før sto det «vols.get(id) || 0» her, så v ble selve objektet. Da gav
+  // Math.round(v * 1000) i geoKey NaN, og volumsjekken dVol > 0.005 i diff()
+  // var alltid false: «volum 2,4 → 3,1 m³» har aldri slått ut i sammenligningen.
+  const volAv = (id) => { const q = vols.get(id); return (q && q.vol) || 0; };
   const items = new Map();   // nøkkel → data
   let withGuid = 0;
   for (const id of ids) {
@@ -76,9 +81,9 @@ export async function snapshotModel() {
     const d = b.getSize(new THREE.Vector3());
     const guid = guidOf(id);
     if (guid) withGuid++;
-    items.set(guid || ("geo:" + geoKey(c, d, vols.get(id) || 0)), {
+    items.set(guid || ("geo:" + geoKey(c, d, volAv(id))), {
       id, guid, name: elemDisplayName(id), type: typeOf(id),
-      c: [c.x, c.y, c.z], d: [d.x, d.y, d.z], v: vols.get(id) || 0
+      c: [c.x, c.y, c.z], d: [d.x, d.y, d.z], v: volAv(id)
     });
   }
   return { file: S.fileName, items, withGuid, count: ids.size, size: S.modelSize };

@@ -156,7 +156,13 @@ export function modellStartverdier() {
 }
 
 // Nullstiller modell-feltene samlet. Kalles av clearModel() i ifc.js.
-export function nullstillModellState() { Object.assign(S, modellStartverdier()); }
+export function nullstillModellState() {
+  Object.assign(S, modellStartverdier());
+  // ↩ Angre-stabelen peker på mesh og element-ID-er fra modellen som nettopp
+  // ble lukket. Den MÅ tømmes her og ikke i clearModel, ellers glemmes den
+  // den dagen noen legger inn en ny vei til modellbytte.
+  if (S.nullstillAngre) S.nullstillAngre();
+}
 
 Object.assign(S, modellStartverdier());
 
@@ -175,6 +181,11 @@ S.nyeBilder = [];         // bilder valgt i «Ny markering», før den er lagret
 // (Tømmes av tømMeta() i ifcrpc.js ved modellbytte.)
 S.meta = new Map();
 S.workerFeil = null;      // satt hvis IFC-tråden ikke kunne brukes
+
+// ↩ Angre/gjenopprett. Settes av angre.js; null når modulen ikke er lastet, så
+// hver innmelding står som «if (S.pushAngre) S.pushAngre(...)».
+S.pushAngre = null;
+S.nullstillAngre = null;
 
 // Lastemodus: full, 🪶 lav kvalitet og 💾 lett kopi (.glb)
 S.lightMode = _prefs.lightMode === true;

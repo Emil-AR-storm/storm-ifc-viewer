@@ -274,7 +274,6 @@ export const ORDBOK = {
 
   // ---------- ✏️ Redigering og 💬 kommentarer på en markering ----------
   "Endre teksten": { en: "Edit the text", pl: "Edytuj tekst", lt: "Redaguoti tekstą" },
-  "Avbryt": { en: "Cancel", pl: "Anuluj", lt: "Atšaukti" },
   "(endret {0})": { en: "(edited {0})", pl: "(edytowano {0})", lt: "(redaguota {0})" },
   "(endret av {0} {1})": { en: "(edited by {0} {1})", pl: "(edytowane przez {0} {1})", lt: "(redagavo {0} {1})" },
   "Kommentarer": { en: "Comments", pl: "Komentarze", lt: "Komentarai" },
@@ -611,7 +610,6 @@ export const ORDBOK = {
   "Delt visning": { en: "Shared view", pl: "Udostępniony widok", lt: "Bendrintas vaizdas" },
   "en modell": { en: "a model", pl: "model", lt: "modelis" },
   "Inneholder en sammenligning mot «{0}»": { en: "Contains a comparison against “{0}”", pl: "Zawiera porównanie z „{0}”", lt: "Yra palyginimas su „{0}“" },
-  "Åpne modellen": { en: "Open the model", pl: "Otwórz model", lt: "Atidaryti modelį" },
   "Åpne samme fil med Åpne-knappen, så legges visningen på automatisk.": {
     en: "Open the same file with the Open button, and the view is applied automatically.",
     pl: "Otwórz ten sam plik przyciskiem Otwórz, a widok zostanie nałożony automatycznie.",
@@ -804,5 +802,32 @@ export const ORDBOK = {
     en: "Click a face, edge or corner to turn the model",
     pl: "Kliknij ścianę, krawędź lub narożnik, aby obrócić model",
     lt: "Spustelėkite sienelę, briauną ar kampą, kad pasuktumėte modelį" },
-  "Klarte ikke å laste modellen: ": { en: "Could not load the model: ", pl: "Nie udało się wczytać modelu: ", lt: "Nepavyko įkelti modelio: " }
+  "Klarte ikke å laste modellen: ": { en: "Could not load the model: ", pl: "Nie udało się wczytać modelu: ", lt: "Nepavyko įkelti modelio: " },
+
+  // ---------- ↩ Angre og gjenopprett ----------
+  // Handlingsnavnene under brukes både i knappenes tittel («Angre: Mål») og i
+  // kvitteringsboblen. «Mål», «Kote», «Tøm mål», «Tøm koter», «Skjul element»,
+  // «Vis alle», «Originalfarger» og «Fargelegg etter type» finnes fra før.
+  "Angre": { en: "Undo", pl: "Cofnij", lt: "Atšaukti" },
+  "Gjenopprett": { en: "Redo", pl: "Ponów", lt: "Pakartoti" },
+  "Angre siste handling (Ctrl+Z)": {
+    en: "Undo last action (Ctrl+Z)",
+    pl: "Cofnij ostatnią czynność (Ctrl+Z)",
+    lt: "Atšaukti paskutinį veiksmą (Ctrl+Z)" },
+  "Gjenopprett handlingen du angret (Ctrl+Y)": {
+    en: "Redo the action you undid (Ctrl+Y)",
+    pl: "Ponów cofniętą czynność (Ctrl+Y)",
+    lt: "Pakartoti atšauktą veiksmą (Ctrl+Y)" },
+  "Angre: {0}": { en: "Undo: {0}", pl: "Cofnij: {0}", lt: "Atšaukti: {0}" },
+  "Gjenopprett: {0}": { en: "Redo: {0}", pl: "Ponów: {0}", lt: "Pakartoti: {0}" },
+  "Angret: {0}": { en: "Undone: {0}", pl: "Cofnięto: {0}", lt: "Atšaukta: {0}" },
+  "Gjenopprettet: {0}": { en: "Redone: {0}", pl: "Ponowiono: {0}", lt: "Pakartota: {0}" },
+  "Skjul flere element": { en: "Hide several elements", pl: "Ukryj kilka elementów", lt: "Slėpti kelis elementus" },
+  "Gjennomsiktig på": { en: "Transparent on", pl: "Przezroczystość wł.", lt: "Permatomumas įjungtas" },
+  "Gjennomsiktig av": { en: "Transparent off", pl: "Przezroczystość wył.", lt: "Permatomumas išjungtas" },
+  "Farge på elementtype": { en: "Element type colour", pl: "Kolor typu elementu", lt: "Elemento tipo spalva" },
+  "Skjul elementtype": { en: "Hide element type", pl: "Ukryj typ elementu", lt: "Slėpti elemento tipą" },
+  "Vis elementtype": { en: "Show element type", pl: "Pokaż typ elementu", lt: "Rodyti elemento tipą" },
+  "Snitt på": { en: "Section on", pl: "Przekrój wł.", lt: "Pjūvis įjungtas" },
+  "Snitt av": { en: "Section off", pl: "Przekrój wył.", lt: "Pjūvis išjungtas" }
 };
