@@ -19,6 +19,7 @@ export const DEFAULT_SETTINGS = {
   unit: "m",          // måleenhet i mål-/kotelapper: "m" eller "mm"
   decimals: 2,        // desimaler i mengder, mål og volum (0–4)
   miniSize: 180,      // minikartets størrelse i piksler
+  listLimit: 100,     // hvor mange elementer listene viser før de kortes av (0 = vis alle)
   keys: Object.assign({}, DEFAULT_KEYS)
 };
 

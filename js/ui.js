@@ -93,6 +93,10 @@ function renderSettings() {
     '<select id="stDec">' + [0, 1, 2, 3, 4].map(d =>
       '<option value="' + d + '"' + (S.settings.decimals === d ? " selected" : "") + '>' + d +
       (d === 0 ? t(" (hele meter)") : d === 3 ? t(" (mm)") : "") + '</option>').join("") + '</select></div>' +
+    '<div class="set-row"><span class="n">' + t("Elementer i lista") + '</span>' +
+    '<select id="stListLimit">' + [50, 100, 250, 500, 1000, 2500, 5000, 0].map(n =>
+      '<option value="' + n + '"' + (S.settings.listLimit === n ? " selected" : "") + '>' +
+      (n === 0 ? t("Alle") : n) + '</option>').join("") + '</select></div>' +
     '<div class="set-row"><span class="n">' + t("Bakgrunnsfarge") + '</span>' +
     '<input type="color" id="stBg" value="' + bgVal + '"></div>' +
     '<div class="set-row"><span class="n">' + t("Lav kvalitet") + '</span>' +
@@ -144,6 +148,13 @@ function renderSettings() {
     saveSettings();
     refreshNumbers();
     if (S.clipOn && S.clipMode === "face") showClipBar();
+  };
+  // Hvor mange elementer lista i egenskapspanelet viser før den kortes av.
+  // «Alle» (0) kan bli tregt på flere tusen elementer, men summene er uansett riktige.
+  $("stListLimit").onchange = (e) => {
+    S.settings.listLimit = Number(e.target.value);
+    saveSettings();
+    refreshNumbers();
   };
   $("stBg").oninput = (e) => {
     scene.background.set(e.target.value);
