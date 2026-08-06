@@ -785,6 +785,7 @@ export const ORDBOK = {
     lt: "Neteisingas įkėlimo raktas – paspauskite mygtuką ir įveskite jį iš naujo." },
   "Opplastingen feilet: ": { en: "The upload failed: ", pl: "Przesyłanie nie powiodło się: ", lt: "Įkelti nepavyko: " },
   "Se alle": { en: "Show all", pl: "Pokaż wszystko", lt: "Rodyti visus" },
+  "Skjul {0} valgte": { en: "Hide {0} selected", pl: "Ukryj zaznaczone: {0}", lt: "Slėpti pažymėtus: {0}" },
 
   // ---------- 🧊 ViewCube ----------
   "Topp": { en: "Top", pl: "Góra", lt: "Viršus" },
