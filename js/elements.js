@@ -14,12 +14,29 @@ const selMatLight = new THREE.MeshBasicMaterial({
   polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2
 });
 
-export function clearSelection() {
+// Hvor mange rader elementlista viser før den kortes av. 0 = vis alle.
+export function listeGrense() {
+  const n = Number(S.settings.listLimit);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 100;
+}
+
+// Tar bort BARE den blå uthevingen i 3D. Brukes internt når et nytt sett skal
+// tegnes opp (da skal S.multiSel stå urørt).
+function clearSelectionVisual() {
   S.selectedMeshes.forEach(({ mesh, mat }) => mesh.material = mat);
   S.selectedMeshes = [];
   selGroup.children.forEach(h => h.geometry.dispose());
   selGroup.clear();
   S.currentPropID = null;
+}
+
+// Nullstiller valget HELT – både uthevingen og flervalgslista.
+// VIKTIG: S.multiSel må tømmes her. Ellers lever de gamle elementene videre i
+// lista selv om de ikke lenger er blå, og neste shift-klikk drar dem opp igjen
+// (klikk i tomrommet, skjul/vis, fargelegging og transparent kaller alle hit).
+export function clearSelection() {
+  clearSelectionVisual();
+  S.multiSel.clear();
 }
 
 // Finn expressID fra et raycast-treff (også i sammenslått geometri)
@@ -308,21 +325,25 @@ function showMultiSummary() {
     totArea += q.area || 0;
     items.push({ id, name: elemDisplayName(id), vol: q.vol });
   }
+  // Hvor mange rader lista viser før den kortes av. Settes i ⚙ Innstillinger →
+  // Visning → «Elementer i lista». 0 = vis alle (kan bli tregt på tusenvis).
+  const grense = listeGrense();
+  const vist = grense > 0 ? items.slice(0, grense) : items;
   $("propTitle").textContent = t("{0} elementer valgt", S.multiSel.size);
   $("propBody").innerHTML =
     '<div class="prop-row" style="font-weight:600"><div class="k">' + t("Sum volum") + '</div><div class="v">' + fmtVol(totVol) + '</div></div>' +
     '<div class="prop-row" style="font-weight:600"><div class="k">' + t("Sum areal (fotavtrykk)") + '</div><div class="v">' + fmtArea(totArea) + '</div></div>' +
     '<div class="prop-row"><div class="k">' + t("Sum lengde (lengste mål)") + '</div><div class="v">' + totLen.toFixed(2) + ' m</div></div>' +
     '<div class="prop-row"><div class="k">' + t("Antall") + '</div><div class="v">' + S.multiSel.size + t(" stk") + '</div></div>' +
-    items.slice(0, 100).map(it => '<div class="prop-row"><div class="k">' + esc(it.name) + '</div><div class="v">' + fmtVol(it.vol) + '</div></div>').join("") +
-    (items.length > 100 ? '<p style="color:var(--muted); font-size:11px; margin-top:6px">' + t("… og {0} til (summene øverst gjelder alle).", items.length - 100) + '</p>' : "") +
+    vist.map(it => '<div class="prop-row"><div class="k">' + esc(it.name) + '</div><div class="v">' + fmtVol(it.vol) + '</div></div>').join("") +
+    (items.length > vist.length ? '<p style="color:var(--muted); font-size:11px; margin-top:6px">' + t("… og {0} til (summene øverst gjelder alle). Endre grensen i ⚙ Innstillinger → Visning.", items.length - vist.length) + '</p>' : "") +
     '<p style="color:var(--muted); font-size:11px; margin-top:8px">' + t("Shift-klikk legger til/fjerner. Shift + dra lager markeringsboks: mot høyre = kun synlige, mot venstre = alt i boksen. Vanlig klikk nullstiller.") + '</p>';
   apnePanel("propPanel");
 }
 
 // Markerer et helt sett elementer i én gjennomgang (raskt også for hundrevis)
 function selectElementsSet(idSet) {
-  clearSelection();
+  clearSelectionVisual();   // ikke clearSelection() – den ville tømt S.multiSel vi nettopp fylte
   if (!idSet.size) return;
   if (S.lightLoaded) {
     S.modelGroup.children.forEach(m => {

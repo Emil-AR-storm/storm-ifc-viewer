@@ -344,6 +344,10 @@ export const ORDBOK = {
   "Antall": { en: "Count", pl: "Liczba", lt: "Kiekis" },
   " stk": { en: " pcs", pl: " szt.", lt: " vnt." },
   "… og {0} til (summene øverst gjelder alle).": { en: "… and {0} more (the totals above cover all).", pl: "… i jeszcze {0} (sumy powyżej obejmują wszystkie).", lt: "… ir dar {0} (sumos viršuje apima visus)." },
+  "… og {0} til (summene øverst gjelder alle). Endre grensen i ⚙ Innstillinger → Visning.": {
+    en: "… and {0} more (the totals above cover all). Change the limit in ⚙ Settings → Display.",
+    pl: "… i jeszcze {0} (sumy powyżej obejmują wszystkie). Zmień limit w ⚙ Ustawienia → Widok.",
+    lt: "… ir dar {0} (sumos viršuje apima visus). Ribą keiskite ⚙ Nustatymai → Rodymas." },
   "Shift-klikk legger til/fjerner. Shift + dra lager markeringsboks: mot høyre = kun synlige, mot venstre = alt i boksen. Vanlig klikk nullstiller.": {
     en: "Shift-click adds/removes. Shift + drag makes a selection box: to the right = visible only, to the left = everything in the box. A normal click resets.",
     pl: "Shift-klik dodaje/usuwa. Shift + przeciągnięcie tworzy ramkę: w prawo = tylko widoczne, w lewo = wszystko w ramce. Zwykły klik resetuje.",
@@ -663,6 +667,7 @@ export const ORDBOK = {
   "Desimaler i mål og mengder": { en: "Decimals in measurements and quantities", pl: "Miejsca dziesiętne w pomiarach i ilościach", lt: "Dešimtainiai matavimuose ir kiekiuose" },
   " (hele meter)": { en: " (whole metres)", pl: " (pełne metry)", lt: " (sveiki metrai)" },
   " (mm)": { en: " (mm)", pl: " (mm)", lt: " (mm)" },
+  "Elementer i lista": { en: "Items in the list", pl: "Elementy na liście", lt: "Elementai sąraše" },
   "Bakgrunnsfarge": { en: "Background colour", pl: "Kolor tła", lt: "Fono spalva" },
   "Skriftstørrelse akser": { en: "Grid label size", pl: "Rozmiar czcionki osi", lt: "Ašių šrifto dydis" },
   "Minikart": { en: "Minimap", pl: "Minimapa", lt: "Mini žemėlapis" },
