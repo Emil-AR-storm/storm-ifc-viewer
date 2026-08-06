@@ -20,6 +20,8 @@ export const DEFAULT_SETTINGS = {
   decimals: 2,        // desimaler i mengder, mål og volum (0–4)
   miniSize: 180,      // minikartets størrelse i piksler
   listLimit: 100,     // hvor mange elementer listene viser før de kortes av (0 = vis alle)
+  cubeOn: true,       // 🧊 ViewCube av/på
+  cubePos: "th",      // hjørne: tv | th | nv | nh (oppe/nede × venstre/høyre)
   keys: Object.assign({}, DEFAULT_KEYS)
 };
 

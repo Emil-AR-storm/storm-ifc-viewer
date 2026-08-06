@@ -6,6 +6,7 @@ import { showClipBar, stopFacePick } from "./clip.js";
 import { DEFAULT_BG, resetColors } from "./display.js";
 import { refreshNumbers } from "./elements.js";
 import { applyMiniSize, setMini } from "./minimap.js";
+import { applyCubePos, setCube, setCubePos } from "./viewcube.js";
 import { setMode } from "./modes.js";
 import { saveAppear, saveBg, saveSettings } from "./prefs.js";
 import { scene } from "./scene.js";
@@ -121,8 +122,23 @@ function renderSettings() {
       (S.keyWaitFor === k ? t("Trykk tast …") : keyLabel(S.settings.keys[k])) + '</button></div>';
   }
   html += '<p style="color:var(--muted); font-size:11px; margin-top:8px">' +
-    t("Esc avbryter modus og lukker paneler. Trykk på en tast-knapp og deretter ønsket tast for å endre.") + '</p></details>' +
-    '<h4>' + t("Lagring") + '</h4>' +
+    t("Esc avbryter modus og lukker paneler. Trykk på en tast-knapp og deretter ønsket tast for å endre.") + '</p></details>';
+
+  // Også sammenleggbar, og bevisst plassert ETTER hurtigtastene: menyen skal
+  // ikke bli lengre enn den var før kuben kom. Testen «få rader før
+  // hurtigtastene» vokter nettopp dette.
+  html += '<details><summary><h4 style="display:inline">ViewCube</h4></summary>' +
+    '<div class="set-row"><span class="n">' + t("Vis ViewCube") + '</span>' +
+    '<input type="checkbox" id="stCube"' + (S.settings.cubeOn === false ? "" : " checked") + '></div>' +
+    '<div class="set-row"><span class="n">' + t("Plassering") + '</span>' +
+    '<select id="stCubePos">' + [
+      ["tv", "Oppe til venstre"], ["th", "Oppe til høyre"],
+      ["nv", "Nede til venstre"], ["nh", "Nede til høyre"]
+    ].map(([k, navn]) =>
+      '<option value="' + k + '"' + (S.settings.cubePos === k ? " selected" : "") + '>' +
+      t(navn) + '</option>').join("") + '</select></div></details>';
+
+  html += '<h4>' + t("Lagring") + '</h4>' +
     '<p style="color:var(--muted); font-size:11px; margin:0 0 6px">' +
     t("Alt over – pluss fargelegging, egne typefarger, skjulte typer, gjennomsiktighet, snap og lav kvalitet – lagres automatisk og legges på neste gang du åpner en modell.") + '</p>' +
     '<p style="font-size:11px; margin:0 0 6px" id="stSync">' + syncStatusText() + '</p>' +
@@ -168,6 +184,8 @@ function renderSettings() {
     applyAxisFont();
   };
   $("stMini").onchange = (e) => setMini(e.target.checked);
+  $("stCube").onchange = (e) => setCube(e.target.checked);
+  $("stCubePos").onchange = (e) => setCubePos(e.target.value);
   $("stMiniSz").oninput = (e) => {
     S.settings.miniSize = Number(e.target.value);
     $("stMiniV").textContent = S.settings.miniSize + " px";
@@ -180,6 +198,7 @@ function renderSettings() {
     S.settings = Object.assign({}, DEFAULT_SETTINGS, { keys: Object.assign({}, DEFAULT_KEYS) });
     saveSettings();
     applyMiniSize();
+    applyCubePos();
     // utseende, snap, aksefont og bakgrunn tilbake til standard
     S.axisFontF = 1;
     S.snapOn = true; S.snapPx = 18;

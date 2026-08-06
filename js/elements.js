@@ -871,15 +871,34 @@ function idsVisibleInRect(x0, y0, x1, y1) {
 }
 
 // Geometrisk test: alle elementer hvis projiserte boks berører markeringen (også skjult bak andre)
+// Alle elementer som ikke er synlige NÅ. Dekker både «Skjul element» (hiddenIDs)
+// og hele typer skjult fra 🎨 Utseende – de siste ligger bare som m.visible=false
+// på meshene, ikke i hiddenIDs, og slapp derfor gjennom markeringsboksen før.
+// Bygges én gang per markering: å spørre per element ville blitt O(n²).
+export function skjulteIder() {
+  const skjult = new Set(hiddenIDs);
+  if (!S.modelGroup || S.lightLoaded) return skjult;  // sammenslått geometri: bare hiddenIDs gjelder
+  const synlige = new Set();
+  S.modelGroup.children.forEach(m => {
+    const id = m.userData.expressID;
+    if (id === undefined) return;
+    if (m.visible) synlige.add(id); else skjult.add(id);
+  });
+  // et element med flere deler regnes som synlig så lenge én del vises
+  for (const id of synlige) if (!hiddenIDs.has(id)) skjult.delete(id);
+  return skjult;
+}
+
 function idsAllInRect(x0, y0, x1, y1) {
   const minX = Math.min(x0, x1), maxX = Math.max(x0, x1);
   const minY = Math.min(y0, y1), maxY = Math.max(y0, y1);
   const v = new THREE.Vector3();
   const planes = renderer.clippingPlanes;
+  const skjult = skjulteIder();
   camera.updateMatrixWorld(true);
   const ids = new Set();
   for (const [id, box] of allElementBoxes()) {
-    if (hiddenIDs.has(id)) continue;
+    if (skjult.has(id)) continue;
     box.getCenter(v);
     if (v.clone().applyMatrix4(camera.matrixWorldInverse).z >= 0) continue; // bak kameraet
     if (planes.length) {
@@ -903,6 +922,9 @@ function idsAllInRect(x0, y0, x1, y1) {
 function finishBoxSelect(b) {
   const visibleOnly = b.x1 >= b.x0; // venstre→høyre = kun synlige
   const ids = visibleOnly ? idsVisibleInRect(b.x0, b.y0, b.x1, b.y1) : idsAllInRect(b.x0, b.y0, b.x1, b.y1);
+  // siste skanse: skjulte elementer skal aldri kunne markeres, uansett hvilken vei boksen dras
+  const skjult = skjulteIder();
+  for (const id of skjult) ids.delete(id);
   if (!ids.size) return;
   const q = quantitiesForSet(ids);
   for (const id of ids) S.multiSel.set(id, q.get(id) || { dims: [0, 0, 0], vol: 0 });
