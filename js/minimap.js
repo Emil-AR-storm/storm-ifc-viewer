@@ -42,6 +42,7 @@ export function renderMiniMap() {
     S.miniInfo = { cx: c.x, cz: c.z, half, size };
     drawMiniOverlay(true);
     miniCanvas.style.display = S.miniOn ? "block" : "none";
+    if (S.applyCubePos) S.applyCubePos();
   } catch(_) { miniCanvas.style.display = "none"; }
 }
 
@@ -82,6 +83,7 @@ export function setMini(on) {
   S.miniOn = on;
   writePrefs();
   miniCanvas.style.display = S.miniOn && S.miniBase ? "block" : "none";
+  if (S.applyCubePos) S.applyCubePos();   // kuben står kanskje ved siden av kartet
   if (S.syncPrefs) S.syncPrefs(); // send også til SharePoint (personlig oppsett)
 }
 
@@ -89,6 +91,7 @@ export function applyMiniSize() {
   const px = Math.max(100, Math.min(400, Number(S.settings && S.settings.miniSize) || 180));
   miniCanvas.style.width = px + "px";
   miniCanvas.style.height = px + "px";
+  if (S.applyCubePos) S.applyCubePos();
 }
 
 applyMiniSize();

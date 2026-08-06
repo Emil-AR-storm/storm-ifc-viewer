@@ -33,6 +33,8 @@ export function setLang(kode) {
   writePrefs();
   if (S.syncPrefs) S.syncPrefs();
   oversettDom();
+  // ViewCube-flatene er tegnede bilder, ikke DOM – de må males på nytt
+  if (S.rebuildCube) S.rebuildCube();
 }
 
 // Oversetter alt som er merket i index.html. Originalteksten (norsk) lagres i
@@ -767,5 +769,39 @@ export const ORDBOK = {
   "Skriver .glb …": { en: "Writing .glb …", pl: "Zapisywanie .glb …", lt: "Rašomas .glb …" },
   "Laster innebygd modell …": { en: "Loading embedded model …", pl: "Wczytywanie osadzonego modelu …", lt: "Įkeliamas įtaisytas modelis …" },
   "Klarte ikke å laste innebygd modell: ": { en: "Could not load embedded model: ", pl: "Nie udało się wczytać osadzonego modelu: ", lt: "Nepavyko įkelti įtaisyto modelio: " },
-  "Nettleseren støtter ikke Web Workers": { en: "The browser does not support Web Workers", pl: "Przeglądarka nie obsługuje Web Workers", lt: "Naršyklė nepalaiko „Web Workers“" }
+  "Nettleseren støtter ikke Web Workers": { en: "The browser does not support Web Workers", pl: "Przeglądarka nie obsługuje Web Workers", lt: "Naršyklė nepalaiko „Web Workers“" },
+
+  // ---------- Etterslep: nøkler som manglet i ordboken (byggeplass, sammenligning, lettmodus) ----------
+  "Denne modellen er allerede en lett kopi – åpne originalen (IFC) og prøv igjen.": {
+    en: "This model is already a light copy – open the original (IFC) and try again.",
+    pl: "Ten model jest już lekką kopią – otwórz oryginał (IFC) i spróbuj ponownie.",
+    lt: "Šis modelis jau yra lengva kopija – atidarykite originalą (IFC) ir bandykite dar kartą." },
+  "Prosjektnummer (5 siffer):": { en: "Project number (5 digits):", pl: "Numer projektu (5 cyfr):", lt: "Projekto numeris (5 skaitmenys):" },
+  "Opplastingsnøkkel:": { en: "Upload key:", pl: "Klucz przesyłania:", lt: "Įkėlimo raktas:" },
+  "Laster opp …": { en: "Uploading …", pl: "Przesyłanie …", lt: "Įkeliama …" },
+  "Feil opplastingsnøkkel – trykk på knappen og skriv den på nytt.": {
+    en: "Wrong upload key – press the button and type it again.",
+    pl: "Błędny klucz przesyłania – naciśnij przycisk i wpisz go ponownie.",
+    lt: "Neteisingas įkėlimo raktas – paspauskite mygtuką ir įveskite jį iš naujo." },
+  "Opplastingen feilet: ": { en: "The upload failed: ", pl: "Przesyłanie nie powiodło się: ", lt: "Įkelti nepavyko: " },
+  "Se alle": { en: "Show all", pl: "Pokaż wszystko", lt: "Rodyti visus" },
+
+  // ---------- 🧊 ViewCube ----------
+  "Topp": { en: "Top", pl: "Góra", lt: "Viršus" },
+  "Bunn": { en: "Bottom", pl: "Dół", lt: "Apačia" },
+  "Front": { en: "Front", pl: "Przód", lt: "Priekis" },
+  "Bak": { en: "Back", pl: "Tył", lt: "Galas" },
+  "Høyre": { en: "Right", pl: "Prawo", lt: "Dešinė" },
+  "Venstre": { en: "Left", pl: "Lewo", lt: "Kairė" },
+  "Vis ViewCube": { en: "Show ViewCube", pl: "Pokaż ViewCube", lt: "Rodyti „ViewCube“" },
+  "Plassering": { en: "Placement", pl: "Umiejscowienie", lt: "Vieta" },
+  "Oppe til venstre": { en: "Top left", pl: "Lewy górny róg", lt: "Viršuje kairėje" },
+  "Oppe til høyre": { en: "Top right", pl: "Prawy górny róg", lt: "Viršuje dešinėje" },
+  "Nede til venstre": { en: "Bottom left", pl: "Lewy dolny róg", lt: "Apačioje kairėje" },
+  "Nede til høyre": { en: "Bottom right", pl: "Prawy dolny róg", lt: "Apačioje dešinėje" },
+  "Trykk på en flate, kant eller hjørne for å snu modellen": {
+    en: "Click a face, edge or corner to turn the model",
+    pl: "Kliknij ścianę, krawędź lub narożnik, aby obrócić model",
+    lt: "Spustelėkite sienelę, briauną ar kampą, kad pasuktumėte modelį" },
+  "Klarte ikke å laste modellen: ": { en: "Could not load the model: ", pl: "Nie udało się wczytać modelu: ", lt: "Nepavyko įkelti modelio: " }
 };
