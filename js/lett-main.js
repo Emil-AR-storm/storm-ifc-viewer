@@ -2,7 +2,7 @@
 // sammenligning, «Fortsett med»-knapp og personlig oppsett fra SharePoint.
 // Innlogging startes aldri – se LETT-flagget i lett.js og gaten i sharepoint.js.
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
-import { $, S, esc, fmtLen, loadingEl, loadingText } from "./state.js";
+import { $, S, esc, fmtLen, loadingEl, loadingText, tilM } from "./state.js";
 import { oversettDom, setLang, t } from "./i18n.js";
 import { setClipFromFace } from "./clip.js";
 import { clearSelection, hitID, pick, selectElement, showProperties } from "./elements.js";
@@ -97,9 +97,11 @@ canvas.addEventListener("pointerup", (e) => {
       S.measureFirst = null;
     }
   } else if (S.mode === "kote") {
-    const label = makeLabel("▲ " + fmtLen(koteValue(hit.point)), "#22d3ee");
+    // koteValue gir høyden i MODELLENS enheter – må til meter først
+    const label = makeLabel("▲ " + fmtLen(tilM(koteValue(hit.point))), "#22d3ee");
     label.userData.px = 30; // konstant skjermstørrelse
     label.userData.aspect = label.scale.x / label.scale.y;
+    label.userData.meter = tilM(koteValue(hit.point));   // så lappen kan tegnes om ved enhetsbytte
     label.position.copy(hit.point);
     koteGroup.add(label);
     if (S.pushAngre) S.pushAngre({
