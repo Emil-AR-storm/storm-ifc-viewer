@@ -1,6 +1,6 @@
 // ✂️ Snitt (akse og fra flate) og 🏢 etasjefilter – begge bruker klippeplan.
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
-import { $, DEFAULT_CLIPBOX, S, apnePanel, esc, fmtLen, ikon, writePrefs } from "./state.js";
+import { $, DEFAULT_CLIPBOX, S, apnePanel, esc, fmtLen, ikon, tilM, writePrefs } from "./state.js";
 import { t } from "./i18n.js";
 import { val } from "./elements.js";
 import { lightElementBoxes } from "./ifc.js";
@@ -116,7 +116,7 @@ export function showClipBar() {
     const lim = Math.max(1, S.modelSize);
     html += '<input type="range" id="crf" min="' + (-lim) + '" max="' + lim + '" step="' + (lim / 500) +
       '" value="' + S.clipFaceOff + '" title="' + t("Skyv snittet langs flatens normal") + '">' +
-      '<span class="lbl" id="crfv">' + fmtLen(S.clipFaceOff) + '</span>';
+      '<span class="lbl" id="crfv">' + fmtLen(tilM(S.clipFaceOff)) + '</span>';
   } else {
     html += '<input type="range" id="cr" min="0" max="1000" value="' + Math.round(S.clipT * 1000) + '">';
   }
@@ -139,7 +139,7 @@ export function showClipBar() {
   if ($("cr")) $("cr").oninput = (e) => { S.clipT = e.target.value / 1000; applyClip(); };
   if ($("crf")) $("crf").oninput = (e) => {
     S.clipFaceOff = Number(e.target.value);
-    $("crfv").textContent = fmtLen(S.clipFaceOff);
+    $("crfv").textContent = fmtLen(tilM(S.clipFaceOff));   // offset er i modellens enheter
     applyClip();
   };
   upd();

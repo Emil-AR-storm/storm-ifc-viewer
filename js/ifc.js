@@ -1,6 +1,6 @@
 // Innlasting av modeller: IFC (full og lav kvalitet) og lett kopi (.glb).
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
-import { $, S, esc, loadingEl, loadingText, lukkPaneler, nullstillModellState, statusEl, writePrefs } from "./state.js";
+import { $, S, esc, loadingEl, loadingText, lukkPaneler, nullstillModellState, statusEl, velgEnhetSkala, writePrefs } from "./state.js";
 import { t } from "./i18n.js";
 import { harWorker, kall, metaFor, tømMeta } from "./ifcrpc.js";
 import { byggLettKopi, lettNavn } from "./lite.js";
@@ -236,6 +236,11 @@ export async function loadModel(buffer) {
     (S.lightLoaded ? t(" · lav kvalitet") + (res.skipped ? " (" + res.skipped + t(" små utelatt)") : "") : "");
   S.modelBox = new THREE.Box3().setFromObject(S.modelGroup);
   S.modelSize = S.modelBox.getSize(new THREE.Vector3()).length() || 10;
+  // Enheten avgjøres HER, ett sted, rett etter at størrelsen er kjent. Før lå
+  // den samme gjetningen skrevet ut i elements.js (to steder) og axes.js, mens
+  // måling, kote og snitt ikke skalerte i det hele tatt – så samme modell ga
+  // to forskjellige svar avhengig av hvilket panel du så i.
+  S.enhetSkala = velgEnhetSkala(S.modelSize);
 
   // Elementdata (navn/type/GlobalId) og aksekilder hentes IKKE her. De leses
   // første gang noe trenger dem – ellers betaler hver åpning for arbeid du
@@ -408,6 +413,11 @@ export async function loadGlb(buffer) {
   statusEl.textContent = idSet.size + t(" elementer · lett kopi");
   S.modelBox = new THREE.Box3().setFromObject(S.modelGroup);
   S.modelSize = S.modelBox.getSize(new THREE.Vector3()).length() || 10;
+  // Enheten avgjøres HER, ett sted, rett etter at størrelsen er kjent. Før lå
+  // den samme gjetningen skrevet ut i elements.js (to steder) og axes.js, mens
+  // måling, kote og snitt ikke skalerte i det hele tatt – så samme modell ga
+  // to forskjellige svar avhengig av hvilket panel du så i.
+  S.enhetSkala = velgEnhetSkala(S.modelSize);
   fitToModel();
   renderMiniMap();
 }

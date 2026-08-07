@@ -17,6 +17,11 @@ export const DEFAULT_SETTINGS = {
   zoomSpeed: 1,       // zoomhastighet
   invertZoom: false,  // snu rullehjulets retning
   unit: "m",          // måleenhet i mål-/kotelapper: "m" eller "mm"
+  // Hvilken enhet MODELLEN er tegnet i. "auto" gjetter ut fra hvor stor
+  // modellen er, og det er riktig i de aller fleste tilfeller – men gjetningen
+  // bommer på små mm-modeller (én prefab-enhet) og på anlegg over en kilometer
+  // tegnet i meter. Da settes den for hånd.
+  modellEnhet: "auto",   // auto | mm | cm | m | ft
   decimals: 2,        // desimaler i mengder, mål og volum (0–4)
   miniSize: 180,      // minikartets størrelse i piksler
   listLimit: 100,     // hvor mange elementer listene viser før de kortes av (0 = vis alle)
@@ -124,6 +129,7 @@ export function modellStartverdier() {
     qtyMat: "",               // valgt materiale: "" | "g:<gruppe>" | "m:<navn>"
     lastLoadInfo: null,
     bufferITråd: false,       // IFC-tråden holder på filbufferen (🪶-omlasting)
+    enhetSkala: 1,            // meter per modellenhet – settes av ifc.js etter lasting
 
     // 💾 lett kopi (.glb)
     glbActive: false, glbProps: null, glbColumns: null, glbStoreys: null,
@@ -172,6 +178,7 @@ S.fileName = "";
 S.lastBuffer = null;
 S.modelBox = null;
 S.modelSize = 10;
+S.enhetSkala = 1;   // meter per modellenhet; settes på nytt for hver modell
 S.bildeMappeOK = false;   // bilder-mappa i SharePoint er sjekket/opprettet
 S.libFane = "full";       // 📚 Biblioteket: "full" (.ifc) eller "lett" (.glb)
 S.nyeBilder = [];         // bilder valgt i «Ny markering», før den er lagret
@@ -304,7 +311,36 @@ export function dec() {
   return isFinite(d) ? Math.max(0, Math.min(4, Math.round(d))) : 2;
 }
 
-// Lengde i valgt enhet (m eller mm)
+// ---------- Enheter ----------
+//
+// S.enhetSkala er hvor mange METER én enhet i modellen er. En mm-modell har
+// 0.001, en meter-modell 1. Den settes ved lasting (js/ifc.js) og er ÉN
+// sannhet – før lå den samme gjetningen skrevet ut fire steder, og de fire
+// var ikke enige med hverandre.
+//
+// tilM() gjør om et tall fra modellens enheter til meter. Den skal brukes på
+// alt som kommer rått ut av geometrien: avstander mellom punkter, koter,
+// snittposisjoner. Mengdeuttaket regner alt om selv og skal IKKE gjennom den
+// en gang til – da blir tallene tusen ganger for små.
+export const ENHET_SKALA = { mm: 0.001, cm: 0.01, m: 1, ft: 0.3048 };
+
+export function tilM(v) { return v * (S.enhetSkala || 1); }
+
+// Gjetning ut fra modellens diagonal. Er den over 1000 «enheter», er det nesten
+// alltid millimeter – et bygg på 1000 meter finnes knapt.
+export function gjettEnhetSkala(modelSize) {
+  return modelSize > 1000 ? 0.001 : 1;
+}
+
+// Enheten som skal brukes: brukerens valg hvis satt, ellers gjetningen.
+export function velgEnhetSkala(modelSize) {
+  const valgt = S.settings && S.settings.modellEnhet;
+  if (valgt && valgt !== "auto" && ENHET_SKALA[valgt]) return ENHET_SKALA[valgt];
+  return gjettEnhetSkala(modelSize);
+}
+
+// Lengde i valgt visningsenhet. TAR METER – bruk tilM() først hvis verdien
+// kommer rått fra geometrien.
 export function fmtLen(m) {
   return S.settings.unit === "mm"
     ? Math.round(m * 1000).toLocaleString("no-NO") + " mm"

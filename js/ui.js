@@ -1,11 +1,12 @@
 // ⚙ Innstillingsmeny og hurtigtaster.
-import { $, DEFAULT_APPEAR, DEFAULT_KEYS, DEFAULT_SETTINGS, S, esc, ikon, lukkPaneler, writePrefs } from "./state.js";
+import { $, DEFAULT_APPEAR, DEFAULT_KEYS, DEFAULT_SETTINGS, S, esc, gjettEnhetSkala, ikon, lukkPaneler, velgEnhetSkala, writePrefs } from "./state.js";
 import { SPRAK, setLang, t } from "./i18n.js";
 import { angre, gjenopprett } from "./angre.js";
 import { applyAxisFont } from "./axes.js";
 import { showClipBar, stopFacePick } from "./clip.js";
 import { DEFAULT_BG, resetColors } from "./display.js";
 import { refreshNumbers } from "./elements.js";
+import { oppdaterLengdeEtiketter } from "./measure.js";
 import { applyMiniSize, setMini } from "./minimap.js";
 import { applyCubePos, setCube, setCubePos } from "./viewcube.js";
 import { setMode } from "./modes.js";
@@ -128,6 +129,24 @@ function renderSettings() {
   // Også sammenleggbar, og bevisst plassert ETTER hurtigtastene: menyen skal
   // ikke bli lengre enn den var før kuben kom. Testen «få rader før
   // hurtigtastene» vokter nettopp dette.
+  // Sammenleggbar, og etter hurtigtastene av samme grunn som ViewCube:
+  // menyen skal ikke bli lengre enn før. Testen «få rader før hurtigtastene»
+  // vokter det, og vi lå allerede på grensa.
+  const gjettet = gjettEnhetSkala(S.modelSize) === 0.001 ? t("millimeter") : t("meter");
+  html += '<details><summary><h4 style="display:inline">' + t("Enheter") + '</h4></summary>' +
+    '<div class="set-row"><span class="n">' + t("Modellens enhet") + '</span>' +
+    '<select id="stModellEnhet">' + [
+      ["auto", t("Automatisk") + (S.modelGroup ? " (" + gjettet + ")" : "")],
+      ["mm", t("Millimeter (mm)")], ["cm", t("Centimeter (cm)")],
+      ["m", t("Meter (m)")], ["ft", t("Fot (ft)")]
+    ].map(([k, navn]) =>
+      '<option value="' + k + '"' + ((S.settings.modellEnhet || "auto") === k ? " selected" : "") + '>' +
+      esc(navn) + '</option>').join("") + '</select></div>' +
+    '<p style="color:var(--muted); font-size:11px; margin-top:8px">' +
+    // Én linje med vilje: test-sprak leter etter oversettelseskall med et regulært uttrykk
+    // og ser ikke en streng som er satt sammen over flere linjer.
+    t("Hvilken enhet modellen er TEGNET i. Automatisk gjetter ut fra størrelsen og treffer nesten alltid – men bommer på små modeller i millimeter og på anlegg over en kilometer i meter. Står målene tusen ganger for høyt eller lavt, er det denne du skal endre.") + '</p></details>';
+
   html += '<details><summary><h4 style="display:inline">ViewCube</h4></summary>' +
     '<div class="set-row"><span class="n">' + t("Vis ViewCube") + '</span>' +
     '<input type="checkbox" id="stCube"' + (S.settings.cubeOn === false ? "" : " checked") + '></div>' +
@@ -158,7 +177,8 @@ function renderSettings() {
   $("stInv").onchange = (e) => { S.settings.invertZoom = e.target.checked; saveSettings(); };
   $("stUnit").onchange = (e) => {
     S.settings.unit = e.target.value; saveSettings();
-    if (S.clipOn && S.clipMode === "face") showClipBar();
+    if (S.syncPrefs) S.syncPrefs();
+    byttEnhet();   // gamle mål- og kotelapper må tegnes om, ikke bare de neste
   };
   $("stDec").onchange = (e) => {
     S.settings.decimals = Number(e.target.value);
@@ -185,6 +205,12 @@ function renderSettings() {
     applyAxisFont();
   };
   $("stMini").onchange = (e) => setMini(e.target.checked);
+  $("stModellEnhet").onchange = (e) => {
+    S.settings.modellEnhet = e.target.value;
+    saveSettings();
+    if (S.syncPrefs) S.syncPrefs();
+    byttEnhet();
+  };
   $("stCube").onchange = (e) => setCube(e.target.checked);
   $("stCubePos").onchange = (e) => setCubePos(e.target.value);
   $("stMiniSz").oninput = (e) => {
@@ -209,6 +235,17 @@ function renderSettings() {
     if (S.typeInfo) resetColors(); else { scene.background.set(DEFAULT_BG); saveBg(DEFAULT_BG); S.appear = Object.assign({}, DEFAULT_APPEAR, { colors: {}, hiddenTypes: [] }); saveAppear(); }
     renderSettings();
   };
+}
+
+// Alt som viser en lengde må regnes om når enheten endres – ellers ser
+// innstillingen halvveis ødelagt ut: nye tall stemmer, gamle gjør ikke.
+function byttEnhet() {
+  S.enhetSkala = velgEnhetSkala(S.modelSize);
+  oppdaterLengdeEtiketter();                              // mål og koter i 3D
+  if (S.clipOn && S.clipMode === "face") showClipBar();   // snittavstanden
+  if (S.qtyCache) { S.qtyCache = null; }                  // mengdene regnes på nytt
+  try { refreshNumbers(); } catch(_) {}
+  if (S.axesBuilt && S.rebuildAxes) S.rebuildAxes();      // aksemålene er i mm
 }
 
 // Husk bakgrunnsfargen mellom økter

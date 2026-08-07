@@ -831,6 +831,19 @@ export const ORDBOK = {
   "Snitt på": { en: "Section on", pl: "Przekrój wł.", lt: "Pjūvis įjungtas" },
   "Snitt av": { en: "Section off", pl: "Przekrój wył.", lt: "Pjūvis išjungtas" },
 
+  // ---------- Enheter ----------
+  "Enheter": { en: "Units", pl: "Jednostki", lt: "Vienetai" },
+  "Modellens enhet": { en: "Model unit", pl: "Jednostka modelu", lt: "Modelio vienetas" },
+  "Automatisk": { en: "Automatic", pl: "Automatycznie", lt: "Automatiškai" },
+  "millimeter": { en: "millimetres", pl: "milimetry", lt: "milimetrai" },
+  "meter": { en: "metres", pl: "metry", lt: "metrai" },
+  "Centimeter (cm)": { en: "Centimetres (cm)", pl: "Centymetry (cm)", lt: "Centimetrai (cm)" },
+  "Fot (ft)": { en: "Feet (ft)", pl: "Stopy (ft)", lt: "Pėdos (ft)" },
+  "Hvilken enhet modellen er TEGNET i. Automatisk gjetter ut fra størrelsen og treffer nesten alltid – men bommer på små modeller i millimeter og på anlegg over en kilometer i meter. Står målene tusen ganger for høyt eller lavt, er det denne du skal endre.": {
+    en: "Which unit the model is DRAWN in. Automatic guesses from the size and is nearly always right – but it misses on small models in millimetres and on sites over a kilometre in metres. If measurements are a thousand times too high or low, this is the one to change.",
+    pl: "W jakiej jednostce model został NARYSOWANY. Automatycznie zgaduje na podstawie rozmiaru i prawie zawsze trafia – ale myli się przy małych modelach w milimetrach i przy terenach powyżej kilometra w metrach. Jeśli wymiary są tysiąc razy za duże lub za małe, to jest to ustawienie do zmiany.",
+    lt: "Kokiais vienetais modelis NUBRAIŽYTAS. Automatinis spėja pagal dydį ir beveik visada pataiko – bet klysta su mažais modeliais milimetrais ir su daugiau nei kilometro objektais metrais. Jei matmenys tūkstantį kartų per dideli ar per maži, keiskite čia." },
+
   // ---------- Delte markeringer ----------
   "Fikk ikke lagret markeringene – noen andre skriver i samme fil akkurat nå. Ingenting er tapt lokalt; prøv igjen om litt.": {
     en: "Could not save the markers to SharePoint – someone else is writing to the same file right now. Nothing is lost locally; try again shortly.",
