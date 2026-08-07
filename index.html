@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Storm IFC-Viewer</title>
 <link rel="stylesheet" href="css/storm.css">
+<script>
+// Temaet settes FØR stilarket rekker å male, ellers blinker mørk flate i lyst
+// tema. js/tema.js gjør resten (knappen og lagringen).
+(function(){var v="mork";try{var g=localStorage.getItem("storm.tema");
+if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;})();
+</script>
 </head>
 <body>
 
@@ -13,6 +19,48 @@
      følger dermed tekstfargen. Brukes med <svg class="ikon"><use href="#i-…"/></svg>
      i HTML, og via ikon("…") fra js/state.js i dynamisk bygd HTML. -->
 <svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+  <!-- ============ STORM-LOGOEN ============
+       Målt ut av Design/Storm-Entreprenor.png, ikke tegnet på frihånd.
+       «Storm» er vektorisert rett fra logofila – samme bokstavformer som
+       hovedlogoen, ikke en font som ligner.
+
+       MERK viewBox-ene: de MÅ starte i «0 0». Gjør du dem til f.eks.
+       «29 21 244 244» og bruker samme verdi på <svg>-en utenpå, blir
+       forskyvningen brukt to ganger (én gang av <symbol>, én gang av <svg>),
+       og venstre side av ringen klippes bort. Forskyvningen ligger derfor
+       i translate() inne i symbolet. ============ -->
+  <defs>
+    <g id="storm-ringer">
+      <circle class="sr-tykk" cx="150.9" cy="142.8" r="83.06"/>
+      <circle class="sr-mork" cx="151.3" cy="132.2" r="99.1"/>
+      <circle class="sr-mork" cx="123.4" cy="148" r="88.7"/>
+      <circle class="sr-lys"  cx="176.4" cy="126.7" r="89.9"/>
+    </g>
+    <g id="storm-kube" class="sr-kube">
+      <path d="M150.9 108.8 L180.3 125.8 L180.3 159.8 L150.9 176.8 L121.5 159.8 L121.5 125.8 Z"/>
+      <path d="M150.9 108.8 L150.9 142.8 L180.3 159.8 M150.9 142.8 L121.5 159.8"/>
+    </g>
+    <path id="storm-ord" class="sr-ord" fill-rule="evenodd" d="M301.0 181.5C236.7 168.6 229.5 76.4 291.0 53.9C351.4 31.9 405.0 90.5 376.8 147.9C364.2 173.8 332.4 187.8 301.0 181.5ZM46.9 178.0C25.6 172.6 0.0 151.4 0.0 139.1C0.0 138.4 10.8 131.9 21.1 126.4C21.5 126.2 23.0 128.5 24.5 131.5C42.6 168.6 116.5 161.2 105.9 123.3C102.9 112.5 96.0 108.7 65.0 101.0C19.5 89.6 2.8 70.8 10.1 39.1C20.9 -7.9 105.7 -13.4 128.2 31.5C133.0 40.9 133.3 40.1 121.8 46.1C108.7 53.0 109.8 52.9 107.1 47.1C91.3 12.0 25.9 20.1 36.5 55.8C39.7 66.5 45.4 69.5 76.5 77.0C115.1 86.3 129.1 97.2 133.2 120.9C140.0 160.4 95.0 190.2 46.9 178.0ZM171.0 124.5L171.0 71.0L159.5 71.0L148.0 71.0L148.0 60.0L148.0 49.0L160.0 49.0L172.0 49.0L172.0 32.5L172.0 16.0L184.0 16.0L196.0 16.0L196.0 32.5L196.0 49.0L213.0 49.0L230.0 49.0L230.0 60.0L230.0 71.0L213.0 71.0L196.0 71.0L196.0 112.5L196.0 154.0L213.0 154.0L230.0 154.0L230.0 166.0L230.0 178.0L200.5 178.0L171.0 178.0L171.0 124.5ZM406.0 113.5L406.0 49.0L418.5 49.0L431.0 49.0L431.0 60.0C431.0 73.4 428.4 73.5 455.9 59.0C468.4 52.4 478.9 47.0 479.3 47.0C479.7 47.0 480.0 53.0 480.0 60.3L480.0 73.5L455.5 85.8L431.0 98.0L431.0 138.0L431.0 178.0L418.5 178.0L406.0 178.0L406.0 113.5ZM491.0 113.5L491.0 49.0L504.0 49.0L517.0 49.0L517.0 56.8L517.0 64.5L519.1 61.3C531.0 42.6 568.2 42.5 586.5 61.0L591.3 65.9L597.0 60.7C626.0 33.9 674.7 47.7 682.6 84.9C683.6 90.0 684.0 101.5 684.0 134.8L684.0 178.0L671.6 178.0L659.2 178.0L658.8 135.8C658.4 98.4 658.2 93.0 656.6 88.8C647.6 64.9 613.5 64.4 602.6 87.9L600.5 92.5L600.2 135.2L599.9 178.0L587.5 178.0L575.1 178.0L574.8 135.2L574.5 92.5L572.1 87.2C561.5 63.8 527.1 65.5 518.5 89.9C517.2 93.5 517.0 101.0 517.0 136.1L517.0 178.0L504.0 178.0L491.0 178.0L491.0 113.5ZM325.2 158.9C365.4 150.4 371.5 94.4 334.2 76.7L327.5 73.5L316.5 73.5L305.5 73.5L298.8 76.7C253.1 98.3 275.9 169.3 325.2 158.9Z"/>
+  </defs>
+  <!-- Bare merket – favicon, app-ikon, vannmerke -->
+  <symbol id="storm-merke" viewBox="0 0 244 244">
+    <g transform="translate(-29,-21)"><use href="#storm-ringer"/><use href="#storm-kube"/></g>
+  </symbol>
+  <!-- Merke + «Storm» – toppbaren -->
+  <symbol id="storm-lockup" viewBox="0 0 948 224">
+    <g transform="translate(-28,-26)">
+      <use href="#storm-ringer"/><use href="#storm-kube"/>
+      <g transform="translate(286,52)"><use href="#storm-ord"/></g>
+    </g>
+  </symbol>
+  <!-- Full logo med IFC-VIEWER – startskjermen -->
+  <symbol id="storm-full" viewBox="0 0 948 322">
+    <g transform="translate(-28,-26)">
+      <use href="#storm-ringer"/><use href="#storm-kube"/>
+      <g transform="translate(286,52)"><use href="#storm-ord"/></g>
+      <text class="sr-tag" x="292" y="326">IFC-VIEWER</text>
+    </g>
+  </symbol>
   <symbol id="i-apne" viewBox="0 0 24 24"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2" /></symbol>
   <symbol id="i-bibliotek" viewBox="0 0 24 24"><rect width="8" height="18" x="3" y="3" rx="1" /><path d="M7 3v18" /><path d="M20.4 18.9c.2.5-.1 1.1-.6 1.3l-1.9.7c-.5.2-1.1-.1-1.3-.6L11.1 5.1c-.2-.5.1-1.1.6-1.3l1.9-.7c.5-.2 1.1.1 1.3.6Z" /></symbol>
   <symbol id="i-lav" viewBox="0 0 24 24"><path d="M14.086 18.412A2 2 0 0112.67 19H5v-7.672a2 2 0 01.586-1.414L11.75 3.75a6 6 0 118.49 8.49z" /><path d="M16 8 2 22" /><path d="M17.488 15H9" /></symbol>
@@ -42,6 +90,8 @@
   <symbol id="i-planner" viewBox="0 0 24 24"><rect width="8" height="4" x="8" y="2" rx="1" ry="1" /><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" /><path d="M12 11h4" /><path d="M12 16h4" /><path d="M8 11h.01" /><path d="M8 16h.01" /></symbol>
   <symbol id="i-kopier" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></symbol>
   <symbol id="i-slett" viewBox="0 0 24 24"><path d="M10 11v6" /><path d="M14 11v6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M3 6h18" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></symbol>
+  <symbol id="i-tema" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" /><path d="M12 2v2" /><path d="M12 20v2" /><path d="m4.93 4.93 1.41 1.41" /><path d="m17.66 17.66 1.41 1.41" /><path d="M2 12h2" /><path d="M20 12h2" /><path d="m6.34 17.66-1.41 1.41" /><path d="m19.07 4.93-1.41 1.41" /></symbol>
+  <symbol id="i-tema-mork" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" /></symbol>
   <symbol id="i-lukk" viewBox="0 0 24 24"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></symbol>
   <symbol id="i-boks" viewBox="0 0 24 24"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" /></symbol>
   <symbol id="i-flate" viewBox="0 0 24 24"><path d="M13.73 4a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" /></symbol>
@@ -64,13 +114,14 @@
 <canvas id="viewer"></canvas>
 
 <div id="topbar">
-  <div class="logo">STORM <span>IFC</span></div>
+  <svg class="storm-logo" viewBox="0 0 948 224" role="img" aria-label="Storm IFC-Viewer"><use href="#storm-lockup"/></svg>
   <button class="btn" id="btnOpen"><svg class="ikon"><use href="#i-apne"/></svg><span class="btn-t" data-i18n>Åpne</span></button>
   <input type="file" id="fileInput" accept=".ifc,.IFC,.glb,.GLB">
   <button id="btnLib"><svg class="ikon"><use href="#i-bibliotek"/></svg><span class="btn-t" data-i18n>Bibliotek</span></button>
   <button id="btnLight" title="Forenklet lasting for mobil og store modeller" data-i18n-title><svg class="ikon"><use href="#i-lav"/></svg><span class="btn-t" data-i18n>Lav kvalitet</span></button>
   <button id="btnComments"><svg class="ikon"><use href="#i-markeringer"/></svg> <span id="commentCount">0</span></button>
   <button id="btnFit" title="Vis hele modellen" data-i18n-title><svg class="ikon"><use href="#i-fokus"/></svg></button>
+  <button id="btnTema" title="Bytt mellom lyst og mørkt tema" data-i18n-title><svg class="ikon"><use href="#i-tema"/></svg></button>
   <div id="status"></div>
 </div>
 
@@ -96,7 +147,7 @@
 </div>
 
 <canvas id="miniMap" width="256" height="256" title="Trykk for å flytte deg dit" data-i18n-title
-  style="position:fixed; left:12px; bottom:12px; width:180px; height:180px; border:1px solid #2c3442; border-radius:10px; background:#14181f; display:none; z-index:5; cursor:crosshair; opacity:.92"></canvas>
+  style="position:fixed; left:12px; bottom:12px; width:180px; height:180px; border:1px solid var(--border); border-radius:10px; background:var(--panel); display:none; z-index:5; cursor:crosshair; opacity:.92"></canvas>
 
 <div id="modeBar"></div>
 
@@ -109,21 +160,39 @@
       <option value="lt">Lietuvių</option>
     </select>
   </label>
-  <h1>STORM <span>IFC-VIEWER</span></h1>
+
+  <!-- Slippsonen: dra-og-slipp fantes fra før (js/ifc.js), men sto bare som en
+       tekstlinje. Rammen gjør flaten synlig. Innholdet er uendret. -->
+  <div id="splashSone">
+  <h1 class="skjult-tekst">Storm IFC-Viewer</h1>
+  <svg class="storm-logo-full" viewBox="0 0 948 322" role="img" aria-label="Storm IFC-Viewer"><use href="#storm-full"/></svg>
   <p data-i18n>Åpne en IFC-modell (BIM) direkte i nettleseren – på mobil eller PC.
      Naviger i 3D, trykk på elementer for info, mål, snitt og legg inn markeringer.</p>
   <div id="crashBanner" style="display:none"></div>
   <div id="shareBanner" style="display:none"></div>
   <div id="resumeBox" style="display:none"></div>
-  <button class="btn" id="btnOpenSplash"><svg class="ikon"><use href="#i-apne"/></svg><span class="btn-t" data-i18n>Velg IFC-fil</span></button>
+  <div class="splash-knapper">
+    <button class="btn" id="btnOpenSplash"><svg class="ikon"><use href="#i-apne"/></svg><span class="btn-t" data-i18n>Velg IFC-fil</span></button>
+    <button id="btnLibSplash"><svg class="ikon"><use href="#i-bibliotek"/></svg><span class="btn-t" data-i18n>Åpne fra biblioteket</span></button>
+  </div>
+  <div class="slipp-linje"><svg class="ikon"><use href="#i-lastned"/></svg><span data-i18n>Slipp IFC- eller .glb-fila her</span></div>
   <p class="liten" data-i18n>… eller dra fila rett inn i vinduet. Ligger modellen i OneDrive med skyikon (bare på nett),
      bruk Biblioteket – eller høyreklikk fila i Utforsker → «Behold alltid på denne enheten».</p>
-  <button id="btnLibSplash"><svg class="ikon"><use href="#i-bibliotek"/></svg><span class="btn-t" data-i18n>Åpne fra biblioteket</span></button>
+  </div><!-- /#splashSone -->
+
   <p class="liten" data-i18n>Filen behandles kun lokalt i nettleseren din – ingenting lastes opp.</p>
   <p id="jsCheck" data-i18n>JavaScript kjører ikke. Åpner du fila i forhåndsvisning (Filer/mail)? Åpne den i Safari eller Chrome i stedet.</p>
 </div>
 
-<div id="loading"><div class="spinner"></div><div id="loadingText" data-i18n>Laster modell …</div></div>
+<div id="loading">
+  <svg class="storm-spinner" viewBox="29 21 244 244" aria-hidden="true">
+    <circle class="sr-tykk pu"  cx="150.9" cy="142.8" r="83.06"/>
+    <circle class="sr-mork sn1" cx="151.3" cy="132.2" r="99.1"/>
+    <circle class="sr-mork sn2" cx="123.4" cy="148" r="88.7"/>
+    <circle class="sr-lys  sn3" cx="176.4" cy="126.7" r="89.9"/>
+  </svg>
+  <div id="loadingText" data-i18n>Laster modell …</div>
+</div>
 
 <div class="panel" id="propPanel">
   <header><span id="propTitle">Egenskaper</span><button onclick="document.getElementById('propPanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
