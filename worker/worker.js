@@ -25,6 +25,18 @@
 //      slette et byggeplassbilde på — en plikt som kommer med
 //      databehandleravtalen.                                        (~linje 430)
 //   7) Sikkerhetsheadere på det proxyen serverer.                   (~linje 560)
+//
+// v10 — 6. august 2026:
+//   8) Sletting krever en EGEN nøkkel (SLETTE_NOKKEL), sendt som
+//      x-slett-token. ADMIN_TOKEN gir fortsatt opplasting og lesing, men kan
+//      ikke lenger rive et prosjekt. Grunnen: ADMIN_TOKEN må ligge i
+//      nettleseren til hver prosjektleder for at Byggeplass-knappen skal virke,
+//      og i v9 ga den plutselig makt til å slette arkivet også.
+//      Er SLETTE_NOKKEL ikke satt, er sletting AVSLÅTT – ikke åpen.
+//
+//      Slette et bilde (lim inn i konsollen, med slettenøkkelen for hånden):
+//        await fetch("<worker>/fil/20653/bilder/abc.jpg",
+//          { method: "DELETE", headers: { "x-slett-token": "…" } })
 // ---------------------------------------------------------------------------
 //
 // Bindinger som må finnes (Settings → Bindings):
@@ -37,6 +49,10 @@
 //                       nøyaktig som i v8. Se «Bytte av signeringsnøkkel».
 //   BEVIS_NOKKEL_GAMMEL = Secret. Valgfri. Godtas i tillegg til BEVIS_NOKKEL i
 //                       en overgangsperiode.
+//   SLETTE_NOKKEL     = Secret. Kreves for DELETE /fil og DELETE /prosjekt.
+//                       Skal IKKE lagres i noen nettleser – tastes for hånd de
+//                       få gangene noe faktisk skal slettes. Uten den satt kan
+//                       ingenting slettes i det hele tatt.
 //
 // Bytte av signeringsnøkkel UTEN avbrudd — rekkefølgen er alt:
 //   1. Rull ut denne koden med BEVIS_NOKKEL usatt. Ingenting endrer seg.
@@ -72,7 +88,7 @@ function corsHeaders(req) {
   return {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "GET, PUT, POST, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "content-type, x-prosjekt, x-token, x-innhold-hash",
+    "Access-Control-Allow-Headers": "content-type, x-prosjekt, x-token, x-slett-token, x-innhold-hash",
     "Access-Control-Max-Age": "86400"
   };
 }
@@ -535,9 +551,16 @@ export default {
     // Alltid ADMIN_TOKEN, aldri montørens kake: den som har prosjektkoden fra
     // en QR-plakat skal kunne LEGGE TIL, aldri fjerne.
     if (sti.startsWith("/filer/") || sti.startsWith("/fil/") || sti.startsWith("/prosjekt/")) {
-      const token = req.headers.get("x-token") || "";
-      if (!env.ADMIN_TOKEN || !likeStrenger(token, env.ADMIN_TOKEN)) {
-        return new Response("Feil nøkkel", { status: 403, headers: cors });
+      // Å SE hva som ligger der krever adminnøkkelen. Å SLETTE krever
+      // slettenøkkelen, som er en annen og ikke ligger i noen nettleser.
+      // Uten SLETTE_NOKKEL satt er sletting avslått – vi feiler lukket.
+      const erSletting = req.method === "DELETE";
+      const gitt = req.headers.get(erSletting ? "x-slett-token" : "x-token") || "";
+      const fasit = erSletting ? env.SLETTE_NOKKEL : env.ADMIN_TOKEN;
+      if (!fasit || !likeStrenger(gitt, fasit)) {
+        return new Response(erSletting
+          ? "Sletting krever slettenøkkelen (x-slett-token)"
+          : "Feil nøkkel", { status: 403, headers: cors });
       }
 
       if (req.method === "GET" && sti.startsWith("/filer/")) {
