@@ -20,6 +20,7 @@ import "./modes.js";
 import "./angre.js";   // ↩ angre/gjenopprett – må lastes før ui.js (hurtigtastene)
 import "./sharepoint.js";
 import "./ui.js";
+import "./tema.js";   // lyst/mørkt tema – trenger knappen i toppbaren
 import "./compare.js";
 import "./recent.js";
 import "./share.js";
