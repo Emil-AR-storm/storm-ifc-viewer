@@ -9,21 +9,74 @@
    - Ikoner: Lucide-spriten i index.html. <svg class="ikon"><use href="#i-…"/></svg>
      tegnes med currentColor og arver tekstfargen. Størrelsen settes her. */
 :root {
-  --bg: #14181f;
-  --panel: #1e242e;
-  --panel2: #262d3a;
-  --text: #e8ecf2;
-  --muted: #93a0b4;
-  --accent: #3b82f6;
-  --accent2: #f59e0b;
-  --border: #333c4c;
-  --ok: #3cb44b;
-  --warn: #f59e0b;
-  --danger: #ef4444;
+  /* ---------- Storms merkefarger ----------
+     Målt ut av Design/Storm-Entreprenor.png. Like i begge temaer. */
+  --storm-rod:     #d22b34;   /* hovedrød – logoen */
+  --storm-rod-dyp: #a8232b;   /* mørk rød – streker/overskrifter i Storm-dokumentene */
+  --storm-rod-lys: #e8535c;
+  --logo-lys-ring: #efb3a6;   /* den lyse tynne sirkelen i logoen */
   --radius: 8px;
   --radius-stor: 12px;
-  --skygge: 0 10px 30px rgba(0, 0, 0, .45);
 }
+
+/* ---------- MØRKT TEMA (standard) ----------
+   Ligger på både :root og [data-tema="mork"], slik at temaet er riktig også før
+   js/tema.js rekker å sette attributtet. */
+:root, html[data-tema="mork"] {
+  --bg: #0f1114;
+  --panel: #191c21;
+  --panel2: #23272e;
+  --text: #f2f4f6;
+  --muted: #98a1ac;
+  --border: #31363e;
+  --accent: var(--storm-rod);        /* handling – én ting om gangen */
+  --accent-hover: var(--storm-rod-lys);
+  --paa-accent: #ffffff;             /* tekst oppå rødt */
+  --accent2: var(--storm-rod-lys);   /* markeringer, tallverdier, sekundær utheving */
+  --aktiv-bg: #ffffff;               /* aktivt verktøy – hvitt, ikke rødt */
+  --aktiv-tekst: #0f1114;
+  --logo-mork-ring: #a85055;         /* lysnet så den synes mot sort */
+  --ok: #3cb44b;
+  --warn: #e9a13b;
+  --danger: #ef4444;
+  --skygge: 0 10px 30px rgba(0, 0, 0, .55);
+  --flate-95: rgba(15,17,20,.95);
+  --flate-88: rgba(15,17,20,.88);
+  --flate-82: rgba(15,17,20,.82);
+  --flate-72: rgba(15,17,20,.72);
+  --flate-60: rgba(15,17,20,.60);
+  --sone: rgba(210,43,52,.09);        /* svak rødtone-flate */
+}
+
+/* ---------- LYST TEMA ----------
+   Matcher Storm-dokumentene (hvit flate, sort tekst, røde aksenter).
+   Byttes med ⚙ Innstillinger → Utseende → Tema, eller knappen i toppbaren. */
+html[data-tema="lys"] {
+  --bg: #ffffff;
+  --panel: #ffffff;
+  --panel2: #f4f5f7;
+  --text: #14161a;
+  --muted: #6b7280;
+  --border: #dcdfe4;
+  --accent: var(--storm-rod);
+  --accent-hover: var(--storm-rod-dyp);
+  --paa-accent: #ffffff;
+  --accent2: var(--storm-rod-dyp);
+  --aktiv-bg: #14161a;               /* aktivt verktøy – sort */
+  --aktiv-tekst: #ffffff;
+  --logo-mork-ring: #6e1d20;
+  --ok: #2e8b39;
+  --warn: #b8770f;
+  --danger: #c0272d;
+  --skygge: 0 6px 20px rgba(0, 0, 0, .12);
+  --flate-95: rgba(255,255,255,.96);
+  --flate-88: rgba(255,255,255,.92);
+  --flate-82: rgba(255,255,255,.90);
+  --flate-72: rgba(255,255,255,.80);
+  --flate-60: rgba(255,255,255,.75);
+  --sone: #fdecee;
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; overflow: hidden; }
 body {
@@ -54,7 +107,7 @@ body {
   position: fixed; top: 0; left: 0; right: 0;
   display: flex; align-items: center; gap: 6px;
   padding: 8px 10px;
-  background: linear-gradient(to bottom, rgba(20,24,31,.95), rgba(20,24,31,.75));
+  background: linear-gradient(to bottom, var(--flate-95), var(--flate-72));
   z-index: 10;
   flex-wrap: wrap;
 }
@@ -75,16 +128,16 @@ button, label.btn {
   -webkit-tap-highlight-color: transparent;
   transition: background .12s, border-color .12s;
 }
-button:hover, label.btn:hover { border-color: #46536a; }
+button:hover, label.btn:hover { border-color: var(--accent); }
 button:active, label.btn:active { transform: scale(.97); }
 button:focus-visible, label.btn:focus-visible,
 input:focus-visible, select:focus-visible, textarea:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
-button.primary { background: var(--accent); border-color: var(--accent); }
-button.primary:hover { border-color: var(--accent); filter: brightness(1.1); }
-button.active { background: var(--accent2); border-color: var(--accent2); color: #14181f; font-weight: 600; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--paa-accent); font-weight: 600; }
+button.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+button.active { background: var(--aktiv-bg); border-color: var(--aktiv-bg); color: var(--aktiv-tekst); font-weight: 600; }
 #fileInput { display: none; }
 #status { font-size: 12px; color: var(--muted); margin-left: auto; }
 
@@ -183,7 +236,7 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
   margin-bottom: 8px;
   cursor: pointer;
 }
-.comment:hover { border-color: #46536a; }
+.comment:hover { border-color: var(--accent); }
 .comment .meta { font-size: 11px; color: var(--muted); margin-bottom: 3px; display: flex; justify-content: space-between; }
 .comment .del { color: var(--danger); font-size: 11px; cursor: pointer; }
 
@@ -220,7 +273,7 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
   align-items: center; justify-content: center;
   gap: 16px; z-index: 5;
   text-align: center; padding: 20px;
-  background: radial-gradient(ellipse at center, rgba(20,24,31,.88) 0%, rgba(20,24,31,.72) 100%);
+  background: radial-gradient(ellipse at center, var(--flate-88) 0%, var(--flate-72) 100%);
 }
 #splash h1 { font-size: 26px; letter-spacing: .5px; }
 #splash h1 span { color: var(--accent); }
@@ -436,7 +489,7 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
 #bildeVis .bv-topp {
   position: absolute; top: 10px; right: 12px;
   display: flex; align-items: center; gap: 6px;
-  background: rgba(20,24,31,.82); border: 1px solid var(--border);
+  background: var(--flate-82); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 5px 8px;
   font-size: 12px; color: var(--text);
 }
@@ -447,7 +500,7 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
 #bildeVis .bv-pil {
   position: absolute; top: 50%; transform: translateY(-50%);
   padding: 10px 12px;
-  background: rgba(20,24,31,.82);
+  background: var(--flate-82);
 }
 #bildeVis .bv-pil .ikon { width: 22px; height: 22px; }
 #bildeVis #bvFor { left: 14px; }
@@ -493,7 +546,7 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
 
 #loading {
   position: fixed; inset: 0;
-  background: rgba(20,24,31,.85);
+  background: var(--flate-88);
   display: none; align-items: center; justify-content: center;
   flex-direction: column; gap: 14px;
   z-index: 30;
@@ -512,7 +565,7 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
   position: fixed; bottom: 12px; left: 12px;
   font-size: 11px; color: var(--muted);
   z-index: 9; max-width: 55vw;
-  background: rgba(20,24,31,.6); padding: 6px 10px; border-radius: var(--radius);
+  background: var(--flate-60); padding: 6px 10px; border-radius: var(--radius);
   display: none;
 }
 
@@ -532,22 +585,25 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
   margin-bottom: 8px;
   cursor: pointer;
 }
-.lib-item:hover { border-color: #46536a; }
+.lib-item:hover { border-color: var(--accent); }
 .lib-item:active { transform: scale(.98); }
 .lib-item .n { font-size: 13px; word-break: break-word; }
 .lib-item .m { font-size: 11px; color: var(--muted); margin-top: 2px; }
 
 /* ---------- Dra-og-slipp-melding ---------- */
+/* Dekker hele vinduet mens en fil holdes over. Spinner-ringen brukes som
+   ikon, så det er samme merke som under lasting. */
 #dropHint {
   position: fixed; inset: 0;
-  display: none; align-items: center; justify-content: center;
-  background: rgba(20,24,31,.82);
+  display: none; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+  background: var(--flate-88);
   border: 3px dashed var(--accent);
   border-radius: 14px;
-  font-size: 20px; font-weight: 600; color: var(--text);
-  z-index: 40; pointer-events: none;
+  font-size: 20px; font-weight: 700; color: var(--text);
+  z-index: 40; pointer-events: none; text-align: center; padding: 20px;
 }
 #dropHint.open { display: flex; }
+#dropHint .under { font-size: 12px; font-weight: 400; color: var(--muted); }
 
 /* ---------- Innstillingsmeny (høyreklikk) ---------- */
 #setMenu {
@@ -589,7 +645,7 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
   padding: 4px 6px; font-size: 12px; font-family: inherit;
 }
 .keybtn { padding: 3px 10px; font-size: 12px; min-width: 62px; justify-content: center; }
-.keybtn.wait { background: var(--accent2); color: #14181f; font-weight: 600; }
+.keybtn.wait { background: var(--aktiv-bg); color: var(--aktiv-tekst); font-weight: 600; }
 
 /* ---------- ⋯ Mer-meny (bare på telefon – js/mobile.js flytter knappene hit) ---------- */
 #moreMenu {
@@ -652,4 +708,72 @@ button.active { background: var(--accent2); border-color: var(--accent2); color:
   #modeBar input[type=range] { width: 110px; flex: 0 0 auto; }
 
   #markerPop { max-width: calc(100vw - 24px); }
+}
+
+/* ============================================================
+   STORM-LOGO
+   Merket er målt ut av Design/Storm-Entreprenor.png:
+     tykk ring  senter 150,9/142,8 · radius 83,06 · strek 36,2
+     mørk tynn  senter 151,3/132,2 · radius 99,1
+     mørk tynn  senter 123,4/148,0 · radius 88,7
+     lys tynn   senter 176,4/126,7 · radius 89,9
+   Fargene ligger i variabler, så samme SVG virker i begge temaer.
+   ============================================================ */
+.skjult-tekst {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+}
+.sr-tykk { fill: none; stroke: var(--storm-rod);      stroke-width: 36.2; }
+.sr-mork { fill: none; stroke: var(--logo-mork-ring); stroke-width: 2.6; }
+.sr-lys  { fill: none; stroke: var(--logo-lys-ring);  stroke-width: 2.6; }
+.sr-kube { fill: none; stroke: var(--text); stroke-width: 4.5; stroke-linejoin: round; stroke-linecap: round; }
+.sr-ord  { fill: var(--text); }
+.sr-tag  { fill: var(--accent); font-family: inherit; font-weight: 600;
+           letter-spacing: 9px; font-size: 44px; }
+
+/* Toppbaren: låst høyde, bredden følger av selve logoen */
+#topbar .storm-logo { height: 26px; width: auto; flex: 0 0 auto; margin-right: 4px; }
+
+@media (max-width: 640px) { #topbar .storm-logo { height: 21px; } }
+
+/* Startskjermen */
+#splash .storm-logo-full { width: 260px; max-width: 70vw; height: auto; }
+
+/* ---------- Laster-skjerm: Storm-ringen i bevegelse ----------
+   VIKTIG om viewBox «29 21 244 244»: sirklene sitter usentrert, så når de
+   roterer svinger de utenfor der de ligger i ro. Den lyse svinger lengst –
+   30,2 px fra rotasjonssenteret + radius 89,9 + halv strek 1,3 = 121,4 px.
+   Rammen er derfor 150,9 ± 122. Krymper du den, klippes ringen. */
+.storm-spinner { width: 88px; height: 88px; }
+.storm-spinner .sn1 { transform-origin: 150.9px 142.8px; animation: sn 2.2s linear infinite; }
+.storm-spinner .sn2 { transform-origin: 150.9px 142.8px; animation: sn 3.4s linear infinite reverse; }
+.storm-spinner .sn3 { transform-origin: 150.9px 142.8px; animation: sn 4.6s linear infinite; }
+.storm-spinner .pu  { transform-origin: 150.9px 142.8px; animation: pu 2.2s ease-in-out infinite; }
+@keyframes sn { to { transform: rotate(360deg); } }
+@keyframes pu { 0%, 100% { opacity: 1 } 50% { opacity: .82 } }
+@media (prefers-reduced-motion: reduce) {
+  .storm-spinner .sn1, .storm-spinner .sn2, .storm-spinner .sn3 { animation-duration: 9s; }
+  .storm-spinner .pu { animation: none; }
+}
+
+/* ---------- Slippsonen rundt startskjermen ----------
+   Dra-og-slipp fantes fra før (js/ifc.js), men sto bare som en tekstlinje.
+   Rammen gjør flaten synlig uten å flytte på noe av innholdet. */
+#splashSone {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 14px; text-align: center;
+  border: 2px dashed var(--border); border-radius: var(--radius-stor);
+  padding: 26px 20px; margin: 0 auto;
+  max-width: 560px; width: min(560px, 92vw);
+  transition: border-color .15s, background .15s;
+}
+#splashSone > * { margin: 0; }
+.splash-knapper { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.slipp-linje { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.slipp-linje::before, .slipp-linje::after {
+  content: ""; width: 26px; height: 1px; background: var(--border);
+}
+@media (max-height: 620px) {
+  #splashSone { padding: 14px 12px; gap: 10px; }
+  #splash .storm-logo-full { width: 200px; }
 }
