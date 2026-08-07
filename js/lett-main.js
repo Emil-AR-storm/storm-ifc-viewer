@@ -25,6 +25,7 @@ import "./modes.js";
 import "./angre.js";   // ↩ angre/gjenopprett – må lastes før ui.js (hurtigtastene)
 import "./sharepoint.js";
 import "./ui.js";
+import "./tema.js";   // lyst/mørkt tema – trenger knappen i toppbaren
 import "./share.js";
 import "./mobile.js";   // må lastes etter at alle knapper har fått lyttere
 import "./oppsett.js";   // ansattliste og Planner-plan fra SharePoint
