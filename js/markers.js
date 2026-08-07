@@ -170,7 +170,7 @@ export function vaskMarkering(r) {
   return c;
 }
 
-async function syncSharedComments() {
+async function syncSharedComments(stille) {
   const forFile = syncedFile();
   if (!forFile) return;
   try {
@@ -202,11 +202,45 @@ async function syncSharedComments() {
     persist();
     S.sharedOK = true;
     renderCommentList();
-    if (localOnly.length) pushSharedComments(); // last opp det som bare fantes lokalt
+    // stille = vi er midt i en 412-runde og skal skrive selv straks etterpå.
+    // Uten den ville vi startet en ny push inni den som allerede pågår.
+    if (localOnly.length && !stille) pushSharedComments(); // last opp det som bare fantes lokalt
   } catch(_) { S.sharedOK = false; renderCommentList(); }
 }
 
-export async function pushSharedComments() {
+// eTag-en ligger på selve elementet i SharePoint, ikke på innholdet, så den må
+// hentes for seg. null = fila finnes ikke ennå (første markering på modellen).
+async function sharedETag(token, sid) {
+  const r = await fetch(GRAPH + "/sites/" + sid + sharedFilePath() + "?$select=id,eTag",
+    { headers: authHeaders(token, null, "markeringer") });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error("Graph " + r.status);
+  return (await r.json()).eTag || null;
+}
+
+// Skrivingene står i kø, og hver skriving er BETINGET av at fila ikke er endret
+// siden vi leste den. Før skrev vi hele fila blindt: to prosjektledere med samme
+// modell åpen samme dag, og den som lagret sist slettet den andres markeringer –
+// uten feilmelding, og uten at noen oppdaget det før noen lette etter en
+// markering som ikke fantes.
+//
+// Køen er der fordi updateComment, lagreOgSynk og sendTilPlanner fyrer tett.
+// To samtidige PUT-er mot samme fil ville uansett gitt 412 på den ene.
+let pushKø = Promise.resolve();
+let pushTimer = null;
+
+export function pushSharedComments() {
+  // Samle raske endringer (statusbytte, frist, svar) til én skriving.
+  // Samme mønster som usersync.js bruker for det personlige oppsettet.
+  clearTimeout(pushTimer);
+  return new Promise((ferdig) => {
+    pushTimer = setTimeout(() => {
+      pushKø = pushKø.then(() => doPush(0)).catch(() => {}).then(ferdig);
+    }, 400);
+  });
+}
+
+async function doPush(forsøk) {
   if (LETT) return; // lettmodus skriver aldri markeringer — kvitteringer går via innboksen
   const forFile = syncedFile();
   if (!forFile) return;
@@ -214,13 +248,31 @@ export async function pushSharedComments() {
     const token = await spTokenSilent();
     if (!token) { S.sharedOK = false; renderCommentList(); return; }
     const sid = await sharedSiteId(token);
-    const body = JSON.stringify(S.comments);
+    const eTag = await sharedETag(token, sid);
     if (syncedFile() !== forFile) return;
+
+    const h = authHeaders(token, { "Content-Type": "application/json" }, "markeringer");
+    // Ingen eTag = fila skal ikke finnes. If-None-Match: * hindrer at vi skriver
+    // over en fil noen andre rakk å opprette i mellomtiden.
+    if (eTag) h["If-Match"] = eTag; else h["If-None-Match"] = "*";
+
     const r = await fetch(GRAPH + "/sites/" + sid + sharedFilePath() + ":/content", {
-      method: "PUT",
-      headers: authHeaders(token, { "Content-Type": "application/json" }, "markeringer"),
-      body
+      method: "PUT", headers: h, body: JSON.stringify(S.comments)
     });
+
+    if (r.status === 412 || r.status === 409) {
+      // Noen andre skrev først. Hent deres versjon, flett inn vårt, prøv igjen.
+      if (forsøk < 3) {
+        await syncSharedComments(true);
+        return doPush(forsøk + 1);
+      }
+      // Ga vi oss stille her, ville brukeren trodd at markeringen var delt.
+      // Det lokale ligger trygt i localStorage – ingenting er tapt.
+      S.sharedOK = false;
+      renderCommentList();
+      alert(t("Fikk ikke lagret markeringene – noen andre skriver i samme fil akkurat nå. Ingenting er tapt lokalt; prøv igjen om litt."));
+      return;
+    }
     S.sharedOK = r.ok;
   } catch(_) { S.sharedOK = false; }
   renderCommentList();

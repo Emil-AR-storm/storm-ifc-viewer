@@ -311,7 +311,10 @@ export function fmtDim(d) { return d.toFixed(dec()); }
 
 export function elemDisplayName(id) {
   if (S.glbActive) { const p = S.glbProps && S.glbProps.get(id); return (p && (p[0] || p[1])) || ("ID " + id); }
-  try { const line = metaFor(id) || {}; return (line.name || null) || val(line.ObjectType) || ("ID " + id); } catch(_) { return "ID " + id; }
+  // objectType med liten o: det er navnet cmdMeta i ifc-worker.js returnerer.
+  // Sto som line.ObjectType, som alltid var undefined – derfor viste elementer
+  // uten Name «ID 12345» i flervalg, søk og hele sammenligningslista.
+  try { const line = metaFor(id) || {}; return (line.name || null) || val(line.objectType) || ("ID " + id); } catch(_) { return "ID " + id; }
 }
 
 // ---------- Flervalg (shift-klikk) med samlede mengder ----------
