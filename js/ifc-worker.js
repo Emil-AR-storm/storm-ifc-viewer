@@ -18,6 +18,27 @@ let fil = null;        // selve IFC-bytene, beholdt så hovedtråden kan få dem
 // web-ifc pakker verdier som { value: … }
 const val = (x) => (x && typeof x === "object" && "value" in x ? x.value : x);
 
+// ---------- Livstegn ----------
+// Hovedtråden gir opp på en kommando som er HELT STILLE for lenge (se
+// STILLE_MS i ifcrpc.js). Det er riktig når tråden er drept av minnemangel –
+// men flere av kommandoene under kan lovlig bruke minutter uten å ha noe å
+// sende. En puls sier «jeg lever» uten data, og nullstiller klokka.
+//
+// Maks én puls per 2 sekunder: nok til å holde klokka i gang, lite nok til at
+// den ikke drukner meldingene som faktisk betyr noe.
+// Tåler at post mangler: kommandoene kalles også direkte, både av lokaltKall-
+// reserven og av testene. Uten denne vakten kastet puls() inne i cmdProps, og
+// unntaket ble spist av try/catch-en rundt relasjonsløkka – egenskapspanelet
+// ble bare stille tomt.
+function pulsGiver(post) {
+  if (typeof post !== "function") return () => {};
+  let sist = 0;
+  return () => {
+    const nå = Date.now();
+    if (nå - sist > 2000) { sist = nå; post({ type: "puls" }); }
+  };
+}
+
 function typeNavn(id) {
   try { return (ifcApi.GetNameFromTypeCode(ifcApi.GetLineType(modelID, id)) || "").replace(/^IFC/i, ""); }
   catch(_) { return ""; }
@@ -98,7 +119,10 @@ function cmdGeometryFull({ total, basis, maxId }, post) {
     batch = []; bytes = 0;
   };
 
+  const puls = pulsGiver(post);
+
   ifcApi.StreamAllMeshes(modelID, (mesh) => {
+    puls();
     const parts = lesDeler(mesh);
     batch.push({ id: mesh.expressID, parts });
     parts.forEach(p => { bytes += p.pos.byteLength + p.norm.byteLength + p.idx.byteLength; });
@@ -119,8 +143,13 @@ function cmdGeometryLight({ maxId, basis }, post) {
     .filter(t => t !== undefined));
   const buckets = new Map();
   let shown = 0, skipped = 0;
+  const puls = pulsGiver(post);
 
   ifcApi.StreamAllMeshes(modelID, (mesh) => {
+    // FØRST i callbacken, ikke etterpå: begge «skipped++; return» under hopper
+    // over framdriftslinja nederst. En modell der nesten alt siles bort var
+    // derfor helt stille i minutter, og ville blitt drept av stille-klokka.
+    puls();
     const id = mesh.expressID;
     try { if (skipTypes.has(ifcApi.GetLineType(modelID, id))) { skipped++; return; } } catch(_) {}
 
@@ -166,12 +195,14 @@ function cmdGeometryLight({ maxId, basis }, post) {
   // slå sammen og send én bøtte om gangen, så minnetoppen holdes nede
   let nr = 0;
   for (const [, b] of buckets) {
+    puls();   // få farger og mange trekanter = lang stillhet uten denne
     const pos = new Float32Array(b.vtot * 3);
     const norm = new Float32Array(b.vtot * 3);
     const idx = new Uint32Array(b.itot);
     const ranges = [];
     let vo = 0, io = 0;
     for (const s of b.segs) {
+      puls();
       pos.set(s.pos, vo * 3);
       norm.set(s.norm, vo * 3);
       for (let i = 0; i < s.idx.length; i++) idx[io + i] = s.idx[i] + vo;
@@ -250,10 +281,13 @@ function byggMatKart() {
 
 // Navn, type, tag, GlobalId og materiale for mange elementer i én runde.
 // Hovedtråden hurtigbufrer dette, så resten av viewer'en kan slå opp synkront.
-function cmdMeta({ ids }) {
+function cmdMeta({ ids }, post) {
   const mat = byggMatKart();
+  const puls = pulsGiver(post);
   const out = [];
+  let teller = 0;
   for (const id of ids) {
+    if ((++teller & 511) === 0) puls();
     let name = "", objectType = "", tag = "", globalId = "";
     try {
       const line = ifcApi.GetLine(modelID, id);
@@ -269,7 +303,8 @@ function cmdMeta({ ids }) {
 }
 
 // Full egenskapsliste for ETT element (åpnes bare når man trykker på noe)
-function cmdProps({ id }) {
+function cmdProps({ id }, post) {
+  const puls = pulsGiver(post);
   const felt = [];
   let typeName = "";
   try {
@@ -285,6 +320,7 @@ function cmdProps({ id }) {
   try {
     const relIDs = ifcApi.GetLineIDsWithType(modelID, WebIFC.IFCRELDEFINESBYPROPERTIES);
     for (let i = 0; i < relIDs.size(); i++) {
+      if ((i & 511) === 0) puls();
       const rel = ifcApi.GetLine(modelID, relIDs.get(i));
       const related = (rel.RelatedObjects || []).map(o => o.value);
       if (!related.includes(id)) continue;
@@ -306,7 +342,9 @@ function cmdProps({ id }) {
 }
 
 // Etasjer med tilhørende elementer – hele utregningen gjøres her
-function cmdStoreys() {
+function cmdStoreys(_a, post) {
+  const puls = pulsGiver(post);
+  puls();
   try {
     const byStorey = new Map();
     const rels = ifcApi.GetLineIDsWithType(modelID, WebIFC.IFCRELCONTAINEDINSPATIALSTRUCTURE);
@@ -328,7 +366,9 @@ function cmdStoreys() {
 }
 
 // Kandidater til aksesystemet: søyler, fundamenter, peler, vegger, bjelker
-function cmdAxisSources() {
+function cmdAxisSources(_a, post) {
+  const puls = pulsGiver(post);
+  puls();
   const cand = [
     ["COLUMN", WebIFC.IFCCOLUMN], ["FOOTING", WebIFC.IFCFOOTING],
     ["PILE", WebIFC.IFCPILE], ["WALL", WebIFC.IFCWALL],

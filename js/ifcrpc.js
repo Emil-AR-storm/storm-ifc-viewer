@@ -10,7 +10,44 @@ import { S } from "./state.js";
 
 let worker = null;
 let nesteId = 1;
-const venter = new Map();   // id → { løs, avvis, underveis }
+const venter = new Map();   // id → { løs, avvis, underveis, timer, pust }
+
+// Hvor lenge en kommando får være HELT STILLE før vi gir opp.
+//
+// Dette er IKKE total tid. Geometrien på en 200 MB-modell kan lovlig ta
+// minutter, og en fast frist ville drept den. Klokka nullstilles av hver
+// eneste melding fra tråden – porsjon, framdrift eller puls – så bare ekte
+// stillhet slår ut. Og ekte stillhet betyr som regel at nettleseren har
+// drept tråden fordi den gikk tom for minne.
+//
+// «open» er den eneste som ikke kan gi livstegn: OpenModel er ett synkront
+// kall inne i web-ifc. Derfor får den mye lengre frist enn de andre.
+const STILLE_MS = {
+  open: 300000,          // 5 min – ett synkront kall, ingen puls mulig
+  geometryFull: 45000,
+  geometryLight: 45000,
+  meta: 120000,          // romslig: sikreMeta kalles fra en setTimeout uten catch
+  props: 60000,
+  storeys: 120000,
+  axisSources: 120000,
+  buffer: 20000,
+  close: 20000
+};
+const STILLE_STANDARD = 60000;
+
+// Tråden er borte. Alle som venter må få svar, ellers henger «laster …» for alltid.
+function trådDød(melding) {
+  S.workerFeil = melding;
+  for (const [, v] of venter) { clearTimeout(v.timer); v.avvis(new Error(melding)); }
+  venter.clear();
+  try { if (worker) worker.terminate(); } catch(_) {}
+  worker = null;
+  // Modellen levde inne i den tråden. Uten dette ville neste kall startet en
+  // NY, tom tråd som stille svarer med tomme navn og typer – og brukeren fikk
+  // en modell som ser normal ut, men mangler alle data.
+  S.modelID = null;
+  S.bufferITråd = false;
+}
 
 function url() {
   // ligger ved siden av de andre modulene
@@ -35,18 +72,17 @@ export function startWorker() {
     const m = e.data || {};
     const v = venter.get(m.id);
     if (!v) return;
+    v.pust();                          // livstegn: nullstill stille-klokka
+    if (m.type === "puls") return;     // bare et livstegn, ingenting å gjøre
     if (m.type) { if (v.underveis) v.underveis(m); return; }   // melding underveis
+    clearTimeout(v.timer);
     venter.delete(m.id);
     if (m.feil) v.avvis(new Error(m.feil)); else v.løs(m.svar);
   };
-  worker.onerror = (e) => {
-    S.workerFeil = (e && e.message) || "ukjent feil i IFC-tråden";
-    // alle som venter må få svar, ellers henger lastingen for alltid
-    for (const [, v] of venter) v.avvis(new Error(S.workerFeil));
-    venter.clear();
-    try { worker.terminate(); } catch(_) {}
-    worker = null;
-  };
+  worker.onerror = (e) => trådDød((e && e.message) || "ukjent feil i IFC-tråden");
+  // En melding som ikke lar seg lese har ingen id vi kan koble den til, så vi
+  // vet ikke hvem som venter på den. Da må tråden regnes som tapt.
+  worker.onmessageerror = () => trådDød("IFC-tråden sendte en melding som ikke kunne leses");
   return worker;
 }
 
@@ -55,7 +91,20 @@ export function kall(cmd, args, underveis, overfor) {
   if (!w) return lokaltKall(cmd, args, underveis);   // reserve: samme kode på hovedtråden
   const id = nesteId++;
   return new Promise((løs, avvis) => {
-    venter.set(id, { løs, avvis, underveis });
+    const frist = STILLE_MS[cmd] || STILLE_STANDARD;
+    const v = { løs, avvis, underveis, timer: null };
+    v.pust = () => {
+      clearTimeout(v.timer);
+      v.timer = setTimeout(() => {
+        venter.delete(id);
+        const sek = Math.round(frist / 1000);
+        trådDød("IFC-tråden svarte ikke på «" + cmd + "» på " + sek +
+                " sekunder – den er trolig tom for minne");
+        avvis(new Error(S.workerFeil));
+      }, frist);
+    };
+    venter.set(id, v);
+    v.pust();                                 // start klokka
     w.postMessage({ id, cmd, args: args || {} }, overfor || []);
   });
 }
@@ -75,7 +124,7 @@ export function stoppWorker() {
   if (!worker) return;
   try { worker.terminate(); } catch(_) {}
   worker = null;
-  for (const [, v] of venter) v.avvis(new Error("IFC-tråden ble stoppet"));
+  for (const [, v] of venter) { clearTimeout(v.timer); v.avvis(new Error("IFC-tråden ble stoppet")); }
   venter.clear();
 }
 
@@ -115,6 +164,12 @@ export function guidFor(id) {
 let metaJobb = null;
 
 export function sikreMeta(idFn) {
+  // Pågår en henting alt, VENT på den. Sto denne sjekken etter size-sjekken
+  // under, holdt det å ha fått første porsjon på 4000 for at neste kall skulle
+  // svare «ferdig» med bare en femtedel av dataene: trykket du 🔎 Søk og så
+  // 📊 Mengder rett etter, ble mengdeuttaket bygget med tomme navn og
+  // materialer for alt utover de første 4000 elementene.
+  if (metaJobb) return metaJobb;
   if (S.meta && S.meta.size) return Promise.resolve(S.meta);
   if (S.modelID === null) return Promise.resolve(S.meta);
   if (!metaJobb) {
