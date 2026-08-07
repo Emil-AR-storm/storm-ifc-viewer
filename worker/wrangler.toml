@@ -1,10 +1,24 @@
 # Storm byggeplass-Worker. INGEN hemmeligheter her — fila er offentlig.
 # ADMIN_TOKEN legges inn i Cloudflare-panelet (Settings → Variables and Secrets),
 # eller med: wrangler secret put ADMIN_TOKEN
+# Det samme gjelder VARSEL_URL (Teams-webhooken).
 name = "storm-byggeplass"
 main = "worker.js"
 compatibility_date = "2026-08-04"
 
+# Slår på Workers Logs i panelet. Uten dette ser du ikke HVORFOR en opplasting
+# feiler — bare at den gjorde det. Lagt til 6. aug 2026.
+[observability]
+enabled = true
+
 [[r2_buckets]]
 binding = "MODELLER"
 bucket_name = "storm-modeller"
+
+# KV-navnerommet var ikke deklarert her før. Bindingen finnes i panelet, så
+# Workeren virker i drift — men en ren «wrangler deploy» fra en tom maskin ga
+# env.KODER === undefined og 500 på /åpne, /ny-kode og all logging.
+# ID-en finner du i panelet: Storage & Databases → KV → navnerommet → ID.
+[[kv_namespaces]]
+binding = "KODER"
+id = "LIM_INN_ID_HER"
