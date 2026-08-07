@@ -774,6 +774,14 @@ export const ORDBOK = {
     en: "This model is already a light copy – open the original (IFC) and try again.",
     pl: "Ten model jest już lekką kopią – otwórz oryginał (IFC) i spróbuj ponownie.",
     lt: "Šis modelis jau yra lengva kopija – atidarykite originalą (IFC) ir bandykite dar kartą." },
+  "Adressen til byggeplass-tjenesten er ikke satt opp. Den står i js/config.js, og kan overstyres i oppsett.json i SharePoint-mappa.": {
+    en: "The construction site service address is not set up. It lives in js/config.js and can be overridden in oppsett.json in the SharePoint folder.",
+    pl: "Adres usługi placu budowy nie jest skonfigurowany. Znajduje się w js/config.js i można go nadpisać w oppsett.json w folderze SharePoint.",
+    lt: "Statybvietės paslaugos adresas nenustatytas. Jis yra js/config.js ir gali būti pakeistas oppsett.json faile SharePoint aplanke." },
+  "Planner er ikke satt opp ennå. Plan-ID-en legges inn i «oppsett.json» i SharePoint-mappa med modellene.": {
+    en: "Planner is not set up yet. The plan ID goes into “oppsett.json” in the SharePoint folder with the models.",
+    pl: "Planner nie jest jeszcze skonfigurowany. Identyfikator planu należy wpisać w „oppsett.json” w folderze SharePoint z modelami.",
+    lt: "„Planner“ dar nesukonfigūruotas. Plano ID įrašomas į „oppsett.json“ SharePoint aplanke su modeliais." },
   "Prosjektnummer (5 siffer):": { en: "Project number (5 digits):", pl: "Numer projektu (5 cyfr):", lt: "Projekto numeris (5 skaitmenys):" },
   "Opplastingsnøkkel:": { en: "Upload key:", pl: "Klucz przesyłania:", lt: "Įkėlimo raktas:" },
   "Laster opp …": { en: "Uploading …", pl: "Przesyłanie …", lt: "Įkeliama …" },

@@ -6,7 +6,7 @@
 //
 // Krever at app-registreringen har den delegerte tillatelsen Tasks.ReadWrite.
 // Se OPPLASTING.md for oppsettet.
-import { PLANNER_BUCKET, PLANNER_PLAN_ID } from "./config.js";
+import { PLANNER } from "./config.js";
 import { t } from "./i18n.js";
 import { GRAPH, authHeaders, graphToken } from "./sharepoint.js";
 
@@ -55,11 +55,11 @@ const gPost = async (token, path, body) =>
 let bucketId = null;
 async function finnEllerOpprettBucket(token) {
   if (bucketId) return bucketId;
-  const data = await gGet(token, "/planner/plans/" + PLANNER_PLAN_ID + "/buckets");
-  const funnet = (data.value || []).find(b => b.name === PLANNER_BUCKET);
+  const data = await gGet(token, "/planner/plans/" + PLANNER.planId + "/buckets");
+  const funnet = (data.value || []).find(b => b.name === PLANNER.bucket);
   if (funnet) return (bucketId = funnet.id);
   const ny = await gPost(token, "/planner/buckets",
-    { name: PLANNER_BUCKET, planId: PLANNER_PLAN_ID, orderHint: " !" });
+    { name: PLANNER.bucket, planId: PLANNER.planId, orderHint: " !" });
   return (bucketId = ny.id);
 }
 
@@ -70,12 +70,12 @@ export function fristTilISO(dato) {
 }
 
 export const planUrl = () =>
-  "https://planner.cloud.microsoft/webui/plan/" + PLANNER_PLAN_ID + "/view/board";
+  "https://planner.cloud.microsoft/webui/plan/" + PLANNER.planId + "/view/board";
 
 // Oppretter oppgaven. assignees = liste med Entra objekt-ID-er (GUID), ikke e-post.
 export async function opprettOppgave(token, { title, dueISO, description, assignees }) {
   const body = {
-    planId: PLANNER_PLAN_ID,
+    planId: PLANNER.planId,
     bucketId: await finnEllerOpprettBucket(token),
     title: String(title || "").slice(0, 255)
   };

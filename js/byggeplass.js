@@ -8,10 +8,11 @@ import { bildeUrl, lastOpp } from "./bilder.js";
 import { lagreOgSynk, leggTilImportertMarkering, vaskMarkering } from "./markers.js";
 import { tegningNavn } from "./tegninger.js";
 import { GRAPH, authHeaders, spTokenSilent } from "./sharepoint.js";
+import { TJENESTER } from "./config.js";
 
-// Fylles inn når Workeren er publisert, f.eks.:
-// "https://storm-byggeplass.dittkontonavn.workers.dev"
-const WORKER = "https://storm-byggeplass.emil-46a.workers.dev";
+// Adressen til Workeren står i config.js, og kan overstyres av oppsett.json i
+// SharePoint. Leses gjennom TJENESTER hver gang – verdien kan komme etter at
+// denne fila er lastet.
 
 // ---------- Nøkler i nettleseren ----------
 // Begge ligger i sessionStorage, ikke localStorage: de skal ikke bli liggende
@@ -36,8 +37,8 @@ if (btn) btn.addEventListener("click", async () => {
     alert(t("Denne modellen er allerede en lett kopi – åpne originalen (IFC) og prøv igjen."));
     return;
   }
-  if (WORKER.startsWith("FYLL")) {
-    alert("Worker-adressen er ikke fylt inn øverst i js/byggeplass.js ennå.");
+  if (!TJENESTER.worker || TJENESTER.worker.startsWith("FYLL")) {
+    alert(t("Adressen til byggeplass-tjenesten er ikke satt opp. Den står i js/config.js, og kan overstyres i oppsett.json i SharePoint-mappa."));
     return;
   }
 
@@ -77,7 +78,7 @@ if (btn) btn.addEventListener("click", async () => {
     // IKKE en ny revisjon (og slipper å skrive fila på nytt)
     const hashBuf = await crypto.subtle.digest("SHA-256", bytes);
     const hash = [...new Uint8Array(hashBuf)].map(b => b.toString(16).padStart(2, "0")).join("");
-    const r = await fetch(WORKER + "/last-opp?fil=" + encodeURIComponent(fil), {
+    const r = await fetch(TJENESTER.worker + "/last-opp?fil=" + encodeURIComponent(fil), {
       method: "PUT",
       headers: {
         "content-type": "model/gltf-binary",
@@ -108,7 +109,7 @@ if (btn) btn.addEventListener("click", async () => {
       svar: (c.svar || []).map(s => ({ id: s.id, tekst: s.tekst, forfatter: s.forfatter, dato: s.dato, endret: s.endret || "" })),
       tegninger: (c.tegninger || []).map(v => ({ fil: v.fil, itemId: v.itemId, side: v.side, storrelse: v.storrelse }))
     }));
-    await fetch(WORKER + "/last-opp?fil=" + encodeURIComponent(fil + ".markeringer.json"), {
+    await fetch(TJENESTER.worker + "/last-opp?fil=" + encodeURIComponent(fil + ".markeringer.json"), {
       method: "PUT",
       headers: { "content-type": "application/json", "x-prosjekt": prosjekt, "x-token": token },
       body: JSON.stringify(vaskede)
@@ -123,7 +124,7 @@ if (btn) btn.addEventListener("click", async () => {
           const url = await bildeUrl(navn);
           if (!url) continue;
           const blob = await (await fetch(url)).blob();
-          const br = await fetch(WORKER + "/last-opp?fil=" + encodeURIComponent(navn) + "&mappe=bilder", {
+          const br = await fetch(TJENESTER.worker + "/last-opp?fil=" + encodeURIComponent(navn) + "&mappe=bilder", {
             method: "PUT",
             headers: { "content-type": "image/jpeg", "x-prosjekt": prosjekt, "x-token": token },
             body: blob
@@ -170,7 +171,7 @@ async function oppdaterBadge() {
   let antall = 0;
   if (prosjekt && token) {
     try {
-      const r = await fetch(WORKER + "/innboks/" + prosjekt, { headers: { "x-token": token } });
+      const r = await fetch(TJENESTER.worker + "/innboks/" + prosjekt, { headers: { "x-token": token } });
       // teller bare selve innholdet — ikke sidekortene (.jpg.json)
       if (r.ok) antall = (await r.json()).filter(n => /\.jpg$/i.test(n) || /^h-.*\.json$/.test(n)).length;
     } catch (_) {}
@@ -204,10 +205,10 @@ function gammel(iso) {
 
 async function hentInnboks(prosjekt, token) {
   let inn = 0;
-  const hent = (navn) => fetch(WORKER + "/innboks/" + prosjekt + "/" + encodeURIComponent(navn), { headers: { "x-token": token } });
-  const slett = (navn) => fetch(WORKER + "/innboks/" + prosjekt + "/" + encodeURIComponent(navn), { method: "DELETE", headers: { "x-token": token } });
+  const hent = (navn) => fetch(TJENESTER.worker + "/innboks/" + prosjekt + "/" + encodeURIComponent(navn), { headers: { "x-token": token } });
+  const slett = (navn) => fetch(TJENESTER.worker + "/innboks/" + prosjekt + "/" + encodeURIComponent(navn), { method: "DELETE", headers: { "x-token": token } });
   try {
-    const r = await fetch(WORKER + "/innboks/" + prosjekt, { headers: { "x-token": token } });
+    const r = await fetch(TJENESTER.worker + "/innboks/" + prosjekt, { headers: { "x-token": token } });
     if (!r.ok) return 0;
     const alle = await r.json();
 
@@ -298,7 +299,7 @@ async function lastOppTegninger(prosjekt, token) {
         encodeURIComponent(itemId) + "/content", { headers: authHeaders(spToken, null, "tegning-ut") });
       if (!r.ok) continue;
       const blob = await r.blob();
-      const br = await fetch(WORKER + "/last-opp?fil=" + encodeURIComponent(tegningNavn(itemId)) + "&mappe=tegninger", {
+      const br = await fetch(TJENESTER.worker + "/last-opp?fil=" + encodeURIComponent(tegningNavn(itemId)) + "&mappe=tegninger", {
         method: "PUT",
         headers: { "content-type": "application/pdf", "x-prosjekt": prosjekt, "x-token": token },
         body: blob
@@ -330,7 +331,7 @@ async function visQr(prosjekt, fil, antall, antMark, antBilder, antInn, antTegni
       document.head.appendChild(s);
     });
   }
-  const adresse = WORKER + "/" + prosjekt;
+  const adresse = TJENESTER.worker + "/" + prosjekt;
   const bak = document.createElement("div");
   bak.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:99;display:flex;align-items:center;justify-content:center";
   const kort = document.createElement("div");

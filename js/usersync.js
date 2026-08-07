@@ -150,8 +150,14 @@ S.syncPrefs = () => {
   pushUserPrefs();
 };
 
-// sharepoint.js kaller denne når vi er innlogget
-S.onSignedIn = () => { pullUserPrefs(); };
+// sharepoint.js kaller denne når vi er innlogget. Kjedes, ikke tilordnes:
+// oppsett.js henger seg på den samme kroken, og rekkefølgen på importene skal
+// ikke kunne slå ut den ene.
+const tidligereInnlogging = S.onSignedIn;
+S.onSignedIn = () => {
+  try { if (tidligereInnlogging) tidligereInnlogging(); } catch (_) {}
+  pullUserPrefs();
+};
 
 // Er brukeren allerede innlogget når siden lastes, hentes oppsettet med en gang.
 // (msalInit kjører i bakgrunnen fra sharepoint.js og kaller S.onSignedIn.)
