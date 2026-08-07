@@ -138,8 +138,13 @@ function buildAxes() {
   if (boxes.length < 2) return;
 
   // mm eller meter? (geometrien følger filens enheter)
-  const toMM = S.modelSize > 1000 ? 1 : 1000;
-  const tol = S.modelSize > 1000 ? 400 : 0.4; // toleranse for «samme akse»
+  // Aksene regner i MILLIMETER, ikke meter – derfor ganger vi opp.
+  //   mm-modell:  enhetSkala 0,001 → toMM 1,    tol 400 mm
+  //   m-modell:   enhetSkala 1     → toMM 1000, tol 0,4 m
+  // Begge gir nøyaktig samme tall som den gamle gjetningen gjorde.
+  const skala = S.enhetSkala || 1;
+  const toMM = skala * 1000;                  // modellenheter → mm
+  const tol = 0.4 / skala;                    // 400 mm, uttrykt i modellenheter
 
   // På store modeller: krev flere elementer per akse til vi er under taket (maks 50 per retning),
   // ellers drukner visningen i hundrevis av linjer og merkelapper
@@ -156,7 +161,7 @@ function buildAxes() {
   const zs = clusterCapped(boxes.map(b => ({ c: (b.min.z + b.max.z) / 2, min: b.min.z, max: b.max.z, pmin: b.min.x, pmax: b.max.x })));
   if (!xs.length && !zs.length) return;
 
-  const one = toMM === 1 ? 1000 : 1; // 1 meter i modellens enheter
+  const one = 1 / skala;             // 1 meter i modellens enheter
   // Høyde: median av kildeelementenes underkant (ikke modellens bunn – terreng/peler
   // kan ligge langt under og ville lagt aksene under bygget)
   const yBottoms = boxes.map(b => b.min.y).sort((a, b) => a - b);
@@ -243,6 +248,9 @@ function buildAxes() {
   dimChain(zs, "z", minX - one * 2.5); // bokstavakser
 }
 
+// Eksponert via S, ikke import: ui.js må kunne bygge aksene på nytt når
+// enheten endres, uten at axes.js og ui.js importerer hverandre.
+// Samme mønster som S.applyCubePos og S.pushAngre.
 function rebuildAxes() {
   axesGroup.clear();
   buildAxes();
@@ -301,3 +309,4 @@ $("btnAxes").addEventListener("click", async () => {
 // oppdater aksenes detaljnivå hver frame
 frameHooks.push(() => { if (axesGroup.visible) updateAxisLOD(); });
 
+S.rebuildAxes = rebuildAxes;

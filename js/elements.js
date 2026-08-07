@@ -256,7 +256,7 @@ export function sluttMengder(volSum, projSum, toM) {
 //   NB: Skrå og hvelvede flater blir riktig projisert, men et element som
 //   overlapper seg selv i høyden (f.eks. en trapp) får skyggen regnet to ganger.
 export function quantitiesForSet(idSet) {
-  const toM = S.modelSize > 1000 ? 0.001 : 1; // mm-modell → meter
+  const toM = S.enhetSkala || 1;   // meter per modellenhet – én sannhet, satt i ifc.js
   const vols = new Map();
   const projs = new Map();   // Σ|n.y| per element – rå, før halvering
   const addTri = (p, i0, i1, i2, mtx, id) => {
@@ -492,7 +492,7 @@ function computeQuantities() {
       if (b) b.union(tmp); else boxMap.set(id, tmp.clone());
     });
   }
-  const toM = S.modelSize > 1000 ? 0.001 : 1;   // mm-modell → meter
+  const toM = S.enhetSkala || 1;   // meter per modellenhet – én sannhet, satt i ifc.js
   const vq = quantitiesForSet(new Set(boxMap.keys()));
   const groups = new Map();
   const rows = [];

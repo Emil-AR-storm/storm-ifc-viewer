@@ -1,6 +1,6 @@
 // 📏 Mål og ⛰ kote, med kant-snapping.
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
-import { S, fmtLen } from "./state.js";
+import { S, fmtLen, tilM } from "./state.js";
 import { pick } from "./elements.js";
 import { camera, canvas, frameHooks, koteGroup, makeLabel, measureGroup, renderer, scene, updateScreenScaled } from "./scene.js";
 
@@ -138,9 +138,12 @@ export function addMeasure(p1, p2) {
     measureGroup.add(dot); nye.push(dot);
   };
   mkDot(p1); mkDot(p2);
-  const label = makeLabel(fmtLen(d));
+  // d er avstand i MODELLENS enheter. fmtLen forventer meter – uten tilM()
+  // står et mål på 2,5 m som «2500.00 m» i en mm-modell.
+  const label = makeLabel(fmtLen(tilM(d)));
   label.userData.px = 30; // konstant skjermstørrelse
   label.userData.aspect = label.scale.x / label.scale.y;
+  label.userData.meter = tilM(d);   // så lappen kan tegnes om ved enhetsbytte
   label.position.copy(p1).add(p2).multiplyScalar(0.5);
   measureGroup.add(label); nye.push(label);
   // Group.remove() disposer ikke, så objektene kan legges rett inn igjen.
@@ -150,6 +153,36 @@ export function addMeasure(p1, p2) {
     gjenopprett: () => nye.forEach(o => measureGroup.add(o))
   });
   return nye;
+}
+
+// ---------- Tegn lappene om når enheten endres ----------
+//
+// Teksten på en lapp er brent inn i en tekstur. Bytter du visningsenhet eller
+// modellenhet i ⚙ Innstillinger, ville gamle mål og koter stått igjen med den
+// forrige teksten – og innstillingen sett ødelagt ut.
+//
+// Lappen BYTTES IKKE UT, bare teksturen inni. Angre-postene holder på selve
+// objektet, så byttet vi det, ville angring av et gammelt mål plutselig ikke
+// funnet noe å fjerne.
+function tegnOm(sprite, tekst, farge) {
+  const ny = makeLabel(tekst, farge);
+  const gammelKart = sprite.material.map;
+  sprite.material.map = ny.material.map;
+  sprite.material.needsUpdate = true;
+  sprite.userData.aspect = ny.scale.x / ny.scale.y;   // teksten kan ha ny bredde
+  if (gammelKart) gammelKart.dispose();
+  ny.material.dispose();
+}
+
+export function oppdaterLengdeEtiketter() {
+  for (const [gruppe, farge, prefiks] of
+       [[measureGroup, "#f59e0b", ""], [koteGroup, "#22d3ee", "▲ "]]) {
+    gruppe.children.forEach(o => {
+      // Bare lappene bærer et tall. Streker og prikker hoppes over.
+      if (!o.isSprite || typeof (o.userData && o.userData.meter) !== "number") return;
+      tegnOm(o, prefiks + fmtLen(o.userData.meter), farge);
+    });
+  }
 }
 
 // hold måle-/kotelapper og snap-prikk i konstant skjermstørrelse
