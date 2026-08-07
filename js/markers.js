@@ -3,7 +3,7 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
 import { $, S, esc, ikon, loadingEl, loadingText, lukkPaneler } from "./state.js";
 import { t } from "./i18n.js";
 import { LETT } from "./lett.js";
-import { ANSATTE } from "./config.js";
+import { ANSATTE, PLANNER } from "./config.js";
 import { fristTilISO, fullforOppgave, opprettOppgave, planUrl, plannerToken } from "./planner.js";
 import { setMode } from "./modes.js";
 import { camera, controls, frameHooks, markerGroup, renderer } from "./scene.js";
@@ -1217,6 +1217,12 @@ export function oppgaveNotat(c, lenke) {
 
 // Tar en liste markeringer og lager én Planner-oppgave per markering
 async function sendTilPlanner(list) {
+  // Uten plan-ID ville Graph fått «/planner/plans//buckets» og svart 400 med en
+  // melding ingen kan gjøre noe med. Stopp her, og si hvor tallet skal inn.
+  if (!PLANNER.planId) {
+    alert(t("Planner er ikke satt opp ennå. Plan-ID-en legges inn i «oppsett.json» i SharePoint-mappa med modellene."));
+    return;
+  }
   const uten = list.filter(c => !c.due);
   if (uten.length) {
     alert((uten.length === 1 ? t("Markeringen mangler frist.") : t("{0} markeringer mangler frist.", uten.length)) +
@@ -1337,3 +1343,10 @@ export function renderCommentList() {
     });
   });
 }
+
+// Firmaoppsettet kommer fra SharePoint et sekund eller to etter oppstart. Står
+// markeringspanelet allerede åpent, tegnes det på nytt så «Ansvarlig» får folk
+// i seg uten at brukeren må lukke og åpne.
+S.onOppsett = () => {
+  try { if ($("commentPanel") && $("commentPanel").classList.contains("open")) renderCommentList(); } catch (_) {}
+};

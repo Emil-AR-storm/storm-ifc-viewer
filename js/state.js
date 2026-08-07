@@ -239,6 +239,7 @@ S.compareOn = false;
 // ---------- Felter som andre moduler eier, deklarert her for oversikt ----------
 S.scene = null;           // settes av scene.js
 S.prefsCloudOK = false;   // settes av usersync.js når skyoppsettet er lest
+S.oppsettOK = false;      // settes av oppsett.js når firmaoppsettet er lest
 
 // ---------- Callbacks mellom moduler ----------
 // Settes av modulen som eier funksjonen, for å unngå sirkulære importer.
@@ -246,7 +247,10 @@ S.prefsCloudOK = false;   // settes av usersync.js når skyoppsettet er lest
 // stille ingen effekt.
 S.onModelLoaded = null;   // compare.js  ← kalles av ifc.js etter lasting
 S.onSharedReady = null;   // share.js    ← kalles av ifc.js etter lasting
-S.onSignedIn = null;      // usersync.js ← kalles av sharepoint.js ved innlogging
+// onSignedIn KJEDES: både usersync.js og oppsett.js henger seg på, og hver av
+// dem tar vare på den forrige. Sett den aldri med rein tilordning.
+S.onSignedIn = null;      // usersync.js + oppsett.js ← kalles av sharepoint.js
+S.onOppsett = null;       // markers.js  ← kalles av oppsett.js når firmaoppsettet er lest
 S.onContextMenu = null;   // ui.js       ← kalles av scene.js ved høyreklikk
 S.syncPrefs = null;       // usersync.js ← kalles av alle som lagrer oppsett
 S.rememberModel = null;   // recent.js   ← kalles av ifc.js og sharepoint.js
