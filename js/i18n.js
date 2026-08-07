@@ -829,5 +829,11 @@ export const ORDBOK = {
   "Skjul elementtype": { en: "Hide element type", pl: "Ukryj typ elementu", lt: "Slėpti elemento tipą" },
   "Vis elementtype": { en: "Show element type", pl: "Pokaż typ elementu", lt: "Rodyti elemento tipą" },
   "Snitt på": { en: "Section on", pl: "Przekrój wł.", lt: "Pjūvis įjungtas" },
-  "Snitt av": { en: "Section off", pl: "Przekrój wył.", lt: "Pjūvis išjungtas" }
+  "Snitt av": { en: "Section off", pl: "Przekrój wył.", lt: "Pjūvis išjungtas" },
+
+  // ---------- Delte markeringer ----------
+  "Fikk ikke lagret markeringene – noen andre skriver i samme fil akkurat nå. Ingenting er tapt lokalt; prøv igjen om litt.": {
+    en: "Could not save the markers to SharePoint – someone else is writing to the same file right now. Nothing is lost locally; try again shortly.",
+    pl: "Nie udało się zapisać oznaczeń w SharePoint – ktoś inny właśnie zapisuje ten sam plik. Nic nie zostało utracone lokalnie; spróbuj ponownie za chwilę.",
+    lt: "Nepavyko išsaugoti žymų SharePoint – šiuo metu tą patį failą rašo kas nors kitas. Vietiniai duomenys nedingo; pabandykite netrukus dar kartą." }
 };

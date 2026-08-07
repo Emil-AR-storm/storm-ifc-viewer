@@ -33,14 +33,21 @@ function lagMeny() {
   const m = document.createElement("div");
   m.id = "moreMenu";
   document.body.appendChild(m);
-  // trykk utenfor lukker menyen
-  document.addEventListener("pointerdown", (e) => {
-    if (!menyÅpen) return;
-    if (m.contains(e.target) || e.target.id === "btnMore") return;
-    lukkMeny();
-  });
   return m;
 }
+
+// Trykk utenfor lukker menyen. Lytteren settes ÉN gang, ikke inne i lagMeny():
+// tilPC() fjerner menyen, så neste tilMobil() slapp forbi vakten der og la på
+// enda en lytter. Hver rotasjon over/under 640 px la til én til, og de gamle
+// holdt på et frakoblet element – så m.contains(e.target) var alltid usann og
+// de lukket den NYE menyen på trykk som skulle vært ignorert.
+document.addEventListener("pointerdown", (e) => {
+  if (!menyÅpen) return;
+  const m = $("moreMenu");
+  if (!m || m.contains(e.target) || e.target.id === "btnMore") return;
+  if (e.target.closest && e.target.closest("#btnMore")) return;   // treff på ikonet inni knappen
+  lukkMeny();
+});
 
 function lagMerKnapp() {
   if ($("btnMore")) return $("btnMore");
@@ -52,13 +59,23 @@ function lagMerKnapp() {
   b.title = t("Flere verktøy – hold inne for Innstillinger");
   b.setAttribute("data-i18n-title", "");
   b.dataset.noTitle = "Flere verktøy – hold inne for Innstillinger";
-  b.onclick = () => (menyÅpen ? lukkMeny() : åpneMeny());
-
   // Langtrykk = ⚙ Innstillinger, som avtalt
   let holdTimer = null;
+  let holdBrukt = false;   // langtrykket fyrte – da skal klikket etterpå ignoreres
+
+  // Uten holdBrukt: timeren fyrte, satte holdTimer = null, og stopp() gjorde
+  // ingenting. Deretter kom det vanlige click-eventet og åpnet ⋯-menyen – så
+  // langtrykk ga BÅDE Innstillinger og ⋯-menyen samtidig.
+  b.onclick = () => {
+    if (holdBrukt) { holdBrukt = false; return; }
+    menyÅpen ? lukkMeny() : åpneMeny();
+  };
+
   const start = () => {
+    holdBrukt = false;
     holdTimer = setTimeout(() => {
       holdTimer = null;
+      holdBrukt = true;
       lukkMeny();
       $("btnSettings").click();
     }, 550);
@@ -89,10 +106,25 @@ export function lukkMeny() {
   if (b) b.classList.remove("active");
 }
 
-// Alle verktøyknappene i den rekkefølgen de står i HTML-en
+// Alle verktøyknappene i den rekkefølgen de står i HTML-en.
+//
+// Rekkefølgen leses fra HTML-en ÉN gang, ved oppstart, mens alle knappene ennå
+// står i verktøylinja. Å lese den ut av DOM-en senere ga feil svar: da er
+// listen «toolbar først, så moreMenu», og etter en tur innom mobil kom
+// knappene tilbake i den rekkefølgen i stedet for HTML-rekkefølgen – for godt.
+const HTML_REKKEFØLGE = [...$("toolbar").querySelectorAll("button")]
+  .map(b => b.id)
+  .filter(Boolean);
+
 function verktøyKnapper() {
-  return [...$("toolbar").querySelectorAll("button"), ...($("moreMenu") ? [...$("moreMenu").querySelectorAll("button")] : [])]
+  const alle = [...$("toolbar").querySelectorAll("button"),
+                ...($("moreMenu") ? [...$("moreMenu").querySelectorAll("button")] : [])]
     .filter(b => b.id !== "btnMore");
+  const plass = (b) => {
+    const i = HTML_REKKEFØLGE.indexOf(b.id);
+    return i === -1 ? HTML_REKKEFØLGE.length : i;   // ukjente knapper bakerst
+  };
+  return alle.sort((a, b) => plass(a) - plass(b));
 }
 
 function tilMobil() {

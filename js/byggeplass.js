@@ -13,6 +13,22 @@ import { GRAPH, authHeaders, spTokenSilent } from "./sharepoint.js";
 // "https://storm-byggeplass.dittkontonavn.workers.dev"
 const WORKER = "https://storm-byggeplass.emil-46a.workers.dev";
 
+// ---------- Nøkler i nettleseren ----------
+// Begge ligger i sessionStorage, ikke localStorage: de skal ikke bli liggende
+// på disk mellom økter. Gammel localStorage-nøkkel ryddes bort under.
+const TOKEN_KEY = "storm-bp-token";     // opplasting og admin
+
+const nøkkel = (k) => { try { return sessionStorage.getItem(k); } catch (_) { return null; } };
+const settNøkkel = (k, v) => { try { sessionStorage.setItem(k, v); } catch (_) {} };
+const glemNøkkel = (k) => { try { sessionStorage.removeItem(k); } catch (_) {} };
+
+// Engangsopprydding: nøkkelen lå i localStorage fram til 6. aug 2026, og skal
+// ikke bli liggende igjen der på maskiner som har brukt verktøyet før.
+try {
+  const gml = localStorage.getItem(TOKEN_KEY);
+  if (gml) { settNøkkel(TOKEN_KEY, gml); localStorage.removeItem(TOKEN_KEY); }
+} catch (_) {}
+
 const btn = $("btnByggeplass");
 if (btn) btn.addEventListener("click", async () => {
   if (!S.modelGroup) { alert(t("Åpne en modell først.")); return; }
@@ -33,12 +49,17 @@ if (btn) btn.addEventListener("click", async () => {
   localStorage.setItem("storm-bp-prosjekt", prosjekt);
 
   // Opplastingsnøkkelen finnes BARE hos den som laster opp (aldri i offentlig kode).
-  // Huskes i localStorage etter første gang. Feil nøkkel → glemmes, så du kan prøve på nytt.
-  let token = localStorage.getItem("storm-bp-token") || "";
+  //
+  // sessionStorage og ikke localStorage: nøkkelen forsvinner når fanen lukkes,
+  // så det ligger ingen kopi igjen på disk mellom økter. localStorage er en
+  // ukryptert fil i nettleserprofilen – kopierer noen profilmappa, eller kjører
+  // det skadevare på maskinen, følger nøkkelen med. Prisen er at du taster den
+  // én gang per nettleserøkt i stedet for én gang i livet.
+  let token = nøkkel(TOKEN_KEY) || "";
   if (!token) {
     token = (prompt(t("Opplastingsnøkkel:")) || "").trim();
     if (!token) return;
-    localStorage.setItem("storm-bp-token", token);
+    settNøkkel(TOKEN_KEY, token);
   }
 
   loadingEl.classList.add("open");
@@ -67,7 +88,7 @@ if (btn) btn.addEventListener("click", async () => {
       body: bytes
     });
     if (r.status === 403) {
-      localStorage.removeItem("storm-bp-token");
+      glemNøkkel(TOKEN_KEY);
       throw new Error(t("Feil opplastingsnøkkel – trykk på knappen og skriv den på nytt."));
     }
     if (!r.ok) throw new Error("HTTP " + r.status + ": " + (await r.text()).slice(0, 200));
@@ -145,7 +166,7 @@ function prosjektFor(fil) {
 async function oppdaterBadge() {
   if (!btn) return;
   const prosjekt = prosjektFor(lettNavn(S.fileName || ""));
-  const token = localStorage.getItem("storm-bp-token") || "";
+  const token = nøkkel(TOKEN_KEY) || "";
   let antall = 0;
   if (prosjekt && token) {
     try {
@@ -173,6 +194,14 @@ setInterval(oppdaterBadge, 60000);    // og hvert minutt
 // Hvert bilde: lastes ned → skrives til Storms SharePoint (vi er innlogget her)
 // → henges på riktig markering som etter-bilde → slettes fra innboksen.
 // Filnavnet koder markerings-ID-en (bildeNavn i bilder.js), så vi vet hvor det hører til.
+// Eldre enn en uke? Brukes til å rydde innboks-poster ingen modell vil kjennes
+// ved. Uten tidsstempel regnes posten som fersk – vi sletter aldri i blinde.
+const UKE_MS = 7 * 24 * 3600 * 1000;
+function gammel(iso) {
+  const t = Date.parse(iso || "");
+  return isFinite(t) && (Date.now() - t) > UKE_MS;
+}
+
 async function hentInnboks(prosjekt, token) {
   let inn = 0;
   const hent = (navn) => fetch(WORKER + "/innboks/" + prosjekt + "/" + encodeURIComponent(navn), { headers: { "x-token": token } });
@@ -206,8 +235,14 @@ async function hentInnboks(prosjekt, token) {
             inn++;
           }
           await slett(navn);
+        } else if (gammel(h.mottatt)) {
+          // Finner vi ikke markeringen, hører svaret som regel til en annen
+          // modell i samme prosjekt, og da skal en annen runde ta det. Men lot
+          // vi det ligge for alltid, ville den røde telleren telt det hver
+          // eneste gang – en teller som aldri kunne nullstilles. Etter en uke
+          // finnes ingen modell som kommer til å hente det, og da ryddes det.
+          await slett(navn);
         }
-        // finner vi ikke markeringen (annen modell i samme prosjekt), lar vi den ligge
       } else {
         await slett(navn); // ukjent innhold ryddes
       }
@@ -219,7 +254,15 @@ async function hentInnboks(prosjekt, token) {
       if (deler.length < 3) continue;
       const renId = deler.slice(0, deler.length - 2).join("-");
       const c = (S.comments || []).find(k => String(k.id).replace(/[^0-9a-zA-Z]/g, "") === renId);
-      if (!c) continue; // hører til en annen modell i samme prosjekt — la den ligge
+      if (!c) {
+        // Samme sak som for svar over: et bilde som ingen modell vil kjennes
+        // ved, blir liggende og telles i det uendelige. Gi det en uke.
+        const sr2 = await hent(navn + ".json");
+        let tid = "";
+        if (sr2.ok) { try { tid = (await sr2.json()).tid || ""; } catch (_) {} }
+        if (gammel(tid)) { await slett(navn); await slett(navn + ".json"); }
+        continue;
+      }
       let seksjon = "etter";
       const sr = await hent(navn + ".json");
       if (sr.ok) { try { seksjon = (await sr.json()).seksjon === "for" ? "for" : "etter"; } catch (_) {} }
