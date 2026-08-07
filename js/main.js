@@ -25,6 +25,7 @@ import "./recent.js";
 import "./share.js";
 import "./byggeplass.js";
 import "./mobile.js";   // må lastes etter at alle knapper har fått lyttere
+import "./oppsett.js";   // ansattliste og Planner-plan fra SharePoint
 import "./usersync.js";   // personlig oppsett fra SharePoint – må lastes sist
 
 // JavaScript kjører – skjul advarselen

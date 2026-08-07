@@ -27,6 +27,7 @@ import "./sharepoint.js";
 import "./ui.js";
 import "./share.js";
 import "./mobile.js";   // må lastes etter at alle knapper har fått lyttere
+import "./oppsett.js";   // ansattliste og Planner-plan fra SharePoint
 
 // JavaScript kjører – skjul advarselen
 const jsCheck = document.getElementById("jsCheck");
