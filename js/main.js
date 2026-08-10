@@ -21,6 +21,7 @@ import "./angre.js";   // ↩ angre/gjenopprett – må lastes før ui.js (hurti
 import "./sharepoint.js";
 import "./ui.js";
 import "./tema.js";   // lyst/mørkt tema – trenger knappen i toppbaren
+import "./hjul.js";   // navigasjonshjul – trenger knappen i verktøylinja
 import "./compare.js";
 import "./recent.js";
 import "./share.js";
