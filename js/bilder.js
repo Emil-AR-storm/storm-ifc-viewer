@@ -42,6 +42,33 @@ export function trygtNavn(navn) {
   return /^[0-9a-zA-Z_-]+\.jpg$/.test(String(navn || "")) ? String(navn) : null;
 }
 
+// ---------- Talemeldinger (N5) ----------
+// Lagres akkurat som bildene: samme navneskjema, samme mappe, samme innboks.
+// Det eneste som skiller dem er endelsen. .m4a er Safari/iOS og .webm er
+// Chrome/Android — MediaRecorder gir ikke samme format på tvers, så begge må
+// godtas. Endelsen bestemmer også content-type ved opplasting.
+export const LYD_ENDELSER = ["m4a", "webm"];
+
+export const MAKS_LYD_PER_MARKERING = 5;
+
+export function lydNavn(markeringId, nr, endelse, slump) {
+  const e = LYD_ENDELSER.includes(endelse) ? endelse : "webm";
+  const s = slump || Math.random().toString(36).slice(2, 6);
+  return String(markeringId).replace(/[^0-9a-zA-Z]/g, "") + "-" + nr + "-" + s + "." + e;
+}
+
+export function trygtLyd(navn) {
+  return /^[0-9a-zA-Z_-]+\.(m4a|webm)$/.test(String(navn || "")) ? String(navn) : null;
+}
+
+// Content-type ut av filnavnet. Workeren gjør nøyaktig det samme oppslaget,
+// så en fil som lastes opp her, serveres tilbake med riktig type.
+export function vedleggMime(navn) {
+  const m = /\.([0-9a-zA-Z]+)$/.exec(String(navn || ""));
+  const e = m ? m[1].toLowerCase() : "";
+  return e === "m4a" ? "audio/mp4" : e === "webm" ? "audio/webm" : "image/jpeg";
+}
+
 export function erBildefil(file) {
   if (!file) return false;
   if (file.type) return /^image\//.test(file.type);
@@ -119,12 +146,13 @@ async function sikreMappe(token, sid) {
 // prosjektlederen henter det til SharePoint neste gang han åpner modellen
 // innlogget. Prosjektet leses av Workeren fra beviset (kaka fra kodefeltet).
 export async function lastOpp(blob, navn) {
+  const mime = vedleggMime(navn);
   if (LETT) {
     const r = await fetch("/kvitter?fil=" + encodeURIComponent(navn) +
       "&seksjon=" + (S._lettSeksjon === "for" ? "for" : "etter"), {
-      method: "POST", headers: { "content-type": "image/jpeg" }, body: blob
+      method: "POST", headers: { "content-type": mime }, body: blob
     });
-    if (!r.ok) throw new Error(t("Fikk ikke sendt bildet") + " (" + r.status + ")");
+    if (!r.ok) throw new Error(t("Fikk ikke sendt filen") + " (" + r.status + ")");
     return navn;
   }
   const token = await spTokenSilent();
@@ -133,7 +161,7 @@ export async function lastOpp(blob, navn) {
   await sikreMappe(token, sid);
   const r = await fetch(GRAPH + "/sites/" + sid + bildeSti(navn) + ":/content", {
     method: "PUT",
-    headers: authHeaders(token, { "Content-Type": "image/jpeg" }, "bilde-opplasting"),
+    headers: authHeaders(token, { "Content-Type": mime }, "bilde-opplasting"),
     body: blob
   });
   if (!r.ok) throw new Error("Opplasting feilet (Graph " + r.status + ")");
@@ -170,11 +198,38 @@ export async function bildeUrl(navn) {
   } catch(_) { return null; }   // uten nett/innlogging viser vi 🔒 i stedet
 }
 
+// Talemeldinger hentes samme vei som bildene. Egen funksjon i stedet for et
+// flagg på bildeUrl: navnesjekken er ulik, og en lydfil skal aldri kunne havne
+// i bildegalleriet fordi noen sendte feil flagg.
+export async function lydUrl(navn) {
+  const n = trygtLyd(navn);
+  if (!n) return null;
+  if (urlBuffer.has(n)) return urlBuffer.get(n);
+  try {
+    if (LETT) {
+      const r = await fetch("/bilde/" + (S.lettProsjekt || "00000") + "/" + encodeURIComponent(n));
+      if (!r.ok) return null;
+      const url = URL.createObjectURL(await r.blob());
+      urlBuffer.set(n, url);
+      return url;
+    }
+    const token = await spTokenSilent();
+    if (!token) return null;
+    const sid = await siteId(token);
+    const r = await fetch(GRAPH + "/sites/" + sid + bildeSti(n) + ":/content",
+      { headers: authHeaders(token, null, "lyd-nedlasting") });
+    if (!r.ok) return null;
+    const url = URL.createObjectURL(await r.blob());
+    urlBuffer.set(n, url);
+    return url;
+  } catch (_) { return null; }
+}
+
 // Sletter bildefilene til en markering. Stille: mislykkes en sletting, blir det
 // en foreldreløs fil i SharePoint – det skal ikke stoppe brukeren fra å slette
 // markeringen.
 export async function slettBilder(navn) {
-  const liste = (navn || []).map(trygtNavn).filter(Boolean);
+  const liste = (navn || []).map(n => trygtNavn(n) || trygtLyd(n)).filter(Boolean);
   if (!liste.length) return;
   try {
     const token = await spTokenSilent();

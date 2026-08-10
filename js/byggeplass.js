@@ -108,7 +108,7 @@ if (btn) btn.addEventListener("click", async () => {
       // noe vi holder igjen med vilje – det manglet.)
       endret: c.endret || "", endretAv: c.endretAv || "",
       status: c.status || "Åpen", x: c.x, y: c.y, z: c.z,
-      bilder: c.bilder || [], bilderEtter: c.bilderEtter || [],
+      bilder: c.bilder || [], bilderEtter: c.bilderEtter || [], lyd: c.lyd || [],
       // kommentartråden og tegnings-HENVISNINGENE er med nå (trinn 5b) —
       // eier, frist og Planner-kobling holdes fortsatt igjen
       svar: (c.svar || []).map(s => ({ id: s.id, tekst: s.tekst, forfatter: s.forfatter, dato: s.dato, endret: s.endret || "" })),
@@ -178,7 +178,7 @@ async function oppdaterBadge() {
     try {
       const r = await fetch(TJENESTER.worker + "/innboks/" + prosjekt, { headers: { "x-token": token } });
       // teller bare selve innholdet — ikke sidekortene (.jpg.json)
-      if (r.ok) antall = (await r.json()).filter(n => /\.jpg$/i.test(n) || /^h-.*\.json$/.test(n)).length;
+      if (r.ok) antall = (await r.json()).filter(n => /\.(jpg|m4a|webm)$/i.test(n) || /^h-.*\.json$/.test(n)).length;
     } catch (_) {}
   }
   let b = btn.querySelector(".bp-badge");
@@ -254,9 +254,12 @@ async function hentInnboks(prosjekt, token) {
       }
     }
 
-    // 2) BILDER (….jpg) med sidekort (….jpg.json) som sier før eller etter
-    for (const navn of alle.filter(n => /\.jpg$/i.test(n))) {
-      const deler = navn.replace(/\.jpg$/i, "").split("-");
+    // 2) BILDER (….jpg) og TALEMELDINGER (….m4a/.webm) med sidekort som sier
+    //    hvilken seksjon de hører til. Samme navneskjema, samme opprydding —
+    //    det eneste som skiller dem er hvilket felt de havner i.
+    for (const navn of alle.filter(n => /\.(jpg|m4a|webm)$/i.test(n))) {
+      const erLyd = /\.(m4a|webm)$/i.test(navn);
+      const deler = navn.replace(/\.(jpg|m4a|webm)$/i, "").split("-");
       if (deler.length < 3) continue;
       const renId = deler.slice(0, deler.length - 2).join("-");
       const c = (S.comments || []).find(k => String(k.id).replace(/[^0-9a-zA-Z]/g, "") === renId);
@@ -276,7 +279,7 @@ async function hentInnboks(prosjekt, token) {
       if (!bi.ok) continue;
       const blob = await bi.blob();
       await lastOpp(blob, navn);   // til Storms SharePoint — sluttilstanden er at alt ligger her
-      const felt = seksjon === "for" ? "bilder" : "bilderEtter";
+      const felt = erLyd ? "lyd" : (seksjon === "for" ? "bilder" : "bilderEtter");
       if (!(c[felt] || []).includes(navn)) c[felt] = (c[felt] || []).concat(navn);
       await slett(navn);
       await slett(navn + ".json");

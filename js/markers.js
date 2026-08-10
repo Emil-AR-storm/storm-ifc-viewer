@@ -5,11 +5,12 @@ import { t } from "./i18n.js";
 import { LETT } from "./lett.js";
 import { ANSATTE, PLANNER, TJENESTER } from "./config.js";
 import { finnNevnte, koblNevning, nevnKandidater, nevningHtml } from "./nevning.js";
+import { fmtTid, lydStottes, startOpptak } from "./lyd.js";
 import { fristTilISO, fullforOppgave, opprettOppgave, planUrl, plannerToken } from "./planner.js";
 import { setMode } from "./modes.js";
 import { camera, controls, frameHooks, markerGroup, renderer } from "./scene.js";
 import { GRAPH, SP, authHeaders, graphGet, spTokenSilent } from "./sharepoint.js";
-import { MAKS_PER_MARKERING, bildeUrl, erBildefil, leggTilBilder, slettBilder } from "./bilder.js";
+import { MAKS_LYD_PER_MARKERING, MAKS_PER_MARKERING, bildeUrl, erBildefil, lastOpp, leggTilBilder, lydNavn, lydUrl, slettBilder, trygtLyd } from "./bilder.js";
 import { ADVAR_MB, antallSider, gyldigSide, hentTegninger, mb, sideBilde, velgMappe, visStatus } from "./tegninger.js";
 // ⛓-lenka til en markering hentes via S.markerLink (settes av share.js).
 // Direkte import ville gitt sirkel: markers → share → display → ifc → markers.
@@ -249,6 +250,8 @@ export function vaskMarkering(r) {
   if (c.taskUrl && !/^https:\/\//i.test(c.taskUrl)) delete c.taskUrl;
   if (Array.isArray(r.bilder)) c.bilder = r.bilder.filter(b => typeof b === "string");
   if (Array.isArray(r.bilderEtter)) c.bilderEtter = r.bilderEtter.filter(b => typeof b === "string");
+  // Talemeldinger (N5). Navnet vaskes hardt: bare filnavnet, aldri en sti.
+  if (Array.isArray(r.lyd)) c.lyd = r.lyd.map(trygtLyd).filter(Boolean);
   if (Array.isArray(r.tegninger)) c.tegninger = r.tegninger
     .filter(t => t && typeof t === "object")
     .map(t => ({ fil: String(t.fil || ""), itemId: String(t.itemId || ""),
@@ -593,6 +596,95 @@ export function bilderI(c, seksjon) {
 // av nye filnavn, til telleren i lista og til opprydding ved sletting.
 export function alleBilder(c) {
   return SEKSJONER.reduce((ut, [s]) => ut.concat(bilderI(c, s)), []);
+}
+
+// ---------- 🎤 Talemeldinger ----------
+export const lydI = (c) => (c && Array.isArray(c.lyd) ? c.lyd : []);
+
+function lydStripeHtml(c, kanLeggeTil) {
+  const liste = lydI(c);
+  const kan = kanLeggeTil && lydStottes() && liste.length < MAKS_LYD_PER_MARKERING;
+  if (!liste.length && !kan) return "";
+  return '<div class="mp-seksjon mp-lyd-seksjon"><div class="mp-seksjon-tittel">' +
+    t("Talemelding") + (liste.length ? ' <span>' + liste.length + '</span>' : "") + '</div>' +
+    liste.map(f => '<div class="mp-lyd" data-lyd="' + esc(f) + '"></div>').join("") +
+    (kan ? '<button class="mp-tegning nytt mp-lyd-ny">' + ikon("mikrofon") + ' ' + t("Ta opp talemelding") + '</button>' : "") +
+    '</div>';
+}
+
+// Lydfilene hentes én gang hver, som miniatyrbildene.
+function fyllLyd(rot) {
+  rot.querySelectorAll(".mp-lyd[data-lyd]").forEach(async el => {
+    if (el.dataset.fylt) return;
+    el.dataset.fylt = "1";
+    const url = await lydUrl(el.dataset.lyd);
+    if (!url) { el.classList.add("mangler"); el.innerHTML = ikon("laas") + " " + t("Logg inn for å høre opptaket"); return; }
+    const a = document.createElement("audio");
+    a.controls = true;
+    a.preload = "none";        // ikke last ned før noen trykker play
+    a.src = url;
+    el.appendChild(a);
+  });
+}
+
+// Selve opptaket. Knappen bytter til «Stopp» med en teller, så man ser at det
+// går – uten det er det umulig å vite om mikrofonen faktisk fanget noe.
+// Et pågående opptak må kunne stanses utenfra. Lukker man bobla midt i et
+// opptak, ville mikrofonen ellers stått på til fanen ble lukket – og
+// opptaksprikken i telefonens statuslinje sier ikke hvilken side som lytter.
+let opptak = null;
+
+function stoppOpptakHvisAktivt() {
+  if (!opptak) return;
+  const o = opptak;
+  opptak = null;
+  try { o.avbryt(); } catch (_) {}
+}
+
+async function taOppTil(c, knapp) {
+  if (lydI(c).length >= MAKS_LYD_PER_MARKERING) {
+    alert(t("En markering kan ha maks {0} talemeldinger.", MAKS_LYD_PER_MARKERING));
+    return;
+  }
+  stoppOpptakHvisAktivt();          // aldri to opptak i gang samtidig
+  let ktrl;
+  try {
+    ktrl = await startOpptak((sek) => { knapp.innerHTML = ikon("stopp") + " " + t("Stopp") + " · " + fmtTid(sek); });
+    opptak = ktrl;
+  } catch (err) {
+    // Avslått mikrofontilgang er den vanligste grunnen, og feilmeldingen fra
+    // nettleseren sier ingenting om hvordan man angrer på det.
+    alert(/NotAllowed|Permission/i.test(err.name + err.message)
+      ? t("Mikrofonen er avslått for denne siden. Slå den på i nettleserens innstillinger for nettstedet, og prøv igjen.")
+      : t("Fikk ikke startet opptaket: ") + err.message);
+    return;
+  }
+  knapp.classList.add("tar-opp");
+  knapp.onclick = async () => {
+    knapp.onclick = null;
+    const res = await ktrl.stopp();
+    opptak = null;
+    knapp.classList.remove("tar-opp");
+    if (!res || !res.blob || res.blob.size < 1000) { openMarkerPopup(c); return; }  // for kort til å være noe
+    loadingText.textContent = t("Sender talemeldingen …");
+    loadingEl.classList.add("open");
+    try {
+      const navn = lydNavn(c.id, alleBilder(c).length + lydI(c).length + 1, res.endelse);
+      await lastOpp(res.blob, navn);
+      c.lyd = lydI(c).concat([navn]);
+      persist();
+      pushSharedComments();
+      renderCommentList();
+      if (LETT) alert(t("Talemeldingen er sendt. Den blir synlig for prosjektlederen neste gang han åpner modellen."));
+    } catch (err) {
+      alert(err.message === "IKKE_INNLOGGET"
+        ? t("Talemeldinger lagres i SharePoint, så du må være innlogget. Åpne Biblioteket og logg inn, så prøv igjen.")
+        : t("Klarte ikke å sende talemeldingen: ") + err.message);
+    } finally {
+      loadingEl.classList.remove("open");
+      openMarkerPopup(c);
+    }
+  };
 }
 
 function bildeStripeHtml(c, kanLeggeTil) {
@@ -1128,6 +1220,7 @@ let popFor = null;                        // markeringen bobla hører til
 const popAnchor = new THREE.Vector3();
 
 export function closeMarkerPopup() {
+  stoppOpptakHvisAktivt();
   popFor = null;
   redigerer = null;
   const el = $("markerPop");
@@ -1158,6 +1251,7 @@ export function openMarkerPopup(c) {
       ? redigerFeltHtml(c.text, "for-markering")
       : '<div class="mp-text">' + nevningHtml(c.text, nevnListe(c), innloggetNavn()) + '</div>') +
     bildeStripeHtml(c, true) +
+    lydStripeHtml(c, true) +
     tegningStripeHtml(c) +
     svarSeksjonHtml(c) +
     '<div class="mp-fields">' +
@@ -1214,6 +1308,9 @@ export function openMarkerPopup(c) {
     };
   });
   fyllMiniatyrer(el, c);
+  fyllLyd(el);
+  const lydKnapp = el.querySelector(".mp-lyd-ny");
+  if (lydKnapp) lydKnapp.onclick = () => taOppTil(c, lydKnapp);
   el.classList.add("open");
   placePopup();
 }
@@ -1243,7 +1340,7 @@ export function goToComment(c) {
 export function deleteComment(id) {
   const c = S.comments.find(c => c.id == id);
   // bildefilene i SharePoint ryddes med, så vi ikke samler opp foreldreløse filer
-  if (c && alleBilder(c).length) slettBilder(alleBilder(c));
+  if (c && (alleBilder(c).length || lydI(c).length)) slettBilder(alleBilder(c).concat(lydI(c)));
   S.comments = S.comments.filter(c => c.id != id);
   markerGroup.children.filter(s => s.userData.commentId == id).forEach(s => markerGroup.remove(s));
   persist(); pushSharedComments(); renderCommentList();
@@ -1481,6 +1578,7 @@ export function renderCommentList() {
           ikon("svar") + ' ' + svarI(c).length + '</span>' : "") +
         (tegningerI(c).length ? ' · <span title="' +
           esc(tegningerI(c).map(tegningTekst).join(", ")) + '">' + ikon("tegning") + ' ' + tegningerI(c).length + '</span>' : "") +
+        (lydI(c).length ? ' · <span title="' + t("Talemelding") + '">' + ikon("mikrofon") + ' ' + lydI(c).length + '</span>' : "") +
         (alleBilder(c).length
           ? ' · <span title="' + SEKSJONER.map(([s, t]) => t + ": " + bilderI(c, s).length).join(", ") +
             '">' + ikon("kamera") + ' ' + alleBilder(c).length + (bilderI(c, "etter").length ? " " + t("(før/etter)") : "") + '</span>'
