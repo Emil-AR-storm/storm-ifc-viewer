@@ -577,6 +577,18 @@ export function slettSvar(c, svarId) {
   return true;
 }
 
+// Sletter en talemelding. Speiler slettSvar over: samme mønster, samme
+// updateComment til slutt. Selve lydfila ryddes i bakgrunnen — feiler det, blir
+// det en foreldreløs fil i SharePoint, og det skal ikke stoppe brukeren.
+export function slettLyd(c, fil) {
+  const f = lydI(c).length;
+  c.lyd = lydI(c).filter(l => l.fil !== fil);
+  if (c.lyd.length === f) return false;
+  slettBilder([fil]);
+  updateComment(c, {});
+  return true;
+}
+
 // ---------- 📷 Bilder ----------
 // Bildene ligger i SharePoint (se js/bilder.js). Her er bare visningen: en
 // stripe med miniatyrbilder i bobla, og en 📷-knapp som åpner kamera/filvelger.
@@ -622,9 +634,10 @@ function lydStripeHtml(c, kanLeggeTil) {
   return '<div class="mp-seksjon mp-lyd-seksjon"><div class="mp-seksjon-tittel">' +
     t("Talemelding") + (liste.length ? ' <span>' + liste.length + '</span>' : "") + '</div>' +
     liste.map(l => '<div class="mp-lyd" data-lyd="' + esc(l.fil) + '">' +
-      (l.av || l.dato
-        ? '<div class="mp-lyd-meta">' + esc([l.av, l.dato].filter(Boolean).join(" · ")) + '</div>'
-        : "") +
+      '<div class="mp-lyd-topp">' +
+        '<span class="mp-lyd-meta">' + esc([l.av, l.dato].filter(Boolean).join(" · ")) + '</span>' +
+        '<button class="mp-lyd-slett" title="' + t("Slett talemeldingen") + '">' + ikon("slett") + '</button>' +
+      '</div>' +
       '</div>').join("") +
     (kan ? '<button class="mp-tegning nytt mp-lyd-ny">' + ikon("mikrofon") + ' ' + t("Ta opp talemelding") + '</button>' : "") +
     '</div>';
@@ -1337,6 +1350,15 @@ export function openMarkerPopup(c) {
   fyllLyd(el);
   const lydKnapp = el.querySelector(".mp-lyd-ny");
   if (lydKnapp) lydKnapp.onclick = () => taOppTil(c, lydKnapp);
+  el.querySelectorAll(".mp-lyd[data-lyd]").forEach(rad => {
+    const slettKnapp = rad.querySelector(".mp-lyd-slett");
+    if (!slettKnapp) return;
+    slettKnapp.onclick = (e) => {
+      e.stopPropagation();                       // ikke start avspilling
+      if (!confirm(t("Slette denne talemeldingen?"))) return;
+      slettLyd(c, rad.dataset.lyd);
+    };
+  });
   el.classList.add("open");
   placePopup();
 }
