@@ -832,10 +832,20 @@ button.active { background: var(--aktiv-bg); border-color: var(--aktiv-bg); colo
    den fyller bobla etter skaleringen, og hylsa klippes til den nye høyden –
    ellers ville den etterlatt 13 px tom luft under seg. */
 #markerPop .mp-lyd { margin: 2px 0 6px; }
-#markerPop .mp-lyd-meta {
-  font-size: var(--t-meta, 11px); color: var(--muted);
-  margin-bottom: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+#markerPop .mp-lyd-topp {
+  display: flex; align-items: center; gap: 6px; margin-bottom: 1px; min-height: 14px;
 }
+#markerPop .mp-lyd-meta {
+  flex: 1; min-width: 0;
+  font-size: var(--t-meta, 11px); color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#markerPop .mp-lyd-slett {
+  background: none; border: 0; padding: 0 2px; color: var(--muted);
+  cursor: pointer; flex: 0 0 auto; line-height: 1;
+}
+#markerPop .mp-lyd-slett:hover { color: var(--danger); }
+#markerPop .mp-lyd-slett .ikon { width: 13px; height: 13px; }
 #markerPop .mp-lyd audio {
   width: 161%; height: 34px; display: block;
   transform: scale(.62); transform-origin: left top;
@@ -870,4 +880,55 @@ button.active { background: var(--aktiv-bg); border-color: var(--aktiv-bg); colo
 @keyframes lyd-puls { 0%, 100% { opacity: 1 } 50% { opacity: .7 } }
 @media (prefers-reduced-motion: reduce) {
   #markerPop .mp-lyd-ny.tar-opp { animation: none; }
+}
+
+/* ============================================================
+   🧭 NAVIGASJONSHJUL
+   Fire kiler (roter, zoom, panorer, angre visning) og en hub (sentrer).
+   Banene i js/hjul.js er REGNET UT for radius 32–58 i et 120×120-rutenett —
+   endrer du størrelsen her, endrer du bare skaleringen, ikke geometrien.
+   ============================================================ */
+#navHjul {
+  position: fixed;
+  right: 12px;
+  /* Over ViewCube-en, som står nede til høyre med 12 px klaring. */
+  bottom: 136px;
+  width: 120px; height: 120px;
+  z-index: 7;
+  display: none;
+  touch-action: none;          /* ellers ruller siden i stedet for å navigere */
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  filter: drop-shadow(0 6px 16px rgba(0, 0, 0, .45));
+}
+#navHjul.open { display: block; }
+#navHjul svg { width: 100%; height: 100%; display: block; overflow: visible; }
+
+#navHjul .nh-kile path, #navHjul .nh-hub circle {
+  fill: var(--panel);
+  stroke: var(--border);
+  stroke-width: 1;
+  transition: fill .12s;
+}
+#navHjul use { color: var(--text); pointer-events: none; }
+
+#navHjul .nh-kile, #navHjul .nh-hub { cursor: pointer; }
+#navHjul .nh-kile:hover path, #navHjul .nh-hub:hover circle { fill: var(--panel2); }
+
+/* Mens man drar. Rødt betyr «dette skjer nå», som ellers i viewer-en. */
+#navHjul .gar path, #navHjul .gar circle { fill: var(--accent); }
+#navHjul .gar use { color: var(--paa-accent); }
+
+/* Hub-en venter på at du skal peke ut nytt midtpunkt */
+#navHjul .nh-hub.venter circle { fill: var(--accent); }
+#navHjul .nh-hub.venter use { color: var(--paa-accent); }
+
+/* «Angre visning» uten noe å gå tilbake til */
+#navHjul .tom path { fill: var(--panel2); stroke: var(--danger); }
+
+/* På telefon er skjermen for liten til både hjul og ViewCube nede til høyre.
+   Hjulet krymper og flytter seg ned; ViewCube-en har sin egen plassering i
+   ⚙ Innstillinger for den som vil ha begge. */
+@media (max-width: 640px) {
+  #navHjul { width: 104px; height: 104px; bottom: 12px; right: 12px; }
 }
