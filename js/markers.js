@@ -3,7 +3,8 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
 import { $, S, esc, ikon, loadingEl, loadingText, lukkPaneler } from "./state.js";
 import { t } from "./i18n.js";
 import { LETT } from "./lett.js";
-import { ANSATTE, PLANNER } from "./config.js";
+import { ANSATTE, PLANNER, TJENESTER } from "./config.js";
+import { finnNevnte, koblNevning, nevnKandidater, nevningHtml } from "./nevning.js";
 import { fristTilISO, fullforOppgave, opprettOppgave, planUrl, plannerToken } from "./planner.js";
 import { setMode } from "./modes.js";
 import { camera, controls, frameHooks, markerGroup, renderer } from "./scene.js";
@@ -21,6 +22,14 @@ $("btnComments").addEventListener("click", () => {
 });
 
 function storageKey(){ return "storm-ifc-comments::" + S.fileName; }
+
+// @-nevning i «Ny markering»-dialogen. Kobles én gang; kandidatlista hentes
+// på nytt hver gang man skriver @, så den virker også etter at ansattlista
+// har kommet fra SharePoint.
+{
+  const nyFelt = document.getElementById("commentText");
+  if (nyFelt) koblNevning(nyFelt, () => nevnListe(null));
+}
 
 export function loadComments() {
   if (LETT) { lastLettMarkeringer(); return; }
@@ -481,7 +490,49 @@ export function redigerMarkeringstekst(c, nyTekst) {
   const tekst = String(nyTekst == null ? "" : nyTekst).trim();
   if (!c || !tekst || tekst === c.text) return false;   // tom tekst sletter ikke
   updateComment(c, { text: tekst, endret: naaTekst(), endretAv: innloggetNavn() });
+  varsleNevning(c, tekst, finnNevnte(tekst, nevnListe(c)));
   return true;
+}
+
+// ---------- @-nevning ----------
+// Kandidatlista er ansattlista på kontoret og navnene i markeringen på
+// byggeplassen — se toppen av nevning.js for hvorfor.
+export function nevnListe(c) { return nevnKandidater(c, LETT ? [] : ANSATTE); }
+
+// Varsler den som er nevnt. To veier, avhengig av hvor vi står:
+//   Byggeplassen – gjennom Workerens innboks, samme vei som markeringer og
+//                  kommentarer går. Da fanges den opp av flyten som allerede
+//                  lytter der og legger kort i Teams-kanalen.
+//   Kontoret     – til adressen «varsel» i oppsett.json, hvis den er satt.
+//                  Er den ikke satt, skjer ingenting utenfor appen; nevningen
+//                  vises fortsatt i markeringen. Myk degradering, som resten
+//                  av oppsett.json.
+//
+// «no-cors» med text/plain er med vilje: en Power Automate-flyt svarer ikke med
+// CORS-hoder, og en vanlig JSON-POST ville utløst en preflight som blir
+// blokkert. Vi får aldri vite om den kom fram — derfor er dette et TILLEGG til
+// at nevningen står i markeringen, aldri den eneste veien.
+function varsleNevning(c, tekst, nevnte) {
+  if (!nevnte.length) return;
+  const last = {
+    type: "nevning",
+    prosjekt: S.lettProsjekt || "",
+    modell: S.fileName || "",
+    markering: c.id,
+    tekst: String(tekst || "").slice(0, 500),
+    fra: innloggetNavn(),
+    nevnte
+  };
+  if (LETT) { sendHendelse(last, true); return; }   // stille: nevningen står i teksten uansett
+  const url = TJENESTER && TJENESTER.varsel;
+  if (!url) return;
+  try {
+    fetch(url, {
+      method: "POST", mode: "no-cors", keepalive: true,
+      headers: { "content-type": "text/plain" },
+      body: JSON.stringify(last)
+    }).catch(() => {});
+  } catch (_) {}
 }
 
 // ---------- 💬 Svar på en markering ----------
@@ -496,6 +547,7 @@ export function leggTilSvar(c, tekst) {
   const s = { id: nyId(), tekst: rent, forfatter: innloggetNavn(), dato: naaTekst(), endret: "" };
   c.svar = svarI(c).concat([s]);
   updateComment(c, {});
+  varsleNevning(c, rent, finnNevnte(rent, nevnListe(c)));
   if (LETT) sendHendelse({ type: "svar", markering: c.id, svar: s })
     .then(ok => { if (!ok) { merkUsendte(); renderCommentList(); } });
   return s;
@@ -1000,7 +1052,7 @@ function svarSeksjonHtml(c) {
         '</span></div>' +
       (redigerer === s.id
         ? redigerFeltHtml(s.tekst, "for-svar")
-        : '<div class="mp-svar-tekst">' + esc(s.tekst) + '</div>') +
+        : '<div class="mp-svar-tekst">' + nevningHtml(s.tekst, nevnListe(c), innloggetNavn()) + '</div>') +
     '</div>').join("");
 
   html += redigerer === "nytt"
@@ -1028,6 +1080,8 @@ function koblRedigering(rot, lagre) {
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); boks.querySelector(".mp-lagre").click(); }
     else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); boks.querySelector(".mp-avbryt").click(); }
   };
+  // @-nevning. Kobles FØR fokus, så lista er klar med en gang man skriver @.
+  koblNevning(felt, () => nevnListe(popFor));
   felt.focus();
   felt.setSelectionRange(felt.value.length, felt.value.length);
 }
@@ -1102,7 +1156,7 @@ export function openMarkerPopup(c) {
     '<div class="mp-kropp">' +
     (redigerer === ""
       ? redigerFeltHtml(c.text, "for-markering")
-      : '<div class="mp-text">' + esc(c.text) + '</div>') +
+      : '<div class="mp-text">' + nevningHtml(c.text, nevnListe(c), innloggetNavn()) + '</div>') +
     bildeStripeHtml(c, true) +
     tegningStripeHtml(c) +
     svarSeksjonHtml(c) +

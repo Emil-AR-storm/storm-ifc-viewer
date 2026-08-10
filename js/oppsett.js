@@ -65,6 +65,12 @@ export function bruk(o) {
   const w = String(o.worker || "").trim();
   if (/^https:\/\/[^\s"'<>]+$/.test(w)) TJENESTER.worker = w.replace(/\/+$/, "");
 
+  // Adressen @-nevninger varsles til (Power Automate / Teams-flyt). Samme
+  // strenge sjekk som worker-adressen: bare https, bare hele adresser.
+  // Mangler den, virker nevning fortsatt – den vises bare i appen.
+  const v = String(o.varsel || "").trim();
+  if (/^https:\/\/[^\s"'<>]+$/.test(v)) TJENESTER.varsel = v;
+
   return true;
 }
 
