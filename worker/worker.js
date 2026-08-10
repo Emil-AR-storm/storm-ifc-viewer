@@ -201,6 +201,29 @@ function varsle(env, ctx, tekst) {
   }).catch(() => {}));
 }
 
+// ---------- Vedlegg: bilde og talemelding ----------
+// Talemeldinger (N5) lagres på nøyaktig samme måte som kvitteringsbildene:
+// samme navneskjema (markeringsID-nr-slump), samme innboks, samme opprydding.
+// Det eneste som skiller dem er filendelsen — og at «seksjon» er «lyd».
+//
+// .m4a er Safari/iOS, .webm er Chrome/Android. Begge må godtas: montørene har
+// begge deler, og MediaRecorder gir ikke samme format på tvers.
+const VEDLEGG_MIME = {
+  jpg:  "image/jpeg",
+  m4a:  "audio/mp4",
+  webm: "audio/webm"
+};
+
+// Gir MIME-typen hvis filnavnet er gyldig, ellers null. Navnet må være helt
+// enkelt — ingen skråstrek, ingen punktum utover endelsen — så det aldri kan
+// peke ut av mappa i R2.
+function vedleggMime(navn) {
+  const m = /^[0-9a-zA-Z_-]+\.(jpg|m4a|webm)$/.exec(String(navn || ""));
+  return m ? VEDLEGG_MIME[m[1]] : null;
+}
+
+const erLyd = (navn) => /\.(m4a|webm)$/i.test(String(navn || ""));
+
 function ipFra(req) {
   return req.headers.get("CF-Connecting-IP") || "ukjent";
 }
@@ -464,12 +487,15 @@ export default {
       const skille = rest.indexOf("/");
       const prosjekt = rest.slice(0, skille);
       const navn = rest.slice(skille + 1);
-      if (!/^\d{5}$/.test(prosjekt) || !/^[0-9a-zA-Z_-]+\.jpg$/.test(navn)) return new Response("Ugyldig", { status: 400 });
+      // Ruta heter fortsatt /bilde/ av hensyn til lenker som alt finnes, men
+      // serverer nå alle vedlegg — også talemeldinger.
+      const mime = vedleggMime(navn);
+      if (!/^\d{5}$/.test(prosjekt) || !mime) return new Response("Ugyldig", { status: 400 });
       if (!await sjekkBevis(env, req, prosjekt)) return new Response("Skriv koden først", { status: 403 });
       const obj = await env.MODELLER.get(prosjekt + "/bilder/" + navn);
-      if (!obj) return new Response("Fant ikke bildet", { status: 404 });
+      if (!obj) return new Response("Fant ikke filen", { status: 404 });
       // filnavn er unike (slump på slutten) — trygt å bufre for alltid
-      return new Response(obj.body, { headers: { "content-type": "image/jpeg", "Cache-Control": "private, max-age=31536000, immutable" } });
+      return new Response(obj.body, { headers: { "content-type": mime, "Cache-Control": "private, max-age=31536000, immutable" } });
     }
 
     // POST /kvitter?fil=<navn>.jpg — montørens kvitteringsbilde til innboksen.
@@ -480,15 +506,19 @@ export default {
       const prosjekt = await lesBevis(env, req);
       if (!prosjekt) return new Response("Skriv koden først", { status: 403 });
       const fil = decodeURIComponent(url.searchParams.get("fil") || "").trim();
-      if (!/^[0-9a-zA-Z_-]+\.jpg$/.test(fil)) return new Response("Ugyldig filnavn", { status: 400 });
+      if (!vedleggMime(fil)) return new Response("Ugyldig filnavn", { status: 400 });
+      const lyd = erLyd(fil);
       const str = Number(req.headers.get("content-length") || 0);
-      if (str > 8_000_000) return new Response("Bildet er for stort", { status: 413 });
-      const seksjon = url.searchParams.get("seksjon") === "for" ? "for" : "etter";
+      // Lyd får mer plass enn et bilde: to minutter tale er ~2 MB, men en
+      // ukomprimert opptaker kan bomme høyere. Fortsatt et tak.
+      if (str > (lyd ? 20_000_000 : 8_000_000)) return new Response("Filen er for stor", { status: 413 });
+      const seksjon = lyd ? "lyd" : (url.searchParams.get("seksjon") === "for" ? "for" : "etter");
       await env.MODELLER.put(prosjekt + "/innboks/" + fil, req.body);
       await env.MODELLER.put(prosjekt + "/innboks/" + fil + ".json",
         JSON.stringify({ seksjon, tid: new Date().toISOString() }));
-      await logg(env, prosjekt, { ok: true, hva: "kvittering", fil, seksjon });
-      varsle(env, ctx, "📷 Nytt bilde fra byggeplassen på prosjekt " + prosjekt);
+      await logg(env, prosjekt, { ok: true, hva: lyd ? "talemelding" : "kvittering", fil, seksjon });
+      varsle(env, ctx, (lyd ? "🎤 Ny talemelding" : "📷 Nytt bilde") +
+        " fra byggeplassen på prosjekt " + prosjekt);
       return new Response("OK", { status: 200 });
     }
 
@@ -502,7 +532,21 @@ export default {
         return new Response("For stor", { status: 413 });
       }
       let inn; try { inn = await req.json(); } catch { return new Response("Ugyldig JSON", { status: 400 }); }
-      if (inn.type !== "ny-markering" && inn.type !== "svar") return new Response("Ukjent type", { status: 400 });
+      // «nevning» kom til med @-nevning (N4). Uten den her ble varselet avvist
+      // med 400 og forsvant stille — nevningen sto i teksten, men ingen fikk
+      // beskjed, som var hele poenget med den.
+      const KJENTE = ["ny-markering", "svar", "nevning"];
+      if (!KJENTE.includes(inn.type)) return new Response("Ukjent type", { status: 400 });
+      if (inn.type === "nevning") {
+        // Ren beskjed: teksten ligger allerede i markeringen eller kommentaren
+        // som ble sendt rett før. Legger vi den i innboksen også, får
+        // prosjektlederen den samme meldingen to ganger.
+        const hvem = Array.isArray(inn.nevnte) ? inn.nevnte.slice(0, 10).join(", ") : "";
+        await logg(env, prosjekt, { ok: true, hva: "nevning" });
+        varsle(env, ctx, "🔔 " + String(inn.fra || "Byggeplassen").slice(0, 60) +
+          " nevnte " + (hvem || "noen") + " på prosjekt " + prosjekt);
+        return new Response("OK");
+      }
       const navn = "h-" + Date.now() + "-" + crypto.randomUUID().slice(0, 8) + ".json";
       await env.MODELLER.put(prosjekt + "/innboks/" + navn,
         JSON.stringify({ ...inn, mottatt: new Date().toISOString() }));
