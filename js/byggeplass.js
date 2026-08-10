@@ -276,7 +276,14 @@ async function hentInnboks(prosjekt, token) {
       const sr = await hent(navn + ".json");
       if (sr.ok) { try { seksjon = (await sr.json()).seksjon === "for" ? "for" : "etter"; } catch (_) {} }
       const bi = await hent(navn);
-      if (!bi.ok) continue;
+      if (!bi.ok) {
+        // Stille «continue» her kostet en feilsøkingsrunde: Workeren avviste
+        // .m4a på innboks-ruta, filen ble hoppet over, og telleren på
+        // Byggeplass-knappen fortsatte å telle noe som aldri kunne hentes.
+        // Nå står det i konsollen hva som ikke kom hjem, og hvorfor.
+        console.warn("Fikk ikke hentet «" + navn + "» fra innboksen (HTTP " + bi.status + ")");
+        continue;
+      }
       const blob = await bi.blob();
       await lastOpp(blob, navn);   // til Storms SharePoint — sluttilstanden er at alt ligger her
       const felt = erLyd ? "lyd" : (seksjon === "for" ? "bilder" : "bilderEtter");
