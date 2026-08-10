@@ -353,7 +353,7 @@ button.active { background: var(--aktiv-bg); border-color: var(--aktiv-bg); colo
 #markerPop button.mp-endre:hover { color: var(--accent2); }
 
 /* ✏️ Tekstfelt for redigering – både på markeringen og på en kommentar */
-#markerPop .mp-rediger { margin: 2px 0 4px; }
+#markerPop .mp-rediger { margin: 2px 0 4px; position: relative; }  /* holder @-lista på plass */
 #markerPop .mp-rediger-tekst {
   width: 100%; box-sizing: border-box; resize: vertical;
   background: var(--panel2); color: var(--text);
@@ -777,3 +777,47 @@ button.active { background: var(--aktiv-bg); border-color: var(--aktiv-bg); colo
   #splashSone { padding: 14px 12px; gap: 10px; }
   #splash .storm-logo-full { width: 200px; }
 }
+
+/* ============================================================
+   @-NEVNING
+   Nevningene lagres ikke som eget felt – de leses ut av teksten hver gang
+   den vises. Se toppen av js/nevning.js.
+   ============================================================ */
+.nevn {
+  color: var(--accent);
+  font-weight: 600;
+  border-radius: 4px;
+  padding: 0 2px;
+}
+/* Er det DU som er nevnt, skal det ikke gå i ett med resten */
+.nevn.meg {
+  background: var(--accent);
+  color: var(--paa-accent);
+}
+
+/* Autofullfør-lista. Ligger rett under tekstfeltet; foreldrene har
+   position: relative (#commentDialog og .mp-rediger). */
+.nevn-liste {
+  /* Ingen left/right: da brukes feltets egen plass i flyten, og lista legger
+     seg rett under tekstfeltet. Med left:0 ville den festet seg til dialogens
+     PADDING-kant og blitt 32 px for bred. */
+  position: absolute;
+  width: max-content;
+  min-width: 190px;
+  max-width: 100%;
+  z-index: 30;
+  margin-top: 2px;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  box-shadow: var(--skygge);
+  overflow: hidden;
+  max-height: 190px; overflow-y: auto;
+}
+.nevn-rad {
+  padding: 8px 10px;
+  font-size: var(--t-base, 13px);
+  cursor: pointer;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.nevn-rad.valgt, .nevn-rad:hover { background: var(--accent); color: var(--paa-accent); }
