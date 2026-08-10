@@ -272,9 +272,16 @@ async function hentInnboks(prosjekt, token) {
         if (gammel(tid)) { await slett(navn); await slett(navn + ".json"); }
         continue;
       }
-      let seksjon = "etter";
+      let seksjon = "etter", av = "", tid = "";
       const sr = await hent(navn + ".json");
-      if (sr.ok) { try { seksjon = (await sr.json()).seksjon === "for" ? "for" : "etter"; } catch (_) {} }
+      if (sr.ok) {
+        try {
+          const k = await sr.json();
+          seksjon = k.seksjon === "for" ? "for" : "etter";
+          av = String(k.av || "");
+          tid = k.tid ? new Date(k.tid).toLocaleString("no-NO") : "";
+        } catch (_) {}
+      }
       const bi = await hent(navn);
       if (!bi.ok) {
         // Stille «continue» her kostet en feilsøkingsrunde: Workeren avviste
@@ -286,8 +293,14 @@ async function hentInnboks(prosjekt, token) {
       }
       const blob = await bi.blob();
       await lastOpp(blob, navn);   // til Storms SharePoint — sluttilstanden er at alt ligger her
-      const felt = erLyd ? "lyd" : (seksjon === "for" ? "bilder" : "bilderEtter");
-      if (!(c[felt] || []).includes(navn)) c[felt] = (c[felt] || []).concat(navn);
+      if (erLyd) {
+        // Talemeldinger bærer avsender og tidspunkt; bildene er bare filnavn.
+        if (!(c.lyd || []).some(l => (typeof l === "string" ? l : l && l.fil) === navn))
+          c.lyd = (c.lyd || []).concat([{ fil: navn, av, dato: tid }]);
+      } else {
+        const felt = seksjon === "for" ? "bilder" : "bilderEtter";
+        if (!(c[felt] || []).includes(navn)) c[felt] = (c[felt] || []).concat(navn);
+      }
       await slett(navn);
       await slett(navn + ".json");
       inn++;

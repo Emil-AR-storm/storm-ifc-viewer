@@ -145,11 +145,15 @@ async function sikreMappe(token, sid) {
 // LETTMODUS: montørens kvitteringsbilde går til Workerens innboks i R2 —
 // prosjektlederen henter det til SharePoint neste gang han åpner modellen
 // innlogget. Prosjektet leses av Workeren fra beviset (kaka fra kodefeltet).
-export async function lastOpp(blob, navn) {
+// «av» er navnet på den som lagde fila. Brukes av talemeldinger: på
+// byggeplassen finnes ingen innlogging å slå opp i senere, så navnet må følge
+// med i det filen sendes — ellers er avsenderen tapt for godt.
+export async function lastOpp(blob, navn, av) {
   const mime = vedleggMime(navn);
   if (LETT) {
     const r = await fetch("/kvitter?fil=" + encodeURIComponent(navn) +
-      "&seksjon=" + (S._lettSeksjon === "for" ? "for" : "etter"), {
+      "&seksjon=" + (S._lettSeksjon === "for" ? "for" : "etter") +
+      (av ? "&av=" + encodeURIComponent(String(av).slice(0, 60)) : ""), {
       method: "POST", headers: { "content-type": mime }, body: blob
     });
     if (!r.ok) throw new Error(t("Fikk ikke sendt filen") + " (" + r.status + ")");

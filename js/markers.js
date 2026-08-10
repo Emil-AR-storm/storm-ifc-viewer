@@ -251,7 +251,10 @@ export function vaskMarkering(r) {
   if (Array.isArray(r.bilder)) c.bilder = r.bilder.filter(b => typeof b === "string");
   if (Array.isArray(r.bilderEtter)) c.bilderEtter = r.bilderEtter.filter(b => typeof b === "string");
   // Talemeldinger (N5). Navnet vaskes hardt: bare filnavnet, aldri en sti.
-  if (Array.isArray(r.lyd)) c.lyd = r.lyd.map(trygtLyd).filter(Boolean);
+  if (Array.isArray(r.lyd)) c.lyd = r.lyd
+    .map(l => (typeof l === "string" ? { fil: l } : l))
+    .filter(l => l && trygtLyd(l.fil))
+    .map(l => ({ fil: trygtLyd(l.fil), av: String(l.av || "").slice(0, 60), dato: String(l.dato || "") }));
   if (Array.isArray(r.tegninger)) c.tegninger = r.tegninger
     .filter(t => t && typeof t === "object")
     .map(t => ({ fil: String(t.fil || ""), itemId: String(t.itemId || ""),
@@ -599,7 +602,18 @@ export function alleBilder(c) {
 }
 
 // ---------- 🎤 Talemeldinger ----------
-export const lydI = (c) => (c && Array.isArray(c.lyd) ? c.lyd : []);
+// En talemelding er { fil, av, dato }. Eldre opptak ble lagret som bare et
+// filnavn, og de leses fortsatt — de får bare tom avsender. Normaliseringen
+// gjøres HER, ikke i vasken alene, fordi lista også kommer fra byggeplassen og
+// fra localStorage.
+function lydI(c) {
+  if (!c || !Array.isArray(c.lyd)) return [];
+  return c.lyd.map(l => (typeof l === "string" ? { fil: l, av: "", dato: "" } : {
+    fil: String((l && l.fil) || ""), av: String((l && l.av) || ""), dato: String((l && l.dato) || "")
+  })).filter(l => l.fil);
+}
+
+const lydFiler = (c) => lydI(c).map(l => l.fil);
 
 function lydStripeHtml(c, kanLeggeTil) {
   const liste = lydI(c);
@@ -607,7 +621,11 @@ function lydStripeHtml(c, kanLeggeTil) {
   if (!liste.length && !kan) return "";
   return '<div class="mp-seksjon mp-lyd-seksjon"><div class="mp-seksjon-tittel">' +
     t("Talemelding") + (liste.length ? ' <span>' + liste.length + '</span>' : "") + '</div>' +
-    liste.map(f => '<div class="mp-lyd" data-lyd="' + esc(f) + '"></div>').join("") +
+    liste.map(l => '<div class="mp-lyd" data-lyd="' + esc(l.fil) + '">' +
+      (l.av || l.dato
+        ? '<div class="mp-lyd-meta">' + esc([l.av, l.dato].filter(Boolean).join(" · ")) + '</div>'
+        : "") +
+      '</div>').join("") +
     (kan ? '<button class="mp-tegning nytt mp-lyd-ny">' + ikon("mikrofon") + ' ' + t("Ta opp talemelding") + '</button>' : "") +
     '</div>';
 }
@@ -618,7 +636,11 @@ function fyllLyd(rot) {
     if (el.dataset.fylt) return;
     el.dataset.fylt = "1";
     const url = await lydUrl(el.dataset.lyd);
-    if (!url) { el.classList.add("mangler"); el.innerHTML = ikon("laas") + " " + t("Logg inn for å høre opptaket"); return; }
+    if (!url) {
+      el.classList.add("mangler");
+      el.insertAdjacentHTML("beforeend", '<span>' + ikon("laas") + " " + t("Logg inn for å høre opptaket") + '</span>');
+      return;
+    }
     const a = document.createElement("audio");
     a.controls = true;
     a.preload = "none";        // ikke last ned før noen trykker play
@@ -670,8 +692,12 @@ async function taOppTil(c, knapp) {
     loadingEl.classList.add("open");
     try {
       const navn = lydNavn(c.id, alleBilder(c).length + lydI(c).length + 1, res.endelse);
-      await lastOpp(res.blob, navn);
-      c.lyd = lydI(c).concat([navn]);
+      const av = innloggetNavn();
+      // Navnet sendes MED opplastingen. På byggeplassen går fila til Workerens
+      // innboks, og der er det ingen innlogging å hente et navn fra senere —
+      // rekker vi det ikke her, er avsenderen tapt for godt.
+      await lastOpp(res.blob, navn, av);
+      c.lyd = lydI(c).concat([{ fil: navn, av, dato: naaTekst() }]);
       persist();
       pushSharedComments();
       renderCommentList();
@@ -1340,7 +1366,7 @@ export function goToComment(c) {
 export function deleteComment(id) {
   const c = S.comments.find(c => c.id == id);
   // bildefilene i SharePoint ryddes med, så vi ikke samler opp foreldreløse filer
-  if (c && (alleBilder(c).length || lydI(c).length)) slettBilder(alleBilder(c).concat(lydI(c)));
+  if (c && (alleBilder(c).length || lydI(c).length)) slettBilder(alleBilder(c).concat(lydFiler(c)));
   S.comments = S.comments.filter(c => c.id != id);
   markerGroup.children.filter(s => s.userData.commentId == id).forEach(s => markerGroup.remove(s));
   persist(); pushSharedComments(); renderCommentList();
