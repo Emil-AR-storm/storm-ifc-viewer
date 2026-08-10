@@ -82,6 +82,14 @@ class SimpleControls {
     if (len < 0.2 || len > 8000) return;
     this.camera.position.copy(this.target).add(off);
   }
+  // Offentlige navn på de tre bevegelsene. _rotate/_pan/_zoom er interne, og
+  // navigasjonshjulet (js/hjul.js) trenger dem utenfra. Å kalle en
+  // understrek-metode fra en annen modul er en ulykke som venter på å skje —
+  // da står det ingenting i veien for at noen «rydder» dem bort.
+  roter(dx, dy) { this._rotate(dx, dy); }
+  panorer(dx, dy) { this._pan(dx, dy); }
+  zoomSteg(skala) { this._zoom(skala); }
+
   update() { this.camera.lookAt(this.target); }
 }
 
