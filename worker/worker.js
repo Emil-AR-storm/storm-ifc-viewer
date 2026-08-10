@@ -678,11 +678,17 @@ export default {
         return Response.json((liste.objects || []).map(o => o.key.slice((prosjekt + "/innboks/").length)), { headers: cors });
       }
       const navn = skille === -1 ? "" : rest.slice(skille + 1);
-      if (!/^[0-9a-zA-Z_.-]+\.(jpg|json)$/.test(navn) || navn.includes("..")) return new Response("Ugyldig filnavn", { status: 400 });
+      // Talemeldinger (.m4a/.webm) MÅ stå her sammen med .jpg og .json.
+      // Sto de ikke her, ville lista over innboksen vist dem — og telleren på
+      // Byggeplass-knappen talt dem — mens selve nedlastingen svarte 400 og ble
+      // hoppet stille over i hentInnboks(). Resultatet var en teller som aldri
+      // kunne nullstilles og talemeldinger som aldri kom hjem.
+      if (!/^[0-9a-zA-Z_.-]+\.(jpg|m4a|webm|json)$/.test(navn) || navn.includes("..")) return new Response("Ugyldig filnavn", { status: 400 });
       if (req.method === "GET") {
         const obj = await env.MODELLER.get(prosjekt + "/innboks/" + navn);
         if (!obj) return new Response("Fant ikke", { status: 404, headers: cors });
-        return new Response(obj.body, { headers: { ...cors, "content-type": navn.endsWith(".json") ? "application/json" : "image/jpeg" } });
+        return new Response(obj.body, { headers: { ...cors,
+          "content-type": navn.endsWith(".json") ? "application/json" : (vedleggMime(navn) || "application/octet-stream") } });
       }
       if (req.method === "DELETE") {
         await env.MODELLER.delete(prosjekt + "/innboks/" + navn);
