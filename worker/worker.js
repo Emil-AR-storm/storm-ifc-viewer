@@ -513,12 +513,16 @@ export default {
       // ukomprimert opptaker kan bomme høyere. Fortsatt et tak.
       if (str > (lyd ? 20_000_000 : 8_000_000)) return new Response("Filen er for stor", { status: 413 });
       const seksjon = lyd ? "lyd" : (url.searchParams.get("seksjon") === "for" ? "for" : "etter");
+      // Hvem som sendte den. Selvrapportert på byggeplassen (det er all
+      // identitet som finnes der), kappet og renset for kontrolltegn så den
+      // ikke kan brukes til å smugle noe inn i sidekortet.
+      const av = (url.searchParams.get("av") || "").replace(/[\u0000-\u001f]/g, "").trim().slice(0, 60);
       await env.MODELLER.put(prosjekt + "/innboks/" + fil, req.body);
       await env.MODELLER.put(prosjekt + "/innboks/" + fil + ".json",
-        JSON.stringify({ seksjon, tid: new Date().toISOString() }));
+        JSON.stringify({ seksjon, av, tid: new Date().toISOString() }));
       await logg(env, prosjekt, { ok: true, hva: lyd ? "talemelding" : "kvittering", fil, seksjon });
       varsle(env, ctx, (lyd ? "🎤 Ny talemelding" : "📷 Nytt bilde") +
-        " fra byggeplassen på prosjekt " + prosjekt);
+        (av ? " fra " + av : " fra byggeplassen") + " på prosjekt " + prosjekt);
       return new Response("OK", { status: 200 });
     }
 
