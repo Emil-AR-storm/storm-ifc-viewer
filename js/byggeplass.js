@@ -102,6 +102,11 @@ if (btn) btn.addEventListener("click", async () => {
     loadingText.textContent = t("Laster opp markeringene …");
     const vaskede = (S.comments || []).map(c => ({
       id: c.id, text: c.text || "", author: c.author || "", date: c.date || "",
+      // J4: endret/endretAv MÅ være med. Uten dem leser montøren en omskrevet
+      // avvikstekst under opprinnelig forfatter og dato, og tror han leser det
+      // som ble skrevet i går. (Til forskjell fra eier og frist er dette ikke
+      // noe vi holder igjen med vilje – det manglet.)
+      endret: c.endret || "", endretAv: c.endretAv || "",
       status: c.status || "Åpen", x: c.x, y: c.y, z: c.z,
       bilder: c.bilder || [], bilderEtter: c.bilderEtter || [],
       // kommentartråden og tegnings-HENVISNINGENE er med nå (trinn 5b) —
