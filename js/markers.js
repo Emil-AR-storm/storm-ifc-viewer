@@ -48,7 +48,9 @@ async function lastLettMarkeringer() {
   } catch (_) {}
   markerGroup.clear();
   S.comments.forEach(addMarkerSprite);
+  merkUsendte();          // J5: det som ligger i køen finnes ikke hos Workeren ennå
   renderCommentList();
+  toemKo();               // og prøv å få det av gårde med en gang
 }
 
 function persist() {
@@ -66,9 +68,28 @@ export function leggTilImportertMarkering(c) {
 }
 
 // LETTMODUS: nye markeringer og kommentarer sendes til Workerens innboks.
-// Feiler sendingen, sier vi fra — en stille feil her ville sett ut som at
-// avviket ble meldt, uten at det noen gang kom fram.
-async function sendHendelse(hendelse) {
+//
+// J5 – KØ FOR DET SOM IKKE KOM FRAM.
+// Før fikk montøren bare en alert når sendingen feilet, mens markeringen ble
+// liggende i S.comments og tegnet i modellen. Siden loadComments aldri leser
+// localStorage i lettmodus, forsvant den sporløst ved neste sideinnlasting –
+// og montøren hadde ingen måte å vite det på. På en byggeplass med dårlig
+// dekning er det ikke et kanttilfelle.
+//
+// Nå legges hendelsen i en kø i localStorage, markeringen tegnes blass og
+// merkes «ikke sendt», og køen tømmes automatisk når nettet er tilbake.
+const KO_NOKKEL = "storm-bp-usendt";
+
+function koLes() {
+  try { const a = JSON.parse(localStorage.getItem(KO_NOKKEL)); return Array.isArray(a) ? a : []; }
+  catch (_) { return []; }
+}
+
+function koSkriv(a) {
+  try { localStorage.setItem(KO_NOKKEL, JSON.stringify(a)); } catch (_) {}
+}
+
+async function sendHendelse(hendelse, fraKo) {
   try {
     const r = await fetch("/hendelse", {
       method: "POST",
@@ -78,9 +99,65 @@ async function sendHendelse(hendelse) {
     if (!r.ok) throw new Error("HTTP " + r.status);
     return true;
   } catch (_) {
-    alert(t("Fikk ikke sendt dette til prosjektlederen – sjekk nettet og prøv igjen."));
+    if (!fraKo) {
+      koSkriv(koLes().concat([hendelse]));
+      alert(t("Fikk ikke sendt dette til prosjektlederen nå. Det er lagret på telefonen og sendes automatisk når du har nett igjen."));
+    }
     return false;
   }
+}
+
+// Prøver hele køen på nytt. Kalles ved oppstart, når nettleseren melder at
+// nettet er tilbake, og hvert minutt. Serielt med vilje – en byggeplass har
+// sjelden båndbredde til overs.
+let koJobber = false;
+
+async function toemKo() {
+  if (!LETT || koJobber || !navigator.onLine) return;
+  const a = koLes();
+  if (!a.length) return;
+  koJobber = true;
+  const igjen = [];
+  for (const h of a) if (!(await sendHendelse(h, true))) igjen.push(h);
+  koSkriv(igjen);
+  koJobber = false;
+  if (igjen.length < a.length) { merkUsendte(); renderCommentList(); }
+}
+
+// Henger «ikke sendt»-merket på det som fortsatt ligger i køen, og legger
+// usendte markeringer tilbake i lista – de finnes jo ikke hos Workeren ennå.
+function merkUsendte() {
+  if (!LETT) return;
+  const ko = koLes();
+  S.comments.forEach(c => { delete c.usendt; svarI(c).forEach(s => { delete s.usendt; }); });
+
+  for (const h of ko) {
+    if (h.type !== "ny-markering" || !h.markering) continue;
+    let c = S.comments.find(x => String(x.id) === String(h.markering.id));
+    if (!c) {
+      c = vaskMarkering(h.markering);
+      if (!c) continue;
+      S.comments.push(c);
+      addMarkerSprite(c);
+    }
+    c.usendt = true;
+  }
+  for (const h of ko) {
+    if (h.type !== "svar" || !h.svar) continue;
+    const c = S.comments.find(x => String(x.id) === String(h.markering));
+    if (!c) continue;
+    let sv = svarI(c).find(x => String(x.id) === String(h.svar.id));
+    if (!sv) { sv = Object.assign({}, h.svar); c.svar = svarI(c).concat([sv]); }
+    sv.usendt = true;
+  }
+  // tegn markeringene på nytt så de blasse blir blasse
+  markerGroup.clear();
+  S.comments.forEach(addMarkerSprite);
+}
+
+if (LETT) {
+  addEventListener("online", toemKo);
+  setInterval(toemKo, 60000);
 }
 
 // ---- Delte markeringer (lagres som JSON i SharePoint: IFC-modeller/Markeringer) ----
@@ -366,6 +443,8 @@ frameHooks.push(skalerMarkeringer);
 
 function addMarkerSprite(comment) {
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: textureFor(statusOf(comment)), depthTest: false }));
+  // J5: en markering som ikke kom fram tegnes blass, så den ikke ser ut som meldt
+  if (comment.usendt) { sprite.material.transparent = true; sprite.material.opacity = 0.4; }
   sprite.position.set(comment.x, comment.y, comment.z);
   sprite.renderOrder = 999;
   sprite.userData.commentId = comment.id;
@@ -417,7 +496,8 @@ export function leggTilSvar(c, tekst) {
   const s = { id: nyId(), tekst: rent, forfatter: innloggetNavn(), dato: naaTekst(), endret: "" };
   c.svar = svarI(c).concat([s]);
   updateComment(c, {});
-  if (LETT) sendHendelse({ type: "svar", markering: c.id, svar: s });
+  if (LETT) sendHendelse({ type: "svar", markering: c.id, svar: s })
+    .then(ok => { if (!ok) { merkUsendte(); renderCommentList(); } });
   return s;
 }
 
@@ -1159,7 +1239,11 @@ window.saveComment = function() {
     text,
     author: innloggetNavn(),
     status: "Åpen",
-    owner: (ANSATTE[0] && ANSATTE[0].navn) || "",
+    // J1: INGEN automatisk ansvarlig. Sto det ANSATTE[0] her, ble den som
+    // tilfeldigvis står øverst i oppsett.json stille eier av alt som opprettes –
+    // uten at noen valgte det, og uten at noen fikk beskjed. Tom eier er synlig
+    // og ærlig; feil eier ser riktig ut, og da oppdager ingen den.
+    owner: "",
     due: "",
     svar: [],
     x: S.pendingPoint.x, y: S.pendingPoint.y, z: S.pendingPoint.z,
@@ -1174,7 +1258,11 @@ window.saveComment = function() {
     sendHendelse({ type: "ny-markering", markering: {
       id: c.id, text: c.text, author: c.author, date: c.date,
       status: "Åpen", x: c.x, y: c.y, z: c.z
-    } }).then(ok => { if (ok) alert(t("Markeringen er sendt til prosjektlederen.")); });
+    } }).then(ok => {
+      if (ok) { alert(t("Markeringen er sendt til prosjektlederen.")); return; }
+      merkUsendte();          // J5: tegn den blass og merk den «ikke sendt»
+      renderCommentList();
+    });
   }
   S.pendingPoint = null;
   // markeringen er lagret nå – bildene lastes opp i bakgrunnen etterpå
@@ -1229,6 +1317,22 @@ async function sendTilPlanner(list) {
       t(" Sett frist først – Planner-oppgaven trenger en dato."));
     return;
   }
+  // J3: en oppgave uten mottaker er verre enn ingen oppgave – alle tror den er
+  // sendt. Står det et navn i «owner» som ikke finnes i ANSATTE med Entra-GUID
+  // (tidligere ansatt, eller navnet skrevet litt annerledes), ville assignees
+  // blitt tom og oppgaven opprettet i det stille. Stopp før det skjer.
+  const ukjent = [...new Set(list.filter(c => c.owner && !ANSATTE.some(a => a.navn === c.owner))
+                                 .map(c => c.owner))];
+  if (ukjent.length) {
+    alert(t("Fant ikke {0} i ansattlista, så oppgaven ville ikke fått noen mottaker. Velg en ansvarlig fra lista først.",
+      ukjent.map(n => "«" + n + "»").join(", ")));
+    return;
+  }
+  const utenEier = list.filter(c => !c.owner);
+  if (utenEier.length && !confirm(utenEier.length === 1
+      ? t("Markeringen har ingen ansvarlig. Oppgaven blir liggende i Planner uten mottaker. Fortsette?")
+      : t("{0} markeringer har ingen ansvarlig. Oppgavene blir liggende i Planner uten mottaker. Fortsette?", utenEier.length))) return;
+
   const alt = list.filter(c => c.taskId);
   if (alt.length && !confirm(alt.length === 1
       ? t("Denne markeringen har allerede en Planner-oppgave. Lage en ny?")
@@ -1316,6 +1420,8 @@ export function renderCommentList() {
         (c.owner ? ' · ' + esc(c.owner) : "") +
         (c.due ? ' ' + t("· frist ") + esc(c.due.split("-").reverse().join(".")) : "") +
         (isOverdue(c) ? ' <span style="color:var(--danger)">' + ikon("advarsel") + ' ' + t("gått") + '</span>' : "") +
+        (c.usendt ? ' · <span style="color:var(--warn)" title="' + t("Ligger lagret på telefonen og sendes når du har nett igjen.") + '">' +
+          ikon("advarsel") + ' ' + t("ikke sendt") + '</span>' : "") +
         (c.taskId ? ' · <span title="Har en Planner-oppgave">' + ikon("planner") + '</span>' : "") +
         (svarI(c).length ? ' · <span title="' + t("{0} kommentarer", svarI(c).length) + '">' +
           ikon("svar") + ' ' + svarI(c).length + '</span>' : "") +
