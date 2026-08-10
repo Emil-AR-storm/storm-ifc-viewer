@@ -821,3 +821,53 @@ button.active { background: var(--aktiv-bg); border-color: var(--aktiv-bg); colo
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .nevn-rad.valgt, .nevn-rad:hover { background: var(--accent); color: var(--paa-accent); }
+
+/* ============================================================
+   🎤 TALEMELDING
+   Lagres som bildene (se js/lyd.js for hvorfor opptak og ikke diktering).
+   ============================================================ */
+/* Avspilleren tar mye plass i en boble som også skal ha bilder, tegninger og
+   kommentarer. Nettleserens lydkontroll har ingen «liten»-variant, så den
+   skaleres ned med transform. Bredden kompenseres (100 / 0,62 = 161 %) slik at
+   den fyller bobla etter skaleringen, og hylsa klippes til den nye høyden –
+   ellers ville den etterlatt 13 px tom luft under seg. */
+#markerPop .mp-lyd { margin: 2px 0 6px; }
+#markerPop .mp-lyd-meta {
+  font-size: var(--t-meta, 11px); color: var(--muted);
+  margin-bottom: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#markerPop .mp-lyd audio {
+  width: 161%; height: 34px; display: block;
+  transform: scale(.62); transform-origin: left top;
+}
+/* Skaleringen krymper det som TEGNES, ikke plassen elementet tar. Uten den
+   negative margen (34 − 21 = 13 px) ville hver avspiller etterlatt 13 px
+   tom luft under seg. */
+#markerPop .mp-lyd { overflow: hidden; }
+#markerPop .mp-lyd audio { margin-bottom: -13px; }
+
+/* På berøringsskjerm står montøren med hansker. Der er en 21 px høy play-knapp
+   ubrukelig, så avspilleren beholder full størrelse. */
+@media (hover: none) {
+  #markerPop .mp-lyd audio { width: 100%; transform: none; margin-bottom: 0; }
+}
+
+#markerPop .mp-lyd.mangler {
+  display: flex; align-items: center; gap: 6px;
+  font-size: var(--t-liten, 12px); color: var(--muted);
+  border: 1px dashed var(--border); border-radius: var(--radius);
+  padding: 8px 10px;
+}
+/* Under opptak må knappen se annerledes ut enn alt annet i bobla – ellers vet
+   man ikke om mikrofonen faktisk står på. */
+#markerPop .mp-lyd-ny.tar-opp {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--paa-accent);
+  font-variant-numeric: tabular-nums;
+  animation: lyd-puls 1.4s ease-in-out infinite;
+}
+@keyframes lyd-puls { 0%, 100% { opacity: 1 } 50% { opacity: .7 } }
+@media (prefers-reduced-motion: reduce) {
+  #markerPop .mp-lyd-ny.tar-opp { animation: none; }
+}
