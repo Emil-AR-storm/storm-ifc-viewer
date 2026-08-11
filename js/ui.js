@@ -2,6 +2,9 @@
 import { $, DEFAULT_APPEAR, DEFAULT_KEYS, DEFAULT_SETTINGS, S, esc, gjettEnhetSkala, ikon, lukkPaneler, velgEnhetSkala, writePrefs } from "./state.js";
 import { SPRAK, setLang, t } from "./i18n.js";
 import { angre, gjenopprett } from "./angre.js";
+import { FRISTER } from "./config.js";
+import { vaskGrenser } from "./frist.js";
+import { renderCommentList, tegnAlleMarkeringerPaNytt } from "./markers.js";
 import { applyAxisFont } from "./axes.js";
 import { showClipBar, stopFacePick } from "./clip.js";
 import { DEFAULT_BG, resetColors } from "./display.js";
@@ -114,6 +117,22 @@ function renderSettings() {
     Math.round(S.settings.miniSize) + ' px</span></span>' +
     '<input type="range" id="stMiniSz" min="100" max="400" step="10" value="' + S.settings.miniSize + '"></div>';
 
+  // ---------- Fristgrenser ----------
+  // Merket «gjelder hele Storm» med vilje: verdiene ligger i oppsett.json, ikke
+  // i det personlige oppsettet. Hadde hver enkelt hatt sine egne grenser, ville
+  // to personer sett på samme modell og vært uenige om hva som brenner.
+  //
+  // Endringen her er derfor MIDLERTIDIG for denne økta — den varer til
+  // oppsett.json hentes på nytt. Det står i hjelpeteksten, så ingen tror de har
+  // lagret noe de ikke har lagret.
+  html += '<h4>' + t("Frister") + '</h4>' +
+    '<div class="set-row"><span class="n">' + t("Gul ring fra (dager igjen)") + '</span>' +
+    '<input type="number" id="stFristGul" min="0" max="365" step="1" value="' + FRISTER.gul + '"></div>' +
+    '<div class="set-row"><span class="n">' + t("Rød ring fra (dager igjen)") + '</span>' +
+    '<input type="number" id="stFristRod" min="0" max="365" step="1" value="' + FRISTER.rod + '"></div>' +
+    '<p style="color:var(--muted); font-size:11px; margin:4px 0 0">' +
+    t("Gjelder hele Storm. Varig endring gjøres i oppsett.json i SharePoint — her gjelder den bare til siden lastes på nytt.") + '</p>';
+
   // Sammenleggbar: 11 tastrader gjorde menyen så lang at knappene nederst havnet
   // utenfor synlig område uten at man skjønte at man måtte rulle.
   html += '<details' + (S.keyWaitFor ? " open" : "") + '><summary><h4 style="display:inline">' + t("Hurtigtaster") + '</h4>' +
@@ -218,6 +237,18 @@ function renderSettings() {
     $("stMiniV").textContent = S.settings.miniSize + " px";
     applyMiniSize(); saveSettings();
   };
+  // onchange, ikke oninput: et tallfelt gir mellomtilstander mens man skriver
+  // («1» på vei mot «14»), og hver av dem ville tegnet alle markeringene på nytt.
+  const settFrist = () => {
+    const g = vaskGrenser({ gul: $("stFristGul").value, rod: $("stFristRod").value });
+    FRISTER.gul = g.gul; FRISTER.rod = g.rod;
+    // vaskGrenser kan ha byttet om på dem — vis hva som faktisk gjelder
+    $("stFristGul").value = g.gul; $("stFristRod").value = g.rod;
+    tegnAlleMarkeringerPaNytt();
+    renderCommentList();
+  };
+  $("stFristGul").onchange = settFrist;
+  $("stFristRod").onchange = settFrist;
   $("setBody").querySelectorAll("button[data-key]").forEach(b => {
     b.onclick = () => { S.keyWaitFor = b.dataset.key; renderSettings(); };
   });

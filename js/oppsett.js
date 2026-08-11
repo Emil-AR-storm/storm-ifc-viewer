@@ -11,7 +11,8 @@
 // Ingenting kaster. Det eneste som forsvinner er «Ansvarlig»-nedtrekket og
 // Planner-knappen, og begge sier fra hvorfor.
 import { S } from "./state.js";
-import { ANSATTE, PLANNER, TJENESTER } from "./config.js";
+import { ANSATTE, FRISTER, PLANNER, TJENESTER } from "./config.js";
+import { vaskGrenser } from "./frist.js";
 import { GRAPH, SP, authHeaders, graphGet, spTokenSilent } from "./sharepoint.js";
 
 const CACHE_KEY = "storm-ifc-oppsett";
@@ -70,6 +71,15 @@ export function bruk(o) {
   // Mangler den, virker nevning fortsatt – den vises bare i appen.
   const v = String(o.varsel || "").trim();
   if (/^https:\/\/[^\s"'<>]+$/.test(v)) TJENESTER.varsel = v;
+
+  // Fristgrensene: når skifter ringen rundt en markering til gul og rød?
+  // Firmaets verdier, ikke personlige — derfor her og ikke i S.settings.
+  // vaskGrenser tåler tull i en håndredigert fil: tekst, negative tall, og at
+  // gul og rod er byttet om (da hadde ingenting blitt gult).
+  if (o.frister) {
+    const g = vaskGrenser(o.frister);
+    FRISTER.gul = g.gul; FRISTER.rod = g.rod;
+  }
 
   return true;
 }

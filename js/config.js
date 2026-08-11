@@ -27,6 +27,20 @@ export const ANSATTE = [];
 // planen – Planner nekter å tilordne oppgaver til folk utenfor gruppen.
 export const PLANNER = { planId: "", bucket: "IFC-markeringer" };
 
+// ---------- Fristgrenser ----------
+// Når skifter ringen rundt en markering farge? gul = 8 betyr «gul når fristen
+// er om 8 dager eller mindre», rod = 3 tilsvarende.
+//
+// FIRMAETS, IKKE PERSONLIGE. Ligger derfor her og overstyres fra oppsett.json,
+// ikke i S.settings sammen med minikartstørrelsen. Hadde Simen hatt rød på 3 og
+// Steffen på 10, ville de sett på samme modell og vært uenige om hva som
+// brenner — uten å vite hvorfor.
+//
+// SAMME objekt hele veien, som ANSATTE og PLANNER: oppsett.js endrer innholdet,
+// aldri objektet. De som importerer herfra gjør det én gang, før hentingen er
+// ferdig, og ser endringen uten å gjøre noe.
+export const FRISTER = { gul: 8, rod: 3 };
+
 // ---------- Byggeplass-lenka (Cloudflare Worker) ----------
 // Adressen til Workeren som serverer byggeplass-lenka. Ikke persondata, så
 // standardverdien står her – oppsett.json kan overstyre den hos en kunde med

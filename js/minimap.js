@@ -67,15 +67,54 @@ export function renderMiniMap() {
 
 const _miniLast = { tx: NaN, tz: NaN, kx: NaN, kz: NaN };
 
+// FALLGRUVE: drawMiniOverlay ligger i frameHooks og kalles 60 ganger i sekundet.
+// Hopp-ut-sjekken under er derfor det eneste som holder kostnaden nede.
+//
+// Markeringene tegnes nå oppå kartet, og de kan endre seg UTEN at kamera flytter
+// seg — en status byttes, en frist settes. Uten et flagg måtte vi enten gå
+// gjennom hele markeringslista hvert bilde for å oppdage det, eller la endringen
+// bli usynlig til noen panorerte. Derfor: den som endrer noe setter
+// S.miniSkitten = true, og kartet tegner én gang til.
+//
+// Flagget settes fra markers.js via S, ikke ved at markers.js importerer denne
+// fila — en ny import ville flyttet på modulrekkefølgen, og denne fila gjør
+// DOM-oppslag på toppnivå.
+const MARKER_KANT = "#14181f";   // samme mørke som markeringene i 3D
+
 function drawMiniOverlay(force) {
   if (!S.miniInfo || !S.miniBase) return;
   const t = controls.target, k = camera.position;
-  if (!force && t.x === _miniLast.tx && t.z === _miniLast.tz && k.x === _miniLast.kx && k.z === _miniLast.kz) return;
+  const skitten = !!S.miniSkitten;
+  if (!force && !skitten &&
+      t.x === _miniLast.tx && t.z === _miniLast.tz && k.x === _miniLast.kx && k.z === _miniLast.kz) return;
+  S.miniSkitten = false;
   _miniLast.tx = t.x; _miniLast.tz = t.z; _miniLast.kx = k.x; _miniLast.kz = k.z;
   const { cx, cz, half, size } = S.miniInfo;
   const map = (wx, wz) => [size / 2 + (wx - cx) / half * (size / 2), size / 2 + (wz - cz) / half * (size / 2)];
   const ctx = miniCanvas.getContext("2d");
   ctx.putImageData(S.miniBase, 0, 0);
+
+  // ---------- Markeringene som prikker ----------
+  // Selve markeringssprite-ene skjules med vilje når toppvisningen renderes
+  // (se overlays i renderMiniMap) — de blir gale i ortografisk projeksjon.
+  // Men da så montøren bygget ovenfra uten å se HVOR avvikene er. Prikkene her
+  // gir et avvikskart: trykk der det er rødt, kamera flytter seg dit.
+  //
+  // S.hastegradFarge settes av markers.js. Er den ikke satt (kartet lastet før
+  // markeringene), tegnes prikkene grå i stedet for at noe kaster.
+  const farge = S.hastegradFarge;
+  if (farge) {
+    for (const c of (S.comments || [])) {
+      if (c.status === "Løst") continue;          // løste avvik roter til kartet
+      if (typeof c.x !== "number" || typeof c.z !== "number") continue;
+      const [mx, my] = map(c.x, c.z);
+      if (mx < 0 || my < 0 || mx > size || my > size) continue;   // utenfor kartet
+      ctx.beginPath(); ctx.arc(mx, my, 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = farge(c) || "#6b7280"; ctx.fill();
+      ctx.lineWidth = 1; ctx.strokeStyle = MARKER_KANT; ctx.stroke();
+    }
+  }
+
   const [px, py] = map(t.x, t.z);
   const [kx, ky] = map(k.x, k.z);
   ctx.strokeStyle = "#f59e0b"; ctx.fillStyle = "#f59e0b"; ctx.lineWidth = 2;

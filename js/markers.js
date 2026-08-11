@@ -3,7 +3,14 @@ import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.m
 import { $, S, esc, ikon, loadingEl, loadingText, lukkPaneler } from "./state.js";
 import { t } from "./i18n.js";
 import { LETT } from "./lett.js";
-import { ANSATTE, PLANNER, TJENESTER } from "./config.js";
+import { ANSATTE, FRISTER, PLANNER, TJENESTER } from "./config.js";
+import { HASTEGRAD, fristTekst, hastegrad, iDagISO, omDager, vaskGrenser } from "./frist.js";
+import { tegnMarkering } from "./markerbilde.js";
+// Minikartet varsles med et flagg på S, IKKE med en import av minimap.js.
+// Grunnen er modulrekkefølgen: minimap.js gjør DOM-oppslag ($("miniMap")) og
+// kaller applyMiniSize() på toppnivå. Importeres den herfra, kjører den koden
+// tidligere enn i dag, og en slik rekkefølgeendring er nøyaktig den typen feil
+// som viser seg som «svart minikart bare på mobil».
 import { finnNevnte, koblNevning, nevnKandidater, nevningHtml } from "./nevning.js";
 import { fmtTid, lydStottes, startOpptak } from "./lyd.js";
 import { fristTilISO, fullforOppgave, opprettOppgave, planUrl, plannerToken } from "./planner.js";
@@ -53,7 +60,19 @@ async function lastLettMarkeringer() {
       encodeURIComponent(S.fileName + ".markeringer.json"));
     if (r.ok) {
       const d = await r.json();
-      if (Array.isArray(d)) S.comments = d.map(vaskMarkering).filter(Boolean);
+      // BAKOVERKOMPATIBEL: fila var en naken array fram til format 2, og en
+      // gammel fil kan ligge i R2 lenge etter at klienten er oppdatert — helt
+      // til noen trykker Byggeplass igjen. Tåler koden bare det nye formatet,
+      // står byggeplassen tom i mellomtiden, uten feilmelding.
+      const rå = Array.isArray(d) ? d : (d && Array.isArray(d.markeringer) ? d.markeringer : []);
+      S.comments = rå.map(vaskMarkering).filter(Boolean);
+      // Fristgrensene kommer fra samme fil. Byggeplassen har ingen SharePoint
+      // og dermed ingen oppsett.json — dette er den eneste veien de kan komme.
+      // Mangler de, står FRISTER på standardverdiene 8/3.
+      if (d && d.grenser) {
+        const g = vaskGrenser(d.grenser);
+        FRISTER.gul = g.gul; FRISTER.rod = g.rod;
+      }
     }
   } catch (_) {}
   markerGroup.clear();
@@ -380,54 +399,48 @@ export const STATUS = {
 
 export const statusOf = (c) => (c && STATUS[c.status] ? c.status : "Åpen");
 
-// Frist som er gått, på noe som ikke er løst
+// ---------- Hastegrad ut fra frist ----------
+// Selve regelen ligger i js/frist.js, ikke her — den brukes også av minikartet
+// og (etter Del B) av Cloudflare-Workeren, og skal finnes ett sted.
+//
+// Dagens dato holdes i en variabel i stedet for å leses ved hvert kall.
+// Ikke av hensyn til ytelse, men fordi den DA kan sjekkes for endring ett sted
+// (se «midnattskroken» nederst): en modell som står åpen over natta skal ikke
+// vise gårsdagens hastegrad.
+let iDag = iDagISO();
+
+export const hastegradFor = (c) => hastegrad(c, FRISTER, iDag);
+
+// Minikartet trenger fargen, men skal ikke importere markers.js (den er 70 kB
+// og trekker inn halve verktøyet). Én funksjon på S er nok, og den settes her
+// slik at minimap.js virker uendret om markeringene aldri lastes.
+S.hastegradFarge = (c) => HASTEGRAD[hastegrad(c, FRISTER, iDag)].ring;
+export const fristTekstFor = (c) => fristTekst(c, FRISTER, iDag);
+export const dagensDato = () => iDag;
+
+// Frist som er gått, på noe som ikke er løst.
+// Bygget på hastegrad() i stedet for sin egen datosammenligning, så det finnes
+// ETT regnestykke. Signaturen er uendret — den kalles to steder fra før.
 export function isOverdue(c) {
-  if (!c.due || statusOf(c) === "Løst") return false;
-  return c.due < new Date().toISOString().slice(0, 10);
+  return hastegradFor(c) === "forfalt";
 }
 
-// Glyfen TEGNES med linjer i stedet for fillText: fonttegn som ➜ og ✓ finnes
-// ikke i alle sans-serif-fallbacker, og en tofu-boks inne i 3D-scenen er
-// vanskelig å feilsøke. Strektegning gir samme resultat på alle plattformer.
-const MARKER_KANT = "#14181f";   // samme mørke som bakgrunnen (scene.js)
-
-function tegnGlyf(ctx, glyph) {
-  ctx.strokeStyle = MARKER_KANT;
-  ctx.fillStyle = MARKER_KANT;
-  ctx.lineWidth = 13;
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
-  ctx.beginPath();
-  if (glyph === "!") {                    // Åpen: utropstegn
-    ctx.moveTo(64, 34); ctx.lineTo(64, 72);
-    ctx.stroke();
-    ctx.beginPath(); ctx.arc(64, 93, 8, 0, Math.PI * 2); ctx.fill();
-  } else if (glyph === "➜") {             // Pågår: pil mot høyre
-    ctx.moveTo(36, 64); ctx.lineTo(86, 64);
-    ctx.moveTo(64, 42); ctx.lineTo(88, 64); ctx.lineTo(64, 86);
-    ctx.stroke();
-  } else {                                // Løst: hake
-    ctx.moveTo(38, 66); ctx.lineTo(56, 84); ctx.lineTo(90, 46);
-    ctx.stroke();
-  }
-}
-
-function makeMarkerTexture(col, glyph) {
-  const c = document.createElement("canvas");
-  c.width = c.height = 128;
-  const ctx = c.getContext("2d");
-  ctx.beginPath(); ctx.arc(64, 64, 52, 0, Math.PI * 2);
-  ctx.fillStyle = col; ctx.fill();
-  ctx.lineWidth = 10; ctx.strokeStyle = MARKER_KANT; ctx.stroke();
-  tegnGlyf(ctx, glyph);
-  return new THREE.CanvasTexture(c);
+// ---------- Bobla i 3D ----------
+// Selve tegningen ligger i js/markerbilde.js — ren, uten three.js og uten
+// tilstand, slik at _test/lag-markeringsbilde.mjs kan kjøre den med et ekte
+// canvas og vise at glyfen ikke stikker ut og at ringen ikke klippes.
+function makeMarkerTexture(col, glyph, ringFarge) {
+  return new THREE.CanvasTexture(tegnMarkering(col, glyph, ringFarge));
 }
 
 const markerTextures = {};
-function textureFor(status) {
+function textureFor(status, hast) {
   const st = STATUS[status] || STATUS["Åpen"];
-  if (!markerTextures[status]) markerTextures[status] = makeMarkerTexture(st.col, st.glyph);
-  return markerTextures[status];
+  const h = HASTEGRAD[hast] ? hast : "ukjent";
+  const nokkel = status + "|" + h;
+  if (!markerTextures[nokkel])
+    markerTextures[nokkel] = makeMarkerTexture(st.col, st.glyph, HASTEGRAD[h].ring);
+  return markerTextures[nokkel];
 }
 
 // ---------- Størrelsen på markeringene ----------
@@ -457,7 +470,8 @@ function skalerMarkeringer() {
 frameHooks.push(skalerMarkeringer);
 
 function addMarkerSprite(comment) {
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: textureFor(statusOf(comment)), depthTest: false }));
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: textureFor(statusOf(comment), hastegradFor(comment)), depthTest: false }));
   // J5: en markering som ikke kom fram tegnes blass, så den ikke ser ut som meldt
   if (comment.usendt) { sprite.material.transparent = true; sprite.material.opacity = 0.4; }
   sprite.position.set(comment.x, comment.y, comment.z);
@@ -467,20 +481,44 @@ function addMarkerSprite(comment) {
   skalerMarkeringer();   // riktig størrelse med en gang, ikke først ved neste bilde
 }
 
+// Felt som endrer hvordan markeringen SER UT i 3D.
+//
+// FALLGRUVE: her sto det tidligere bare en sjekk på `status`, fordi status var
+// det eneste som påvirket teksturen. Med fristringen gjelder det også `due` —
+// og glemmes den, oppdateres dataene, lista og SharePoint mens bobla i modellen
+// står uendret til siden lastes på nytt. Ingenting krasjer. Det er bare feil.
+//
+// Legges det til noe nytt som påvirker teksturen, MÅ det inn i denne lista.
+const TEGNEFELT = ["status", "due"];
+
 // Endrer et felt på en markering og oppdaterer alt som viser den
 function updateComment(c, patch) {
   Object.assign(c, patch);
-  if (patch.status !== undefined) {
-    markerGroup.children.filter(s => s.userData.commentId == c.id).forEach(s => markerGroup.remove(s));
+
+  if (TEGNEFELT.some(f => patch[f] !== undefined)) {
+    markerGroup.children.filter(s => s.userData.commentId == c.id).forEach(s => {
+      markerGroup.remove(s);
+      // Materialet lages nytt for hver sprite i addMarkerSprite og ble tidligere
+      // liggende igjen på GPU-en ved hvert statusbytte. IKKE dispose() på
+      // s.material.map — teksturen er delt fra markerTextures, og frigjøres den,
+      // blir alle markeringer med samme status/hastegrad svarte.
+      if (s.material) s.material.dispose();
+    });
     addMarkerSprite(c);
-    // Løst markering → kryss av oppgaven i Planner også. Stille: har vi ikke
-    // tilgang der og da, lar vi det ligge i stedet for å avbryte brukeren.
-    if (patch.status === "Løst" && c.taskId) {
-      plannerToken(true)
-        .then(t => t && fullforOppgave(t, c.taskId))
-        .catch(err => console.warn("Kunne ikke fullføre Planner-oppgaven:", err.message));
-    }
+    S.miniSkitten = true;   // prikken i minikartet skal skifte farge med
   }
+
+  // Løst markering → kryss av oppgaven i Planner også. Stille: har vi ikke
+  // tilgang der og da, lar vi det ligge i stedet for å avbryte brukeren.
+  //
+  // Flyttet ut av blokka over da TEGNEFELT kom til. Treffer nøyaktig samme
+  // tilfelle som før: patch.status === "Løst" innebar allerede at status var satt.
+  if (patch.status === "Løst" && c.taskId) {
+    plannerToken(true)
+      .then(t => t && fullforOppgave(t, c.taskId))
+      .catch(err => console.warn("Kunne ikke fullføre Planner-oppgaven:", err.message));
+  }
+
   persist();
   pushSharedComments();
   renderCommentList();
@@ -1304,7 +1342,17 @@ export function openMarkerPopup(c) {
       '</select></label>' +
       '<label>' + t("Frist") + '<input type="date" class="mp-due" value="' + esc(c.due || "") + '"></label>' +
     '</div>' +
-    (isOverdue(c) ? '<div class="mp-late">' + ikon("advarsel") + ' ' + t("Fristen er gått") + '</div>' : "") +
+    // Hastegraden i klartekst under feltene. Vises OGSÅ på byggeplassen:
+    // .mp-fields skjules i lettmodus, men .mp-frist gjør det ikke — frist er
+    // den ene opplysningen som avgjør hva montøren gjør nå.
+    (() => {
+      const ft = fristTekstFor(c);
+      const ring = HASTEGRAD[ft.hast].ring;
+      if (!ring || ft.hast === "ukjent") return "";
+      return '<div class="mp-frist" style="border-left:3px solid ' + ring + '">' +
+        (ft.hast === "forfalt" || ft.hast === "rod" ? ikon("advarsel") + " " : "") +
+        esc(ft.arg === null ? t(ft.nokkel) : t(ft.nokkel, ft.arg)) + '</div>';
+    })() +
     '</div>' +
     '<div class="mp-act"><button class="mp-go">' + ikon("fokus") + ' ' + t("Gå til") + '</button>' +
       (c.taskId
@@ -1427,6 +1475,31 @@ export function nullstillNyeBilder() {
   visValgteFiler();
 }
 
+// Gjør «Ny markering»-dialogen klar. Kalles fra main.js og lett-main.js like
+// før dialogen åpnes.
+//
+// FORHÅNDSUTFYLT FRIST, IKKE PÅKREVD: et hardt krav ville lagt friksjon
+// nøyaktig der du vil ha minst av den — du står i modellen, ser feilen, vil få
+// den ned. Med forhåndsutfylling får vi samme dekning, og den som bare trykker
+// videre får en fornuftig frist i stedet for ingen.
+//
+// GJELDER IKKE BYGGEPLASSEN. Montøren kjenner ikke framdriftsplanen, og frist
+// er noe kontoret eier. Feltet er skjult med CSS i bygg.html
+// ([data-lett="1"] .cd-frist), og hoppes over her uansett — CSS skal ikke være
+// det eneste som avgjør hvilke data som lagres.
+export const STANDARD_FRIST_DAGER = 14;
+
+export function forberedNyMarkering() {
+  $("commentText").value = "";
+  const felt = $("commentDue"), av = $("commentNoDue");
+  if (!felt || !av) return;                    // eldre HTML uten feltet
+  if (LETT) { felt.value = ""; av.checked = true; return; }
+  av.checked = false;
+  felt.value = omDager(STANDARD_FRIST_DAGER, iDag);
+  felt.disabled = false;
+  av.onchange = () => { felt.disabled = av.checked; if (av.checked) felt.value = ""; };
+}
+
 window.saveComment = function() {
   const text = $("commentText").value.trim();
   $("commentDialog").classList.remove("open");
@@ -1443,7 +1516,11 @@ window.saveComment = function() {
     // uten at noen valgte det, og uten at noen fikk beskjed. Tom eier er synlig
     // og ærlig; feil eier ser riktig ut, og da oppdager ingen den.
     owner: "",
-    due: "",
+    // Frist fra dialogen. Tom på byggeplassen og når «ingen frist» er huket av —
+    // da får markeringen grå ring, som er ærlig: ingen har bestemt når dette
+    // skal være ferdig. Grå blir dermed en arbeidskø, ikke en mangel.
+    due: (!LETT && $("commentDue") && $("commentNoDue") && !$("commentNoDue").checked)
+      ? ($("commentDue").value || "") : "",
     svar: [],
     x: S.pendingPoint.x, y: S.pendingPoint.y, z: S.pendingPoint.z,
     date: naaTekst()
@@ -1595,13 +1672,30 @@ export function renderCommentList() {
   // teller per status + filterknapper
   const antall = { alle: S.comments.length };
   Object.keys(STATUS).forEach(k => antall[k] = S.comments.filter(c => statusOf(c) === k).length);
-  const knapp = (key, tekst) => '<button data-flt="' + key + '"' +
-    (listFilter === key ? ' class="active"' : "") + '>' + tekst + ' ' + (antall[key] || 0) + '</button>';
+  // To fristfiltre i tillegg til statusfiltrene. Prefikset «h:» skiller dem fra
+  // statusnøklene, som er de lagrede verdiene «Åpen»/«Pågår»/«Løst».
+  antall["h:forfalt"] = S.comments.filter(c => hastegradFor(c) === "forfalt").length;
+  antall["h:rod"] = S.comments.filter(c => hastegradFor(c) === "rod").length;
+
+  const knapp = (key, tekst, farge) => '<button data-flt="' + key + '"' +
+    (listFilter === key ? ' class="active"' : "") + '>' +
+    (farge ? '<span style="color:' + farge + '">●</span> ' : "") +
+    tekst + ' ' + (antall[key] || 0) + '</button>';
   let html = status +
     '<div class="prop-actions">' + knapp("alle", t("Alle")) +
-      Object.keys(STATUS).map(k => knapp(k, t(k))).join("") + '</div>';
+      Object.keys(STATUS).map(k => knapp(k, t(k))).join("") + '</div>' +
+    // Egen rad: fristfiltrene svarer på et annet spørsmål enn statusfiltrene,
+    // og de skal ikke se ut som om de hører til samme gruppe.
+    ((antall["h:forfalt"] || antall["h:rod"])
+      ? '<div class="prop-actions">' +
+          (antall["h:forfalt"] ? knapp("h:forfalt", t("Forfalt"), HASTEGRAD.forfalt.ring) : "") +
+          (antall["h:rod"] ? knapp("h:rod", t("Haster"), HASTEGRAD.rod.ring) : "") + '</div>'
+      : "");
 
-  const vis = S.comments.filter(c => listFilter === "alle" || statusOf(c) === listFilter);
+  const vis = S.comments.filter(c =>
+    listFilter === "alle" ? true
+    : listFilter.startsWith("h:") ? hastegradFor(c) === listFilter.slice(2)
+    : statusOf(c) === listFilter);
   // uløste med frist, som ikke alt har fått en oppgave
   const apne = S.comments.filter(c => statusOf(c) !== "Løst" && c.due && !c.taskId);
   if (apne.length > 1) {
@@ -1610,6 +1704,11 @@ export function renderCommentList() {
 
   html += vis.map(c => {
     const st = statusOf(c);
+    // Venstrekanten beholder STATUSfargen — fyll = status, som i modellen.
+    // Hastegraden kommer som en egen prikk lenger ned, så lista og bobla
+    // forteller det samme.
+    const ft = fristTekstFor(c);
+    const ring = HASTEGRAD[ft.hast].ring;
     return '<div class="comment" data-id="' + esc(c.id) + '" style="border-left:3px solid ' + STATUS[st].col + '">' +
       '<div class="meta"><span>' + esc((c.author ? c.author + " · " : "") + (c.date || "")) + '</span>' +
         '<span class="del" data-del="' + esc(c.id) + '">' + t("Slett") + '</span></div>' +
@@ -1618,7 +1717,12 @@ export function renderCommentList() {
         '<span style="color:' + STATUS[st].col + '">●</span> ' + t(st) +
         (c.owner ? ' · ' + esc(c.owner) : "") +
         (c.due ? ' ' + t("· frist ") + esc(c.due.split("-").reverse().join(".")) : "") +
-        (isOverdue(c) ? ' <span style="color:var(--danger)">' + ikon("advarsel") + ' ' + t("gått") + '</span>' : "") +
+        // Hastegraden: farget prikk + tekst som sier hvor lenge det er igjen.
+        // Ringen i modellen og denne prikken er samme regel, samme farge.
+        (ring
+          ? ' · <span style="color:' + ring + '" title="' + esc(t(HASTEGRAD[ft.hast].navn)) + '">●</span> ' +
+            esc(ft.arg === null ? t(ft.nokkel) : t(ft.nokkel, ft.arg))
+          : "") +
         (c.usendt ? ' · <span style="color:var(--warn)" title="' + t("Ligger lagret på telefonen og sendes når du har nett igjen.") + '">' +
           ikon("advarsel") + ' ' + t("ikke sendt") + '</span>' : "") +
         (c.taskId ? ' · <span title="Har en Planner-oppgave">' + ikon("planner") + '</span>' : "") +
@@ -1633,7 +1737,12 @@ export function renderCommentList() {
           : "") +
       '</span></div></div>';
   }).join("") ||
-    '<p style="color:var(--muted)">' + t("Ingen markeringer med status «{0}».", esc(t(listFilter))) + '</p>';
+    // «h:forfalt» er en intern nøkkel og skal aldri vises. Oversett den til
+    // hastegradens navn før den settes inn i setningen.
+    '<p style="color:var(--muted)">' + t("Ingen markeringer med status «{0}».",
+      esc(listFilter.startsWith("h:")
+        ? t((HASTEGRAD[listFilter.slice(2)] || { navn: listFilter }).navn)
+        : t(listFilter))) + '</p>';
 
   body.innerHTML = html;
   body.querySelectorAll("button[data-flt]").forEach(b => {
@@ -1650,9 +1759,47 @@ export function renderCommentList() {
   });
 }
 
+// ---------- Tegn alle markeringer på nytt ----------
+// Brukes når noe UTENFOR markeringene har endret hvordan de skal se ut:
+// datoen har skiftet, eller fristgrensene har kommet fra oppsett.json.
+export function tegnAlleMarkeringerPaNytt() {
+  const gamle = [...markerGroup.children];
+  gamle.forEach(s => {
+    markerGroup.remove(s);
+    if (s.material) s.material.dispose();   // ikke .map — den er delt, se updateComment
+  });
+  (S.comments || []).forEach(addMarkerSprite);
+  S.miniSkitten = true;
+}
+
+// ---------- Midnattskroken ----------
+// Teksturene regnes ut én gang, men hastegraden endrer seg av seg selv når
+// klokka passerer midnatt. Står modellen åpen over natta — eller står nettbrettet
+// på i brakka — ville bobla vist gårsdagens hastegrad til noen lastet siden.
+//
+// To utløsere med vilje: visibilitychange fanger den vanlige saken (fanen tas
+// fram igjen om morgenen), intervallet fanger skjermer som aldri blir skjult.
+// Ti minutter er rikelig; ingen merker at fargen skifter 09:57 i stedet for 00:00.
+function sjekkDagskifte() {
+  const naa = iDagISO();
+  if (naa === iDag) return;
+  iDag = naa;
+  tegnAlleMarkeringerPaNytt();
+  renderCommentList();
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) sjekkDagskifte(); });
+setInterval(sjekkDagskifte, 600000);
+
 // Firmaoppsettet kommer fra SharePoint et sekund eller to etter oppstart. Står
 // markeringspanelet allerede åpent, tegnes det på nytt så «Ansvarlig» får folk
 // i seg uten at brukeren må lukke og åpne.
+//
+// Fristgrensene kommer samme vei (FRISTER fylles av oppsett.js), så markeringene
+// må også tegnes på nytt — ellers står ringene på standardverdiene 8/3 helt til
+// noen endrer en status.
 S.onOppsett = () => {
-  try { if ($("commentPanel") && $("commentPanel").classList.contains("open")) renderCommentList(); } catch (_) {}
+  try {
+    tegnAlleMarkeringerPaNytt();
+    if ($("commentPanel") && $("commentPanel").classList.contains("open")) renderCommentList();
+  } catch (_) {}
 };

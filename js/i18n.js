@@ -216,6 +216,30 @@ export const ORDBOK = {
   "Frist": { en: "Deadline", pl: "Termin", lt: "Terminas" },
   "– ingen –": { en: "– none –", pl: "– brak –", lt: "– nėra –" },
   "Fristen er gått": { en: "Deadline passed", pl: "Termin minął", lt: "Terminas praėjo" },
+
+  // ---------- Hastegrad ut fra frist (ringen rundt markeringen) ----------
+  // Navnene brukes både på filterknappene og som forklaring på prikken i lista.
+  "God tid": { en: "Plenty of time", pl: "Dużo czasu", lt: "Daug laiko" },
+  "Nærmer seg": { en: "Approaching", pl: "Zbliża się", lt: "Artėja" },
+  "Haster": { en: "Urgent", pl: "Pilne", lt: "Skubu" },
+  "Forfalt": { en: "Overdue", pl: "Po terminie", lt: "Pradelsta" },
+  "Ingen frist": { en: "No deadline", pl: "Brak terminu", lt: "Nėra termino" },
+  "Forfaller i dag": { en: "Due today", pl: "Termin dzisiaj", lt: "Terminas šiandien" },
+  "Forfaller i morgen": { en: "Due tomorrow", pl: "Termin jutro", lt: "Terminas rytoj" },
+  "Forfaller om {0} dager": { en: "Due in {0} days", pl: "Termin za {0} dni", lt: "Terminas po {0} d." },
+  "Forfalt for {0} dager siden": { en: "Overdue by {0} days", pl: "Po terminie o {0} dni", lt: "Pradelsta {0} d." },
+
+  // ---------- Fristgrenser i ⚙ Innstillinger ----------
+  "Frister": { en: "Deadlines", pl: "Terminy", lt: "Terminai" },
+  "Gul ring fra (dager igjen)": { en: "Yellow ring from (days left)", pl: "Żółty pierścień od (dni)", lt: "Geltonas žiedas nuo (d.)" },
+  "Rød ring fra (dager igjen)": { en: "Red ring from (days left)", pl: "Czerwony pierścień od (dni)", lt: "Raudonas žiedas nuo (d.)" },
+  "Gjelder hele Storm. Varig endring gjøres i oppsett.json i SharePoint — her gjelder den bare til siden lastes på nytt.": {
+    en: "Applies to all of Storm. Change it permanently in oppsett.json in SharePoint — here it only lasts until the page reloads.",
+    pl: "Dotyczy całej firmy Storm. Trwałą zmianę wprowadza się w oppsett.json w SharePoint — tutaj obowiązuje tylko do przeładowania strony.",
+    lt: "Galioja visai „Storm“. Nuolatinis pakeitimas daromas oppsett.json faile „SharePoint“ — čia galioja tik iki puslapio perkrovimo." },
+
+  // ---------- Frist i «Ny markering» ----------
+  "ingen frist": { en: "no deadline", pl: "brak terminu", lt: "nėra termino" },
   "Gå til": { en: "Go to", pl: "Przejdź do", lt: "Eiti į" },
   "Se oppgave": { en: "View task", pl: "Zobacz zadanie", lt: "Žiūrėti užduotį" },
   "Slett": { en: "Delete", pl: "Usuń", lt: "Ištrinti" },
