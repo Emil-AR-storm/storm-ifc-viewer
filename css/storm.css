@@ -519,6 +519,28 @@ button.active { background: var(--aktiv-bg); border-color: var(--aktiv-bg); colo
 }
 .cd-bildeknapp:hover { border-color: var(--accent2); }
 .cd-bildeknapp .ikon { width: 14px; height: 14px; }
+
+/* ⏱ Fristfeltet i «Ny markering». Skjules i lettmodus via [data-lett="1"]
+   .cd-frist i bygg.html – aldri fjernet fra HTML-en, som resten av verktøyet. */
+.cd-frist { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.cd-frist > label:first-child { color: var(--muted); font-size: 12px; }
+.cd-frist input[type="date"] {
+  background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 5px 8px; font-size: 13px; font-family: inherit;
+}
+.cd-frist input[type="date"]:disabled { opacity: .45; }
+.cd-ingenfrist { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 12px; cursor: pointer; }
+
+/* Hastegraden i markeringsbobla. Egen rad, ikke inne i .mp-fields – den skal
+   VISES på byggeplassen selv om status, ansvarlig og Planner er skjult der.
+   Fargen settes i koden (markers.js), fordi den er den samme som ringen rundt
+   markeringen i 3D og skal ikke kunne komme i utakt med den. */
+.mp-frist {
+  margin-top: 8px; padding: 6px 10px; border-radius: 6px;
+  background: var(--panel2); font-size: 12px; color: var(--text);
+  display: flex; align-items: center; gap: 6px;
+}
+.mp-frist .ikon { width: 14px; height: 14px; flex: none; }
 #commentFileInfo { font-size: 11px; color: var(--muted); }
 
 #markerPop .mp-late { color: var(--danger); font-size: 11px; margin-top: 6px; display: flex; align-items: center; gap: 5px; }
