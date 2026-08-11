@@ -267,6 +267,15 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
     </label>
     <span id="commentFileInfo"></span>
   </div>
+  <!-- Frist. Forhåndsutfylt med i dag + 14 dager, redigerbart, og med en
+       avkryssing for den som bevisst ikke vil sette en. Skjult i lettmodus
+       ([data-lett="1"] .cd-frist i bygg.html) — montøren kjenner ikke
+       framdriftsplanen, og frist er noe kontoret eier. -->
+  <div class="cd-frist">
+    <label for="commentDue" data-i18n>Frist</label>
+    <input type="date" id="commentDue">
+    <label class="cd-ingenfrist"><input type="checkbox" id="commentNoDue"> <span data-i18n>ingen frist</span></label>
+  </div>
   <div class="actions">
     <button onclick="cancelComment()" data-i18n>Avbryt</button>
     <button class="primary" onclick="saveComment()" data-i18n>Lagre</button>
