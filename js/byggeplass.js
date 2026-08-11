@@ -8,7 +8,7 @@ import { bildeUrl, lastOpp } from "./bilder.js";
 import { lagreOgSynk, leggTilImportertMarkering, vaskMarkering } from "./markers.js";
 import { tegningNavn } from "./tegninger.js";
 import { GRAPH, authHeaders, spTokenSilent } from "./sharepoint.js";
-import { TJENESTER } from "./config.js";
+import { FRISTER, TJENESTER } from "./config.js";
 
 // Adressen til Workeren står i config.js, og kan overstyres av oppsett.json i
 // SharePoint. Leses gjennom TJENESTER hver gang – verdien kan komme etter at
@@ -107,6 +107,12 @@ if (btn) btn.addEventListener("click", async () => {
       // som ble skrevet i går. (Til forskjell fra eier og frist er dette ikke
       // noe vi holder igjen med vilje – det manglet.)
       endret: c.endret || "", endretAv: c.endretAv || "",
+      // FRIST er nå med. Eier og Planner-kobling holdes fortsatt igjen med
+      // vilje — montøren skal ikke se hvem som har ansvaret internt. Men
+      // fristen er den ene opplysningen som avgjør hva han gjør NÅ, og den lå
+      // ferdig utfylt og ble stoppet på veien ut. Uten den ser byggeplassen
+      // grå ringer på alt.
+      due: c.due || "",
       status: c.status || "Åpen", x: c.x, y: c.y, z: c.z,
       bilder: c.bilder || [], bilderEtter: c.bilderEtter || [], lyd: c.lyd || [],
       // kommentartråden og tegnings-HENVISNINGENE er med nå (trinn 5b) —
@@ -114,10 +120,23 @@ if (btn) btn.addEventListener("click", async () => {
       svar: (c.svar || []).map(s => ({ id: s.id, tekst: s.tekst, forfatter: s.forfatter, dato: s.dato, endret: s.endret || "" })),
       tegninger: (c.tegninger || []).map(v => ({ fil: v.fil, itemId: v.itemId, side: v.side, storrelse: v.storrelse }))
     }));
+    // FORMAT 2: fila var tidligere en naken array. Nå er den et objekt, fordi
+    // fristgrensene må følge med ut til byggeplassen (ringen rundt markeringen
+    // trenger dem) — og fordi Workerens morgenvarsel skal lese SAMME fil og
+    // SAMME grenser. Ett regnestykke, ett sted, ingen drift mellom modell og
+    // varsel.
+    //
+    // All lesing tåler begge former (se lastLettMarkeringer i markers.js).
+    // Rull ALLTID ut lesingen før skrivingen — ellers står byggeplassen med en
+    // fil den ikke forstår til neste push.
     await fetch(TJENESTER.worker + "/last-opp?fil=" + encodeURIComponent(fil + ".markeringer.json"), {
       method: "PUT",
       headers: { "content-type": "application/json", "x-prosjekt": prosjekt, "x-token": token },
-      body: JSON.stringify(vaskede)
+      body: JSON.stringify({
+        versjon: 2,
+        grenser: { gul: FRISTER.gul, rod: FRISTER.rod },
+        markeringer: vaskede
+      })
     });
 
     // 4) Bildene på markeringene, så montøren ser dem (hentes fra SharePoint her,
