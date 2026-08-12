@@ -37,6 +37,19 @@
 //      Slette et bilde (lim inn i konsollen, med slettenøkkelen for hånden):
 //        await fetch("<worker>/fil/20653/bilder/abc.jpg",
 //          { method: "DELETE", headers: { "x-slett-token": "…" } })
+//
+// v11 — 11. august 2026:
+//   9) MORGENVARSEL. scheduled() + [triggers] i wrangler.toml: kl. 07 norsk tid
+//      på hverdager går Workeren gjennom aktive prosjekter, regner ut hva som
+//      er forfalt eller haster, og sender ÉN samlemelding per prosjekt.
+//      All annen varsling utløses av at noen gjør noe (/kvitter, /hendelse) —
+//      men en frist som går ut er fravær av handling, og ingen POSTer noe da.
+//      Nettleseren kan ikke løse det: setInterval dør når fanen lukkes.
+//  10) /modell/ serverer BARE .glb. Ruta satte «fil» rett inn i R2-nøkkelen
+//      uten å sjekke endelse, så den 6-tegns prosjektkoden ga tilgang til alt
+//      under <prosjekt>/. Se kommentaren ved ruta.  (~linje 490)
+//  11) Hastegrad-koden er SPEILET fra js/frist.js. Se SPEILET-markørene —
+//      _test/test-frist.mjs feiler hvis de to kopiene kommer ut av takt.
 // ---------------------------------------------------------------------------
 //
 // Bindinger som må finnes (Settings → Bindings):
@@ -53,6 +66,12 @@
 //                       Skal IKKE lagres i noen nettleser – tastes for hånd de
 //                       få gangene noe faktisk skal slettes. Uten den satt kan
 //                       ingenting slettes i det hele tatt.
+//   VARSEL_URL        = Secret/variabel. Teams-webhooken (en arbeidsflyt med
+//                       «When a Teams webhook request is received»). Uten den
+//                       gjør både varsle() og morgenrunden ingenting —
+//                       morgenrunden logger en advarsel og hopper over med en
+//                       gang, så feilen er synlig i Workers Logs i stedet for
+//                       å være et varsel som bare aldri kommer.
 //
 // Bytte av signeringsnøkkel UTEN avbrudd — rekkefølgen er alt:
 //   1. Rull ut denne koden med BEVIS_NOKKEL usatt. Ingenting endrer seg.
@@ -224,13 +243,245 @@ function vedleggMime(navn) {
 
 const erLyd = (navn) => /\.(m4a|webm)$/i.test(String(navn || ""));
 
+// ---------- Hastegrad ut fra frist (morgenvarselet) ----------
+// Blokka under er KOPIERT ORDRETT fra js/frist.js. Den kan ikke importeres:
+// klienten ligger på GitHub Pages, Workeren på Cloudflare, og de deployes hver
+// for seg. Kopien er derfor bevisst — og _test/test-frist.mjs klipper ut begge
+// og feiler hvis de kommer ut av takt.
+//
+// Grensene (gul/rod) kommer fra <modell>.markeringer.json, som prosjektlederen
+// laster opp med Byggeplass-knappen. Samme fil, samme tall som ringen rundt
+// markeringen i modellen. Det er hele grunnen til at fristfargene og dette
+// varselet ble bygget som én pakke: ellers kan modellen vise gul mens varselet
+// sier rød, og ingen klarer å forklare hvorfor.
+
+// ── SPEILET KODE ───────────────────────────────────────────────────────────
+// Alt mellom disse to markørene skal finnes ORDRETT likt i worker/worker.js.
+// Endres den ene, MÅ den andre endres. _test/test-frist.mjs klipper ut begge,
+// normaliserer blanktegn og feiler hvis de har kommet ut av takt.
+//
+// Ikke legg noe her som bruker DOM, import eller S — Workeren har ingen av delene.
+
+// Standard hvis oppsett.json ikke sier noe annet.
+// gul = 8: fristen er om åtte dager eller mindre.
+// rod = 3: fristen er om tre dager eller mindre.
+// Bevisst TO tall og ikke tre: med tre grenser oppstår det et hull («hva er 8
+// dager?») som ingen oppdager før noen står med en markering i akkurat det gapet.
+const STANDARD_GRENSER = { gul: 8, rod: 3 };
+
+// Hele dager fra «iDag» til «due». Positivt = fristen er fram i tid.
+//
+// Regner på datodelene direkte gjennom Date.UTC, ikke på to Date-objekter i
+// lokal tid. Grunnen er sommertid: natta 25.–26. oktober er 25 timer lang, og
+// (b - a) / 86400000 gir da 30,96 dager mellom to datoer som er 31 dager fra
+// hverandre. Math.round hadde skjult det, men bare noen ganger.
+function dagerTil(due, iDag) {
+  const a = String(due || "").split("-").map(Number);
+  const b = String(iDag || "").split("-").map(Number);
+  if (a.length !== 3 || b.length !== 3 || a.some(isNaN) || b.some(isNaN)) return null;
+  return (Date.UTC(a[0], a[1] - 1, a[2]) - Date.UTC(b[0], b[1] - 1, b[2])) / 86400000;
+}
+
+// Sørger for at to tall fra en håndredigert oppsett.json er brukbare.
+// Er gul mindre enn rod, er de byttet om — da hadde ingenting blitt gult.
+function vaskGrenser(rå) {
+  const g = rå && typeof rå === "object" ? rå : {};
+  let gul = Number(g.gul), rod = Number(g.rod);
+  if (!Number.isFinite(gul) || gul < 0) gul = STANDARD_GRENSER.gul;
+  if (!Number.isFinite(rod) || rod < 0) rod = STANDARD_GRENSER.rod;
+  gul = Math.min(365, Math.round(gul));
+  rod = Math.min(365, Math.round(rod));
+  if (rod > gul) { const b = rod; rod = gul; gul = b; }
+  return { gul, rod };
+}
+
+// SELVE REGELEN. Alt annet i denne fila er støtte.
+//
+//   status «Løst»    → ingen ring. En løst sak har ingen hastegrad, og en rød
+//                      ring rundt en grønn hake ville vært selvmotsigende.
+//   ingen frist      → grå. IKKE grønn: «ingen har bestemt når dette skal være
+//                      ferdig» er noe helt annet enn «det er god tid».
+//   fristen passert  → mørkerød
+//   ≤ rod dager      → rød
+//   ≤ gul dager      → gul
+//   ellers           → grønn
+function hastegrad(c, grenser, iDag) {
+  if (!c) return "ukjent";
+  const g = grenser || STANDARD_GRENSER;
+  if (c.status === "Løst") return "ingen";
+  if (!c.due) return "ukjent";
+  const d = dagerTil(c.due, iDag);
+  if (d === null) return "ukjent";        // ubrukelig datotekst — grå, ikke krasj
+  if (d < 0) return "forfalt";
+  if (d <= g.rod) return "rod";
+  if (d <= g.gul) return "gul";
+  return "gronn";
+}
+// ── SLUTT SPEILET KODE ─────────────────────────────────────
+
 function ipFra(req) {
   return req.headers.get("CF-Connecting-IP") || "ukjent";
+}
+
+// ---------- Morgenrunden (Cron Trigger) ----------
+// v11 — 11. august 2026.
+//
+// HVORFOR DEN MÅTTE LIGGE HER OG IKKE I NETTLESEREN: all varsling i verktøyet
+// utløses av at NOEN GJØR NOE — varsle() kalles fra /kvitter og /hendelse. Men
+// en frist som går ut er nettopp fravær av handling. Ingen POSTer noe når
+// 15. august passerer og markering 47 fortsatt står som «Åpen».
+//
+// Nettleseren kan ikke løse det: setInterval i byggeplass.js dør i det
+// prosjektlederen lukker fanen, og klokka 22 på en søndag har ingen hos Storm
+// verktøyet åpent.
+
+// Hvor mange markeringer som listes opp per hastegrad før resten telles.
+// Et varsel på tretti linjer blir ikke lest.
+const VARSEL_MAKS = 6;
+
+// Dagens dato i UTC som YYYY-MM-DD.
+//
+// Cron-en går 05:00 UTC = 07:00 norsk sommertid, 06:00 om vinteren. Begge er
+// samme KALENDERDAG i Norge, så UTC-datoen er riktig hele året. Flytter noen
+// utløseren til før 22:00 UTC, regner Workeren på gårsdagen — det er derfor
+// tidspunktet står kommentert i wrangler.toml også.
+function iDagUTC() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+// Leser markeringsfila for ett prosjekt rett fra R2.
+// Ingen HTTP, ingen kodesjekk — vi er inne i systemet.
+async function lesMarkeringer(env, prosjekt) {
+  // delimiter: "/" ruller sammen bilder/, rev/, innboks/ og tegninger/ til
+  // prefikser. Uten den kommer alle bildene med i lista — samme grunn som
+  // rettelse 3 i v8 på /åpne.
+  const liste = await env.MODELLER.list({ prefix: prosjekt + "/", delimiter: "/" });
+  const treff = (liste.objects || []).filter(o => o.key.endsWith(".markeringer.json"));
+  if (!treff.length) return null;
+
+  // Flere modeller i samme prosjekt: ta den sist opplastede.
+  treff.sort((a, b) => Date.parse(b.uploaded || 0) - Date.parse(a.uploaded || 0));
+  const obj = await env.MODELLER.get(treff[0].key);
+  if (!obj) return null;
+
+  let d;
+  try { d = await obj.json(); } catch (_) { return null; }
+
+  // FORMAT 1 var en naken array, FORMAT 2 er et objekt med grenser.
+  // Begge må tåles: en gammel fil kan ligge i R2 lenge etter at klienten er
+  // oppdatert — helt til noen trykker Byggeplass igjen.
+  const markeringer = Array.isArray(d) ? d : (d && Array.isArray(d.markeringer) ? d.markeringer : []);
+  const grenser = (d && !Array.isArray(d) && d.grenser) ? vaskGrenser(d.grenser) : STANDARD_GRENSER;
+  return { markeringer, grenser, fil: treff[0].key };
+}
+
+// Bygger varselteksten for ett prosjekt. Gir null hvis det ikke er noe å si.
+function byggVarsel(prosjekt, navn, data, iDag) {
+  const bøtter = { forfalt: [], rod: [] };
+  let utenFrist = 0, apne = 0;
+
+  for (const c of data.markeringer) {
+    if (!c || typeof c !== "object") continue;
+    if (c.status === "Løst") continue;
+    apne++;
+    const h = hastegrad(c, data.grenser, iDag);
+    if (h === "ukjent") { utenFrist++; continue; }
+    if (bøtter[h]) bøtter[h].push(c);
+  }
+
+  // INGEN TOMME VARSLER. Et varsel som hver morgen sier «ingenting å melde»
+  // blir usynlig på to uker, og da forsvinner de ekte også.
+  if (!bøtter.forfalt.length && !bøtter.rod.length) return null;
+
+  const kort = (s) => String(s == null ? "" : s).replace(/\s+/g, " ").trim().slice(0, 70);
+  const dagerTekst = (c) => {
+    const d = dagerTil(c.due, iDag);
+    if (d === null) return "";
+    if (d < 0) return " — " + (-d) + (d === -1 ? " dag over" : " dager over");
+    if (d === 0) return " — i dag";
+    if (d === 1) return " — 1 dag igjen";
+    return " — " + d + " dager igjen";
+  };
+  const seksjon = (tittel, liste) => {
+    if (!liste.length) return "";
+    // Verst først: den som har stått lengst over fristen skal stå øverst.
+    liste.sort((a, b) => (dagerTil(a.due, iDag) || 0) - (dagerTil(b.due, iDag) || 0));
+    const vis = liste.slice(0, VARSEL_MAKS)
+      .map(c => "• " + (kort(c.text) || "(uten tekst)") + dagerTekst(c)).join("\n");
+    const resten = liste.length > VARSEL_MAKS
+      ? "\n… og " + (liste.length - VARSEL_MAKS) + " til" : "";
+    return "\n\n" + tittel + " (" + liste.length + ")\n" + vis + resten;
+  };
+
+  return "📋 Prosjekt " + prosjekt + (navn ? " — " + kort(navn) : "") +
+    seksjon("🔴 Forfalt", bøtter.forfalt) +
+    seksjon("🟠 Haster (" + data.grenser.rod + " dager eller mindre)", bøtter.rod) +
+    "\n\n" + apne + " åpne markeringer" +
+    (utenFrist ? ", " + utenFrist + " uten frist" : "");
+}
+
+// Selve runden. Skilt fra scheduled() så den kan kalles fra en test.
+export async function morgenrunde(env, ctx) {
+  const iDag = iDagUTC();
+
+  // Uten webhook finnes det ingen vei ut. Da er det ingen grunn til å gå
+  // gjennom KV og R2 hver morgen — og advarselen i loggen er det eneste
+  // sporet som ville avslørt at varselet aldri virket.
+  if (!env.VARSEL_URL) {
+    console.warn("morgenrunden hoppet over: VARSEL_URL er ikke satt");
+    return { sett: 0, sendt: 0, grunn: "VARSEL_URL mangler" };
+  }
+
+  const nå = Date.now();
+  let sendt = 0, sett = 0;
+
+  // Alle prosjekter ligger i KV som prosjekt:<nummer>. list() paginerer;
+  // med Storms volum er én runde nok, men markøren håndteres uansett.
+  let markør;
+  do {
+    const side = await env.KODER.list({ prefix: "prosjekt:", cursor: markør });
+    for (const n of side.keys) {
+      const prosjekt = n.name.slice("prosjekt:".length);
+      if (!/^\d{5}$/.test(prosjekt)) continue;
+
+      let post; try { post = JSON.parse(await env.KODER.get(n.name) || "null"); } catch (_) { post = null; }
+      if (!post) continue;
+
+      // Utløpt prosjekt = byggeplassen er ferdig. Ingen skal purres på et bygg
+      // som er levert.
+      if (post.utløper && nå > Date.parse(post.utløper)) continue;
+
+      sett++;
+      let data;
+      try { data = await lesMarkeringer(env, prosjekt); }
+      catch (err) { console.warn("morgenrunde: kunne ikke lese " + prosjekt + ": " + err.message); continue; }
+      if (!data) continue;
+
+      const tekst = byggVarsel(prosjekt, post.navn, data, iDag);
+      if (!tekst) continue;
+
+      varsle(env, ctx, tekst);
+      sendt++;
+      await logg(env, prosjekt, { ok: true, hva: "morgenvarsel" });
+    }
+    markør = side.list_complete ? null : side.cursor;
+  } while (markør);
+
+  console.log("morgenrunde " + iDag + ": " + sendt + " varsel sendt av " + sett + " aktive prosjekter");
+  return { sett, sendt };
 }
 
 // ---------- Selve Workeren ----------
 
 export default {
+  // Cron Trigger. Kjøres av Cloudflare uten at noen har nettleseren åpen —
+  // se [triggers] i wrangler.toml. Feiler den, skal den IKKE ta med seg
+  // resten av Workeren: fetch() må virke selv om varselet ikke gjør det.
+  async scheduled(event, env, ctx) {
+    try { await morgenrunde(env, ctx); }
+    catch (err) { console.error("morgenrunden feilet: " + (err && err.message)); }
+  },
+
   async fetch(req, env, ctx) {
     const url = new URL(req.url);
     // Nettlesere koder æøå i adresser (/åpne → /%C3%A5pne) — dekod før sammenligning
@@ -432,7 +683,23 @@ export default {
       const skille = rest.indexOf("/");
       const prosjekt = rest.slice(0, skille);
       const fil = rest.slice(skille + 1); // sti er allerede dekodet én gang over
-      if (!/^\d{5}$/.test(prosjekt) || fil.includes("..")) return new Response("Ugyldig", { status: 400 });
+      // v11 — 11. aug 2026. BARE .glb.
+      //
+      // Ruta setter «fil» rett inn i R2-nøkkelen. Uten denne vakten kunne den
+      // som har den 6-tegns prosjektkoden hente HVA SOM HELST som ligger under
+      // <prosjekt>/ — rev/index.json, markeringsfila, og hva enn som måtte bli
+      // lagt der senere. I dag lekker det ikke noe dramatisk, fordi alt som
+      // ligger der uansett er ment for byggeplassen. Men hullet LÅSER DESIGNET:
+      // den dagen noen legger en fil med interne felt (owner, taskId) ved siden
+      // av modellen, er den offentlig for alle med koden.
+      //
+      // Markeringene har egen rute (/markeringer/), vedleggene sin (/bilde/).
+      // Skal noe internt lagres, hører det hjemme i KV — ikke i R2 under <prosjekt>/.
+      //
+      // Revisjonsstien rev/2/X.glb slutter også på .glb og slipper gjennom.
+      if (!/^\d{5}$/.test(prosjekt) || fil.includes("..") || !/\.glb$/i.test(fil)) {
+        return new Response("Ugyldig", { status: 400 });
+      }
       if (!await sjekkBevis(env, req, prosjekt)) {
         return new Response("Skriv koden først", { status: 403 });
       }
