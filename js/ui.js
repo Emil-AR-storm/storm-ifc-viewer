@@ -333,3 +333,83 @@ window.addEventListener("keydown", (e) => {
 // høyreklikk i modellen åpner denne menyen (kobles opp av scene.js)
 S.onContextMenu = openSettings;
 
+
+
+// ---------- Statusrapport som PDF ----------
+//
+// Menyen henger under Rapport-knappen og virker som ⚙ Innstillinger: .open
+// styrer visningen, klikk utenfor lukker. Selve rapporten ligger i
+// js/rapport.js, som ikke rører DOM — det er derfor tallene kan testes i Node.
+//
+// jsPDF lastes først når noen faktisk trykker Fullstendig eller Byggemøte, så
+// en økt uten rapport aldri betaler for biblioteket.
+import { lastNedRapport } from "./rapport.js";
+import { fangstBilde } from "./scene.js";
+import { hentLogo, hentLogoer } from "./tegninger.js";
+import { ryddLogonavn } from "./rapport.js";
+
+let logoerLastet = false;
+
+async function fyllLogovalg() {
+  const velg = $("rapLogo");
+  if (!velg || logoerLastet) return;
+  logoerLastet = true;
+  velg.innerHTML = '<option value="">' + esc(t("Innebygd Storm-logo")) + "</option>";
+  const liste = await hentLogoer();
+  for (const l of liste) {
+    const o = document.createElement("option");
+    o.value = l.itemId; o.textContent = ryddLogonavn(l.fil); o.dataset.fil = l.fil;
+    velg.appendChild(o);
+  }
+  // Husket valg gjenopprettes på FILNAVN, ikke itemId: SharePoint gir samme fil
+  // ny itemId hvis den lastes opp på nytt, og da ville valget stille falt bort.
+  const husket = S.settings.rapLogo;
+  if (husket) {
+    const treff = [...velg.options].find(o => o.dataset.fil === husket);
+    if (treff) velg.value = treff.value;
+  }
+}
+
+function lukkRapMeny() { const m = $("rapMeny"); if (m) m.classList.remove("open"); }
+
+på("btnRapport", "click", () => {
+  const m = $("rapMeny"), knapp = $("btnRapport");
+  if (!m || !knapp) return;
+  if (m.classList.contains("open")) { lukkRapMeny(); return; }
+  const r = knapp.getBoundingClientRect();
+  m.style.left = Math.max(8, Math.min(r.left, innerWidth - 310)) + "px";
+  m.style.top = (r.bottom + 6) + "px";
+  m.classList.add("open");
+  if ($("rapCsv")) $("rapCsv").checked = !!S.settings.rapCsv;
+  fyllLogovalg();
+});
+
+document.addEventListener("pointerdown", (e) => {
+  const m = $("rapMeny");
+  if (!m || !m.classList.contains("open")) return;
+  if (m.contains(e.target) || (e.target.closest && e.target.closest("#btnRapport"))) return;
+  lukkRapMeny();
+});
+
+på("rapCsv", "change", (e) => { S.settings.rapCsv = !!e.target.checked; writePrefs(); });
+på("rapLogo", "change", (e) => {
+  const o = e.target.selectedOptions[0];
+  S.settings.rapLogo = (o && o.dataset.fil) || "";
+  writePrefs();
+});
+
+document.querySelectorAll(".rap-valg").forEach((b) => {
+  b.addEventListener("click", async () => {
+    lukkRapMeny();
+    if (!S.modelGroup) { alert(t("Åpne en modell først.")); return; }
+    const velg = $("rapLogo");
+    const itemId = velg ? velg.value : "";
+    await lastNedRapport({
+      utgave: b.dataset.utgave,
+      medCsv: !!(S.settings && S.settings.rapCsv),
+      modell: S.fileName,
+      fangstBilde: () => fangstBilde(1400, 900),
+      hentLogo: () => hentLogo(itemId)
+    });
+  });
+});

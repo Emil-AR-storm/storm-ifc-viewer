@@ -253,8 +253,11 @@ async function hentInnboks(prosjekt, token) {
         const c = (S.comments || []).find(k => String(k.id) === String(h.markering));
         if (c) {
           const s = h.svar;
+          // kilde: "bygg" settes her og ikke fra innholdet — alt som kommer
+          // gjennom innboksen ER fra byggeplassen, uansett hva fila påstår.
           const rene = { id: String(s.id || ""), tekst: String(s.tekst || "").slice(0, 2000),
-                         forfatter: String(s.forfatter || ""), dato: String(s.dato || ""), endret: "" };
+                         forfatter: String(s.forfatter || ""), dato: String(s.dato || ""),
+                         endret: "", kilde: "bygg" };
           if (rene.id && rene.tekst && !(c.svar || []).some(x => String(x.id) === rene.id)) {
             c.svar = (c.svar || []).concat([rene]);
             inn++;

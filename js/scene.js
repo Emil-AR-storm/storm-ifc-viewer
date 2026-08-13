@@ -148,6 +148,48 @@ renderer.setAnimationLoop(() => {
   renderer.render(scene, camera);
 });
 
+// Fanger det brukeren ser, som PNG — til PDF-rapporten.
+//
+// SAMME OPPSKRIFT SOM MINIKARTET (js/minimap.js): render til et
+// WebGLRenderTarget og les pikslene ut, i stedet for å sette
+// preserveDrawingBuffer:true på rendereren. Det flagget ville kostet ytelse på
+// HVER eneste frame, hele tiden, for en knapp som brukes én gang i uka.
+//
+// Radene må snus: WebGL leser nedenfra og opp, canvas tegner ovenfra og ned.
+export function fangstBilde(bredde, høyde) {
+  const b = Math.max(64, Math.round(bredde || 1400));
+  const h = Math.max(64, Math.round(høyde || 900));
+  let rt = null;
+  const gammelt = renderer.getRenderTarget();
+  try {
+    rt = new THREE.WebGLRenderTarget(b, h);
+    // Kameraets bildeforhold må matche målet, ellers blir bildet strukket
+    const gammeltAspect = camera.aspect;
+    camera.aspect = b / h; camera.updateProjectionMatrix();
+    renderer.setRenderTarget(rt);
+    renderer.render(scene, camera);
+    const px = new Uint8Array(b * h * 4);
+    renderer.readRenderTargetPixels(rt, 0, 0, b, h, px);
+    camera.aspect = gammeltAspect; camera.updateProjectionMatrix();
+
+    const c = document.createElement("canvas");
+    c.width = b; c.height = h;
+    const ctx = c.getContext("2d");
+    const img = ctx.createImageData(b, h);
+    for (let y = 0; y < h; y++)
+      img.data.set(px.subarray((h - 1 - y) * b * 4, (h - y) * b * 4), y * b * 4);
+    ctx.putImageData(img, 0, 0);
+    return { data: c.toDataURL("image/png"), b, h };
+  } catch (err) {
+    // Bildet er en pynt, ikke en forutsetning — rapporten skal komme uansett.
+    console.warn("Klarte ikke å fange modellbildet:", err);
+    return null;
+  } finally {
+    renderer.setRenderTarget(gammelt);
+    if (rt) rt.dispose();
+  }
+}
+
 export const markerGroup = new THREE.Group();
 
 export const measureGroup = new THREE.Group();
