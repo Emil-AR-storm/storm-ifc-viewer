@@ -912,6 +912,8 @@ export const ORDBOK = {
     lt: "Nepavyko išsaugoti žymų SharePoint – šiuo metu tą patį failą rašo kas nors kitas. Vietiniai duomenys nedingo; pabandykite netrukus dar kartą." },
 
   // ---------- Statusrapport (PDF) ----------
+  "Tegninger": { en: "Drawings", pl: "Rysunki", lt: "Brėžiniai" },
+  "INGEN SVAR ENNÅ": { en: "NO REPLIES YET", pl: "BRAK ODPOWIEDZI", lt: "DAR NĖRA ATSAKYMŲ" },
   "{0} bilde": { en: "{0} photo", pl: "{0} zdjęcie", lt: "{0} nuotrauka" },
   "{0} bilde før": { en: "{0} photo before", pl: "{0} zdjęcie przed", lt: "{0} nuotrauka prieš" },
   "{0} bilde etter": { en: "{0} photo after", pl: "{0} zdjęcie po", lt: "{0} nuotrauka po" },
