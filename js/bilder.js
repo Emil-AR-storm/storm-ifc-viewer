@@ -11,6 +11,7 @@
 // hva som er galt på byggeplassen, og gir filer på noen hundre kB.
 import { S } from "./state.js";
 import { LETT } from "./lett.js";
+import { MAKS_I_KO, fraBlob, koAlle, koAntall, koLegg, koSlett, koTelleForsok, tilBlob } from "./vedleggko.js";
 import { t } from "./i18n.js";
 import { GRAPH, SP, authHeaders, graphGet, spTokenSilent } from "./sharepoint.js";
 
@@ -148,16 +149,85 @@ async function sikreMappe(token, sid) {
 // «av» er navnet på den som lagde fila. Brukes av talemeldinger: på
 // byggeplassen finnes ingen innlogging å slå opp i senere, så navnet må følge
 // med i det filen sendes — ellers er avsenderen tapt for godt.
+// Sender ETT vedlegg til Workerens innboks. Eneste stedet adressen og
+// formatet står — js/vedleggko.js kjenner dem ikke, og skal ikke kjenne dem.
+async function sendVedlegg(blob, navn, seksjon, av) {
+  const r = await fetch("/kvitter?fil=" + encodeURIComponent(navn) +
+    "&seksjon=" + (seksjon === "for" ? "for" : "etter") +
+    (av ? "&av=" + encodeURIComponent(String(av).slice(0, 60)) : ""), {
+    method: "POST", headers: { "content-type": vedleggMime(navn) }, body: blob
+  });
+  if (!r.ok) throw new Error(t("Fikk ikke sendt filen") + " (" + r.status + ")");
+  return true;
+}
+
+// Tømmer vedleggskøen. Serielt med vilje — en byggeplass har sjelden
+// båndbredde til overs, og fire bilder i parallell gjør bare at alle fire
+// feiler samtidig. Samme mønster som toemKo() i markers.js.
+let koJobber = false;
+
+export async function toemVedleggKo(stille) {
+  if (!LETT || koJobber || !navigator.onLine) return 0;
+  const kø = await koAlle();
+  if (!kø.length) return 0;
+  koJobber = true;
+  let sendt = 0;
+  try {
+    for (const p of kø) {
+      try {
+        await sendVedlegg(tilBlob(p), p.navn, p.seksjon, p.av);
+        await koSlett(p.id);
+        sendt++;
+      } catch (_) {
+        // Feiler den første, feiler resten som regel også — nettet er nede,
+        // ikke fila. Da er det ingen vits i å hamre gjennom hele køen.
+        await koTelleForsok(p.id);
+        break;
+      }
+    }
+  } finally { koJobber = false; }
+  if (sendt && !stille) {
+    const igjen = await koAntall();
+    alert(igjen
+      ? t("{0} vedlegg er sendt. {1} venter fortsatt på nett.", sendt, igjen)
+      : t("{0} vedlegg som lå og ventet er nå sendt til prosjektlederen.", sendt));
+  }
+  return sendt;
+}
+
+// Køen prøves ved oppstart, når nettleseren melder at nettet er tilbake, og
+// hvert minutt. Første forsøk er stille: montøren skal ikke møtes av en dialog
+// bare fordi han åpnet modellen.
+if (LETT) {
+  addEventListener("online", () => toemVedleggKo());
+  setInterval(() => toemVedleggKo(), 60000);
+  setTimeout(() => toemVedleggKo(true), 2500);
+}
+
+// Laster opp ett vedlegg.
+//
+// PÅ BYGGEPLASSEN KASTER DEN IKKE når nettet svikter — da legges fila i køen og
+// { koet: true } kommer tilbake. Kallstedet må si det til montøren med andre
+// ord enn «sendt», ellers har vi byttet et tapt bilde med en løgn.
 export async function lastOpp(blob, navn, av) {
   const mime = vedleggMime(navn);
   if (LETT) {
-    const r = await fetch("/kvitter?fil=" + encodeURIComponent(navn) +
-      "&seksjon=" + (S._lettSeksjon === "for" ? "for" : "etter") +
-      (av ? "&av=" + encodeURIComponent(String(av).slice(0, 60)) : ""), {
-      method: "POST", headers: { "content-type": mime }, body: blob
-    });
-    if (!r.ok) throw new Error(t("Fikk ikke sendt filen") + " (" + r.status + ")");
-    return navn;
+    const seksjon = S._lettSeksjon === "for" ? "for" : "etter";
+    try {
+      await sendVedlegg(blob, navn, seksjon, av);
+      return { navn, koet: false };
+    } catch (err) {
+      try {
+        await koLegg(await fraBlob(blob, { navn, mime, seksjon, av }));
+        return { navn, koet: true };
+      } catch (koFeil) {
+        // Køen er full eller IndexedDB nektet. DA skal det kastes — å svare
+        // «lagret» når ingenting er lagret er den ene feilen vi ikke får gjøre.
+        throw new Error(koFeil.message === "KO_FULL"
+          ? t("Det ligger allerede {0} vedlegg og venter på nett. Finn dekning og prøv igjen før du tar flere bilder.", MAKS_I_KO)
+          : err.message);
+      }
+    }
   }
   const token = await spTokenSilent();
   if (!token) throw new Error("IKKE_INNLOGGET");
@@ -169,7 +239,7 @@ export async function lastOpp(blob, navn, av) {
     body: blob
   });
   if (!r.ok) throw new Error("Opplasting feilet (Graph " + r.status + ")");
-  return navn;
+  return { navn, koet: false };
 }
 
 // Hentede bilder holdes i en URL-buffer, så samme bilde ikke lastes ned på nytt
@@ -256,13 +326,18 @@ export async function slettBilder(navn) {
 // `nummerFra` er hvor mange bilder markeringen alt har TIL SAMMEN (før + etter).
 // Nummereringen går på tvers av seksjonene, så to filer aldri kan få samme navn.
 // Hvor mange bilder en seksjon får ha, avgjøres av den som kaller.
+// Svarer { navn: [...], koet: n } — hvor mange som ble lagt i kø i stedet for
+// sendt. Kallstedet trenger tallet for å kunne si det som er sant.
 export async function leggTilBilder(markeringId, filer, nummerFra) {
   const fra = Number(nummerFra) || 0;
-  const ut = [];
+  const navn = [];
+  let koet = 0;
   const inn = [...filer].filter(erBildefil);
   for (let i = 0; i < inn.length; i++) {
     const blob = await komprimer(inn[i]);
-    ut.push(await lastOpp(blob, bildeNavn(markeringId, fra + i + 1)));
+    const r = await lastOpp(blob, bildeNavn(markeringId, fra + i + 1));
+    navn.push(r.navn);
+    if (r.koet) koet++;
   }
-  return ut;
+  return { navn, koet };
 }

@@ -911,6 +911,13 @@ export const ORDBOK = {
     pl: "Nie udało się zapisać oznaczeń w SharePoint – ktoś inny właśnie zapisuje ten sam plik. Nic nie zostało utracone lokalnie; spróbuj ponownie za chwilę.",
     lt: "Nepavyko išsaugoti žymų SharePoint – šiuo metu tą patį failą rašo kas nors kitas. Vietiniai duomenys nedingo; pabandykite netrukus dar kartą." },
 
+  // ---------- Kø for vedlegg (bilder og talemeldinger) ----------
+  "Bildet er lagret på telefonen. Det sendes automatisk når du har nett igjen.": { en: "The photo is saved on your phone. It will be sent automatically when you are back online.", pl: "Zdjęcie jest zapisane w telefonie. Zostanie wysłane automatycznie, gdy wróci połączenie.", lt: "Nuotrauka išsaugota telefone. Ji bus išsiųsta automatiškai, kai atsiras ryšys." },
+  "Talemeldingen er lagret på telefonen. Den sendes automatisk når du har nett igjen.": { en: "The voice message is saved on your phone. It will be sent automatically when you are back online.", pl: "Wiadomość głosowa jest zapisana w telefonie. Zostanie wysłana automatycznie, gdy wróci połączenie.", lt: "Balso žinutė išsaugota telefone. Ji bus išsiųsta automatiškai, kai atsiras ryšys." },
+  "{0} vedlegg som lå og ventet er nå sendt til prosjektlederen.": { en: "{0} attachments that were waiting have now been sent to the project manager.", pl: "{0} załączników, które czekały, zostało wysłanych do kierownika projektu.", lt: "{0} priedai, kurie laukė, dabar išsiųsti projekto vadovui." },
+  "{0} vedlegg er sendt. {1} venter fortsatt på nett.": { en: "{0} attachments sent. {1} are still waiting for a connection.", pl: "Wysłano {0} załączników. {1} nadal czeka na połączenie.", lt: "Išsiųsta {0} priedų. {1} vis dar laukia ryšio." },
+  "Det ligger allerede {0} vedlegg og venter på nett. Finn dekning og prøv igjen før du tar flere bilder.": { en: "There are already {0} attachments waiting for a connection. Find coverage and try again before taking more photos.", pl: "Już {0} załączników czeka na połączenie. Znajdź zasięg i spróbuj ponownie przed zrobieniem kolejnych zdjęć.", lt: "Jau {0} priedų laukia ryšio. Susiraskite ryšį ir pabandykite dar kartą prieš darydami daugiau nuotraukų." },
+
   // ---------- Statusrapport (PDF) ----------
   "Tegninger": { en: "Drawings", pl: "Rysunki", lt: "Brėžiniai" },
   "INGEN SVAR ENNÅ": { en: "NO REPLIES YET", pl: "BRAK ODPOWIEDZI", lt: "DAR NĖRA ATSAKYMŲ" },

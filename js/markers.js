@@ -752,12 +752,14 @@ async function taOppTil(c, knapp) {
       // Navnet sendes MED opplastingen. På byggeplassen går fila til Workerens
       // innboks, og der er det ingen innlogging å hente et navn fra senere —
       // rekker vi det ikke her, er avsenderen tapt for godt.
-      await lastOpp(res.blob, navn, av);
+      const opp = await lastOpp(res.blob, navn, av);
       c.lyd = lydI(c).concat([{ fil: navn, av, dato: naaTekst() }]);
       persist();
       pushSharedComments();
       renderCommentList();
-      if (LETT) alert(t("Talemeldingen er sendt. Den blir synlig for prosjektlederen neste gang han åpner modellen."));
+      if (LETT) alert(opp.koet
+        ? t("Talemeldingen er lagret på telefonen. Den sendes automatisk når du har nett igjen.")
+        : t("Talemeldingen er sendt. Den blir synlig for prosjektlederen neste gang han åpner modellen."));
     } catch (err) {
       alert(err.message === "IKKE_INNLOGGET"
         ? t("Talemeldinger lagres i SharePoint, så du må være innlogget. Åpne Biblioteket og logg inn, så prøv igjen.")
@@ -1166,13 +1168,19 @@ async function taImotFiler(c, filer, seksjon, etterpa) {
   try {
     if (LETT) S._lettSeksjon = seksjon;   // leses av lastOpp i bilder.js
     // nummereringen går på TVERS av seksjonene, så to filer aldri får samme navn
-    const navn = await leggTilBilder(c.id, gode.slice(0, plass), alleBilder(c).length);
-    c[felt] = bilderI(c, seksjon).concat(navn);
+    const res = await leggTilBilder(c.id, gode.slice(0, plass), alleBilder(c).length);
+    c[felt] = bilderI(c, seksjon).concat(res.navn);
     persist();
     pushSharedComments();
     renderCommentList();
     if (etterpa) etterpa();
-    if (LETT) alert(t("Bildet er sendt. Det blir synlig for prosjektlederen neste gang han åpner modellen."));
+    // Filnavnet lagres på markeringen selv om fila ligger i kø: navnet er
+    // regnet ut, ikke tildelt av serveren, så henvisningen er gyldig når fila
+    // kommer fram. Men beskjeden må si hva som FAKTISK skjedde — «sendt» om
+    // noe som ligger på telefonen er verre enn ingen beskjed.
+    if (LETT) alert(res.koet
+      ? t("Bildet er lagret på telefonen. Det sendes automatisk når du har nett igjen.")
+      : t("Bildet er sendt. Det blir synlig for prosjektlederen neste gang han åpner modellen."));
   } catch (err) {
     alert(err.message === "IKKE_INNLOGGET"
       ? t("Bilder lagres i SharePoint, så du må være innlogget. Åpne Biblioteket og logg inn, så prøv igjen.")
