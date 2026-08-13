@@ -15,7 +15,7 @@
 // kjører på samme side som Graph-tokenet skal ikke hentes fra en tredjepart vi
 // ikke kontrollerer. Se worker.js: /vendor/ har egen cache-regel (ett år,
 // immutable) fordi filnavnet bærer versjonen.
-import { S, statusEl } from "./state.js";
+import { S, loadingEl, loadingText } from "./state.js";
 import { t } from "./i18n.js";
 import { HASTEGRAD, HASTEGRAD_REKKE, dagerTil, hastegrad, iDagISO } from "./frist.js";
 
@@ -746,8 +746,13 @@ function lastNedFil(blob, navn) {
 export async function lastNedRapport(opts) {
   const o = opts || {};
   const utgave = UTGAVER.includes(o.utgave) ? o.utgave : "full";
+  // Samme framdriftsvisning som opplastingen i byggeplass.js. IKKE statusEl:
+  // den linja viser antall elementer i modellen, og skal ikke overskrives av
+  // noe forbigående — da står det «Rapporten er lastet ned» der for alltid.
+  const vis = (tekst) => { if (loadingText) loadingText.textContent = tekst; };
+  if (loadingEl) loadingEl.classList.add("open");
   try {
-    statusEl && statusEl(t("Lager rapport …"));
+    vis(t("Lager rapport …"));
 
     const bilde = typeof o.fangstBilde === "function" ? await o.fangstBilde() : null;
     const logo = typeof o.hentLogo === "function" ? await o.hentLogo() : null;
@@ -761,18 +766,21 @@ export async function lastNedRapport(opts) {
       grenser: o.grenser, iDag: o.iDag, utgave
     });
 
+    vis(t("Henter PDF-biblioteket …"));
     const jsPDF = await hentJsPDF();
+    vis(t("Tegner {0} sider …", m.saker.length + 2));
     const d = await tegn(jsPDF, m, bilde, logo);
     lastNedFil(d.output("blob"), filnavn(m, "pdf"));
 
     if (o.medCsv) {
       lastNedFil(new Blob([tilCsv(m)], { type: "text/csv;charset=utf-8" }), filnavn(m, "csv"));
     }
-    statusEl && statusEl(t("Rapporten er lastet ned."));
     return m;
   } catch (err) {
     console.warn("Rapporten feilet:", err);
     alert(t("Klarte ikke å lage rapporten: {0}", err.message));
     return null;
+  } finally {
+    if (loadingEl) loadingEl.classList.remove("open");
   }
 }
