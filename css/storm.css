@@ -954,3 +954,46 @@ button.active { background: var(--aktiv-bg); border-color: var(--aktiv-bg); colo
 @media (max-width: 640px) {
   #navHjul { width: 104px; height: 104px; bottom: 12px; right: 12px; }
 }
+
+/* ---------- Nedlastingsmenyen for statusrapporten ----------
+   Samme form som #setMenu: fast plassert, vises med .open. Fargene er
+   variabler, ikke faste verdier — ellers brekker lyst tema. */
+#rapMeny {
+  position: fixed;
+  width: 300px; max-width: 94vw;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-stor);
+  z-index: 25;
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: var(--skygge);
+}
+#rapMeny.open { display: flex; }
+#rapMeny header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 9px 12px; border-bottom: 1px solid var(--border);
+  font-weight: 600; font-size: 14px;
+}
+#rapMeny header button { padding: 2px 6px; background: none; border: 0; color: var(--muted); }
+#rapMeny header button:hover { color: var(--text); }
+#rapMeny .body { padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.rap-valg {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+  width: 100%; text-align: left; padding: 9px 11px;
+  background: var(--panel2); border: 1px solid var(--border);
+  border-radius: var(--radius); color: var(--text);
+}
+.rap-valg:hover { border-color: var(--accent); }
+.rap-valg b { font-size: 13px; font-weight: 600; }
+.rap-valg span { font-size: 11px; color: var(--muted); }
+.rap-rad {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  font-size: 12px; color: var(--muted); padding: 2px 3px;
+}
+.rap-rad select { flex: 1; max-width: 190px; }
+.rap-avkryss {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 12px; color: var(--muted); padding: 2px 3px;
+}
