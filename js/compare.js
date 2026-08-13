@@ -35,6 +35,39 @@ let result = null;      // { ny:[], slettet:[], endret:[], uendret:Set, metode }
 let boksFilter = null;  // null | "ny" | "slettet" | "endret"
 const vis = (hva) => !boksFilter || boksFilter === hva;
 
+// «Bare endringer» må overleve at panelet tegnes på nytt (hvert trykk på et
+// fargefilter gjør det). Sto den bare i knappens class, mistet knappen
+// markeringen mens modellen fortsatt var nedtonet — og neste trykk slo den PÅ
+// en gang til i stedet for av.
+let bareEndringer = false;
+
+// Sammenslått geometri (lett kopi / GLB) har ikke én mesh per element, så de
+// uendrede kan ikke skjules hver for seg. I stedet tones HELE modellen ned til
+// et spøkelse, slik at boksene rundt nye og endrede står igjen alene — med
+// bygget fortsatt synlig som svak kontur, ellers svever boksene i tomrommet.
+const MAT_SPOKELSE = new THREE.MeshLambertMaterial({
+  color: COL.uendret, side: THREE.DoubleSide, transparent: true, opacity: 0.1, depthWrite: false
+});
+
+// Materialet legges i en EGEN nøkkel, ikke i userData.origMat: den eies av
+// display.js (spøkelse og typefarger), og skriver vi over den, mister modellen
+// typefargene når sammenligningen avsluttes.
+export function spokelseModell(på_) {
+  if (!S.modelGroup) return 0;
+  let n = 0;
+  S.modelGroup.children.forEach(m => {
+    if (!m.material) return;
+    if (på_) {
+      if (!m.userData.cmpFor) m.userData.cmpFor = m.material;
+      m.material = MAT_SPOKELSE; n++;
+    } else if (m.userData.cmpFor) {
+      m.material = m.userData.cmpFor;
+      delete m.userData.cmpFor; n++;
+    }
+  });
+  return n;
+}
+
 // ---------- Avtrykk ----------
 // Samler GlobalId, navn, type, senterpunkt, ytre mål og volum for hvert element.
 function elementIds() {
@@ -194,6 +227,8 @@ function paint() {
 
 function unpaint() {
   compareGroup.clear();
+  spokelseModell(false);
+  bareEndringer = false;
   if (S.modelGroup && !S.lightLoaded)
     S.modelGroup.children.forEach(m => { if (m.userData.origMat) m.material = m.userData.origMat; });
 }
@@ -224,7 +259,8 @@ function renderPanel() {
 
   const r = result;
   let html = '<div class="prop-actions">' +
-    '<button id="cmpOnlyChanged">' + ikon("vis") + ' ' + t("Bare endringer") + '</button>' +
+    '<button id="cmpOnlyChanged"' + (bareEndringer ? ' class="active"' : '') + '>' +
+    ikon("vis") + ' ' + t("Bare endringer") + '</button>' +
     '<button id="cmpStopp">' + ikon("lukk") + ' ' + t("Avslutt") + '</button></div>' +
     '<p style="font-size:12px; color:var(--muted); margin-bottom:8px">' +
     esc(S.compareBase.file) + ' → ' + esc(S.fileName) +
@@ -279,9 +315,15 @@ function renderPanel() {
   });
   merkFilter();
   $("cmpOnlyChanged").onclick = () => {
-    const skjul = !$("cmpOnlyChanged").classList.contains("active");
+    bareEndringer = !bareEndringer;
+    const skjul = bareEndringer;
     $("cmpOnlyChanged").classList.toggle("active", skjul);
-    if (S.lightLoaded) return;
+    if (!S.modelGroup) return;
+    // Lett kopi: geometrien er slått sammen per farge, så «skjul de uendrede»
+    // finnes ikke som operasjon. Før gjorde knappen INGENTING her — den så
+    // trykkbar ut og satt igjen som en feil hos brukeren. Nå tones modellen ned
+    // så de fargede boksene står alene.
+    if (S.lightLoaded) { spokelseModell(skjul); return; }
     S.modelGroup.children.forEach(m => {
       if (m.material === MAT.uendret) m.visible = !skjul;
     });
