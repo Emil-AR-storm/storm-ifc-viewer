@@ -20,7 +20,9 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
 [data-lett="1"] #btnOpen,
 [data-lett="1"] #btnOpenSplash,
 [data-lett="1"] #btnCompare,
-[data-lett="1"] #btnSaveLite { display: none !important; }
+[data-lett="1"] #btnSaveLite,
+[data-lett="1"] #btnRapport,
+[data-lett="1"] #rapMeny { display: none !important; }
 /* btnSettings vises MED VILJE i lettmodus: språkbytte, måleenhet og bakgrunn
    bor der. (Skjult i første utgave — montørene trengte den.) */
 /* Startskjerm-tekst som handler om å åpne egne filer gir ikke mening her */
@@ -202,6 +204,7 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
   <button id="btnCompare" title="Sammenlign med en annen versjon av modellen" data-i18n-title><svg class="ikon"><use href="#i-sammenlign"/></svg><span class="btn-t" data-i18n>Sammenlign</span></button>
   <button id="btnShare" title="Lag en lenke som gjenskaper denne visningen hos andre" data-i18n-title><svg class="ikon"><use href="#i-del"/></svg><span class="btn-t" data-i18n>Del visning</span></button>
   <button id="btnSaveLite" title="Eksporter forenklet modell (.glb) som funker på mobil" data-i18n-title><svg class="ikon"><use href="#i-lagre"/></svg><span class="btn-t" data-i18n>Lett kopi</span></button>
+  <button id="btnRapport" title="Last ned statusrapport som PDF" data-i18n-title><svg class="ikon"><use href="#i-tegning"/></svg><span class="btn-t" data-i18n>Rapport</span></button>
   <button id="btnHjul" title="Navigasjonshjul – naviger uten mus" data-i18n-title><svg class="ikon"><use href="#i-hjul"/></svg><span class="btn-t" data-i18n>Navigasjon</span></button>
   <button id="btnSettings" title="Innstillinger og hurtigtaster (høyreklikk i modellen)" data-i18n-title><svg class="ikon"><use href="#i-innstillinger"/></svg><span class="btn-t" data-i18n>Innstillinger</span></button>
   <button id="btnAngre" style="display:none" title="Angre siste handling (Ctrl+Z)" data-i18n-title><svg class="ikon"><use href="#i-angre"/></svg><span class="btn-t" data-i18n>Angre</span></button>
@@ -309,6 +312,24 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
 <div id="setMenu">
   <header><span data-i18n>Innstillinger</span><button onclick="document.getElementById('setMenu').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="setBody"></div>
+</div>
+
+<!-- Nedlastingsmenyen for statusrapporten. Ligger i BEGGE HTML-filene og
+     skjules med CSS i bygg.html — rapporten er et kontorverktøy. -->
+<div id="rapMeny">
+  <header><span data-i18n>Last ned PDF</span><button onclick="document.getElementById('rapMeny').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <div class="body">
+    <button class="rap-valg" data-utgave="full">
+      <b data-i18n>Fullstendig</b><span data-i18n>hele kommentartråden – til arkiv og analyse</span>
+    </button>
+    <button class="rap-valg" data-utgave="mote">
+      <b data-i18n>Byggemøte</b><span data-i18n>første og de tre siste innleggene – til utdeling</span>
+    </button>
+    <label class="rap-rad" for="rapLogo"><span data-i18n>Logo</span>
+      <select id="rapLogo"></select></label>
+    <label class="rap-avkryss"><input type="checkbox" id="rapCsv">
+      <span data-i18n>Ta med CSV med samme data</span></label>
+  </div>
 </div>
 
 <div id="commentDialog">
