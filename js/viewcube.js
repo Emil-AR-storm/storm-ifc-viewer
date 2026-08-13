@@ -6,7 +6,7 @@
 // som skulle tegnes etter den måtte ha endret render-løkka. En egen 104 px
 // canvas med tolv trekanter koster nesten ingenting og holder snitt-plan,
 // klipping og overlegg helt utenfor.
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
+import * as THREE from "three";
 import { S, writePrefs } from "./state.js";
 import { t } from "./i18n.js";
 import { camera, controls, frameHooks } from "./scene.js";

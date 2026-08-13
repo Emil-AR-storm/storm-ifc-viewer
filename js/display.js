@@ -1,5 +1,5 @@
 // Utseende: transparent, skjul/vis og fargelegging per elementtype.
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
+import * as THREE from "three";
 import { $, DEFAULT_APPEAR, på, S, apnePanel, esc, ikon } from "./state.js";
 import { t } from "./i18n.js";
 import { clearSelection } from "./elements.js";

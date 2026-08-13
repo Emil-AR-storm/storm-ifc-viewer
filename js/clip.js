@@ -1,5 +1,5 @@
 // ✂️ Snitt (akse og fra flate) og 🏢 etasjefilter – begge bruker klippeplan.
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
+import * as THREE from "three";
 import { $, DEFAULT_CLIPBOX, på, S, apnePanel, esc, fmtLen, ikon, tilM, writePrefs } from "./state.js";
 import { t } from "./i18n.js";
 import { val } from "./elements.js";

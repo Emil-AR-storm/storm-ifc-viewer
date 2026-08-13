@@ -1,5 +1,5 @@
 // 🔠 Aksesystem: finner akselinjer automatisk fra valgte elementtyper.
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
+import * as THREE from "three";
 import { $, på, S, apnePanel, esc, statusEl } from "./state.js";
 import { t } from "./i18n.js";
 import { val } from "./elements.js";

@@ -1,5 +1,5 @@
 // Innlasting av modeller: IFC (full og lav kvalitet) og lett kopi (.glb).
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
+import * as THREE from "three";
 import { $, på, S, esc, loadingEl, loadingText, lukkPaneler, nullstillModellState, statusEl, velgEnhetSkala, writePrefs } from "./state.js";
 import { t } from "./i18n.js";
 import { harWorker, kall, metaFor, tømMeta } from "./ifcrpc.js";

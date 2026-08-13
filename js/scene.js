@@ -1,5 +1,5 @@
 // Three.js-oppsett: renderer, kamera, lys, kamerakontroll og render-løkka.
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
+import * as THREE from "three";
 import { $, på, S } from "./state.js";
 
 // Egen enkel kamera-kontroll (mus + touch) – ingen eksterne avhengigheter

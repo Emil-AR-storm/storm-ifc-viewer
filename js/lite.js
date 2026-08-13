@@ -9,7 +9,7 @@
 // er FJERNET (2026-07-29). Det ga for lite igjen for kompleksiteten, og byggingen
 // tynget nettleseren på store modeller. Storm har en egen manuell prosedyre for å
 // forenkle modeller når det trengs. Historikken ligger i OPPLASTING.md.
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
+import * as THREE from "three";
 import { S, loadingText, statusEl } from "./state.js";
 import { t } from "./i18n.js";
 import { kall, metaFor, sikreMeta } from "./ifcrpc.js";

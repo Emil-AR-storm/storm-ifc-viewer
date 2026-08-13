@@ -1,5 +1,5 @@
 // 📏 Mål og ⛰ kote, med kant-snapping.
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
+import * as THREE from "three";
 import { S, fmtLen, tilM } from "./state.js";
 import { pick } from "./elements.js";
 import { camera, canvas, frameHooks, koteGroup, makeLabel, measureGroup, renderer, scene, updateScreenScaled } from "./scene.js";
