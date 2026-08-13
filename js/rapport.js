@@ -33,6 +33,23 @@ export const STATUS_FARGE = {
 };
 // ── SLUTT SPEILET ──────────────────────────────────────────────────────────
 
+// Hastegradsfargene PÅ PAPIR.
+//
+// Fem av seks er de samme som ringen i modellen. Gul er unntaket: #fde047 er
+// valgt for å synes mot en mørk boble i 3D (se kommentaren i js/frist.js — en
+// ravgul ring rundt en ravgul flate forsvinner), men den samme gulen på hvitt
+// papir er nesten usynlig. Skjerm og papir har ikke samme bakgrunn, så de kan
+// ikke ha samme gul.
+//
+// Modellen røres IKKE. Dette gjelder bare PDF-en.
+export const PAPIR_RING = { gul: "#a16207" };
+// Eksportert bare for testen: den skal kunne slå fast at ALT annet enn gul er
+// uendret fra modellen.
+export const HASTEGRAD_PAPIR_KILDE = Object.fromEntries(
+  Object.entries(HASTEGRAD).map(([k, v]) => [k, v.ring]));
+export const ringFarge = (hast) =>
+  PAPIR_RING[hast] || (HASTEGRAD[hast] && HASTEGRAD[hast].ring) || null;
+
 export const UTGAVER = ["full", "mote"];
 export const MOTE_SISTE = 3;        // hvor mange siste innlegg møteutgaven viser
 
@@ -499,7 +516,7 @@ function tabellrad(P, b, sakBredde, visSiste) {
 
   // Hastegraden som fargelapp med dager — «7 dager over» sier mer i et møte
   // enn en dato folk må regne på selv.
-  const ring = HASTEGRAD[b.hast].ring;
+  const ring = ringFarge(b.hast);
   const lapp = hastLapp(b);
   if (lapp) {
     d.setFontSize(6.5);
@@ -537,7 +554,7 @@ function hastLapp(b) {
 function saksmappe(P, b) {
   const { d } = P;
   const c = b.c;
-  const ring = HASTEGRAD[b.hast].ring || STREK;
+  const ring = ringFarge(b.hast) || STREK;
   const innB = P.bredde - 8;
 
   const tittel = bryt(d, "#" + (b.nr == null ? "" : b.nr) + " " + c.text, innB - 30);
@@ -573,26 +590,51 @@ function saksmappe(P, b) {
 
   // Bilder og talemeldinger nevnes, aldri lastes ned — en rapport skal kunne
   // lages uten å hente 40 MB bilder fra SharePoint først.
+  // Vedleggene på TO linjer, ikke én lang. Med fire tegninger som alle heter
+  // «… - 10.03.26.pdf» ble den ene linja en vegg av nesten lik tekst, og saken
+  // så rar ut ved siden av de andre. Filendelsen tas bort — alle tegninger er
+  // PDF-er, og «.pdf» fire ganger på rad sier ingenting.
+  //
+  // INGEN EMOJI. jsPDF tegner med WinAnsi-fonter, og 🎤 ble til «Ø‹ßα» i den
+  // første ekte rapporten. Norske tegn går fint; alt utenfor Latin-1 gjør det ikke.
   const vedlegg = [];
   const før = (c.bilder || []).length, etter = (c.bilderEtter || []).length;
   if (før) vedlegg.push(antall(før, "{0} bilde før", "{0} bilder før"));
   if (etter) vedlegg.push(antall(etter, "{0} bilde etter", "{0} bilder etter"));
-  // INGEN EMOJI HER. jsPDF tegner med WinAnsi-fonter, og 🎤 ble til «Ø‹ßα» i
-  // den første ekte rapporten. Norske tegn går fint; alt utenfor Latin-1 gjør
-  // det ikke.
-  (c.lyd || []).forEach(l => vedlegg.push(
+  // «talemelding · talemelding» leser dårlig. Har opptaket hverken navn eller
+  // tidspunkt, er det ingenting å skille dem på — da er ett tall riktigere enn
+  // to like ord. De som HAR avsender eller dato listes hver for seg.
+  const lydMed = (c.lyd || []).filter(l => l.av || l.dato);
+  const lydUten = (c.lyd || []).length - lydMed.length;
+  if (lydUten) vedlegg.push(antall(lydUten, "{0} talemelding", "{0} talemeldinger"));
+  lydMed.forEach(l => vedlegg.push(
     t("talemelding") + (l.av ? " · " + l.av : "") + (l.dato ? " · " + l.dato : "")));
-  (c.tegninger || []).forEach(tg => vedlegg.push(
-    t("tegning") + " " + tg.fil + (tg.side ? " s. " + tg.side : "")));
-  if (vedlegg.length) {
-    d.setFontSize(7); hex(d, "#4b5563");
-    bryt(d, vedlegg.join("  ·  "), P.bredde - 14).forEach((l, i) => {
-      P.sørgFor(5); d.text(l, P.x + 5, P.y + i * 3.2);
-    });
-    P.y += bryt(d, vedlegg.join("  ·  "), P.bredde - 14).length * 3.2 + 1;
-  }
 
-  // Kommentartråden
+  const tegninger = (c.tegninger || []).map(tg =>
+    String(tg.fil || "").replace(/\.pdf$/i, "") + (tg.side ? " s. " + tg.side : ""));
+
+  const linje = (tekst, etikett) => {
+    if (!tekst) return;
+    d.setFontSize(7); hex(d, "#4b5563");
+    const b = P.bredde - 14 - (etikett ? 16 : 0);
+    const ls = bryt(d, tekst, b);
+    P.sørgFor(ls.length * 3.2 + 3);
+    if (etikett) { hex(d, GRÅ); d.text(etikett, P.x + 5, P.y); hex(d, "#4b5563"); }
+    ls.forEach((l, i) => d.text(l, P.x + 5 + (etikett ? 16 : 0), P.y + i * 3.2));
+    P.y += ls.length * 3.2 + 1;
+  };
+  linje(vedlegg.join("  ·  "));
+  linje(tegninger.join("  ·  "), tegninger.length ? t("Tegninger") : "");
+
+  // Kommentartråden. Er den tom, sies det — ellers slutter blokka brått midt i
+  // vedleggslista, og saken ser halvferdig ut ved siden av de som har svar.
+  if (!trad.length) {
+    hex(d, STREK, "strek"); d.setLineWidth(0.2);
+    d.line(P.x + 5, P.y + 1, P.x + P.bredde - 5, P.y + 1);
+    d.setFontSize(6.5); hex(d, GRÅ);
+    d.text(t("INGEN SVAR ENNÅ"), P.x + 5, P.y + 5);
+    P.y += 7;
+  }
   if (trad.length) {
     hex(d, STREK, "strek"); d.setLineWidth(0.2);
     d.line(P.x + 5, P.y, P.x + P.bredde - 5, P.y);
@@ -684,7 +726,7 @@ export async function tegn(jsPDF, m, bilde, logo) {
   // 2) Tallene
   overskrift(P, t("Etter frist"));
   ruter(P, HASTEGRAD_REKKE.filter(h => h !== "ingen").map(h => ({
-    tall: m.tellHast[h] || 0, tekst: t(HASTEGRAD[h].navn), farge: HASTEGRAD[h].ring
+    tall: m.tellHast[h] || 0, tekst: t(HASTEGRAD[h].navn), farge: ringFarge(h)
   })).concat([{ tall: m.tellStatus["Løst"], tekst: t("Løst"), farge: STATUS_FARGE["Løst"] }]));
 
   overskrift(P, t("Etter status"));
