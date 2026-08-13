@@ -161,7 +161,15 @@ export function fangstBilde(bredde, høyde) {
   const h = Math.max(64, Math.round(høyde || 900));
   let rt = null;
   const gammelt = renderer.getRenderTarget();
+  // Rapporten er et hvitt dokument. Brukerens egen 3D-bakgrunn er mørk som
+  // standard, og et svart felt på en A4-side ser feil ut og tømmer en
+  // blekkpatron. Bakgrunn og rutenett settes lyst for fangsten og settes
+  // tilbake i finally — også hvis noe kaster underveis.
+  const gammelBg = scene.background ? scene.background.clone() : null;
+  const gammeltRutenett = grid.visible;
   try {
+    if (scene.background) scene.background.set(0xffffff);
+    grid.visible = false;
     rt = new THREE.WebGLRenderTarget(b, h);
     // Kameraets bildeforhold må matche målet, ellers blir bildet strukket
     const gammeltAspect = camera.aspect;
@@ -179,12 +187,18 @@ export function fangstBilde(bredde, høyde) {
     for (let y = 0; y < h; y++)
       img.data.set(px.subarray((h - 1 - y) * b * 4, (h - y) * b * 4), y * b * 4);
     ctx.putImageData(img, 0, 0);
-    return { data: c.toDataURL("image/png"), b, h };
+    // JPEG, ikke PNG: den første ekte rapporten ble 5 MB, og nesten alt var
+    // dette ene bildet. En 3D-visning er fotolignende, så JPEG komprimerer den
+    // ned til noen hundre kilobyte uten at noen ser forskjell — og en rapport
+    // som skal sendes på e-post før et møte må kunne sendes på e-post.
+    return { data: c.toDataURL("image/jpeg", 0.86), b, h, format: "JPEG" };
   } catch (err) {
     // Bildet er en pynt, ikke en forutsetning — rapporten skal komme uansett.
     console.warn("Klarte ikke å fange modellbildet:", err);
     return null;
   } finally {
+    if (gammelBg && scene.background) scene.background.copy(gammelBg);
+    grid.visible = gammeltRutenett;
     renderer.setRenderTarget(gammelt);
     if (rt) rt.dispose();
   }

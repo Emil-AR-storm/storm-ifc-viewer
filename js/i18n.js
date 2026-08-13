@@ -912,6 +912,13 @@ export const ORDBOK = {
     lt: "Nepavyko išsaugoti žymų SharePoint – šiuo metu tą patį failą rašo kas nors kitas. Vietiniai duomenys nedingo; pabandykite netrukus dar kartą." },
 
   // ---------- Statusrapport (PDF) ----------
+  "{0} bilde": { en: "{0} photo", pl: "{0} zdjęcie", lt: "{0} nuotrauka" },
+  "{0} bilde før": { en: "{0} photo before", pl: "{0} zdjęcie przed", lt: "{0} nuotrauka prieš" },
+  "{0} bilde etter": { en: "{0} photo after", pl: "{0} zdjęcie po", lt: "{0} nuotrauka po" },
+  "{0} talemelding": { en: "{0} voice message", pl: "{0} wiadomość głosowa", lt: "{0} balso žinutė" },
+  "{0} tegning": { en: "{0} drawing", pl: "{0} rysunek", lt: "{0} brėžinys" },
+  "– {0} markering": { en: "– {0} marking", pl: "– {0} oznaczenie", lt: "– {0} žyma" },
+  "ID": { en: "ID", pl: "ID", lt: "ID" },
   "Henter PDF-biblioteket …": { en: "Fetching the PDF library …", pl: "Pobieranie biblioteki PDF …", lt: "Gaunama PDF biblioteka …" },
   "Tegner {0} sider …": { en: "Drawing {0} pages …", pl: "Rysowanie {0} stron …", lt: "Piešiama {0} puslapių …" },
   "Modell": { en: "Model", pl: "Model", lt: "Modelis" },

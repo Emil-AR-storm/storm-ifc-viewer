@@ -40,6 +40,13 @@ export const MOTE_SISTE = 3;        // hvor mange siste innlegg møteutgaven vis
 
 export const svarI = (c) => (c && Array.isArray(c.svar) ? c.svar : []);
 
+// «1 bilder» skurrer på en side som ellers ser ryddig ut. Entallsformen er
+// oversatt for seg — polsk og litauisk bøyer annerledes enn norsk, så dette
+// kan ikke løses med en s på slutten.
+export function antall(n, ental, flertall) {
+  return Number(n) === 1 ? t(ental, n) : t(flertall, n);
+}
+
 // «2026-08-05» → «05.08.2026». Ugyldig inn gir tom streng, ikke «NaN.NaN».
 export function norskDato(iso) {
   const d = String(iso || "").split("-");
@@ -125,6 +132,17 @@ export function byggModell(kilde) {
   // «Krever handling nå»: forfalt og hastende, verst først. Innen samme
   // hastegrad sorteres på frist — den eldste fristen først.
   const rekke = (h) => HASTEGRAD_REKKE.indexOf(h);
+
+  // Løpenummer i rapporten. Markeringenes egne ID-er er tidsstempel pluss en
+  // tilfeldig hale (1785919803135-4wru9o) — laget for å ikke kollidere når to
+  // skriver samtidig, ikke for å leses av et menneske. «#ru9o» i et byggemøte
+  // sier ingenting. Nummeret følger rekkefølgen i rapporten, og den fulle
+  // ID-en står i CSV-en for den som skal koble radene mot noe annet.
+  const rekkefolge = beriket.slice().sort((a, b) =>
+    rekke(a.hast) - rekke(b.hast) ||
+    String(a.c.due || "9999").localeCompare(String(b.c.due || "9999")));
+  rekkefolge.forEach((b, i) => { b.nr = i + 1; });
+
   const krever = beriket
     .filter(b => b.hast === "forfalt" || b.hast === "rod")
     .sort((a, b) => rekke(a.hast) - rekke(b.hast) ||
@@ -150,9 +168,7 @@ export function byggModell(kilde) {
   // Uten denne falt løste saker ut av datafila: de er hverken i «krever»
   // eller i «grupper» (som bare dekker det åpne), og «saker» filtrerer dem
   // bort med vilje. Testen fanget det.
-  const rader = beriket.slice().sort((a, b) =>
-    rekke(a.hast) - rekke(b.hast) ||
-    String(a.c.due || "9999").localeCompare(String(b.c.due || "9999")));
+  const rader = rekkefolge;
 
   return {
     utgave,
@@ -209,7 +225,7 @@ export function endringerSiden(naa, forrige) {
 // skilletegn og BOM foran, ellers åpner Excel fila som én kolonne med rare
 // tegn. Datoene skrives som YYYY-MM-DD (sorterbart), ikke norsk format — dette
 // er fila man regner på, ikke fila man ser på.
-export const CSV_KOLONNER = ["Nr", "Sak", "Status", "Hastegrad", "Ansvarlig", "Frist",
+export const CSV_KOLONNER = ["Nr", "ID", "Sak", "Status", "Hastegrad", "Ansvarlig", "Frist",
   "Dager til frist", "Opprettet", "Opprettet av", "Antall svar", "Antall bilder",
   "Antall talemeldinger", "Siste svar", "Siste svar av", "Planner"];
 
@@ -227,7 +243,7 @@ export function tilCsv(modell) {
     const sv = svarI(c);
     const siste = sv[sv.length - 1];
     linjer.push([
-      c.id, c.text, c.status || "Åpen", HASTEGRAD[b.hast].navn, c.owner || "",
+      b.nr, c.id, c.text, c.status || "Åpen", HASTEGRAD[b.hast].navn, c.owner || "",
       c.due || "", b.dager == null ? "" : b.dager, c.date || "", c.author || "",
       sv.length, (c.bilder || []).length + (c.bilderEtter || []).length,
       (c.lyd || []).length, siste ? siste.tekst : "", siste ? siste.forfatter : "",
@@ -319,7 +335,7 @@ function topplinje(P, forste) {
   if (P.logo) {
     // Logoen tegnes i sin egen målestokk: 42 mm bred, høyden følger bildet.
     const h = Math.min(16, 42 * (P.logo.h / P.logo.b));
-    try { d.addImage(P.logo.data, "PNG", A4.marg, y - 2, 42, h); } catch (_) {}
+    try { d.addImage(P.logo.data, P.logo.format || "PNG", A4.marg, y - 2, 42, h); } catch (_) {}
     y += h + 2;
   } else {
     d.setFontSize(15); hex(d, SORT); d.setFont(undefined, "bold");
@@ -330,8 +346,10 @@ function topplinje(P, forste) {
   d.setFontSize(forste ? 16 : 13); hex(d, SORT); d.setFont(undefined, "bold");
   d.text(t("Statusrapport markeringer"), A4.marg, y + 5);
   d.setFont(undefined, "normal");
+  // Undertittel bare når det finnes et prosjekt. Uten den sto modellnavnet
+  // tre ganger på samme side: her, i metablokka til høyre, og i bunnteksten.
   d.setFontSize(9); hex(d, GRÅ);
-  d.text(m.prosjekt ? m.prosjekt : m.modell, A4.marg, y + 10);
+  if (m.prosjekt) d.text(m.prosjekt, A4.marg, y + 10);
 
   // Metablokk til høyre
   d.setFontSize(7.5);
@@ -441,10 +459,10 @@ function tabellrad(P, b, sakBredde, visSiste) {
   const tittel = bryt(d, c.text, sakBredde - 2);
   const under = [
     (c.bilder || []).length + (c.bilderEtter || []).length
-      ? t("{0} bilder", (c.bilder || []).length + (c.bilderEtter || []).length) : "",
-    (c.lyd || []).length ? t("{0} talemeldinger", (c.lyd || []).length) : "",
-    sv.length ? t("{0} svar", sv.length) : "",
-    (c.tegninger || []).length ? t("{0} tegninger", (c.tegninger || []).length) : ""
+      ? antall((c.bilder || []).length + (c.bilderEtter || []).length, "{0} bilde", "{0} bilder") : "",
+    (c.lyd || []).length ? antall((c.lyd || []).length, "{0} talemelding", "{0} talemeldinger") : "",
+    sv.length ? antall(sv.length, "{0} svar", "{0} svar") : "",
+    (c.tegninger || []).length ? antall((c.tegninger || []).length, "{0} tegning", "{0} tegninger") : ""
   ].filter(Boolean).join(" · ");
   const sisteLinjer = siste
     ? bryt(d, t("Siste") + ": " + (siste.forfatter || "—") + " – " + siste.tekst, sakBredde - 4)
@@ -457,7 +475,7 @@ function tabellrad(P, b, sakBredde, visSiste) {
 
   let x = P.x;
   d.setFontSize(7.5); hex(d, GRÅ);
-  d.text(String(c.id).slice(-4), x, P.y + 2.4); x += KOL.nr;
+  d.text(String(b.nr == null ? "" : b.nr), x, P.y + 2.4); x += KOL.nr;
 
   hex(d, SORT); d.setFontSize(8); d.setFont(undefined, "bold");
   tittel.forEach((l, i) => d.text(l, x, P.y + 2.4 + i * 3.6));
@@ -522,7 +540,7 @@ function saksmappe(P, b) {
   const ring = HASTEGRAD[b.hast].ring || STREK;
   const innB = P.bredde - 8;
 
-  const tittel = bryt(d, "#" + String(c.id).slice(-4) + " " + c.text, innB - 30);
+  const tittel = bryt(d, "#" + (b.nr == null ? "" : b.nr) + " " + c.text, innB - 30);
   const meta = [c.owner ? t("ansvarlig") + " " + c.owner : "",
                 c.due ? t("frist") + " " + norskDato(c.due) : "",
                 c.date ? t("opprettet") + " " + c.date + (c.author ? " " + t("av") + " " + c.author : "") : ""]
@@ -557,18 +575,21 @@ function saksmappe(P, b) {
   // lages uten å hente 40 MB bilder fra SharePoint først.
   const vedlegg = [];
   const før = (c.bilder || []).length, etter = (c.bilderEtter || []).length;
-  if (før) vedlegg.push(t("{0} bilder før", før));
-  if (etter) vedlegg.push(t("{0} bilder etter", etter));
+  if (før) vedlegg.push(antall(før, "{0} bilde før", "{0} bilder før"));
+  if (etter) vedlegg.push(antall(etter, "{0} bilde etter", "{0} bilder etter"));
+  // INGEN EMOJI HER. jsPDF tegner med WinAnsi-fonter, og 🎤 ble til «Ø‹ßα» i
+  // den første ekte rapporten. Norske tegn går fint; alt utenfor Latin-1 gjør
+  // det ikke.
   (c.lyd || []).forEach(l => vedlegg.push(
-    "🎤 " + t("talemelding") + (l.av ? " · " + l.av : "") + (l.dato ? " · " + l.dato : "")));
+    t("talemelding") + (l.av ? " · " + l.av : "") + (l.dato ? " · " + l.dato : "")));
   (c.tegninger || []).forEach(tg => vedlegg.push(
     t("tegning") + " " + tg.fil + (tg.side ? " s. " + tg.side : "")));
   if (vedlegg.length) {
     d.setFontSize(7); hex(d, "#4b5563");
-    bryt(d, vedlegg.join("  ·  "), P.bredde - 10).forEach((l, i) => {
+    bryt(d, vedlegg.join("  ·  "), P.bredde - 14).forEach((l, i) => {
       P.sørgFor(5); d.text(l, P.x + 5, P.y + i * 3.2);
     });
-    P.y += bryt(d, vedlegg.join("  ·  "), P.bredde - 10).length * 3.2 + 1;
+    P.y += bryt(d, vedlegg.join("  ·  "), P.bredde - 14).length * 3.2 + 1;
   }
 
   // Kommentartråden
@@ -579,7 +600,7 @@ function saksmappe(P, b) {
     d.setFontSize(6.5); hex(d, GRÅ);
     d.text((b.trad.utelatt
       ? t("Kommentartråd – {0} av {1} innlegg", trad.length, trad.length + b.trad.utelatt)
-      : t("Kommentartråd – {0} innlegg", trad.length)).toUpperCase(), P.x + 5, P.y);
+      : antall(trad.length, "Kommentartråd – {0} innlegg", "Kommentartråd – {0} innlegg")).toUpperCase(), P.x + 5, P.y);
     P.y += 4;
 
     trad.forEach((s, i) => {
@@ -654,7 +675,7 @@ export async function tegn(jsPDF, m, bilde, logo) {
     overskrift(P, t("Modellen"), t("– slik den sto da rapporten ble laget"));
     const h = Math.min(62, P.bredde * (bilde.h / bilde.b));
     P.sørgFor(h + 6);
-    try { d.addImage(bilde.data, "PNG", P.x, P.y, P.bredde, h); } catch (_) {}
+    try { d.addImage(bilde.data, bilde.format || "PNG", P.x, P.y, P.bredde, h); } catch (_) {}
     hex(d, STREK, "strek"); d.setLineWidth(0.2);
     d.roundedRect(P.x, P.y, P.bredde, h, 1.5, 1.5, "D");
     P.y += h + 5;
@@ -709,7 +730,7 @@ export async function tegn(jsPDF, m, bilde, logo) {
 
   // 5) Øvrige åpne, gruppert
   for (const g of m.grupper) {
-    overskrift(P, t(g.navn), t("– {0} markeringer", g.rader.length));
+    overskrift(P, t(g.navn), antall(g.rader.length, "– {0} markering", "– {0} markeringer"));
     const sb = tabellhode(P, g.hast === "ukjent" ? t("Opprettet") : t("Frist"));
     g.rader.forEach(b => tabellrad(P, b, sb, false));
     P.y += 3;
