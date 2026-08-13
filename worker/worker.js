@@ -993,7 +993,15 @@ export default {
         const svar = await fetch(mål.href, { cf: { cacheTtl: 300, cacheEverything: true } });
         if (svar.ok) {
           const h = new Headers(svar.headers);
-          h.set("Cache-Control", "public, max-age=300"); // 5 min — ny GitHub-opplasting synes raskt
+          // /vendor/ er bibliotek vi ikke har skrevet selv, og filnavnet bærer
+          // versjonen (jspdf-2.5.2…). De endrer seg ALDRI under samme navn, så de
+          // kan caches for godt. Fem minutter her ville tvunget montøren til å
+          // laste ned biblioteket på nytt hvert femte minutt på byggeplassen —
+          // og det er nettopp dårlig dekning selvhostingen skal slippe unna.
+          // Resten er vår egen kode: fem minutter, så en push synes raskt.
+          h.set("Cache-Control", /^\/vendor\//.test(hent)
+            ? "public, max-age=31536000, immutable"
+            : "public, max-age=300");
           // Sikkerhetsheadere. Her koster de nesten ingenting, fordi vi eier
           // proxyen – GitHub Pages kan ikke sette svarheadere i det hele tatt,
           // så index.html må klare seg med <meta http-equiv> hvis den skal ha
