@@ -253,7 +253,11 @@ export function vaskSvar(r) {
     tekst,
     forfatter: String(r.forfatter == null ? "" : r.forfatter),
     dato: String(r.dato == null ? "" : r.dato),
-    endret: String(r.endret == null ? "" : r.endret)
+    endret: String(r.endret == null ? "" : r.endret),
+    // Hvor innlegget kom fra. Brukes av PDF-rapporten til å merke innlegg fra
+    // byggeplassen, der navnet er selvrapportert og ikke kontrollert mot noen
+    // konto. Ukjent verdi kastes: heller ingen merkelapp enn en gjetning.
+    kilde: r.kilde === "bygg" || r.kilde === "kontor" ? r.kilde : ""
   };
 }
 
@@ -588,7 +592,8 @@ export const svarI = (c) => (c && Array.isArray(c.svar) ? c.svar : []);
 export function leggTilSvar(c, tekst) {
   const rent = String(tekst == null ? "" : tekst).trim();
   if (!c || !rent) return null;
-  const s = { id: nyId(), tekst: rent, forfatter: innloggetNavn(), dato: naaTekst(), endret: "" };
+  const s = { id: nyId(), tekst: rent, forfatter: innloggetNavn(), dato: naaTekst(), endret: "",
+              kilde: LETT ? "bygg" : "kontor" };
   c.svar = svarI(c).concat([s]);
   updateComment(c, {});
   varsleNevning(c, rent, finnNevnte(rent, nevnListe(c)));

@@ -27,6 +27,8 @@ export const DEFAULT_SETTINGS = {
   listLimit: 100,     // hvor mange elementer listene viser før de kortes av (0 = vis alle)
   cubeOn: true,       // 🧊 ViewCube av/på
   cubePos: "th",      // hjørne: tv | th | nv | nh (oppe/nede × venstre/høyre)
+  rapCsv: false,      // «Ta med CSV» i rapportmenyen
+  rapLogo: "",        // valgt logo (filnavn i SharePoint-mappa Logoer)
   keys: Object.assign({}, DEFAULT_KEYS)
 };
 

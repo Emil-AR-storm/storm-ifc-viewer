@@ -23,6 +23,15 @@ export const RENDER_BREDDE = 2400; // piksler på lengste side når en side tegn
 
 export const tegningsMappe = () => SP.folder + "/Tegninger";
 
+// Logoene til PDF-rapporten. Egen mappe ved siden av Tegninger, med samme
+// tanke: legg fila i mappa, så dukker den opp i menyen. Ingen JSON å redigere.
+//
+// FILNAVN, ALDRI EN NETTADRESSE. oppsett.json skal ikke kunne peke logoen til
+// en fremmed server — det ville gjenåpne samme klasse hull som hvitlista i
+// oppsett.js nettopp lukket.
+export const logoMappe = () => SP.folder + "/Logoer";
+export const erBilde = (navn) => /\.(png|jpe?g)$/i.test(String(navn || ""));
+
 // ---------- Navn og mappekobling (rene funksjoner) ----------
 
 export function utenEndelse(navn) {
@@ -75,7 +84,7 @@ async function siteId(token) {
 
 // Leser en mappe. Finnes den ikke, gir vi null i stedet for å kaste – mange
 // prosjekter har ingen tegningsmappe ennå.
-async function lesMappe(mappe, token) {
+export async function lesMappe(mappe, token) {
   const sti = mappe.split("/").map(encodeURIComponent).join("/");
   try {
     const d = await graphGet("/sites/" + S.spSiteId + "/drive/root:/" + sti +
@@ -239,4 +248,53 @@ export function visStatus(tekst) {
   if (!tekst) { loadingEl.classList.remove("open"); return; }
   loadingText.textContent = tekst;
   loadingEl.classList.add("open");
+}
+
+
+// ---------- Logoer til rapporten ----------
+// Tom eller manglende mappe gir tom liste, ikke feil: rapporten faller da
+// tilbake på tekstlogoen og lages likevel.
+export async function hentLogoer() {
+  let token;
+  try { token = await spTokenSilent(); } catch (_) { token = null; }
+  if (!token) return [];
+  try {
+    await siteId(token);
+    const innhold = await lesMappe(logoMappe(), token);
+    return (innhold || []).filter(f => f.file && erBilde(f.name))
+      .sort((a, b) => a.name.localeCompare(b.name, "no"))
+      .map(f => ({ fil: f.name, itemId: f.id, storrelse: f.size || 0 }));
+  } catch (err) {
+    console.warn("Kunne ikke lese logomappa:", err.message);
+    return [];
+  }
+}
+
+// Henter én logo som data-URL, klar for jsPDF.
+export async function hentLogo(itemId) {
+  if (!itemId) return null;
+  let token;
+  try { token = await spTokenSilent(); } catch (_) { token = null; }
+  if (!token) return null;
+  try {
+    const r = await fetch(GRAPH + "/sites/" + S.spSiteId + "/drive/items/" +
+      encodeURIComponent(itemId) + "/content", { headers: authHeaders(token, null, "logo") });
+    if (!r.ok) throw new Error("Graph " + r.status);
+    const blob = await r.blob();
+    const data = await new Promise((ja, nei) => {
+      const l = new FileReader();
+      l.onload = () => ja(l.result); l.onerror = nei;
+      l.readAsDataURL(blob);
+    });
+    const mål = await new Promise((ja) => {
+      const i = new Image();
+      i.onload = () => ja({ b: i.naturalWidth, h: i.naturalHeight });
+      i.onerror = () => ja({ b: 1000, h: 260 });
+      i.src = data;
+    });
+    return { data, b: mål.b, h: mål.h };
+  } catch (err) {
+    console.warn("Kunne ikke hente logoen:", err.message);
+    return null;
+  }
 }
