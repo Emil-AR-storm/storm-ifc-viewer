@@ -1,13 +1,13 @@
 // Oppstart for LETTMODUS (bygg.html): som main.js, men uten bibliotek,
 // sammenligning, «Fortsett med»-knapp og personlig oppsett fra SharePoint.
 // Innlogging startes aldri – se LETT-flagget i lett.js og gaten i sharepoint.js.
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
+import * as THREE from "three";
 import { $, S, esc, fmtLen, loadingEl, loadingText, tilM } from "./state.js";
 import { oversettDom, setLang, t } from "./i18n.js";
 import { setClipFromFace } from "./clip.js";
 import { clearSelection, hitID, pick, selectElement, showProperties } from "./elements.js";
 import { afterLoad, ifcReady, loadGlb } from "./ifc.js";
-import { closeMarkerPopup, openMarkerPopup, pickMarker } from "./markers.js";
+import { closeMarkerPopup, forberedNyMarkering, openMarkerPopup, pickMarker } from "./markers.js";
 import { snapshotModel } from "./compare.js";
 import { addMeasure, koteValue, rettPunkt, snapPoint } from "./measure.js";
 import { canvas, koteGroup, makeLabel, measureGroup } from "./scene.js";
@@ -79,7 +79,7 @@ canvas.addEventListener("pointerup", (e) => {
   }
   if (S.mode === "marker") {
     S.pendingPoint = hit.point.clone();
-    $("commentText").value = "";
+    forberedNyMarkering();
     $("commentDialog").classList.add("open");
     setTimeout(() => $("commentText").focus(), 50);
   } else if (S.mode === "measure") {

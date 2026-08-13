@@ -1,5 +1,5 @@
 // 🗺 Minikart: toppvisning med kameraprikk, trykk for å flytte deg.
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
+import * as THREE from "three";
 import { $, S, writePrefs } from "./state.js";
 import { axesGroup, camera, controls, frameHooks, grid, koteGroup, markerGroup, measureGroup, renderer, scene, selGroup } from "./scene.js";
 

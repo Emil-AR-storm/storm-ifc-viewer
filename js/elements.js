@@ -1,5 +1,5 @@
 // Valg, egenskaper, søk, mengder og markeringsboks.
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
+import * as THREE from "three";
 import { $, på, S, apnePanel, dec, esc, ikon, loadingEl, loadingText } from "./state.js";
 import { t } from "./i18n.js";
 import { hiddenIDs, hideElement, hideElements } from "./display.js";

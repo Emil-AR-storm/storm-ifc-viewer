@@ -1,11 +1,11 @@
 // Oppstart: kobler sammen modulene og håndterer klikk i modellen.
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
+import * as THREE from "three";
 import { $, S, fmtLen, loadingEl, loadingText, tilM } from "./state.js";
 import { oversettDom, setLang, t } from "./i18n.js";
 import { setClipFromFace } from "./clip.js";
 import { clearSelection, hitID, pick, selectElement, showProperties } from "./elements.js";
 import { afterLoad, ifcReady, loadModel } from "./ifc.js";
-import { closeMarkerPopup, openMarkerPopup, pickMarker } from "./markers.js";
+import { closeMarkerPopup, forberedNyMarkering, openMarkerPopup, pickMarker } from "./markers.js";
 import { addMeasure, koteValue, rettPunkt, snapPoint } from "./measure.js";
 import { canvas, koteGroup, makeLabel, measureGroup } from "./scene.js";
 
@@ -78,7 +78,7 @@ canvas.addEventListener("pointerup", (e) => {
   }
   if (S.mode === "marker") {
     S.pendingPoint = hit.point.clone();
-    $("commentText").value = "";
+    forberedNyMarkering();
     $("commentDialog").classList.add("open");
     setTimeout(() => $("commentText").focus(), 50);
   } else if (S.mode === "measure") {
