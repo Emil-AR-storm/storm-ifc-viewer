@@ -35,14 +35,34 @@ export const STATUS_FARGE = {
 
 // Hastegradsfargene PÅ PAPIR.
 //
-// Fem av seks er de samme som ringen i modellen. Gul er unntaket: #fde047 er
-// valgt for å synes mot en mørk boble i 3D (se kommentaren i js/frist.js — en
-// ravgul ring rundt en ravgul flate forsvinner), men den samme gulen på hvitt
-// papir er nesten usynlig. Skjerm og papir har ikke samme bakgrunn, så de kan
-// ikke ha samme gul.
+// TO SETT, og det er med vilje:
 //
-// Modellen røres IKKE. Dette gjelder bare PDF-en.
-export const PAPIR_RING = { gul: "#a16207" };
+//   ringFarge()  – fyll og streker. Solide flater: stripa øverst på en
+//                  tellerute, kantstripa på en saksmappe, ramma rundt en
+//                  fristlapp. Her skal fargen være KRAFTIG, for den skal
+//                  kjennes igjen som «gul» på tvers av rommet.
+//
+//   LAPP[]       – fristlappen med tekst inni. Her gjelder helt andre regler,
+//                  for teksten skal LESES. #ebeb19 mot hvitt gir 1,28:1 i
+//                  kontrast; kravet for liten tekst er 4,5:1. Den ville vært
+//                  usynlig. Lappen får derfor blek bakgrunn, kraftig kant og
+//                  mørk tekst i samme fargefamilie — nøyaktig som i utkastet
+//                  designet ble godkjent på.
+//
+// Grønn hadde samme problem uten at noen hadde sagt fra: #22c55e gir 2,28:1.
+// Den er tatt med i samme slengen.
+//
+// Modellen røres IKKE. Alt dette gjelder bare PDF-en.
+export const PAPIR_RING = { gul: "#ebeb19" };
+
+export const LAPP = {
+  forfalt: { tekst: "#7f1d1d", kant: "#e7b6b6", flate: "#fdf0f0" },
+  rod:     { tekst: "#a01c1c", kant: "#f0c2c2", flate: "#fef5f5" },
+  gul:     { tekst: "#7a5c00", kant: "#e7d68a", flate: "#fdfaeb" },
+  gronn:   { tekst: "#166534", kant: "#bfe3c8", flate: "#f2fbf4" },
+  ukjent:  { tekst: "#4b5563", kant: "#dcdfe4", flate: "#f7f8f9" },
+  ingen:   { tekst: "#4b5563", kant: "#dcdfe4", flate: "#f7f8f9" }
+};
 // Eksportert bare for testen: den skal kunne slå fast at ALT annet enn gul er
 // uendret fra modellen.
 export const HASTEGRAD_PAPIR_KILDE = Object.fromEntries(
@@ -516,15 +536,15 @@ function tabellrad(P, b, sakBredde, visSiste) {
 
   // Hastegraden som fargelapp med dager — «7 dager over» sier mer i et møte
   // enn en dato folk må regne på selv.
-  const ring = ringFarge(b.hast);
   const lapp = hastLapp(b);
   if (lapp) {
+    const L = LAPP[b.hast] || LAPP.ukjent;
     d.setFontSize(6.5);
     const lb = d.getTextWidth(lapp) + 3.4;
-    hex(d, ring || STREK, "strek"); d.setLineWidth(0.25);
-    hex(d, "#ffffff", "fyll");
+    hex(d, L.kant, "strek"); d.setLineWidth(0.25);
+    hex(d, L.flate, "fyll");
     d.roundedRect(x, P.y - 0.6, Math.min(lb, KOL.hast - 1), 4.4, 2.2, 2.2, "FD");
-    hex(d, ring || GRÅ);
+    hex(d, L.tekst);
     d.text(lapp, x + 1.7, P.y + 2.4);
   }
   x += KOL.hast;
@@ -580,7 +600,8 @@ function saksmappe(P, b) {
 
   const lapp = hastLapp(b);
   if (lapp) {
-    d.setFontSize(6.5); hex(d, ring);
+    // Fritt i lufta uten ramme — da må teksten selv ha nok kontrast.
+    d.setFontSize(6.5); hex(d, (LAPP[b.hast] || LAPP.ukjent).tekst);
     d.text(lapp, P.x + P.bredde - 4, y0 + 7.2, { align: "right" });
   }
 
