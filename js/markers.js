@@ -1,6 +1,6 @@
 // 💬 Markeringer: lagring lokalt og deling via SharePoint.
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
-import { $, S, esc, ikon, loadingEl, loadingText, lukkPaneler } from "./state.js";
+import { $, på, S, esc, ikon, loadingEl, loadingText, lukkPaneler } from "./state.js";
 import { t } from "./i18n.js";
 import { LETT } from "./lett.js";
 import { ANSATTE, FRISTER, PLANNER, TJENESTER } from "./config.js";
@@ -24,7 +24,7 @@ import { ADVAR_MB, antallSider, gyldigSide, hentTegninger, mb, sideBilde, velgMa
 
 // ---------- Markeringer / kommentarer ----------
 
-$("btnComments").addEventListener("click", () => {
+på("btnComments", "click", () => {
   lukkPaneler("commentPanel");
   $("commentPanel").classList.toggle("open");
 });

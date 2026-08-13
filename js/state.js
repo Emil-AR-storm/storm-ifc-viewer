@@ -267,6 +267,23 @@ export const loadingEl = document.getElementById("loading");
 export const loadingText = document.getElementById("loadingText");
 export const $ = (id) => document.getElementById(id);
 
+// Fester en lytter bare hvis elementet finnes.
+//
+// Hvorfor dette og ikke $("id").addEventListener(...): byggeplassversjonen
+// (bygg.html) har ikke alle knappene index.html har. Et kall på modulnivå mot
+// en knapp som mangler gir "Cannot read properties of null", og da kaster hele
+// modulen ved import – ikke bare den ene knappen. Mister bygg.html
+// btnComments, dør altså HELE markeringssystemet.
+//
+// Husregelen har vært "skjul knapper med CSS, aldri fjern dem". Den gjelder
+// fortsatt som praksis, men den skal ikke være det eneste som står mellom oss
+// og en død modul.
+export function på(id, hendelse, fn, valg) {
+  const el = $(id);
+  if (el) el.addEventListener(hendelse, fn, valg);
+  return el;
+}
+
 // ---------- Panelregister ----------
 // De ti panelene som skal lukke hverandre. Nye paneler legges KUN til her –
 // da lukkes de riktig overalt (knapper og Esc) uten flere kopier av

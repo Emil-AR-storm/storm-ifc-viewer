@@ -1,6 +1,6 @@
 // Three.js-oppsett: renderer, kamera, lys, kamerakontroll og render-løkka.
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
-import { $, S } from "./state.js";
+import { $, på, S } from "./state.js";
 
 // Egen enkel kamera-kontroll (mus + touch) – ingen eksterne avhengigheter
 class SimpleControls {
@@ -176,7 +176,7 @@ export function fitToModel() {
   grid.position.y = box.min.y;
 }
 
-$("btnFit").addEventListener("click", fitToModel);
+på("btnFit", "click", fitToModel);
 
 // ---------- Tekst-etiketter (sprites) ----------
 export function makeLabel(text, color = "#f59e0b", sizeF = 0.028) {

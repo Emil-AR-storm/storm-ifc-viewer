@@ -5,7 +5,7 @@
 // lenken virker uten innlogging så lenge mottakeren kan åpne selve modellen.
 // Mottakeren får aldri sitt eget lagrede oppsett overskrevet: den delte
 // visningen legges på uten å lagres.
-import { $, S, apnePanel, esc, ikon } from "./state.js";
+import { $, på, S, apnePanel, esc, ikon } from "./state.js";
 import { t } from "./i18n.js";
 import { applyClipState } from "./clip.js";
 import { applySharedCompare, collectCompare } from "./compare.js";
@@ -193,7 +193,7 @@ export async function applyView(v) {
 }
 
 // ---------- ⛓-knappen ----------
-$("btnShare").addEventListener("click", async () => {
+på("btnShare", "click", async () => {
   if (!S.modelGroup) { alert(t("Åpne en modell først.")); return; }
   const { link, note } = await buildShareLink();
   const body = $("shareBody");

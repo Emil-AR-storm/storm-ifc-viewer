@@ -30,6 +30,34 @@ export const oppsettSti = () =>
 // ikke hele lista.
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// ---------- Hvilke adresser oppsett.json får peke på ----------
+// oppsett.json ligger i SharePoint-mappa, og alle som kan skrive der kan endre
+// den. Sto det bare "bare https" her, kunne de byttet worker-adressen til sin
+// egen server – og neste gang en prosjektleder trykket Byggeplass, ville
+// opplastingsnøkkelen fulgt med i x-token-headeren (se byggeplass.js).
+// Nøkkelen er FELLES for alle prosjekter, så det ene byttet gir tilgang til
+// alt. En https-sjekk stopper feilskriving, ikke en som vil noe.
+//
+// Adressen kan fortsatt settes i oppsett.json – det var hele poenget med fila
+// – men bare til en vert som står her. Skal Workeren flyttes for godt, endres
+// lista og klienten pushes. Det skjer sjelden, og det er kontorarbeid.
+//
+// Et navn uten punktum foran må treffe eksakt. Et navn som BEGYNNER med
+// punktum godtar underdomener: ".logic.azure.com" slipper gjennom
+// "prod-59.westeurope.logic.azure.com", men ikke "falsk-logic.azure.com".
+export const WORKER_VERTER = ["storm-byggeplass.emil-46a.workers.dev"];
+// Varselet går til en Power Automate-flyt. De ligger alltid under Microsofts
+// logic.azure.com, og verten bytter når flyten flyttes mellom regioner – derfor
+// domenet og ikke én fast vert.
+export const VARSEL_VERTER = [".logic.azure.com"];
+
+export function gyldigAdresse(adr, verter) {
+  if (!/^https:\/\/[^\s"'<>]+$/.test(adr)) return false;   // bare https, ingen mellomrom
+  let vert;
+  try { vert = new URL(adr).hostname.toLowerCase(); } catch (_) { return false; }
+  return verter.some(v => v[0] === "." ? vert.endsWith(v) : vert === v);
+}
+
 export function vaskAnsatte(rå) {
   if (!Array.isArray(rå)) return [];
   const sett = new Set();
@@ -61,16 +89,18 @@ export function bruk(o) {
   if (typeof pl.planId === "string" && pl.planId.trim()) PLANNER.planId = pl.planId.trim();
   if (typeof pl.bucket === "string" && pl.bucket.trim()) PLANNER.bucket = pl.bucket.trim();
 
-  // Bare https, og bare hele adresser. En feilskrevet worker-adresse skal ikke
-  // kunne sende opplastinger et helt annet sted.
+  // Bare https, og bare en vert fra lista øverst i fila. Se kommentaren der:
+  // https alene stopper feilskriving, ikke en omdirigering som vil noe.
   const w = String(o.worker || "").trim();
-  if (/^https:\/\/[^\s"'<>]+$/.test(w)) TJENESTER.worker = w.replace(/\/+$/, "");
+  if (gyldigAdresse(w, WORKER_VERTER)) TJENESTER.worker = w.replace(/\/+$/, "");
 
   // Adressen @-nevninger varsles til (Power Automate / Teams-flyt). Samme
-  // strenge sjekk som worker-adressen: bare https, bare hele adresser.
-  // Mangler den, virker nevning fortsatt – den vises bare i appen.
+  // sjekk. Her følger det ingen nøkkel med, men navn og kommentartekst – og
+  // den sendes med no-cors, så en omdirigering ville aldri gitt en feilmelding
+  // noen kunne reagert på. Mangler adressen, virker nevning fortsatt – den
+  // vises bare i appen.
   const v = String(o.varsel || "").trim();
-  if (/^https:\/\/[^\s"'<>]+$/.test(v)) TJENESTER.varsel = v;
+  if (gyldigAdresse(v, VARSEL_VERTER)) TJENESTER.varsel = v;
 
   // Fristgrensene: når skifter ringen rundt en markering til gul og rød?
   // Firmaets verdier, ikke personlige — derfor her og ikke i S.settings.

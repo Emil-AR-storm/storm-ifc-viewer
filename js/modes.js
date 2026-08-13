@@ -1,5 +1,5 @@
 // Modus-håndtering (markering / mål / kote) og den nedre kontrollinja.
-import { $, S, writePrefs } from "./state.js";
+import { $, på, S, writePrefs } from "./state.js";
 import { t } from "./i18n.js";
 import { hideSnapPreview } from "./measure.js";
 import { koteGroup, measureGroup } from "./scene.js";
@@ -18,11 +18,11 @@ export function setMode(m) {
   updateModeBar();
 }
 
-$("btnMarker").addEventListener("click", () => setMode("marker"));
+på("btnMarker", "click", () => setMode("marker"));
 
-$("btnMeasure").addEventListener("click", () => setMode("measure"));
+på("btnMeasure", "click", () => setMode("measure"));
 
-$("btnKote").addEventListener("click", () => setMode("kote"));
+på("btnKote", "click", () => setMode("kote"));
 
 export function updateModeBar() {
   if (S.clipOn || S.storeyOn) return; // snitt-/etasjekontroller styrer modeBar

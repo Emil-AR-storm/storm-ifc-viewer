@@ -1,6 +1,6 @@
 // 🔠 Aksesystem: finner akselinjer automatisk fra valgte elementtyper.
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
-import { $, S, apnePanel, esc, statusEl } from "./state.js";
+import { $, på, S, apnePanel, esc, statusEl } from "./state.js";
 import { t } from "./i18n.js";
 import { val } from "./elements.js";
 import { lightElementBoxes } from "./ifc.js";
@@ -286,7 +286,7 @@ export function applyAxisFont() {
       o.scale.set(o.userData.baseScale.x * S.axisFontF, o.userData.baseScale.y * S.axisFontF, 1);
 }
 
-$("btnAxes").addEventListener("click", async () => {
+på("btnAxes", "click", async () => {
   if (!S.modelGroup) return;
   const panel = $("axesPanel");
   if (S.axesOn) {

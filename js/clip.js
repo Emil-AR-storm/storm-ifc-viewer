@@ -1,6 +1,6 @@
 // ✂️ Snitt (akse og fra flate) og 🏢 etasjefilter – begge bruker klippeplan.
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
-import { $, DEFAULT_CLIPBOX, S, apnePanel, esc, fmtLen, ikon, tilM, writePrefs } from "./state.js";
+import { $, DEFAULT_CLIPBOX, på, S, apnePanel, esc, fmtLen, ikon, tilM, writePrefs } from "./state.js";
 import { t } from "./i18n.js";
 import { val } from "./elements.js";
 import { lightElementBoxes } from "./ifc.js";
@@ -14,7 +14,7 @@ import { renderer } from "./scene.js";
 
 const axisVectors = { x: new THREE.Vector3(1,0,0), y: new THREE.Vector3(0,1,0), z: new THREE.Vector3(0,0,1) };
 
-$("btnClip").addEventListener("click", () => {
+på("btnClip", "click", () => {
   const førSnitt = snittAvtrykk();
   S.clipOn = !S.clipOn;
   $("btnClip").classList.toggle("active", S.clipOn);
@@ -440,7 +440,7 @@ function applyStorey(i) {
   applyClip();   // samler etasjeplan og et eventuelt aktivt snitt
 }
 
-$("btnStorey").addEventListener("click", async () => {
+på("btnStorey", "click", async () => {
   if (!S.modelGroup) return;
   S.storeyOn = !S.storeyOn;
   $("btnStorey").classList.toggle("active", S.storeyOn);

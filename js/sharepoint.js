@@ -1,5 +1,5 @@
 // Microsoft Graph: innlogging og modellbibliotek fra SharePoint.
-import { $, S, esc, ikon, loadingEl, loadingText, lukkPaneler } from "./state.js";
+import { $, på, S, esc, ikon, loadingEl, loadingText, lukkPaneler } from "./state.js";
 import { t } from "./i18n.js";
 import { LETT } from "./lett.js";
 import { afterLoad, clearLoadFlag, ifcReady, loadGlb, loadModel, offerLightRetry, setLoadFlag } from "./ifc.js";
@@ -217,14 +217,14 @@ async function spFetchList(fane) {
   return egne.concat(løse).sort((a, b) => a.name.localeCompare(b.name, "no"));
 }
 
-$("btnLib").addEventListener("click", () => {
+på("btnLib", "click", () => {
   const panel = $("libPanel");
   if (panel.classList.contains("open")) { panel.classList.remove("open"); return; }
   lukkPaneler("libPanel");
   openLibrary();
 });
 
-$("btnLibSplash").addEventListener("click", openLibrary);
+på("btnLibSplash", "click", openLibrary);
 
 async function openLibrary() {
   const body = $("libBody");
