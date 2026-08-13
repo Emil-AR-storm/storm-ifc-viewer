@@ -326,8 +326,25 @@ window.addEventListener("unhandledrejection", function(e) {
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.30.0/lib/msal-browser.min.js"
         integrity="sha384-YnOjsoOxSYo65h1BXWnSq24bFbqW8HfzMWSEQxYEMRmjW9Vl1J3HZI3iZxqNYvIi"
         crossorigin="anonymous"></script>
+<!-- 3D-motoren ligger i vårt eget repo, ikke på et CDN.
+     Grunnen: import maps kan ikke ha integrity-hash, så en fil hentet fra
+     jsDelivr her ville vært den ENESTE avhengigheten uten noen sperre — MSAL
+     rett over har hash. Selvhostet slipper vi å stole på noen, får ett færre
+     TLS-håndtrykk på mobil, og — viktigst — en service worker kan bare
+     pålitelig forhåndslagre filer fra eget domene. Uten dette steget kan
+     bygg.html aldri åpnes uten dekning.
+
+     ADRESSEN STÅR BARE HER. Modulene importerer «three», ikke en URL.
+     Versjonen ligger i mappenavnet, så en oppgradering blir en ny mappe og
+     Workerens cache-regel (ett år, immutable) er trygg.
+
+     Minifisert build med vilje: 655 kB mot 1243 kB. Ingen feilsøker inne i
+     three, og montøren betaler forskjellen på dårlig dekning. -->
 <script type="importmap">
-{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
+{"imports":{
+  "three": "vendor/three-0.160.0/three.module.min.js",
+  "three/addons/": "vendor/three-0.160.0/addons/"
+}}
 </script>
 <script type="module" src="js/main.js"></script>
 </body>
