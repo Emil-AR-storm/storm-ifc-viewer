@@ -1,6 +1,6 @@
 // Innlasting av modeller: IFC (full og lav kvalitet) og lett kopi (.glb).
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
-import { $, S, esc, loadingEl, loadingText, lukkPaneler, nullstillModellState, statusEl, velgEnhetSkala, writePrefs } from "./state.js";
+import { $, på, S, esc, loadingEl, loadingText, lukkPaneler, nullstillModellState, statusEl, velgEnhetSkala, writePrefs } from "./state.js";
 import { t } from "./i18n.js";
 import { harWorker, kall, metaFor, tømMeta } from "./ifcrpc.js";
 import { byggLettKopi, lettNavn } from "./lite.js";
@@ -422,7 +422,7 @@ export async function loadGlb(buffer) {
   renderMiniMap();
 }
 
-$("btnSaveLite").addEventListener("click", async () => {
+på("btnSaveLite", "click", async () => {
   if (!S.modelGroup) return;
   if (S.glbActive) { alert(t("Denne modellen er allerede en lett kopi.")); return; }
   loadingEl.classList.add("open");
@@ -466,7 +466,7 @@ function setLight(on) {
 
 setLight(S.lightMode);
 
-$("btnLight").addEventListener("click", async () => {
+på("btnLight", "click", async () => {
   setLight(!S.lightMode);
   if (S.modelGroup && (S.lastBuffer || S.bufferITråd) && S.lightMode !== S.lightLoaded &&
       confirm(t("Laste modellen på nytt i {0} kvalitet?", S.lightMode ? t("lav") : t("full")))) {

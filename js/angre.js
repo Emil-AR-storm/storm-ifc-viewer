@@ -21,7 +21,7 @@
 // oppdateres for hånd overalt – så å røre S direkte ville gitt en tilstand
 // som ikke stemmer med det som vises.
 
-import { $, S } from "./state.js";
+import { $, på, S } from "./state.js";
 import { t } from "./i18n.js";
 import { camera, controls } from "./scene.js";
 
@@ -172,7 +172,7 @@ export function postTilstand(før, etter, sett, tekst) {
 S.pushAngre = leggTilAngre;
 S.nullstillAngre = nullstillAngre;
 
-$("btnAngre") && $("btnAngre").addEventListener("click", angre);
-$("btnGjenopprett") && $("btnGjenopprett").addEventListener("click", gjenopprett);
+på("btnAngre", "click", angre);
+på("btnGjenopprett", "click", gjenopprett);
 
 oppdaterKnapper();

@@ -8,7 +8,7 @@
 // revisjoner. Mangler GlobalId-treff (noen eksportører lager nye hver gang),
 // faller den tilbake på geometrisk match: type + posisjon + volum.
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
-import { $, S, apnePanel, esc, ikon, loadingEl, loadingText } from "./state.js";
+import { $, på, S, apnePanel, esc, ikon, loadingEl, loadingText } from "./state.js";
 import { t } from "./i18n.js";
 import { guidFor, sikreMeta, typeFor } from "./ifcrpc.js";
 import { alleElementIder } from "./ifc.js";
@@ -409,7 +409,7 @@ S.onModelLoaded = async () => {
   renderPanel();
 };
 
-$("btnCompare").addEventListener("click", () => {
+på("btnCompare", "click", () => {
   if (!S.modelGroup) return;
   if (S.compareOn || S.compareBase) { stopCompare(); return; }
   $("btnCompare").classList.add("active");

@@ -1,6 +1,6 @@
 // Valg, egenskaper, søk, mengder og markeringsboks.
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
-import { $, S, apnePanel, dec, esc, ikon, loadingEl, loadingText } from "./state.js";
+import { $, på, S, apnePanel, dec, esc, ikon, loadingEl, loadingText } from "./state.js";
 import { t } from "./i18n.js";
 import { hiddenIDs, hideElement, hideElements } from "./display.js";
 import { alleElementIder, lightElementBoxes } from "./ifc.js";
@@ -418,7 +418,7 @@ export function zoomToElement(id) {
   showProperties(id);
 }
 
-$("btnSearch").addEventListener("click", () => {
+på("btnSearch", "click", () => {
   if (!S.modelGroup) return;
   const panel = $("searchPanel");
   if (panel.classList.contains("open")) { panel.classList.remove("open"); return; }
@@ -459,7 +459,7 @@ function renderSearchResults() {
 }
 
 // ---------- Mengder ----------
-$("btnQty").addEventListener("click", async () => {
+på("btnQty", "click", async () => {
   if (!S.modelGroup) return;
   const panel = $("qtyPanel");
   if (panel.classList.contains("open")) { panel.classList.remove("open"); return; }

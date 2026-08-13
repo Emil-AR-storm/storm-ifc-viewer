@@ -1,5 +1,5 @@
 // ⚙ Innstillingsmeny og hurtigtaster.
-import { $, DEFAULT_APPEAR, DEFAULT_KEYS, DEFAULT_SETTINGS, S, esc, gjettEnhetSkala, ikon, lukkPaneler, velgEnhetSkala, writePrefs } from "./state.js";
+import { $, DEFAULT_APPEAR, DEFAULT_KEYS, DEFAULT_SETTINGS, på, S, esc, gjettEnhetSkala, ikon, lukkPaneler, velgEnhetSkala, writePrefs } from "./state.js";
 import { SPRAK, setLang, t } from "./i18n.js";
 import { angre, gjenopprett } from "./angre.js";
 import { FRISTER } from "./config.js";
@@ -48,7 +48,7 @@ function closeSettings() {
   S.keyWaitFor = null;
 }
 
-$("btnSettings").addEventListener("click", () => {
+på("btnSettings", "click", () => {
   const menu = $("setMenu");
   if (menu.classList.contains("open")) closeSettings(); else openSettings();
 });

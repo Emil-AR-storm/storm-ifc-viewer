@@ -1,6 +1,6 @@
 // Utseende: transparent, skjul/vis og fargelegging per elementtype.
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
-import { $, DEFAULT_APPEAR, S, apnePanel, esc, ikon } from "./state.js";
+import { $, DEFAULT_APPEAR, på, S, apnePanel, esc, ikon } from "./state.js";
 import { t } from "./i18n.js";
 import { clearSelection } from "./elements.js";
 import { sikreMeta, typeFor } from "./ifcrpc.js";
@@ -43,7 +43,7 @@ export function setGhost(on, silent) {
   });
 }
 
-$("btnGhost").addEventListener("click", () => {
+på("btnGhost", "click", () => {
   const før = visningsAvtrykk();
   setGhost(!S.ghostOn);
   meldAngre(før, S.ghostOn ? "Gjennomsiktig på" : "Gjennomsiktig av");
@@ -99,7 +99,7 @@ export function oppdaterVisAlle() {
   $("btnShowAll").style.display = noeSkjult ? "" : "none";
 }
 
-$("btnShowAll").addEventListener("click", () => {
+på("btnShowAll", "click", () => {
   // Avtrykk FØR: «Vis alle» kan gjøre om en hel dags skjuling på ett klikk
   const før = visningsAvtrykk();
   hiddenIDs.clear();
@@ -248,7 +248,7 @@ export function resetColors() {
   meldAngre(før, "Originalfarger");
 }
 
-$("btnColors").addEventListener("click", async () => {
+på("btnColors", "click", async () => {
   if (!S.modelGroup) return;
   const panel = $("colorPanel");
   if (panel.classList.contains("open")) { panel.classList.remove("open"); return; }
