@@ -334,6 +334,11 @@ window.addEventListener("unhandledrejection", function(e) {
      pålitelig forhåndslagre filer fra eget domene. Uten dette steget kan
      bygg.html aldri åpnes uten dekning.
 
+     PRIKKEN FORAN «./vendor» ER IKKE PYNT. Import maps krever at en adresse
+     begynner med /, ./ eller ../ — ellers klarer ikke nettleseren å tolke den
+     som en URL, setter verdien til null, og hele siden dør med «matches with
+     "three" but is blocked by a null value». Den feilen så vi i drift.
+
      ADRESSEN STÅR BARE HER. Modulene importerer «three», ikke en URL.
      Versjonen ligger i mappenavnet, så en oppgradering blir en ny mappe og
      Workerens cache-regel (ett år, immutable) er trygg.
@@ -342,8 +347,8 @@ window.addEventListener("unhandledrejection", function(e) {
      three, og montøren betaler forskjellen på dårlig dekning. -->
 <script type="importmap">
 {"imports":{
-  "three": "vendor/three-0.160.0/three.module.min.js",
-  "three/addons/": "vendor/three-0.160.0/addons/"
+  "three": "./vendor/three-0.160.0/three.module.min.js",
+  "three/addons/": "./vendor/three-0.160.0/addons/"
 }}
 </script>
 <script type="module" src="js/main.js"></script>
