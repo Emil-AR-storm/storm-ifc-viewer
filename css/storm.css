@@ -235,9 +235,17 @@ button.active { background: var(--aktiv-bg); border-color: var(--aktiv-bg); colo
 .prop-row .v { word-break: break-word; }
 .prop-actions { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
 
-.qty-row { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border); }
-.qty-row .n { word-break: break-word; }
-.qty-row .c { color: var(--accent2); white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
+/* Mengder: navn til venstre, tall til høyre.
+   RADEN MÅ KUNNE BRYTE. Tallkolonnen hadde white-space: nowrap på hele
+   strengen. Det gikk bra så lenge den var «24 stk · 82,6 m · 0,19 m³», men da
+   vekt og forskaling kom til, kunne den ikke krympe — og flex presset
+   navnekolonnen ned til ÉN BOKSTAV PER LINJE. Panelet ble uleselig.
+   Nå brytes raden i to linjer når det trengs, og tallene brytes bare MELLOM
+   verdier (hver .d er ubrytelig), aldri mellom tall og enhet. */
+.qty-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 10px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.qty-row .n { flex: 1 1 45%; min-width: 0; word-break: break-word; }
+.qty-row .c { flex: 1 1 auto; min-width: 0; color: var(--accent2); text-align: right; font-variant-numeric: tabular-nums; }
+.qty-row .c .d { white-space: nowrap; }
 
 /* Bibliotekets to faner: fulle modeller og lette kopier */
 .lib-faner { margin-bottom: 8px; display: flex; gap: 6px; }
