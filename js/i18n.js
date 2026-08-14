@@ -182,6 +182,21 @@ export const ORDBOK = {
     pl: "Powyższe pola są odczytywane z oppsett.json w folderze SharePoint z modelami. Brakujące pole nie jest błędem – używana jest wartość domyślna z kodu – ale wtedy nie kontrolujesz wartości z pliku. Uwaga: kopia w folderze projektu nie jest tą, którą czyta narzędzie.",
     lt: "Aukščiau esantys laukai skaitomi iš oppsett.json „SharePoint“ aplanke su modeliais. Trūkstamas laukas nėra klaida – naudojama numatytoji kodo reikšmė – bet tada nekontroliuojate failo reikšmės. Atkreipkite dėmesį, kad projekto aplanko kopija nėra ta, kurią skaito įrankis." },
   "Uten vekt (stk)": { en: "Without weight (pcs)", pl: "Bez masy (szt.)", lt: "Be svorio (vnt.)" },
+  "Umulig volum (stk)": { en: "Impossible volume (pcs)", pl: "Niemożliwa objętość (szt.)", lt: "Neįmanomas tūris (vnt.)" },
+  "Umulig volum": { en: "Impossible volume", pl: "Niemożliwa objętość", lt: "Neįmanomas tūris" },
+  "JA": { en: "YES", pl: "TAK", lt: "TAIP" },
+  "{0} element med umulig volum": {
+    en: "{0} elements with impossible volume", pl: "{0} elementów o niemożliwej objętości", lt: "{0} elementai su neįmanomu tūriu" },
+  "{0} med umulig volum": {
+    en: "{0} with impossible volume", pl: "{0} o niemożliwej objętości", lt: "{0} su neįmanomu tūriu" },
+  "større enn sin egen boks – geometrien er ødelagt. Volumet ({0}) og vekten kan ikke brukes.": {
+    en: "larger than its own bounding box – the geometry is broken. The volume ({0}) and weight cannot be used.",
+    pl: "większa niż własna obwiednia – geometria jest uszkodzona. Objętości ({0}) i masy nie można użyć.",
+    lt: "didesnis nei jo paties gaubtinė dėžė – geometrija sugadinta. Tūrio ({0}) ir svorio naudoti negalima." },
+  "Volumet er større enn elementets egen boks. Geometrien er ødelagt – tallet kan ikke brukes.": {
+    en: "The volume is larger than the element's own bounding box. The geometry is broken – the number cannot be used.",
+    pl: "Objętość jest większa niż własna obwiednia elementu. Geometria jest uszkodzona – liczby nie można użyć.",
+    lt: "Tūris didesnis nei paties elemento gaubtinė dėžė. Geometrija sugadinta – skaičiaus naudoti negalima." },
   "forskaling": { en: "formwork", pl: "szalunek", lt: "klojiniai" },
   "{0} element uten vekt": {
     en: "{0} elements without weight", pl: "{0} elementów bez masy", lt: "{0} elementai be svorio" },

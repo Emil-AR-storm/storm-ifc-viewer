@@ -622,18 +622,37 @@ function computeQuantities() {
     const len = q.len || Math.max(sizeV.x, sizeV.y, sizeV.z) * toM;
     // Forskaling: sider + underside. Toppen er støpeflate.
     const forskaling = q.flateSide + q.flateUnder;
+    // ---------------------------------------------------------------------
+    // ER VOLUMET I DET HELE TATT MULIG?
+    //
+    // Volumet regnes som en fortegnssum over tetraedre. Den matematikken
+    // forutsetter at meshen er LUKKET og konsekvent vridd. Er den ikke det —
+    // dupliserte flater, vrengte normaler, geometri som overlapper seg selv —
+    // gir summen et tall som ser helt normalt ut og er fullstendig galt.
+    //
+    // Målt på Geithus vaskehall: to CFSHS140x5-bjelker kom ut på 0,91 m³ mot
+    // 0,02 m³ i virkeligheten. 46 ganger for mye. Det ene avviket dro totalen
+    // fra 3,4 tonn (Revits fasit) til 10,7 tonn. To elementer av 67.
+    //
+    // SPERREN ER GEOMETRISK, IKKE EN TERSKEL: et legeme kan aldri ha større
+    // volum enn sin egen omsluttende boks. Er volumet større, er meshen
+    // beviselig ikke et gyldig lukket legeme, og tallet skal ikke brukes til
+    // noe. Ingen materialkunnskap, ingen tuning, ingen falske positive.
+    // De 2 % slark dekker at boksen er akse-justert og at flyttall runder.
+    const boksVol = q.dims[0] * q.dims[1] * q.dims[2];
+    const umuligVolum = boksVol > 0 && q.vol > boksVol * 1.02;
     // VEKT. Volum × tetthet for materialgruppen. Har elementet ikke volum
     // (flate uten tykkelse) eller et materiale vi ikke kjenner tettheten til,
     // blir vekten NULL — og det er en løgn i et tilbud. Derfor telles den ikke
     // som 0 kg, den telles som UKJENT, og summen sier hvor mange som mangler.
     const tetthet = TETTHET[materialGruppe(material)] || 0;
-    const kjentVekt = tetthet > 0 && q.vol > 1e-9;
+    const kjentVekt = tetthet > 0 && q.vol > 1e-9 && !umuligVolum;
     const kg = kjentVekt ? q.vol * tetthet : 0;
     // Gruppene skilles også på materiale: en betongsøyle og en stålsøyle med
     // samme mål skal ikke havne på samme rad i en vareordre.
     const gkey = key + (material ? " · " + material : "");
     if (!groups.has(gkey)) groups.set(gkey,
-      { count: 0, length: 0, vol: 0, area: 0, forskaling: 0, kg: 0, utenVekt: 0, type: typeName, material });
+      { count: 0, length: 0, vol: 0, area: 0, forskaling: 0, kg: 0, utenVekt: 0, umulige: 0, type: typeName, material });
     const g = groups.get(gkey);
     g.count++;
     g.length += len;
@@ -642,10 +661,11 @@ function computeQuantities() {
     g.forskaling += forskaling;
     g.kg += kg;
     if (!kjentVekt) g.utenVekt++;
+    if (umuligVolum) g.umulige++;
     rows.push({
       id, key: gkey, name, objType, type: typeName, material,
       L: q.dims[0], B: q.dims[1], H: q.dims[2], len, vol: q.vol, area: q.area,
-      forskaling, kg, kjentVekt
+      forskaling, kg, kjentVekt, umuligVolum
     });
   }
   const sortedRows = rows.sort((a, b) => a.key.localeCompare(b.key, "no") || a.id - b.id);
@@ -747,11 +767,12 @@ export function qtyForType(cache, type, mat) {
   const groups = new Map();
   rows.forEach(r => {
     if (!groups.has(r.key)) groups.set(r.key,
-      { count: 0, length: 0, vol: 0, area: 0, forskaling: 0, kg: 0, utenVekt: 0, type: r.type, material: r.material });
+      { count: 0, length: 0, vol: 0, area: 0, forskaling: 0, kg: 0, utenVekt: 0, umulige: 0, type: r.type, material: r.material });
     const g = groups.get(r.key);
     g.count++; g.length += r.len; g.vol += r.vol; g.area += r.area;
     g.forskaling += r.forskaling || 0; g.kg += r.kg || 0;
     if (!r.kjentVekt) g.utenVekt++;
+    if (r.umuligVolum) g.umulige++;
   });
   return {
     groups: [...groups.entries()].sort((a, b) => b[1].count - a[1].count),
@@ -801,31 +822,33 @@ export function qtyGroupRows(cache) {
   // forskjell på uten å åpne modellen i noe annet.
   const out = [[t("Gruppe"), t("IFC-type"), t("Materiale"), t("Antall"),
     t("Sum lengde (m)"), t("Sum areal (m2)"), t("Sum volum (m3)"),
-    t("Forskaling (m2)"), t("Vekt (kg)"), t("Kg/m"), t("Uten vekt (stk)")]];
+    t("Forskaling (m2)"), t("Vekt (kg)"), t("Kg/m"), t("Uten vekt (stk)"), t("Umulig volum (stk)")]];
   cache.groups.forEach(([key, g]) => out.push([key, g.type || "", g.material || "", g.count,
     nb(g.length, csvLenDec()), nb(g.area, csvAreaDec()), nb(g.vol, csvVolDec()),
     nb(g.forskaling, csvAreaDec()), nb(g.kg, 1),
-    g.length > 0 ? nb(g.kg / g.length, 1) : "", g.utenVekt || ""]));
+    g.length > 0 ? nb(g.kg / g.length, 1) : "", g.utenVekt || "", g.umulige || ""]));
   const tot = cache.groups.reduce((s, [, g]) =>
-    [s[0] + g.count, s[1] + g.length, s[2] + g.vol, s[3] + g.area, s[4] + g.forskaling, s[5] + g.kg, s[6] + (g.utenVekt || 0)],
-    [0, 0, 0, 0, 0, 0, 0]);
+    [s[0] + g.count, s[1] + g.length, s[2] + g.vol, s[3] + g.area, s[4] + g.forskaling, s[5] + g.kg,
+     s[6] + (g.utenVekt || 0), s[7] + (g.umulige || 0)],
+    [0, 0, 0, 0, 0, 0, 0, 0]);
   out.push([]);
   out.push([t("SUM"), "", "", tot[0], nb(tot[1], csvLenDec()), nb(tot[3], csvAreaDec()),
-    nb(tot[2], csvVolDec()), nb(tot[4], csvAreaDec()), nb(tot[5], 1), "", tot[6] || ""]);
+    nb(tot[2], csvVolDec()), nb(tot[4], csvAreaDec()), nb(tot[5], 1), "", tot[6] || "", tot[7] || ""]);
   return out;
 }
 
 export function qtyElementRows(cache) {
   const out = [["ElementID", t("Gruppe"), t("Navn"), "ObjectType", t("IFC-type"), t("Materiale"),
     t("Lengde (m)"), t("Bredde (m)"), t("Høyde (m)"), t("Lengste mål (m)"), t("Areal (m2)"), t("Volum (m3)"),
-    t("Forskaling (m2)"), t("Vekt (kg)")]];
+    t("Forskaling (m2)"), t("Vekt (kg)"), t("Umulig volum")]];
   cache.rows.forEach(r => out.push([r.id, r.key, r.name, r.objType, r.type, r.material || "",
     nb(r.L, csvLenDec()), nb(r.B, csvLenDec()), nb(r.H, csvLenDec()),
     nb(r.len, csvLenDec()), nb(r.area, csvAreaDec()), nb(r.vol, csvVolDec()),
     nb(r.forskaling || 0, csvAreaDec()),
     // Tom celle, ikke 0, når vekten ikke er kjent. En 0 i et tilbudsark blir
     // summert som om elementet veier ingenting.
-    r.kjentVekt ? nb(r.kg, 1) : ""]));
+    r.kjentVekt ? nb(r.kg, 1) : "",
+    r.umuligVolum ? t("JA") : ""]));
   return out;
 }
 
@@ -879,6 +902,8 @@ function renderQuantities(full) {
   const totKg = list.reduce((s, [, g]) => s + (g.kg || 0), 0);
   const totForsk = list.reduce((s, [, g]) => s + (g.forskaling || 0), 0);
   const totUtenVekt = list.reduce((s, [, g]) => s + (g.utenVekt || 0), 0);
+  const totUmulige = list.reduce((s, [, g]) => s + (g.umulige || 0), 0);
+  const totUmuligVol = cache.rows.reduce((s, r) => s + (r.umuligVolum ? r.vol : 0), 0);
 
   // Nedtrekkene teller innenfor det ANDRE valget: har du valgt Søyler, viser
   // materiallista hvor mange søyler som er betong – ikke hvor mange elementer i
@@ -948,13 +973,25 @@ function renderQuantities(full) {
     // Står det elementer uten vekt i utvalget, SKAL det stå her og ikke bare i
     // regnearket. Summen over er da ikke hele sannheten, og en kalkyle bygget
     // på den blir for lav.
+    // Umulig volum går FØRST og i rødt. Det er ikke «litt usikkert» — det er
+    // et tall som beviselig er galt, og som drar hele summen med seg.
+    (totUmulige
+      ? '<div class="qty-row" style="color:var(--danger)"><div class="n">' +
+        t("{0} element med umulig volum", totUmulige) + '</div><div class="c">' +
+        t("større enn sin egen boks – geometrien er ødelagt. Volumet ({0}) og vekten kan ikke brukes.",
+          fmtVol(totUmuligVol)) + '</div></div>'
+      : "") +
     (totUtenVekt
       ? '<div class="qty-row" style="color:var(--warn)"><div class="n">' +
         t("{0} element uten vekt", totUtenVekt) + '</div><div class="c">' +
         t("mangler volum eller materiale – ikke med i kg-summen") + '</div></div>'
       : "") +
     list.map(([key, g]) =>
-      '<div class="qty-row"><div class="n">' + esc(key) + (g.type ? ' <span style="color:var(--muted);font-size:11px">(' + esc(typeVisning(g.type)) + ')</span>' : "") + '</div>' +
+      '<div class="qty-row"><div class="n">' + esc(key) +
+      (g.type ? ' <span style="color:var(--muted);font-size:11px">(' + esc(typeVisning(g.type)) + ')</span>' : "") +
+      (g.umulige ? ' <span style="color:var(--danger);font-size:11px" title="' +
+        esc(t("Volumet er større enn elementets egen boks. Geometrien er ødelagt – tallet kan ikke brukes.")) +
+        '">⚠ ' + t("{0} med umulig volum", g.umulige) + '</span>' : "") + '</div>' +
       '<div class="c">' + tallDeler([
         g.count + t(" stk"),
         g.length.toFixed(dec()) + ' m',
