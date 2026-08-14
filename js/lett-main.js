@@ -11,6 +11,9 @@ import { closeMarkerPopup, forberedNyMarkering, openMarkerPopup, pickMarker } fr
 import { snapshotModel } from "./compare.js";
 import { addMeasure, koteValue, rettPunkt, snapPoint } from "./measure.js";
 import { canvas, koteGroup, makeLabel, measureGroup } from "./scene.js";
+import { MODELL_FRIST_MS, hentMedFrist } from "./nett.js";
+import { lagreApning, lesApning } from "./apning.js";
+import "./sw-reg.js";   // registrerer service workeren – må lastes i lettmodus
 
 // last inn resten av modulene (rekkefølgen bestemmer oppstart)
 // UTELATT i lettmodus: ./compare.js, ./recent.js, ./usersync.js
@@ -131,13 +134,18 @@ async function åpneFraUrl(url) {
   loadingEl.classList.add("open");
   try {
     await ifcReady;
-    const r = await fetch(url);
+    // Tidsavbruddet gjelder SVARET, ikke nedlastingen — se hentMedFrist i
+    // nett.js. En stor modell over dårlig dekning skal få bruke den tida den
+    // trenger; det vi vil fange er en forbindelse som aldri svarer.
+    const r = await hentMedFrist(url, {}, MODELL_FRIST_MS);
     if (!r.ok) throw new Error("HTTP " + r.status);
     S.fileName = decodeURIComponent((url.split("/").pop() || "modell.glb").split("?")[0]);
     await loadGlb(new Uint8Array(await r.arrayBuffer()));
     afterLoad();
   } catch (err) {
-    alert(t("Klarte ikke å laste modellen: ") + err.message);
+    alert(err && err.tidsavbrudd
+      ? t("Modellen svarte ikke. Sjekk dekningen og prøv igjen.")
+      : t("Klarte ikke å laste modellen: ") + err.message);
   } finally {
     loadingEl.classList.remove("open");
   }
@@ -163,7 +171,11 @@ window.åpneFraUrl = åpneFraUrl;   // trinn 3 kaller denne
     feilEl.textContent = "";
     knapp.disabled = true;
     try {
-      const r = await fetch("/åpne", {
+      // Tidsavbrudd på selve kodesjekken. Den er liten og rask når den virker;
+      // henger den, står montøren og ser på en knapp som er grå og en skjerm
+      // som ikke sier noe. Å avbryte er trygt her: /åpne endrer ingenting
+      // varig utover feilforsøkstellinga, så ingen dobbeltvirkning.
+      const r = await hentMedFrist("/åpne", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ prosjekt, kode })
@@ -172,24 +184,58 @@ window.åpneFraUrl = åpneFraUrl;   // trinn 3 kaller denne
       if (!r.ok) { feilEl.textContent = t(svar.feil || "Feil kode eller prosjekt."); return; }
       S.lettProsjekt = prosjekt;   // trinn 5: markeringer og bilder hentes per prosjekt
       if (!svar.modeller || !svar.modeller.length) { feilEl.textContent = t("Ingen modeller i prosjektet ennå."); return; }
-      if (svar.modeller.length === 1) { åpneFraUrl(svar.modeller[0].url); return; }
-      // Flere modeller: vis en knapp per modell
-      let valg = $("kodeValg");
-      if (!valg) { valg = document.createElement("div"); valg.id = "kodeValg"; boks.appendChild(valg); }
-      valg.innerHTML = "<p class='liten' style='display:block !important'>" + t("Velg modell") + ":</p>";
-      svar.modeller.forEach(m => {
-        const b = document.createElement("button");
-        b.className = "btn";
-        b.textContent = m.navn.replace(/\.lett\.glb$/i, "").replace(/\.glb$/i, "") +
-          (m.størrelse ? " · " + Math.round(m.størrelse / 1048576) + " MB" : "");
-        b.onclick = () => åpneFraUrl(m.url);
-        valg.appendChild(b);
-      });
-    } catch (_) {
-      feilEl.textContent = t("Fikk ikke kontakt – sjekk nettet og prøv igjen.");
+      lagreApning(prosjekt, svar.modeller);   // så neste åpning virker uten dekning
+      visModeller(svar.modeller);
+    } catch (e) {
+      feilEl.textContent = (e && e.tidsavbrudd)
+        ? t("Nettet svarte ikke. Gå ut dit du har dekning og prøv igjen.")
+        : t("Fikk ikke kontakt – sjekk nettet og prøv igjen.");
+      // Nettet er borte, men telefonen har åpnet dette prosjektet før. Da
+      // finnes modellen i cachen, og montøren skal få velge å bruke den —
+      // han skal ikke stå med en feilmelding foran en modell han har.
+      const lagret = lesApning(prosjekt);
+      if (lagret) tilbyLagret(lagret);
     } finally {
       knapp.disabled = false;
     }
+  }
+
+  function visModeller(modeller) {
+    if (modeller.length === 1) { åpneFraUrl(modeller[0].url); return; }
+    // Flere modeller: vis en knapp per modell
+    let valg = $("kodeValg");
+    if (!valg) { valg = document.createElement("div"); valg.id = "kodeValg"; boks.appendChild(valg); }
+    valg.innerHTML = "<p class='liten' style='display:block !important'>" + t("Velg modell") + ":</p>";
+    modeller.forEach(m => {
+      const b = document.createElement("button");
+      b.className = "btn";
+      b.textContent = m.navn.replace(/\.lett\.glb$/i, "").replace(/\.glb$/i, "") +
+        (m.størrelse ? " · " + Math.round(m.størrelse / 1048576) + " MB" : "");
+      b.onclick = () => åpneFraUrl(m.url);
+      valg.appendChild(b);
+    });
+  }
+
+  function apneLagret(lagret) {
+    S.lettProsjekt = lagret.prosjekt;
+    visModeller(lagret.modeller);
+  }
+
+  function tilbyLagret(lagret) {
+    if ($("lagretKnapp")) return;
+    const b = document.createElement("button");
+    b.id = "lagretKnapp";
+    b.className = "btn primary";
+    b.textContent = t("Åpne slik den var sist");
+    b.onclick = () => apneLagret(lagret);
+    boks.appendChild(b);
+  }
+
+  // Uten dekning i det hele tatt: hopp over kodeboksen. Å be en montør skrive
+  // en kode som umulig kan sjekkes er å be ham gjøre noe vi VET ikke virker.
+  if (!navigator.onLine) {
+    const lagret = lesApning(fraUrl);
+    if (lagret) apneLagret(lagret);
   }
 
   // Ingen Enter-knapp nødvendig: seks tegn skrevet → prøv med en gang
