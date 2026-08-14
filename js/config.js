@@ -46,3 +46,21 @@ export const FRISTER = { gul: 8, rod: 3 };
 // standardverdien står her – oppsett.json kan overstyre den hos en kunde med
 // egen Worker.
 export const TJENESTER = { worker: "https://storm-byggeplass.emil-46a.workers.dev" };
+
+// ---------- Tettheter (kg/m³) til vektberegningen ----------
+// Vekt regnes som volum × tetthet. Volumet kommer fra selve geometrien, så
+// nøyaktigheten hviler på at modellen har ekte profiler — ikke forenklede
+// kasser. «kg/m»-kolonnen i Mengder finnes for å avsløre nettopp det.
+//
+// FIRMAETS TALL, som FRISTER: prises et bygg med 2500 hos oss og 2400 hos noen
+// andre, skal det stå ett sted og ikke i hvert hode. Overstyres fra
+// oppsett.json under «tettheter».
+//
+// Nøklene er materialGRUPPENE fra js/elements.js («Betong», «Stål»), ikke de
+// nøyaktige materialnavnene. «B35», «C35/45» og «Concrete» er alle Betong.
+//
+// 2400 er uarmert betong. Armert ligger nærmere 2500 — sett det i oppsett.json
+// hvis dere priser slik. Stål er 7850 og er ikke en vurderingssak.
+//
+// SAMME objekt hele veien, som ANSATTE og FRISTER.
+export const TETTHET = { "Betong": 2400, "Stål": 7850 };
