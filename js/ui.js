@@ -1,6 +1,8 @@
 // ⚙ Innstillingsmeny og hurtigtaster.
 import { $, DEFAULT_APPEAR, DEFAULT_KEYS, DEFAULT_SETTINGS, på, S, esc, gjettEnhetSkala, ikon, lukkPaneler, velgEnhetSkala, writePrefs } from "./state.js";
 import { SPRAK, setLang, t } from "./i18n.js";
+import { LETT } from "./lett.js";
+import { OPPSETT_FELT, OPPSETT_FIL, OPPSETT_STATUS } from "./oppsett.js";
 import { angre, gjenopprett } from "./angre.js";
 import { FRISTER } from "./config.js";
 import { vaskGrenser } from "./frist.js";
@@ -75,6 +77,60 @@ function syncStatusText() {
   if (!acc) return '<span style="color:var(--muted)">' + t("Lagres bare i denne nettleseren. Logg inn via Biblioteket for at oppsettet skal følge deg på alle maskiner.") + '</span>';
   if (S.prefsCloudOK) return '<span style="color:var(--ok)">' + ikon("hake") + ' ' + t("Følger kontoen din ({0})", esc(acc.username || "")) + '</span>';
   return '<span style="color:var(--accent2)">' + t("Prøver å lagre til SharePoint …") + '</span>';
+}
+
+// ---------- Firmaoppsett: hva fant vi i oppsett.json? ----------
+//
+// HVORFOR DENNE SEKSJONEN FINNES. Fila leses med «if (o.felt)» — mangler et
+// felt, brukes standardverdien og alt ser normalt ut. Det er riktig oppførsel,
+// men det gjorde at «frister» manglet i SharePoint i tre uker uten at noen
+// merket det: standardverdiene var tilfeldigvis de samme, så fargene stemte.
+// Hadde noen endret grensa i fila, ville ingenting skjedd — helt stille.
+//
+// Her står det svart på hvitt hva fila faktisk inneholdt. Ikke som en feil,
+// men som en liste: dette leser jeg, dette fant jeg, dette bruker jeg
+// standardverdien for.
+//
+// BARE I DET INTERNE VERKTØYET. Byggeplassen har ingen SharePoint og henter
+// aldri fila — der ville seksjonen bare vært et spørsmål uten svar.
+function firmaoppsettHtml() {
+  if (LETT) return "";
+
+  const st = OPPSETT_STATUS;
+  const rad = (tegn, farge, tekst, forklaring) =>
+    '<div class="set-row"><span class="n" style="color:' + farge + '">' + tegn + ' ' + esc(tekst) +
+    '</span><span style="color:var(--muted); font-size:11px">' + esc(forklaring) + '</span></div>';
+
+  let inni = "";
+  if (!st.lest) {
+    inni = '<p style="color:var(--warn); font-size:12px; margin:0 0 8px">' +
+      esc(t("{0} er ikke lest ennå. Logg inn i Biblioteket – da hentes den.", OPPSETT_FIL)) + '</p>';
+  } else {
+    if (st.feil) {
+      inni += '<p style="color:var(--danger); font-size:12px; margin:0 0 8px">' +
+        esc(t("Siste henting feilet: {0}", st.feil)) + '</p>';
+    }
+    if (st.fraBuffer) {
+      inni += '<p style="color:var(--muted); font-size:11px; margin:0 0 8px">' +
+        esc(t("Vist fra lagret kopi på denne maskinen – ikke hentet fra SharePoint i denne økten.")) + '</p>';
+    }
+    inni += OPPSETT_FELT.map(f => st.funnet.indexOf(f.navn) !== -1
+      ? rad("✓", "var(--ok)", f.navn, t(f.hva))
+      : rad("–", f.viktig ? "var(--danger)" : "var(--warn)", f.navn,
+          (f.viktig ? t("MANGLER") + " · " : t("standardverdi") + " · ") + t(f.hva))
+    ).join("");
+  }
+
+  // Overskriften bærer tallet, så du ser at noe mangler uten å åpne seksjonen.
+  const antMangler = st.lest ? st.mangler.length : 0;
+  const merke = !st.lest ? " ⚠"
+    : antMangler ? ' <span style="color:var(--warn)">(' + antMangler + ')</span>' : "";
+
+  return '<details><summary><h4 style="display:inline">' + t("Firmaoppsett") + merke + '</h4></summary>' +
+    inni +
+    '<p style="color:var(--muted); font-size:11px; margin-top:8px">' +
+    t("Feltene over leses fra oppsett.json i SharePoint-mappa med modellene. Et felt som mangler er ikke en feil – da brukes standardverdien i koden – men da har du heller ikke kontroll på tallet fra fila. Merk at kopien i prosjektmappa ikke er den verktøyet leser.") +
+    '</p></details>';
 }
 
 function renderSettings() {
@@ -176,6 +232,8 @@ function renderSettings() {
     ].map(([k, navn]) =>
       '<option value="' + k + '"' + (S.settings.cubePos === k ? " selected" : "") + '>' +
       t(navn) + '</option>').join("") + '</select></div></details>';
+
+  html += firmaoppsettHtml();
 
   html += '<h4>' + t("Lagring") + '</h4>' +
     '<p style="color:var(--muted); font-size:11px; margin:0 0 6px">' +
