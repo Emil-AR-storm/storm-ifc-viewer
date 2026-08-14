@@ -17,6 +17,41 @@ import { GRAPH, SP, authHeaders, graphGet, spTokenSilent } from "./sharepoint.js
 
 const CACHE_KEY = "storm-ifc-oppsett";
 
+// ---------- Hva fant vi faktisk i fila? ----------
+//
+// HVORFOR DENNE FINNES. oppsett.json ligger to steder: en arbeidskopi i
+// prosjektmappa, og den ekte i SharePoint som verktøyet leser. De gikk ut av
+// takt i tre uker uten at noen merket det — «frister» ble lagt til lokalt 11.
+// august og kom aldri til SharePoint. Fristfargene så helt riktige ut hele
+// tiden, fordi standardverdiene i config.js tilfeldigvis var de samme. Hadde
+// noen endret gul fra 8 til 10 i SharePoint, ville ingenting skjedd, og det
+// hadde ikke kommet en eneste feilmelding.
+//
+// Koden leser hvert felt med «if (o.felt)». Det er riktig — myk degradering er
+// hele poenget med fila — men det gjør også at et felt som mangler er helt
+// stille. Denne statusen gjør stillheten synlig i ⚙ Innstillinger.
+//
+// SAMME objekt hele veien, som ANSATTE og FRISTER: bruk() endrer innholdet.
+export const OPPSETT_STATUS = {
+  lest: false,        // har vi i det hele tatt lest en fil (eller bufferet)?
+  fraBuffer: false,
+  feil: "",           // tekst når hentingen gikk galt
+  funnet: [],         // felt som fantes OG ble tatt i bruk
+  mangler: []         // felt koden ser etter, men som ikke sto der
+};
+
+// Feltene koden faktisk leser. «viktig» = funksjonen slutter å virke uten det;
+// ellers brukes en standardverdi og alt fungerer, bare ikke slik du tror du
+// har stilt det inn.
+export const OPPSETT_FELT = [
+  { navn: "ansatte",   viktig: true,  hva: "Ansvarlig-lista på markeringer" },
+  { navn: "planner",   viktig: true,  hva: "Planner-oppgaver" },
+  { navn: "worker",    viktig: false, hva: "Byggeplass-lenka (standard brukes)" },
+  { navn: "varsel",    viktig: false, hva: "Varsel ved @-nevning (av)" },
+  { navn: "frister",   viktig: false, hva: "Fristfarger (standard 8/3)" },
+  { navn: "tettheter", viktig: false, hva: "Vekt i Mengder (standard 2400/7850)" }
+];
+
 // Filnavnet i SharePoint. Ligger ved siden av modellene, ikke i en undermappe –
 // færre steder å bomme for den som skal legge den inn første gang.
 export const OPPSETT_FIL = "oppsett.json";
@@ -76,8 +111,25 @@ export function vaskAnsatte(rå) {
 
 // Legger et hentet oppsett på plass. Endrer ALDRI hvilke objekter de andre
 // modulene holder på – bare innholdet i dem.
-export function bruk(o) {
+export function bruk(o, fraBuffer) {
   if (!o || typeof o !== "object") return false;
+
+  // Registrer hva fila faktisk inneholdt, FØR vi begynner å bruke den.
+  // «planner» teller bare som funnet hvis planId står der — en tom planner-
+  // blokk er like ubrukelig som ingen blokk, og skal ikke se grønn ut.
+  OPPSETT_STATUS.lest = true;
+  OPPSETT_STATUS.fraBuffer = !!fraBuffer;
+  OPPSETT_STATUS.funnet = [];
+  OPPSETT_STATUS.mangler = [];
+  for (const f of OPPSETT_FELT) {
+    const v = o[f.navn];
+    const har = f.navn === "planner"
+      ? !!(v && typeof v === "object" && String(v.planId || "").trim())
+      : f.navn === "ansatte"
+        ? Array.isArray(v) && v.length > 0
+        : v !== undefined && v !== null && v !== "";
+    (har ? OPPSETT_STATUS.funnet : OPPSETT_STATUS.mangler).push(f.navn);
+  }
 
   const folk = vaskAnsatte(o.ansatte);
   if (folk.length) {
@@ -145,7 +197,7 @@ export async function hentOppsett() {
     // reklameblokkerer), kaster den, og en ubehandlet feil her ville stoppet
     // resten av oppstarten uten at noe synes på skjermen.
     const token = await spTokenSilent();
-    if (!token) return false;                  // ikke innlogget – bufferet står
+    if (!token) { OPPSETT_STATUS.feil = "Ikke innlogget"; return false; }   // bufferet står
     if (!S.spSiteId) {
       const site = await graphGet("/sites/" + SP.hostname + ":" + SP.sitePath, token);
       S.spSiteId = site.id;
@@ -155,23 +207,26 @@ export async function hentOppsett() {
     if (r.status === 404) {
       console.warn("Fant ingen " + OPPSETT_FIL + " i «" + SP.folder + "». " +
         "Ansvarlig-lista og Planner er derfor ikke satt opp.");
+      OPPSETT_STATUS.feil = "Fant ingen " + OPPSETT_FIL + " i «" + SP.folder + "»";
       return false;
     }
     if (!r.ok) throw new Error("Graph " + r.status);
     const data = await r.json();
-    bruk(data);
+    bruk(data, false);
     skrivBuffer(data);
     S.oppsettOK = true;
+    OPPSETT_STATUS.feil = "";
     try { if (S.onOppsett) S.onOppsett(); } catch (_) {}
     return true;
   } catch (err) {
     console.warn("Kunne ikke hente " + OPPSETT_FIL + ":", err.message);
+    OPPSETT_STATUS.feil = err.message || "Ukjent feil";
     return false;
   }
 }
 
 // Bufferet tas i bruk med det samme fila lastes.
-bruk(lesBuffer());
+bruk(lesBuffer(), true);
 
 // Kjedes på, ikke over: usersync.js setter den samme krokene. Rekkefølgen på
 // importene skal ikke kunne slå ut den ene eller den andre.

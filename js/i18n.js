@@ -156,6 +156,31 @@ export const ORDBOK = {
   "Forskaling (m2)": { en: "Formwork (m2)", pl: "Szalunek (m2)", lt: "Klojiniai (m2)" },
   "Vekt (kg)": { en: "Weight (kg)", pl: "Masa (kg)", lt: "Svoris (kg)" },
   "Kg/m": { en: "Kg/m", pl: "kg/m", lt: "kg/m" },
+
+  // ---------- Firmaoppsett-sjekken i ⚙ Innstillinger ----------
+  "Firmaoppsett": { en: "Company settings", pl: "Ustawienia firmy", lt: "Įmonės nustatymai" },
+  "MANGLER": { en: "MISSING", pl: "BRAK", lt: "TRŪKSTA" },
+  "standardverdi": { en: "default value", pl: "wartość domyślna", lt: "numatytoji reikšmė" },
+  "{0} er ikke lest ennå. Logg inn i Biblioteket – da hentes den.": {
+    en: "{0} has not been read yet. Sign in to the Library and it will be fetched.",
+    pl: "{0} nie został jeszcze odczytany. Zaloguj się do Biblioteki, a zostanie pobrany.",
+    lt: "{0} dar nenuskaitytas. Prisijunkite prie bibliotekos ir jis bus gautas." },
+  "Siste henting feilet: {0}": {
+    en: "Last fetch failed: {0}", pl: "Ostatnie pobranie nie powiodło się: {0}", lt: "Paskutinis gavimas nepavyko: {0}" },
+  "Vist fra lagret kopi på denne maskinen – ikke hentet fra SharePoint i denne økten.": {
+    en: "Shown from a copy saved on this machine – not fetched from SharePoint in this session.",
+    pl: "Pokazane z kopii zapisanej na tym komputerze – nie pobrane z SharePoint w tej sesji.",
+    lt: "Rodoma iš šiame kompiuteryje išsaugotos kopijos – šioje sesijoje negauta iš „SharePoint“." },
+  "Ansvarlig-lista på markeringer": { en: "Assignee list on markers", pl: "Lista odpowiedzialnych na znacznikach", lt: "Atsakingųjų sąrašas žymekliuose" },
+  "Planner-oppgaver": { en: "Planner tasks", pl: "Zadania Planner", lt: "„Planner“ užduotys" },
+  "Byggeplass-lenka (standard brukes)": { en: "Site link (default in use)", pl: "Link do budowy (używany domyślny)", lt: "Statybvietės nuoroda (naudojama numatytoji)" },
+  "Varsel ved @-nevning (av)": { en: "Notification on @-mention (off)", pl: "Powiadomienie przy @-wzmiance (wył.)", lt: "Pranešimas paminėjus @ (išjungta)" },
+  "Fristfarger (standard 8/3)": { en: "Deadline colours (default 8/3)", pl: "Kolory terminów (domyślnie 8/3)", lt: "Termino spalvos (numatyta 8/3)" },
+  "Vekt i Mengder (standard 2400/7850)": { en: "Weight in Quantities (default 2400/7850)", pl: "Masa w Ilościach (domyślnie 2400/7850)", lt: "Svoris kiekiuose (numatyta 2400/7850)" },
+  "Feltene over leses fra oppsett.json i SharePoint-mappa med modellene. Et felt som mangler er ikke en feil – da brukes standardverdien i koden – men da har du heller ikke kontroll på tallet fra fila. Merk at kopien i prosjektmappa ikke er den verktøyet leser.": {
+    en: "The fields above are read from oppsett.json in the SharePoint folder with the models. A missing field is not an error – the default in the code is used – but then you are not in control of the value from the file either. Note that the copy in the project folder is not the one the tool reads.",
+    pl: "Powyższe pola są odczytywane z oppsett.json w folderze SharePoint z modelami. Brakujące pole nie jest błędem – używana jest wartość domyślna z kodu – ale wtedy nie kontrolujesz wartości z pliku. Uwaga: kopia w folderze projektu nie jest tą, którą czyta narzędzie.",
+    lt: "Aukščiau esantys laukai skaitomi iš oppsett.json „SharePoint“ aplanke su modeliais. Trūkstamas laukas nėra klaida – naudojama numatytoji kodo reikšmė – bet tada nekontroliuojate failo reikšmės. Atkreipkite dėmesį, kad projekto aplanko kopija nėra ta, kurią skaito įrankis." },
   "Uten vekt (stk)": { en: "Without weight (pcs)", pl: "Bez masy (szt.)", lt: "Be svorio (vnt.)" },
   "forskaling": { en: "formwork", pl: "szalunek", lt: "klojiniai" },
   "{0} element uten vekt": {

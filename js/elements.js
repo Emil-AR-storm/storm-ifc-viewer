@@ -2,6 +2,7 @@
 import * as THREE from "three";
 import { $, på, S, apnePanel, dec, esc, ikon, loadingEl, loadingText } from "./state.js";
 import { t } from "./i18n.js";
+import { TETTHET } from "./config.js";
 import { hiddenIDs, hideElement, hideElements } from "./display.js";
 import { alleElementIder, lightElementBoxes } from "./ifc.js";
 import { kall, metaFor, sikreMeta } from "./ifcrpc.js";
