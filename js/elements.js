@@ -831,6 +831,18 @@ export function qtyElementRows(cache) {
 
 // Tonn over 1000 kg. Et tilbud leses av et menneske, og «184 350 kg» er
 // vanskeligere å kjenne igjen som feil enn «184,4 t».
+// Tallkolonnen i Mengder. Hver verdi pakkes for seg, slik at linja kan brytes
+// MELLOM verdier men aldri inne i én: «216,88» og «m» skal ikke havne på hver
+// sin linje. Tomme deler faller ut, så en gruppe uten vekt ikke får et
+// hengende skilletegn.
+//
+// Tidligere sto hele strengen med white-space: nowrap. Da vekt og forskaling
+// kom til, ble den for lang til å krympe, og flex presset navnekolonnen ned til
+// én bokstav per linje.
+function tallDeler(deler) {
+  return deler.filter(Boolean).map(d => '<span class="d">' + d + '</span>').join(' · ');
+}
+
 export function fmtVekt(kg) {
   if (!(kg > 0)) return "0 kg";
   return kg >= 1000
@@ -925,10 +937,14 @@ function renderQuantities(full) {
     '</div>' +
     '<div class="qty-row" style="font-weight:600"><div class="n">' +
       esc([S.qtyType ? typeVisning(S.qtyType) : "", matNavnValgt].filter(Boolean).join(" · ") || t("Totalt")) +
-      '</div><div class="c">' + total +
-      t(" stk") + ' · ' + totLen.toFixed(dec()) + ' m · ' + fmtArea(totArea) + ' · ' + fmtVol(totVol) +
-      (totKg > 0 ? ' · ' + fmtVekt(totKg) : "") +
-      (totForsk > 0 ? ' · ' + t("forskaling") + ' ' + fmtArea(totForsk) : "") + '</div></div>' +
+      '</div><div class="c">' + tallDeler([
+        total + t(" stk"),
+        totLen.toFixed(dec()) + ' m',
+        fmtArea(totArea),
+        fmtVol(totVol),
+        totKg > 0 ? fmtVekt(totKg) : "",
+        totForsk > 0 ? t("forskaling") + ' ' + fmtArea(totForsk) : ""
+      ]) + '</div></div>' +
     // Står det elementer uten vekt i utvalget, SKAL det stå her og ikke bare i
     // regnearket. Summen over er da ikke hele sannheten, og en kalkyle bygget
     // på den blir for lav.
@@ -939,12 +955,20 @@ function renderQuantities(full) {
       : "") +
     list.map(([key, g]) =>
       '<div class="qty-row"><div class="n">' + esc(key) + (g.type ? ' <span style="color:var(--muted);font-size:11px">(' + esc(typeVisning(g.type)) + ')</span>' : "") + '</div>' +
-      '<div class="c">' + g.count + t(" stk") + ' · ' + g.length.toFixed(dec()) + ' m · ' + fmtArea(g.area) + ' · ' + fmtVol(g.vol) +
-      (g.kg > 0 ? ' · ' + fmtVekt(g.kg) +
-        // Kontrolltallet, rett ved siden av vekten den kontrollerer.
-        (g.length > 0 ? ' <span style="color:var(--muted);font-size:11px">(' +
-          (g.kg / g.length).toFixed(1).replace(".", ",") + ' kg/m)</span>' : "") : "") +
-      '</div></div>').join("") +
+      '<div class="c">' + tallDeler([
+        g.count + t(" stk"),
+        g.length.toFixed(dec()) + ' m',
+        fmtArea(g.area),
+        fmtVol(g.vol),
+        // Vekten og kontrolltallet hører sammen og skal aldri skilles av et
+        // linjeskift — derfor én del, ikke to.
+        g.kg > 0
+          ? fmtVekt(g.kg) + (g.length > 0
+              ? ' <span style="color:var(--muted);font-size:11px">(' +
+                (g.kg / g.length).toFixed(1).replace(".", ",") + ' kg/m)</span>'
+              : "")
+          : ""
+      ]) + '</div></div>').join("") +
     '<p style="color:var(--muted); font-size:11px; margin-top:10px">' +
     t("Antall desimaler settes i Innstillinger. Velg objekttype og materiale for å få ett ark om gangen – nedlastingen inneholder bare det som står i lista nå (f.eks. Søyler + Betong gir bare betongsøylene). Materialgruppene samler navn som betyr det samme: «B35», «C35/45» og «Concrete» havner alle under Betong. Mangler materiale på et element, står det ikke i IFC-fila. Lengde = lengste mål per element (ca-verdi, summert per gruppe). Areal = fotavtrykk, altså grunnflaten sett rett ovenfra – det målet dekker, plater og fundamenter bestilles etter. Volum er regnet ut av geometrien og gjelder lukkede volumer – hule profiler blir riktige, flater uten tykkelse blir 0.") + '</p>';
 
