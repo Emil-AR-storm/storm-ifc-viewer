@@ -144,7 +144,7 @@ button.active { background: var(--aktiv-bg); border-color: var(--aktiv-bg); colo
    flex-basis 100 % tvinger et linjeskift i en bar som allerede har flex-wrap.
    Fargen settes fra js/nett.js — var(--warn) for «venter på dekning»,
    var(--danger) for «dette kom ikke fram». */
-#nettBanner {
+#nettBanner, #nyVersjon {
   flex: 1 0 100%;
   font-size: 12px; line-height: 1.4;
   border: 1px solid var(--warn);
@@ -152,6 +152,9 @@ button.active { background: var(--aktiv-bg); border-color: var(--aktiv-bg); colo
   padding: 5px 8px;
   background: var(--panel);
 }
+/* «Ny versjon klar» er en handling, ikke en advarsel — derfor aksentfargen. */
+#nyVersjon { border-color: var(--accent); color: var(--text); }
+#nyVersjon button { padding: 3px 8px; font-size: 12px; margin-left: 6px; }
 
 /* ---------- Verktøylinje (etter innlasting) ---------- */
 #toolbar {
