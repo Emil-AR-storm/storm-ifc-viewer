@@ -188,14 +188,6 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
   <button id="btnFit" title="Vis hele modellen" data-i18n-title><svg class="ikon"><use href="#i-fokus"/></svg></button>
   <button id="btnTema" title="Bytt mellom lyst og mørkt tema" data-i18n-title><svg class="ikon"><use href="#i-tema"/></svg></button>
   <div id="status"></div>
-  <!-- Nettstatus: én linje som forteller hva som ikke kom fram, og hva som
-       ligger og venter på dekning. Fylles av js/nett.js.
-       Den ligger INNE i toppbaren med flex-basis 100 % og legger seg på egen
-       rad (toppbaren har flex-wrap). Et fritt fixed-felt måtte gjettet på
-       høyden av en toppbar som bryter til to rader på smale telefoner — altså
-       nøyaktig de telefonene dette er laget for.
-       Finnes IKKE i index.html: der sitter prosjektlederen på kabel. -->
-  <div id="nettBanner" style="display:none"></div>
 </div>
 
 <div id="toolbar">
@@ -365,6 +357,20 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
 </div>
 
 <div id="hint" data-i18n>Dra: roter · Midtklikk / to fingre: panorer · Rullehjul: zoom · Høyreklikk: innstillinger · Trykk på element: info</div>
+
+<!-- Nettstatus: hva som ikke kom fram, hva som venter på dekning, og «ny
+     versjon klar». Fylles av js/nett.js.
+     LÅ FØRST INNE I #topbar. Det var feil, og feilen var synlig på telefon:
+     på smal skjerm har toppbaren flex-wrap: nowrap + overflow-x: auto, så
+     teksten kunne ikke brekke — den la seg som et bredt felt til høyre for
+     knappene og forsvant ut av skjermen. I liggende format gjelder ikke den
+     regelen, toppbaren vokste i høyden i stedet, og #toolbar (fixed, top: 52px)
+     la seg oppå.
+     Nå står den for seg nederst: den er ikke avhengig av høyden på noe som
+     helst, og den kan brekke over flere linjer. #modeBar og #miniMap flyttes
+     opp av --nett-hoyde når den er synlig.
+     Finnes IKKE i index.html: der sitter prosjektlederen på kabel. -->
+<div id="nettBanner" style="display:none"></div>
 
 <script>
 // Fanger feil og viser dem på skjermen (nyttig på mobil uten konsoll)
