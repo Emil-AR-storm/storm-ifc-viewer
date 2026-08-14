@@ -140,6 +140,18 @@ button.primary:hover { background: var(--accent-hover); border-color: var(--acce
 button.active { background: var(--aktiv-bg); border-color: var(--aktiv-bg); color: var(--aktiv-tekst); font-weight: 600; }
 #fileInput { display: none; }
 #status { font-size: 12px; color: var(--muted); margin-left: auto; }
+/* Nettstatus på byggeplassen (bare bygg.html). Egen rad i toppbaren:
+   flex-basis 100 % tvinger et linjeskift i en bar som allerede har flex-wrap.
+   Fargen settes fra js/nett.js — var(--warn) for «venter på dekning»,
+   var(--danger) for «dette kom ikke fram». */
+#nettBanner {
+  flex: 1 0 100%;
+  font-size: 12px; line-height: 1.4;
+  border: 1px solid var(--warn);
+  border-radius: var(--radius);
+  padding: 5px 8px;
+  background: var(--panel);
+}
 
 /* ---------- Verktøylinje (etter innlasting) ---------- */
 #toolbar {
