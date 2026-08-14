@@ -81,6 +81,7 @@ export async function hentMedFrist(url, opts, ms) {
 
 let sisteFeil = "";
 let lagretKopiTid = 0;
+let nyVersjonHandling = null;
 
 // En feil som skal stå til den er rettet. Tom streng fjerner den.
 export function meldNettfeil(tekst) {
@@ -98,6 +99,17 @@ export function meldNettfeil(tekst) {
 // hjelpsom, den er villedende. 0 fjerner merket.
 export function meldLagretKopi(tidMs) {
   lagretKopiTid = Number(tidMs) || 0;
+  tegnNettBanner();
+}
+
+// «Ny versjon klar» hører hjemme i SAMME boks som resten av nettstatusen.
+// Første forsøk hadde et eget felt, med den begrunnelsen at det ene sier noe
+// om nettet og det andre om koden. På en telefon var det feil: to bokser som
+// begge kan dukke opp nederst er to ting som kan legge seg oppå hverandre og
+// oppå minikartet. Én boks som vokser er én ting å holde styr på.
+// null fjerner knappen igjen.
+export function meldNyVersjon(handling) {
+  nyVersjonHandling = typeof handling === "function" ? handling : null;
   tegnNettBanner();
 }
 
@@ -130,11 +142,47 @@ export async function tegnNettBanner() {
   if (avNett) deler.push(t("Ingen nett – det du gjør lagres og sendes når du får dekning."));
   if (usendt) deler.push(t("{0} ikke sendt", usendt));
 
-  if (!deler.length) { el.style.display = "none"; el.textContent = ""; return; }
-  el.textContent = deler.join(" · ");
+  if (!deler.length && !nyVersjonHandling) {
+    el.style.display = "none";
+    el.textContent = "";
+    settHoyde(el, 0);
+    return;
+  }
+
+  el.textContent = "";
+  if (deler.length) {
+    const linje = document.createElement("div");
+    linje.textContent = deler.join(" · ");
+    linje.style.color = farge;
+    el.appendChild(linje);
+  }
+  if (nyVersjonHandling) {
+    const rad = document.createElement("div");
+    rad.textContent = t("Ny versjon klar.") + " ";
+    const knapp = document.createElement("button");
+    knapp.type = "button";
+    knapp.className = "primary";
+    knapp.textContent = t("Last inn på nytt");
+    knapp.onclick = () => { knapp.disabled = true; nyVersjonHandling(); };
+    rad.appendChild(knapp);
+    el.appendChild(rad);
+    if (!deler.length) farge = "var(--accent)";
+  }
   el.style.borderColor = farge;
-  el.style.color = farge;
   el.style.display = "block";
+  settHoyde(el, el.offsetHeight);
+}
+
+// Minikartet, snitt-/målelinja og hintet bor også nederst. De flyttes opp av
+// --nett-hoyde i css/storm.css. Høyden MÅLES i stedet for å gjettes, fordi
+// teksten kan bli tre linjer på en smal telefon — og en gjettet høyde ville
+// vært riktig på min skjerm og feil på montørens.
+function settHoyde(el, px) {
+  try {
+    const rot = document.documentElement;
+    // +12 px luft mellom banneret og det som skyves opp
+    rot.style.setProperty("--nett-hoyde", px ? (px + 12) + "px" : "0px");
+  } catch (_) {}
 }
 
 // Oppdateres når nettleseren melder fra, og ellers hvert halvminutt. Halvminutt
