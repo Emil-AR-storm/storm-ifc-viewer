@@ -58,14 +58,35 @@ const HEM = { 100: 41.8, 120: 52.1, 140: 63.2, 160: 76.2, 180: 88.9, 200: 103,
   360: 250, 400: 256 };
 
 // ---------- Hulprofiler: formel ----------
-// Kaldformet firkant etter EN 10219: ytre hjørneradius 2t, indre t.
-//   A = 4t(b − t) − 3(4 − π)t²
-// Leddet bak er materialet hjørnene «mangler» mot et skarpt hjørne.
+// Kaldformet firkant/rektangel etter EN 10219-2.
+//
+//   A = 2t(b + h − 2t) − (4 − π)(Ro² − Ri²)
+//
+// Leddet bak er materialet hjørnene «mangler» mot et skarpt hjørne. Ri = Ro − t.
+//
+// HJØRNERADIEN AVHENGER AV GODSTYKKELSEN — det er ikke en detalj. EN 10219-2
+// setter ytre radius til
+//     2,0·t   for t ≤ 6 mm
+//     2,5·t   for 6 < t ≤ 10 mm
+//     3,0·t   for t > 10 mm
+//
+// Første versjon brukte 2,0·t for ALT. Det er riktig for tynt gods, og derfor
+// stemte 100x5, 100x6, 140x5 og 300x6 eksakt mot Revit. Men på Valle
+// båropplager, der det står tykt gods, sprakk det:
+//
+//     CFSHS300x8   72,06 mot Revits 71,6   (+0,6 %,  87 kg for mye)
+//     CFSHS300x10  89,04 mot Revits 88,4   (+0,7 %,  24 kg)
+//     CFSHS140x8   31,86 mot Revits 31,4   (+1,5 %,  41 kg)
+//
+// Med riktig radius treffer alle åtte kontrollerte dimensjonene innenfor 0,1 %.
+// Feilen vokser med tykkelsen, så den ville blitt verre jo tyngre bygget er —
+// nettopp der en kalkyle koster mest å bomme på.
 export function hulprofilKgPerM(b_mm, h_mm, t_mm) {
   const b = b_mm / 1000, h = h_mm / 1000, t = t_mm / 1000;
   if (!(b > 0 && h > 0 && t > 0) || t * 2 >= Math.min(b, h)) return 0;
-  // Omkrets-leddet for rektangel: 2t(b + h − 2t)
-  const A = 2 * t * (b + h - 2 * t) - 3 * (4 - Math.PI) * t * t;
+  const ro = t_mm <= 6 ? 2.0 : (t_mm <= 10 ? 2.5 : 3.0);   // ytre radius / t
+  // (Ro² − Ri²) med Ro = ro·t og Ri = (ro − 1)·t  ⇒  (2·ro − 1)·t²
+  const A = 2 * t * (b + h - 2 * t) - (2 * ro - 1) * (4 - Math.PI) * t * t;
   return A > 0 ? A * STÅL : 0;
 }
 
