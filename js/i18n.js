@@ -183,6 +183,10 @@ export const ORDBOK = {
     lt: "Aukščiau esantys laukai skaitomi iš oppsett.json „SharePoint“ aplanke su modeliais. Trūkstamas laukas nėra klaida – naudojama numatytoji kodo reikšmė – bet tada nekontroliuojate failo reikšmės. Atkreipkite dėmesį, kad projekto aplanko kopija nėra ta, kurią skaito įrankis." },
   "Uten vekt (stk)": { en: "Without weight (pcs)", pl: "Bez masy (szt.)", lt: "Be svorio (vnt.)" },
   "Umulig volum (stk)": { en: "Impossible volume (pcs)", pl: "Niemożliwa objętość (szt.)", lt: "Neįmanomas tūris (vnt.)" },
+  "Nettleseren fikk ingen fil ut av det du slapp. Det skjer når fila bare finnes i skya (OneDrive «bare på nett»), eller når den dras fra Outlook, Teams, en zip-mappe eller en nettside. Høyreklikk fila i Utforsker → «Behold alltid på denne enheten» og prøv igjen — eller bruk Velg IFC-fil.": {
+    en: "The browser got no file out of what you dropped. That happens when the file only exists in the cloud (OneDrive \u00abonline-only\u00bb), or when it is dragged from Outlook, Teams, a zip folder or a web page. Right-click the file in Explorer \u2192 \u00abAlways keep on this device\u00bb and try again \u2013 or use Choose IFC file.",
+    pl: "Przeglądarka nie otrzymała pliku z tego, co upuszczono. Dzieje się tak, gdy plik istnieje tylko w chmurze (OneDrive \u201etylko online\u201d) lub jest przeciągany z Outlooka, Teams, folderu zip albo strony internetowej. Kliknij plik prawym przyciskiem w Eksploratorze \u2192 \u201eZawsze zachowuj na tym urządzeniu\u201d i spróbuj ponownie \u2013 albo użyj Wybierz plik IFC.",
+    lt: "Naršyklė negavo failo iš to, ką numetėte. Taip nutinka, kai failas yra tik debesyje („OneDrive tik internete“) arba kai jis velkamas iš „Outlook“, „Teams“, zip aplanko ar tinklalapio. Dešiniuoju pelės mygtuku spustelėkite failą naršyklėje \u2192 „Visada laikyti šiame įrenginyje“ ir bandykite dar kartą \u2013 arba naudokite Pasirinkti IFC failą." },
   "Kilde": { en: "Source", pl: "Źródło", lt: "Šaltinis" },
   "Profil": { en: "Profile", pl: "Profil", lt: "Profilis" },
   "Nominell kg/m": { en: "Nominal kg/m", pl: "Nominalne kg/m", lt: "Nominalus kg/m" },

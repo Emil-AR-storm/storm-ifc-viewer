@@ -114,19 +114,56 @@ export async function pickFile() {
     e.preventDefault(); e.dataTransfer.dropEffect = "copy";
   });
   window.addEventListener("dragleave", () => { depth = Math.max(0, depth - 1); if (!depth) show(false); });
+  // ---------------------------------------------------------------------
+  // SLIPPET. Tre ting her er rettelser etter at det sto helt stille i drift:
+  // rammen kom opp, «+ kopiering» sto på markøren, og når fila ble sluppet
+  // skjedde INGENTING — ingen melding, ingen linje i konsollen.
+  //
+  // 1. preventDefault() KALLES ALLTID, med en gang. Før lå den etter en
+  //    sjekk på om det fantes filer i det hele tatt. Var lista tom, gikk
+  //    slippet videre til nettleseren, som gjorde sitt eget med fila —
+  //    stille. Det så nøyaktig ut som at ingenting skjedde.
+  //
+  // 2. FILA HENTES PÅ TRE MÅTER. dataTransfer.files er tom oftere enn man
+  //    tror: en fil som bare finnes i skya (OneDrive «bare på nett»), eller
+  //    som dras fra Outlook, Teams, en zip-mappe eller en nettside, melder
+  //    seg som «Files» under draget og leverer ingenting ved slippet.
+  //    Da prøver vi items[0].getAsFile() og til slutt filhåndtaket.
+  //
+  // 3. ALT SOM LESES FRA dataTransfer, LESES SYNKRONT. Objektet tømmes så
+  //    snart hendelsen er over, og etter et `await` er items[] tomt. Derfor
+  //    startes getAsFileSystemHandle() før vi venter på noe som helst.
+  // ---------------------------------------------------------------------
   window.addEventListener("drop", async (e) => {
-    if (!e.dataTransfer || !e.dataTransfer.files.length) return;
+    const dt = e.dataTransfer;
+    if (!dt) return;
     e.preventDefault(); depth = 0; show(false);
-    // Ta med filhåndtaket hvis nettleseren tilbyr det (gir «▶ Fortsett med …»)
+
+    const item = dt.items && dt.items[0];
+    let file = (dt.files && dt.files[0]) || null;
+    if (!file && item && item.kind === "file" && item.getAsFile) {
+      try { file = item.getAsFile(); } catch (_) {}
+    }
+    // Løftet hentes NÅ, mens dataTransfer fortsatt lever
+    let handleLøfte = null;
+    try {
+      if (item && item.getAsFileSystemHandle) handleLøfte = item.getAsFileSystemHandle();
+    } catch (_) {}
+
     let handle = null;
     try {
-      const item = e.dataTransfer.items && e.dataTransfer.items[0];
-      if (item && item.getAsFileSystemHandle) {
-        const h = await item.getAsFileSystemHandle();
-        if (h && h.kind === "file") handle = h;
+      const h = handleLøfte ? await handleLøfte : null;
+      if (h && h.kind === "file") {
+        handle = h;
+        if (!file && h.getFile) file = await h.getFile();
       }
-    } catch(_) {}
-    await openLocalFile(e.dataTransfer.files[0], handle);
+    } catch (_) {}
+
+    if (!file) {
+      alert(t("Nettleseren fikk ingen fil ut av det du slapp. Det skjer når fila bare finnes i skya (OneDrive «bare på nett»), eller når den dras fra Outlook, Teams, en zip-mappe eller en nettside. Høyreklikk fila i Utforsker → «Behold alltid på denne enheten» og prøv igjen — eller bruk Velg IFC-fil."));
+      return;
+    }
+    await openLocalFile(file, handle);
   });
 })();
 
