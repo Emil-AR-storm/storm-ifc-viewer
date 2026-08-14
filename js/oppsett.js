@@ -11,7 +11,7 @@
 // Ingenting kaster. Det eneste som forsvinner er «Ansvarlig»-nedtrekket og
 // Planner-knappen, og begge sier fra hvorfor.
 import { S } from "./state.js";
-import { ANSATTE, FRISTER, PLANNER, TJENESTER } from "./config.js";
+import { ANSATTE, FRISTER, PLANNER, TETTHET, TJENESTER } from "./config.js";
 import { vaskGrenser } from "./frist.js";
 import { GRAPH, SP, authHeaders, graphGet, spTokenSilent } from "./sharepoint.js";
 
@@ -109,6 +109,20 @@ export function bruk(o) {
   if (o.frister) {
     const g = vaskGrenser(o.frister);
     FRISTER.gul = g.gul; FRISTER.rod = g.rod;
+  }
+
+  // Tettheter (kg/m³) til vektberegningen i Mengder. Samme resonnement som
+  // fristene: firmaets tall, ikke personlige. Armert betong prises av noen med
+  // 2500 og av andre med 2400 — det skal stå ett sted.
+  //
+  // VASKES: bare tall mellom 100 og 25000 slippes inn. En skrivefeil i en
+  // håndredigert fil («2.400» blir 2.4) ville ellers gitt et tilbud på et bygg
+  // som veier tusen ganger for lite, og tallet ser helt normalt ut i arket.
+  if (o.tettheter && typeof o.tettheter === "object") {
+    for (const [gruppe, verdi] of Object.entries(o.tettheter)) {
+      const n = Number(verdi);
+      if (Number.isFinite(n) && n >= 100 && n <= 25000) TETTHET[gruppe] = n;
+    }
   }
 
   return true;

@@ -235,8 +235,33 @@ export function allElementBoxes() {
 //           Absoluttverdi, så vindingsretningen i modellen ikke spiller inn.
 export function triBidrag(ax, ay, az, bx, by, bz, cx, cy, cz) {
   const vol6 = ax * (by * cz - bz * cy) + ay * (bz * cx - bx * cz) + az * (bx * cy - by * cx);
-  const proj2 = Math.abs((bz - az) * (cx - ax) - (bx - ax) * (cz - az));
-  return { vol6, proj2 };
+  // Kryssproduktet (b-a) × (c-a). Lengden er 2 × trekantens areal, og
+  // y-komponenten forteller hvor flatt den ligger. proj2 er nettopp |ny| —
+  // fotavtrykket har alltid vært den vertikale delen av samme vektor.
+  const ux = bx - ax, uy = by - ay, uz = bz - az;
+  const vx = cx - ax, vy = cy - ay, vz = cz - az;
+  const nx = uy * vz - uz * vy;
+  const ny = uz * vx - ux * vz;
+  const nz = ux * vy - uy * vx;
+  const area2 = Math.hypot(nx, ny, nz);
+  return { vol6, proj2: Math.abs(ny), area2, ny };
+}
+
+// Hvilken vei vender flata? Brukes til forskaling: sidene og undersidene skal
+// forskales, toppen er støpeflate.
+//
+// GRENSEN ER 45°. En flate som heller mindre enn 45° fra vannrett regnes som
+// topp eller underside; brattere enn det regnes som side. Valget er en
+// vurdering, ikke en naturlov — men det er den som samsvarer med at en skrå
+// flate må forskales lenge før den blir loddrett.
+export const FLATE_GRENSE = Math.SQRT1_2;   // cos(45°)
+
+export function flateRetning(area2, ny) {
+  if (area2 <= 0) return "side";
+  const t = ny / area2;
+  if (t > FLATE_GRENSE) return "topp";
+  if (t < -FLATE_GRENSE) return "under";
+  return "side";
 }
 
 // Gjør summene om til meter og m²/m³.
@@ -255,17 +280,10 @@ export function sluttMengder(volSum, projSum, toM) {
 // Fotavtrykk: grunnflaten sett rett ovenfra – se triBidrag/sluttMengder over.
 //   NB: Skrå og hvelvede flater blir riktig projisert, men et element som
 //   overlapper seg selv i høyden (f.eks. en trapp) får skyggen regnet to ganger.
-export function quantitiesForSet(idSet) {
-  const toM = S.enhetSkala || 1;   // meter per modellenhet – én sannhet, satt i ifc.js
-  const vols = new Map();
-  const projs = new Map();   // Σ|n.y| per element – rå, før halvering
-  const addTri = (p, i0, i1, i2, mtx, id) => {
-    _qa.fromBufferAttribute(p, i0); _qb.fromBufferAttribute(p, i1); _qc.fromBufferAttribute(p, i2);
-    if (mtx) { _qa.applyMatrix4(mtx); _qb.applyMatrix4(mtx); _qc.applyMatrix4(mtx); }
-    const t = triBidrag(_qa.x, _qa.y, _qa.z, _qb.x, _qb.y, _qb.z, _qc.x, _qc.y, _qc.z);
-    vols.set(id, (vols.get(id) || 0) + t.vol6 / 6);
-    projs.set(id, (projs.get(id) || 0) + t.proj2);
-  };
+// Går gjennom geometrien én gang og gir hver trekant til `cb`. Trukket ut
+// fordi lengdemålingen under trenger to gjennomganger, og den logikken (merged
+// vs. eget mesh, ranges, matrise) skal finnes ÉN gang.
+function forHverTrekant(idSet, cb) {
   S.modelGroup.children.forEach(m => {
     if (!m.isMesh) return;
     const p = m.geometry.getAttribute("position");
@@ -275,29 +293,115 @@ export function quantitiesForSet(idSet) {
       (m.userData.ranges || []).forEach(r => {
         if (!idSet.has(r.id)) return;
         for (let i = r.start; i < r.start + r.count; i += 3)
-          addTri(p, ix.getX(i), ix.getX(i + 1), ix.getX(i + 2), null, r.id);
+          cb(p, ix.getX(i), ix.getX(i + 1), ix.getX(i + 2), null, r.id);
       });
     } else if (idSet.has(m.userData.expressID)) {
       const n = ix ? ix.count : p.count;
       for (let i = 0; i < n; i += 3)
-        addTri(p, ix ? ix.getX(i) : i, ix ? ix.getX(i + 1) : i + 1, ix ? ix.getX(i + 2) : i + 2, m.matrixWorld, m.userData.expressID);
+        cb(p, ix ? ix.getX(i) : i, ix ? ix.getX(i + 1) : i + 1, ix ? ix.getX(i + 2) : i + 2,
+           m.matrixWorld, m.userData.expressID);
     }
   });
+}
+
+// Beregner ytre mål, volum (m³), fotavtrykk (m²), overflate delt på retning og
+// virkelig lengde for et sett elementer.
+//
+// Volum: signert tetraeder-sum – funker for lukkede volumer som betong og
+// stålprofiler.
+// Fotavtrykk: grunnflaten sett rett ovenfra – se triBidrag/sluttMengder over.
+//   NB: Skrå og hvelvede flater blir riktig projisert, men et element som
+//   overlapper seg selv i høyden (f.eks. en trapp) får skyggen regnet to ganger.
+// Overflate: hver trekants areal, sortert på om flata vender opp, ned eller
+//   til siden. Til forskaling.
+//
+// ---------------------------------------------------------------------------
+// LENGDE: HVORFOR TO GJENNOMGANGER OG IKKE BOUNDING BOX.
+//
+// Lengden var tidligere lengste side i en AKSE-JUSTERT boks. Det er riktig for
+// en søyle eller bjelke som står langs aksene, og FEIL for alt som står på
+// skrå: en 45°-avstiver får en boks som er ~71 % av stavens virkelige lengde.
+// Kappliste og kg/m på avstivning ble dermed systematisk for lave, uten at noe
+// på skjermen sa fra.
+//
+// Nå måles den lengste avstanden mellom to punkter på elementet:
+//   1. gjennomgang – finn punktet lengst unna et vilkårlig startpunkt
+//   2. gjennomgang – finn punktet lengst unna DET punktet
+// For et avlangt legeme treffer runde 1 alltid en ende, og runde 2 gir da den
+// andre. Det koster én ekstra runde gjennom geometrien, og det er verdt det:
+// alternativet er et tall som er trygt feil.
+// ---------------------------------------------------------------------------
+export function quantitiesForSet(idSet) {
+  const toM = S.enhetSkala || 1;   // meter per modellenhet – én sannhet, satt i ifc.js
+  const vols = new Map();
+  const projs = new Map();   // Σ|n.y| per element – rå, før halvering
+  const flater = new Map();  // Σ area2 per retning
+  const start = new Map();   // første punkt vi så på elementet
+  const fjern = new Map();   // punktet lengst unna start, og avstanden dit
+
+  const sePunkt = (id, x, y, z) => {
+    const s0 = start.get(id);
+    if (!s0) { start.set(id, [x, y, z]); fjern.set(id, [x, y, z, 0]); return; }
+    const d2 = (x - s0[0]) ** 2 + (y - s0[1]) ** 2 + (z - s0[2]) ** 2;
+    const f = fjern.get(id);
+    if (d2 > f[3]) { f[0] = x; f[1] = y; f[2] = z; f[3] = d2; }
+  };
+
+  const addTri = (p, i0, i1, i2, mtx, id) => {
+    _qa.fromBufferAttribute(p, i0); _qb.fromBufferAttribute(p, i1); _qc.fromBufferAttribute(p, i2);
+    if (mtx) { _qa.applyMatrix4(mtx); _qb.applyMatrix4(mtx); _qc.applyMatrix4(mtx); }
+    const t = triBidrag(_qa.x, _qa.y, _qa.z, _qb.x, _qb.y, _qb.z, _qc.x, _qc.y, _qc.z);
+    vols.set(id, (vols.get(id) || 0) + t.vol6 / 6);
+    projs.set(id, (projs.get(id) || 0) + t.proj2);
+    let f = flater.get(id);
+    if (!f) { f = { topp: 0, under: 0, side: 0 }; flater.set(id, f); }
+    f[flateRetning(t.area2, t.ny)] += t.area2;
+    sePunkt(id, _qa.x, _qa.y, _qa.z);
+    sePunkt(id, _qb.x, _qb.y, _qb.z);
+    sePunkt(id, _qc.x, _qc.y, _qc.z);
+  };
+
+  forHverTrekant(idSet, addTri);
+
+  // Runde 2: lengste avstand fra det punktet runde 1 fant.
+  const lengder = new Map();
+  const seLengde = (p, i0, i1, i2, mtx, id) => {
+    const f = fjern.get(id);
+    if (!f) return;
+    for (const i of [i0, i1, i2]) {
+      _qa.fromBufferAttribute(p, i);
+      if (mtx) _qa.applyMatrix4(mtx);
+      const d2 = (_qa.x - f[0]) ** 2 + (_qa.y - f[1]) ** 2 + (_qa.z - f[2]) ** 2;
+      if (d2 > (lengder.get(id) || 0)) lengder.set(id, d2);
+    }
+  };
+  forHverTrekant(idSet, seLengde);
+
   const boxes = allElementBoxes();
   const out = new Map();
   const s = new THREE.Vector3();
+  const m2 = toM * toM;
   for (const id of idSet) {
     let dims = [0, 0, 0];
     const b = boxes.get(id);
     if (b) { b.getSize(s); dims = [s.x * toM, s.y * toM, s.z * toM].sort((a, x) => x - a); }
     const m = sluttMengder(vols.get(id) || 0, projs.get(id) || 0, toM);
-    out.set(id, { dims, vol: m.vol, area: m.area });
+    const f = flater.get(id) || { topp: 0, under: 0, side: 0 };
+    out.set(id, {
+      dims, vol: m.vol, area: m.area,
+      // area2 er 2 × arealet — derfor /2 her, i tillegg til enhetsskalaen
+      flateTopp: f.topp / 2 * m2,
+      flateUnder: f.under / 2 * m2,
+      flateSide: f.side / 2 * m2,
+      len: Math.sqrt(lengder.get(id) || 0) * toM
+    });
   }
   return out;
 }
 
 function elementQuantities(id) {
-  return quantitiesForSet(new Set([id])).get(id) || { dims: [0, 0, 0], vol: 0, area: 0 };
+  return quantitiesForSet(new Set([id])).get(id) ||
+    { dims: [0, 0, 0], vol: 0, area: 0, flateTopp: 0, flateUnder: 0, flateSide: 0, len: 0 };
 }
 
 // Desimaler følger ⚙ Innstillinger. Små volumer får alltid nok desimaler til å
@@ -508,22 +612,39 @@ function computeQuantities() {
     }
     // gruppenøkkel: ObjectType er oftest profilen (f.eks. CFSHS100x6), ellers navn uten løpenummer
     let key = objType || name.replace(/:\d+$/, "") || typeName || "Ukjent";
-    // lengde: lengste dimensjon av elementets samlede boks, i meter
     box.getSize(sizeV);
-    const len = Math.max(sizeV.x, sizeV.y, sizeV.z) * toM;
-    const q = vq.get(id) || { dims: [0, 0, 0], vol: 0, area: 0 };
+    const q = vq.get(id) ||
+      { dims: [0, 0, 0], vol: 0, area: 0, flateTopp: 0, flateUnder: 0, flateSide: 0, len: 0 };
+    // Lengde = lengste avstand mellom to punkter på elementet (se
+    // quantitiesForSet). Bounding-boksen brukes bare som reserve for elementer
+    // uten geometri i denne visningen.
+    const len = q.len || Math.max(sizeV.x, sizeV.y, sizeV.z) * toM;
+    // Forskaling: sider + underside. Toppen er støpeflate.
+    const forskaling = q.flateSide + q.flateUnder;
+    // VEKT. Volum × tetthet for materialgruppen. Har elementet ikke volum
+    // (flate uten tykkelse) eller et materiale vi ikke kjenner tettheten til,
+    // blir vekten NULL — og det er en løgn i et tilbud. Derfor telles den ikke
+    // som 0 kg, den telles som UKJENT, og summen sier hvor mange som mangler.
+    const tetthet = TETTHET[materialGruppe(material)] || 0;
+    const kjentVekt = tetthet > 0 && q.vol > 1e-9;
+    const kg = kjentVekt ? q.vol * tetthet : 0;
     // Gruppene skilles også på materiale: en betongsøyle og en stålsøyle med
     // samme mål skal ikke havne på samme rad i en vareordre.
     const gkey = key + (material ? " · " + material : "");
-    if (!groups.has(gkey)) groups.set(gkey, { count: 0, length: 0, vol: 0, area: 0, type: typeName, material });
+    if (!groups.has(gkey)) groups.set(gkey,
+      { count: 0, length: 0, vol: 0, area: 0, forskaling: 0, kg: 0, utenVekt: 0, type: typeName, material });
     const g = groups.get(gkey);
     g.count++;
     g.length += len;
     g.vol += q.vol;
     g.area += q.area;
+    g.forskaling += forskaling;
+    g.kg += kg;
+    if (!kjentVekt) g.utenVekt++;
     rows.push({
       id, key: gkey, name, objType, type: typeName, material,
-      L: q.dims[0], B: q.dims[1], H: q.dims[2], len, vol: q.vol, area: q.area
+      L: q.dims[0], B: q.dims[1], H: q.dims[2], len, vol: q.vol, area: q.area,
+      forskaling, kg, kjentVekt
     });
   }
   const sortedRows = rows.sort((a, b) => a.key.localeCompare(b.key, "no") || a.id - b.id);
@@ -624,9 +745,12 @@ export function qtyForType(cache, type, mat) {
   });
   const groups = new Map();
   rows.forEach(r => {
-    if (!groups.has(r.key)) groups.set(r.key, { count: 0, length: 0, vol: 0, area: 0, type: r.type, material: r.material });
+    if (!groups.has(r.key)) groups.set(r.key,
+      { count: 0, length: 0, vol: 0, area: 0, forskaling: 0, kg: 0, utenVekt: 0, type: r.type, material: r.material });
     const g = groups.get(r.key);
     g.count++; g.length += r.len; g.vol += r.vol; g.area += r.area;
+    g.forskaling += r.forskaling || 0; g.kg += r.kg || 0;
+    if (!r.kjentVekt) g.utenVekt++;
   });
   return {
     groups: [...groups.entries()].sort((a, b) => b[1].count - a[1].count),
@@ -669,22 +793,48 @@ const csvVolDec = () => Math.max(dec(), 4);
 const csvAreaDec = () => Math.max(dec(), 3);
 
 export function qtyGroupRows(cache) {
-  const out = [[t("Gruppe"), t("IFC-type"), t("Materiale"), t("Antall"), t("Sum lengde (m)"), t("Sum areal (m2)"), t("Sum volum (m3)")]];
+  // «Kg/m» står med vilje rett ved siden av kg. Den er en KONTROLL, ikke et
+  // salgstall: ser du 61 kg/m på en HEB200, er modellen bygget med ekte
+  // profiler og vekten kan brukes. Ser du 300, er profilen modellert som en
+  // kasse, og hele kolonnen til venstre er søppel. Det er den eneste måten å se
+  // forskjell på uten å åpne modellen i noe annet.
+  const out = [[t("Gruppe"), t("IFC-type"), t("Materiale"), t("Antall"),
+    t("Sum lengde (m)"), t("Sum areal (m2)"), t("Sum volum (m3)"),
+    t("Forskaling (m2)"), t("Vekt (kg)"), t("Kg/m"), t("Uten vekt (stk)")]];
   cache.groups.forEach(([key, g]) => out.push([key, g.type || "", g.material || "", g.count,
-    nb(g.length, csvLenDec()), nb(g.area, csvAreaDec()), nb(g.vol, csvVolDec())]));
-  const tot = cache.groups.reduce((s, [, g]) => [s[0] + g.count, s[1] + g.length, s[2] + g.vol, s[3] + g.area], [0, 0, 0, 0]);
+    nb(g.length, csvLenDec()), nb(g.area, csvAreaDec()), nb(g.vol, csvVolDec()),
+    nb(g.forskaling, csvAreaDec()), nb(g.kg, 1),
+    g.length > 0 ? nb(g.kg / g.length, 1) : "", g.utenVekt || ""]));
+  const tot = cache.groups.reduce((s, [, g]) =>
+    [s[0] + g.count, s[1] + g.length, s[2] + g.vol, s[3] + g.area, s[4] + g.forskaling, s[5] + g.kg, s[6] + (g.utenVekt || 0)],
+    [0, 0, 0, 0, 0, 0, 0]);
   out.push([]);
-  out.push([t("SUM"), "", "", tot[0], nb(tot[1], csvLenDec()), nb(tot[3], csvAreaDec()), nb(tot[2], csvVolDec())]);
+  out.push([t("SUM"), "", "", tot[0], nb(tot[1], csvLenDec()), nb(tot[3], csvAreaDec()),
+    nb(tot[2], csvVolDec()), nb(tot[4], csvAreaDec()), nb(tot[5], 1), "", tot[6] || ""]);
   return out;
 }
 
 export function qtyElementRows(cache) {
   const out = [["ElementID", t("Gruppe"), t("Navn"), "ObjectType", t("IFC-type"), t("Materiale"),
-    t("Lengde (m)"), t("Bredde (m)"), t("Høyde (m)"), t("Lengste mål (m)"), t("Areal (m2)"), t("Volum (m3)")]];
+    t("Lengde (m)"), t("Bredde (m)"), t("Høyde (m)"), t("Lengste mål (m)"), t("Areal (m2)"), t("Volum (m3)"),
+    t("Forskaling (m2)"), t("Vekt (kg)")]];
   cache.rows.forEach(r => out.push([r.id, r.key, r.name, r.objType, r.type, r.material || "",
     nb(r.L, csvLenDec()), nb(r.B, csvLenDec()), nb(r.H, csvLenDec()),
-    nb(r.len, csvLenDec()), nb(r.area, csvAreaDec()), nb(r.vol, csvVolDec())]));
+    nb(r.len, csvLenDec()), nb(r.area, csvAreaDec()), nb(r.vol, csvVolDec()),
+    nb(r.forskaling || 0, csvAreaDec()),
+    // Tom celle, ikke 0, når vekten ikke er kjent. En 0 i et tilbudsark blir
+    // summert som om elementet veier ingenting.
+    r.kjentVekt ? nb(r.kg, 1) : ""]));
   return out;
+}
+
+// Tonn over 1000 kg. Et tilbud leses av et menneske, og «184 350 kg» er
+// vanskeligere å kjenne igjen som feil enn «184,4 t».
+export function fmtVekt(kg) {
+  if (!(kg > 0)) return "0 kg";
+  return kg >= 1000
+    ? (kg / 1000).toFixed(1).replace(".", ",") + " t"
+    : Math.round(kg) + " kg";
 }
 
 export function fmtArea(a) {
@@ -713,6 +863,9 @@ function renderQuantities(full) {
   const totVol = list.reduce((s, [, g]) => s + g.vol, 0);
   const totLen = list.reduce((s, [, g]) => s + g.length, 0);
   const totArea = list.reduce((s, [, g]) => s + g.area, 0);
+  const totKg = list.reduce((s, [, g]) => s + (g.kg || 0), 0);
+  const totForsk = list.reduce((s, [, g]) => s + (g.forskaling || 0), 0);
+  const totUtenVekt = list.reduce((s, [, g]) => s + (g.utenVekt || 0), 0);
 
   // Nedtrekkene teller innenfor det ANDRE valget: har du valgt Søyler, viser
   // materiallista hvor mange søyler som er betong – ikke hvor mange elementer i
@@ -772,10 +925,25 @@ function renderQuantities(full) {
     '<div class="qty-row" style="font-weight:600"><div class="n">' +
       esc([S.qtyType ? typeVisning(S.qtyType) : "", matNavnValgt].filter(Boolean).join(" · ") || t("Totalt")) +
       '</div><div class="c">' + total +
-      t(" stk") + ' · ' + totLen.toFixed(dec()) + ' m · ' + fmtArea(totArea) + ' · ' + fmtVol(totVol) + '</div></div>' +
+      t(" stk") + ' · ' + totLen.toFixed(dec()) + ' m · ' + fmtArea(totArea) + ' · ' + fmtVol(totVol) +
+      (totKg > 0 ? ' · ' + fmtVekt(totKg) : "") +
+      (totForsk > 0 ? ' · ' + t("forskaling") + ' ' + fmtArea(totForsk) : "") + '</div></div>' +
+    // Står det elementer uten vekt i utvalget, SKAL det stå her og ikke bare i
+    // regnearket. Summen over er da ikke hele sannheten, og en kalkyle bygget
+    // på den blir for lav.
+    (totUtenVekt
+      ? '<div class="qty-row" style="color:var(--warn)"><div class="n">' +
+        t("{0} element uten vekt", totUtenVekt) + '</div><div class="c">' +
+        t("mangler volum eller materiale – ikke med i kg-summen") + '</div></div>'
+      : "") +
     list.map(([key, g]) =>
       '<div class="qty-row"><div class="n">' + esc(key) + (g.type ? ' <span style="color:var(--muted);font-size:11px">(' + esc(typeVisning(g.type)) + ')</span>' : "") + '</div>' +
-      '<div class="c">' + g.count + t(" stk") + ' · ' + g.length.toFixed(dec()) + ' m · ' + fmtArea(g.area) + ' · ' + fmtVol(g.vol) + '</div></div>').join("") +
+      '<div class="c">' + g.count + t(" stk") + ' · ' + g.length.toFixed(dec()) + ' m · ' + fmtArea(g.area) + ' · ' + fmtVol(g.vol) +
+      (g.kg > 0 ? ' · ' + fmtVekt(g.kg) +
+        // Kontrolltallet, rett ved siden av vekten den kontrollerer.
+        (g.length > 0 ? ' <span style="color:var(--muted);font-size:11px">(' +
+          (g.kg / g.length).toFixed(1).replace(".", ",") + ' kg/m)</span>' : "") : "") +
+      '</div></div>').join("") +
     '<p style="color:var(--muted); font-size:11px; margin-top:10px">' +
     t("Antall desimaler settes i Innstillinger. Velg objekttype og materiale for å få ett ark om gangen – nedlastingen inneholder bare det som står i lista nå (f.eks. Søyler + Betong gir bare betongsøylene). Materialgruppene samler navn som betyr det samme: «B35», «C35/45» og «Concrete» havner alle under Betong. Mangler materiale på et element, står det ikke i IFC-fila. Lengde = lengste mål per element (ca-verdi, summert per gruppe). Areal = fotavtrykk, altså grunnflaten sett rett ovenfra – det målet dekker, plater og fundamenter bestilles etter. Volum er regnet ut av geometrien og gjelder lukkede volumer – hule profiler blir riktige, flater uten tykkelse blir 0.") + '</p>';
 

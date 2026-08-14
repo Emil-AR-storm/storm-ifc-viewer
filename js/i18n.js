@@ -152,6 +152,19 @@ export const ORDBOK = {
   "Fikk ikke sendt dette til prosjektlederen nå. Det er lagret på telefonen og sendes automatisk når du har nett igjen.": { en: "Couldn't send this to the project manager right now. It is saved on your phone and will be sent automatically when you are back online.", pl: "Nie udało się teraz wysłać tego do kierownika projektu. Zapisano w telefonie i zostanie wysłane automatycznie po odzyskaniu połączenia.", lt: "Nepavyko dabar išsiųsti to projekto vadovui. Išsaugota telefone ir bus išsiųsta automatiškai, kai atsiras ryšys." },
   "ikke sendt": { en: "not sent", pl: "nie wysłano", lt: "neišsiųsta" },
 
+  // ---------- Vekt og forskaling (Mengder) ----------
+  "Forskaling (m2)": { en: "Formwork (m2)", pl: "Szalunek (m2)", lt: "Klojiniai (m2)" },
+  "Vekt (kg)": { en: "Weight (kg)", pl: "Masa (kg)", lt: "Svoris (kg)" },
+  "Kg/m": { en: "Kg/m", pl: "kg/m", lt: "kg/m" },
+  "Uten vekt (stk)": { en: "Without weight (pcs)", pl: "Bez masy (szt.)", lt: "Be svorio (vnt.)" },
+  "forskaling": { en: "formwork", pl: "szalunek", lt: "klojiniai" },
+  "{0} element uten vekt": {
+    en: "{0} elements without weight", pl: "{0} elementów bez masy", lt: "{0} elementai be svorio" },
+  "mangler volum eller materiale – ikke med i kg-summen": {
+    en: "missing volume or material – not included in the kg total",
+    pl: "brak objętości lub materiału – nieuwzględnione w sumie kg",
+    lt: "trūksta tūrio ar medžiagos – neįskaičiuota į kg sumą" },
+
   // ---------- Nettstatus på byggeplassen (js/nett.js) ----------
   "Ingen nett – det du gjør lagres og sendes når du får dekning.": {
     en: "No connection – what you do is saved and sent when you have coverage again.",
