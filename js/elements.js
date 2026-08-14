@@ -3,6 +3,7 @@ import * as THREE from "three";
 import { $, på, S, apnePanel, dec, esc, ikon, loadingEl, loadingText } from "./state.js";
 import { t } from "./i18n.js";
 import { TETTHET } from "./config.js";
+import { profilKgPerM } from "./profiler.js";
 import { hiddenIDs, hideElement, hideElements } from "./display.js";
 import { alleElementIder, lightElementBoxes } from "./ifc.js";
 import { kall, metaFor, sikreMeta } from "./ifcrpc.js";
@@ -651,14 +652,39 @@ function computeQuantities() {
     // (flate uten tykkelse) eller et materiale vi ikke kjenner tettheten til,
     // blir vekten NULL — og det er en løgn i et tilbud. Derfor telles den ikke
     // som 0 kg, den telles som UKJENT, og summen sier hvor mange som mangler.
+    // ---------------------------------------------------------------------
+    // VEKT: NOMINELL PROFILVEKT FØRST, GEOMETRI SOM RESERVE.
+    //
+    // Målt mot Revit på to ekte bygg lå volum × tetthet systematisk skjevt, og
+    // skjevheten fulgte profiltypen: hulprofiler +2 %, I-profiler −5 %, en
+    // sveiset HSQ +14 %. Nominell kg/m × MÅLT lengde traff derimot innenfor
+    // 0,5 % på hver eneste gruppe. Det er ikke flaks — nominell vekt er det
+    // stålverket leverer og det du betaler for. Geometrien er en tilnærming av
+    // profilen; tabellen ER profilen. Se js/profiler.js.
+    //
+    // Kjennes profilen ikke igjen (sveiste tverrsnitt, betong, alt annet),
+    // brukes geometrien — og kilden merkes, så du vet hvilke tall som er
+    // kontrollert mot en katalog og hvilke som må sjekkes for hånd.
     const tetthet = TETTHET[materialGruppe(material)] || 0;
-    const kjentVekt = tetthet > 0 && q.vol > 1e-9 && !umuligVolum;
-    const kg = kjentVekt ? q.vol * tetthet : 0;
+    const kgGeo = (tetthet > 0 && q.vol > 1e-9 && !umuligVolum) ? q.vol * tetthet : 0;
+    // Nominell vekt hentes fra navnet. Bare for stål: en betongsøyle som
+    // tilfeldigvis heter noe med «L200x20» skal ikke få stålvekt.
+    const prof = materialGruppe(material) === "Stål" ? profilKgPerM(objType || name) : null;
+    const kgNom = prof && len > 0 ? prof.kgPerM * len : 0;
+    // Nominell vinner. Merk at den også redder et element med ØDELAGT mesh:
+    // volumet er ubrukelig, men lengden og profilnavnet er det ikke.
+    const kg = kgNom || kgGeo;
+    const kjentVekt = kg > 0;
+    const vektKilde = kgNom ? (prof.kilde === "tabell" ? "tabell" : "formel") : (kgGeo ? "geometri" : "");
+    // Kontrollen: hvor mye spriker geometrien fra katalogen? Stort avvik betyr
+    // at modellen ikke er det den utgir seg for.
+    const avvik = (kgNom > 0 && kgGeo > 0) ? kgGeo / kgNom - 1 : null;
     // Gruppene skilles også på materiale: en betongsøyle og en stålsøyle med
     // samme mål skal ikke havne på samme rad i en vareordre.
     const gkey = key + (material ? " · " + material : "");
     if (!groups.has(gkey)) groups.set(gkey,
-      { count: 0, length: 0, vol: 0, area: 0, forskaling: 0, kg: 0, utenVekt: 0, umulige: 0, type: typeName, material });
+      { count: 0, length: 0, vol: 0, area: 0, forskaling: 0, kg: 0, kgGeo: 0, utenVekt: 0,
+        umulige: 0, nominelle: 0, type: typeName, material });
     const g = groups.get(gkey);
     g.count++;
     g.length += len;
@@ -666,12 +692,15 @@ function computeQuantities() {
     g.area += q.area;
     g.forskaling += forskaling;
     g.kg += kg;
+    g.kgGeo += kgGeo;
     if (!kjentVekt) g.utenVekt++;
     if (umuligVolum) g.umulige++;
+    if (kgNom) g.nominelle++;
     rows.push({
       id, key: gkey, name, objType, type: typeName, material,
       L: q.dims[0], B: q.dims[1], H: q.dims[2], len, vol: q.vol, area: q.area,
-      forskaling, kg, kjentVekt, umuligVolum
+      forskaling, kg, kgGeo, kjentVekt, umuligVolum, vektKilde,
+      profil: prof ? prof.profil : "", nomKgPerM: prof ? prof.kgPerM : 0, avvik
     });
   }
   const sortedRows = rows.sort((a, b) => a.key.localeCompare(b.key, "no") || a.id - b.id);
@@ -773,12 +802,14 @@ export function qtyForType(cache, type, mat) {
   const groups = new Map();
   rows.forEach(r => {
     if (!groups.has(r.key)) groups.set(r.key,
-      { count: 0, length: 0, vol: 0, area: 0, forskaling: 0, kg: 0, utenVekt: 0, umulige: 0, type: r.type, material: r.material });
+      { count: 0, length: 0, vol: 0, area: 0, forskaling: 0, kg: 0, kgGeo: 0, utenVekt: 0,
+        umulige: 0, nominelle: 0, type: r.type, material: r.material });
     const g = groups.get(r.key);
     g.count++; g.length += r.len; g.vol += r.vol; g.area += r.area;
-    g.forskaling += r.forskaling || 0; g.kg += r.kg || 0;
+    g.forskaling += r.forskaling || 0; g.kg += r.kg || 0; g.kgGeo += r.kgGeo || 0;
     if (!r.kjentVekt) g.utenVekt++;
     if (r.umuligVolum) g.umulige++;
+    if (r.nomKgPerM) g.nominelle++;
   });
   return {
     groups: [...groups.entries()].sort((a, b) => b[1].count - a[1].count),
@@ -831,25 +862,34 @@ export function qtyGroupRows(cache) {
   // forskjell på uten å åpne modellen i noe annet.
   const out = [[t("Gruppe"), t("IFC-type"), t("Materiale"), t("Antall"),
     t("Sum lengde (m)"), t("Sum areal (m2)"), t("Sum volum (m3)"),
-    t("Forskaling (m2)"), t("Vekt (kg)"), t("Kg/m"), t("Uten vekt (stk)"), t("Umulig volum (stk)")]];
+    t("Forskaling (m2)"), t("Vekt (kg)"), t("Kg/m"), t("Kilde"), t("Geometri (kg)"), t("Avvik %"),
+    t("Uten vekt (stk)"), t("Umulig volum (stk)")]];
   cache.groups.forEach(([key, g]) => out.push([key, g.type || "", g.material || "", g.count,
     nb(g.length, csvLenDec()), nb(g.area, csvAreaDec()), nb(g.vol, csvVolDec()),
     nb(g.forskaling, csvAreaDec()), nb(g.kg, csvVektDec()),
-    g.length > 0 ? nb(g.kg / g.length, csvVektDec()) : "", g.utenVekt || "", g.umulige || ""]));
+    g.length > 0 ? nb(g.kg / g.length, csvVektDec()) : "",
+    // Er hele gruppa regnet fra katalog, står det «nominell». Er den blandet,
+    // står det hvor mange — en halvveis kontrollert gruppe skal ikke se
+    // kontrollert ut.
+    g.nominelle === 0 ? t("geometri") : g.nominelle === g.count ? t("nominell") : g.nominelle + "/" + g.count,
+    g.kgGeo > 0 ? nb(g.kgGeo, csvVektDec()) : "",
+    (g.nominelle && g.kgGeo > 0 && g.kg > 0) ? nb((g.kgGeo / g.kg - 1) * 100, 1) : "",
+    g.utenVekt || "", g.umulige || ""]));
   const tot = cache.groups.reduce((s, [, g]) =>
     [s[0] + g.count, s[1] + g.length, s[2] + g.vol, s[3] + g.area, s[4] + g.forskaling, s[5] + g.kg,
-     s[6] + (g.utenVekt || 0), s[7] + (g.umulige || 0)],
-    [0, 0, 0, 0, 0, 0, 0, 0]);
+     s[6] + (g.utenVekt || 0), s[7] + (g.umulige || 0), s[8] + (g.kgGeo || 0)],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0]);
   out.push([]);
   out.push([t("SUM"), "", "", tot[0], nb(tot[1], csvLenDec()), nb(tot[3], csvAreaDec()),
-    nb(tot[2], csvVolDec()), nb(tot[4], csvAreaDec()), nb(tot[5], csvVektDec()), "", tot[6] || "", tot[7] || ""]);
+    nb(tot[2], csvVolDec()), nb(tot[4], csvAreaDec()), nb(tot[5], csvVektDec()), "", "",
+    nb(tot[8], csvVektDec()), "", tot[6] || "", tot[7] || ""]);
   return out;
 }
 
 export function qtyElementRows(cache) {
   const out = [["ElementID", t("Gruppe"), t("Navn"), "ObjectType", t("IFC-type"), t("Materiale"),
     t("Lengde (m)"), t("Bredde (m)"), t("Høyde (m)"), t("Lengste mål (m)"), t("Areal (m2)"), t("Volum (m3)"),
-    t("Forskaling (m2)"), t("Vekt (kg)"), t("Umulig volum")]];
+    t("Forskaling (m2)"), t("Vekt (kg)"), t("Kilde"), t("Profil"), t("Nominell kg/m"), t("Umulig volum")]];
   cache.rows.forEach(r => out.push([r.id, r.key, r.name, r.objType, r.type, r.material || "",
     nb(r.L, csvLenDec()), nb(r.B, csvLenDec()), nb(r.H, csvLenDec()),
     nb(r.len, csvLenDec()), nb(r.area, csvAreaDec()), nb(r.vol, csvVolDec()),
@@ -857,6 +897,8 @@ export function qtyElementRows(cache) {
     // Tom celle, ikke 0, når vekten ikke er kjent. En 0 i et tilbudsark blir
     // summert som om elementet veier ingenting.
     r.kjentVekt ? nb(r.kg, csvVektDec()) : "",
+    r.vektKilde ? t(r.vektKilde) : "", r.profil || "",
+    r.nomKgPerM ? nb(r.nomKgPerM, csvVektDec()) : "",
     r.umuligVolum ? t("JA") : ""]));
   return out;
 }
@@ -1021,7 +1063,20 @@ function renderQuantities(full) {
         g.kg > 0
           ? fmtVekt(g.kg) + (g.length > 0
               ? ' <span style="color:var(--muted);font-size:11px">(' +
-                (g.kg / g.length).toFixed(Math.max(dec(), 1)).replace(".", ",") + ' kg/m)</span>'
+                (g.kg / g.length).toFixed(Math.max(dec(), 1)).replace(".", ",") + ' kg/m' +
+                // Er vekten hentet fra katalog, sier vi det — og hvor mye
+                // geometrien spriker. Over 10 % er modellen ikke profilen den
+                // heter, og da skal tallet ses på.
+                (g.nominelle === g.count && g.kgGeo > 0
+                  ? ' nom · ' + (() => {
+                      const a = (g.kgGeo / g.kg - 1) * 100;
+                      const t2 = (a > 0 ? "+" : "") + a.toFixed(0) + " %";
+                      return Math.abs(a) > 10
+                        ? '<span style="color:var(--danger)">geo ' + t2 + '</span>' : 'geo ' + t2;
+                    })()
+                  : g.nominelle ? ' · ' + g.nominelle + '/' + g.count + ' nom'
+                  : ' geo')
+                + ')</span>'
               : "")
           : ""
       ]) + '</div></div>').join("") +
