@@ -399,7 +399,18 @@ async function visQr(prosjekt, fil, antall, antMark, antBilder, antInn, antTegni
       (uendret ? "<br><span style='color:#16a34a'>Modellen er uendret — ingen ny revisjon laget</span>" : "") + "</p>" +
     "<div id='qrRute' style='display:flex;justify-content:center'></div>" +
     "<p style='font-size:13px;color:#555;margin:12px 0 2px'>" + adresse + "</p>" +
-    "<p style='font-size:13px;color:#555;margin:2px 0 14px'>Skann → skriv prosjektkoden → se modellen</p>";
+    "<p style='font-size:13px;color:#555;margin:2px 0 6px'>Skann → skriv prosjektkoden → se modellen</p>" +
+    // Rådet står på plakaten og ikke i verktøyet, fordi det må leses FØR
+    // montøren går inn der dekningen er borte. Betong og armering er et
+    // Faraday-bur: dekningen på plassen kan være utmerket samtidig som den er
+    // null der jobben faktisk gjøres. Har han sida oppe fra før, virker den
+    // videre — det er sidelasten som krever nett. Legges sida til på
+    // Hjem-skjermen, slutter dessuten Safari å slette det som er lagret
+    // lokalt etter sju dager uten besøk.
+    "<p style='font-size:12px;color:#777;margin:0;line-height:1.5'>" +
+      "Åpne modellen <b>før</b> du går inn i bygget — inne i betong og armering " +
+      "forsvinner dekningen.<br>Legg siden til på Hjem-skjermen, så ligger den klar." +
+    "</p>";
   const lastNed = document.createElement("button");
   lastNed.className = "btn"; lastNed.textContent = "Last ned QR som PNG";
   lastNed.style.cssText = "margin-right:8px";

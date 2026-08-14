@@ -5,6 +5,7 @@ import { t } from "./i18n.js";
 import { LETT } from "./lett.js";
 import { ANSATTE, FRISTER, PLANNER, TJENESTER } from "./config.js";
 import { HASTEGRAD, fristTekst, hastegrad, iDagISO, omDager, vaskGrenser } from "./frist.js";
+import { hentMedFrist, meldNettfeil, tegnNettBanner } from "./nett.js";
 import { tegnMarkering } from "./markerbilde.js";
 // Minikartet varsles med et flagg på S, IKKE med en import av minimap.js.
 // Grunnen er modulrekkefølgen: minimap.js gjør DOM-oppslag ($("miniMap")) og
@@ -55,9 +56,21 @@ export function loadComments() {
 // delte SharePoint-fila — ukjente felter slipper aldri inn.
 async function lastLettMarkeringer() {
   S.comments = [];
+  // FØR: hele blokka lå i «catch (_) {}». Feilet hentingen — tidsavbrudd,
+  // ingen dekning, 500 fra Workeren — sto montøren igjen med en modell uten
+  // en eneste markering OG uten en eneste feilmelding. Han hadde ingen måte å
+  // skille «ingen avvik her» fra «verktøyet fikk ikke tak i dem». Det er den
+  // farligste feilen i hele systemet, fordi den ikke ser ut som en feil.
+  let feil = "";
   try {
-    const r = await fetch("/markeringer/" + (S.lettProsjekt || "00000") + "/" +
+    const r = await hentMedFrist("/markeringer/" + (S.lettProsjekt || "00000") + "/" +
       encodeURIComponent(S.fileName + ".markeringer.json"));
+    // 404 er IKKE en feil: den betyr at prosjektlederen ikke har trykket
+    // Byggeplass ennå. Skriker vi der, lærer montøren å ignorere den røde
+    // linja — og da er den verdiløs den dagen den betyr noe.
+    if (!r.ok && r.status !== 404) {
+      feil = t("Fikk ikke hentet markeringene. Det du ser kan mangle noe.");
+    }
     if (r.ok) {
       const d = await r.json();
       // BAKOVERKOMPATIBEL: fila var en naken array fram til format 2, og en
@@ -74,11 +87,16 @@ async function lastLettMarkeringer() {
         FRISTER.gul = g.gul; FRISTER.rod = g.rod;
       }
     }
-  } catch (_) {}
+  } catch (e) {
+    feil = (e && e.tidsavbrudd)
+      ? t("Markeringene tok for lang tid å hente. Sjekk dekningen og last siden på nytt.")
+      : t("Fikk ikke hentet markeringene. Det du ser kan mangle noe.");
+  }
   markerGroup.clear();
   S.comments.forEach(addMarkerSprite);
   merkUsendte();          // J5: det som ligger i køen finnes ikke hos Workeren ennå
   renderCommentList();
+  meldNettfeil(feil);     // tom streng fjerner linja igjen
   toemKo();               // og prøv å få det av gårde med en gang
 }
 
@@ -130,6 +148,7 @@ async function sendHendelse(hendelse, fraKo) {
   } catch (_) {
     if (!fraKo) {
       koSkriv(koLes().concat([hendelse]));
+      tegnNettBanner();
       alert(t("Fikk ikke sendt dette til prosjektlederen nå. Det er lagret på telefonen og sendes automatisk når du har nett igjen."));
     }
     return false;
@@ -151,6 +170,7 @@ async function toemKo() {
   koSkriv(igjen);
   koJobber = false;
   if (igjen.length < a.length) { merkUsendte(); renderCommentList(); }
+  tegnNettBanner();   // tallet i toppbaren skal si det samme som køen faktisk gjør
 }
 
 // Henger «ikke sendt»-merket på det som fortsatt ligger i køen, og legger
@@ -187,6 +207,9 @@ function merkUsendte() {
 if (LETT) {
   addEventListener("online", toemKo);
   setInterval(toemKo, 60000);
+  // Kroken nett.js teller med. Køen ligger her og skal fortsette å ligge her —
+  // nett.js skal bare kunne SE den, ikke eie den. Samme mønster som S.pushAngre.
+  S.tellUsendteHendelser = () => koLes().length;
 }
 
 // ---- Delte markeringer (lagres som JSON i SharePoint: IFC-modeller/Markeringer) ----
