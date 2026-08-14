@@ -11,7 +11,7 @@
 // Ingenting kaster. Det eneste som forsvinner er «Ansvarlig»-nedtrekket og
 // Planner-knappen, og begge sier fra hvorfor.
 import { S } from "./state.js";
-import { ANSATTE, FRISTER, PLANNER, TETTHET, TJENESTER } from "./config.js";
+import { ANSATTE, EGNE_PROFILER, FRISTER, PLANNER, TETTHET, TJENESTER } from "./config.js";
 import { vaskGrenser } from "./frist.js";
 import { GRAPH, SP, authHeaders, graphGet, spTokenSilent } from "./sharepoint.js";
 
@@ -174,6 +174,21 @@ export function bruk(o, fraBuffer) {
     for (const [gruppe, verdi] of Object.entries(o.tettheter)) {
       const n = Number(verdi);
       if (Number.isFinite(n) && n >= 100 && n <= 25000) TETTHET[gruppe] = n;
+    }
+  }
+
+  // Egne profiler (kg/m) til vektberegningen: sveiste og spesialtilpassede
+  // tverrsnitt som ikke finnes i noen katalog. Se js/profiler.js.
+  //
+  // VASKES som tetthetene: bare tall mellom 0,1 og 5000 kg/m. Uten grensene
+  // ville et komma på feil plass gitt en bjelke som veier ingenting — og i et
+  // tilbud ser 0,75 kg/m helt normalt ut i en kolonne full av desimaler.
+  if (o.profiler && typeof o.profiler === "object") {
+    for (const [navn, verdi] of Object.entries(o.profiler)) {
+      const n = Number(verdi);
+      if (String(navn).trim() && Number.isFinite(n) && n >= 0.1 && n <= 5000) {
+        EGNE_PROFILER[String(navn).trim()] = n;
+      }
     }
   }
 

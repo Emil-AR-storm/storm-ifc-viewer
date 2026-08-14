@@ -34,6 +34,8 @@
 // treffer alle innenfor 0,3 %.
 // ---------------------------------------------------------------------------
 
+import { EGNE_PROFILER } from "./config.js";
+
 const STÅL = 7850;   // kg/m³
 
 // ---------- I-profiler: tabell ----------
@@ -92,17 +94,44 @@ const tall = (s) => Number(String(s).replace(",", "."));
 //   «CFSHS (EN 10219-2) Column:CFSHS300x6»  «Equal L Column:L100x10»
 //   «Flat Bars:Flattstål 120x8»           «RNO_EHP:ensidig HSQ justert»
 //
-// Bare delen etter siste kolon leses. Familienavnet foran inneholder ofte
-// standardnummer («EN 10219-2») med tall som ellers ville blitt tolket som
-// dimensjoner.
+// …og med element-ID-en på slutten i en ekte modell:
+//   «CFSHS (EN 10219-2):CFSHS100x6:1234567»
+// Derfor prøves leddene BAKFRA til ett treffer, ikke bare det siste.
 //
 // Returnerer null når profilen ikke kjennes igjen. DET ER ET RIKTIG SVAR —
 // bedre enn en gjetning som ser like sikker ut som en tabellverdi.
 // ---------------------------------------------------------------------------
 export function profilKgPerM(navn) {
-  const helt = String(navn || "");
-  const s = (helt.split(":").pop() || "").trim();
+  // LEDDENE PRØVES BAKFRA. Navnet fra Revit er «Familie:Type:ElementID», og
+  // første forsøk her leste bare siste ledd — altså element-ID-en. Da fant den
+  // aldri en eneste profil i en ekte modell, og ALT falt tilbake på geometri.
+  // Feilen var usynlig i enhetstestene, fordi navnene der var «Familie:Type»
+  // uten ID. På skjermen sto det «geo» på hver eneste gruppe; det var det ene
+  // sporet som fantes.
+  //
+  // Bakfra fordi typen står nærmere slutten enn familien: «HE-A:HEA220:98765»
+  // skal treffe HEA220, ikke stoppe på «HE-A». Familieleddet inneholder ofte
+  // standardnummer («EN 10219-2») — de treffer ingen av mønstrene, fordi alle
+  // krever bokstavprefiks umiddelbart foran dimensjonene.
+  for (const ledd of String(navn || "").split(":").reverse()) {
+    const r = ettLedd(ledd.trim());
+    if (r) return r;
+  }
+  return null;
+}
+
+function ettLedd(s) {
   if (!s) return null;
+
+  // EGNE PROFILER FØRST. Firmaets egne verdier fra oppsett.json skal kunne
+  // overstyre alt — også en katalogprofil, hvis noen har målt noe annet på et
+  // konkret prosjekt. Nøkkelen sammenlignes uten hensyn til store bokstaver.
+  for (const nøkkel of Object.keys(EGNE_PROFILER)) {
+    if (nøkkel.toLowerCase() === s.toLowerCase()) {
+      const kg = Number(EGNE_PROFILER[nøkkel]);
+      if (Number.isFinite(kg) && kg > 0) return { kgPerM: kg, profil: nøkkel, kilde: "egen" };
+    }
+  }
 
   let m;
 

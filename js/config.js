@@ -64,3 +64,21 @@ export const TJENESTER = { worker: "https://storm-byggeplass.emil-46a.workers.de
 //
 // SAMME objekt hele veien, som ANSATTE og FRISTER.
 export const TETTHET = { "Betong": 2400, "Stål": 7850 };
+
+// ---------- Egne profiler (kg/m) ----------
+// Sveiste og spesialtilpassede tverrsnitt som ikke finnes i noen katalog:
+// HSQ-bjelker, T-profiler, hattprofiler. js/profiler.js kjenner de valsede og
+// kaldformede profilene, men kan ikke gjette på disse — og gjetter derfor ikke.
+//
+// MÅLT PÅ HEGDALRINGEN 18: «ensidig HSQ justert» kom ut på 85,2 kg/m fra
+// geometrien mot 75,3 i virkeligheten. +14 %, og de fire bjelkene alene sto for
+// nesten hele avviket mot fasit på hele bygget. Med riktig kg/m her lander
+// totalen 0,2 % under fasit i stedet for 1,3 % over.
+//
+// LIGGER I oppsett.json, ikke her, av samme grunn som tetthetene: kommer det en
+// ny sveiset profil på neste prosjekt, skal den kunne legges inn uten en push.
+// Nøkkelen er typenavnet slik det står i modellen — ett av leddene i
+// «Familie:Type:ElementID», uten hensyn til store og små bokstaver.
+//
+// SAMME objekt hele veien, som ANSATTE og TETTHET.
+export const EGNE_PROFILER = {};

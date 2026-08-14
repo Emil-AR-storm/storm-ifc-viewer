@@ -669,7 +669,10 @@ function computeQuantities() {
     const kgGeo = (tetthet > 0 && q.vol > 1e-9 && !umuligVolum) ? q.vol * tetthet : 0;
     // Nominell vekt hentes fra navnet. Bare for stål: en betongsøyle som
     // tilfeldigvis heter noe med «L200x20» skal ikke få stålvekt.
-    const prof = materialGruppe(material) === "Stål" ? profilKgPerM(objType || name) : null;
+    // Både ObjectType og Navn prøves: hos noen prosjekterende står profilen i
+    // det ene feltet, hos andre i det andre.
+    const prof = materialGruppe(material) === "Stål"
+      ? (profilKgPerM(objType) || profilKgPerM(name)) : null;
     const kgNom = prof && len > 0 ? prof.kgPerM * len : 0;
     // Nominell vinner. Merk at den også redder et element med ØDELAGT mesh:
     // volumet er ubrukelig, men lengden og profilnavnet er det ikke.
