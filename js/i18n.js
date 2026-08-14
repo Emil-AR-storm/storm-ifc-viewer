@@ -151,6 +151,29 @@ export const ORDBOK = {
   "Språk": { en: "Language", pl: "Język", lt: "Kalba" },
   "Fikk ikke sendt dette til prosjektlederen nå. Det er lagret på telefonen og sendes automatisk når du har nett igjen.": { en: "Couldn't send this to the project manager right now. It is saved on your phone and will be sent automatically when you are back online.", pl: "Nie udało się teraz wysłać tego do kierownika projektu. Zapisano w telefonie i zostanie wysłane automatycznie po odzyskaniu połączenia.", lt: "Nepavyko dabar išsiųsti to projekto vadovui. Išsaugota telefone ir bus išsiųsta automatiškai, kai atsiras ryšys." },
   "ikke sendt": { en: "not sent", pl: "nie wysłano", lt: "neišsiųsta" },
+
+  // ---------- Nettstatus på byggeplassen (js/nett.js) ----------
+  "Ingen nett – det du gjør lagres og sendes når du får dekning.": {
+    en: "No connection – what you do is saved and sent when you have coverage again.",
+    pl: "Brak sieci – to, co robisz, jest zapisywane i zostanie wysłane po odzyskaniu zasięgu.",
+    lt: "Nėra ryšio – tai, ką darote, išsaugoma ir bus išsiųsta, kai atsiras ryšys." },
+  "{0} ikke sendt": { en: "{0} not sent", pl: "{0} niewysłanych", lt: "{0} neišsiųsta" },
+  "Fikk ikke hentet markeringene. Det du ser kan mangle noe.": {
+    en: "Could not fetch the markers. What you see may be incomplete.",
+    pl: "Nie udało się pobrać znaczników. To, co widzisz, może być niekompletne.",
+    lt: "Nepavyko gauti žymeklių. Tai, ką matote, gali būti nepilna." },
+  "Markeringene tok for lang tid å hente. Sjekk dekningen og last siden på nytt.": {
+    en: "Fetching the markers took too long. Check your coverage and reload the page.",
+    pl: "Pobieranie znaczników trwało zbyt długo. Sprawdź zasięg i odśwież stronę.",
+    lt: "Žymeklių gavimas užtruko per ilgai. Patikrinkite ryšį ir perkraukite puslapį." },
+  "Modellen svarte ikke. Sjekk dekningen og prøv igjen.": {
+    en: "The model did not respond. Check your coverage and try again.",
+    pl: "Model nie odpowiedział. Sprawdź zasięg i spróbuj ponownie.",
+    lt: "Modelis neatsakė. Patikrinkite ryšį ir bandykite dar kartą." },
+  "Nettet svarte ikke. Gå ut dit du har dekning og prøv igjen.": {
+    en: "The network did not respond. Move to where you have coverage and try again.",
+    pl: "Sieć nie odpowiedziała. Przejdź w miejsce z zasięgiem i spróbuj ponownie.",
+    lt: "Tinklas neatsakė. Pereikite ten, kur yra ryšys, ir bandykite dar kartą." },
   "Ligger lagret på telefonen og sendes når du har nett igjen.": { en: "Saved on your phone and will be sent when you are back online.", pl: "Zapisane w telefonie, zostanie wysłane po odzyskaniu połączenia.", lt: "Išsaugota telefone ir bus išsiųsta, kai atsiras ryšys." },
   "Fant ikke {0} i ansattlista, så oppgaven ville ikke fått noen mottaker. Velg en ansvarlig fra lista først.": { en: "Could not find {0} in the staff list, so the task would have had no recipient. Choose a responsible person from the list first.", pl: "Nie znaleziono {0} na liście pracowników, więc zadanie nie miałoby odbiorcy. Najpierw wybierz osobę odpowiedzialną z listy.", lt: "Sąraše nerasta {0}, todėl užduotis neturėtų gavėjo. Pirmiausia pasirinkite atsakingą asmenį iš sąrašo." },
   "Markeringen har ingen ansvarlig. Oppgaven blir liggende i Planner uten mottaker. Fortsette?": { en: "The marking has no responsible person. The task will sit in Planner with no recipient. Continue?", pl: "Oznaczenie nie ma osoby odpowiedzialnej. Zadanie pozostanie w Plannerze bez odbiorcy. Kontynuować?", lt: "Žymė neturi atsakingo asmens. Užduotis liks Planner be gavėjo. Tęsti?" },
