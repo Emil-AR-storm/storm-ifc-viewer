@@ -80,11 +80,32 @@ export async function hentMedFrist(url, opts, ms) {
 // med kabel, og en ekstra rad i toppbaren hans er bare støy.
 
 let sisteFeil = "";
+let lagretKopiTid = 0;
 
 // En feil som skal stå til den er rettet. Tom streng fjerner den.
 export function meldNettfeil(tekst) {
   sisteFeil = tekst || "";
   tegnNettBanner();
+}
+
+// Markeringene kom fra service workerens lager, ikke fra Workeren. Tidspunktet
+// er da de sist BLE HENTET, ikke da de ble laget.
+//
+// HVORFOR DETTE MÅ VISES: markeringene er ferskvare. En avvikslapp som ble
+// lukket i går morges står fortsatt åpen i en kopi fra i forgårs, og en montør
+// som tror han ser sannheten kan gå og fikse noe som alt er fikset — eller la
+// være å fikse noe som nettopp ble meldt. En kopi uten tidsstempel er ikke
+// hjelpsom, den er villedende. 0 fjerner merket.
+export function meldLagretKopi(tidMs) {
+  lagretKopiTid = Number(tidMs) || 0;
+  tegnNettBanner();
+}
+
+function klokkeslett(ms) {
+  try {
+    return new Date(ms).toLocaleString("no-NO",
+      { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  } catch (_) { return ""; }
 }
 
 export async function tegnNettBanner() {
@@ -105,6 +126,7 @@ export async function tegnNettBanner() {
   let farge = "var(--warn)";
 
   if (sisteFeil) { deler.push(sisteFeil); farge = "var(--danger)"; }
+  if (lagretKopiTid) deler.push(t("Markeringer sist hentet {0}", klokkeslett(lagretKopiTid)));
   if (avNett) deler.push(t("Ingen nett – det du gjør lagres og sendes når du får dekning."));
   if (usendt) deler.push(t("{0} ikke sendt", usendt));
 

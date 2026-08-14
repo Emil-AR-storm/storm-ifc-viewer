@@ -158,6 +158,12 @@ export const ORDBOK = {
     pl: "Brak sieci – to, co robisz, jest zapisywane i zostanie wysłane po odzyskaniu zasięgu.",
     lt: "Nėra ryšio – tai, ką darote, išsaugoma ir bus išsiųsta, kai atsiras ryšys." },
   "{0} ikke sendt": { en: "{0} not sent", pl: "{0} niewysłanych", lt: "{0} neišsiųsta" },
+  "Markeringer sist hentet {0}": {
+    en: "Markers last fetched {0}", pl: "Znaczniki pobrane ostatnio {0}", lt: "Žymekliai paskutinį kartą gauti {0}" },
+  "Ny versjon klar.": { en: "New version ready.", pl: "Nowa wersja gotowa.", lt: "Nauja versija paruošta." },
+  "Last inn på nytt": { en: "Reload", pl: "Załaduj ponownie", lt: "Įkelti iš naujo" },
+  "Åpne slik den var sist": {
+    en: "Open as it was last time", pl: "Otwórz w stanie z ostatniego razu", lt: "Atidaryti tokį, koks buvo paskutinį kartą" },
   "Fikk ikke hentet markeringene. Det du ser kan mangle noe.": {
     en: "Could not fetch the markers. What you see may be incomplete.",
     pl: "Nie udało się pobrać znaczników. To, co widzisz, może być niekompletne.",
