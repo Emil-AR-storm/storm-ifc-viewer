@@ -974,7 +974,15 @@ export default {
     if (req.method === "GET") {
       // QR-adressen /20653 og rota / serverer begge landingssiden
       let hent = (sti === "/" || /^\/\d{5}$/.test(sti)) ? "/bygg.html" : sti;
-      if (/^\/(bygg\.html|js\/|css\/|vendor\/)/.test(hent)) {
+      // sw.js MÅ ligge på rota. En service worker får bare styre adresser under
+      // sin egen mappe, og montørens adresse er /20653 — den ligger på rota.
+      // Lå fila under /js/, ville registreringen virket og cachen vært tom for
+      // nettopp den ene siden den finnes for.
+      // Sluttankret med (?=$|\?) fordi de to første ikke er mapper: uten den
+      // ville /sw.jsnoe også truffet, blitt hentet fra GitHub og gitt 404 —
+      // ufarlig, men et mønster som ser slurvete ut for den som leser det om
+      // et år.
+      if (/^\/(bygg\.html|sw\.js)(?=$|\?)/.test(hent) || /^\/(js|css|vendor)\//.test(hent)) {
         // Adressen bygges og NORMALISERES før vi henter, og vi sjekker at
         // resultatet fortsatt ligger under /storm-ifc-viewer/. Uten dette
         // slipper /js/%2e%2e/%2e%2e/… gjennom filteret over, og fetch()
