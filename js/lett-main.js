@@ -13,7 +13,6 @@ import { addMeasure, koteValue, rettPunkt, snapPoint } from "./measure.js";
 import { canvas, koteGroup, makeLabel, measureGroup } from "./scene.js";
 import { MODELL_FRIST_MS, hentMedFrist } from "./nett.js";
 import { lagreApning, lesApning } from "./apning.js";
-import "./sw-reg.js";   // registrerer service workeren – må lastes i lettmodus
 
 // last inn resten av modulene (rekkefølgen bestemmer oppstart)
 // UTELATT i lettmodus: ./compare.js, ./recent.js, ./usersync.js
@@ -308,3 +307,19 @@ window.åpneFraUrl = åpneFraUrl;   // trinn 3 kaller denne
     btn.classList.add("active");
   });
 })();
+
+
+// ---------- Service worker (offline) ----------
+// DYNAMISK IMPORT MED VILJE, OG DET ER IKKE STIL — DET ER EN RETTELSE.
+//
+// Denne sto først som en vanlig «import "./sw-reg.js"» øverst. Da fila ikke
+// ble med i en push, stoppet HELE modulkjeden: nettleseren nekter å kjøre en
+// modul som mangler én av importene sine. Resultatet på byggeplassen var en
+// side som så helt normal ut — logo, knapper, kodefelt — men der ingenting
+// virket, og der «JavaScript kjører ikke» ble stående fordi lett-main.js aldri
+// kom til linja som skjuler den. Montøren tastet koden og ingenting skjedde.
+//
+// Offline er en BONUS. Det å se modellen er jobben. En bonus som kan ta ned
+// jobben er feil koblet, uansett hvor godt den er testet — så nå lastes den
+// for seg, etter at alt annet står, og en feil her stopper ingenting.
+import("./sw-reg.js").catch(() => {});
