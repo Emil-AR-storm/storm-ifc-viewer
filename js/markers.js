@@ -5,7 +5,7 @@ import { t } from "./i18n.js";
 import { LETT } from "./lett.js";
 import { ANSATTE, FRISTER, PLANNER, TJENESTER } from "./config.js";
 import { HASTEGRAD, fristTekst, hastegrad, iDagISO, omDager, vaskGrenser } from "./frist.js";
-import { hentMedFrist, meldNettfeil, tegnNettBanner } from "./nett.js";
+import { hentMedFrist, meldLagretKopi, meldNettfeil, tegnNettBanner } from "./nett.js";
 import { tegnMarkering } from "./markerbilde.js";
 // Minikartet varsles med et flagg på S, IKKE med en import av minimap.js.
 // Grunnen er modulrekkefølgen: minimap.js gjør DOM-oppslag ($("miniMap")) og
@@ -62,9 +62,17 @@ async function lastLettMarkeringer() {
   // skille «ingen avvik her» fra «verktøyet fikk ikke tak i dem». Det er den
   // farligste feilen i hele systemet, fordi den ikke ser ut som en feil.
   let feil = "";
+  let lagretTid = 0;
   try {
     const r = await hentMedFrist("/markeringer/" + (S.lettProsjekt || "00000") + "/" +
       encodeURIComponent(S.fileName + ".markeringer.json"));
+    // Stempelet settes av service workeren når svaret kommer fra dens lager i
+    // stedet for fra Workeren. Et ferskt svar har det IKKE — fraværet av
+    // headeren er signalet om at dette er sannheten og ikke en kopi.
+    try {
+      const s = r.headers && r.headers.get ? r.headers.get("X-Storm-Cachet") : null;
+      if (s) lagretTid = Number(s) || 0;
+    } catch (_) {}
     // 404 er IKKE en feil: den betyr at prosjektlederen ikke har trykket
     // Byggeplass ennå. Skriker vi der, lærer montøren å ignorere den røde
     // linja — og da er den verdiløs den dagen den betyr noe.
@@ -96,7 +104,8 @@ async function lastLettMarkeringer() {
   S.comments.forEach(addMarkerSprite);
   merkUsendte();          // J5: det som ligger i køen finnes ikke hos Workeren ennå
   renderCommentList();
-  meldNettfeil(feil);     // tom streng fjerner linja igjen
+  meldNettfeil(feil);       // tom streng fjerner linja igjen
+  meldLagretKopi(lagretTid); // 0 fjerner «sist hentet»-merket
   toemKo();               // og prøv å få det av gårde med en gang
 }
 
