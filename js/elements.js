@@ -621,7 +621,13 @@ function computeQuantities() {
     // uten geometri i denne visningen.
     const len = q.len || Math.max(sizeV.x, sizeV.y, sizeV.z) * toM;
     // Forskaling: sider + underside. Toppen er støpeflate.
-    const forskaling = q.flateSide + q.flateUnder;
+    //
+    // BARE BETONG. Stål forskales ikke, og «forskaling 145 m²» på en stålhall
+    // var ikke bare unyttig — det så ut som en mengde noen kunne prise.
+    // Regnes bare for materialgruppen Betong; alt annet får 0 og faller ut av
+    // visningen av seg selv (tomme deler vises ikke).
+    const erBetong = materialGruppe(material) === "Betong";
+    const forskaling = erBetong ? q.flateSide + q.flateUnder : 0;
     // ---------------------------------------------------------------------
     // ER VOLUMET I DET HELE TATT MULIG?
     //
@@ -813,6 +819,9 @@ const csvLenDec = () => Math.max(dec(), 3);
 const csvVolDec = () => Math.max(dec(), 4);
 
 const csvAreaDec = () => Math.max(dec(), 3);
+// Vekt: minst to desimaler i regnearket. Der skal du kunne kontrollere mot
+// leverandørens tabell uten at avrunding kommer i veien.
+const csvVektDec = () => Math.max(dec(), 2);
 
 export function qtyGroupRows(cache) {
   // «Kg/m» står med vilje rett ved siden av kg. Den er en KONTROLL, ikke et
@@ -825,15 +834,15 @@ export function qtyGroupRows(cache) {
     t("Forskaling (m2)"), t("Vekt (kg)"), t("Kg/m"), t("Uten vekt (stk)"), t("Umulig volum (stk)")]];
   cache.groups.forEach(([key, g]) => out.push([key, g.type || "", g.material || "", g.count,
     nb(g.length, csvLenDec()), nb(g.area, csvAreaDec()), nb(g.vol, csvVolDec()),
-    nb(g.forskaling, csvAreaDec()), nb(g.kg, 1),
-    g.length > 0 ? nb(g.kg / g.length, 1) : "", g.utenVekt || "", g.umulige || ""]));
+    nb(g.forskaling, csvAreaDec()), nb(g.kg, csvVektDec()),
+    g.length > 0 ? nb(g.kg / g.length, csvVektDec()) : "", g.utenVekt || "", g.umulige || ""]));
   const tot = cache.groups.reduce((s, [, g]) =>
     [s[0] + g.count, s[1] + g.length, s[2] + g.vol, s[3] + g.area, s[4] + g.forskaling, s[5] + g.kg,
      s[6] + (g.utenVekt || 0), s[7] + (g.umulige || 0)],
     [0, 0, 0, 0, 0, 0, 0, 0]);
   out.push([]);
   out.push([t("SUM"), "", "", tot[0], nb(tot[1], csvLenDec()), nb(tot[3], csvAreaDec()),
-    nb(tot[2], csvVolDec()), nb(tot[4], csvAreaDec()), nb(tot[5], 1), "", tot[6] || "", tot[7] || ""]);
+    nb(tot[2], csvVolDec()), nb(tot[4], csvAreaDec()), nb(tot[5], csvVektDec()), "", tot[6] || "", tot[7] || ""]);
   return out;
 }
 
@@ -847,17 +856,15 @@ export function qtyElementRows(cache) {
     nb(r.forskaling || 0, csvAreaDec()),
     // Tom celle, ikke 0, når vekten ikke er kjent. En 0 i et tilbudsark blir
     // summert som om elementet veier ingenting.
-    r.kjentVekt ? nb(r.kg, 1) : "",
+    r.kjentVekt ? nb(r.kg, csvVektDec()) : "",
     r.umuligVolum ? t("JA") : ""]));
   return out;
 }
 
-// Tonn over 1000 kg. Et tilbud leses av et menneske, og «184 350 kg» er
-// vanskeligere å kjenne igjen som feil enn «184,4 t».
 // Tallkolonnen i Mengder. Hver verdi pakkes for seg, slik at linja kan brytes
 // MELLOM verdier men aldri inne i én: «216,88» og «m» skal ikke havne på hver
-// sin linje. Tomme deler faller ut, så en gruppe uten vekt ikke får et
-// hengende skilletegn.
+// sin linje. Tomme deler faller ut, så en gruppe uten vekt — eller en stålgruppe
+// uten forskaling — ikke får et hengende skilletegn.
 //
 // Tidligere sto hele strengen med white-space: nowrap. Da vekt og forskaling
 // kom til, ble den for lang til å krympe, og flex presset navnekolonnen ned til
@@ -866,11 +873,23 @@ function tallDeler(deler) {
   return deler.filter(Boolean).map(d => '<span class="d">' + d + '</span>').join(' · ');
 }
 
+// Vekt i KILO, med det antallet desimaler som står i ⚙ Innstillinger.
+//
+// FØRSTE FORSØK RUNDET AV TIL TONN over 1000 kg, med den begrunnelsen at
+// «184,4 t» er lettere å kjenne igjen som feil enn «184 350 kg». Det var feil
+// prioritering: den som skal PRISE et bygg må kunne regne etter og få nøyaktig
+// samme tall som verktøyet. «10,7 t» kan ikke kontrolleres mot noe.
+// Desimalinnstillingen styrer alt annet i Mengder, og skal styre denne også.
+//
+// Tusenskille med hardt mellomrom, som norsk standard: «3 418,7 kg» er like
+// lesbart som tonn, og fortsatt et tall du kan sjekke.
 export function fmtVekt(kg) {
-  if (!(kg > 0)) return "0 kg";
-  return kg >= 1000
-    ? (kg / 1000).toFixed(1).replace(".", ",") + " t"
-    : Math.round(kg) + " kg";
+  const n = Number(kg) || 0;
+  const s = n.toFixed(dec()).replace(".", ",");
+  // Bare heltallsdelen får tusenskille — ikke desimalene.
+  const del = s.split(",");
+  return del[0].replace(/\B(?=(\d{3})+(?!\d))/g, "\u00a0") +
+    (del[1] ? "," + del[1] : "") + " kg";
 }
 
 export function fmtArea(a) {
@@ -1002,7 +1021,7 @@ function renderQuantities(full) {
         g.kg > 0
           ? fmtVekt(g.kg) + (g.length > 0
               ? ' <span style="color:var(--muted);font-size:11px">(' +
-                (g.kg / g.length).toFixed(1).replace(".", ",") + ' kg/m)</span>'
+                (g.kg / g.length).toFixed(Math.max(dec(), 1)).replace(".", ",") + ' kg/m)</span>'
               : "")
           : ""
       ]) + '</div></div>').join("") +
