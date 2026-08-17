@@ -23,7 +23,7 @@
 import { S, $, esc, ikon, loadingEl, loadingText } from "./state.js";
 import { t } from "./i18n.js";
 import { LETT } from "./lett.js";
-import { SP, graphGet, spTokenSilent } from "./sharepoint.js";
+import { GRAPH, SP, authHeaders, graphGet, spTokenSilent } from "./sharepoint.js";
 import { lesMappe } from "./tegninger.js";
 
 export const sjekklisteMappe = () => SP.folder + "/Sjekklister";
@@ -315,10 +315,13 @@ export async function hentMaler(paNytt) {
   const maler = [], feil = [];
   for (const f of (innhold || []).filter(x => x.file && erJson(x.name))) {
     try {
-      const r = await fetch(f["@microsoft.graph.downloadUrl"] ||
-        ("https://graph.microsoft.com/v1.0/sites/" + S.spSiteId + "/drive/items/" + f.id + "/content"),
-        f["@microsoft.graph.downloadUrl"] ? undefined : { headers: { Authorization: "Bearer " + token } });
-      if (!r.ok) { feil.push({ fil: f.name, grunn: "HTTP " + r.status }); continue; }
+      // Nøyaktig samme kall som pdfDokument() i tegninger.js gjør for
+      // arbeidstegninger. Den veien er i drift og virker – en egenskrevet
+      // variant med håndlaget Authorization-header ville vært en ny,
+      // utestet vei til samme fil.
+      const r = await fetch(GRAPH + "/sites/" + S.spSiteId + "/drive/items/" +
+        encodeURIComponent(f.id) + "/content", { headers: authHeaders(token, null, "sjekklistemal") });
+      if (!r.ok) { feil.push({ fil: f.name, grunn: "Graph " + r.status }); continue; }
       const mal = vaskMal(await r.json());
       if (mal) maler.push(mal);
       else feil.push({ fil: f.name, grunn: t("mangler id, navn eller felt") });
