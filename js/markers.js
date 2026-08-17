@@ -20,6 +20,8 @@ import { camera, controls, frameHooks, markerGroup, renderer } from "./scene.js"
 import { GRAPH, SP, authHeaders, graphGet, spTokenSilent } from "./sharepoint.js";
 import { MAKS_LYD_PER_MARKERING, MAKS_PER_MARKERING, bildeUrl, erBildefil, lastOpp, leggTilBilder, lydNavn, lydUrl, slettBilder, trygtLyd } from "./bilder.js";
 import { ADVAR_MB, antallSider, gyldigSide, hentTegninger, mb, sideBilde, velgMappe, visStatus } from "./tegninger.js";
+import { MAKS_SKJEMA_PER_MARKERING, apneMalVelger, apneSkjema, gjeldendeSkjema,
+         hentMaler, sjekklisteI, sjekklisteStripeHtml, vaskSkjema } from "./sjekkliste.js";
 // ⛓-lenka til en markering hentes via S.markerLink (settes av share.js).
 // Direkte import ville gitt sirkel: markers → share → display → ifc → markers.
 
@@ -242,8 +244,13 @@ async function sharedSiteId(token) {
 // SharePoint): bare kjente felter slipper inn, og alt som skal være tekst
 // gjøres om til tekst. Da kan ikke et rart felt i fila – med vilje eller ved
 // uhell – nå innerHTML eller window.open med noe annet enn det vi forventer.
+// elementId + globalId er henvisningen til IFC-elementet markeringen står på.
+// Uten dem kan et dokumentasjonsskjema bare si «en markering» – med dem kan det
+// si «Vegg B2, betong, akse 4–5», og det er hele forskjellen på et skjema og et
+// byggfaglig skjema. Settes ved oppretting; eldre markeringer får dem aldri, og
+// de skal ikke gjettes i ettertid.
 const MARKERING_TEKSTFELT = ["text", "author", "status", "owner", "due", "date", "taskId", "taskUrl",
-  "endret", "endretAv"];
+  "endret", "endretAv", "elementId", "globalId"];
 
 // ID som ikke kolliderer selv om to på hver sin maskin skriver i samme
 // millisekund – samme oppskrift som markeringene selv bruker.
@@ -268,6 +275,11 @@ export function innloggetNavn() {
     return (a && (a.name || a.username)) || "";
   } catch(_) { return ""; }
 }
+
+// sjekkliste.js trenger navnet ved signering, men skal ikke importere denne
+// fila – markers.js importerer sjekkliste.js, og motsatt vei ville gitt en
+// sirkel. Samme grep som S.markerLink og S.hastegradFarge bruker.
+S.innloggetNavn = innloggetNavn;
 
 export function naaTekst() {
   return new Date().toLocaleString("no-NO",
@@ -314,6 +326,11 @@ export function vaskMarkering(r) {
     .filter(t => t && typeof t === "object")
     .map(t => ({ fil: String(t.fil || ""), itemId: String(t.itemId || ""),
                  side: Number(t.side) || 0, storrelse: Number(t.storrelse) || 0 }));
+  // Utfylte sjekklister. Svarene lagres som DATA, ikke som en ferdig PDF –
+  // PDF-en regnes ut på nytt ved nedlasting. Vasken kaster hele skjemaet hvis
+  // malId mangler, for da vet ingen hvilken mal svarene hører til.
+  if (Array.isArray(r.skjema)) c.skjema = r.skjema
+    .map(vaskSkjema).filter(Boolean).slice(0, MAKS_SKJEMA_PER_MARKERING);
   return c;
 }
 
@@ -862,6 +879,39 @@ function tegningStripeHtml(c) {
     '</div></div>';
 }
 
+// ---------- Sjekklister ----------
+// Skjemaet lagres på markeringen som data. En ny versjon LEGGES TIL, den
+// erstatter ikke den gamle: et signert skjema som kan endres i ettertid uten
+// spor er ikke dokumentasjon.
+
+export function lagreSkjema(c, skjema) {
+  const rent = vaskSkjema(skjema);
+  if (!rent || !c) return null;
+  const liste = sjekklisteI(c).slice();
+  const i = liste.findIndex(s => s.id === rent.id);
+  if (i >= 0) liste[i] = rent; else liste.push(rent);
+  c.skjema = liste.slice(-MAKS_SKJEMA_PER_MARKERING);
+  persist();
+  pushSharedComments();
+  renderCommentList();
+  if (popFor && popFor.id === c.id) openMarkerPopup(c);
+  return rent;
+}
+
+async function apneLagretSkjema(c, skjemaId) {
+  const s = sjekklisteI(c).find(x => x.id === skjemaId);
+  if (!s) return;
+  let svar;
+  try { svar = await hentMaler(); }
+  catch (err) { alert(t("Klarte ikke å hente malen: {0}", err.message)); return; }
+  const mal = (svar.maler || []).find(m => m.id === s.malId);
+  if (!mal) {
+    alert(t("Malen «{0}» finnes ikke i SharePoint lenger. Svarene er trygge, men skjemaet kan ikke vises uten malen.", s.malNavn));
+    return;
+  }
+  apneSkjema(c, mal, { ...s, svar: { ...s.svar } }, lagreSkjema);
+}
+
 // Velgeren: lista over PDF-ene som hører til modellen, med søk og sidetall.
 async function apneTegningVelger(c) {
   let el = $("tegningVelg");
@@ -1375,6 +1425,7 @@ export function openMarkerPopup(c) {
     bildeStripeHtml(c, true) +
     lydStripeHtml(c, true) +
     tegningStripeHtml(c) +
+    sjekklisteStripeHtml(c) +
     svarSeksjonHtml(c) +
     '<div class="mp-fields">' +
       '<label>' + t("Status") + '<select class="mp-st">' + Object.keys(STATUS).map(k =>
@@ -1426,6 +1477,10 @@ export function openMarkerPopup(c) {
     };
   });
   if ($("mpTegning")) $("mpTegning").onclick = () => apneTegningVelger(c);
+  if ($("mpSkjema")) $("mpSkjema").onclick = () => apneMalVelger(c, lagreSkjema);
+  el.querySelectorAll(".mp-skjema[data-skjema]").forEach(s => {
+    s.onclick = () => apneLagretSkjema(c, s.dataset.skjema);
+  });
   el.querySelectorAll(".mp-tegning[data-tegning]").forEach(t => {
     t.onclick = (e) => {
       const fjern = e.target.getAttribute("data-fjern");
@@ -1570,6 +1625,14 @@ window.saveComment = function() {
     x: S.pendingPoint.x, y: S.pendingPoint.y, z: S.pendingPoint.z,
     date: naaTekst()
   };
+  // IFC-elementet markeringen står på, hvis noe var valgt da den ble laget.
+  // Er ingenting valgt, settes ingenting – et tomt felt er ærlig, en gjetning
+  // ser riktig ut og da oppdager ingen den.
+  if (S.currentPropID != null) {
+    c.elementId = String(S.currentPropID);
+    const m = S.meta && S.meta.get(S.currentPropID);
+    if (m && m.globalId) c.globalId = String(m.globalId);
+  }
   S.comments.push(c);
   addMarkerSprite(c);
   persist();
@@ -1775,6 +1838,9 @@ export function renderCommentList() {
           ikon("svar") + ' ' + svarI(c).length + '</span>' : "") +
         (tegningerI(c).length ? ' · <span title="' +
           esc(tegningerI(c).map(tegningTekst).join(", ")) + '">' + ikon("tegning") + ' ' + tegningerI(c).length + '</span>' : "") +
+        (gjeldendeSkjema(c).length ? ' · <span title="' +
+          esc(gjeldendeSkjema(c).map(s => s.malNavn + (s.laast ? "" : " (" + t("uferdig") + ")")).join(", ")) + '">' +
+          ikon(gjeldendeSkjema(c).every(s => s.laast) ? "laas" : "rediger") + ' ' + gjeldendeSkjema(c).length + '</span>' : "") +
         (lydI(c).length ? ' · <span title="' + t("Talemelding") + '">' + ikon("mikrofon") + ' ' + lydI(c).length + '</span>' : "") +
         (alleBilder(c).length
           ? ' · <span title="' + SEKSJONER.map(([s, t]) => t + ": " + bilderI(c, s).length).join(", ") +
