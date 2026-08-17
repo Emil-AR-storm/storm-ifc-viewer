@@ -1263,3 +1263,20 @@ button.active { background: var(--aktiv-bg); border-color: var(--aktiv-bg); colo
 #signaturBoks .sg-uten-lerret {
   padding: 26px 12px; text-align: center; font-size: 11px; color: var(--muted);
 }
+
+/* Signaturlerretet har HVIT bunn i begge tema. Streken tegnes alltid svart,
+   fordi signaturen ender i et dokument — ikke i grensesnittet. Med gjennomsiktig
+   bunn ville brukeren tegnet svart på svart i mørkt tema. */
+#signaturBoks #sgLerret { background: #ffffff; }
+#signaturBoks .sg-lerret-ramme { background: #ffffff; }
+#signaturBoks .sg-strek { border-bottom-color: #c9ced6; }
+
+#skjemaVelg .sv-logo-velg {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; color: var(--muted);
+}
+#skjemaVelg .sv-logo {
+  padding: 4px 6px; font: inherit; font-size: 11px; max-width: 150px;
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 5px;
+}
