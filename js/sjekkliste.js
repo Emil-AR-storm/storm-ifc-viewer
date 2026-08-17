@@ -20,11 +20,12 @@
 //    CSS. Et skjema som kommer 70 % utfylt og ser ferdig ut, innbyr til å
 //    trykke fullfør — og i et dokument der tomme felt kan ha preklusiv virkning
 //    er det selve risikoen ved funksjonen.
-import { S, $, esc, ikon, loadingEl, loadingText } from "./state.js";
+import { S, $, esc, ikon, loadingEl, loadingText, writePrefs } from "./state.js";
 import { t } from "./i18n.js";
+import { ryddLogonavn } from "./rapport.js";
 import { LETT } from "./lett.js";
 import { GRAPH, SP, authHeaders, graphGet, spTokenSilent } from "./sharepoint.js";
-import { lesMappe } from "./tegninger.js";
+import { hentLogo, hentLogoer, lesMappe } from "./tegninger.js";
 
 export const sjekklisteMappe = () => SP.folder + "/Sjekklister";
 export const erJson = (navn) => /\.json$/i.test(String(navn || ""));
@@ -435,6 +436,27 @@ export async function hentMaler(paNytt) {
 
 export function tomMalbuffer() { malBuffer = null; }
 
+// Logolista til PDF-en. Samme kilde og samme huskeregel som rapportmenyen i
+// js/ui.js — men skjemaet åpnes fra markeringsbobla og har ikke den menyen.
+let logoBuffer = null;
+
+export async function fyllLogoliste(velg) {
+  if (!velg) return;
+  try {
+    if (!logoBuffer) logoBuffer = await hentLogoer();
+  } catch (_) { logoBuffer = []; }
+  for (const l of (logoBuffer || [])) {
+    const o = document.createElement("option");
+    o.value = l.itemId; o.textContent = ryddLogonavn(l.fil); o.dataset.fil = l.fil;
+    velg.appendChild(o);
+  }
+  const husket = S.settings && S.settings.rapLogo;
+  if (husket) {
+    const treff = [...velg.options].find(o => o.dataset.fil === husket);
+    if (treff) velg.value = treff.value;
+  }
+}
+
 // ---------- Konteksten forslagene bygges av ----------
 // Alt hentes fra markeringen slik den faktisk er. Der en opplysning ikke
 // finnes, står feltet tomt — det gjettes aldri. En merkelapp som selv er en
@@ -621,7 +643,11 @@ export async function apneSkjema(c, mal, skjema, lagre) {
         esc(t("Kan ikke fullføres. Ikke besvart: {0}",
           mangler.map(f => (f.nr ? f.nr + " " : "") + f.navn).join(", "))) + '</span></div>';
 
-    const pdfKn = '<button class="sv-pdf" title="' +
+    const pdfKn =
+      '<label class="sv-logo-velg">' + t("Logo") +
+        '<select class="sv-logo"><option value="">' + esc(t("Innebygd Storm-logo")) + '</option></select>' +
+      '</label>' +
+      '<button class="sv-pdf" title="' +
       t("Last ned som PDF. Kostpris, påslag og fortjeneste er ikke med.") + '">' +
       ikon("lastned") + ' ' + t("Last ned PDF") + '</button>';
     const bunn = laast
@@ -761,19 +787,35 @@ export async function apneSkjema(c, mal, skjema, lagre) {
       tegn();
     };
 
+    // Logovelgeren fylles fra SharePoint, akkurat som i rapportmenyen, og
+    // deler innstillingen med den. Valget huskes på FILNAVN, ikke itemId:
+    // SharePoint gir samme fil ny itemId hvis den lastes opp på nytt.
+    const logoVelg = el.querySelector(".sv-logo");
+    if (logoVelg) fyllLogoliste(logoVelg);
+    if (logoVelg) logoVelg.onchange = () => {
+      const o = logoVelg.selectedOptions[0];
+      S.settings.rapLogo = (o && o.dataset.fil) || "";
+      writePrefs();
+    };
+
     const pdf = el.querySelector(".sv-pdf");
     if (pdf) pdf.onclick = async () => {
+      const gammel = pdf.textContent;
+      pdf.disabled = true;
       try {
         const mod = await import("./skjema-pdf.js");
+        const itemId = logoVelg ? logoVelg.value : "";
         await mod.lastNedSkjema({
           mal, skjema,
           prosjekt: kontekst.prosjekt,
           markering: kontekst.tittel,
           iDag: kontekst.iDag,
-          hentLogo: typeof S.hentRapportLogo === "function" ? S.hentRapportLogo : null
+          hentLogo: () => hentLogo(itemId)
         });
       } catch (err) {
         alert(t("Klarte ikke å lage PDF-en: {0}", err.message));
+      } finally {
+        pdf.disabled = false; pdf.textContent = gammel;
       }
     };
 
@@ -927,14 +969,12 @@ export function bePåSignatur(standardNavn) {
     try { d = lerret && lerret.getContext ? lerret.getContext("2d") : null; } catch (_) { d = null; }
     if (d) {
       d.lineWidth = 2.2; d.lineCap = "round"; d.lineJoin = "round";
-      // Streken skal ha temaets tekstfarge. Feiler oppslaget, tegner vi svart
-      // — en signatur er verdiløs hvis den er usynlig.
-      let farge = "";
-      try {
-        farge = window.getComputedStyle(document.documentElement)
-          .getPropertyValue("--text").trim();
-      } catch (_) { farge = ""; }
-      d.strokeStyle = farge || "#111";
+      // ALLTID SVART. Første utgave brukte temaets --text, og i mørkt tema er
+      // den nesten hvit — signaturen ble tegnet lys grå på hvitt papir og var
+      // så vidt synlig i PDF-en. En signatur er et dokument, ikke et
+      // grensesnitt: den skal se lik ut uansett hvilket tema brukeren har.
+      // Lerretet har hvit bakgrunn i CSS, så streken er synlig mens den tegnes.
+      d.strokeStyle = "#111111";
     } else {
       el.querySelector(".sg-lerret-ramme").innerHTML =
         '<div class="sg-uten-lerret">' + t("Tegneflaten er ikke tilgjengelig her. Velg «Ikke nødvendig».") + '</div>';

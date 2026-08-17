@@ -1178,6 +1178,13 @@ export const ORDBOK = {
   "Markering: {0}": { en: "Marking: {0}", pl: "Oznaczenie: {0}", lt: "Žyma: {0}" },
   "Tegneflaten er ikke tilgjengelig her. Velg «Ikke nødvendig».": { en: "The drawing area is not available here. Choose \u00abNot required\u00bb.", pl: "Obszar rysowania jest niedost\u0119pny. Wybierz \u00abNiewymagane\u00bb.", lt: "Pie\u0161imo sritis nepasiekiama. Pasirinkite \u00abNeb\u016btina\u00bb." },
   "Klarte ikke å lagre signaturen. Velg «Ikke nødvendig», eller prøv en annen nettleser.": { en: "Could not store the signature. Choose \u00abNot required\u00bb, or try another browser.", pl: "Nie uda\u0142o si\u0119 zapisa\u0107 podpisu. Wybierz \u00abNiewymagane\u00bb lub spr\u00f3buj innej przegl\u0105darki.", lt: "Nepavyko i\u0161saugoti para\u0161o. Pasirinkite \u00abNeb\u016btina\u00bb arba bandykite kit\u0105 nar\u0161ykl\u0119." },
+  "Org.nr. {0}": { en: "Org. no. {0}", pl: "Nr org. {0}", lt: "Įm. kodas {0}" },
+  "Erstatter versjon {0}": { en: "Replaces version {0}", pl: "Zastępuje wersję {0}", lt: "Pakeičia versiją {0}" },
+  "Utkast – ikke fullført og ikke signert.": { en: "Draft – not completed and not signed.", pl: "Szkic – nieukończony i niepodpisany.", lt: "Juodraštis – neužbaigta ir nepasirašyta." },
+  "Skjemaet kan fortsatt endres. Det er ikke et avsendt varsel.": { en: "The form can still be changed. This is not a notice that has been sent.", pl: "Formularz można jeszcze zmienić. To nie jest wysłane powiadomienie.", lt: "Formą dar galima keisti. Tai nėra išsiųstas pranešimas." },
+  "utkast": { en: "draft", pl: "szkic", lt: "juodraštis" },
+  "Signert": { en: "Signed", pl: "Podpisane", lt: "Pasirašyta" },
+  "– signatur ikke påkrevd for dette skjemaet": { en: "\u2013 a signature was not required for this form", pl: "\u2013 podpis nie by\u0142 wymagany dla tego formularza", lt: "\u2013 \u0161iai formai para\u0161as nebuvo b\u016btinas" },
   "KONTOR": { en: "OFFICE", pl: "BIURO", lt: "BIURAS" },
   "BYGGEPLASS": { en: "SITE", pl: "BUDOWA", lt: "STATYBVIETĖ" }
 };
