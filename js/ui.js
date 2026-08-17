@@ -428,6 +428,15 @@ async function fyllLogovalg() {
   }
 }
 
+// Sjekkliste-PDF-en skal ha samme logo som statusrapporten, men skjemaet
+// åpnes fra markeringsbobla og har ingen logomeny. Kroken settes på S så
+// js/sjekkliste.js slipper å importere ui.js (som ville gitt en sirkel).
+S.hentRapportLogo = async () => {
+  await fyllLogovalg();
+  const velg = $("rapLogo");
+  return hentLogo(velg ? velg.value : "");
+};
+
 function lukkRapMeny() { const m = $("rapMeny"); if (m) m.classList.remove("open"); }
 
 på("btnRapport", "click", () => {
