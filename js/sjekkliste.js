@@ -340,7 +340,7 @@ export function tomMalbuffer() { malBuffer = null; }
 // Alt hentes fra markeringen slik den faktisk er. Der en opplysning ikke
 // finnes, står feltet tomt — det gjettes aldri. En merkelapp som selv er en
 // gjetning er verre enn ingen merkelapp.
-export function byggKontekst(c, tilleggsFn) {
+export async function byggKontekst(c, tilleggsFn) {
   const meta = (S.meta && c.elementId != null) ? S.meta.get(c.elementId) : null;
   const bilder = ((c.bilder || []).length) + ((c.bilderEtter || []).length);
   const teg = (c.tegninger || [])[0];
@@ -364,8 +364,12 @@ export function byggKontekst(c, tilleggsFn) {
     antBilder: bilder,
     antLyd: (c.lyd || []).length,
     bildePeriode: "",
-    lenke: (S.markerLink && c.id) ? S.markerLink(c.id) : ""
+    lenke: ""
   };
+  // ⛓-lenka er ASYNK og tar hele markeringen, ikke id-en. Kalles den feil,
+  // havner «[object Promise]» rett i vedleggslista — og det så ut som en
+  // gyldig lenke helt til noen leste den.
+  try { if (S.markerLink) k.lenke = String(await S.markerLink(c) || ""); } catch (_) { k.lenke = ""; }
   return typeof tilleggsFn === "function" ? (tilleggsFn(k) || k) : k;
 }
 
@@ -470,7 +474,30 @@ function malfeilHtml(feil) {
 
 export async function apneSkjema(c, mal, skjema, lagre) {
   const el = overlay();
-  let forslag = byggForslag(mal, byggKontekst(c), skjema);
+  // Konteksten bygges ÉN gang. Den henter ⛓-lenka over nettet, og skal ikke
+  // gjøres på nytt for hver opptegning.
+  const kontekst = await byggKontekst(c);
+  let forslag = byggForslag(mal, kontekst, skjema);
+
+  // Ubesvart-merkingen oppdateres UTEN å tegne skjemaet på nytt. Tegner vi alt
+  // på nytt ved hvert kryss, mister brukeren rulleposisjonen midt i et langt
+  // skjema — og uten oppdatering står «Ikke besvart» rødt på et felt som er
+  // besvart, og «Fullfør» blir aldri klikkbar. Det siste er feilen Emil fant.
+  function oppdaterStatus() {
+    const mangler = manglerPakrevd(mal, skjema);
+    const ubesvarte = new Set(mangler.map(f => f.id));
+    el.querySelectorAll(".sv-felt[data-feltid]").forEach(d =>
+      d.classList.toggle("ubesvart", ubesvarte.has(d.dataset.feltid)));
+    const banner = el.querySelector(".sv-mangler");
+    if (banner) {
+      banner.classList.toggle("skjult", mangler.length === 0);
+      const tekst = banner.querySelector(".sv-mangler-tekst");
+      if (tekst) tekst.textContent = t("Kan ikke fullføres. Ikke besvart: {0}",
+        mangler.map(f => (f.nr ? f.nr + " " : "") + f.navn).join(", "));
+    }
+    const fullfor = el.querySelector(".sv-fullfor");
+    if (fullfor) fullfor.disabled = mangler.length > 0;
+  }
 
   function tegn() {
     const laast = skjema.laast;
@@ -488,9 +515,12 @@ export async function apneSkjema(c, mal, skjema, lagre) {
         '<div class="sv-seksjon"><h4>' + esc(s.tittel) + '</h4>' +
         s.felt.map(f => feltHtml(f, skjema, forslag[f.id], laast)).join("") +
         '</div>').join("") +
-      (mangler.length ? '<div class="sv-mangler">' + ikon("advarsel") + " " +
-        t("Kan ikke fullføres. Ikke besvart: {0}", esc(mangler.map(f => (f.nr ? f.nr + " " : "") + f.navn).join(", "))) +
-        '</div>' : "");
+      // Banneret tegnes ALLTID og skjules med en klasse, så oppdaterStatus()
+      // kan vise og skjule det uten å bygge skjemaet på nytt.
+      '<div class="sv-mangler' + (mangler.length ? "" : " skjult") + '">' + ikon("advarsel") +
+        ' <span class="sv-mangler-tekst">' +
+        esc(t("Kan ikke fullføres. Ikke besvart: {0}",
+          mangler.map(f => (f.nr ? f.nr + " " : "") + f.navn).join(", "))) + '</span></div>';
 
     const bunn = laast
       ? '<button class="sv-versjon">' + ikon("rediger") + ' ' + t("Ny versjon") + '</button>' +
@@ -502,7 +532,13 @@ export async function apneSkjema(c, mal, skjema, lagre) {
         '<button class="sv-fullfor"' + (mangler.length ? " disabled" : "") + '>' +
             ikon("hake") + ' ' + t("Fullfør og signer") + '</button>';
 
+    // Rulleposisjonen tas vare på: Godkjenn på felt 3 skal ikke sende deg
+    // tilbake til toppen av skjemaet.
+    const gammel = el.querySelector(".sv-kropp");
+    const rull = gammel ? gammel.scrollTop : 0;
     vis(el, boks(mal.navn + (skjema.versjon > 1 ? " · v" + skjema.versjon : ""), kropp, bunn));
+    const ny = el.querySelector(".sv-kropp");
+    if (ny && rull) ny.scrollTop = rull;
     kobl();
   }
 
@@ -516,13 +552,15 @@ export async function apneSkjema(c, mal, skjema, lagre) {
           const na = new Set(Array.isArray(skjema.svar[id]) ? skjema.svar[id] : []);
           if (inp.checked) na.add(inp.value); else na.delete(inp.value);
           skjema.svar[id] = [...na];
+          oppdaterStatus();
         };
       } else if (inp.type === "radio") {
-        inp.onchange = () => { if (inp.checked) skjema.svar[id] = inp.value; };
+        inp.onchange = () => { if (inp.checked) { skjema.svar[id] = inp.value; oppdaterStatus(); } };
       } else {
         inp.oninput = () => {
           skjema.svar[id] = inp.value;
           if (forslag[id]) { delete forslag[id]; tegn(); }
+          else oppdaterStatus();
         };
       }
     });
@@ -547,7 +585,7 @@ export async function apneSkjema(c, mal, skjema, lagre) {
     if (alle) alle.onclick = () => {
       // «Anbefalt utfylling» fyller ikke inn noe — den viser forslagene på nytt
       // for alle felt som kan få et. Godkjenningen skjer fortsatt per felt.
-      forslag = byggForslag(mal, byggKontekst(c), skjema);
+      forslag = byggForslag(mal, kontekst, skjema);
       tegn();
     };
 
@@ -569,7 +607,7 @@ export async function apneSkjema(c, mal, skjema, lagre) {
     const versjon = el.querySelector(".sv-versjon");
     if (versjon) versjon.onclick = () => {
       skjema = nyVersjon(skjema);
-      forslag = byggForslag(mal, byggKontekst(c), skjema);
+      forslag = byggForslag(mal, kontekst, skjema);
       tegn();
     };
 
@@ -615,12 +653,15 @@ function feltHtml(f, skjema, forslag, laast) {
       '<button class="sv-avlys" data-avlys="' + esc(f.id) + '">' + t("Avlys") + '</button></div></div>'
     : "";
 
-  return '<div class="sv-felt' + (f.pakrevd && tom ? " ubesvart" : "") + '">' +
+  return '<div class="sv-felt' + (f.pakrevd && tom ? " ubesvart" : "") +
+    '" data-feltid="' + esc(f.id) + '">' +
     '<label class="sv-etikett">' + nr + esc(f.navn) +
       (f.pakrevd ? ' <span class="sv-pakrevd">*</span>' : "") + '</label>' +
     (f.merknad ? '<div class="sv-merknad">' + esc(f.merknad) + '</div>' : "") +
     inn +
-    (f.pakrevd && tom ? '<div class="sv-ubesvart">' + t("Ikke besvart") + '</div>' : "") +
+    // Tegnes ALLTID for paakrevde felt og skjules med CSS. Da kan
+    // oppdaterStatus() vise og skjule den ved et kryss, uten aa bygge om.
+    (f.pakrevd ? '<div class="sv-ubesvart">' + t("Ikke besvart") + '</div>' : "") +
     forslagHtml +
     '</div>';
 }
