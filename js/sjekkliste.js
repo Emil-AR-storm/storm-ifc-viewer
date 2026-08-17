@@ -31,7 +31,7 @@ export const erJson = (navn) => /\.json$/i.test(String(navn || ""));
 
 // Felttypene motoren kjenner. Ukjent type i en malfil blir til «tekst» — en mal
 // med en skrivefeil skal vises, ikke forsvinne.
-export const FELTTYPER = ["tekst", "fritekst", "dato", "valg", "flervalg"];
+export const FELTTYPER = ["tekst", "fritekst", "dato", "valg", "flervalg", "ordrelinjer"];
 
 // Kildene et forslag kan komme fra. Alt annet i en malfil ignoreres: en mal
 // skal ikke kunne be om et felt motoren ikke vet hva er.
@@ -42,9 +42,14 @@ export const FORSLAGSKILDER = ["iDag", "varselnummer", "tittel", "faktablokk",
 // Systemet kan vise hva markeringen inneholder — det kan ikke foreslå hva
 // Storm krever. Et forhåndsvalgt «Ingen påfølgende konsekvenser» ville vært
 // den dyreste enkeltfeilen denne funksjonen kan gjøre.
-export const UTEN_FORSLAG = ["valg", "flervalg"];
+export const UTEN_FORSLAG = ["valg", "flervalg", "ordrelinjer"];
 
 export const MAKS_SKJEMA_PER_MARKERING = 20;
+
+// Tak på den tegnede signaturen (tegn i data-URL-en, ca. 45 kB). Markeringsfila
+// hentes på nytt hver gang noen åpner modellen — også på en telefon på
+// byggeplassen — så en signatur som vokser ukontrollert koster dekning.
+export const MAKS_SIGNATUR = 60000;
 
 // ═══════════════════════ REN LOGIKK ═══════════════════════
 // Alt over NETTLESER-skillet er uten DOM, S og Graph, og er det _test-suiten
@@ -109,16 +114,93 @@ export function vaskMal(r) {
     }))
     .filter(s => s.felt.length);
   if (!seksjoner.length) return null;
+  const a = r.avsender && typeof r.avsender === "object" ? r.avsender : {};
   return {
     id, navn,
     versjon: Number(r.versjon) || 1,
     beskrivelse: String(r.beskrivelse == null ? "" : r.beskrivelse),
+    // Brevhodet i PDF-en. Ligger i malen, ikke i koden: Storm Betong AS og
+    // Storm Entreprenør AS er to juridiske enheter, og hvilken som er part
+    // avgjøres av kontrakten — ikke av hvilken logo noen valgte i menyen.
+    avsender: {
+      navn: String(a.navn == null ? "" : a.navn),
+      orgnr: String(a.orgnr == null ? "" : a.orgnr),
+      adresse: String(a.adresse == null ? "" : a.adresse),
+      sted: String(a.sted == null ? "" : a.sted)
+    },
     seksjoner
   };
 }
 
 export function alleFelt(mal) {
   return (mal && mal.seksjoner || []).reduce((ut, s) => ut.concat(s.felt), []);
+}
+
+// ---------- Ordrelinjer (2.4) ----------
+// Formelen er MÅLT i Gripr 17.08.2026 med 10 stk à 100 kr, 20 % påslag,
+// 25 % mva — ikke gjettet:
+//
+//   Totalpris   = antall × enhetspris        →  1 000   ← dette er KOSTNADEN
+//   Fortjeneste = Totalpris × påslag%        →    200
+//   Sum eks mva = Totalpris + Fortjeneste    →  1 200
+//   Sum inkl mva= Sum eks mva × (1 + mva%)   →  1 500
+//   Margin      = Fortjeneste / Totalpris    →   20 %  (samme tall som påslaget)
+//
+// ENHETSPRIS ER KOSTPRIS. Derfor må dokumentet som går ut vise SALGSPRIS per
+// enhet (enhetspris × (1 + påslag)), ikke enhetsprisen. Ellers kan mottakeren
+// regne seg til påslaget ved å dele totalen på antallet.
+
+export const STANDARD_MVA = 25;
+
+export function vaskLinje(r) {
+  if (!r || typeof r !== "object") return null;
+  const tall = (v, d) => { const n = Number(String(v == null ? "" : v).replace(",", ".")); return isFinite(n) ? n : d; };
+  return {
+    produkt: String(r.produkt == null ? "" : r.produkt).slice(0, 200),
+    antall: tall(r.antall, 0),
+    enhet: String(r.enhet == null ? "stk" : r.enhet).slice(0, 20),
+    enhetspris: tall(r.enhetspris, 0),
+    paslag: tall(r.paslag, 0),
+    mva: tall(r.mva, STANDARD_MVA)
+  };
+}
+
+export function tomLinje() {
+  return { produkt: "", antall: 0, enhet: "stk", enhetspris: 0, paslag: 0, mva: STANDARD_MVA };
+}
+
+// Én linje regnet ut. `salgsEnhetspris` er den ENESTE prisen som skal ut av
+// huset — `kostnad` og `fortjeneste` er interne tall.
+export function linjeSum(r) {
+  const l = vaskLinje(r) || tomLinje();
+  const kostnad = l.antall * l.enhetspris;
+  const fortjeneste = kostnad * (l.paslag / 100);
+  const eksMva = kostnad + fortjeneste;
+  const mvaBelop = eksMva * (l.mva / 100);
+  return {
+    kostnad, fortjeneste, eksMva, mvaBelop,
+    inklMva: eksMva + mvaBelop,
+    salgsEnhetspris: l.enhetspris * (1 + l.paslag / 100)
+  };
+}
+
+export function ordreSum(rader) {
+  const ut = { kostnad: 0, fortjeneste: 0, eksMva: 0, mvaBelop: 0, inklMva: 0, antallLinjer: 0 };
+  for (const r of (Array.isArray(rader) ? rader : [])) {
+    const s = linjeSum(r);
+    ut.kostnad += s.kostnad; ut.fortjeneste += s.fortjeneste;
+    ut.eksMva += s.eksMva; ut.mvaBelop += s.mvaBelop; ut.inklMva += s.inklMva;
+    ut.antallLinjer++;
+  }
+  ut.margin = ut.kostnad ? (ut.fortjeneste / ut.kostnad) * 100 : 0;
+  return ut;
+}
+
+// Norsk pengeformat: 1 500,00 — mellomrom som tusenskille, komma som desimal.
+export function kr(n) {
+  const v = isFinite(Number(n)) ? Number(n) : 0;
+  const [h, d] = Math.abs(v).toFixed(2).split(".");
+  return (v < 0 ? "−" : "") + h.replace(/\B(?=(\d{3})+(?!\d))/g, "\u00a0") + "," + d;
 }
 
 // ---------- Det utfylte skjemaet ----------
@@ -132,7 +214,10 @@ export function vaskSkjema(r) {
     for (const k of Object.keys(r.svar)) {
       const v = r.svar[k];
       // Flervalg lagres som array, alt annet som streng.
-      if (Array.isArray(v)) svar[String(k)] = v.map(x => String(x));
+      // Ordrelinjer er en liste med OBJEKTER; flervalg en liste med strenger.
+      if (Array.isArray(v)) svar[String(k)] = v.every(x => x && typeof x === "object")
+        ? v.map(vaskLinje).filter(Boolean).slice(0, 100)
+        : v.map(x => String(x));
       else if (v != null) svar[String(k)] = String(v);
     }
   }
@@ -148,6 +233,13 @@ export function vaskSkjema(r) {
     forslagGodkjent: (Array.isArray(r.forslagGodkjent) ? r.forslagGodkjent : []).map(x => String(x)),
     signertAv: String(r.signertAv == null ? "" : r.signertAv),
     signertTid: String(r.signertTid == null ? "" : r.signertTid),
+    // Tegnet signatur som data-URL, eller "" når «Ikke nødvendig» ble valgt.
+    // Vaskes hardt: bare PNG fra denne appen, og med tak på størrelsen — en
+    // markeringsfil som vokser til flere MB gjør byggeplass-siden ubrukelig.
+    signatur: (typeof r.signatur === "string" &&
+               /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(r.signatur) &&
+               r.signatur.length <= MAKS_SIGNATUR)
+      ? r.signatur : "",
     laast: r.laast === true,
     erstatter: r.erstatter == null ? null : Number(r.erstatter) || null
   };
@@ -164,6 +256,7 @@ export function nyttSkjema(mal) {
     forslagGodkjent: [],
     signertAv: "",
     signertTid: "",
+    signatur: "",
     laast: false,
     erstatter: null
   };
@@ -193,13 +286,19 @@ export function nyVersjon(gammelt) {
     forslagGodkjent: [...(gammelt.forslagGodkjent || [])],
     signertAv: "",
     signertTid: "",
+    signatur: "",
     laast: false,
     erstatter: Number(gammelt.versjon) || 1
   };
 }
 
-export function laasSkjema(skjema, navn, tid) {
-  return { ...skjema, laast: true, signertAv: String(navn || ""), signertTid: String(tid || "") };
+export function laasSkjema(skjema, navn, tid, signatur) {
+  return {
+    ...skjema, laast: true,
+    signertAv: String(navn || ""),
+    signertTid: String(tid || ""),
+    signatur: typeof signatur === "string" ? signatur : ""
+  };
 }
 
 // ---------- Forslagsmotoren ----------
@@ -522,10 +621,13 @@ export async function apneSkjema(c, mal, skjema, lagre) {
         esc(t("Kan ikke fullføres. Ikke besvart: {0}",
           mangler.map(f => (f.nr ? f.nr + " " : "") + f.navn).join(", "))) + '</span></div>';
 
+    const pdfKn = '<button class="sv-pdf" title="' +
+      t("Last ned som PDF. Kostpris, påslag og fortjeneste er ikke med.") + '">' +
+      ikon("lastned") + ' ' + t("Last ned PDF") + '</button>';
     const bunn = laast
-      ? '<button class="sv-versjon">' + ikon("rediger") + ' ' + t("Ny versjon") + '</button>' +
+      ? pdfKn + '<button class="sv-versjon">' + ikon("rediger") + ' ' + t("Ny versjon") + '</button>' +
         '<button class="sv-lukk">' + t("Lukk") + '</button>'
-      : (antF ? '<button class="sv-alle" title="' +
+      : pdfKn + (antF ? '<button class="sv-alle" title="' +
             t("Fyller inn forslag i {0} felt. Hvert felt må godkjennes for seg.", antF) + '">' +
             ikon("fortsett") + ' ' + t("Anbefalt utfylling ({0})", antF) + '</button>' : "") +
         '<button class="sv-lagre">' + ikon("lagre") + ' ' + t("Lagre uten å fullføre") + '</button>' +
@@ -565,6 +667,54 @@ export async function apneSkjema(c, mal, skjema, lagre) {
       }
     });
 
+    // Ordrelinjer. Tallene regnes om i cellene UTEN å bygge tabellen på nytt —
+    // ellers mister du markøren midt i et beløp for hvert tastetrykk.
+    function tegnOrdreTall(feltId) {
+      const boks = el.querySelector('.sv-ordre[data-ordrefelt="' + feltId + '"]');
+      if (!boks) return;
+      const rader = Array.isArray(skjema.svar[feltId]) ? skjema.svar[feltId] : [];
+      boks.querySelectorAll("tbody tr[data-rad]").forEach(tr => {
+        const l = linjeSum(rader[Number(tr.dataset.rad)]);
+        tr.querySelectorAll(".sv-o-ut").forEach(td => { td.textContent = kr(l[td.dataset.ut]); });
+      });
+      const sum = ordreSum(rader);
+      boks.querySelectorAll("[data-sum]").forEach(b => {
+        b.textContent = b.dataset.sum === "margin" ? sum.margin.toFixed(0) + " %" : kr(sum[b.dataset.sum]);
+      });
+      oppdaterStatus();
+    }
+
+    el.querySelectorAll("[data-ordre][data-kol]").forEach(inp => {
+      inp.oninput = () => {
+        const id = inp.dataset.ordre, i = Number(inp.dataset.rad), kol = inp.dataset.kol;
+        const rader = Array.isArray(skjema.svar[id]) ? skjema.svar[id] : [];
+        if (!rader[i]) return;
+        rader[i][kol] = (kol === "produkt" || kol === "enhet") ? inp.value : inp.value;
+        skjema.svar[id] = rader.map(r => vaskLinje(r) || tomLinje());
+        // vaskLinje gjør tall om til tall; skriv IKKE verdien tilbake i feltet,
+        // det ville hoppet markøren og spist et halvskrevet «12,».
+        tegnOrdreTall(id);
+      };
+    });
+
+    el.querySelectorAll(".sv-o-ny").forEach(b => {
+      b.onclick = () => {
+        const id = b.dataset.ordre;
+        const rader = (Array.isArray(skjema.svar[id]) ? skjema.svar[id] : []).slice();
+        rader.push(tomLinje());
+        skjema.svar[id] = rader;
+        tegn();
+      };
+    });
+
+    el.querySelectorAll(".sv-o-slett").forEach(b => {
+      b.onclick = () => {
+        const id = b.dataset.ordre, i = Number(b.dataset.rad);
+        skjema.svar[id] = (skjema.svar[id] || []).filter((_, n) => n !== i);
+        tegn();
+      };
+    });
+
     el.querySelectorAll(".sv-godkjenn").forEach(b => {
       b.onclick = () => {
         const id = b.dataset.godkjenn;
@@ -593,13 +743,13 @@ export async function apneSkjema(c, mal, skjema, lagre) {
     if (lagreKn) lagreKn.onclick = () => { lagre(c, skjema); lukk(); };
 
     const fullfor = el.querySelector(".sv-fullfor");
-    if (fullfor) fullfor.onclick = () => {
-      const mangler = manglerPakrevd(mal, skjema);
-      if (mangler.length) return;
-      if (!confirm(t("Fullfør og signer? Skjemaet låses. En senere endring lager en ny versjon, og denne blir liggende."))) return;
-      const navn = (S.innloggetNavn && S.innloggetNavn()) || "";
-      skjema = laasSkjema(skjema, navn, new Date().toLocaleString("no-NO",
-        { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }));
+    if (fullfor) fullfor.onclick = async () => {
+      if (manglerPakrevd(mal, skjema).length) return;
+      const sign = await bePåSignatur((S.innloggetNavn && S.innloggetNavn()) || "");
+      if (!sign) return;                                   // avbrutt — ingenting låses
+      skjema = laasSkjema(skjema, sign.navn, new Date().toLocaleString("no-NO",
+        { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }),
+        sign.signatur);
       lagre(c, skjema);
       tegn();
     };
@@ -611,11 +761,76 @@ export async function apneSkjema(c, mal, skjema, lagre) {
       tegn();
     };
 
+    const pdf = el.querySelector(".sv-pdf");
+    if (pdf) pdf.onclick = async () => {
+      try {
+        const mod = await import("./skjema-pdf.js");
+        await mod.lastNedSkjema({
+          mal, skjema,
+          prosjekt: kontekst.prosjekt,
+          markering: kontekst.tittel,
+          iDag: kontekst.iDag,
+          hentLogo: typeof S.hentRapportLogo === "function" ? S.hentRapportLogo : null
+        });
+      } catch (err) {
+        alert(t("Klarte ikke å lage PDF-en: {0}", err.message));
+      }
+    };
+
     const lukkKn = el.querySelector(".sv-lukk");
     if (lukkKn) lukkKn.onclick = lukk;
   }
 
   tegn();
+}
+
+// Ordrelinje-tabellen. Påslag og fortjeneste vises HER, på kontoret, fordi
+// prosjektlederen trenger dem for å prise jobben. De skal ikke ut av huset —
+// PDF-en (js/skjema-pdf.js) utelater dem, og viser salgspris i stedet for
+// kostpris, slik at tallene går opp uten at kostnaden kan regnes tilbake.
+export function ordreHtml(f, rader, laast) {
+  const av = laast ? " disabled" : "";
+  const sum = ordreSum(rader);
+  const celle = (i, n, verdi, bredde, steg) =>
+    '<input type="number" step="' + (steg || "any") + '" class="sv-o-tall" style="width:' + bredde + '" ' +
+    'data-ordre="' + esc(f.id) + '" data-rad="' + i + '" data-kol="' + n + '" value="' + esc(verdi) + '"' + av + '>';
+
+  return '<div class="sv-ordre" data-ordrefelt="' + esc(f.id) + '">' +
+    '<table class="sv-o-tab"><thead><tr>' +
+      '<th>' + t("Produkt") + '</th><th>' + t("Antall") + '</th><th>' + t("Enhet") + '</th>' +
+      '<th>' + t("Enhetspris") + '</th><th>' + t("Totalpris") + '</th><th>' + t("Påslag") + '</th>' +
+      '<th>' + t("Fortjeneste") + '</th><th>' + t("MVA") + '</th><th>' + t("Total (inkl. mva)") + '</th><th></th>' +
+    '</tr></thead><tbody>' +
+    (rader.length ? rader.map((r, i) => {
+      const l = linjeSum(r);
+      return '<tr data-rad="' + i + '">' +
+        '<td><input type="text" class="sv-o-produkt" data-ordre="' + esc(f.id) + '" data-rad="' + i + '" ' +
+          'data-kol="produkt" value="' + esc(r.produkt || "") + '"' + av + '></td>' +
+        '<td>' + celle(i, "antall", r.antall, "62px") + '</td>' +
+        '<td><input type="text" class="sv-o-enhet" data-ordre="' + esc(f.id) + '" data-rad="' + i + '" ' +
+          'data-kol="enhet" value="' + esc(r.enhet || "stk") + '"' + av + '></td>' +
+        '<td>' + celle(i, "enhetspris", r.enhetspris, "84px") + '</td>' +
+        '<td class="sv-o-ut" data-ut="kostnad">' + kr(l.kostnad) + '</td>' +
+        '<td>' + celle(i, "paslag", r.paslag, "58px") + ' %</td>' +
+        '<td class="sv-o-ut" data-ut="fortjeneste">' + kr(l.fortjeneste) + '</td>' +
+        '<td>' + celle(i, "mva", r.mva, "54px") + ' %</td>' +
+        '<td class="sv-o-ut sterk" data-ut="inklMva">' + kr(l.inklMva) + '</td>' +
+        '<td>' + (laast ? "" : '<button class="sv-o-slett" data-ordre="' + esc(f.id) +
+          '" data-rad="' + i + '" title="' + t("Fjern linjen") + '">' + ikon("slett") + '</button>') + '</td>' +
+      '</tr>';
+    }).join("") : '<tr class="sv-o-tom"><td colspan="10">' + t("Ingen ordrelinjer ennå.") + '</td></tr>') +
+    '</tbody></table>' +
+    (laast ? "" : '<button class="sv-o-ny" data-ordre="' + esc(f.id) + '">' +
+      ikon("pluss") + ' ' + t("Legg til en fritekstrad") + '</button>') +
+    '<div class="sv-o-sum">' +
+      '<div><span>' + t("Total (eks. mva)") + '</span><b data-sum="eksMva">' + kr(sum.eksMva) + '</b></div>' +
+      '<div><span>' + t("MVA") + '</span><b data-sum="mvaBelop">' + kr(sum.mvaBelop) + '</b></div>' +
+      '<div class="stor"><span>' + t("Total (inkl. mva)") + '</span><b data-sum="inklMva">' + kr(sum.inklMva) + '</b></div>' +
+      '<div class="intern"><span>' + t("Total kostnad") + '</span><b data-sum="kostnad">' + kr(sum.kostnad) + '</b></div>' +
+      '<div class="intern"><span>' + t("Fortjeneste") + '</span><b data-sum="fortjeneste">' + kr(sum.fortjeneste) +
+        '</b> <em data-sum="margin">' + sum.margin.toFixed(0) + ' %</em></div>' +
+      '<div class="sv-o-varsel">' + t("Kostnad, påslag og fortjeneste vises bare her. De kommer ikke med i PDF-en.") + '</div>' +
+    '</div></div>';
 }
 
 // Ett felt. Forslaget ligger UTENFOR input-elementet — aldri som value, aldri
@@ -641,6 +856,8 @@ function feltHtml(f, skjema, forslag, laast) {
     inn = '<div class="sv-valg">' + f.valg.map(o =>
       '<label><input type="checkbox" data-felt="' + esc(f.id) + '" value="' + esc(o) + '"' +
       (valgt.includes(o) ? " checked" : "") + av + '> ' + esc(o) + '</label>').join("") + '</div>';
+  } else if (f.type === "ordrelinjer") {
+    inn = ordreHtml(f, Array.isArray(v) ? v : [], laast);
   } else {
     inn = '<input type="text" data-felt="' + esc(f.id) + '" value="' + esc(v || "") + '"' + av + '>';
   }
@@ -664,6 +881,133 @@ function feltHtml(f, skjema, forslag, laast) {
     (f.pakrevd ? '<div class="sv-ubesvart">' + t("Ikke besvart") + '</div>' : "") +
     forslagHtml +
     '</div>';
+}
+
+// ---------- Signaturboksen ----------
+// Navn i tekst OG en tegnet signatur. «Ikke nødvendig» finnes fordi ikke alle
+// skjema krever signatur — men den er et VALG som registreres, ikke en snarvei
+// forbi låsingen: skjemaet låses uansett, og at signaturen ble utelatt står i
+// dokumentet.
+//
+// Signaturen lagres som PNG-data-URL på markeringen. Lerretet er 480×160, som
+// gir noen få kB. Taket (MAKS_SIGNATUR) finnes fordi markeringsfila hentes på
+// nytt hver gang noen åpner modellen — også på en telefon på byggeplassen.
+export const SIGNATUR_B = 480, SIGNATUR_H = 160;
+
+export function bePåSignatur(standardNavn) {
+  return new Promise((ferdig) => {
+    let el = $("signaturBoks");
+    if (!el) { el = document.createElement("div"); el.id = "signaturBoks"; document.body.appendChild(el); }
+    el.innerHTML =
+      '<div class="sg-boks"><div class="sg-topp"><strong>' + t("Signer skjemaet") + '</strong>' +
+        '<button class="sg-x" title="' + t("Lukk") + '">' + ikon("lukk") + '</button></div>' +
+      '<div class="sg-kropp">' +
+        '<label class="sg-etikett">' + t("Navn") + ' <span class="sv-pakrevd">*</span></label>' +
+        '<input type="text" id="sgNavn" value="' + esc(standardNavn || "") + '" autocomplete="off">' +
+        '<label class="sg-etikett">' + t("Signatur — tegn med musa") + '</label>' +
+        '<div class="sg-lerret-ramme">' +
+          '<canvas id="sgLerret" width="' + SIGNATUR_B + '" height="' + SIGNATUR_H + '"></canvas>' +
+          '<div class="sg-strek"></div>' +
+        '</div>' +
+        '<div class="sg-verktoy"><button class="sg-tom">' + t("Tøm") + '</button>' +
+          '<span class="sg-hint">' + t("Hold inne museknappen og skriv. På berøringsskjerm: bruk fingeren.") + '</span></div>' +
+      '</div>' +
+      '<div class="sg-bunn">' +
+        '<button class="sg-avbryt">' + t("Avbryt") + '</button>' +
+        '<button class="sg-uten">' + t("Ikke nødvendig") + '</button>' +
+        '<button class="sg-ok">' + ikon("hake") + ' ' + t("Signer og lås") + '</button>' +
+      '</div></div>';
+    el.classList.add("open");
+
+    const lerret = $("sgLerret"), navnFelt = $("sgNavn");
+    // Uten 2D-kontekst (eldre nettleser, blokkert lerret) skal boksen fortsatt
+    // virke: navn og «Ikke nødvendig» holder. Å kaste her ville låst brukeren
+    // ute fra å fullføre skjemaet i det hele tatt.
+    let d = null;
+    try { d = lerret && lerret.getContext ? lerret.getContext("2d") : null; } catch (_) { d = null; }
+    if (d) {
+      d.lineWidth = 2.2; d.lineCap = "round"; d.lineJoin = "round";
+      // Streken skal ha temaets tekstfarge. Feiler oppslaget, tegner vi svart
+      // — en signatur er verdiløs hvis den er usynlig.
+      let farge = "";
+      try {
+        farge = window.getComputedStyle(document.documentElement)
+          .getPropertyValue("--text").trim();
+      } catch (_) { farge = ""; }
+      d.strokeStyle = farge || "#111";
+    } else {
+      el.querySelector(".sg-lerret-ramme").innerHTML =
+        '<div class="sg-uten-lerret">' + t("Tegneflaten er ikke tilgjengelig her. Velg «Ikke nødvendig».") + '</div>';
+    }
+    let tegner = false, tegnet = false, forrige = null;
+
+    const punkt = (e) => {
+      const r = lerret.getBoundingClientRect();
+      const kilde = (e.touches && e.touches[0]) || e;
+      return { x: (kilde.clientX - r.left) * (lerret.width / r.width),
+               y: (kilde.clientY - r.top) * (lerret.height / r.height) };
+    };
+    const start = (e) => { if (!d) return; e.preventDefault(); tegner = true; forrige = punkt(e); };
+    const flytt = (e) => {
+      if (!tegner || !d) return;
+      e.preventDefault();
+      const p = punkt(e);
+      d.beginPath(); d.moveTo(forrige.x, forrige.y); d.lineTo(p.x, p.y); d.stroke();
+      forrige = p; tegnet = true;
+    };
+    const slutt = () => { tegner = false; forrige = null; };
+    if (d) lerret.addEventListener("pointerdown", start);
+    if (d) {
+      lerret.addEventListener("pointermove", flytt);
+      lerret.addEventListener("pointerup", slutt);
+      lerret.addEventListener("pointerleave", slutt);
+    }
+
+    const lukkSig = () => { el.classList.remove("open"); el.innerHTML = ""; };
+    const svar = (verdi) => { lukkSig(); ferdig(verdi); };
+
+    el.querySelector(".sg-tom").onclick = () => {
+      if (d) d.clearRect(0, 0, lerret.width, lerret.height);
+      tegnet = false;
+    };
+    el.querySelector(".sg-x").onclick = () => svar(null);
+    el.querySelector(".sg-avbryt").onclick = () => svar(null);
+
+    const navnEllerStopp = () => {
+      const navn = navnFelt.value.trim();
+      if (!navn) { navnFelt.focus(); navnFelt.classList.add("mangler"); return null; }
+      return navn;
+    };
+
+    el.querySelector(".sg-uten").onclick = () => {
+      const navn = navnEllerStopp();
+      if (!navn) return;
+      if (!confirm(t("Låse skjemaet uten tegnet signatur? Det blir stående i dokumentet at signatur ikke var påkrevd."))) return;
+      svar({ navn, signatur: "" });
+    };
+
+    el.querySelector(".sg-ok").onclick = () => {
+      const navn = navnEllerStopp();
+      if (!navn) return;
+      if (!tegnet) { alert(t("Tegn signaturen i feltet, eller velg «Ikke nødvendig».")); return; }
+      let data = "";
+      try { data = String(lerret.toDataURL("image/png") || ""); } catch (_) { data = ""; }
+      if (!/^data:image\/png;base64,/.test(data)) {
+        alert(t("Klarte ikke å lagre signaturen. Velg «Ikke nødvendig», eller prøv en annen nettleser."));
+        return;
+      }
+      // For stor signatur lagres ikke — heller navn alene enn en markeringsfil
+      // som vokser til flere MB og gjør byggeplass-siden treg.
+      if (data.length > MAKS_SIGNATUR) {
+        alert(t("Signaturen ble for stor til å lagres. Prøv en enklere strek, eller velg «Ikke nødvendig»."));
+        return;
+      }
+      svar({ navn, signatur: data });
+    };
+
+    navnFelt.oninput = () => navnFelt.classList.remove("mangler");
+    setTimeout(() => navnFelt.focus(), 30);
+  });
 }
 
 export function visStatus(tekst) {
