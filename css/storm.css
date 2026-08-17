@@ -1137,7 +1137,12 @@ button.active { background: var(--aktiv-bg); border-color: var(--aktiv-bg); colo
 #skjemaVelg .sv-felt.ubesvart input[type=text],
 #skjemaVelg .sv-felt.ubesvart input[type=date],
 #skjemaVelg .sv-felt.ubesvart textarea { border-color: var(--danger); }
-#skjemaVelg .sv-ubesvart { font-size: 11px; color: var(--danger); margin-top: 3px; }
+/* «Ikke besvart» tegnes alltid for påkrevde felt og styres av klassen på
+   .sv-felt. Da kan et kryss slå den av uten at skjemaet bygges på nytt —
+   rulleposisjonen ryker ikke, og «Fullfør» følger med. */
+#skjemaVelg .sv-ubesvart { display: none; font-size: 11px; color: var(--danger); margin-top: 3px; }
+#skjemaVelg .sv-felt.ubesvart .sv-ubesvart { display: block; }
+#skjemaVelg .sv-mangler.skjult { display: none; }
 #skjemaVelg .sv-mangler {
   display: flex; align-items: flex-start; gap: 6px;
   padding: 8px 10px; border-radius: 6px; font-size: 11px;
