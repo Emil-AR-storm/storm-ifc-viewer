@@ -405,6 +405,7 @@ import { lastNedRapport } from "./rapport.js";
 import { fangstBilde } from "./scene.js";
 import { hentLogo, hentLogoer } from "./tegninger.js";
 import { ryddLogonavn } from "./rapport.js";
+import "./verktoygrupper.js";   // 🧰 grupperer verktøylinja — må lastes etter at knappene finnes
 
 let logoerLastet = false;
 
@@ -427,15 +428,6 @@ async function fyllLogovalg() {
     if (treff) velg.value = treff.value;
   }
 }
-
-// Sjekkliste-PDF-en skal ha samme logo som statusrapporten, men skjemaet
-// åpnes fra markeringsbobla og har ingen logomeny. Kroken settes på S så
-// js/sjekkliste.js slipper å importere ui.js (som ville gitt en sirkel).
-S.hentRapportLogo = async () => {
-  await fyllLogovalg();
-  const velg = $("rapLogo");
-  return hentLogo(velg ? velg.value : "");
-};
 
 function lukkRapMeny() { const m = $("rapMeny"); if (m) m.classList.remove("open"); }
 

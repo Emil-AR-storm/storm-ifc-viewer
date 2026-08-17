@@ -1185,6 +1185,9 @@ export const ORDBOK = {
   "utkast": { en: "draft", pl: "szkic", lt: "juodraštis" },
   "Signert": { en: "Signed", pl: "Podpisane", lt: "Pasirašyta" },
   "– signatur ikke påkrevd for dette skjemaet": { en: "\u2013 a signature was not required for this form", pl: "\u2013 podpis nie by\u0142 wymagany dla tego formularza", lt: "\u2013 \u0161iai formai para\u0161as nebuvo b\u016btinas" },
+  // ---------- 🧰 Verktøygrupper ----------
+  "Info": { en: "Info", pl: "Info", lt: "Info" },
+  "Storm-Byggeplass": { en: "Storm site", pl: "Storm budowa", lt: "Storm statybvietė" },
   "KONTOR": { en: "OFFICE", pl: "BIURO", lt: "BIURAS" },
   "BYGGEPLASS": { en: "SITE", pl: "BUDOWA", lt: "STATYBVIETĖ" }
 };

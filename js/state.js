@@ -29,6 +29,7 @@ export const DEFAULT_SETTINGS = {
   cubePos: "th",      // hjørne: tv | th | nv | nh (oppe/nede × venstre/høyre)
   rapCsv: false,      // «Ta med CSV» i rapportmenyen
   rapLogo: "",        // valgt logo (filnavn i SharePoint-mappa Logoer)
+  verktoygruppe: "",  // 🧰 valgt gruppe i verktøylinja (mal | info | utseende | bygg)
   keys: Object.assign({}, DEFAULT_KEYS)
 };
 
