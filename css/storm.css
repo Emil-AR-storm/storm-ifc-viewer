@@ -1280,3 +1280,32 @@ button.active { background: var(--aktiv-bg); border-color: var(--aktiv-bg); colo
   background: var(--bg); color: var(--text);
   border: 1px solid var(--border); border-radius: 5px;
 }
+
+/* ---------- 🧰 Verktøygrupper ----------
+   Gruppeknappene i toppbaren, og skjulingen av verktøy som ikke hører til
+   den valgte gruppa. Knappene FJERNES aldri — de skjules, som i lettmodus,
+   så lytterne og hurtigtastene i ui.js fortsatt finner dem med $(). */
+#verktoygrupper {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding-left: 8px; margin-left: 2px;
+  border-left: 1px solid var(--border);
+}
+
+/* Er en gruppe valgt, skjules alle grupperte knapper … */
+#toolbar[data-gruppe] button[data-gruppe] { display: none; }
+/* … bortsett fra den valgte gruppas. */
+#toolbar[data-gruppe="mal"]      button[data-gruppe="mal"],
+#toolbar[data-gruppe="info"]     button[data-gruppe="info"],
+#toolbar[data-gruppe="utseende"] button[data-gruppe="utseende"],
+#toolbar[data-gruppe="bygg"]     button[data-gruppe="bygg"] { display: inline-flex; }
+
+/* Lettmodus skal fortsatt vinne. Reglene i bygg.html bruker !important, så
+   dette er bare et sikkerhetsnett hvis noen fjerner det. */
+[data-lett="1"] #btnCompare[data-gruppe],
+[data-lett="1"] #btnSaveLite[data-gruppe],
+[data-lett="1"] #btnRapport[data-gruppe] { display: none !important; }
+
+@media (max-width: 720px) {
+  #verktoygrupper { padding-left: 6px; gap: 4px; }
+  #verktoygrupper .btn-t { display: none; }   /* bare ikoner på liten skjerm */
+}
