@@ -1188,6 +1188,14 @@ export const ORDBOK = {
   // ---------- 🧰 Verktøygrupper ----------
   "Info": { en: "Info", pl: "Info", lt: "Info" },
   "Storm-Byggeplass": { en: "Storm site", pl: "Storm budowa", lt: "Storm statybvietė" },
+  // ---------- 🔁 BCF-eksport ----------
+  "BCF-eksport": { en: "BCF export", pl: "Eksport BCF", lt: "BCF eksportas" },
+  "markeringene inn i Solibri, Dalux eller BIMcollab": { en: "the markings into Solibri, Dalux or BIMcollab", pl: "oznaczenia do Solibri, Dalux lub BIMcollab", lt: "žymos į Solibri, Dalux ar BIMcollab" },
+  "Ingen markeringer å eksportere.": { en: "No markings to export.", pl: "Brak oznaczeń do eksportu.", lt: "Nėra žymų eksportui." },
+  "Klarte ikke å lage BCF-fila: {0}": { en: "Could not create the BCF file: {0}", pl: "Nie udało się utworzyć pliku BCF: {0}", lt: "Nepavyko sukurti BCF failo: {0}" },
+  "{0} BCF-saker eksportert, alle med elementreferanse.": { en: "{0} BCF topics exported, all with an element reference.", pl: "Wyeksportowano {0} tematów BCF, wszystkie z referencją elementu.", lt: "Eksportuota {0} BCF temų, visos su elemento nuoroda." },
+  "{0} BCF-saker eksportert. {1} av dem mangler elementreferanse og peker ikke på et bestemt objekt — de ble laget før elementkoblingen kom inn.": { en: "{0} BCF topics exported. {1} of them have no element reference and do not point at a specific object \u2014 they were made before the element link existed.", pl: "Wyeksportowano {0} temat\u00f3w BCF. {1} z nich nie ma referencji elementu \u2014 powsta\u0142y przed wprowadzeniem po\u0142\u0105czenia z elementem.", lt: "Eksportuota {0} BCF tem\u0173. {1} i\u0161 j\u0173 neturi elemento nuorodos \u2014 jos sukurtos prie\u0161 \u012fvedant element\u0173 sait\u0105." },
+  "Markering": { en: "Marking", pl: "Oznaczenie", lt: "Žyma" },
   "KONTOR": { en: "OFFICE", pl: "BIURO", lt: "BIURAS" },
   "BYGGEPLASS": { en: "SITE", pl: "BUDOWA", lt: "STATYBVIETĖ" }
 };

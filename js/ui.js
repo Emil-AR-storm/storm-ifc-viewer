@@ -457,6 +457,30 @@ på("rapLogo", "change", (e) => {
   writePrefs();
 });
 
+// 🔁 BCF-eksport. Ligger i rapportmenyen fordi det er samme handling for
+// brukeren — «få markeringene ut av Storm» — bare i et annet format.
+på("rapBcf", "click", async () => {
+  lukkRapMeny();
+  if (!S.modelGroup) { alert(t("Åpne en modell først.")); return; }
+  try {
+    const bcf = await import("./bcf.js");
+    const r = await bcf.eksporterBcf({
+      markeringer: S.comments || [],
+      modell: S.fileName,
+      prosjekt: S.lettProsjekt || "",
+      fangstBilde: () => fangstBilde(1400, 900)
+    });
+    // Sier ALLTID fra hvor mange saker som mangler elementreferanse. Uten den
+    // finner ikke mottakerens verktøy fram til riktig vegg, og det er verdt å
+    // vite FØR fila sendes — ikke etter at prosjekterende har spurt.
+    alert(r.utenElement
+      ? t("{0} BCF-saker eksportert. {1} av dem mangler elementreferanse og peker ikke på et bestemt objekt — de ble laget før elementkoblingen kom inn.", r.antall, r.utenElement)
+      : t("{0} BCF-saker eksportert, alle med elementreferanse.", r.antall));
+  } catch (err) {
+    alert(t("Klarte ikke å lage BCF-fila: {0}", err.message));
+  }
+});
+
 document.querySelectorAll(".rap-valg").forEach((b) => {
   b.addEventListener("click", async () => {
     lukkRapMeny();
