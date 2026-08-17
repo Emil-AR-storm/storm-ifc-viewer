@@ -1047,3 +1047,125 @@ button.active { background: var(--aktiv-bg); border-color: var(--aktiv-bg); colo
 #modeBar { bottom: calc(14px + var(--nett-hoyde, 0px)); }
 #hint    { bottom: calc(12px + var(--nett-hoyde, 0px)); }
 #miniMap { bottom: calc(12px + var(--nett-hoyde, 0px)) !important; }
+
+/* ---------- 📋 Sjekklister ----------
+   Skjemaene i markeringsbobla, og overlayet der de fylles ut.
+   Forslagsboksen (.sv-forslag) er bevisst DEMPET: den skal se ut som et
+   forslag helt til noen har tatt stilling til det. Ser den ut som et svar,
+   blir den behandlet som et svar. */
+#markerPop .mp-skjemaer { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.mp-skjema {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
+  background: var(--panel2); border: 1px solid var(--border); border-radius: 6px;
+  padding: 4px 7px; font-size: 11px; color: var(--text); cursor: pointer;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mp-skjema:hover { border-color: var(--accent2); }
+.mp-skjema.laast { border-color: var(--ok); }
+.mp-skjema .uferdig { color: var(--warn); }
+.mp-skjema.nytt { border-style: dashed; color: var(--muted); }
+.mp-skjema.nytt:hover { color: var(--text); }
+
+/* Overlayet – samme oppbygging som #tegningVelg */
+#skjemaVelg {
+  display: none; position: fixed; inset: 0; z-index: 56;
+  background: rgba(0,0,0,.6);
+}
+#skjemaVelg.open { display: flex; align-items: center; justify-content: center; }
+#skjemaVelg .sv-boks {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: var(--skygge); width: min(720px, 94vw); max-height: 88vh;
+  display: flex; flex-direction: column;
+}
+#skjemaVelg .sv-topp {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px; border-bottom: 1px solid var(--border);
+}
+#skjemaVelg .sv-topp strong { flex: 1; font-size: 13px; }
+#skjemaVelg .sv-x { border: 0; background: none; color: var(--muted); font-size: 14px; padding: 2px 5px; }
+#skjemaVelg .sv-kropp { padding: 12px 14px; overflow: auto; }
+#skjemaVelg .sv-bunn {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 10px 12px; border-top: 1px solid var(--border);
+}
+#skjemaVelg .sv-bunn .sv-fullfor { margin-left: auto; }
+#skjemaVelg .sv-bunn button[disabled] { opacity: .45; cursor: not-allowed; }
+
+#skjemaVelg .sv-info { color: var(--muted); font-size: 12px; margin: 0 0 8px; }
+#skjemaVelg .sv-feil { color: var(--danger); font-size: 12px; margin: 0 0 8px; }
+#skjemaVelg .sv-malfeil {
+  margin-top: 10px; padding: 8px 10px; border-radius: 6px;
+  background: var(--sone); color: var(--muted); font-size: 11px;
+}
+#skjemaVelg .sv-malfeil strong { display: block; color: var(--danger); margin-bottom: 3px; }
+
+#skjemaVelg .sv-maler { display: flex; flex-direction: column; gap: 6px; }
+#skjemaVelg .sv-mal {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  text-align: left; padding: 9px 11px; border-radius: 8px;
+  background: var(--panel2); border: 1px solid var(--border); color: var(--text);
+}
+#skjemaVelg .sv-mal:hover { border-color: var(--accent2); }
+#skjemaVelg .sv-mal span { font-size: 11px; color: var(--muted); }
+
+#skjemaVelg .sv-seksjon { margin-bottom: 16px; }
+#skjemaVelg .sv-seksjon h4 {
+  margin: 0 0 8px; font-size: 10px; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--muted); border-bottom: 1px solid var(--border); padding-bottom: 4px;
+}
+#skjemaVelg .sv-felt { margin-bottom: 13px; }
+#skjemaVelg .sv-etikett { display: block; font-size: 12px; margin-bottom: 3px; }
+#skjemaVelg .sv-nr { color: var(--muted); }
+#skjemaVelg .sv-pakrevd { color: var(--danger); }
+#skjemaVelg .sv-merknad { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+#skjemaVelg .sv-felt input[type=text],
+#skjemaVelg .sv-felt input[type=date],
+#skjemaVelg .sv-felt textarea {
+  width: 100%; box-sizing: border-box; padding: 6px 8px; font: inherit; font-size: 12px;
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px;
+}
+#skjemaVelg .sv-felt textarea { resize: vertical; min-height: 70px; }
+#skjemaVelg .sv-valg { display: flex; flex-direction: column; gap: 4px; }
+#skjemaVelg .sv-valg label {
+  display: flex; align-items: flex-start; gap: 7px; font-size: 12px; line-height: 1.35;
+}
+#skjemaVelg .sv-valg input { margin-top: 2px; flex: 0 0 auto; }
+
+/* «Ikke besvart» er ikke pynt – den blokkerer Fullfør. Konvensjonen er
+   arvet fra Gripr-skjemaet, men her stopper den også. */
+#skjemaVelg .sv-felt.ubesvart input[type=text],
+#skjemaVelg .sv-felt.ubesvart input[type=date],
+#skjemaVelg .sv-felt.ubesvart textarea { border-color: var(--danger); }
+#skjemaVelg .sv-ubesvart { font-size: 11px; color: var(--danger); margin-top: 3px; }
+#skjemaVelg .sv-mangler {
+  display: flex; align-items: flex-start; gap: 6px;
+  padding: 8px 10px; border-radius: 6px; font-size: 11px;
+  background: var(--sone); color: var(--danger);
+}
+#skjemaVelg .sv-laast {
+  display: flex; align-items: flex-start; gap: 6px;
+  padding: 8px 10px; border-radius: 6px; font-size: 11px; margin-bottom: 12px;
+  background: var(--panel2); color: var(--muted); border-left: 3px solid var(--ok);
+}
+
+/* Forslaget. Grå, stiplet og utenfor feltet – aldri som value eller
+   placeholder. Det er ikke et svar før noen har trykket Godkjenn. */
+#skjemaVelg .sv-forslag {
+  margin-top: 5px; padding: 7px 9px; border-radius: 6px;
+  border: 1px dashed var(--border); background: transparent;
+}
+#skjemaVelg .sv-forslag-tekst {
+  font-size: 12px; line-height: 1.4; color: var(--muted);
+  white-space: pre-wrap; max-height: 150px; overflow: auto;
+}
+#skjemaVelg .sv-forslag-bunn {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 6px;
+}
+#skjemaVelg .sv-forslag-kilde { flex: 1; font-size: 10px; color: var(--muted); font-style: italic; }
+#skjemaVelg .sv-godkjenn, #skjemaVelg .sv-avlys {
+  padding: 3px 8px; font-size: 11px; border-radius: 5px;
+  border: 1px solid var(--border); background: var(--panel2); color: var(--text);
+}
+#skjemaVelg .sv-godkjenn:hover { border-color: var(--ok); }
+#skjemaVelg .sv-avlys:hover { border-color: var(--danger); }
