@@ -122,15 +122,61 @@ function drawMiniOverlay(force) {
   ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI * 2); ctx.fill();       // hvor du ser
 }
 
-// Ren regning, så den kan prøves uten en scene: hvor langt skal kamera og
-// blikkpunkt flyttes når du trykker i kartet?
+// Hvor nær kameraet blikkpunktet får ligge etter et karttrykk: 12 % av
+// modellens diagonal. På Geithus-hallen (24 m) blir det knappe 3 m.
+export const MINI_PIVOT_ANDEL = 0.12;
+
+// Ren regning, så den kan prøves uten en scene: hvor havner kamera og
+// blikkpunkt når du trykker i kartet? Svaret er ABSOLUTTE posisjoner, ikke et
+// tillegg — både høyden, retningen og avstanden regnes om her.
 //
-// FØR ble forskjellen regnet fra BLIKKPUNKTET. Da endte du opp med å SE på
-// stedet du trykket, fra samme avstand som før — du kom aldri dit. Nå regnes
-// den fra KAMERAET: du lander der du trykket. Blikkpunktet flyttes like langt,
-// så du ser samme vei som før og bildet snurrer ikke rundt. Høyden røres ikke.
-export function miniFlytting(kameraPos, wx, wz) {
-  return { dx: wx - kameraPos.x, dz: wz - kameraPos.z };
+// FIRE FEIL LIGGER BAK DENNE FUNKSJONEN. Tre av dem var forsøk på å rette den
+// forrige, og hver av dem så riktig ut på papiret. Derfor står de her:
+//
+// 1. Forskjellen ble regnet fra BLIKKPUNKTET. Da endte du opp med å SE på
+//    stedet du trykket, fra samme avstand som før — du kom aldri dit.
+//
+// 2. Regnet fra kameraet i stedet: da arvet blikkpunktet zoomnivået. Målt på
+//    Geithus-hallen zoomet ut (blikkpunkt 19 m foran): kameraet landet riktig i
+//    hjørnet, men blikkpunktet havnet på (−9,7 / −25,7) — utenfor bygget.
+//
+// 3. Med tak på avstanden var det fortsatt tomt: kameraet arvet HØYDEN og sto
+//    7,5 m over taket. Skjermbildet var helt svart.
+//
+// 4. Med høyden inne i bygget var det FORTSATT tomt, fordi himmelretningen ble
+//    arvet — og fra et hjørne pekte den rett ut av bygget.
+//
+// Det som virker, bekreftet med skjermbilde: du lander på punktet, i en høyde
+// inne i bygget, og snus MOT modellens midte. Da ser du alltid stål, uansett
+// hvor i kartet du trykker og uansett hvor du sto fra før.
+export function miniLanding(kameraPos, malPos, wx, wz, boks, maksAvstand, senter) {
+  // ---- høyden: inne i bygget ----
+  // Er du alt innenfor byggets høyde, var den riktig og beholdes.
+  let y = Number(kameraPos.y) || 0;
+  const minY = boks && Number(boks.minY), maxY = boks && Number(boks.maxY);
+  if (isFinite(minY) && isFinite(maxY) && maxY > minY && (y < minY || y > maxY)) {
+    y = (minY + maxY) / 2;
+  }
+
+  // ---- retningen: mot midten av modellen ----
+  let hx = senter ? Number(senter.x) - wx : 0;
+  let hz = senter ? Number(senter.z) - wz : 0;
+  let l = Math.hypot(hx, hz);
+  if (!(l > 1e-9)) {                 // du landet midt i modellen – behold din egen
+    hx = malPos.x - kameraPos.x; hz = malPos.z - kameraPos.z; l = Math.hypot(hx, hz);
+  }
+  if (!(l > 1e-9)) { hx = 1; hz = 0; l = 1; }   // og så du rett ned: pek i +x
+  hx /= l; hz /= l;
+
+  // ---- avstanden til blikkpunktet: arver ikke zoomen ----
+  const nå = Math.hypot(malPos.x - kameraPos.x, malPos.y - kameraPos.y, malPos.z - kameraPos.z);
+  const maks = Number(maksAvstand);
+  const d = Math.max(1e-6, maks > 0 ? Math.min(nå || maks, maks) : (nå || 1));
+
+  return {
+    kamera: { x: wx, y, z: wz },
+    mal: { x: wx + hx * d, y, z: wz + hz * d }     // samme y = vannrett blikk
+  };
 }
 
 miniCanvas.addEventListener("pointerdown", (e) => {
@@ -141,9 +187,13 @@ miniCanvas.addEventListener("pointerdown", (e) => {
   const my = (e.clientY - r.top) / r.height * S.miniInfo.size;
   const wx = S.miniInfo.cx + (mx - S.miniInfo.size / 2) / (S.miniInfo.size / 2) * S.miniInfo.half;
   const wz = S.miniInfo.cz + (my - S.miniInfo.size / 2) / (S.miniInfo.size / 2) * S.miniInfo.half;
-  const { dx, dz } = miniFlytting(camera.position, wx, wz);
-  camera.position.x += dx; camera.position.z += dz;
-  controls.target.x += dx; controls.target.z += dz;
+  const boks = S.modelBox ? { minY: S.modelBox.min.y, maxY: S.modelBox.max.y } : null;
+  const ut = miniLanding(camera.position, controls.target, wx, wz, boks,
+    (Number(S.modelSize) || 20) * MINI_PIVOT_ANDEL,
+    { x: S.miniInfo.cx, z: S.miniInfo.cz });   // kartets midt ER modellens midt
+  camera.position.set(ut.kamera.x, ut.kamera.y, ut.kamera.z);
+  controls.target.set(ut.mal.x, ut.mal.y, ut.mal.z);
+  camera.lookAt(controls.target);
 });
 
 // Minikartet styres nå fra ⚙ Innstillinger (av/på + størrelse)
