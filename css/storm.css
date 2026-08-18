@@ -701,6 +701,42 @@ button.active { background: var(--aktiv-bg); border-color: var(--aktiv-bg); colo
   border: 1px solid var(--border); border-radius: 6px;
   padding: 4px 6px; font-size: 12px; font-family: inherit;
 }
+/* ---------- 🏢 Etasjevelgeren på minikartet ----------
+   Boksen ligger OPPÅ kartet, nede til venstre. Plasseringen settes i
+   js/minimap.js etter kartets eget rektangel — kartet står til venstre på
+   skjerm og til høyre på mobil, og bunnen flyttes av nett-banneret. Derfor
+   ingen left/bottom her: to steder å glemme er ett for mye.
+   z-index må ligge over kartet (5) og under panelene. */
+.mini-etasje {
+  position: fixed; z-index: 6; display: none;
+  padding: 3px 8px; font-size: 11px; font-family: inherit; line-height: 1.5;
+  max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  background: var(--panel2); color: var(--muted);
+  border: 1px solid var(--border); border-radius: 6px;
+  cursor: pointer;
+}
+.mini-etasje:hover { color: var(--text); border-color: var(--accent); }
+/* Er en etasje valgt, er kartet i en annen tilstand enn standard, og det skal
+   synes uten at man må lese teksten. */
+.mini-etasje.valgt { color: var(--text); border-color: var(--accent2); font-weight: 600; }
+
+.mini-etasje-liste {
+  position: fixed; z-index: 7; display: none;
+  flex-direction: column; gap: 2px; padding: 4px;
+  max-height: 240px; overflow-y: auto;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.45);
+}
+.mini-etasje-liste.open { display: flex; }
+.mini-etasje-liste button {
+  padding: 4px 10px; font-size: 12px; text-align: left; white-space: nowrap;
+  background: transparent; color: var(--text);
+  border: 1px solid transparent; border-radius: 5px; cursor: pointer;
+}
+.mini-etasje-liste button:hover { background: var(--panel2); }
+.mini-etasje-liste button.valgt { background: var(--aktiv-bg); color: var(--aktiv-tekst); font-weight: 600; }
+.mini-etasje-liste .tom { padding: 6px 10px; font-size: 11px; color: var(--muted); max-width: 220px; white-space: normal; }
+
 /* Én linje forklaring under en innstilling som ikke forklarer seg selv.
    Ingen ramme: den hører til raden over, ikke til seg selv. */
 .set-hjelp {
