@@ -424,6 +424,15 @@ async function buildStoreyList() {
   S.storeyList.sort((a, b) => a.yBase - b.yBase);
 }
 
+// Minikartet trenger etasjelista for å kunne lande deg på et bestemt plan.
+// Kroken går via S og IKKE via en import: minimap.js importeres av ifc.js, som
+// denne fila importerer fra (lightElementBoxes) — en direkte import her ville
+// lukket ringen. Samme oppskrift som S.hastegradFarge og S.applyCubePos.
+S.sikreEtasjeliste = async () => {
+  if (!S.storeyList) await buildStoreyList();
+  return S.storeyList || [];
+};
+
 function storeyPlanes(i) {
   if (i < 0 || !S.storeyList || !S.storeyList[i] || !S.modelBox) return [];
   const eps = S.modelSize * 0.002;
