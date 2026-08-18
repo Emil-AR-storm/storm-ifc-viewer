@@ -13,25 +13,50 @@ import { $, på, S } from "./state.js";
 // fortsetter rett gjennom stålet. Taket på 8000 står igjen i begge tilfeller —
 // klagene handlet om å komme INN, og uten et tak kan man zoome seg vekk fra
 // modellen og ikke finne tilbake.
-export const ZOOM_MIN = 0.2;      // meter – bunnen når evig zoom er AV
-export const ZOOM_MAKS = 8000;    // meter – taket, alltid
-export const EVIG_MIN = 0.02;     // meter – under dette glir vi framover i stedet
+//
+// TERSKELEN MÅ FØLGE MODELLEN, IKKE VÆRE ET FAST TALL. Første forsøk hadde en
+// fast bunn på 2 cm, og da glir man framover 2 cm × 10 % = 2 MILLIMETER per
+// hakk. Målt i nettleseren på Geithus-hallen: 120 hakk flyttet kameraet 27 cm.
+// Det ser ut som om zoomen står stille — altså nøyaktig den låsingen vi skulle
+// bli kvitt. Glidningen er terskelen × zoomsteget, så terskelen ER farten.
+//
+// Tallene er dessuten i MODELLENS enhet, ikke i meter: `len` kommer fra
+// three.js og en mm-modell teller i millimeter. Derfor er 0,2 nedenfor 20 cm på
+// en meter-modell og 0,2 mm på en mm-modell — som er grunnen til at noen aldri
+// har opplevd at zoomen låser seg. En terskel utledet av modellens egen
+// størrelse har ikke det problemet.
+export const ZOOM_MIN = 0.2;      // modellenheter – bunnen når evig zoom er AV
+export const ZOOM_MAKS = 8000;    // modellenheter – taket, alltid
+export const EVIG_ANDEL = 0.02;   // 2 % av modellen – terskel OG glidefart
+
+// 2 % av modellens diagonal: på en hall på 24 m blir terskelen en halvmeter, og
+// hvert hakk flytter deg ~5 cm framover. På en prefab-enhet på 3 m blir det
+// 6 cm og ~6 mm. Samme følelse uansett hvor stor modellen er.
+export function evigTerskel(modelSize) {
+  const m = Number(modelSize);
+  return (isFinite(m) && m > 0 ? m : 20) * EVIG_ANDEL;
+}
 
 // Ren regning, uten three.js, så den kan testes direkte.
 // Svar: { ny, fram } – ny avstand til blikkpunktet, og hvor langt kamera OG
 // blikkpunkt skal gli framover. null betyr «gjør ingenting».
-export function zoomSteget(len, skala, evig) {
+export function zoomSteget(len, skala, evig, terskel) {
   const d = Number(len) || 0;
   const s = Number(skala) || 1;
+  const T = Number(terskel) > 0 ? Number(terskel) : evigTerskel(20);
   const ny = d * s;
   if (ny > ZOOM_MAKS) return null;                     // for langt ut
   if (!evig) return ny < ZOOM_MIN ? null : { ny, fram: 0 };
-  if (s >= 1 || ny >= EVIG_MIN) return { ny, fram: 0 }; // ut, eller fortsatt plass
-  // Steget deles i to: så mye avstand som er igjen ned til EVIG_MIN tas som
+  if (s >= 1 || ny >= T) return { ny, fram: 0 };       // ut, eller fortsatt plass
+  // Steget deles i to: så mye avstand som er igjen ned til terskelen tas som
   // vanlig zoom, resten blir glidning framover. Uten delingen ville det første
-  // steget under grensa hoppet et helt zoomsteg framover.
+  // steget under terskelen hoppet et helt zoomsteg framover.
+  //
+  // Er vi alt på terskelen, blir hele steget glidning — og fordi avstanden da
+  // står stille på T, blir farten konstant T × (1 − skala) per hakk. Det er
+  // dette som gjør zoomen evig i stedet for asymptotisk.
   const steg = d - ny;
-  const zoomDel = Math.max(0, d - EVIG_MIN);
+  const zoomDel = Math.max(0, d - T);
   const brukt = Math.min(steg, zoomDel);
   return { ny: d - brukt, fram: steg - brukt };
 }
@@ -130,7 +155,7 @@ class SimpleControls {
     const off = this._offset();
     const len = off.length();
     const evig = !!(S.settings && S.settings.evigZoom);
-    const steg = zoomSteget(len, scale, evig);
+    const steg = zoomSteget(len, scale, evig, evigTerskel(S.modelSize));
     if (!steg) return;                        // grensa nådd – ingenting skjer
     const d = len || 1e-9;
     this.camera.position.copy(this.target).add(off.clone().multiplyScalar(steg.ny / d));
