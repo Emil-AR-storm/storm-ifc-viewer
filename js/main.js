@@ -12,6 +12,7 @@ import { canvas, koteGroup, makeLabel, measureGroup } from "./scene.js";
 // last inn resten av modulene (rekkefølgen bestemmer oppstart)
 import "./prefs.js";
 import "./display.js";
+import "./outline.js";
 import "./markers.js";
 import "./minimap.js";
 import "./viewcube.js";
