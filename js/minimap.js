@@ -262,16 +262,24 @@ export function tegnEtasjeBoks() {
 // Kartet står nede til venstre på skjerm og nede til høyre på mobil, og
 // bunnverdien flyttes av nett-banneret — å skrive de reglene på nytt her ville
 // vært tre steder å glemme. Rektangelet vet alt det.
+//
+// ØVERST I KARTET, IKKE NEDERST. Første utgave la boksen i nedre hjørne, som
+// var det som ble bestilt — og der var den USYNLIG. Hjelpeteksten #hint ligger
+// på nøyaktig samme sted med z-index 9 og en halvgjennomsiktig bakgrunn, så
+// boksen ble både vasket ut og uklikkbar: document.elementFromPoint på midten
+// av boksen svarte «hint». Bekreftet i nettleseren, ikke gjettet.
+// Øvre hjørne er ledig i begge oppsett, og lista åpnes oppover derfra.
 function plasserEtasjeBoks() {
   const vis = S.miniOn && S.miniBase && miniCanvas.style.display !== "none";
   etasjeBoks.style.display = vis ? "block" : "none";
   if (!vis) { etasjeListe.classList.remove("open"); return; }
   const r = miniCanvas.getBoundingClientRect();
-  const bunn = Math.max(0, window.innerHeight - r.bottom) + 6;
   etasjeBoks.style.left = (r.left + 6) + "px";
-  etasjeBoks.style.bottom = bunn + "px";
+  etasjeBoks.style.top = (r.top + 6) + "px";
+  etasjeBoks.style.bottom = "auto";
+  // Lista legger seg RETT OVER kartet, på ledig lerret.
   etasjeListe.style.left = (r.left + 6) + "px";
-  etasjeListe.style.bottom = (bunn + etasjeBoks.offsetHeight + 4) + "px";
+  etasjeListe.style.bottom = (Math.max(0, window.innerHeight - r.top) + 6) + "px";
 }
 
 window.addEventListener("resize", plasserEtasjeBoks);
