@@ -150,6 +150,10 @@ export function modellStartverdier() {
     typeInfo: null, typeColorsOn: false,
     ghostOn: false,
     miniInfo: null, miniBase: null,
+    // Hvilken etasje minikart-trykk lander deg på. −1 = «Original», altså
+    // høyden du står i fra før. Hører til modellen, ikke til brukeren: etasje 2
+    // i forrige modell er ikke etasje 2 i den neste.
+    miniEtasje: -1,
 
     // snitt og etasjer (clipAxis og clipT er brukerens valg og beholdes)
     clipOn: false,

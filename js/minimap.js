@@ -1,6 +1,7 @@
 // 🗺 Minikart: toppvisning med kameraprikk, trykk for å flytte deg.
 import * as THREE from "three";
-import { $, S, writePrefs } from "./state.js";
+import { $, esc, S, writePrefs } from "./state.js";
+import { t } from "./i18n.js";
 import { axesGroup, camera, controls, frameHooks, grid, koteGroup, markerGroup, measureGroup, renderer, scene, selGroup } from "./scene.js";
 
 // ---------- 🗺 Minikart (ovenfra, trykk for å flytte deg) ----------
@@ -46,6 +47,7 @@ export function renderMiniMap() {
     S.miniInfo = { cx: c.x, cz: c.z, half, size };
     drawMiniOverlay(true);
     miniCanvas.style.display = S.miniOn ? "block" : "none";
+    tegnEtasjeBoks();          // ny modell = ny etasjeliste, og valget er nullstilt
     if (S.applyCubePos) S.applyCubePos();
   } catch (err) {
     // Kartet er en hjelp, ikke en forutsetning – men feilen skal være synlig.
@@ -55,6 +57,7 @@ export function renderMiniMap() {
     // 60 ganger i sekundet hvis vi rakk å sette miniBase før feilen.
     S.miniInfo = null; S.miniBase = null;
     miniCanvas.style.display = "none";
+    tegnEtasjeBoks();
   } finally {
     // Rekkefølgen betyr noe: løs bufferen FØR den disponeres.
     renderer.setRenderTarget(null);
@@ -126,6 +129,16 @@ function drawMiniOverlay(force) {
 // modellens diagonal. På Geithus-hallen (24 m) blir det knappe 3 m.
 export const MINI_PIVOT_ANDEL = 0.12;
 
+// Hvor høyt over etasjens gulv du landes: 1,7 m, altså øyehøyde for en person
+// som står på plassen. Tallet er i METER og må regnes om til modellens enhet —
+// en mm-modell teller i millimeter, og 1,7 der ville vært under skotuppen.
+export const OYEHOYDE_M = 1.7;
+
+export function etasjeHoyde(yBase, enhetSkala) {
+  const s = Number(enhetSkala) > 0 ? Number(enhetSkala) : 1;   // meter per modellenhet
+  return (Number(yBase) || 0) + OYEHOYDE_M / s;
+}
+
 // Ren regning, så den kan prøves uten en scene: hvor havner kamera og
 // blikkpunkt når du trykker i kartet? Svaret er ABSOLUTTE posisjoner, ikke et
 // tillegg — både høyden, retningen og avstanden regnes om her.
@@ -149,13 +162,27 @@ export const MINI_PIVOT_ANDEL = 0.12;
 // Det som virker, bekreftet med skjermbilde: du lander på punktet, i en høyde
 // inne i bygget, og snus MOT modellens midte. Da ser du alltid stål, uansett
 // hvor i kartet du trykker og uansett hvor du sto fra før.
-export function miniLanding(kameraPos, malPos, wx, wz, boks, maksAvstand, senter) {
-  // ---- høyden: inne i bygget ----
-  // Er du alt innenfor byggets høyde, var den riktig og beholdes.
-  let y = Number(kameraPos.y) || 0;
-  const minY = boks && Number(boks.minY), maxY = boks && Number(boks.maxY);
-  if (isFinite(minY) && isFinite(maxY) && maxY > minY && (y < minY || y > maxY)) {
-    y = (minY + maxY) / 2;
+export function miniLanding(kameraPos, malPos, wx, wz, boks, maksAvstand, senter, fastY) {
+  // ---- høyden ----
+  // Er en etasje valgt, ER høyden bestemt og ingenting skal overprøve den.
+  // Det er hele poenget med etasjevelgeren: X og Z kommer fra trykket i kartet,
+  // Y fra etasjen, og da er landingspunktet låst i alle tre akser.
+  // FELLE: Number(null) er 0, ikke NaN. Sjekker man bare isFinite(Number(x)),
+  // blir «ingen etasje valgt» til «land på Y = 0» — og på en modell med kjeller
+  // er det midt inne i betongen. Testen fanget nettopp dette.
+  let y;
+  const fy = (fastY === null || fastY === undefined || fastY === "") ? NaN : Number(fastY);
+  if (isFinite(fy)) {
+    y = fy;
+  } else {
+    // «Original»: høyden du står i. Er du alt innenfor byggets høyde, var den
+    // riktig og beholdes; er du over taket eller under gulvet, settes du midt
+    // mellom dem — ellers ser du rett ut i lufta (målt 18.08).
+    y = Number(kameraPos.y) || 0;
+    const minY = boks && Number(boks.minY), maxY = boks && Number(boks.maxY);
+    if (isFinite(minY) && isFinite(maxY) && maxY > minY && (y < minY || y > maxY)) {
+      y = (minY + maxY) / 2;
+    }
   }
 
   // ---- retningen: mot midten av modellen ----
@@ -190,10 +217,98 @@ miniCanvas.addEventListener("pointerdown", (e) => {
   const boks = S.modelBox ? { minY: S.modelBox.min.y, maxY: S.modelBox.max.y } : null;
   const ut = miniLanding(camera.position, controls.target, wx, wz, boks,
     (Number(S.modelSize) || 20) * MINI_PIVOT_ANDEL,
-    { x: S.miniInfo.cx, z: S.miniInfo.cz });   // kartets midt ER modellens midt
+    { x: S.miniInfo.cx, z: S.miniInfo.cz },    // kartets midt ER modellens midt
+    valgtEtasjeHoyde());
   camera.position.set(ut.kamera.x, ut.kamera.y, ut.kamera.z);
   controls.target.set(ut.mal.x, ut.mal.y, ut.mal.z);
   camera.lookAt(controls.target);
+});
+
+// ---------- 🏢 Etasjevelgeren på kartet ----------
+// Uten den bestemmer kartet X og Z, men Y blir en gjetning ut fra hvor du sto.
+// Med den er alle tre aksene brukerens eget valg.
+//
+// Etasjelista eies av clip.js (samme liste som 🏢-knappen bruker) og hentes
+// gjennom S.sikreEtasjeliste — se kommentaren der for hvorfor det ikke er en
+// import. Valget nullstilles av modellStartverdier() ved modellbytte: «Plan 2»
+// i én modell er ikke «Plan 2» i den neste.
+
+function valgtEtasjeHoyde() {
+  const i = Number(S.miniEtasje);
+  const e = i >= 0 && S.storeyList && S.storeyList[i];
+  return e ? etasjeHoyde(e.yBase, S.enhetSkala) : null;
+}
+
+const etasjeBoks = document.createElement("button");
+etasjeBoks.id = "miniEtasje";
+etasjeBoks.className = "mini-etasje";
+etasjeBoks.type = "button";
+document.body.appendChild(etasjeBoks);
+
+const etasjeListe = document.createElement("div");
+etasjeListe.id = "miniEtasjeListe";
+etasjeListe.className = "mini-etasje-liste";
+document.body.appendChild(etasjeListe);
+
+export function tegnEtasjeBoks() {
+  const e = Number(S.miniEtasje) >= 0 && S.storeyList && S.storeyList[S.miniEtasje];
+  etasjeBoks.textContent = e ? e.name : t("Original");
+  etasjeBoks.classList.toggle("valgt", !!e);
+  etasjeBoks.title = t("Hvilken etasje trykk i kartet lander deg på");
+  plasserEtasjeBoks();
+}
+
+// Boksen og lista er position:fixed og legges etter kartets EGEN plassering.
+// Kartet står nede til venstre på skjerm og nede til høyre på mobil, og
+// bunnverdien flyttes av nett-banneret — å skrive de reglene på nytt her ville
+// vært tre steder å glemme. Rektangelet vet alt det.
+function plasserEtasjeBoks() {
+  const vis = S.miniOn && S.miniBase && miniCanvas.style.display !== "none";
+  etasjeBoks.style.display = vis ? "block" : "none";
+  if (!vis) { etasjeListe.classList.remove("open"); return; }
+  const r = miniCanvas.getBoundingClientRect();
+  const bunn = Math.max(0, window.innerHeight - r.bottom) + 6;
+  etasjeBoks.style.left = (r.left + 6) + "px";
+  etasjeBoks.style.bottom = bunn + "px";
+  etasjeListe.style.left = (r.left + 6) + "px";
+  etasjeListe.style.bottom = (bunn + etasjeBoks.offsetHeight + 4) + "px";
+}
+
+window.addEventListener("resize", plasserEtasjeBoks);
+
+async function apneEtasjeliste() {
+  const liste = S.sikreEtasjeliste ? await S.sikreEtasjeliste() : (S.storeyList || []);
+  if (!liste.length) {
+    // Samme beskjed som 🏢-knappen gir. En tom liste er ikke en feil — de
+    // fleste .glb-kopier og noen IFC-er har rett og slett ingen etasjer.
+    etasjeListe.innerHTML = '<span class="tom">' +
+      t("Fant ingen etasjer (IfcBuildingStorey) i modellen") + '</span>';
+  } else {
+    // Nederste etasje nederst i lista, som i bygget.
+    const rader = liste.map((e, i) =>
+      '<button data-e="' + i + '"' + (Number(S.miniEtasje) === i ? ' class="valgt"' : '') + '>' +
+        esc(e.name) + '</button>').reverse().join("");
+    etasjeListe.innerHTML = rader +
+      '<button data-e="-1"' + (Number(S.miniEtasje) < 0 ? ' class="valgt"' : '') + '>' +
+        t("Original") + '</button>';
+    etasjeListe.querySelectorAll("button[data-e]").forEach(b => b.onclick = () => {
+      S.miniEtasje = Number(b.dataset.e);
+      etasjeListe.classList.remove("open");
+      tegnEtasjeBoks();
+    });
+  }
+  plasserEtasjeBoks();
+  etasjeListe.classList.add("open");
+}
+
+etasjeBoks.addEventListener("click", (e) => {
+  e.stopPropagation();          // ellers lukker dokument-lytteren den med én gang
+  if (etasjeListe.classList.contains("open")) { etasjeListe.classList.remove("open"); return; }
+  apneEtasjeliste();
+});
+
+document.addEventListener("click", (e) => {
+  if (!etasjeListe.contains(e.target)) etasjeListe.classList.remove("open");
 });
 
 // Minikartet styres nå fra ⚙ Innstillinger (av/på + størrelse)
@@ -201,6 +316,7 @@ export function setMini(on) {
   S.miniOn = on;
   writePrefs();
   miniCanvas.style.display = S.miniOn && S.miniBase ? "block" : "none";
+  tegnEtasjeBoks();
   if (S.applyCubePos) S.applyCubePos();   // kuben står kanskje ved siden av kartet
   if (S.syncPrefs) S.syncPrefs(); // send også til SharePoint (personlig oppsett)
 }
@@ -209,6 +325,7 @@ export function applyMiniSize() {
   const px = Math.max(100, Math.min(400, Number(S.settings && S.settings.miniSize) || 180));
   miniCanvas.style.width = px + "px";
   miniCanvas.style.height = px + "px";
+  plasserEtasjeBoks();          // boksen henger på kartets nedre venstre hjørne
   if (S.applyCubePos) S.applyCubePos();
 }
 

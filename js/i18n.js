@@ -667,6 +667,9 @@ export const ORDBOK = {
   "Navn på snittet:": { en: "Name of the section:", pl: "Nazwa przekroju:", lt: "Pjūvio pavadinimas:" },
   "Ingen lagrede snitt for <b>{0}</b> ennå.": { en: "No saved sections for <b>{0}</b> yet.", pl: "Brak zapisanych przekrojów dla <b>{0}</b>.", lt: "Dar nėra išsaugotų pjūvių <b>{0}</b>." },
   "Fant ingen etasjer (IfcBuildingStorey) i modellen": { en: "No storeys (IfcBuildingStorey) found in the model", pl: "Nie znaleziono kondygnacji (IfcBuildingStorey) w modelu", lt: "Modelyje nerasta aukštų (IfcBuildingStorey)" },
+  // 🏢 Etasjevelgeren på minikartet
+  "Original": { en: "Original", pl: "Oryginalna", lt: "Originalus" },
+  "Hvilken etasje trykk i kartet lander deg på": { en: "Which storey a tap on the map puts you on", pl: "Na której kondygnacji ląduje kliknięcie w mapie", lt: "Kuriame aukšte atsidursite spustelėję žemėlapį" },
   " – lag en ny lett kopi fra original-IFC-en for å få med etasjedata": {
     en: " – make a new light copy from the original IFC to include storey data",
     pl: " – utwórz nową lekką kopię z oryginalnego IFC, aby dołączyć kondygnacje",
