@@ -8,6 +8,7 @@ import { hiddenIDs } from "./display.js";
 import { clearSelection } from "./elements.js";
 import { loadComments, renderCommentList } from "./markers.js";
 import { miniCanvas, renderMiniMap } from "./minimap.js";
+import { oppdaterOutline } from "./outline.js";
 import { restoreAppearance } from "./prefs.js";
 import { axesGroup, fitToModel, koteGroup, markerGroup, measureGroup, renderer, scene } from "./scene.js";
 import { SP, spOpenFile } from "./sharepoint.js";
@@ -173,6 +174,7 @@ export function afterLoad() {
   $("toolbar").classList.add("open");
   loadComments();
   restoreAppearance(); // legger på lagret fargelegging/skjuling/transparent
+  oppdaterOutline();   // ▣ kantlinjer, hvis de sto på da forrige modell ble lukket
   if (S.onModelLoaded) S.onModelLoaded(); // 🔄 sammenligning, hvis et avtrykk er tatt
   if (S.onSharedReady) S.onSharedReady(); // ⛓ delt visning, hvis lenka hadde en
 }

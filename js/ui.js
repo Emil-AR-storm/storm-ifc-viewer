@@ -9,10 +9,11 @@ import { vaskGrenser } from "./frist.js";
 import { renderCommentList, tegnAlleMarkeringerPaNytt } from "./markers.js";
 import { applyAxisFont } from "./axes.js";
 import { showClipBar, stopFacePick } from "./clip.js";
-import { DEFAULT_BG, resetColors } from "./display.js";
+import { DEFAULT_BG, renderColorPanel, resetColors } from "./display.js";
 import { refreshNumbers } from "./elements.js";
 import { oppdaterLengdeEtiketter } from "./measure.js";
 import { applyMiniSize, setMini } from "./minimap.js";
+import { TYKK_MAKS, TYKK_MIN, oppdaterOutline, settTykkelse, vaskTykkelse } from "./outline.js";
 import { applyCubePos, setCube, setCubePos } from "./viewcube.js";
 import { setMode } from "./modes.js";
 import { saveAppear, saveBg, saveSettings } from "./prefs.js";
@@ -49,6 +50,10 @@ function closeSettings() {
   $("setMenu").classList.remove("open");
   S.keyWaitFor = null;
 }
+
+// ▣ Klarte ikke kantlinjene å laste motoren sin, skal det stå i menyen – ikke
+// bare i konsollen. Kroken settes her fordi outline.js ikke kjenner menyen.
+S.onOutlineFeil = () => { if ($("setMenu").classList.contains("open")) renderSettings(); };
 
 på("btnSettings", "click", () => {
   const menu = $("setMenu");
@@ -164,6 +169,15 @@ function renderSettings() {
       (n === 0 ? t("Alle") : n) + '</option>').join("") + '</select></div>' +
     '<div class="set-row"><span class="n">' + t("Bakgrunnsfarge") + '</span>' +
     '<input type="color" id="stBg" value="' + bgVal + '"></div>' +
+    '<div class="set-row"><span class="n">' + t("Kantlinjer") + '</span>' +
+    '<input type="checkbox" id="stOutline"' + (S.settings.outline ? " checked" : "") + '></div>' +
+    '<div class="set-row"><span class="n">' + t("Linjetykkelse") + ' <span id="stOutlineV" style="color:var(--muted)">' +
+    vaskTykkelse(S.settings.outlineTykkelse) + ' px</span></span>' +
+    '<input type="range" id="stOutlineTykk" min="' + TYKK_MIN + '" max="' + TYKK_MAKS + '" step="1" value="' +
+    vaskTykkelse(S.settings.outlineTykkelse) + '"></div>' +
+    '<p class="set-hjelp">' + t("Kantlinjer trekker en strek langs kantene på geometrien, så to objekt som ligger inntil hverandre lar seg skille fra hverandre. Avkryssingen gjelder hele modellen — vil du ha det på bare én elementtype, står knappen i Utseende.") + '</p>' +
+    (S.outlineFeil ? '<p class="set-hjelp" style="color:var(--danger)">' +
+      t("Kantlinjene lot seg ikke tegne — linjemotoren kunne ikke lastes. Er du uten dekning, prøv igjen når du har nett.") + '</p>' : '') +
     '<div class="set-row"><span class="n">' + t("Lav kvalitet") + '</span>' +
     '<input type="checkbox" id="stLight"' + (S.lightMode ? " checked" : "") + '></div>' +
     '<div class="set-row"><span class="n">' + t("Skriftstørrelse akser") + '</span>' +
@@ -279,6 +293,23 @@ function renderSettings() {
     saveBg(e.target.value);
   };
   $("stLight").onchange = () => $("btnLight").click();
+  // ▣ Den globale bryteren låser knappene per type i 🎨 Utseende, så panelet
+  // må tegnes på nytt hvis det står åpent. Uten det ville knappene sett
+  // trykkbare ut mens de ikke lenger bestemte noe.
+  $("stOutline").onchange = (e) => {
+    S.settings.outline = e.target.checked;
+    saveSettings();
+    oppdaterOutline();
+    if ($("colorPanel").classList.contains("open") && S.typeInfo) renderColorPanel();
+  };
+  // Tykkelsen bor på ETT delt materiale: slideren treffer alle strekene med én
+  // gang, uten at noe bygges om. Derfor tåler den oninput per piksel man drar.
+  $("stOutlineTykk").oninput = (e) => {
+    S.settings.outlineTykkelse = vaskTykkelse(e.target.value);
+    $("stOutlineV").textContent = S.settings.outlineTykkelse + " px";
+    settTykkelse();
+    saveSettings();
+  };
   $("stAxFont").oninput = (e) => {
     S.axisFontF = e.target.value / 100;
     writePrefs();
@@ -325,6 +356,7 @@ function renderSettings() {
     writePrefs();
     applyAxisFont();
     setMini(true);
+    oppdaterOutline();   // ▣ kantlinjene av igjen (outline: false i DEFAULT_SETTINGS)
     if (S.typeInfo) resetColors(); else { scene.background.set(DEFAULT_BG); saveBg(DEFAULT_BG); S.appear = Object.assign({}, DEFAULT_APPEAR, { colors: {}, hiddenTypes: [] }); saveAppear(); }
     renderSettings();
   };

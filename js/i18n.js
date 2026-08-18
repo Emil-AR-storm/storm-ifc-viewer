@@ -822,6 +822,15 @@ export const ORDBOK = {
   " (mm)": { en: " (mm)", pl: " (mm)", lt: " (mm)" },
   "Elementer i lista": { en: "Items in the list", pl: "Elementy na liście", lt: "Elementai sąraše" },
   "Bakgrunnsfarge": { en: "Background colour", pl: "Kolor tła", lt: "Fono spalva" },
+
+  // ▣ Kantlinjer (js/outline.js)
+  "Kantlinjer": { en: "Outlines", pl: "Kontury", lt: "Kontūrai" },
+  "Linjetykkelse": { en: "Line thickness", pl: "Grubość linii", lt: "Linijos storis" },
+  "Kantlinjer trekker en strek langs kantene på geometrien, så to objekt som ligger inntil hverandre lar seg skille fra hverandre. Avkryssingen gjelder hele modellen — vil du ha det på bare én elementtype, står knappen i Utseende.": { en: "Outlines draw a line along the edges of the geometry, so two objects sitting next to each other can be told apart. The checkbox applies to the whole model — to switch it on for a single element type, use the button in Appearance.", pl: "Kontury rysują linię wzdłuż krawędzi geometrii, dzięki czemu dwa sąsiadujące obiekty można odróżnić. Pole wyboru dotyczy całego modelu — aby włączyć je tylko dla jednego typu elementu, użyj przycisku w Wyglądzie.", lt: "Kontūrai brėžia liniją išilgai geometrijos briaunų, todėl du greta esantys objektai atskiriami. Žymimasis langelis galioja visam modeliui — jei norite įjungti tik vienam elemento tipui, naudokite mygtuką skiltyje Išvaizda." },
+  "Kantlinjene lot seg ikke tegne — linjemotoren kunne ikke lastes. Er du uten dekning, prøv igjen når du har nett.": { en: "The outlines could not be drawn — the line engine failed to load. If you are out of coverage, try again when you are back online.", pl: "Nie udało się narysować konturów — nie można było wczytać silnika linii. Jeśli nie masz zasięgu, spróbuj ponownie po powrocie do sieci.", lt: "Kontūrų nepavyko nupiešti — nepavyko įkelti linijų variklio. Jei neturite ryšio, bandykite dar kartą, kai būsite prisijungę." },
+  "Kantlinjer på denne typen": { en: "Outlines on this type", pl: "Kontury dla tego typu", lt: "Kontūrai šiam tipui" },
+  "Kantlinjer er slått på for hele modellen i ⚙ Innstillinger": { en: "Outlines are switched on for the whole model in ⚙ Settings", pl: "Kontury są włączone dla całego modelu w ⚙ Ustawieniach", lt: "Kontūrai įjungti visam modeliui ⚙ Nustatymuose" },
+  "Tegner kantlinjer …": { en: "Drawing outlines …", pl: "Rysowanie konturów …", lt: "Piešiami kontūrai …" },
   "Skriftstørrelse akser": { en: "Grid label size", pl: "Rozmiar czcionki osi", lt: "Ašių šrifto dydis" },
   "Minikart": { en: "Minimap", pl: "Minimapa", lt: "Mini žemėlapis" },
   "Vis minikart": { en: "Show minimap", pl: "Pokaż minimapę", lt: "Rodyti mini žemėlapį" },

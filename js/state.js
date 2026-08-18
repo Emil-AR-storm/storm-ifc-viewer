@@ -22,6 +22,13 @@ export const DEFAULT_SETTINGS = {
   // scene.js). AV som standard: den som ikke har bedt om det, skal ikke
   // plutselig fly tvers gjennom stålet.
   evigZoom: false,
+  // ▣ Kantlinjer: en strek langs kantene på geometrien, så to objekt som ligger
+  // inntil hverandre lar seg skille fra hverandre når man ser på detaljer.
+  // AV som standard – den koster én tegneoperasjon per element, og den som ikke
+  // har bedt om det skal ikke betale for den. Tykkelsen er i SKJERMPIKSLER,
+  // ikke i meter, så streken er like tydelig nær som langt unna (js/outline.js).
+  outline: false,
+  outlineTykkelse: 2,
   unit: "m",          // måleenhet i mål-/kotelapper: "m" eller "mm"
   // Hvilken enhet MODELLEN er tegnet i. "auto" gjetter ut fra hvor stor
   // modellen er, og det er riktig i de aller fleste tilfeller – men gjetningen
@@ -39,7 +46,9 @@ export const DEFAULT_SETTINGS = {
   keys: Object.assign({}, DEFAULT_KEYS)
 };
 
-export const DEFAULT_APPEAR = { typeColorsOn: false, ghost: false, colors: {}, hiddenTypes: [] };
+// outlineTypes: elementtypene som har kantlinjer på. Ligger her og ikke i
+// settings fordi den – som hiddenTypes – handler om DENNE modellens typer.
+export const DEFAULT_APPEAR = { typeColorsOn: false, ghost: false, colors: {}, hiddenTypes: [], outlineTypes: [] };
 
 // ---------- Alt oppsett i én versjonert nøkkel ----------
 // Før lå dette spredt på åtte storm-ifc-*-nøkler. Nå ligger alt i storm-ifc-prefs.
@@ -115,6 +124,10 @@ S.settings.keys = Object.assign({}, DEFAULT_KEYS, (_prefs.settings && _prefs.set
 S.appear = Object.assign({}, DEFAULT_APPEAR, _prefs.appear || {});
 S.appear.colors = (_prefs.appear && _prefs.appear.colors) || {};
 S.appear.hiddenTypes = (_prefs.appear && _prefs.appear.hiddenTypes) || [];
+// EGEN LISTE, ALDRI DEN I DEFAULT_APPEAR. Object.assign kopierer referansen, og
+// hadde vi lagt til en type rett i den, ville standardverdien vært endret for
+// alltid – samme felle som colors og hiddenTypes står her for å unngå.
+S.appear.outlineTypes = (_prefs.appear && _prefs.appear.outlineTypes) || [];
 
 S.bg = _prefs.bg || null;   // valgt bakgrunnsfarge, null = standard
 
@@ -181,6 +194,10 @@ export function nullstillModellState() {
   // ble lukket. Den MÅ tømmes her og ikke i clearModel, ellers glemmes den
   // den dagen noen legger inn en ny vei til modellbytte.
   if (S.nullstillAngre) S.nullstillAngre();
+  // ▣ Kantlinjene henger på meshene i modellen som nettopp ble lukket.
+  // Geometrien deres er alt frigitt av clearModel; lista over dem må tømmes
+  // her, ellers holder den forrige modell i live i minnet.
+  if (S.ryddOutline) S.ryddOutline();
 }
 
 Object.assign(S, modellStartverdier());
@@ -206,6 +223,13 @@ S.workerFeil = null;      // satt hvis IFC-tråden ikke kunne brukes
 // hver innmelding står som «if (S.pushAngre) S.pushAngre(...)».
 S.pushAngre = null;
 S.nullstillAngre = null;
+
+// ▣ Kantlinjer. Krokene settes av outline.js; null når modulen ikke er lastet.
+S.ryddOutline = null;       // modellbytte: tøm lista over linjeobjekt
+S.outlineSynlig = null;     // skjul/vis alle linjene (minikartet bruker den)
+S.outlineOpplosning = null; // sett tykkelsens referanseoppløsning (rapportbildet)
+S.onOutlineFeil = null;     // settes av ui.js: tegn ⚙-menyen på nytt med feilen
+S.outlineFeil = false;      // linjemotoren kunne ikke lastes (uten nett første gang)
 
 // Lastemodus: full, 🪶 lav kvalitet og 💾 lett kopi (.glb)
 S.lightMode = _prefs.lightMode === true;

@@ -6,6 +6,7 @@ import { clearSelection } from "./elements.js";
 import { sikreMeta, typeFor } from "./ifcrpc.js";
 import { alleElementIder } from "./ifc.js";
 import { saveAppear, saveBg, syncHiddenTypes } from "./prefs.js";
+import { oppdaterOutline, outlineAktiv } from "./outline.js";
 import { scene } from "./scene.js";
 
 // ---------- Transparent (ghost) ----------
@@ -242,8 +243,11 @@ export function resetColors() {
   hiddenIDs.clear();
   if (S.typeInfo) for (const [, g] of S.typeInfo) g.hidden = false;
   $("btnShowAll").style.display = "none";
-  S.appear = Object.assign({}, DEFAULT_APPEAR, { colors: {}, hiddenTypes: [] });
+  // Egne, tomme lister – ikke de som ligger i DEFAULT_APPEAR. Object.assign
+  // kopierer referansen, og neste push hadde endret standardverdien for alltid.
+  S.appear = Object.assign({}, DEFAULT_APPEAR, { colors: {}, hiddenTypes: [], outlineTypes: [] });
   saveAppear();
+  oppdaterOutline();          // ▣ kantlinjene per type følger med i nullstillingen
   renderColorPanel();
   meldAngre(før, "Originalfarger");
 }
@@ -265,7 +269,7 @@ på("btnColors", "click", async () => {
   apnePanel("colorPanel");
 });
 
-function renderColorPanel() {
+export function renderColorPanel() {
   const bgVal = "#" + scene.background.getHexString();
   let html =
     '<div class="prop-actions">' +
@@ -273,11 +277,21 @@ function renderColorPanel() {
     '<button id="colReset">' + t("Originalfarger") + '</button></div>' +
     '<div class="qty-row"><div class="n">' + t("Bakgrunn") + '</div><div class="c"><input type="color" id="colBg" value="' + bgVal + '"></div></div>';
   const keys = [...S.typeInfo.keys()];
+  // ▣ Står den globale bryteren i ⚙ Innstillinger på, har ALT kantlinjer. Da
+  // vises knappene her som på og låses – en knapp som ser av ut mens streken
+  // står der, eller som ikke gjør noe når man trykker, er verre enn en låst knapp.
+  const globalOutline = !!(S.settings && S.settings.outline);
+  const outlineTittel = globalOutline
+    ? t("Kantlinjer er slått på for hele modellen i ⚙ Innstillinger")
+    : t("Kantlinjer på denne typen");
   keys.forEach((key, i) => {
     const g = S.typeInfo.get(key);
+    const påType = outlineAktiv(key, globalOutline, S.appear.outlineTypes);
     html += '<div class="qty-row"><div class="n">' + esc(t(g.label)) +
       ' <span style="color:var(--muted);font-size:11px">(' + g.meshes.length + ')</span></div>' +
       '<div class="c" style="display:flex; align-items:center; gap:8px">' +
+      '<button data-outline="' + i + '"' + (påType ? ' class="active"' : '') + (globalOutline ? ' disabled' : '') +
+      ' title="' + esc(outlineTittel) + '" style="padding:3px 8px">' + ikon("boks") + '</button>' +
       '<button data-hide="' + i + '" title="' + t("Skjul/vis") + '" style="padding:3px 8px">' + ikon(g.hidden ? "skjul" : "vis") + '</button>' +
       '<input type="color" data-type="' + i + '" value="' + g.color + '"></div></div>';
   });
@@ -310,6 +324,23 @@ function renderColorPanel() {
       if (!S.typeColorsOn) applyTypeColors();
     };
     inp.onchange = () => { if (dragFør) { meldAngre(dragFør, "Farge på elementtype"); dragFør = null; } };
+  });
+  // ▣ Kantlinjer per elementtype. IKKE med i ↩ Angre, med vilje: den ødelegger
+  // ingenting og tas tilbake med et nytt trykk på samme knapp – samme grunn som
+  // at snitt-sliderne står utenfor stabelen.
+  $("colorBody").querySelectorAll("button[data-outline]").forEach(btn => {
+    btn.onclick = (e) => {
+      const key = keys[Number(e.currentTarget.dataset.outline)];
+      // NY liste hver gang. Skyves det inn i den som ligger i S.appear, kan den
+      // være DEFAULT_APPEAR sin egen – og da er standardverdien endret for godt.
+      const liste = (S.appear.outlineTypes || []).slice();
+      const p = liste.indexOf(key);
+      if (p === -1) liste.push(key); else liste.splice(p, 1);
+      S.appear.outlineTypes = liste;
+      saveAppear();
+      e.currentTarget.classList.toggle("active", liste.indexOf(key) !== -1);
+      oppdaterOutline();
+    };
   });
   $("colorBody").querySelectorAll("button[data-hide]").forEach(btn => {
     btn.onclick = (e) => {

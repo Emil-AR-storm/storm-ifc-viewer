@@ -33,6 +33,9 @@ export function renderMiniMap() {
     // render toppvisning uten overlegg/klipping til en offscreen-buffer
     rt = new THREE.WebGLRenderTarget(size, size);
     overlays.forEach(g => g.visible = false);
+    // ▣ Kantlinjene er tykke i SKJERMPIKSLER. Kartet tegnes 180 px bredt, så
+    // hver strek ville dekket en halv etasje og kartet blitt en svart flekk.
+    if (S.outlineSynlig) S.outlineSynlig(false);
     grid.visible = false;
     renderer.clippingPlanes = [];
     renderer.setRenderTarget(rt);
@@ -63,6 +66,7 @@ export function renderMiniMap() {
     renderer.setRenderTarget(null);
     renderer.clippingPlanes = prevClip;
     overlays.forEach((g, i) => g.visible = vis[i]);
+    if (S.outlineSynlig) S.outlineSynlig(true);
     grid.visible = gridVis;
     if (rt) rt.dispose();
   }

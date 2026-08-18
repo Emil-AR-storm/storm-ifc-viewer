@@ -262,6 +262,10 @@ export function fangstBilde(bredde, høyde) {
     // Kameraets bildeforhold må matche målet, ellers blir bildet strukket
     const gammeltAspect = camera.aspect;
     camera.aspect = b / h; camera.updateProjectionMatrix();
+    // ▣ Kantlinjenes tykkelse regnes ut fra oppløsningen de tegnes i. Uten
+    // dette blir strekene i rapporten tynnere eller tykkere enn de var på
+    // skjermen. Rammekroken i outline.js setter den tilbake ved neste bilde.
+    if (S.outlineOpplosning) S.outlineOpplosning(b, h);
     renderer.setRenderTarget(rt);
     renderer.render(scene, camera);
     const px = new Uint8Array(b * h * 4);
