@@ -701,6 +701,12 @@ button.active { background: var(--aktiv-bg); border-color: var(--aktiv-bg); colo
   border: 1px solid var(--border); border-radius: 6px;
   padding: 4px 6px; font-size: 12px; font-family: inherit;
 }
+/* Én linje forklaring under en innstilling som ikke forklarer seg selv.
+   Ingen ramme: den hører til raden over, ikke til seg selv. */
+.set-hjelp {
+  color: var(--muted); font-size: 11px; line-height: 1.4;
+  margin: 6px 0 0; padding: 0;
+}
 .keybtn { padding: 3px 10px; font-size: 12px; min-width: 62px; justify-content: center; }
 .keybtn.wait { background: var(--aktiv-bg); color: var(--aktiv-tekst); font-weight: 600; }
 
