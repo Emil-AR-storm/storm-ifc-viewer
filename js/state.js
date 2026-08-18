@@ -16,6 +16,12 @@ export const DEFAULT_SETTINGS = {
   rotSpeed: 1,        // rotasjonshastighet (1 = som før)
   zoomSpeed: 1,       // zoomhastighet
   invertZoom: false,  // snu rullehjulets retning
+  // Zoomen har alltid hatt en bunn 20 cm fra blikkpunktet. Den er der for at
+  // man ikke skal miste modellen, men på en detalj oppleves den som at zoomen
+  // låser seg. På = bunnen byttes mot en glidning framover (zoomSteget i
+  // scene.js). AV som standard: den som ikke har bedt om det, skal ikke
+  // plutselig fly tvers gjennom stålet.
+  evigZoom: false,
   unit: "m",          // måleenhet i mål-/kotelapper: "m" eller "mm"
   // Hvilken enhet MODELLEN er tegnet i. "auto" gjetter ut fra hvor stor
   // modellen er, og det er riktig i de aller fleste tilfeller – men gjetningen

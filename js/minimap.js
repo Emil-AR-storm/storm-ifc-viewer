@@ -122,6 +122,17 @@ function drawMiniOverlay(force) {
   ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI * 2); ctx.fill();       // hvor du ser
 }
 
+// Ren regning, så den kan prøves uten en scene: hvor langt skal kamera og
+// blikkpunkt flyttes når du trykker i kartet?
+//
+// FØR ble forskjellen regnet fra BLIKKPUNKTET. Da endte du opp med å SE på
+// stedet du trykket, fra samme avstand som før — du kom aldri dit. Nå regnes
+// den fra KAMERAET: du lander der du trykket. Blikkpunktet flyttes like langt,
+// så du ser samme vei som før og bildet snurrer ikke rundt. Høyden røres ikke.
+export function miniFlytting(kameraPos, wx, wz) {
+  return { dx: wx - kameraPos.x, dz: wz - kameraPos.z };
+}
+
 miniCanvas.addEventListener("pointerdown", (e) => {
   if (!S.miniInfo) return;
   e.preventDefault();
@@ -130,10 +141,9 @@ miniCanvas.addEventListener("pointerdown", (e) => {
   const my = (e.clientY - r.top) / r.height * S.miniInfo.size;
   const wx = S.miniInfo.cx + (mx - S.miniInfo.size / 2) / (S.miniInfo.size / 2) * S.miniInfo.half;
   const wz = S.miniInfo.cz + (my - S.miniInfo.size / 2) / (S.miniInfo.size / 2) * S.miniInfo.half;
-  // flytt kamera + mål dit man trykket (høyden beholdes)
-  const dx = wx - controls.target.x, dz = wz - controls.target.z;
-  controls.target.x += dx; controls.target.z += dz;
+  const { dx, dz } = miniFlytting(camera.position, wx, wz);
   camera.position.x += dx; camera.position.z += dz;
+  controls.target.x += dx; controls.target.z += dz;
 });
 
 // Minikartet styres nå fra ⚙ Innstillinger (av/på + størrelse)

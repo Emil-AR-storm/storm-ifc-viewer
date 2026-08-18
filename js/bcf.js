@@ -64,6 +64,20 @@ export function dataUrlTilBytes(url) {
   } catch (_) { return null; }
 }
 
+// Hva skal bildefila HETE? Modellbildet fanges som JPEG (se fangstBilde i
+// scene.js — en 3D-visning er fotolignende, og PNG gjorde rapporten 5 MB).
+// Fila het likevel alltid snapshot.png. Lesere som kjenner igjen bildet på
+// innholdet klarte seg; lesere som velger dekoder ut fra filendelsen fikk en
+// PNG-dekoder på JPEG-bytes, og bildet ble borte uten en feilmelding.
+//
+// BCF 2.1 tillater begge deler, så løsningen er å si sant om hva fila er.
+// Ukjent type blir png: da er navnet i det minste det BCF-lesere forventer.
+export function snapshotNavn(dataUrl) {
+  const m = /^data:image\/(png|jpeg|jpg)\b/i.exec(String(dataUrl || ""));
+  if (!m) return "snapshot.png";
+  return m[1].toLowerCase() === "png" ? "snapshot.png" : "snapshot.jpg";
+}
+
 // ---------- ZIP med lagring (metode 0) ----------
 // Ingen komprimering. XML-ene er små, og alternativet er et bibliotek til.
 export function lagZip(filer) {
@@ -222,7 +236,7 @@ export function markupXml(s) {
     kommentarer +
     '  <Viewpoints Guid="' + xmlEsc(s.viewpointGuid) + '">\n' +
     "    <Viewpoint>viewpoint.bcfv</Viewpoint>\n" +
-    (s.harBilde ? "    <Snapshot>snapshot.png</Snapshot>\n" : "") +
+    (s.harBilde ? "    <Snapshot>" + xmlEsc(s.bildeNavn || "snapshot.png") + "</Snapshot>\n" : "") +
     "  </Viewpoints>\n" +
     "</Markup>\n";
 }
@@ -295,6 +309,10 @@ export function byggSak(c, i, o) {
     ansvarlig: String(c.owner || ""),
     ifcGuid: String(c.globalId || ""),
     harBilde: !!opt.bilde,
+    // Navnet må være det samme i markup.bcf og i ZIP-en. Derfor bor det på
+    // saken, ett sted, i stedet for å skrives to steder som kan gli fra
+    // hverandre.
+    bildeNavn: opt.bildeNavn || "snapshot.png",
     kamera: byggKamera(p, opt.avstand),
     kommentarer: svar.map(s => ({
       guid: nyGuid(),
@@ -311,7 +329,7 @@ export function byggFiler(saker, bilde) {
   for (const s of saker) {
     filer.push({ navn: s.guid + "/markup.bcf", data: markupXml(s) });
     filer.push({ navn: s.guid + "/viewpoint.bcfv", data: viewpointXml(s) });
-    if (s.harBilde && bilde) filer.push({ navn: s.guid + "/snapshot.png", data: bilde });
+    if (s.harBilde && bilde) filer.push({ navn: s.guid + "/" + (s.bildeNavn || "snapshot.png"), data: bilde });
   }
   return filer;
 }
@@ -362,10 +380,13 @@ export async function eksporterBcf(opts) {
   const liste = (o.markeringer || []).filter(Boolean);
   if (!liste.length) throw new Error(t("Ingen markeringer å eksportere."));
 
-  let bilde = null;
+  let bilde = null, bildeNavn = "snapshot.png";
   try {
     const b = typeof o.fangstBilde === "function" ? await o.fangstBilde() : null;
-    if (b && b.data) bilde = dataUrlTilBytes(b.data);
+    if (b && b.data) {
+      bilde = dataUrlTilBytes(b.data);
+      if (bilde) bildeNavn = snapshotNavn(b.data);
+    }
   } catch (_) { bilde = null; }
 
   const avstand = Math.max((Number(S.modelSize) || 20) * (S.enhetSkala || 1) * 0.08, 3);
@@ -373,6 +394,7 @@ export async function eksporterBcf(opts) {
     tilIfcPunkt: ifcPunkt,
     avstand,
     bilde,
+    bildeNavn,
     hast: hastegrad(c, S.settings && S.settings.frister ? S.settings.frister : STANDARD_GRENSER, fristIDag())
   }));
 

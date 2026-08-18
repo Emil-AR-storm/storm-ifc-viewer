@@ -808,6 +808,8 @@ export const ORDBOK = {
   "Rotasjonshastighet": { en: "Rotation speed", pl: "Prędkość obrotu", lt: "Sukimo greitis" },
   "Zoomhastighet": { en: "Zoom speed", pl: "Prędkość zoomu", lt: "Mastelio greitis" },
   "Invertér zoom": { en: "Invert zoom", pl: "Odwróć zoom", lt: "Apversti mastelį" },
+  "Evig zoom": { en: "Infinite zoom", pl: "Nieskończony zoom", lt: "Begalinis priartinimas" },
+  "Zoomen stopper normalt 20 cm fra punktet du ser på. Med evig zoom fortsetter du framover i stedet — helt inn i og gjennom modellen.": { en: "Zoom normally stops 20 cm from the point you are looking at. With infinite zoom you keep going forward instead — all the way into and through the model.", pl: "Zoom zwykle zatrzymuje się 20 cm od punktu, na który patrzysz. Przy nieskończonym zoomie jedziesz dalej do przodu — do wnętrza modelu i przez niego.", lt: "Mastelis paprastai sustoja 20 cm nuo taško, į kurį žiūrite. Su begaliniu priartinimu judate pirmyn toliau — į modelį ir pro jį." },
   "Visning": { en: "Display", pl: "Wyświetlanie", lt: "Rodymas" },
   "Måleenhet": { en: "Unit", pl: "Jednostka", lt: "Vienetas" },
   "Meter (m)": { en: "Metres (m)", pl: "Metry (m)", lt: "Metrai (m)" },
