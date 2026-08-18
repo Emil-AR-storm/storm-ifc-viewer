@@ -187,6 +187,26 @@ function ettLedd(s) {
     return kg ? { kgPerM: kg, profil: "SHS" + m[1] + "x" + m[2], kilde: "formel" } : null;
   }
 
+  // NORDISK BETEGNELSE PÅ SAMME PROFIL: KFHUP / HUP.
+  // «KFHUP» = Kaldformet firkant hulprofil. Det ER en CFSHS — bare skrevet på
+  // nordisk, slik Ferro og andre stålverk gjør det. Uten dette mønsteret falt
+  // hele stålet på Lagerbygg Brenna tilbake på geometri: fem grupper, +2,3 til
+  // +5,1 % mot Rambølls materialliste, 351 kg for mye på 27 tonn.
+  //
+  // Rektangulær form (KFHUP200X100X6) MÅ stå før den kvadratiske, ellers
+  // spiser den kvadratiske de to første tallene og leser 100 som godstykkelse.
+  m = s.match(/\b(?:KF)?HUP\s*(\d{2,4})\s*[x×]\s*(\d{2,4})\s*[x×]\s*(\d{1,2}(?:[.,]\d)?)\b/i);
+  if (m) {
+    const kg = hulprofilKgPerM(tall(m[2]), tall(m[1]), tall(m[3]));
+    return kg ? { kgPerM: kg, profil: "HUP" + m[1] + "x" + m[2] + "x" + m[3], kilde: "formel" } : null;
+  }
+  m = s.match(/\b(?:KF)?HUP\s*(\d{2,4})\s*[x×]\s*(\d{1,2}(?:[.,]\d)?)\b/i);
+  if (m) {
+    const b = tall(m[1]), t = tall(m[2]);
+    const kg = hulprofilKgPerM(b, b, t);
+    return kg ? { kgPerM: kg, profil: "HUP" + m[1] + "x" + m[2], kilde: "formel" } : null;
+  }
+
   // Flattstål / flat bar: «Flattstål 120x8»
   m = s.match(/\b(?:flatt?st[åa]l|flat\s*bar)\s*(\d{2,4})\s*[x×]\s*(\d{1,3}(?:[.,]\d)?)\b/i);
   if (m) {
