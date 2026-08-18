@@ -2,6 +2,56 @@
 import * as THREE from "three";
 import { $, på, S } from "./state.js";
 
+// ---------- 🔍 Zoomens grenser ----------
+// Kameraet kretser rundt et blikkpunkt, og «zoom» er egentlig avstanden til
+// det punktet. Derfor har zoom alltid hatt en bunn: kom du nærmere enn 20 cm,
+// skjedde det ingenting. Det oppleves som at zoomen låser seg — og det gjør
+// den, bare ikke på grunn av modellen.
+//
+// «Evig zoom» (⚙ Innstillinger) bytter bunnen mot en glidning: når avstanden
+// er brukt opp, flyttes blikkpunktet framover sammen med kameraet, og du
+// fortsetter rett gjennom stålet. Taket på 8000 står igjen i begge tilfeller —
+// klagene handlet om å komme INN, og uten et tak kan man zoome seg vekk fra
+// modellen og ikke finne tilbake.
+export const ZOOM_MIN = 0.2;      // meter – bunnen når evig zoom er AV
+export const ZOOM_MAKS = 8000;    // meter – taket, alltid
+export const EVIG_MIN = 0.02;     // meter – under dette glir vi framover i stedet
+
+// Ren regning, uten three.js, så den kan testes direkte.
+// Svar: { ny, fram } – ny avstand til blikkpunktet, og hvor langt kamera OG
+// blikkpunkt skal gli framover. null betyr «gjør ingenting».
+export function zoomSteget(len, skala, evig) {
+  const d = Number(len) || 0;
+  const s = Number(skala) || 1;
+  const ny = d * s;
+  if (ny > ZOOM_MAKS) return null;                     // for langt ut
+  if (!evig) return ny < ZOOM_MIN ? null : { ny, fram: 0 };
+  if (s >= 1 || ny >= EVIG_MIN) return { ny, fram: 0 }; // ut, eller fortsatt plass
+  // Steget deles i to: så mye avstand som er igjen ned til EVIG_MIN tas som
+  // vanlig zoom, resten blir glidning framover. Uten delingen ville det første
+  // steget under grensa hoppet et helt zoomsteg framover.
+  const steg = d - ny;
+  const zoomDel = Math.max(0, d - EVIG_MIN);
+  const brukt = Math.min(steg, zoomDel);
+  return { ny: d - brukt, fram: steg - brukt };
+}
+
+// Nær-planet må følge med ned når man kommer helt inntil, ellers klippes det
+// man ser på bort akkurat idet man kommer nær nok til å se det. Basisverdien
+// settes av fitToModel og er taket: vi går aldri høyere enn den, så en modell
+// på en kilometer beholder dybdepresisjonen sin når man står langt unna.
+// Avstand 0 (eller ingen) betyr «sett den tilbake til basis»: den som IKKE har
+// slått på evig zoom skal ha nøyaktig samme dybdepresisjon som før.
+export function settNaerplan(kam, avstand) {
+  if (!kam) return;
+  const basis = Number(S.naerBasis) || kam.near || 0.1;
+  const d = Number(avstand) || 0;
+  const ønsket = d > 0 ? Math.max(0.001, Math.min(basis, d * 0.05)) : basis;
+  if (Math.abs(ønsket - kam.near) < 1e-9) return;      // slipp updateProjectionMatrix
+  kam.near = ønsket;
+  kam.updateProjectionMatrix();
+}
+
 // Egen enkel kamera-kontroll (mus + touch) – ingen eksterne avhengigheter
 class SimpleControls {
   constructor(camera, dom) {
@@ -77,10 +127,23 @@ class SimpleControls {
     this.target.add(move);
   }
   _zoom(scale) {
-    const off = this._offset().multiplyScalar(scale);
+    const off = this._offset();
     const len = off.length();
-    if (len < 0.2 || len > 8000) return;
-    this.camera.position.copy(this.target).add(off);
+    const evig = !!(S.settings && S.settings.evigZoom);
+    const steg = zoomSteget(len, scale, evig);
+    if (!steg) return;                        // grensa nådd – ingenting skjer
+    const d = len || 1e-9;
+    this.camera.position.copy(this.target).add(off.clone().multiplyScalar(steg.ny / d));
+    if (steg.fram > 0) {
+      // Avstanden til blikkpunktet er brukt opp. I stedet for å stoppe mot en
+      // usynlig vegg glir BÅDE kamera og blikkpunkt framover — du fortsetter
+      // rett gjennom modellen. `off` peker fra blikkpunkt til kamera, så
+      // framover er `off` snudd.
+      const fram = off.clone().multiplyScalar(-steg.fram / d);
+      this.camera.position.add(fram);
+      this.target.add(fram);
+    }
+    settNaerplan(this.camera, evig ? steg.ny : 0);
   }
   // Offentlige navn på de tre bevegelsene. _rotate/_pan/_zoom er interne, og
   // navigasjonshjulet (js/hjul.js) trenger dem utenfra. Å kalle en
@@ -227,6 +290,7 @@ export function fitToModel() {
   controls.target.copy(center);
   camera.position.copy(center).add(new THREE.Vector3(dist * .7, dist * .55, dist * .7));
   camera.near = size / 1000;
+  S.naerBasis = camera.near;   // taket settNaerplan aldri går over
   camera.far = size * 10 + 100;
   camera.updateProjectionMatrix();
   grid.position.y = box.min.y;

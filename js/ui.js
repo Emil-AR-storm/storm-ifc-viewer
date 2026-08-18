@@ -142,7 +142,10 @@ function renderSettings() {
     '<div class="set-row"><span class="n">' + t("Zoomhastighet") + '</span>' +
     '<input type="range" id="stZoom" min="0.3" max="3" step="0.1" value="' + S.settings.zoomSpeed + '"></div>' +
     '<div class="set-row"><span class="n">' + t("Invertér zoom") + '</span>' +
-    '<input type="checkbox" id="stInv"' + (S.settings.invertZoom ? " checked" : "") + '></div>';
+    '<input type="checkbox" id="stInv"' + (S.settings.invertZoom ? " checked" : "") + '></div>' +
+    '<div class="set-row"><span class="n">' + t("Evig zoom") + '</span>' +
+    '<input type="checkbox" id="stEvig"' + (S.settings.evigZoom ? " checked" : "") + '></div>' +
+    '<p class="set-hjelp">' + t("Zoomen stopper normalt 20 cm fra punktet du ser på. Med evig zoom fortsetter du framover i stedet — helt inn i og gjennom modellen.") + '</p>';
 
   html += '<h4>' + t("Visning") + '</h4>' +
     '<div class="set-row"><span class="n">' + t("Språk") + '</span>' +
@@ -252,6 +255,7 @@ function renderSettings() {
   $("stRot").oninput = (e) => { S.settings.rotSpeed = Number(e.target.value); saveSettings(); };
   $("stZoom").oninput = (e) => { S.settings.zoomSpeed = Number(e.target.value); saveSettings(); };
   $("stInv").onchange = (e) => { S.settings.invertZoom = e.target.checked; saveSettings(); };
+  $("stEvig").onchange = (e) => { S.settings.evigZoom = e.target.checked; saveSettings(); };
   $("stUnit").onchange = (e) => {
     S.settings.unit = e.target.value; saveSettings();
     if (S.syncPrefs) S.syncPrefs();
