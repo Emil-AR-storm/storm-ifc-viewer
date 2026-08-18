@@ -19,6 +19,7 @@ import { lagreApning, lesApning } from "./apning.js";
 // (share.js drar inn compare.js selv – det er greit, knappen er skjult i CSS)
 import "./prefs.js";
 import "./display.js";
+import "./outline.js";
 import "./markers.js";
 import "./minimap.js";
 import "./viewcube.js";
