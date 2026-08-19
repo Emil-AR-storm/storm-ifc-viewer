@@ -21,6 +21,7 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
 [data-lett="1"] #btnOpenSplash,
 [data-lett="1"] #btnCompare,
 [data-lett="1"] #btnSaveLite,
+[data-lett="1"] #btnMateriell,
 [data-lett="1"] #btnRapport,
 [data-lett="1"] #rapMeny { display: none !important; }
 /* btnSettings vises MED VILJE i lettmodus: språkbytte, måleenhet og bakgrunn
@@ -143,6 +144,7 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
   <symbol id="i-tegning" viewBox="0 0 24 24"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z" /><path d="M14 2v5a1 1 0 0 0 1 1h5" /><path d="M10 9H8" /><path d="M16 13H8" /><path d="M16 17H8" /></symbol>
   <symbol id="i-rediger" viewBox="0 0 24 24"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" /><path d="m15 5 4 4" /></symbol>
   <symbol id="i-svar" viewBox="0 0 24 24"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22z" /></symbol>
+  <symbol id="i-materiell" viewBox="0 0 24 24"><path d="M12 3 3 7.5l9 4.5 9-4.5z" /><path d="M3 7.5V16l9 4.5V12" /><path d="M21 7.5V16l-9 4.5" /><path d="M7.5 5.25l9 4.5" /></symbol>
   <symbol id="i-lastned" viewBox="0 0 24 24"><path d="M12 15V3" /><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m7 10 5 5 5-5" /></symbol>
   <symbol id="i-planner" viewBox="0 0 24 24"><rect width="8" height="4" x="8" y="2" rx="1" ry="1" /><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" /><path d="M12 11h4" /><path d="M12 16h4" /><path d="M8 11h.01" /><path d="M8 16h.01" /></symbol>
   <symbol id="i-kopier" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></symbol>
@@ -206,6 +208,7 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
   <button id="btnCompare" title="Sammenlign med en annen versjon av modellen" data-i18n-title><svg class="ikon"><use href="#i-sammenlign"/></svg><span class="btn-t" data-i18n>Sammenlign</span></button>
   <button id="btnShare" title="Lag en lenke som gjenskaper denne visningen hos andre" data-i18n-title><svg class="ikon"><use href="#i-del"/></svg><span class="btn-t" data-i18n>Del visning</span></button>
   <button id="btnSaveLite" title="Eksporter forenklet modell (.glb) som funker på mobil" data-i18n-title><svg class="ikon"><use href="#i-lagre"/></svg><span class="btn-t" data-i18n>Lett kopi</span></button>
+  <button id="btnMateriell"><svg class="ikon"><use href="#i-materiell"/></svg><span class="btn-t" data-i18n>Materiell</span></button>
   <button id="btnRapport" title="Last ned statusrapport som PDF" data-i18n-title><svg class="ikon"><use href="#i-tegning"/></svg><span class="btn-t" data-i18n>Rapport</span></button>
   <button id="btnHjul" title="Navigasjonshjul – naviger uten mus" data-i18n-title><svg class="ikon"><use href="#i-hjul"/></svg><span class="btn-t" data-i18n>Navigasjon</span></button>
   <button id="btnSettings" title="Innstillinger og hurtigtaster (høyreklikk i modellen)" data-i18n-title><svg class="ikon"><use href="#i-innstillinger"/></svg><span class="btn-t" data-i18n>Innstillinger</span></button>
@@ -269,6 +272,11 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
 <div class="panel" id="commentPanel">
   <header><span data-i18n>Markeringer</span><button onclick="document.getElementById('commentPanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="commentBody"></div>
+</div>
+
+<div class="panel" id="materiellPanel">
+  <header><span data-i18n>Materiell</span><button onclick="document.getElementById('materiellPanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <div class="body" id="materiellBody"></div>
 </div>
 
 <div class="panel" id="qtyPanel">

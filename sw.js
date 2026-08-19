@@ -36,7 +36,7 @@
 
 // ---- GENERERT BLOKK START (verktoy/lag-sw-liste.mjs) ----
 // IKKE REDIGER FOR HÅND. Kjør: node "verktoy/lag-sw-liste.mjs"
-const SW_VERSJON = "766873382fc4";
+const SW_VERSJON = "78fbbf891d34";
 const SKALL = [
   "/bygg.html",
   "/css/storm.css",
@@ -50,6 +50,7 @@ const SKALL = [
   "/js/display.js",
   "/js/elements.js",
   "/js/frist.js",
+  "/js/hjelp.js",
   "/js/hjul.js",
   "/js/i18n.js",
   "/js/ifc.js",
@@ -60,6 +61,7 @@ const SKALL = [
   "/js/lyd.js",
   "/js/markerbilde.js",
   "/js/markers.js",
+  "/js/materiell-vis.js",
   "/js/measure.js",
   "/js/minimap.js",
   "/js/mobile.js",
@@ -67,6 +69,7 @@ const SKALL = [
   "/js/nett.js",
   "/js/nevning.js",
   "/js/oppsett.js",
+  "/js/outline.js",
   "/js/planner.js",
   "/js/prefs.js",
   "/js/profiler.js",
@@ -84,7 +87,10 @@ const SKALL = [
   "/js/verktoygrupper.js",
   "/js/viewcube.js",
   "/vendor/three-0.160.0/three.module.min.js",
-  "/vendor/three-0.160.0/addons/loaders/GLTFLoader.js"
+  "/vendor/three-0.160.0/addons/loaders/GLTFLoader.js",
+  "/vendor/three-0.160.0/addons/lines/LineSegmentsGeometry.js",
+  "/vendor/three-0.160.0/addons/lines/LineMaterial.js",
+  "/vendor/three-0.160.0/addons/lines/LineSegments2.js"
 ];
 // ---- GENERERT BLOKK SLUTT ----
 
