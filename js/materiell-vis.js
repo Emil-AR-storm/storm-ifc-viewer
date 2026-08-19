@@ -86,7 +86,10 @@ export function vaskMateriell(p) {
       : (p.maltype === "sandwich" ? tall(p.tykkelse, 30, 500, mal.tykkelse) : mal.tykkelse),
     antall: Math.round(tall(p.antall, 1, MATERIELL_MAKS_ANTALL, 1)),
     x: Number(p.x) || 0, y: Number(p.y) || 0, z: Number(p.z) || 0,
-    rot: Number(p.rot) || 0
+    rot: Number(p.rot) || 0,
+    // skjult = midlertidig ute av visningen (vises igjen fra panelet).
+    // Feltet følger med i eksporten, så byggeplassen viser det samme som deg.
+    skjult: p.skjult === true
   };
   if (!ut.id) return null;
   return ut;
@@ -321,9 +324,12 @@ function fjernAlle() {
 export function tegnMateriell() {
   fjernAlle();
   for (const p of vaskMateriellListe(S.materiell)) {
-    if (skjulteMaltyper.has(p.maltype)) continue;
+    if (skjulteMaltyper.has(p.maltype) || p.skjult) continue;
     materiellGroup.add(byggMateriellObjekt(p));
   }
+  // materiell.js legger markeringseffekten (blått valg) på igjen etter hver
+  // omtegning — objektene er nye instanser hver gang.
+  if (S.etterTegnMateriell) S.etterTegnMateriell();
 }
 
 export function finnObjekt(id) {
