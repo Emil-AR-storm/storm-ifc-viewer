@@ -128,18 +128,21 @@ export function trpProfil(breddeMm, delingMm, hoydeMm) {
 }
 
 // Profilen ekstrudert til et bånd: posisjoner (ikke-indeksert, to trekanter
-// per segment) for en plate der profilen går på tvers (x) og lengden i z.
+// per segment) for en plate der profilen går på tvers (z = BREDDEN) og
+// lengden langs x — SAMME akser som boksene (sokkel og kassett), der x alltid
+// er lengden. Første utgave hadde dette byttet om, og da lå plata 90° feil i
+// forhold til sin egen stabel-sokkel (Emils bilder 19.08).
 // Alt i METER inn, meter ut. Sentrert om origo i x/z, y fra 0 og opp.
 export function ribbonPosisjoner(profilM, lengdeM) {
   const ut = [];
-  const z0 = -lengdeM / 2, z1 = lengdeM / 2;
+  const x0 = -lengdeM / 2, x1 = lengdeM / 2;
   const bredde = profilM[profilM.length - 1][0];
   for (let i = 0; i < profilM.length - 1; i++) {
-    const [ax, ay] = profilM[i], [bx, by] = profilM[i + 1];
-    const x0 = ax - bredde / 2, x1 = bx - bredde / 2;
-    // to trekanter: (a,z0)-(b,z0)-(b,z1) og (a,z0)-(b,z1)-(a,z1)
-    ut.push(x0, ay, z0, x1, by, z0, x1, by, z1,
-            x0, ay, z0, x1, by, z1, x0, ay, z1);
+    const [az, ay] = profilM[i], [bz, by] = profilM[i + 1];
+    const z0 = az - bredde / 2, z1 = bz - bredde / 2;
+    // to trekanter: (x0,a)-(x0,b)-(x1,b) og (x0,a)-(x1,b)-(x1,a)
+    ut.push(x0, ay, z0, x0, by, z1, x1, by, z1,
+            x0, ay, z0, x1, by, z1, x1, ay, z0);
   }
   return ut;
 }
@@ -247,8 +250,9 @@ function byggEnhet(p) {
   if (p.maltype === "trp") {
     g.add(ribbonMesh(trpProfil(p.bredde, mal.deling, mal.profilHoyde), p.lengde, p.farge));
   } else if (p.maltype === "sandwich") {
-    // kjerne (isolasjonen) i lys grå — endene viser at det ER en sandwich
-    const kjerne = boks(p.bredde - 4, p.tykkelse - 8, p.lengde - 4, "#e8e4da");
+    // kjerne (isolasjonen) i lys grå — endene viser at det ER en sandwich.
+    // x = lengden, z = bredden — samme akser som båndene og sokkelen.
+    const kjerne = boks(p.lengde - 4, p.tykkelse - 8, p.bredde - 4, "#e8e4da");
     kjerne.position.y = mmTilScene(p.tykkelse / 2);
     g.add(kjerne);
     // blikk med mikroprofil på begge sider, i objektets farge
@@ -283,19 +287,44 @@ function byggEnhet(p) {
   return g;
 }
 
-// Hele det plasserte objektet: stabel-sokkel + detaljert topp-enhet + navnelapp.
+// Over så mange lag tegnes ikke hver enhet lenger — da blir det sokkel +
+// detaljert topp. 50 dekker alle virkelige bunter; grensa finnes for at et
+// tastet «500» ikke skal bli 6500 småbokser i scenen.
+export const MAKS_DETALJLAG = 50;
+
+// mm fra underkanten av ett lag til underkanten av det neste i stabelen
+export function lagTykkelseMm(maltype, tykkelseMm) {
+  const mal = MALTYPER[maltype];
+  if (!mal) return 0;
+  return maltype === "sandwich"
+    ? (Number(tykkelseMm) || mal.tykkelse) + mal.stabling
+    : mal.stabling;
+}
+
+// Hele det plasserte objektet: stabelen tegnes som ETT LAG PER ENHET — en ×6
+// skal se ut som seks plater oppå hverandre, ikke som en kloss med lokk
+// (Emils bilder 19.08). Over MAKS_DETALJLAG lag: sokkel + detaljert topp.
 export function byggMateriellObjekt(p) {
   const gruppe = new THREE.Group();
   const mal = MALTYPER[p.maltype];
-  const sokkelMm = p.antall > 1 ? stabelHoydeMm(p.maltype, p.antall, p.tykkelse) - p.tykkelse : 0;
-  if (sokkelMm > 0) {
+  const lag = lagTykkelseMm(p.maltype, p.tykkelse);
+  let toppUnderkantMm = (p.antall - 1) * lag;
+  if (p.antall <= MAKS_DETALJLAG) {
+    for (let i = 0; i < p.antall; i++) {
+      const enhet = byggEnhet(p);
+      enhet.position.y = mmTilScene(i * lag);
+      gruppe.add(enhet);
+    }
+  } else {
+    const sokkelMm = toppUnderkantMm;
     const sokkel = boks(p.lengde, sokkelMm, p.bredde, morkere(p.farge));
     sokkel.position.y = mmTilScene(sokkelMm / 2);
     gruppe.add(sokkel);
+    const enhet = byggEnhet(p);
+    enhet.position.y = mmTilScene(sokkelMm);
+    gruppe.add(enhet);
   }
-  const enhet = byggEnhet(p);
-  enhet.position.y = mmTilScene(sokkelMm);
-  gruppe.add(enhet);
+  const sokkelMm = toppUnderkantMm;   // navnelappen står over øverste enhet
 
   // Navnelappen — samme utseende som aksesystemets etiketter, i objektets
   // farge, med antallet når det er en stabel.
