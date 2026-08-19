@@ -14,6 +14,8 @@ import "./prefs.js";
 import "./display.js";
 import "./outline.js";
 import "./hjelp.js";
+import "./materiell-vis.js";   // 📦 materiell: visningen (lastes av begge sider)
+import "./materiell.js";       // 📦 materiell: verktøyet (kun kontor)
 import "./markers.js";
 import "./minimap.js";
 import "./viewcube.js";

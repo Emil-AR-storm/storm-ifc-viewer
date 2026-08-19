@@ -21,6 +21,7 @@ import "./prefs.js";
 import "./display.js";
 import "./outline.js";
 import "./hjelp.js";
+import "./materiell-vis.js";   // 📦 materiell: montøren SER objektene (verktøyet er kontor-bare)
 import "./markers.js";
 import "./minimap.js";
 import "./viewcube.js";
