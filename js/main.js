@@ -13,6 +13,7 @@ import { canvas, koteGroup, makeLabel, measureGroup } from "./scene.js";
 import "./prefs.js";
 import "./display.js";
 import "./outline.js";
+import "./hjelp.js";
 import "./markers.js";
 import "./minimap.js";
 import "./viewcube.js";
