@@ -36,7 +36,7 @@ export const GRUPPER = [
 // Knapper som står uansett hvilken gruppe som er valgt. Angre, Gjenopprett og
 // Vis alle styres allerede av JS med inline display — de skal ikke også styres
 // av grupperingen, ellers slåss to mekanismer om samme knapp.
-export const ALLTID = ["btnHjul", "btnSettings", "btnAngre", "btnGjenopprett", "btnShowAll"];
+export const ALLTID = ["btnHjul", "btnSettings", "btnHjelp", "btnAngre", "btnGjenopprett", "btnShowAll"];
 
 export const STANDARD_GRUPPE = "info";
 

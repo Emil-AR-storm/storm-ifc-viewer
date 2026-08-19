@@ -12,6 +12,7 @@ import { showClipBar, stopFacePick } from "./clip.js";
 import { DEFAULT_BG, renderColorPanel, resetColors } from "./display.js";
 import { refreshNumbers } from "./elements.js";
 import { oppdaterLengdeEtiketter } from "./measure.js";
+import { erApen as hjelpApen, lukkHjelp } from "./hjelp.js";
 import { applyMiniSize, setMini } from "./minimap.js";
 import { TYKK_MAKS, TYKK_MIN, oppdaterOutline, settTykkelse, vaskTykkelse } from "./outline.js";
 import { applyCubePos, setCube, setCubePos } from "./viewcube.js";
@@ -407,6 +408,10 @@ window.addEventListener("keydown", (e) => {
   if (e.altKey) return;
 
   if (e.key === "Escape") {
+    // ❓ Hjelpekortene ligger øverst på skjermen og skal derfor lukkes først.
+    // Sto de bakerst i denne rekka, ville Esc lukket et panel BAK sløret mens
+    // kortene ble stående — og da ser Esc ut som om den ikke virker.
+    if (hjelpApen()) { lukkHjelp(); return; }
     if ($("commentDialog").classList.contains("open")) { $("commentDialog").classList.remove("open"); return; }
     if ($("setMenu").classList.contains("open")) { closeSettings(); return; }
     if (S.clipPickFace) { stopFacePick(); showClipBar(); return; }

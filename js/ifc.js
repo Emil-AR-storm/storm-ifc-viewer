@@ -175,6 +175,7 @@ export function afterLoad() {
   loadComments();
   restoreAppearance(); // legger på lagret fargelegging/skjuling/transparent
   oppdaterOutline();   // ▣ kantlinjer, hvis de sto på da forrige modell ble lukket
+  if (S.visForsteHjelp) S.visForsteHjelp(); // ❓ gjennomgangen, første gang på byggeplass
   if (S.onModelLoaded) S.onModelLoaded(); // 🔄 sammenligning, hvis et avtrykk er tatt
   if (S.onSharedReady) S.onSharedReady(); // ⛓ delt visning, hvis lenka hadde en
 }

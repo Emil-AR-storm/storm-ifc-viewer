@@ -35,6 +35,10 @@ export function setLang(kode) {
   oversettDom();
   // ViewCube-flatene er tegnede bilder, ikke DOM – de må males på nytt
   if (S.rebuildCube) S.rebuildCube();
+  // ❓ Hjelpekortet bygges av JS (knappen nederst bytter mellom «Neste» og
+  // «Ferdig», og en data-i18n der ville blitt overskrevet). Derfor må det
+  // tegnes på nytt her, ikke av oversettDom.
+  if (S.rebuildHjelp) S.rebuildHjelp();
 }
 
 // Oversetter alt som er merket i index.html. Originalteksten (norsk) lagres i
@@ -822,6 +826,46 @@ export const ORDBOK = {
   " (mm)": { en: " (mm)", pl: " (mm)", lt: " (mm)" },
   "Elementer i lista": { en: "Items in the list", pl: "Elementy na liście", lt: "Elementai sąraše" },
   "Bakgrunnsfarge": { en: "Background colour", pl: "Kolor tła", lt: "Fono spalva" },
+
+  // ---------- ❓ Hjelp: knapper og kort (js/hjelp.js) ----------
+  "Hjelp": { en: "Help", pl: "Pomoc", lt: "Pagalba" },
+  "Neste": { en: "Next", pl: "Dalej", lt: "Toliau" },
+  "Forrige": { en: "Back", pl: "Wstecz", lt: "Atgal" },
+  "Ferdig": { en: "Done", pl: "Gotowe", lt: "Baigta" },
+  "Kom i gang – bla gjennom hjelpekortene": { en: "Get started – flip through the help cards", pl: "Zacznij – przejrzyj karty pomocy", lt: "Pradėkite – peržiūrėkite pagalbos korteles" },
+  "Slik ser du deg rundt": { en: "How to look around", pl: "Jak się rozejrzeć", lt: "Kaip apsidairyti" },
+  "Dra med én finger for å snu modellen. To fingre flytter den og zoomer. Har du gått deg bort, trykker du Vis alt — da kommer hele bygget tilbake på skjermen.": { en: "Drag with one finger to turn the model. Two fingers move it and zoom. If you get lost, tap Show all — the whole building comes back on screen.", pl: "Przeciągnij jednym palcem, aby obrócić model. Dwa palce przesuwają i przybliżają. Jeśli się zgubisz, naciśnij Pokaż wszystko — cały budynek wróci na ekran.", lt: "Vilkite vienu pirštu, kad pasuktumėte modelį. Dviem pirštais slenkate ir keičiate mastelį. Jei pasiklydote, spauskite Rodyti viską — visas pastatas grįš į ekraną." },
+  "Trykk på noe for å se hva det er": { en: "Tap something to see what it is", pl: "Naciśnij element, aby zobaczyć, co to jest", lt: "Bakstelėkite elementą, kad pamatytumėte, kas tai" },
+  "Ett trykk på en bjelke, en vegg eller et dekke gir deg navn, type og mål. Trykk utenfor modellen for å slippe den igjen.": { en: "One tap on a beam, a wall or a slab gives you its name, type and dimensions. Tap outside the model to let go of it again.", pl: "Jedno naciśnięcie belki, ściany lub stropu pokaże nazwę, typ i wymiary. Naciśnij poza modelem, aby zwolnić zaznaczenie.", lt: "Vienas bakstelėjimas ant sijos, sienos ar perdangos parodo pavadinimą, tipą ir matmenis. Bakstelėkite už modelio ribų, kad atžymėtumėte." },
+  "Meld et avvik uten å skrive": { en: "Report a problem without typing", pl: "Zgłoś usterkę bez pisania", lt: "Praneškite apie trūkumą nerašydami" },
+  "Trykk Markering, og så på stedet i modellen der feilen er. Du kan snakke inn meldingen i stedet for å skrive den, og legge ved bilde.": { en: "Tap Marker, then the spot in the model where the problem is. You can speak your message instead of typing it, and attach a photo.", pl: "Naciśnij Znacznik, a potem miejsce w modelu, gdzie jest usterka. Możesz nagrać wiadomość głosem zamiast ją pisać i dołączyć zdjęcie.", lt: "Spauskite Žyma, tada vietą modelyje, kur yra trūkumas. Žinutę galite įkalbėti vietoj rašymo ir pridėti nuotrauką." },
+  "Uten dekning mister du ingenting": { en: "You lose nothing without coverage", pl: "Bez zasięgu nic nie tracisz", lt: "Be ryšio nieko neprarasite" },
+  "Alt du melder legger seg i kø på telefonen og sendes av seg selv når du får nett igjen. Du kan lukke siden i mellomtiden.": { en: "Everything you report is queued on the phone and sent by itself once you are back online. You can close the page in the meantime.", pl: "Wszystko, co zgłosisz, trafia do kolejki w telefonie i zostanie wysłane samo, gdy wróci sieć. W międzyczasie możesz zamknąć stronę.", lt: "Viskas, ką pranešate, patenka į eilę telefone ir išsiunčiama savaime, kai atsiranda ryšys. Tuo metu puslapį galite uždaryti." },
+  "Verktøyene ligger i grupper": { en: "The tools are grouped", pl: "Narzędzia są pogrupowane", lt: "Įrankiai suskirstyti į grupes" },
+  "Knappene øverst bytter hvilke verktøy verktøylinja viser. Språk og andre valg ligger under Innstillinger.": { en: "The buttons at the top change which tools the toolbar shows. Language and other options are under Settings.", pl: "Przyciski u góry zmieniają, które narzędzia pokazuje pasek. Język i inne ustawienia znajdziesz w Ustawieniach.", lt: "Viršuje esantys mygtukai keičia, kuriuos įrankius rodo įrankių juosta. Kalba ir kiti pasirinkimai yra Nustatymuose." },
+  "Åpne en modell": { en: "Open a model", pl: "Otwórz model", lt: "Atidarykite modelį" },
+  "Åpne henter en IFC fra maskinen din, Bibliotek henter den fra SharePoint. Du kan også dra fila rett inn i vinduet.": { en: "Open takes an IFC from your machine, Library takes it from SharePoint. You can also drag the file straight into the window.", pl: "Otwórz pobiera plik IFC z komputera, Biblioteka pobiera go z SharePointa. Możesz też przeciągnąć plik prosto do okna.", lt: "Atidaryti paima IFC iš jūsų kompiuterio, Biblioteka – iš SharePoint. Failą taip pat galite nutempti tiesiai į langą." },
+  "Verktøyene ligger i fire grupper": { en: "The tools are in four groups", pl: "Narzędzia są w czterech grupach", lt: "Įrankiai suskirstyti į keturias grupes" },
+  "Mål, Info, Utseende og Storm-Byggeplass øverst bytter hvilke verktøy verktøylinja viser. Hold musepekeren over en knapp, så står det hva den gjør.": { en: "Measure, Info, Appearance and Storm Site at the top change which tools the toolbar shows. Hover over a button and it tells you what it does.", pl: "Pomiar, Info, Wygląd i Storm-Budowa u góry zmieniają, które narzędzia pokazuje pasek. Najedź kursorem na przycisk, a zobaczysz, co robi.", lt: "Matavimas, Info, Išvaizda ir Storm-Statybvietė viršuje keičia, kuriuos įrankius rodo juosta. Užveskite pelę ant mygtuko ir pamatysite, ką jis daro." },
+  "Markeringene er arbeidslista": { en: "The markers are the work list", pl: "Znaczniki to lista zadań", lt: "Žymos yra darbų sąrašas" },
+  "En markering kan få ansvarlig, frist og en oppgave i Planner. Ringen rundt skifter farge etter hvor nær fristen er.": { en: "A marker can be given an owner, a deadline and a task in Planner. The ring around it changes colour as the deadline approaches.", pl: "Znacznikowi można przypisać osobę odpowiedzialną, termin i zadanie w Plannerze. Pierścień wokół zmienia kolor w miarę zbliżania się terminu.", lt: "Žymai galima priskirti atsakingą asmenį, terminą ir užduotį Planner sistemoje. Aplink esantis žiedas keičia spalvą artėjant terminui." },
+  "Få modellen ut på plassen": { en: "Get the model out on site", pl: "Wyślij model na budowę", lt: "Perduokite modelį į statybvietę" },
+  "Byggeplass lager en lett kopi og en QR-kode. Montøren trenger verken app eller innlogging — bare koden.": { en: "Site builds a light copy and a QR code. The fitter needs neither an app nor a login — only the code.", pl: "Budowa tworzy lekką kopię i kod QR. Monter nie potrzebuje ani aplikacji, ani logowania — tylko kodu.", lt: "Statybvietė sukuria lengvą kopiją ir QR kodą. Montuotojui nereikia nei programėlės, nei prisijungimo — tik kodo." },
+  "Ta arbeidet ut igjen": { en: "Take the work back out", pl: "Wyprowadź pracę na zewnątrz", lt: "Išsiveskite darbą atgal" },
+  "Rapport gir en PDF med bilder og status. BCF-eksport gir en fil som Solibri, Dalux og Revit kan åpne.": { en: "Report gives you a PDF with photos and status. BCF export gives you a file Solibri, Dalux and Revit can open.", pl: "Raport daje PDF ze zdjęciami i statusem. Eksport BCF daje plik, który otworzą Solibri, Dalux i Revit.", lt: "Ataskaita pateikia PDF su nuotraukomis ir būsena. BCF eksportas pateikia failą, kurį atidaro Solibri, Dalux ir Revit." },
+
+  // ---------- Forklaringstekster på verktøyknappene (index.html) ----------
+  "Sett en markering i modellen – avvik, spørsmål eller beskjed": { en: "Place a marker in the model – a defect, a question or a message", pl: "Umieść znacznik w modelu – usterka, pytanie lub wiadomość", lt: "Padėkite žymą modelyje – trūkumas, klausimas ar žinutė" },
+  "Mål avstanden mellom to punkt i modellen": { en: "Measure the distance between two points in the model", pl: "Zmierz odległość między dwoma punktami w modelu", lt: "Išmatuokite atstumą tarp dviejų modelio taškų" },
+  "Les av høyden (kote) på et punkt": { en: "Read off the height (level) of a point", pl: "Odczytaj wysokość (rzędną) punktu", lt: "Nuskaitykite taško aukštį (altitudę)" },
+  "Vis akse- og rutenettet fra modellen": { en: "Show the grid and axes from the model", pl: "Pokaż osie i siatkę z modelu", lt: "Rodyti modelio ašis ir tinklelį" },
+  "Skjær bort deler av modellen for å se innenfor": { en: "Cut away parts of the model to see inside", pl: "Odetnij części modelu, aby zajrzeć do środka", lt: "Nupjaukite modelio dalis, kad pamatytumėte vidų" },
+  "Vis én etasje om gangen": { en: "Show one storey at a time", pl: "Pokaż jedną kondygnację naraz", lt: "Rodyti po vieną aukštą" },
+  "Søk etter element på navn, type eller merking": { en: "Search for elements by name, type or tag", pl: "Szukaj elementów według nazwy, typu lub oznaczenia", lt: "Ieškokite elementų pagal pavadinimą, tipą ar žymėjimą" },
+  "Gjør alt gjennomsiktig så det som ligger bak synes": { en: "Make everything transparent so what is behind shows through", pl: "Uczyń wszystko przezroczystym, aby było widać, co jest z tyłu", lt: "Padarykite viską permatoma, kad matytųsi tai, kas už jo" },
+  "Mengder: antall, lengde, volum og vekt per elementtype": { en: "Quantities: count, length, volume and weight per element type", pl: "Ilości: liczba, długość, objętość i masa według typu elementu", lt: "Kiekiai: skaičius, ilgis, tūris ir svoris pagal elemento tipą" },
+  "Farge, skjul og vis elementtyper – og kantlinjer": { en: "Colour, hide and show element types – and outlines", pl: "Koloruj, ukrywaj i pokazuj typy elementów – oraz kontury", lt: "Spalvinkite, slėpkite ir rodykite elementų tipus – ir kontūrus" },
+  "Vis alt som er skjult igjen": { en: "Show everything that is hidden again", pl: "Pokaż ponownie wszystko, co ukryte", lt: "Vėl parodyti viską, kas paslėpta" },
 
   // ▣ Kantlinjer (js/outline.js)
   "Kantlinjer": { en: "Outlines", pl: "Kontury", lt: "Kontūrai" },
