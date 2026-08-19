@@ -299,6 +299,17 @@ button.active { background: var(--aktiv-bg); border-color: var(--aktiv-bg); colo
 }
 #commentDialog .actions { display: flex; gap: 8px; margin-top: 10px; justify-content: flex-end; }
 
+/* ---------- Toppbaren før en modell er åpnet ---------- */
+/* Gruppeknappene, markeringstelleren og «Vis hele modellen» styrer alle noe som
+   ikke finnes ennå på startskjermen. En knapp som ikke gjør noe når man trykker
+   er verre enn ingen knapp — og «Info» ble lest som «hjelp» av den som ikke
+   visste bedre. body.har-modell settes av afterLoad() i js/ifc.js.
+   Skjules med CSS, aldri fjernes: åtte moduler fester lyttere på knapp-id-er
+   ved oppstart, og en knapp som ikke finnes tar med seg hele modulkjeden. */
+body:not(.har-modell) #verktoygrupper,
+body:not(.har-modell) #btnComments,
+body:not(.har-modell) #btnFit { display: none !important; }
+
 /* ---------- ❓ Hjelp: kort du blar gjennom ---------- */
 /* z-index 45: over panelene (10–40), men UNDER lasteoverlegget (55). Kommer en
    modell inn mens kortene står oppe, skal framdriften vinne — ellers ser det ut
