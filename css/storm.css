@@ -299,6 +299,46 @@ button.active { background: var(--aktiv-bg); border-color: var(--aktiv-bg); colo
 }
 #commentDialog .actions { display: flex; gap: 8px; margin-top: 10px; justify-content: flex-end; }
 
+/* ---------- ❓ Hjelp: kort du blar gjennom ---------- */
+/* z-index 45: over panelene (10–40), men UNDER lasteoverlegget (55). Kommer en
+   modell inn mens kortene står oppe, skal framdriften vinne — ellers ser det ut
+   som om lastingen har hengt seg. */
+#hjelpKort {
+  position: fixed; inset: 0; z-index: 45;
+  display: none; align-items: center; justify-content: center;
+  padding: 20px;
+  background: var(--flate-72);
+}
+#hjelpKort.open { display: flex; }
+#hjelpKort .hk-boks {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-stor);
+  box-shadow: var(--skygge);
+  width: 400px; max-width: 100%;
+  padding: 12px 20px 16px;
+  text-align: center;
+}
+#hjelpKort .hk-topp { display: flex; align-items: center; justify-content: space-between; }
+#hjelpKort .hk-teller { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+#hjelpKort .hk-topp button { background: none; border: none; color: var(--muted); padding: 4px; }
+#hjelpKort .hk-topp button:hover { color: var(--text); }
+#hjelpKort .hk-ikon { margin: 6px 0 10px; }
+#hjelpKort .hk-ikon .ikon { width: 40px; height: 40px; color: var(--accent); }
+#hjelpKort h3 { font-size: 17px; margin-bottom: 8px; line-height: 1.3; }
+#hjelpKort p { color: var(--muted); font-size: 14px; line-height: 1.5; }
+#hjelpKort .hk-prikker { display: flex; gap: 6px; justify-content: center; margin: 14px 0 12px; }
+#hjelpKort .hk-prikk {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--border); transition: background .15s;
+}
+#hjelpKort .hk-prikk.på { background: var(--accent); }
+/* Store knapper med vilje: dette er det ENESTE stedet i verktøyet en montør med
+   hansker garantert må treffe, og han har ikke prøvd appen før. 48 px er
+   minstemålet for en trykkflate på telefon. */
+#hjelpKort .hk-knapper { display: flex; gap: 10px; }
+#hjelpKort .hk-knapper button { flex: 1; justify-content: center; min-height: 48px; font-size: 15px; }
+
 /* ---------- Startskjerm ---------- */
 /* Mørkt slør over 3D-rutenettet, ellers er den grå teksten uleselig på den
    lyse bakgrunnen. Sløret forsvinner sammen med startskjermen. */
