@@ -8,6 +8,7 @@ import { bildeUrl, lastOpp } from "./bilder.js";
 import { lagreOgSynk, leggTilImportertMarkering, vaskMarkering } from "./markers.js";
 import { tegningNavn } from "./tegninger.js";
 import { GRAPH, authHeaders, spTokenSilent } from "./sharepoint.js";
+import { materiellForEksport } from "./materiell-vis.js";
 import { FRISTER, TJENESTER } from "./config.js";
 
 // Adressen til Workeren står i config.js, og kan overstyres av oppsett.json i
@@ -135,7 +136,10 @@ if (btn) btn.addEventListener("click", async () => {
       body: JSON.stringify({
         versjon: 2,
         grenser: { gul: FRISTER.gul, rod: FRISTER.rod },
-        markeringer: vaskede
+        markeringer: vaskede,
+        // 📦 materiell-objektene følger med ut, vasket. Gamle lesere ser bort
+        // fra feltet; nye tegner leveransene der de skal ligge.
+        materiell: materiellForEksport()
       })
     });
 

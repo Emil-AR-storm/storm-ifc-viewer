@@ -187,7 +187,10 @@ export function modellStartverdier() {
 
     // markeringer
     comments: [],
-    sharedOK: false
+    sharedOK: false,
+
+    // 📦 materiell (vareleveranser) plassert i denne modellen
+    materiell: []
   };
 }
 
@@ -202,6 +205,8 @@ export function nullstillModellState() {
   // Geometrien deres er alt frigitt av clearModel; lista over dem må tømmes
   // her, ellers holder den forrige modell i live i minnet.
   if (S.ryddOutline) S.ryddOutline();
+  // 📦 Materiell-objektene hører til modellen som ble lukket.
+  if (S.ryddMateriell) S.ryddMateriell();
 }
 
 Object.assign(S, modellStartverdier());
@@ -231,6 +236,14 @@ S.nullstillAngre = null;
 // ❓ Hjelpekortene. Krokene settes av hjelp.js.
 S.rebuildHjelp = null;      // språkbytte: tegn kortet som står oppe på nytt
 S.visForsteHjelp = null;    // afterLoad: vis gjennomgangen første gang på byggeplass
+
+// 📦 Materiell. Krokene settes av materiell-vis.js / materiell.js; null når
+// modulen ikke er lastet — hvert kall er beskyttet med if (S.x).
+S.lastMateriell = null;         // afterLoad: les plasseringene (kontor)
+S.settMateriellFraLett = null;  // markers.js: materiell fra Workerens JSON (bygg)
+S.ryddMateriell = null;         // modellbytte: tøm gruppa
+S.materiellUtseendeRader = null;// display.js: egne rader i 🎨 Utseende
+S.materiellModeBar = null;      // modes.js: kontrollinja i materiell-modus
 
 // ▣ Kantlinjer. Krokene settes av outline.js; null når modulen ikke er lastet.
 S.ryddOutline = null;       // modellbytte: tøm lista over linjeobjekt
@@ -336,7 +349,8 @@ export function på(id, hendelse, fn, valg) {
 // manglet clipPanel/sharePanel.
 export const PANELER = [
   "propPanel", "commentPanel", "qtyPanel", "libPanel", "colorPanel",
-  "axesPanel", "searchPanel", "comparePanel", "clipPanel", "sharePanel"
+  "axesPanel", "searchPanel", "comparePanel", "clipPanel", "sharePanel",
+  "materiellPanel"
 ];
 
 // Lukker alle paneler – eventuelt med ett unntak (panelet som skal stå igjen)

@@ -96,6 +96,10 @@ async function lastLettMarkeringer() {
         const g = vaskGrenser(d.grenser);
         FRISTER.gul = g.gul; FRISTER.rod = g.rod;
       }
+      // 📦 Materiellet ligger i samme fil (format 2 med materiell-felt). En
+      // gammel fil (naken array) har det ikke — da blir lista tom, ikke feil.
+      if (S.settMateriellFraLett)
+        S.settMateriellFraLett(d && !Array.isArray(d) ? d.materiell : null);
     }
   } catch (e) {
     feil = (e && e.tidsavbrudd)

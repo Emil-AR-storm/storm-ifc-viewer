@@ -13,10 +13,17 @@ export const modeBar = $("modeBar");
 export function setMode(m) {
   S.mode = (S.mode === m) ? null : m;
   for (const k in modeButtons) modeButtons[k].classList.toggle("active", S.mode === k);
+  // 📦 materiell-modus settes av materiell.js — men går man hit fra den,
+  // skal knappen dens slippe å stå som aktiv
+  const bm = $("btnMateriell");
+  if (bm && S.mode !== "materiell") bm.classList.remove("active");
   S.measureFirst = null;
   hideSnapPreview();
   updateModeBar();
 }
+
+// materiell.js trenger å tegne kontrollinja på nytt uten sirkulær import
+S.oppdaterModeBar = updateModeBar;
 
 på("btnMarker", "click", () => setMode("marker"));
 
@@ -75,6 +82,9 @@ export function updateModeBar() {
   } else if (S.mode === "marker") {
     modeBar.innerHTML = '<span class="lbl">' + t("Trykk på modellen for å plassere markering") + '</span>';
     modeBar.classList.add("open");
+  } else if (S.mode === "materiell" && S.materiellModeBar) {
+    // 📦 materiell-verktøyet eier innholdet sitt selv (js/materiell.js)
+    S.materiellModeBar(modeBar);
   } else {
     modeBar.classList.remove("open");
     modeBar.innerHTML = "";

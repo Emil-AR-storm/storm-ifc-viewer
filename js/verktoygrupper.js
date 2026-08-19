@@ -39,7 +39,7 @@ export const GRUPPER = [
     knapper: ["btnClip", "btnStorey", "btnGhost", "btnColors"] },
   { id: "bygg",     navn: "Storm-Byggeplass", ikonNavn: "lastned",
     hjelp: "Ut til byggeplassen: QR-lenke, rapport, lett kopi og deling",
-    knapper: ["btnByggeplass", "btnRapport", "btnSaveLite", "btnShare", "btnHistorikk"] }
+    knapper: ["btnByggeplass", "btnMateriell", "btnRapport", "btnSaveLite", "btnShare", "btnHistorikk"] }
 ];
 
 // Knapper som står uansett hvilken gruppe som er valgt. Angre, Gjenopprett og
