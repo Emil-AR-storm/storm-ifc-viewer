@@ -16,7 +16,7 @@ const PRIMÆRE = ["btnMarker", "btnMeasure", "btnClip", "btnStorey"];
 
 // Disse toppbar-knappene viser bare ikonet når skjermen er smal.
 // Teksten (<span class="btn-t">) skjules – ikonet i knappen står igjen.
-const KORTE = ["btnOpen", "btnLib", "btnLight", "btnFit"];
+const KORTE = ["btnOpen", "btnLib", "btnLight", "btnFit", "btnHjelp"];
 
 function settKort(på) {
   KORTE.forEach(id => {

@@ -57,9 +57,14 @@ export const KORT = [
     tekst: "Alt du melder legger seg i kø på telefonen og sendes av seg selv når du får nett igjen. Du kan lukke siden i mellomtiden."
   },
   {
-    hvor: "bygg", ikonNavn: "innstillinger",
+    hvor: "bygg", ikonNavn: "sok",
     tittel: "Verktøyene ligger i grupper",
-    tekst: "Knappene øverst bytter hvilke verktøy verktøylinja viser. Språk og andre valg ligger under Innstillinger."
+    tekst: "Knappene øverst — Mål, Bygg Info, Utseende og Storm-Byggeplass — bytter hvilke verktøy verktøylinja viser. Er et verktøy borte, ligger det i en annen gruppe."
+  },
+  {
+    hvor: "bygg", ikonNavn: "innstillinger",
+    tittel: "Still inn det du trenger",
+    tekst: "Under Innstillinger velger du språk, slår på kantlinjer som gjør det lettere å skille objektene fra hverandre, slår på evig zoom for å komme helt inntil en detalj, og skrur minikartet av eller på. Valgene huskes på telefonen din."
   },
 
   // ---------- Kontor ----------
@@ -71,7 +76,7 @@ export const KORT = [
   {
     hvor: "kontor", ikonNavn: "sok",
     tittel: "Verktøyene ligger i fire grupper",
-    tekst: "Mål, Info, Utseende og Storm-Byggeplass øverst bytter hvilke verktøy verktøylinja viser. Hold musepekeren over en knapp, så står det hva den gjør."
+    tekst: "Mål, Bygg Info, Utseende og Storm-Byggeplass øverst bytter hvilke verktøy verktøylinja viser. Hold musepekeren over en knapp, så står det hva den gjør."
   },
   {
     hvor: "kontor", ikonNavn: "markering",
@@ -87,6 +92,11 @@ export const KORT = [
     hvor: "kontor", ikonNavn: "tegning",
     tittel: "Ta arbeidet ut igjen",
     tekst: "Rapport gir en PDF med bilder og status. BCF-eksport gir en fil som Solibri, Dalux og Revit kan åpne."
+  },
+  {
+    hvor: "kontor", ikonNavn: "innstillinger",
+    tittel: "Alt du kan stille inn",
+    tekst: "Under Innstillinger ligger måleenhet og desimaler, kantlinjer på geometrien, bakgrunnsfarge, minikart, ViewCube, modellens enhet og egne hurtigtaster. Er du logget inn, følger valgene deg til alle maskiner."
   }
 ];
 
