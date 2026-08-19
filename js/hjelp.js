@@ -57,6 +57,11 @@ export const KORT = [
     tekst: "Alt du melder legger seg i kø på telefonen og sendes av seg selv når du får nett igjen. Du kan lukke siden i mellomtiden."
   },
   {
+    hvor: "bygg", ikonNavn: "materiell",
+    tittel: "Fargede stabler viser leveranser",
+    tekst: "De fargede stablene med navnelapp er materiell som skal ligge akkurat der — plater, panel og kassetter. Kommer det en leveranse, ser du her hvor den skal. Lappen sier hva det er og hvor mange."
+  },
+  {
     hvor: "bygg", ikonNavn: "sok",
     tittel: "Verktøyene ligger i grupper",
     tekst: "Knappene øverst — Mål, Bygg Info, Utseende og Storm-Byggeplass — bytter hvilke verktøy verktøylinja viser. Er et verktøy borte, ligger det i en annen gruppe."
@@ -87,6 +92,11 @@ export const KORT = [
     hvor: "kontor", ikonNavn: "lastned",
     tittel: "Få modellen ut på plassen",
     tekst: "Byggeplass lager en lett kopi og en QR-kode. Montøren trenger verken app eller innlogging — bare koden."
+  },
+  {
+    hvor: "kontor", ikonNavn: "materiell",
+    tittel: "Vis leverandøren hvor varene skal ligge",
+    tekst: "Materiell (i Storm-Byggeplass) legger 3D-objekter av TRP-plater, sandwichpanel og forskalingskassetter inn i modellen. Sett mål, farge, navn og antall — navnet står på en lapp på objektet, og alt følger med ut til byggeplass-lenka."
   },
   {
     hvor: "kontor", ikonNavn: "tegning",

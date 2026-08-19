@@ -176,6 +176,7 @@ export function afterLoad() {
   $("hint").style.display = "block";
   $("toolbar").classList.add("open");
   loadComments();
+  if (S.lastMateriell) S.lastMateriell(); // 📦 materiell plassert i denne modellen
   restoreAppearance(); // legger på lagret fargelegging/skjuling/transparent
   oppdaterOutline();   // ▣ kantlinjer, hvis de sto på da forrige modell ble lukket
   if (S.visForsteHjelp) S.visForsteHjelp(); // ❓ gjennomgangen, første gang på byggeplass

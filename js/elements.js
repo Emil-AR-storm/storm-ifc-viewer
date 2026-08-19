@@ -8,6 +8,7 @@ import { hiddenIDs, hideElement, hideElements } from "./display.js";
 import { alleElementIder, lightElementBoxes } from "./ifc.js";
 import { kall, metaFor, sikreMeta } from "./ifcrpc.js";
 import { axesGroup, camera, canvas, controls, grid, koteGroup, markerGroup, measureGroup, pointer, raycaster, renderer, scene, selGroup } from "./scene.js";
+import { leggMateriellIMengder } from "./materiell-vis.js";
 
 const selMat = new THREE.MeshLambertMaterial({ color: 0x3b82f6, emissive: 0x1d4ed8, side: THREE.DoubleSide });
 
@@ -706,6 +707,9 @@ function computeQuantities() {
       profil: prof ? prof.profil : "", nomKgPerM: prof ? prof.kgPerM : 0, avvik
     });
   }
+  // 📦 Materiell-objektene får egne rader — parametriske tall fra målene
+  // brukeren satte, ikke gjettet fra geometri (js/materiell-vis.js).
+  leggMateriellIMengder(groups, rows);
   const sortedRows = rows.sort((a, b) => a.key.localeCompare(b.key, "no") || a.id - b.id);
   return {
     groups: [...groups.entries()].sort((a, b) => b[1].count - a[1].count),
@@ -728,6 +732,7 @@ const TYPE_NAVN = {
   Reinforcing: "Armering", ReinforcingBar: "Armeringsjern",
   ReinforcingMesh: "Armeringsnett", Fastener: "Festemidler",
   MechanicalFastener: "Festemidler", DiscreteAccessory: "Tilbehør",
+  Materiell: "Materiell (leveranser)",
   BuildingElementProxy: "Øvrige bygningsdeler", ElementAssembly: "Sammenstillinger",
   Pipe: "Rør", PipeSegment: "Rør", DuctSegment: "Kanaler",
   Furniture: "Inventar", Space: "Rom", Site: "Tomt"

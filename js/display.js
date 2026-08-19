@@ -354,4 +354,7 @@ export function renderColorPanel() {
       meldAngre(før, g.hidden ? "Skjul elementtype" : "Vis elementtype");
     };
   });
+  // 📦 Materiell (leveranser) får egne rader nederst — de tegnes av
+  // materiell-vis.js, som eier objektene (fargen settes per objekt der).
+  if (S.materiellUtseendeRader) S.materiellUtseendeRader($("colorBody"));
 }
