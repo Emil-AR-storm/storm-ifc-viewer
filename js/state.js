@@ -43,6 +43,10 @@ export const DEFAULT_SETTINGS = {
   rapCsv: false,      // «Ta med CSV» i rapportmenyen
   rapLogo: "",        // valgt logo (filnavn i SharePoint-mappa Logoer)
   verktoygruppe: "",  // 🧰 valgt gruppe i verktøylinja (mal | info | utseende | bygg)
+  // ❓ Hjelpekortene er vist én gang på denne maskinen. Står den false på
+  // byggeplass-siden, kommer gjennomgangen av seg selv når modellen er lastet.
+  // Montøren trykker aldri på et spørsmålstegn han ikke vet finnes.
+  hjelpVist: false,
   keys: Object.assign({}, DEFAULT_KEYS)
 };
 
@@ -223,6 +227,10 @@ S.workerFeil = null;      // satt hvis IFC-tråden ikke kunne brukes
 // hver innmelding står som «if (S.pushAngre) S.pushAngre(...)».
 S.pushAngre = null;
 S.nullstillAngre = null;
+
+// ❓ Hjelpekortene. Krokene settes av hjelp.js.
+S.rebuildHjelp = null;      // språkbytte: tegn kortet som står oppe på nytt
+S.visForsteHjelp = null;    // afterLoad: vis gjennomgangen første gang på byggeplass
 
 // ▣ Kantlinjer. Krokene settes av outline.js; null når modulen ikke er lastet.
 S.ryddOutline = null;       // modellbytte: tøm lista over linjeobjekt
