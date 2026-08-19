@@ -124,12 +124,13 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
 
 <div id="topbar">
   <svg class="storm-logo" viewBox="0 0 948 224" role="img" aria-label="Storm IFC-Viewer"><use href="#storm-lockup"/></svg>
-  <button class="btn" id="btnOpen"><svg class="ikon"><use href="#i-apne"/></svg><span class="btn-t" data-i18n>Åpne</span></button>
+  <button class="btn" id="btnOpen" title="Åpne en IFC- eller GLB-fil fra maskinen din" data-i18n-title><svg class="ikon"><use href="#i-apne"/></svg><span class="btn-t" data-i18n>Åpne</span></button>
   <input type="file" id="fileInput" accept=".ifc,.IFC,.glb,.GLB">
-  <button id="btnLib"><svg class="ikon"><use href="#i-bibliotek"/></svg><span class="btn-t" data-i18n>Bibliotek</span></button>
+  <button id="btnLib" title="Åpne en modell fra SharePoint-biblioteket" data-i18n-title><svg class="ikon"><use href="#i-bibliotek"/></svg><span class="btn-t" data-i18n>Bibliotek</span></button>
   <button id="btnLight" title="Forenklet lasting for mobil og store modeller" data-i18n-title><svg class="ikon"><use href="#i-lav"/></svg><span class="btn-t" data-i18n>Lav kvalitet</span></button>
-  <button id="btnComments"><svg class="ikon"><use href="#i-markeringer"/></svg> <span id="commentCount">0</span></button>
+  <button id="btnComments" title="Markeringene i modellen – trykk for å se lista" data-i18n-title><svg class="ikon"><use href="#i-markeringer"/></svg> <span id="commentCount">0</span></button>
   <button id="btnFit" title="Vis hele modellen" data-i18n-title><svg class="ikon"><use href="#i-fokus"/></svg></button>
+  <button id="btnHjelp" title="Kom i gang – bla gjennom hjelpekortene" data-i18n-title><svg class="ikon"><use href="#i-hjelp"/></svg><span class="btn-t" data-i18n>Hjelp</span></button>
   <button id="btnTema" title="Bytt mellom lyst og mørkt tema" data-i18n-title><svg class="ikon"><use href="#i-tema"/></svg></button>
   <div id="status"></div>
 </div>
@@ -152,7 +153,6 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
   <button id="btnByggeplass" title="Last opp lett kopi til byggeplass-lenka (Cloudflare)" data-i18n-title><svg class="ikon"><use href="#i-lastned"/></svg><span class="btn-t" data-i18n>Byggeplass</span></button>
   <button id="btnHjul" title="Navigasjonshjul – naviger uten mus" data-i18n-title><svg class="ikon"><use href="#i-hjul"/></svg><span class="btn-t" data-i18n>Navigasjon</span></button>
   <button id="btnSettings" title="Innstillinger og hurtigtaster (høyreklikk i modellen)" data-i18n-title><svg class="ikon"><use href="#i-innstillinger"/></svg><span class="btn-t" data-i18n>Innstillinger</span></button>
-  <button id="btnHjelp" title="Kom i gang – bla gjennom hjelpekortene" data-i18n-title><svg class="ikon"><use href="#i-hjelp"/></svg><span class="btn-t" data-i18n>Hjelp</span></button>
   <button id="btnAngre" style="display:none" title="Angre siste handling (Ctrl+Z)" data-i18n-title><svg class="ikon"><use href="#i-angre"/></svg><span class="btn-t" data-i18n>Angre</span></button>
   <button id="btnGjenopprett" style="display:none" title="Gjenopprett handlingen du angret (Ctrl+Y)" data-i18n-title><svg class="ikon"><use href="#i-gjenopprett"/></svg><span class="btn-t" data-i18n>Gjenopprett</span></button>
   <button id="btnShowAll" title="Vis alt som er skjult igjen" data-i18n-title style="display:none"><svg class="ikon"><use href="#i-vis"/></svg><span class="btn-t" data-i18n>Vis alle</span></button>
