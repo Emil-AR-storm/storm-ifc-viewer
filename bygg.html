@@ -161,6 +161,7 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
   <symbol id="i-boks" viewBox="0 0 24 24"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" /></symbol>
   <symbol id="i-flate" viewBox="0 0 24 24"><path d="M13.73 4a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" /></symbol>
   <symbol id="i-fortsett" viewBox="0 0 24 24"><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z" /></symbol>
+  <symbol id="i-hjelp" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><path d="M12 17h.01" /></symbol>
   <symbol id="i-advarsel" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /><path d="M12 9v4" /><path d="M12 17h.01" /></symbol>
   <symbol id="i-hake" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5" /></symbol>
   <symbol id="i-snu" viewBox="0 0 24 24"><path d="M8 3 4 7l4 4" /><path d="M4 7h16" /><path d="m16 21 4-4-4-4" /><path d="M20 17H4" /></symbol>
@@ -207,6 +208,7 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
   <button id="btnRapport" title="Last ned statusrapport som PDF" data-i18n-title><svg class="ikon"><use href="#i-tegning"/></svg><span class="btn-t" data-i18n>Rapport</span></button>
   <button id="btnHjul" title="Navigasjonshjul – naviger uten mus" data-i18n-title><svg class="ikon"><use href="#i-hjul"/></svg><span class="btn-t" data-i18n>Navigasjon</span></button>
   <button id="btnSettings" title="Innstillinger og hurtigtaster (høyreklikk i modellen)" data-i18n-title><svg class="ikon"><use href="#i-innstillinger"/></svg><span class="btn-t" data-i18n>Innstillinger</span></button>
+  <button id="btnHjelp"><svg class="ikon"><use href="#i-hjelp"/></svg><span class="btn-t" data-i18n>Hjelp</span></button>
   <button id="btnAngre" style="display:none" title="Angre siste handling (Ctrl+Z)" data-i18n-title><svg class="ikon"><use href="#i-angre"/></svg><span class="btn-t" data-i18n>Angre</span></button>
   <button id="btnGjenopprett" style="display:none" title="Gjenopprett handlingen du angret (Ctrl+Y)" data-i18n-title><svg class="ikon"><use href="#i-gjenopprett"/></svg><span class="btn-t" data-i18n>Gjenopprett</span></button>
   <button id="btnShowAll" style="display:none"><svg class="ikon"><use href="#i-vis"/></svg><span class="btn-t" data-i18n>Vis alle</span></button>
@@ -360,6 +362,26 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
 </div>
 
 <div id="hint" data-i18n>Dra: roter · Midtklikk / to fingre: panorer · Rullehjul: zoom · Høyreklikk: innstillinger · Trykk på element: info</div>
+
+<!-- ❓ Hjelp: kort du blar gjennom. Teksten fylles av js/hjelp.js — knappene
+     nederst bytter navn («Neste» → «Ferdig»), og en data-i18n der ville blitt
+     overskrevet av oversettDom() ved språkbytte. -->
+<div id="hjelpKort">
+  <div class="hk-boks">
+    <div class="hk-topp">
+      <span class="hk-teller" id="hkTeller"></span>
+      <button id="hkLukk" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button>
+    </div>
+    <div class="hk-ikon" id="hkIkon"></div>
+    <h3 id="hkTittel"></h3>
+    <p id="hkTekst"></p>
+    <div class="hk-prikker" id="hkPrikker"></div>
+    <div class="hk-knapper">
+      <button id="hkForrige"></button>
+      <button id="hkNeste" class="primary"></button>
+    </div>
+  </div>
+</div>
 
 <!-- Nettstatus: hva som ikke kom fram, hva som venter på dekning, og «ny
      versjon klar». Fylles av js/nett.js.
