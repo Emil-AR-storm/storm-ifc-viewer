@@ -244,6 +244,7 @@ S.settMateriellFraLett = null;  // markers.js: materiell fra Workerens JSON (byg
 S.ryddMateriell = null;         // modellbytte: tøm gruppa
 S.materiellUtseendeRader = null;// display.js: egne rader i 🎨 Utseende
 S.materiellModeBar = null;      // modes.js: kontrollinja i materiell-modus
+S.etterTegnMateriell = null;    // materiell-vis.js → materiell.js: legg valg-effekten på igjen
 
 // ▣ Kantlinjer. Krokene settes av outline.js; null når modulen ikke er lastet.
 S.ryddOutline = null;       // modellbytte: tøm lista over linjeobjekt

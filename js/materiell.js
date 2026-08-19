@@ -1,7 +1,23 @@
-// 📦 Materiell — VERKTØYET. Lage, plassere, flytte, rotere og slette
+// 📦 Materiell — VERKTØYET. Lage, plassere, flytte, rotere, skjule og slette
 // materiell-objekter, og hente/lagre maler i SharePoint-biblioteket.
 // Importeres BARE fra main.js — bygg.html (lettmodus) laster aldri denne fila;
 // der finnes bare visningen (materiell-vis.js).
+//
+// PEKELOGIKKEN (lærepenger fra første runde, 19.08.2026):
+//
+//  · Lytterne ligger på window i FANGSTFASEN, så de kan stoppe hendelsen før
+//    kameraets og main.js sine lyttere på canvas ser den.
+//  · MEN: stopper vi et pointerup som kameraet fikk pointerdown til, blir
+//    kameraet stående og TRO at knappen fortsatt holdes inne — det «låser seg
+//    i rotasjon». Derfor: hver gang vi svelger et pointerup, sendes et
+//    syntetisk pointercancel til canvas (slippKamera), så SimpleControls
+//    rydder pekeren sin. Det er billig, og det kan aldri bli feil.
+//  · Et KLIKK (under 8 px bevegelse) på et materiell-objekt velger det — i
+//    ALLE moduser, ikke bare i materiell-modus. Valget vises med samme blå
+//    markeringseffekt som elementvalget i modellen, og en liten knapperad
+//    (roter/skjul/slett) kommer opp nederst.
+//  · Et DRAG som ikke starter på et materiell-objekt skal ALDRI røres — det
+//    er kameraet sitt.
 import * as THREE from "three";
 import { $, S, apnePanel, esc, ikon, på } from "./state.js";
 import { t } from "./i18n.js";
@@ -10,14 +26,16 @@ import { pick } from "./elements.js";
 import { GRAPH, SP, authHeaders, graphGet, spTokenSilent } from "./sharepoint.js";
 import {
   MALTYPER, byggMateriellObjekt, finnObjekt, lagreMateriellLokalt,
-  materiellForEksport, materiellGroup, mmTilScene, tegnMateriell, vaskMateriell
+  materiellForEksport, materiellGroup, tegnMateriell, vaskMateriell
 } from "./materiell-vis.js";
 
 // ---------- Tilstand ----------
 let plasserer = null;      // { p, gruppe } — objektet som henger på pekeren
-let valgtId = null;        // markert objekt (flytt/roter/slett)
+let valgtId = null;        // markert objekt (roter/skjul/slett/flytt)
 let drar = null;           // { id, fra: Vector3 } under flytting
+let nedPos = null;         // vår egen nedtrykks-posisjon (klikk kontra drag)
 const ROT_STEG = Math.PI / 12;   // 15°
+const KLIKK_PX = 8;
 
 function nyId() {
   return "M-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 7);
@@ -29,30 +47,57 @@ function meldEndret() {
   lagreMateriellLokalt();
 }
 
-// ---------- Bakkeplanet ----------
-// Objektene legger seg der du peker: på en modellflate hvis du treffer en,
-// ellers på bakkeplanet (rutenettets høyde = modellens underkant).
+function hentP(id) { return (S.materiell || []).find(x => x.id === id) || null; }
+
+// ---------- Kameraet skal aldri bli hengende ----------
+// SimpleControls (scene.js) fører sin egen liste over nedtrykte pekere. Svelger
+// vi et pointerup den ventet på, står pekeren igjen i lista og kameraet roterer
+// på alt som beveger seg. Et syntetisk pointercancel rydder den — end()-lytteren
+// i SimpleControls håndterer pointercancel fra før.
+function slippKamera(e) {
+  try {
+    canvas.dispatchEvent(new PointerEvent("pointercancel", { pointerId: e.pointerId }));
+  } catch (_) {
+    try { canvas.dispatchEvent(new Event("pointercancel")); } catch (__) {}
+  }
+}
+
+// ---------- Peking ----------
 const _plan = new THREE.Plane();
 const _punkt = new THREE.Vector3();
 const _ndc = new THREE.Vector2();
 
 function bakkeY() { return grid.position.y || 0; }
 
-function pekPunkt(clientX, clientY) {
-  const hit = pick(clientX, clientY);
-  if (hit) return hit.point.clone();
+function settNdc(clientX, clientY) {
   const r = canvas.getBoundingClientRect();
   _ndc.set(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
+}
+
+// Der objektet skal lande: nærmeste treff av MODELLEN og ANNET MATERIELL,
+// ellers bakkeplanet. At annet materiell teller er det som gjør at en ny
+// stabel legger seg OPPÅ en som ligger der — ikke inni den. `unntatt` er
+// objektet som selv er i bevegelse (forhåndsvisningen eller det som dras);
+// uten unntaket ville det truffet seg selv og klatret til himmels.
+function pekPunkt(clientX, clientY, unntatt) {
+  const hit = pick(clientX, clientY);   // modellen (respekterer snitt)
+  settNdc(clientX, clientY);
   raycaster.setFromCamera(_ndc, camera);
+  const kandidater = materiellGroup.children.filter(o => o !== unntatt);
+  // navnelappene (sprites) er ingen flate å legge noe på
+  const mHits = raycaster.intersectObjects(kandidater, true).filter(h => !h.object.isSprite);
+  let best = hit;
+  if (mHits.length && (!best || mHits[0].distance < best.distance)) best = mHits[0];
+  if (best) return best.point.clone();
   _plan.set(new THREE.Vector3(0, 1, 0), -bakkeY());
+  raycaster.setFromCamera(_ndc, camera);
   return raycaster.ray.intersectPlane(_plan, _punkt) ? _punkt.clone() : null;
 }
 
 // Peker mot et materiell-objekt? Raycast mot materiellGroup — pick() i
 // elements.js ser bare modellen, med vilje.
 function pekMateriell(clientX, clientY) {
-  const r = canvas.getBoundingClientRect();
-  _ndc.set(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
+  settNdc(clientX, clientY);
   raycaster.setFromCamera(_ndc, camera);
   const treff = raycaster.intersectObjects(materiellGroup.children, true);
   for (const h of treff) {
@@ -78,19 +123,20 @@ function leggTil(p, medAngre) {
 }
 
 function fjern(id, medAngre) {
-  const p = (S.materiell || []).find(x => x.id === id);
+  const p = hentP(id);
   if (!p) return;
   S.materiell = S.materiell.filter(x => x.id !== id);
-  if (valgtId === id) velg(null);
+  if (valgtId === id) valgtId = null;
   tegnMateriell();
   meldEndret();
+  if ($("materiellPanel") && $("materiellPanel").classList.contains("open")) tegnPanel();
   if (medAngre) post("Materiell slettet",
     () => { leggTil(p, false); },
     () => { fjern(id, false); });
 }
 
 function oppdater(id, felter, angreTekst) {
-  const p = (S.materiell || []).find(x => x.id === id);
+  const p = hentP(id);
   if (!p) return;
   const før = Object.assign({}, p);
   Object.assign(p, felter);
@@ -104,45 +150,118 @@ function oppdater(id, felter, angreTekst) {
   }
 }
 
-// ---------- Modus, valg og kontrollinje ----------
-function iModus() { return S.mode === "materiell"; }
+// ---------- 🔵 Valg og markeringseffekt ----------
+// Samme blå som elementvalget i modellen (selMat i elements.js), så «valgt»
+// ser likt ut uansett hva man har trykket på.
+const SEL_FARGE = 0x3b82f6, SEL_EMISSIVE = 0x1d4ed8;
+
+function settValgEffekt(gruppe, paa) {
+  gruppe.traverse(m => {
+    if (m.isSprite || !m.isMesh || !m.material) return;
+    if (paa) {
+      if (!m.userData.matOrig) m.userData.matOrig = m.material;
+      if (!m.userData.matSel) {
+        const s = m.userData.matOrig.clone();
+        s.color.set(SEL_FARGE);
+        if (s.emissive) s.emissive.set(SEL_EMISSIVE);
+        m.userData.matSel = s;
+      }
+      m.material = m.userData.matSel;
+    } else if (m.userData.matOrig) {
+      m.material = m.userData.matOrig;
+    }
+  });
+}
+
+function oppdaterValgEffekt() {
+  materiellGroup.children.forEach(o => settValgEffekt(o, o.userData.materiellId === valgtId));
+}
 
 function velg(id) {
   valgtId = id;
-  if (S.materiellModeBarTegn) S.materiellModeBarTegn();
+  oppdaterValgEffekt();
+  oppdaterValgBar();
+  if (S.materiellModeBarTegn && S.mode === "materiell") S.materiellModeBarTegn();
 }
 
-// modes.js kaller denne når S.mode === "materiell" — den eier innholdet i
-// kontrollinja nederst (samme flate som måle- og koteverktøyet bruker).
+// tegnMateriell() bygger objektene på nytt — effekten og knapperaden må på igjen
+S.etterTegnMateriell = () => { oppdaterValgEffekt(); oppdaterValgBar(); };
+
+// ---------- Knapperaden for det valgte objektet ----------
+// Egen flytende rad (ikke modeBar): den skal virke i ALLE moduser, også når
+// man bare klikker på et objekt uten å ha materiell-verktøyet åpent.
+function valgBarEl() {
+  let el = $("matValgBar");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "matValgBar";
+    el.style.cssText = "position:fixed;left:50%;transform:translateX(-50%);bottom:64px;" +
+      "z-index:40;display:none;gap:6px;align-items:center;background:var(--panel);" +
+      "border:1px solid var(--border);border-radius:10px;padding:6px 10px;box-shadow:0 4px 18px rgba(0,0,0,.35)";
+    document.body.appendChild(el);
+  }
+  return el;
+}
+
+function oppdaterValgBar() {
+  const el = valgBarEl();
+  const p = valgtId ? hentP(valgtId) : null;
+  if (!p || p.skjult) { el.style.display = "none"; el.innerHTML = ""; return; }
+  el.style.display = "flex";
+  el.innerHTML =
+    '<span style="font-size:12px;font-weight:600;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
+    '<span style="display:inline-block;width:9px;height:9px;border-radius:3px;background:' + esc(p.farge) + ';margin-right:6px"></span>' +
+    esc(p.navn || t(MALTYPER[p.maltype].label)) + (p.antall > 1 ? " ×" + p.antall : "") + "</span>" +
+    '<button id="mvRotV" class="btn" title="' + t("Roter 15° mot venstre") + '" style="padding:3px 8px">⟲</button>' +
+    '<button id="mvRotH" class="btn" title="' + t("Roter 15° mot høyre") + '" style="padding:3px 8px">⟳</button>' +
+    '<button id="mvSkjul" class="btn" title="' + t("Skjul/vis") + '" style="padding:3px 8px">' + ikon("skjul") + "</button>" +
+    '<button id="mvSlett" class="btn" title="' + t("Slett") + '" style="padding:3px 8px">' + ikon("slett") + "</button>" +
+    '<button id="mvLukk" class="btn" title="' + t("Ferdig") + '" style="padding:3px 8px">' + t("Ferdig") + "</button>";
+  $("mvRotV").onclick = () => { const q = hentP(valgtId); if (q) oppdater(q.id, { rot: q.rot + ROT_STEG }, "Materiell rotert"); };
+  $("mvRotH").onclick = () => { const q = hentP(valgtId); if (q) oppdater(q.id, { rot: q.rot - ROT_STEG }, "Materiell rotert"); };
+  $("mvSkjul").onclick = () => {
+    const q = hentP(valgtId); if (!q) return;
+    oppdater(q.id, { skjult: true }, "Materiell skjult");
+    velg(null);
+    if ($("materiellPanel").classList.contains("open")) tegnPanel();
+  };
+  $("mvSlett").onclick = () => { const q = hentP(valgtId); if (q) fjern(q.id, true); velg(null); };
+  $("mvLukk").onclick = () => velg(null);
+}
+
+// ---------- Modus og kontrollinja ----------
+function iModus() { return S.mode === "materiell"; }
+
+// modes.js kaller denne når S.mode === "materiell". Valgt-objekt-knappene bor
+// i den flytende raden (over) — kontrollinja har hintet og Ferdig-knappen.
 S.materiellModeBar = (bar) => {
   S.materiellModeBarTegn = () => {
-    const p = valgtId ? (S.materiell || []).find(x => x.id === valgtId) : null;
-    if (plasserer) {
-      bar.innerHTML = '<span class="lbl">' + t("Trykk der materiellet skal ligge — Esc avbryter") + '</span>';
-    } else if (p) {
-      bar.innerHTML = '<span class="lbl">' + esc(p.navn || t(MALTYPER[p.maltype].label)) + '</span>' +
-        '<button id="mbRotV" title="' + t("Roter 15° mot venstre") + '">⟲ 15°</button>' +
-        '<button id="mbRotH" title="' + t("Roter 15° mot høyre") + '">⟳ 15°</button>' +
-        '<button id="mbSlett">' + t("Slett") + '</button>' +
-        '<span class="lbl" style="opacity:.7">' + t("Dra objektet for å flytte det") + '</span>';
-      $("mbRotV").onclick = () => oppdater(p.id, { rot: p.rot + ROT_STEG }, "Materiell rotert");
-      $("mbRotH").onclick = () => oppdater(p.id, { rot: p.rot - ROT_STEG }, "Materiell rotert");
-      $("mbSlett").onclick = () => fjern(p.id, true);
-    } else {
-      bar.innerHTML = '<span class="lbl">' + t("Trykk på et materiell-objekt for å flytte, rotere eller slette det") + '</span>';
-    }
+    const hint = plasserer
+      ? t("Trykk der materiellet skal ligge — Esc avbryter")
+      : t("Trykk på et materiell-objekt for å flytte, rotere eller slette det");
+    bar.innerHTML = '<span class="lbl">' + hint + '</span>' +
+      '<button id="mbMatFerdig">' + t("Ferdig") + "</button>";
+    $("mbMatFerdig").onclick = () => {
+      settMateriellModus(false);
+      $("materiellPanel").classList.remove("open");
+    };
     bar.classList.add("open");
   };
   S.materiellModeBarTegn();
 };
 
-// ---------- Plassering og flytting ----------
-// Lytterne ligger på window i FANGSTFASEN: da kan de stoppe hendelsen før
-// kameraets og main.js sine lyttere på canvas rekker å se den. Det er slik
-// draging av et objekt lar seg gjøre uten at kameraet roterer samtidig.
+function settMateriellModus(paa) {
+  S.mode = paa ? "materiell" : null;
+  const b = $("btnMateriell");
+  if (b) b.classList.toggle("active", paa);
+  if (!paa) avbrytPlassering();
+  if (S.oppdaterModeBar) S.oppdaterModeBar();
+}
+
+// ---------- Plassering ----------
 function startPlassering(mal) {
   avbrytPlassering();
-  const p = vaskMateriell(Object.assign({ id: nyId() }, mal));
+  const p = vaskMateriell(Object.assign({ id: nyId() }, mal, { skjult: false }));
   if (!p) return;
   const gruppe = byggMateriellObjekt(p);
   gruppe.position.set(0, bakkeY(), 0);
@@ -158,41 +277,50 @@ function avbrytPlassering() {
   materiellGroup.remove(plasserer.gruppe);
   plasserer.gruppe.traverse(m => { if (m.geometry) m.geometry.dispose(); });
   plasserer = null;
-  if (S.materiellModeBarTegn) S.materiellModeBarTegn();
+  if (S.materiellModeBarTegn && iModus()) S.materiellModeBarTegn();
 }
 
 function overCanvas(e) { return e.target === canvas; }
 
+// ---------- Pekerne (window, fangstfase) ----------
+window.addEventListener("pointerdown", (e) => {
+  nedPos = { x: e.clientX, y: e.clientY };
+  if (!overCanvas(e) || e.button !== 0) return;
+  if (plasserer) { e.stopPropagation(); return; }   // plasseringsklikket tas på pointerup
+  // Drag av et objekt starter KUN i materiell-modus — ellers eier kameraet
+  // draget, og et klikk (pointerup under 8 px) velger objektet uansett modus.
+  if (iModus()) {
+    const o = pekMateriell(e.clientX, e.clientY);
+    if (o) {
+      e.stopPropagation();   // kameraet skal ikke rotere mens objektet dras
+      velg(o.userData.materiellId);
+      drar = { id: o.userData.materiellId, fra: o.position.clone() };
+    }
+  }
+}, true);
+
 window.addEventListener("pointermove", (e) => {
   if (plasserer) {
-    const pt = pekPunkt(e.clientX, e.clientY);
+    const pt = pekPunkt(e.clientX, e.clientY, plasserer.gruppe);
     if (pt) plasserer.gruppe.position.copy(pt);
     return;
   }
   if (drar) {
     e.stopPropagation();
-    const pt = pekPunkt(e.clientX, e.clientY);
     const o = finnObjekt(drar.id);
+    const pt = o ? pekPunkt(e.clientX, e.clientY, o) : null;
     if (pt && o) o.position.set(pt.x, pt.y, pt.z);
   }
 }, true);
 
-window.addEventListener("pointerdown", (e) => {
-  if (!iModus() || e.button !== 0 || !overCanvas(e)) return;
-  if (plasserer) { e.stopPropagation(); return; }   // selve plasseringen skjer på pointerup
-  const o = pekMateriell(e.clientX, e.clientY);
-  if (o) {
-    e.stopPropagation();   // kameraet skal ikke rotere mens objektet dras
-    velg(o.userData.materiellId);
-    drar = { id: o.userData.materiellId, fra: o.position.clone() };
-  }
-}, true);
-
 window.addEventListener("pointerup", (e) => {
-  if (!iModus() || !overCanvas(e)) return;
-  if (plasserer && e.button === 0) {
-    e.stopPropagation();
-    const pt = pekPunkt(e.clientX, e.clientY);
+  const ned = nedPos;
+  nedPos = null;
+  if (!overCanvas(e) || e.button !== 0) return;
+
+  if (plasserer) {
+    e.stopPropagation(); slippKamera(e);
+    const pt = pekPunkt(e.clientX, e.clientY, plasserer.gruppe);
     if (!pt) return;
     const p = Object.assign({}, plasserer.p, { x: pt.x, y: pt.y, z: pt.z });
     avbrytPlassering();
@@ -200,8 +328,9 @@ window.addEventListener("pointerup", (e) => {
     velg(p.id);
     return;
   }
+
   if (drar) {
-    e.stopPropagation();
+    e.stopPropagation(); slippKamera(e);
     const o = finnObjekt(drar.id);
     const fra = drar.fra, id = drar.id;
     drar = null;
@@ -211,33 +340,37 @@ window.addEventListener("pointerup", (e) => {
       post("Materiell flyttet",
         () => oppdater(id, { x: fra.x, y: fra.y, z: fra.z }, null),
         () => oppdater(id, { x: til.x, y: til.y, z: til.z }, null));
-    } else if (o) {
-      // et rent klikk (ingen flytting) = bare velg, tegn linja på nytt
-      velg(id);
     }
+    velg(id);
     return;
   }
-  // klikk i modus utenfor objektene: velg bort, og stopp elementvalget i main.js
-  if (e.button === 0) {
-    e.stopPropagation();
-    velg(null);
+
+  // Bare et KLIKK velger — et kameradrag skal aldri røres, og aldri stoppes.
+  const klikk = ned && Math.hypot(e.clientX - ned.x, e.clientY - ned.y) <= KLIKK_PX;
+  if (!klikk) return;
+  const o = pekMateriell(e.clientX, e.clientY);
+  if (o) {
+    // valg virker i ALLE moduser — også uten materiell-verktøyet åpent
+    e.stopPropagation(); slippKamera(e);
+    velg(o.userData.materiellId);
+    return;
   }
+  // klikk utenfor: velg bort — men IKKE stopp hendelsen, main.js skal få
+  // gjøre sitt (velge element, lukke paneler). Å svelge den her var det som
+  // låste kameraet i første utgave.
+  if (valgtId) velg(null);
 }, true);
 
+window.addEventListener("pointercancel", () => { drar = null; nedPos = null; }, true);
+
 window.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && plasserer) avbrytPlassering();
+  if (e.key !== "Escape") return;
+  if (plasserer) { avbrytPlassering(); return; }
+  if (valgtId) { velg(null); return; }
+  if (iModus()) settMateriellModus(false);
 });
 
-// ---------- Modus av/på ----------
-function settMateriellModus(paa) {
-  S.mode = paa ? "materiell" : null;
-  const b = $("btnMateriell");
-  if (b) b.classList.toggle("active", paa);
-  if (!paa) { avbrytPlassering(); velg(null); }
-  // updateModeBar ligger i modes.js og kalles via kroken — den kjenner modusen
-  if (S.oppdaterModeBar) S.oppdaterModeBar();
-}
-
+// ---------- Verktøyknappen ----------
 på("btnMateriell", "click", () => {
   const panel = $("materiellPanel");
   if (panel.classList.contains("open")) {
@@ -266,12 +399,14 @@ function tegnPanel() {
     html += '<p style="color:var(--muted);font-size:12px">' + t("Ingen materiell-objekter plassert ennå.") + "</p>";
   } else {
     html += liste.map(p =>
-      '<div class="qty-row"><div class="n">' +
+      '<div class="qty-row"' + (p.skjult ? ' style="opacity:.55"' : "") + '><div class="n" data-mat-velg="' + esc(p.id) + '" style="cursor:pointer">' +
       '<span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:' + esc(p.farge) + ';margin-right:6px"></span>' +
       esc(p.navn || t(MALTYPER[p.maltype].label)) +
       ' <span style="color:var(--muted);font-size:11px">' + esc(t(MALTYPER[p.maltype].label)) +
       " · " + p.lengde + "×" + p.bredde + " mm" + (p.antall > 1 ? " · ×" + p.antall : "") + "</span></div>" +
-      '<div class="c"><button data-mat-slett="' + esc(p.id) + '" title="' + t("Slett") + '" style="padding:3px 8px">' + ikon("slett") + "</button></div></div>"
+      '<div class="c">' +
+      '<button data-mat-skjul="' + esc(p.id) + '" title="' + t("Skjul/vis") + '" style="padding:3px 8px">' + ikon(p.skjult ? "skjul" : "vis") + "</button>" +
+      '<button data-mat-slett="' + esc(p.id) + '" title="' + t("Slett") + '" style="padding:3px 8px">' + ikon("slett") + "</button></div></div>"
     ).join("");
   }
 
@@ -281,8 +416,17 @@ function tegnPanel() {
 
   body.innerHTML = html;
   $("matNytt").onclick = () => tegnSkjema();
+  body.querySelectorAll("[data-mat-velg]").forEach(d =>
+    d.onclick = () => velg(d.dataset.matVelg));
+  body.querySelectorAll("button[data-mat-skjul]").forEach(b =>
+    b.onclick = () => {
+      const p = hentP(b.dataset.matSkjul);
+      if (!p) return;
+      oppdater(p.id, { skjult: !p.skjult }, p.skjult ? "Materiell vist" : "Materiell skjult");
+      tegnPanel();
+    });
   body.querySelectorAll("button[data-mat-slett]").forEach(b =>
-    b.onclick = () => { fjern(b.dataset.matSlett, true); tegnPanel(); });
+    b.onclick = () => { fjern(b.dataset.matSlett, true); });
   tegnBibliotek();
 }
 
@@ -381,7 +525,7 @@ async function lagreIBibliotek(p) {
   const eksisterende = (await hentBibliotek()) || [];
   // samme navn + type erstatter den gamle malen i stedet for å doble den
   const uten = eksisterende.filter(x => !(x.navn === p.navn && x.maltype === p.maltype));
-  const mal = Object.assign({}, p, { x: 0, y: 0, z: 0, rot: 0 });
+  const mal = Object.assign({}, p, { x: 0, y: 0, z: 0, rot: 0, skjult: false });
   const sti = (bibMappe() + "/" + BIB_FIL).split("/").map(encodeURIComponent).join("/");
   const r = await fetch(GRAPH + "/sites/" + S.spSiteId + "/drive/root:/" + sti + ":/content", {
     method: "PUT",
