@@ -18,25 +18,34 @@
 // 3. EN TOM GRUPPE SKJULES. I bygg.html er Rapport, Lett kopi og Sammenlign
 //    skjult i lettmodus, og Byggeplass finnes ikke. En gruppeknapp som åpner
 //    en tom rad er verre enn en rotete linje: den ser ut som en feil.
-import { $, S, ikon, writePrefs } from "./state.js";
+import { $, S, esc, ikon, writePrefs } from "./state.js";
 import { t } from "./i18n.js";
+import { LETT } from "./lett.js";
 
 // Rekkefølgen her er rekkefølgen i toppbaren.
+// `navn` er også i18n-nøkkelen. «Info» het bare det fram til 18.08.2026 — det
+// ble lest som «informasjon om verktøyet», altså hjelp, av den som ikke visste
+// bedre. «Bygg Info» sier hva det faktisk er: informasjon om BYGGET.
+// `hjelp` er forklaringsteksten som vises når man holder musepekeren over.
 export const GRUPPER = [
   { id: "mal",      navn: "Mål",              ikonNavn: "maal",
+    hjelp: "Måleverktøy: avstand, kote og aksesystem",
     knapper: ["btnMeasure", "btnKote", "btnAxes"] },
-  { id: "info",     navn: "Info",             ikonNavn: "sok",
+  { id: "info",     navn: "Bygg Info",        ikonNavn: "sok",
+    hjelp: "Informasjon om bygget: markeringer, mengder, søk og sammenligning",
     knapper: ["btnMarker", "btnQty", "btnSearch", "btnCompare"] },
   { id: "utseende", navn: "Utseende",         ikonNavn: "utseende",
+    hjelp: "Snitt, etasjer, gjennomsiktig og farger",
     knapper: ["btnClip", "btnStorey", "btnGhost", "btnColors"] },
   { id: "bygg",     navn: "Storm-Byggeplass", ikonNavn: "lastned",
+    hjelp: "Ut til byggeplassen: QR-lenke, rapport, lett kopi og deling",
     knapper: ["btnByggeplass", "btnRapport", "btnSaveLite", "btnShare", "btnHistorikk"] }
 ];
 
 // Knapper som står uansett hvilken gruppe som er valgt. Angre, Gjenopprett og
 // Vis alle styres allerede av JS med inline display — de skal ikke også styres
 // av grupperingen, ellers slåss to mekanismer om samme knapp.
-export const ALLTID = ["btnHjul", "btnSettings", "btnHjelp", "btnAngre", "btnGjenopprett", "btnShowAll"];
+export const ALLTID = ["btnHjul", "btnSettings", "btnAngre", "btnGjenopprett", "btnShowAll"];
 
 export const STANDARD_GRUPPE = "info";
 
@@ -117,9 +126,13 @@ export function byggGruppeknapper(medInnhold) {
   if (!topp || $("verktoygrupper")) return;
   const boks = document.createElement("span");
   boks.id = "verktoygrupper";
+  // Forklaringsteksten legges bare på i kontorutgaven. En title vises når man
+  // holder MUSEPEKEREN over — den finnes ikke på en telefon, og i bygg.html
+  // ville den vært ren vekt. Der er det hjelpekortene som forklarer.
   boks.innerHTML = GRUPPER.map(g =>
     '<button data-velg="' + g.id + '"' +
-    (medInnhold.includes(g.id) ? "" : ' style="display:none"') + '>' +
+    (medInnhold.includes(g.id) ? "" : ' style="display:none"') +
+    (LETT || !g.hjelp ? "" : ' title="' + esc(t(g.hjelp)) + '" data-i18n-title') + '>' +
     ikon(g.ikonNavn) + '<span class="btn-t" data-i18n>' + g.navn + '</span></button>').join("");
   // Etter «Lav kvalitet», før markeringstelleren — der Emil ba om dem.
   const etter = $("btnLight") || $("btnLib");

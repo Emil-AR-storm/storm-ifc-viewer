@@ -170,6 +170,9 @@ export async function pickFile() {
 
 export function afterLoad() {
   $("splash").style.display = "none";
+  // Toppbarens modell-knapper (gruppene, markeringstelleren, Vis hele modellen)
+  // vises først nå. Se css/storm.css — de gjør ingenting uten en modell.
+  document.body.classList.add("har-modell");
   $("hint").style.display = "block";
   $("toolbar").classList.add("open");
   loadComments();
