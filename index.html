@@ -339,11 +339,14 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
 // Fanger feil og viser dem på skjermen (nyttig på mobil uten konsoll)
 window.addEventListener("error", function(e) {
   var s = document.getElementById("status");
-  if (s) s.textContent = "Feil: " + (e.message || "ukjent");
+  var hvor = e.filename ? " [" + e.filename.split("/").pop() + ":" + e.lineno + "]" : "";
+  if (s) s.textContent = "Feil: " + (e.message || "ukjent") + hvor;
 });
 window.addEventListener("unhandledrejection", function(e) {
   var s = document.getElementById("status");
-  if (s) s.textContent = "Feil: " + (e.reason && e.reason.message ? e.reason.message : e.reason);
+  var m = e.reason && e.reason.stack && /([A-Za-z0-9_.-]+\.m?js:\d+)/.exec(e.reason.stack);
+  if (s) s.textContent = "Feil: " + (e.reason && e.reason.message ? e.reason.message : e.reason) +
+    (m ? " [" + m[1] + "]" : "");
 });
 </script>
 <!-- integrity: nettleseren nekter å kjøre fila hvis innholdet er endret på CDN-en.
