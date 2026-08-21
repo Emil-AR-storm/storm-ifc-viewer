@@ -430,7 +430,17 @@ export function stabelOffset(p, i) {
     return [rad * lag, (kol - (STANG_PER_RAD - 1) / 2) * lag];
   }
   const per = STABEL_PER_BUNKE[p.maltype] || 10;
-  return [(i % per) * lag, Math.floor(i / per) * (p.bredde + BUNKE_KLARING)];
+  return [(i % per) * lag, Math.floor(i / per) * (bunkeDybdeMm(p) + BUNKE_KLARING)];
+}
+
+// Hvor dyp er ÉN bunke i sideretningen (z)? For de fleste formene er det
+// bredden — men U-bøylene ligger med BENA langs z (lengden), så der er det
+// lengden. Feil dybde ga Emils bilde 21.08: endekrok-bunkene inni hverandre
+// (lengde 800 > bredde 200) og U-bøylene langt fra hverandre.
+export function bunkeDybdeMm(p) {
+  if (p.maltype === "armering" && (p.armType === "ubojle" || p.armType === "ukrok"))
+    return p.lengde;
+  return p.bredde;
 }
 
 // Hele det plasserte objektet: hver enhet tegnes for seg etter
@@ -458,7 +468,7 @@ export function byggMateriellObjekt(p) {
     const per = p.maltype === "trp" ? p.antall : (STABEL_PER_BUNKE[p.maltype] || 10);
     for (let b = 0; b < Math.ceil(p.antall / per); b++) {
       const iBunken = Math.min(per, p.antall - b * per);
-      const side = mmTilScene(b * (p.bredde + BUNKE_KLARING));
+      const side = mmTilScene(b * (bunkeDybdeMm(p) + BUNKE_KLARING));
       const sokkelMm = (iBunken - 1) * lag;
       if (sokkelMm > 0) {
         const sokkel = boks(p.lengde, sokkelMm, p.bredde, morkere(p.farge));
