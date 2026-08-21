@@ -216,6 +216,7 @@ function oppdaterValgBar() {
     '<button id="mvRotH" class="btn" title="' + t("Roter 15° mot høyre") + '" style="padding:3px 8px">⟳</button>' +
     '<button id="mvSkjul" class="btn" title="' + t("Skjul/vis") + '" style="padding:3px 8px">' + ikon("skjul") + "</button>" +
     '<button id="mvSlett" class="btn" title="' + t("Slett") + '" style="padding:3px 8px">' + ikon("slett") + "</button>" +
+    '<button id="mvRediger" class="btn" title="' + t("Rediger") + '" style="padding:3px 8px">' + ikon("rediger") + "</button>" +
     '<button id="mvLukk" class="btn" title="' + t("Ferdig") + '" style="padding:3px 8px">' + t("Ferdig") + "</button>";
   $("mvRotV").onclick = () => { const q = hentP(valgtId); if (q) oppdater(q.id, { rot: q.rot + ROT_STEG }, "Materiell rotert"); };
   $("mvRotH").onclick = () => { const q = hentP(valgtId); if (q) oppdater(q.id, { rot: q.rot - ROT_STEG }, "Materiell rotert"); };
@@ -226,6 +227,14 @@ function oppdaterValgBar() {
     if ($("materiellPanel").classList.contains("open")) tegnPanel();
   };
   $("mvSlett").onclick = () => { const q = hentP(valgtId); if (q) fjern(q.id, true); velg(null); };
+  // Rediger: åpner skjemaet forhåndsutfylt, så en skrivefeil i dimensjoner,
+  // navn eller farge rettes uten å legge inn objektet på nytt (Emil 21.08).
+  $("mvRediger").onclick = () => {
+    const q = hentP(valgtId);
+    if (!q) return;
+    apnePanel("materiellPanel");
+    tegnSkjema(q, q.id);
+  };
   $("mvLukk").onclick = () => velg(null);
 }
 
@@ -430,8 +439,10 @@ function tegnPanel() {
   tegnBibliotek();
 }
 
-// ---------- Skjemaet: nytt objekt ----------
-function tegnSkjema(mal) {
+// ---------- Skjemaet: nytt objekt ELLER redigering av et plassert ----------
+// Med redigerId utfylt er skjemaet forhåndsutfylt fra det plasserte objektet,
+// og lagring endrer det på stedet (posisjon/rotasjon/skjult beholdes).
+function tegnSkjema(mal, redigerId) {
   const body = $("materiellBody");
   const m = mal || {};
   const type = MALTYPER[m.maltype] ? m.maltype : "trp";
@@ -450,7 +461,7 @@ function tegnSkjema(mal) {
     return ut;
   };
   body.innerHTML =
-    '<h4 style="margin:0 0 6px">' + t("Nytt materiell") + "</h4>" +
+    '<h4 style="margin:0 0 6px">' + t(redigerId ? "Rediger materiell" : "Nytt materiell") + "</h4>" +
     '<label>' + t("Type") + '<select id="matType">' +
     Object.keys(MALTYPER).map(k => '<option value="' + k + '"' + (k === type ? " selected" : "") + ">" + esc(t(MALTYPER[k].label)) + "</option>").join("") +
     "</select></label>" +
@@ -459,7 +470,7 @@ function tegnSkjema(mal) {
     '<label>' + t("Farge") + '<input type="color" id="matFarge" value="' + esc(m.farge || MALTYPER[type].standard.farge) + '"></label>' +
     '<label>' + t("Antall i stabel") + '<input type="number" id="matAntall" min="1" max="500" step="1" value="' + (m.antall || 1) + '"></label>' +
     '<div class="prop-actions" style="margin-top:10px">' +
-    '<button id="matPlasser" class="primary">' + t("Legg i modellen") + "</button>" +
+    '<button id="matPlasser" class="primary">' + t(redigerId ? "Lagre endringer" : "Legg i modellen") + "</button>" +
     '<button id="matLagre">' + t("Lagre i bibliotek") + "</button>" +
     '<button id="matAvbryt">' + t("Avbryt") + "</button></div>";
 
@@ -478,7 +489,21 @@ function tegnSkjema(mal) {
     tykkelse: $("matT") ? $("matT").value : 0,
     antall: $("matAntall").value
   });
-  $("matPlasser").onclick = () => { const p = lesSkjema(); if (p) startPlassering(p); };
+  $("matPlasser").onclick = () => {
+    const p = lesSkjema();
+    if (!p) return;
+    if (redigerId && hentP(redigerId)) {
+      // bare de redigerbare feltene — posisjon, rotasjon og skjult beholdes
+      oppdater(redigerId, {
+        maltype: p.maltype, navn: p.navn, farge: p.farge,
+        lengde: p.lengde, bredde: p.bredde, tykkelse: p.tykkelse, antall: p.antall
+      }, "Materiell endret");
+      tegnPanel();
+      velg(redigerId);
+      return;
+    }
+    startPlassering(p);
+  };
   $("matLagre").onclick = async () => {
     const p = lesSkjema();
     if (!p) return;
