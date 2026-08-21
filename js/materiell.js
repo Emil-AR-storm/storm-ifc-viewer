@@ -25,8 +25,9 @@ import { camera, canvas, grid, raycaster } from "./scene.js";
 import { pick } from "./elements.js";
 import { GRAPH, SP, authHeaders, graphGet, spTokenSilent } from "./sharepoint.js";
 import {
-  MALTYPER, byggMateriellObjekt, finnObjekt, lagreMateriellLokalt,
-  materiellForEksport, materiellGroup, tegnMateriell, vaskMateriell
+  ARM_DIM, ARM_TYPER, MALTYPER, byggMateriellObjekt, finnObjekt,
+  lagreMateriellLokalt, materiellForEksport, materiellGroup,
+  materiellTypeLabel, tegnMateriell, vaskMateriell
 } from "./materiell-vis.js";
 
 // ---------- Tilstand ----------
@@ -211,7 +212,7 @@ function oppdaterValgBar() {
   el.innerHTML =
     '<span style="font-size:12px;font-weight:600;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
     '<span style="display:inline-block;width:9px;height:9px;border-radius:3px;background:' + esc(p.farge) + ';margin-right:6px"></span>' +
-    esc(p.navn || t(MALTYPER[p.maltype].label)) + (p.antall > 1 ? " ×" + p.antall : "") + "</span>" +
+    esc(p.navn || materiellTypeLabel(p)) + (p.antall > 1 ? " ×" + p.antall : "") + "</span>" +
     '<button id="mvRotV" class="btn" title="' + t("Roter 15° mot venstre") + '" style="padding:3px 8px">⟲</button>' +
     '<button id="mvRotH" class="btn" title="' + t("Roter 15° mot høyre") + '" style="padding:3px 8px">⟳</button>' +
     '<button id="mvSkjul" class="btn" title="' + t("Skjul/vis") + '" style="padding:3px 8px">' + ikon("skjul") + "</button>" +
@@ -410,8 +411,8 @@ function tegnPanel() {
     html += liste.map(p =>
       '<div class="qty-row"' + (p.skjult ? ' style="opacity:.55"' : "") + '><div class="n" data-mat-velg="' + esc(p.id) + '" style="cursor:pointer">' +
       '<span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:' + esc(p.farge) + ';margin-right:6px"></span>' +
-      esc(p.navn || t(MALTYPER[p.maltype].label)) +
-      ' <span style="color:var(--muted);font-size:11px">' + esc(t(MALTYPER[p.maltype].label)) +
+      esc(p.navn || materiellTypeLabel(p)) +
+      ' <span style="color:var(--muted);font-size:11px">' + esc(materiellTypeLabel(p)) +
       " · " + p.lengde + "×" + p.bredde + " mm" + (p.antall > 1 ? " · ×" + p.antall : "") + "</span></div>" +
       '<div class="c">' +
       '<button data-mat-skjul="' + esc(p.id) + '" title="' + t("Skjul/vis") + '" style="padding:3px 8px">' + ikon(p.skjult ? "skjul" : "vis") + "</button>" +
@@ -450,6 +451,17 @@ function tegnSkjema(mal, redigerId) {
     const M = MALTYPER[typ];
     const std = Object.assign({}, M.standard, m.maltype === typ ? m : {});
     let ut = "";
+    if (typ === "armering") {
+      // de to underkategoriene: hva slags armering, og Ø-dimensjonen
+      const valgtArm = ARM_TYPER[std.armType] ? std.armType : "nett";
+      const valgtDim = ARM_DIM.includes(Number(std.diameter)) ? Number(std.diameter) : 12;
+      ut += '<label>' + t("Armeringstype") + '<select id="matArmType">' +
+        Object.keys(ARM_TYPER).map(k => '<option value="' + k + '"' + (k === valgtArm ? " selected" : "") + ">" +
+          esc(t(ARM_TYPER[k].label)) + "</option>").join("") + "</select></label>" +
+        '<label>' + t("Dimensjon") + '<select id="matDiameter">' +
+        ARM_DIM.map(dm => '<option value="' + dm + '"' + (dm === valgtDim ? " selected" : "") + ">Ø" + dm + "</option>").join("") +
+        "</select></label>";
+    }
     if (!M.fast) {
       ut += '<label>' + t("Lengde (mm)") + '<input type="number" id="matL" min="100" max="30000" step="50" value="' + (std.lengde || M.standard.lengde) + '"></label>' +
         '<label>' + t("Bredde (mm)") + '<input type="number" id="matB" min="100" max="30000" step="50" value="' + (std.bredde || M.standard.bredde) + '"></label>';
@@ -487,6 +499,8 @@ function tegnSkjema(mal, redigerId) {
     lengde: $("matL") ? $("matL").value : 0,
     bredde: $("matB") ? $("matB").value : 0,
     tykkelse: $("matT") ? $("matT").value : 0,
+    armType: $("matArmType") ? $("matArmType").value : undefined,
+    diameter: $("matDiameter") ? $("matDiameter").value : undefined,
     antall: $("matAntall").value
   });
   $("matPlasser").onclick = () => {
@@ -496,7 +510,8 @@ function tegnSkjema(mal, redigerId) {
       // bare de redigerbare feltene — posisjon, rotasjon og skjult beholdes
       oppdater(redigerId, {
         maltype: p.maltype, navn: p.navn, farge: p.farge,
-        lengde: p.lengde, bredde: p.bredde, tykkelse: p.tykkelse, antall: p.antall
+        lengde: p.lengde, bredde: p.bredde, tykkelse: p.tykkelse, antall: p.antall,
+        armType: p.armType, diameter: p.diameter
       }, "Materiell endret");
       tegnPanel();
       velg(redigerId);
@@ -578,8 +593,8 @@ async function tegnBibliotek() {
   el.innerHTML = liste.map((p, i) =>
     '<div class="lib-item" data-mat-bib="' + i + '"><div class="n">' +
     '<span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:' + esc(p.farge) + ';margin-right:6px"></span>' +
-    esc(p.navn || t(MALTYPER[p.maltype].label)) + "</div>" +
-    '<div class="m">' + esc(t(MALTYPER[p.maltype].label)) + " · " + p.lengde + "×" + p.bredde + " mm" +
+    esc(p.navn || materiellTypeLabel(p)) + "</div>" +
+    '<div class="m">' + esc(materiellTypeLabel(p)) + " · " + p.lengde + "×" + p.bredde + " mm" +
     (p.antall > 1 ? " · ×" + p.antall : "") + "</div></div>").join("") +
     '<p style="color:var(--muted);font-size:11px;margin-top:6px">' + t("Trykk på en mal for å plassere den i modellen.") + "</p>";
   el.querySelectorAll("[data-mat-bib]").forEach(d =>
