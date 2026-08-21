@@ -294,6 +294,10 @@ function overCanvas(e) { return e.target === canvas; }
 
 // ---------- Pekerne (window, fangstfase) ----------
 window.addEventListener("pointerdown", (e) => {
+  // Shift er markeringsboksens og flervalgets tast (elements.js) — materiell
+  // holder fingrene av fatet, ellers valgte et shift-klikk BÅDE objektet og
+  // startet boksmodus (Emils funn 21.08).
+  if (e.shiftKey && !plasserer && !drar) return;
   nedPos = { x: e.clientX, y: e.clientY };
   if (!overCanvas(e) || e.button !== 0) return;
   if (plasserer) { e.stopPropagation(); return; }   // plasseringsklikket tas på pointerup
@@ -324,6 +328,7 @@ window.addEventListener("pointermove", (e) => {
 }, true);
 
 window.addEventListener("pointerup", (e) => {
+  if (e.shiftKey && !plasserer && !drar) return;   // shift = markeringsboksen sin
   const ned = nedPos;
   nedPos = null;
   if (!overCanvas(e) || e.button !== 0) return;
@@ -340,10 +345,14 @@ window.addEventListener("pointerup", (e) => {
   }
 
   if (drar) {
-    e.stopPropagation(); slippKamera(e);
-    const o = finnObjekt(drar.id);
+    // Les ut drag-tilstanden FØR slippKamera: det syntetiske pointercancel-et
+    // den sender treffer vår egen pointercancel-lytter synkront, og den
+    // nullstiller `drar` — å lese drar.id etterpå var null-feilen Emils
+    // feilviser pekte på 21.08 ([materiell.js:344]).
     const fra = drar.fra, id = drar.id;
     drar = null;
+    e.stopPropagation(); slippKamera(e);
+    const o = finnObjekt(id);
     if (o && o.position.distanceToSquared(fra) > 1e-12) {
       const til = o.position.clone();
       oppdater(id, { x: til.x, y: til.y, z: til.z }, null);
