@@ -190,7 +190,9 @@ export function modellStartverdier() {
     sharedOK: false,
 
     // 📦 materiell (vareleveranser) plassert i denne modellen
-    materiell: []
+    materiell: [],
+    // 🎯 objektgrupper (lagrede flervalg) i denne modellen
+    grupper: []
   };
 }
 
@@ -245,6 +247,10 @@ S.ryddMateriell = null;         // modellbytte: tøm gruppa
 S.materiellUtseendeRader = null;// display.js: egne rader i 🎨 Utseende
 S.materiellModeBar = null;      // modes.js: kontrollinja i materiell-modus
 S.etterTegnMateriell = null;    // materiell-vis.js → materiell.js: legg valg-effekten på igjen
+
+// 🎯 Objektgrupper. Krokene settes av grupper.js; null når modulen ikke er lastet.
+S.lastGrupper = null;           // ifc.js: les lagrede grupper når modellen åpnes
+S.settGrupperFraLett = null;    // markers.js: grupper fra Workerens JSON (bygg)
 
 // ▣ Kantlinjer. Krokene settes av outline.js; null når modulen ikke er lastet.
 S.ryddOutline = null;       // modellbytte: tøm lista over linjeobjekt
@@ -351,7 +357,7 @@ export function på(id, hendelse, fn, valg) {
 export const PANELER = [
   "propPanel", "commentPanel", "qtyPanel", "libPanel", "colorPanel",
   "axesPanel", "searchPanel", "comparePanel", "clipPanel", "sharePanel",
-  "materiellPanel"
+  "materiellPanel", "grupperPanel"
 ];
 
 // Lukker alle paneler – eventuelt med ett unntak (panelet som skal stå igjen)

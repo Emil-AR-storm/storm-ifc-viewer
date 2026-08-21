@@ -9,6 +9,7 @@ import { lagreOgSynk, leggTilImportertMarkering, vaskMarkering } from "./markers
 import { tegningNavn } from "./tegninger.js";
 import { GRAPH, authHeaders, spTokenSilent } from "./sharepoint.js";
 import { materiellForEksport } from "./materiell-vis.js";
+import { grupperForEksport } from "./grupper.js";
 import { FRISTER, TJENESTER } from "./config.js";
 
 // Adressen til Workeren står i config.js, og kan overstyres av oppsett.json i
@@ -139,7 +140,8 @@ if (btn) btn.addEventListener("click", async () => {
         markeringer: vaskede,
         // 📦 materiell-objektene følger med ut, vasket. Gamle lesere ser bort
         // fra feltet; nye tegner leveransene der de skal ligge.
-        materiell: materiellForEksport()
+        materiell: materiellForEksport(),
+        grupper: grupperForEksport()
       })
     });
 

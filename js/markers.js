@@ -100,6 +100,9 @@ async function lastLettMarkeringer() {
       // gammel fil (naken array) har det ikke — da blir lista tom, ikke feil.
       if (S.settMateriellFraLett)
         S.settMateriellFraLett(d && !Array.isArray(d) ? d.materiell : null);
+      // 🎯 Objektgruppene reiser i samme fil (grupper-feltet).
+      if (S.settGrupperFraLett)
+        S.settGrupperFraLett(d && !Array.isArray(d) ? d.grupper : null);
     }
   } catch (e) {
     feil = (e && e.tidsavbrudd)
