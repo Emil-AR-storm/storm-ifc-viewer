@@ -409,28 +409,69 @@ export function lagTykkelseMm(maltype, tykkelseMm) {
     : mal.stabling;
 }
 
-// Hele det plasserte objektet: stabelen tegnes som ETT LAG PER ENHET — en ×6
-// skal se ut som seks plater oppå hverandre, ikke som en kloss med lokk
-// (Emils bilder 19.08). Over MAKS_DETALJLAG lag: sokkel + detaljert topp.
+// ---------- Stablingslogikken (Emils regler 21.08.2026) ----------
+// · TRP takplate: som før — én stabel rett opp.
+// · Armeringsstang: HORISONTALT først — 10 stenger i bredden per rad, så ny
+//   rad oppå (16 stenger = 10 nederst + 6 oppå) → en bunt, ikke et tårn.
+// · Kassett og sandwichpanel: 10 i høyden, så NY BUNKE ved siden av.
+// · Øvrig armering (nett, bøyler, vinkler): 20 i høyden, så ny bunke ved siden.
+export const STABEL_PER_BUNKE = { kassett: 10, sandwich: 10, armering: 20 };
+export const STANG_PER_RAD = 10;
+export const BUNKE_KLARING = 50;   // mm luft mellom to bunker
+
+// Ren og testbar: [opp, sideveis] i mm for enhet nr i (0-basert).
+// «Sideveis» er på tvers av lengderetningen (z før rotasjon).
+export function stabelOffset(p, i) {
+  const lag = lagTykkelseMm(p.maltype, p.tykkelse);
+  if (p.maltype === "trp") return [i * lag, 0];
+  if (p.maltype === "armering" && p.armType === "stang") {
+    const rad = Math.floor(i / STANG_PER_RAD), kol = i % STANG_PER_RAD;
+    // senteravstand = Ø + klaringen; raden sentreres om objektets midtlinje
+    return [rad * lag, (kol - (STANG_PER_RAD - 1) / 2) * lag];
+  }
+  const per = STABEL_PER_BUNKE[p.maltype] || 10;
+  return [(i % per) * lag, Math.floor(i / per) * (p.bredde + BUNKE_KLARING)];
+}
+
+// Hele det plasserte objektet: hver enhet tegnes for seg etter
+// stablingsreglene over. Armeringsstenger tegnes ALLTID enkeltvis (billige
+// sylindre); for de andre typene gjelder MAKS_DETALJLAG — over grensa tegnes
+// hver bunke som én tett boks med en detaljert enhet på toppen, så et tastet
+// «500» aldri blir tusenvis av småbokser.
 export function byggMateriellObjekt(p) {
   const gruppe = new THREE.Group();
-  const mal = MALTYPER[p.maltype];
+  const stang = p.maltype === "armering" && p.armType === "stang";
   const lag = lagTykkelseMm(p.maltype, p.tykkelse);
-  let toppUnderkantMm = (p.antall - 1) * lag;
-  if (p.antall <= MAKS_DETALJLAG) {
+  let toppUnderkantMm = 0;
+  if (stang || p.antall <= MAKS_DETALJLAG) {
     for (let i = 0; i < p.antall; i++) {
+      const [opp, side] = stabelOffset(p, i);
       const enhet = byggEnhet(p);
-      enhet.position.y = mmTilScene(i * lag);
+      enhet.position.y = mmTilScene(opp);
+      enhet.position.z = mmTilScene(side);
       gruppe.add(enhet);
+      if (opp > toppUnderkantMm) toppUnderkantMm = opp;
     }
   } else {
-    const sokkelMm = toppUnderkantMm;
-    const sokkel = boks(p.lengde, sokkelMm, p.bredde, morkere(p.farge));
-    sokkel.position.y = mmTilScene(sokkelMm / 2);
-    gruppe.add(sokkel);
-    const enhet = byggEnhet(p);
-    enhet.position.y = mmTilScene(sokkelMm);
-    gruppe.add(enhet);
+    // TRP beholder én sammenhengende stabel (per = alle); bunke-typene får
+    // én boks per bunke — samme fotavtrykk som bunkene i detaljert visning.
+    const per = p.maltype === "trp" ? p.antall : (STABEL_PER_BUNKE[p.maltype] || 10);
+    for (let b = 0; b < Math.ceil(p.antall / per); b++) {
+      const iBunken = Math.min(per, p.antall - b * per);
+      const side = mmTilScene(b * (p.bredde + BUNKE_KLARING));
+      const sokkelMm = (iBunken - 1) * lag;
+      if (sokkelMm > 0) {
+        const sokkel = boks(p.lengde, sokkelMm, p.bredde, morkere(p.farge));
+        sokkel.position.y = mmTilScene(sokkelMm / 2);
+        sokkel.position.z = side;
+        gruppe.add(sokkel);
+      }
+      const enhet = byggEnhet(p);
+      enhet.position.y = mmTilScene(sokkelMm);
+      enhet.position.z = side;
+      gruppe.add(enhet);
+      if (sokkelMm > toppUnderkantMm) toppUnderkantMm = sokkelMm;
+    }
   }
   const sokkelMm = toppUnderkantMm;   // navnelappen står over øverste enhet
 
