@@ -99,6 +99,11 @@ export const KORT = [
     tekst: "Materiell (i Storm-Byggeplass) legger 3D-objekter av TRP-plater, sandwichpanel og forskalingskassetter inn i modellen. Sett mål, farge, navn og antall — navnet står på en lapp på objektet, og alt følger med ut til byggeplass-lenka."
   },
   {
+    hvor: "begge", ikonNavn: "fokus",
+    tittel: "Objektgrupper",
+    tekst: "Velg elementer med shift-klikk eller shift-dra, åpne Grupper (i Bygg Info) og lagre utvalget med navn. Trykk på en lagret gruppe for å hente den fram: kameraet flyr dit, og på kontoret skjules alt annet. Vis alle henter tilbake resten."
+  },
+  {
     hvor: "kontor", ikonNavn: "tegning",
     tittel: "Ta arbeidet ut igjen",
     tekst: "Rapport gir en PDF med bilder og status. BCF-eksport gir en fil som Solibri, Dalux og Revit kan åpne."
