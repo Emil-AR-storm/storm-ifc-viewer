@@ -40,6 +40,13 @@ export const MALTYPER = {
     stabling: 5,                 // mm klaring per panel i stabelen (+ tykkelsen)
     standard: { lengde: 6000, bredde: 1000, tykkelse: 150, farge: "#dfe5ec" }
   },
+  armering: {
+    label: "Armering",
+    fast: false,
+    tykkelse: 12,               // overstyres av vaskingen: Ø (nett: 2 × Ø)
+    stabling: 5,                // mm klaring per lag i bunten (+ tykkelsen)
+    standard: { lengde: 6000, bredde: 2150, farge: "#8a6d3b" }
+  },
   kassett: {
     label: "Kassett forskaling",
     fast: true,                  // fast mål: 600 mm × 3000 mm
@@ -52,6 +59,29 @@ export const MALTYPER = {
 };
 
 export const MATERIELL_MAKS_ANTALL = 500;
+
+// 🩻 Armering: de to underkategoriene. Ø-dimensjonene er stangdiameter i mm
+// (Ø12 = 12 mm tykk stang) — bare de handelsvanlige dimensjonene godtas.
+export const ARM_TYPER = {
+  nett:   { label: "Armeringsnett" },
+  stang:  { label: "Stang" },
+  ubojle: { label: "U-bøyle" },
+  ukrok:  { label: "U-bøyle med endekrok" },
+  bojle:  { label: "Armeringsbøyle" },
+  vinkel: { label: "90 graders vinkel armering" }
+};
+export const ARM_DIM = [6, 8, 10, 12, 16, 20, 25, 32];
+
+// Visningsnavnet for et materiell-objekt uten eget navn: maltypen — og for
+// armering også underkategorien og Ø-en, så «Stang Ø12» og «Stang Ø25» aldri
+// leses som samme vare (hele poenget med navnelappene).
+export function materiellTypeLabel(p) {
+  if (p.maltype === "armering") {
+    const at = ARM_TYPER[p.armType] || ARM_TYPER.nett;
+    return t(at.label) + " Ø" + p.diameter;
+  }
+  return t(MALTYPER[p.maltype].label);
+}
 
 // ---------- Vasking ----------
 // Plasseringene kommer fra localStorage, fra SharePoint-biblioteket og fra
@@ -91,6 +121,12 @@ export function vaskMateriell(p) {
     // Feltet følger med i eksporten, så byggeplassen viser det samme som deg.
     skjult: p.skjult === true
   };
+  if (p.maltype === "armering") {
+    ut.armType = ARM_TYPER[p.armType] ? p.armType : "nett";
+    ut.diameter = ARM_DIM.includes(Number(p.diameter)) ? Number(p.diameter) : 12;
+    // «tykkelsen» til ett lag i bunten: et nett er to kryssende stanglag
+    ut.tykkelse = ut.armType === "nett" ? ut.diameter * 2 : ut.diameter;
+  }
   if (!ut.id) return null;
   return ut;
 }
@@ -127,6 +163,55 @@ export function trpProfil(breddeMm, delingMm, hoydeMm) {
   return pkt;
 }
 
+// 🩻 Armeringens geometri som rene SEGMENTER: [[x1,y1,z1],[x2,y2,z2]] i mm.
+// Alle formene ligger flatt på bakken slik de leveres, sentrert om origo,
+// med senterlinja løftet én radius (r = Ø/2) så stanga hviler PÅ underlaget.
+// Ren tallfunksjon — testes i Node uten three.js.
+export function armeringSegmenter(armType, lengdeMm, breddeMm, diamMm) {
+  const L = Number(lengdeMm) || 0, B = Number(breddeMm) || 0, d = Number(diamMm) || 12;
+  const r = d / 2, seg = [];
+  const s = (x1, y1, z1, x2, y2, z2) => seg.push([[x1, y1, z1], [x2, y2, z2]]);
+  if (armType === "stang") {
+    s(-L / 2, r, 0, L / 2, r, 0);
+  } else if (armType === "nett") {
+    // standardnett: maskevidde 150 mm. På ekstreme mål økes steget så et
+    // nett aldri blir mer enn ~40 stenger per retning i scenen.
+    const steg = (dim) => Math.max(150, Math.ceil(dim / 40 / 50) * 50);
+    const sX = steg(L), sZ = steg(B);
+    // langsgående stenger (langs x) nederst, tverrstenger oppå (kryss-lag)
+    for (let i = 0; i <= Math.floor(B / sZ); i++) {
+      const z = -B / 2 + i * sZ;
+      s(-L / 2, r, z, L / 2, r, z);
+    }
+    for (let i = 0; i <= Math.floor(L / sX); i++) {
+      const x = -L / 2 + i * sX;
+      s(x, 3 * r, -B / 2, x, 3 * r, B / 2);
+    }
+  } else if (armType === "ubojle" || armType === "ukrok") {
+    // U-en ligger flatt: bunnen (bredden) i den ene enden, bena langs lengden
+    s(-B / 2, r, -L / 2, B / 2, r, -L / 2);
+    s(-B / 2, r, -L / 2, -B / 2, r, L / 2);
+    s(B / 2, r, -L / 2, B / 2, r, L / 2);
+    if (armType === "ukrok") {
+      // endekrok: 90° innover i enden av hvert ben, lengde 8 × Ø
+      const k = Math.min(8 * d, B / 2);
+      s(-B / 2, r, L / 2, -B / 2 + k, r, L / 2);
+      s(B / 2, r, L / 2, B / 2 - k, r, L / 2);
+    }
+  } else if (armType === "bojle") {
+    // lukket rektangel (bøyle) — fire sider
+    s(-L / 2, r, -B / 2, L / 2, r, -B / 2);
+    s(-L / 2, r, B / 2, L / 2, r, B / 2);
+    s(-L / 2, r, -B / 2, -L / 2, r, B / 2);
+    s(L / 2, r, -B / 2, L / 2, r, B / 2);
+  } else if (armType === "vinkel") {
+    // 90°-vinkel: to ben
+    s(-L / 2, r, -B / 2, L / 2, r, -B / 2);
+    s(-L / 2, r, -B / 2, -L / 2, r, B / 2);
+  }
+  return seg;
+}
+
 // Profilen ekstrudert til et bånd: posisjoner (ikke-indeksert, to trekanter
 // per segment) for en plate der profilen går på tvers (z = BREDDEN) og
 // lengden langs x — SAMME akser som boksene (sokkel og kassett), der x alltid
@@ -152,10 +237,11 @@ export function stabelHoydeMm(maltype, antall, tykkelseMm) {
   const mal = MALTYPER[maltype];
   if (!mal) return 0;
   const n = Math.max(1, Math.round(Number(antall) || 1));
-  const enhet = maltype === "sandwich"
+  const tyktLag = maltype === "sandwich" || maltype === "armering";
+  const enhet = tyktLag
     ? (Number(tykkelseMm) || mal.tykkelse) + mal.stabling
     : mal.stabling;
-  const topp = maltype === "sandwich" ? (Number(tykkelseMm) || mal.tykkelse) : mal.tykkelse;
+  const topp = tyktLag ? (Number(tykkelseMm) || mal.tykkelse) : mal.tykkelse;
   return (n - 1) * enhet + topp;
 }
 
@@ -174,15 +260,15 @@ export function materiellMengdeRader() {
   const ut = [];
   mengdeTeller = 0;
   for (const p of vaskMateriellListe(S.materiell)) {
-    const mal = MALTYPER[p.maltype];
+    const label = materiellTypeLabel(p);
     const L = p.lengde / 1000, B = p.bredde / 1000, H = p.tykkelse / 1000;
-    const key = (p.navn || t(mal.label)) + " · " + t(mal.label);
+    const key = (p.navn || label) + " · " + label;
     for (let i = 0; i < p.antall; i++) {
       mengdeTeller++;
       ut.push({
         id: -(1000000 + mengdeTeller),   // syntetisk, kolliderer aldri med IFC-id-er
-        key, name: p.navn || t(mal.label), objType: t(mal.label),
-        type: "Materiell", material: t(mal.label),
+        key, name: p.navn || label, objType: label,
+        type: "Materiell", material: label,
         L, B, H, len: Math.max(L, B, H),
         vol: 0, area: L * B, forskaling: 0,
         kg: 0, kgGeo: 0, kjentVekt: false, umuligVolum: false,
@@ -244,6 +330,24 @@ export function morkere(hex) {
 }
 
 // Én enhet av malen, med origo i underkant. Returnerer en gruppe.
+// Én armeringsstang: sylinder fra punkt a til punkt b (mm), Ø = dMm.
+// 8 radialsegmenter er nok — armering leses på farge, form og lapp, ikke
+// på rundheten, og en bunt på 50 nett skal ikke koste hundretusen trekanter.
+function stang3D(a, b, dMm, farge) {
+  const p1 = new THREE.Vector3(mmTilScene(a[0]), mmTilScene(a[1]), mmTilScene(a[2]));
+  const p2 = new THREE.Vector3(mmTilScene(b[0]), mmTilScene(b[1]), mmTilScene(b[2]));
+  const len = p1.distanceTo(p2);
+  const r = mmTilScene(dMm / 2);
+  const m = new THREE.Mesh(
+    new THREE.CylinderGeometry(r, r, len, 8),
+    new THREE.MeshLambertMaterial({ color: farge })
+  );
+  m.position.copy(p1).add(p2).multiplyScalar(0.5);
+  const dir = p2.clone().sub(p1).normalize();
+  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+  return m;
+}
+
 function byggEnhet(p) {
   const g = new THREE.Group();
   const mal = MALTYPER[p.maltype];
@@ -262,6 +366,10 @@ function byggEnhet(p) {
     bunn.scale.y = -1;   // profilen bøyer NED på undersiden
     bunn.position.y = mmTilScene(mal.profilHoyde);
     g.add(topp, bunn);
+  } else if (p.maltype === "armering") {
+    // hver stang er en lav-poly sylinder (8 sider) langs sitt segment
+    for (const [a, b] of armeringSegmenter(p.armType, p.lengde, p.bredde, p.diameter))
+      g.add(stang3D(a, b, p.diameter, p.farge));
   } else if (p.maltype === "kassett") {
     // ligger med plankesiden ned: planker 98 mm + plate 21 mm øverst
     const plankeH = 98, plateH = 21;
@@ -296,7 +404,7 @@ export const MAKS_DETALJLAG = 50;
 export function lagTykkelseMm(maltype, tykkelseMm) {
   const mal = MALTYPER[maltype];
   if (!mal) return 0;
-  return maltype === "sandwich"
+  return (maltype === "sandwich" || maltype === "armering")
     ? (Number(tykkelseMm) || mal.tykkelse) + mal.stabling
     : mal.stabling;
 }
@@ -328,7 +436,7 @@ export function byggMateriellObjekt(p) {
 
   // Navnelappen — samme utseende som aksesystemets etiketter, i objektets
   // farge, med antallet når det er en stabel.
-  const tekst = (p.navn || t(mal.label)) + (p.antall > 1 ? "  ×" + p.antall : "");
+  const tekst = (p.navn || materiellTypeLabel(p)) + (p.antall > 1 ? "  ×" + p.antall : "");
   const lapp = makeLabel(tekst, p.farge);
   lapp.userData.px = 26;
   lapp.userData.aspect = lapp.scale.x / lapp.scale.y;
