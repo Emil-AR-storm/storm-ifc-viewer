@@ -253,12 +253,20 @@ export async function loadModel(buffer) {
   const ab = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
   S.lastBuffer = null;
   S.bufferITråd = true;
+  // Stort prosjekt (byggeplass.js) kan overstyre lettverdiene for én omlasting;
+  // testnøklene i localStorage gjelder ellers, og standarden til slutt.
+  const lettMinst = (S.lettOverstyr && S.lettOverstyr.minst) ||
+    Number(localStorage.getItem("storm-ifc-test-minst")) || 0.15;
+  const lettSirkel = (S.lettOverstyr && S.lettOverstyr.sirkel) ||
+    Number(localStorage.getItem("storm-ifc-test-sirkel")) || 6;
   const info = await kall("open", {
     buffer: ab,
     light: S.lightLoaded,
-    minst: Number(localStorage.getItem("storm-ifc-test-minst")) || 0.15,
-    sirkel: Number(localStorage.getItem("storm-ifc-test-sirkel")) || 6
+    minst: lettMinst,
+    sirkel: lettSirkel
   }, null, [ab]);
+  // så Byggeplass-knappen kan se om modellen ALT står med riktige verdier
+  S.lettParametreBrukt = { minst: lettMinst, sirkel: lettSirkel, light: S.lightLoaded };
   const tApnet = performance.now();
   S.modelID = 1;   // «en modell er åpen» – all lesing går nå gjennom IFC-tråden
 

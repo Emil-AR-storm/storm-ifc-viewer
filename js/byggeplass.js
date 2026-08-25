@@ -3,7 +3,8 @@
 // bygg.html (lettmodus) laster aldri denne fila.
 import { $, S, esc, loadingEl, loadingText } from "./state.js";
 import { t } from "./i18n.js";
-import { byggLettKopi, lettNavn } from "./lite.js";
+import { byggLettKopi, lettNavn, lettParametre } from "./lite.js";
+import { clearLoadFlag, hentBuffer, loadModel, setLoadFlag } from "./ifc.js";
 import { bildeUrl, lastOpp } from "./bilder.js";
 import { lagreOgSynk, leggTilImportertMarkering, vaskMarkering } from "./markers.js";
 import { tegningNavn } from "./tegninger.js";
@@ -65,6 +66,21 @@ if (btn) btn.addEventListener("click", async () => {
     settNøkkel(TOKEN_KEY, token);
   }
 
+  // 🏗 Normalt eller stort prosjekt? Valget BOR HOS WORKEREN (modus.json i
+  // prosjektmappa), så det følger prosjektet og ikke maskinen. Finnes det
+  // ikke (nytt prosjekt — eller Workeren er ikke deployet med /modus ennå),
+  // vises dialogen med de to boksene.
+  let modus = "";
+  try {
+    const mr = await fetch(TJENESTER.worker + "/modus/" + prosjekt, { headers: { "x-token": token } });
+    if (mr.ok) modus = ((await mr.json()).modus === "stor") ? "stor" : "normal";
+  } catch (_) {}
+  if (!modus) {
+    modus = await spørModus();
+    if (!modus) return;
+    await lagreModus(prosjekt, token, modus);
+  }
+
   loadingEl.classList.add("open");
   try {
     // 1) Hent montørenes kvitteringsbilder fra innboksen FØR vi bygger, så den
@@ -72,8 +88,25 @@ if (btn) btn.addEventListener("click", async () => {
     loadingText.textContent = t("Henter kvitteringer fra byggeplassen …");
     const antallInn = await hentInnboks(prosjekt, token);
 
-    // 2) Bygg og last opp modellen
-    const { bytes, ids, utelatt } = await byggLettKopi((txt) => { loadingText.textContent = txt; });
+    // 2) Bygg og last opp modellen. Stort prosjekt: modellen lastes først om
+    //    i lav kvalitet med de tøffe verdiene (0,5 m / 5 kanter) — det er ved
+    //    PARSING rørene får kantene sine, så å bygge fra full kvalitet ville
+    //    beholdt all rundingen og hele gevinsten var borte.
+    let { bytes, ids, utelatt } = await byggMedModus(modus);
+
+    // Cloudflare tar imot ~100 MB per opplasting. Er kopien over grensa i et
+    // normalt prosjekt, tilbys bytte til stort prosjekt PÅ FLEKKEN — valget
+    // lagres, modellen lastes om og kopien bygges på nytt i samme trykk.
+    const GRENSE = 95 * 1048576;
+    if (bytes.byteLength > GRENSE && modus !== "stor" &&
+        confirm(t("Kopien ble {0} MB — for stor til å laste opp (taket er ~100 MB). Bytte prosjektet til «Stort prosjekt» og bygge på nytt nå?", (bytes.byteLength / 1048576).toFixed(0)))) {
+      modus = "stor";
+      await lagreModus(prosjekt, token, "stor");
+      ({ bytes, ids, utelatt } = await byggMedModus("stor"));
+    }
+    if (bytes.byteLength > GRENSE) {
+      throw new Error(t("Kopien er fortsatt {0} MB — over opplastingstaket på ~100 MB.", (bytes.byteLength / 1048576).toFixed(0)));
+    }
     loadingText.textContent = t("Laster opp …");
     const fil = lettNavn(S.fileName);
     // SHA-256 av innholdet: er modellen uendret siden sist, lager Workeren
@@ -179,6 +212,72 @@ if (btn) btn.addEventListener("click", async () => {
   }
 });
 
+
+// ---------- 🏗 Normalt / stort prosjekt ----------
+
+async function lagreModus(prosjekt, token, modus) {
+  try {
+    await fetch(TJENESTER.worker + "/last-opp?fil=modus.json", {
+      method: "PUT",
+      headers: { "content-type": "application/json", "x-prosjekt": prosjekt, "x-token": token },
+      body: JSON.stringify({ modus, valgt: new Date().toISOString() })
+    });
+  } catch (_) {}   // får vi ikke lagret, spørres det bare på nytt neste gang
+}
+
+// Dialogen med de to boksene — vises én gang per prosjekt.
+function spørModus() {
+  return new Promise((res) => {
+    const el = document.createElement("div");
+    el.id = "bpModus";
+    el.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:60;display:flex;align-items:center;justify-content:center";
+    el.innerHTML =
+      '<div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px;max-width:540px;width:92%">' +
+      '<h3 style="margin:0 0 6px">' + t("Nytt prosjekt — velg størrelse") + "</h3>" +
+      '<p style="color:var(--muted);font-size:12px;margin:0 0 12px">' + t("Valget lagres på prosjektet og gjelder alle senere opplastinger.") + "</p>" +
+      '<div style="display:flex;gap:10px">' +
+      '<button id="bpNormal" style="flex:1;padding:14px 10px;border-radius:10px;text-align:left"><b>' + t("Normalt prosjekt") + "</b><br>" +
+      '<span style="font-size:11px;color:var(--muted)">' + t("Som i dag — vanlig detaljnivå i byggeplass-kopien.") + "</span></button>" +
+      '<button id="bpStor" style="flex:1;padding:14px 10px;border-radius:10px;text-align:left"><b>' + t("Stort prosjekt") + "</b><br>" +
+      '<span style="font-size:11px;color:var(--muted)">' + t("For modeller på 200 MB+: småting under 0,5 m utelates og rør får 5 kanter, så kopien lar seg bygge og laste ned.") + "</span></button>" +
+      "</div>" +
+      '<div style="text-align:right;margin-top:10px"><button id="bpModusAvbryt">' + t("Avbryt") + "</button></div></div>";
+    document.body.appendChild(el);
+    const ferdig = (v) => { el.remove(); res(v); };
+    el.querySelector("#bpNormal").onclick = () => ferdig("normal");
+    el.querySelector("#bpStor").onclick = () => ferdig("stor");
+    el.querySelector("#bpModusAvbryt").onclick = () => ferdig(null);
+  });
+}
+
+// Bygger kopien etter modusens parametre. Stort prosjekt: står ikke modellen
+// alt i lav kvalitet MED de tøffe verdiene, lastes den om først (samme
+// mekanikk som 🪶-knappen). Overstyringen nullstilles etterpå, så en senere
+// manuell omlasting av en ANNEN modell ikke arver stort-verdiene.
+async function byggMedModus(modus) {
+  const p = lettParametre(modus);
+  if (modus === "stor") {
+    const brukt = S.lettParametreBrukt || {};
+    if (!brukt.light || brukt.minst !== p.minst || brukt.sirkel !== p.sirkel) {
+      loadingText.textContent = t("Stort prosjekt: laster modellen på nytt med redusert kvalitet …");
+      S.lettOverstyr = { minst: p.minst, sirkel: p.sirkel };
+      S.lightMode = true;
+      const bl = $("btnLight");
+      if (bl) bl.classList.add("active");
+      try {
+        setLoadFlag(Object.assign({}, S.lastLoadInfo || { name: S.fileName }, { light: true }));
+        const buf = await hentBuffer();
+        if (!buf) throw new Error(t("Fant ikke modellfilen igjen – åpne den på nytt"));
+        await loadModel(buf);
+        clearLoadFlag();
+      } finally {
+        S.lettOverstyr = null;
+      }
+    }
+    return byggLettKopi((txt) => { loadingText.textContent = txt; }, { minst: p.minst, weld: p.weld });
+  }
+  return byggLettKopi((txt) => { loadingText.textContent = txt; });
+}
 
 // ---------- Rød teller: er det noe nytt fra byggeplassen? ----------
 // Prosjektlederen skal ikke måtte GJETTE at innboksen har innhold. Ved åpning
