@@ -68,6 +68,12 @@ export function huskMappe(modell, mappenavn) {
 
 export const erPdf = (navn) => /\.pdf$/i.test(String(navn || ""));
 
+// 🌐 HTML-sider (f.eks. en tegningskatalog) kan ligge i SAMME mappe som
+// PDF-ene. De vises som egen kategori i velgeren og åpnes i ny fane —
+// fortsatt bak SharePoint-innloggingen, det er hele poenget med å legge
+// dem der i stedet for på en åpen nettadresse.
+export const erHtml = (navn) => /\.html?$/i.test(String(navn || ""));
+
 export function mb(bytes) {
   return (Number(bytes) || 0) / 1048576;
 }
@@ -108,10 +114,13 @@ export async function hentTegninger(modell) {
   for (const kandidat of mappekandidater(modell, husketMappe(modell))) {
     const innhold = await lesMappe(tegningsMappe() + "/" + kandidat, token);
     if (innhold) {
+      const filer = innhold.filter(f => f.file && (erPdf(f.name) || erHtml(f.name)))
+        .sort((a, b) => a.name.localeCompare(b.name, "no"));
       return {
         mappenavn: kandidat,
-        filer: innhold.filter(f => f.file && erPdf(f.name))
-          .sort((a, b) => a.name.localeCompare(b.name, "no"))
+        // PDF-ene oppfører seg som før; HTML-sidene er en egen kategori
+        filer: filer.filter(f => erPdf(f.name)),
+        htmlSider: filer.filter(f => erHtml(f.name))
       };
     }
   }
@@ -250,6 +259,36 @@ export function visStatus(tekst) {
   loadingEl.classList.add("open");
 }
 
+
+// ---------- 🌐 HTML-sider fra tegningsmappa ----------
+// Åpner en HTML-fil fra SharePoint i ny fane. Fila hentes med token (bak
+// innloggingen) og vises fra en blob-URL — den får dermed ingen delbar
+// adresse: lukker du fanen, er tilgangen borte.
+//
+// VIKTIG REKKEFØLGE: fanen åpnes FØR den asynkrone hentingen — en
+// window.open etter en await har mistet klikket sitt, og popup-blokkeren
+// stopper den.
+export async function apneHtmlTegning(item) {
+  const fane = window.open("", "_blank");
+  try {
+    let token;
+    try { token = await spTokenSilent(); } catch (_) { token = null; }
+    if (!token) throw new Error("IKKE_INNLOGGET");
+    await siteId(token);
+    const r = await fetch(GRAPH + "/sites/" + S.spSiteId + "/drive/items/" +
+      encodeURIComponent(item.id) + "/content", { headers: authHeaders(token, null, "html-tegning") });
+    if (!r.ok) throw new Error("Graph " + r.status);
+    const blob = new Blob([await r.arrayBuffer()], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    if (fane) fane.location = url;
+    else window.open(url, "_blank");
+    // ryddes når blobben er lest inn i fanen — 60 sek er rikelig
+    setTimeout(() => { try { URL.revokeObjectURL(url); } catch (_) {} }, 60000);
+  } catch (err) {
+    if (fane) { try { fane.close(); } catch (_) {} }
+    throw err;
+  }
+}
 
 // ---------- Logoer til rapporten ----------
 // Tom eller manglende mappe gir tom liste, ikke feil: rapporten faller da
