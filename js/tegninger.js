@@ -163,8 +163,8 @@ export function erNedlastet(vedlegg) {
 // på byggeplass over mobilnett er 40 MB nesten et minutt.
 // R2-nøkkelen for en tegning: itemId-en vasket til trygge tegn.
 // MÅ være identisk med tegningNavn() i byggeplass.js.
-export function tegningNavn(itemId) {
-  return String(itemId).replace(/[^0-9a-zA-Z_-]/g, "_") + ".pdf";
+export function tegningNavn(itemId, html) {
+  return String(itemId).replace(/[^0-9a-zA-Z_-]/g, "_") + (html ? ".html" : ".pdf");
 }
 
 export async function pdfDokument(vedlegg, spor) {
@@ -283,6 +283,24 @@ export async function apneHtmlTegning(item) {
     if (fane) fane.location = url;
     else window.open(url, "_blank");
     // ryddes når blobben er lest inn i fanen — 60 sek er rikelig
+    setTimeout(() => { try { URL.revokeObjectURL(url); } catch (_) {} }, 60000);
+  } catch (err) {
+    if (fane) { try { fane.close(); } catch (_) {} }
+    throw err;
+  }
+}
+
+// Et HTML-VEDLEGG på en markering: { fil, itemId, html:true }. På kontoret
+// hentes det fra SharePoint (som apneHtmlTegning); på byggeplassen fra
+// Workeren — Byggeplass-knappen la det i R2 sammen med PDF-tegningene.
+export async function apneHtmlVedlegg(v) {
+  if (!LETT) return apneHtmlTegning({ id: v.itemId });
+  const fane = window.open("", "_blank");
+  try {
+    const r = await fetch("/tegning/" + (S.lettProsjekt || "00000") + "/" + tegningNavn(v.itemId, true));
+    if (!r.ok) throw new Error(t("Tegningen er ikke lastet opp til byggeplass-lenka ennå"));
+    const url = URL.createObjectURL(new Blob([await r.arrayBuffer()], { type: "text/html" }));
+    if (fane) fane.location = url; else window.open(url, "_blank");
     setTimeout(() => { try { URL.revokeObjectURL(url); } catch (_) {} }, 60000);
   } catch (err) {
     if (fane) { try { fane.close(); } catch (_) {} }
