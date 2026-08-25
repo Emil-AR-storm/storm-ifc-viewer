@@ -545,6 +545,7 @@ body:not(.har-modell) #btnFit { display: none !important; }
 #tegningVelg .tv-mappe { color: var(--muted); font-size: 11px; margin: 0 0 8px; }
 /* kategorioverskriftene HTML/PDF i tegningsvelgeren */
 .tv-kat { margin: 10px 0 4px; font-size: 11px; font-weight: 700; letter-spacing: .08em; color: var(--muted); }
+#tegningVelg .tv-hint { color: var(--muted); font-size: 11px; margin: 6px 0 0; }
 
 #tegningVelg #tvListe { max-height: 46vh; overflow: auto; }
 #tegningVelg .lib-item.valgt { border-color: var(--accent2); background: var(--panel2); }
