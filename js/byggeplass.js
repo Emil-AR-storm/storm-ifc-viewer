@@ -120,7 +120,9 @@ if (btn) btn.addEventListener("click", async () => {
       // kommentartråden og tegnings-HENVISNINGENE er med nå (trinn 5b) —
       // eier, frist og Planner-kobling holdes fortsatt igjen
       svar: (c.svar || []).map(s => ({ id: s.id, tekst: s.tekst, forfatter: s.forfatter, dato: s.dato, endret: s.endret || "" })),
-      tegninger: (c.tegninger || []).map(v => ({ fil: v.fil, itemId: v.itemId, side: v.side, storrelse: v.storrelse }))
+      // html-flagget MÅ med: uten det prøver mobilen å åpne tegningskatalogen
+      // som PDF (.pdf-navnet i R2) og får «ikke lastet opp» (Emils bilde 25.08)
+      tegninger: (c.tegninger || []).map(v => ({ fil: v.fil, itemId: v.itemId, side: v.side, storrelse: v.storrelse, html: v.html === true }))
     }));
     // FORMAT 2: fila var tidligere en naken array. Nå er den et objekt, fordi
     // fristgrensene må følge med ut til byggeplassen (ringen rundt markeringen
