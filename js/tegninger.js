@@ -179,9 +179,12 @@ export async function pdfDokument(vedlegg, spor) {
     // fra Workeren med beviset fra kodefeltet. Ingen innlogging.
     if (spor) spor(t("Henter {0} …", vedlegg.fil));
     const r = await fetch("/tegning/" + (S.lettProsjekt || "00000") + "/" + tegningNavn(vedlegg.itemId));
-    if (!r.ok) throw new Error(r.status === 404
+    // filnavnet i meldingen skiller .pdf fra .html — det avslører om
+    // html-flagget mangler (feilsøkingen 25.08) uten konsoll på mobilen
+    if (!r.ok) throw new Error((r.status === 404
       ? t("Tegningen er ikke lastet opp til byggeplass-lenka ennå")
-      : t("Kunne ikke hente tegningen (Graph {0})", r.status));
+      : t("Kunne ikke hente tegningen (Graph {0})", r.status)) +
+      " [" + tegningNavn(vedlegg.itemId) + "]");
     const data = new Uint8Array(await r.arrayBuffer());
     if (spor) spor(t("Åpner {0} …", vedlegg.fil));
     const lib = await lastPdfLib();
@@ -298,7 +301,8 @@ export async function apneHtmlVedlegg(v) {
   const fane = window.open("", "_blank");
   try {
     const r = await fetch("/tegning/" + (S.lettProsjekt || "00000") + "/" + tegningNavn(v.itemId, true));
-    if (!r.ok) throw new Error(t("Tegningen er ikke lastet opp til byggeplass-lenka ennå"));
+    if (!r.ok) throw new Error(t("Tegningen er ikke lastet opp til byggeplass-lenka ennå") +
+      " [" + tegningNavn(v.itemId, true) + " · " + r.status + "]");
     const url = URL.createObjectURL(new Blob([await r.arrayBuffer()], { type: "text/html" }));
     if (fane) fane.location = url; else window.open(url, "_blank");
     setTimeout(() => { try { URL.revokeObjectURL(url); } catch (_) {} }, 60000);
