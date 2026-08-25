@@ -19,7 +19,7 @@ import { setMode } from "./modes.js";
 import { camera, controls, frameHooks, markerGroup, renderer } from "./scene.js";
 import { GRAPH, SP, authHeaders, graphGet, spTokenSilent } from "./sharepoint.js";
 import { MAKS_LYD_PER_MARKERING, MAKS_PER_MARKERING, bildeUrl, erBildefil, lastOpp, leggTilBilder, lydNavn, lydUrl, slettBilder, trygtLyd } from "./bilder.js";
-import { ADVAR_MB, antallSider, gyldigSide, hentTegninger, mb, sideBilde, velgMappe, visStatus } from "./tegninger.js";
+import { ADVAR_MB, antallSider, apneHtmlTegning, gyldigSide, hentTegninger, mb, sideBilde, velgMappe, visStatus } from "./tegninger.js";
 import { MAKS_SKJEMA_PER_MARKERING, apneMalVelger, apneSkjema, gjeldendeSkjema,
          hentMaler, sjekklisteI, sjekklisteStripeHtml, vaskSkjema } from "./sjekkliste.js";
 // ⛓-lenka til en markering hentes via S.markerLink (settes av share.js).
@@ -964,13 +964,14 @@ async function apneTegningVelger(c) {
     return;
   }
 
-  if (!svar.filer.length) {
+  const htmlSider = svar.htmlSider || [];
+  if (!svar.filer.length && !htmlSider.length) {
     kropp.innerHTML = '<p style="color:var(--muted)">' + t("Mappa <b>{0}</b> er tom. Legg PDF-ene inn i {1}.", esc(svar.mappenavn), esc(tegningsStiTekst(svar.mappenavn))) + '</p>';
     return;
   }
 
   kropp.innerHTML =
-    '<p class="tv-mappe">' + esc(svar.mappenavn) + ' · ' + t("{0} tegninger", svar.filer.length) + '</p>' +
+    '<p class="tv-mappe">' + esc(svar.mappenavn) + ' · ' + t("{0} tegninger", svar.filer.length + htmlSider.length) + '</p>' +
     '<input type="search" id="tvSok" placeholder="' + t("Søk etter tegning …") + '" autocomplete="off">' +
     '<div id="tvListe"></div>' +
     '<div class="tv-bunn"><label>' + t("Side") + ' <input type="number" id="tvSide" min="1" value="1"></label>' +
@@ -978,14 +979,37 @@ async function apneTegningVelger(c) {
 
   let valgt = null;
   const tegn = (q) => {
-    const treff = svar.filer.filter(f => f.name.toLowerCase().includes(q.trim().toLowerCase()));
-    $("tvListe").innerHTML = treff.length
-      ? treff.map(f => '<div class="lib-item' + (valgt && valgt.id === f.id ? " valgt" : "") + '" data-id="' + esc(f.id) + '">' +
+    const s = q.trim().toLowerCase();
+    const treff = svar.filer.filter(f => f.name.toLowerCase().includes(s));
+    const treffHtml = htmlSider.filter(f => f.name.toLowerCase().includes(s));
+    // 🌐 HTML-sidene (f.eks. tegningskatalogen) er en egen kategori: de
+    // legges ikke ved en markering, de ÅPNES — i ny fane, bak innloggingen.
+    const htmlDel = treffHtml.length
+      ? '<p class="tv-kat">HTML</p>' + treffHtml.map(f =>
+          '<div class="lib-item" data-html-id="' + esc(f.id) + '">' +
+          '<div class="n">' + ikon("apne") + ' ' + esc(f.name) + '</div>' +
+          '<div class="m">' + t("Åpnes i ny fane") + '</div></div>').join("")
+      : "";
+    const pdfDel = treff.length
+      ? (treffHtml.length ? '<p class="tv-kat">PDF</p>' : "") + treff.map(f =>
+          '<div class="lib-item' + (valgt && valgt.id === f.id ? " valgt" : "") + '" data-id="' + esc(f.id) + '">' +
           '<div class="n">' + ikon("tegning") + ' ' + esc(f.name) + '</div>' +
           '<div class="m">' + mb(f.size).toFixed(1) + ' MB' +
           (mb(f.size) > ADVAR_MB ? ' · <span style="color:var(--accent2)">' + t("stor fil") + '</span>' : "") + '</div></div>').join("")
-      : '<p style="color:var(--muted)">' + t("Ingen treff.") + '</p>';
-    $("tvListe").querySelectorAll(".lib-item").forEach(d => {
+      : "";
+    $("tvListe").innerHTML = (htmlDel + pdfDel) ||
+      '<p style="color:var(--muted)">' + t("Ingen treff.") + '</p>';
+    $("tvListe").querySelectorAll("[data-html-id]").forEach(d => {
+      d.onclick = async () => {
+        try { await apneHtmlTegning(htmlSider.find(f => f.id === d.dataset.htmlId)); }
+        catch (err) {
+          alert(err.message === "IKKE_INNLOGGET"
+            ? t("Du må være innlogget for å åpne tegninger fra SharePoint.")
+            : t("Kunne ikke åpne HTML-siden: ") + err.message);
+        }
+      };
+    });
+    $("tvListe").querySelectorAll(".lib-item[data-id]").forEach(d => {
       d.onclick = () => {
         valgt = svar.filer.find(f => f.id === d.dataset.id) || null;
         $("tvLegg").disabled = !valgt;
