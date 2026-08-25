@@ -252,6 +252,10 @@ S.etterTegnMateriell = null;    // materiell-vis.js → materiell.js: legg valg-
 S.lastGrupper = null;           // ifc.js: les lagrede grupper når modellen åpnes
 S.settGrupperFraLett = null;    // markers.js: grupper fra Workerens JSON (bygg)
 
+// 🏗 Stort prosjekt (byggeplass.js ↔ ifc.js)
+S.lettOverstyr = null;          // { minst, sirkel } for neste (om)lasting — settes/nullstilles av byggeplass.js
+S.lettParametreBrukt = null;    // hva forrige lasting faktisk brukte (ifc.js)
+
 // ▣ Kantlinjer. Krokene settes av outline.js; null når modulen ikke er lastet.
 S.ryddOutline = null;       // modellbytte: tøm lista over linjeobjekt
 S.outlineSynlig = null;     // skjul/vis alle linjene (minikartet bruker den)

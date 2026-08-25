@@ -14,6 +14,16 @@ import { S, loadingText, statusEl } from "./state.js";
 import { t } from "./i18n.js";
 import { kall, metaFor, sikreMeta } from "./ifcrpc.js";
 
+// Offisielle parametersett for lettkopien (Emils valg 25.08.2026):
+//   normal = som i dag · stor = 200 MB+-prosjekter der kopien ellers ikke lar
+//   seg bygge/laste opp. «weld» er sveisetoleransen i mergeVertices (meter) —
+//   1 mm på store prosjekter sveiser langt flere punkter enn 0,1 mm.
+export function lettParametre(modus) {
+  return modus === "stor"
+    ? { minst: 0.5, sirkel: 5, weld: 1e-3 }
+    : { minst: 0.15, sirkel: 6, weld: 1e-4 };
+}
+
 export const lettNavn = (modellnavn) =>
   String(modellnavn || "modell").replace(/\.(ifc|glb)$/i, "") + ".lett.glb";
 
@@ -91,8 +101,9 @@ export function slåSammenScene(children, opts) {
 }
 
 // Bygger .glb-en. Returnerer { bytes, ids, utelatt }.
-export async function byggLettKopi(melding) {
+export async function byggLettKopi(melding, opts) {
   const si = melding || (() => {});
+  const o = opts || {};
 
   // Navnene er det som gjør kopien nyttig (søk og egenskaper), så vi sørger for
   // at elementdata er hentet før vi begynner.
@@ -107,7 +118,7 @@ export async function byggLettKopi(melding) {
   });
 
   si(t("Slår sammen geometri …"));
-  const { bøtter, utelatt } = slåSammenScene(S.modelGroup.children);
+  const { bøtter, utelatt } = slåSammenScene(S.modelGroup.children, o.minst !== undefined ? { minst: o.minst } : undefined);
 
   const ids = new Set();
   bøtter.forEach(b => b.ranges.forEach(r => ids.add(r.id)));
@@ -137,7 +148,7 @@ export async function byggLettKopi(melding) {
     let g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.BufferAttribute(b.pos, 3));
     g.setIndex(new THREE.BufferAttribute(b.idx, 1));
-    g = mergeVertices(g, 1e-4);
+    g = mergeVertices(g, o.weld || 1e-4);
     const em = new THREE.Mesh(g, b.material);
     em.userData.merged = true;
     em.userData.ranges = b.ranges;
