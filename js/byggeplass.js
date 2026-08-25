@@ -355,9 +355,11 @@ async function lastOppTegninger(prosjekt, token) {
         encodeURIComponent(itemId) + "/content", { headers: authHeaders(spToken, null, "tegning-ut") });
       if (!r.ok) continue;
       const blob = await r.blob();
-      const br = await fetch(TJENESTER.worker + "/last-opp?fil=" + encodeURIComponent(tegningNavn(itemId)) + "&mappe=tegninger", {
+      // HTML-vedlegg (tegningskatalogen o.l.) reiser samme vei som PDF-ene,
+      // bare med sin egen filendelse og content-type.
+      const br = await fetch(TJENESTER.worker + "/last-opp?fil=" + encodeURIComponent(tegningNavn(itemId, v.html)) + "&mappe=tegninger", {
         method: "PUT",
-        headers: { "content-type": "application/pdf", "x-prosjekt": prosjekt, "x-token": token },
+        headers: { "content-type": v.html ? "text/html" : "application/pdf", "x-prosjekt": prosjekt, "x-token": token },
         body: blob
       });
       if (br.ok) opp++;

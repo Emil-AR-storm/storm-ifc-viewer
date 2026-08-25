@@ -19,7 +19,7 @@ import { setMode } from "./modes.js";
 import { camera, controls, frameHooks, markerGroup, renderer } from "./scene.js";
 import { GRAPH, SP, authHeaders, graphGet, spTokenSilent } from "./sharepoint.js";
 import { MAKS_LYD_PER_MARKERING, MAKS_PER_MARKERING, bildeUrl, erBildefil, lastOpp, leggTilBilder, lydNavn, lydUrl, slettBilder, trygtLyd } from "./bilder.js";
-import { ADVAR_MB, antallSider, apneHtmlTegning, gyldigSide, hentTegninger, mb, sideBilde, velgMappe, visStatus } from "./tegninger.js";
+import { ADVAR_MB, antallSider, apneHtmlTegning, apneHtmlVedlegg, erHtml, gyldigSide, hentTegninger, mb, sideBilde, velgMappe, visStatus } from "./tegninger.js";
 import { MAKS_SKJEMA_PER_MARKERING, apneMalVelger, apneSkjema, gjeldendeSkjema,
          hentMaler, sjekklisteI, sjekklisteStripeHtml, vaskSkjema } from "./sjekkliste.js";
 // ⛓-lenka til en markering hentes via S.markerLink (settes av share.js).
@@ -332,7 +332,8 @@ export function vaskMarkering(r) {
   if (Array.isArray(r.tegninger)) c.tegninger = r.tegninger
     .filter(t => t && typeof t === "object")
     .map(t => ({ fil: String(t.fil || ""), itemId: String(t.itemId || ""),
-                 side: Number(t.side) || 0, storrelse: Number(t.storrelse) || 0 }));
+                 side: Number(t.side) || 0, storrelse: Number(t.storrelse) || 0,
+                 html: t.html === true }));
   // Utfylte sjekklister. Svarene lagres som DATA, ikke som en ferdig PDF –
   // PDF-en regnes ut på nytt ved nedlasting. Vasken kaster hele skjemaet hvis
   // malId mangler, for da vet ingen hvilken mal svarene hører til.
@@ -974,58 +975,81 @@ async function apneTegningVelger(c) {
     '<p class="tv-mappe">' + esc(svar.mappenavn) + ' · ' + t("{0} tegninger", svar.filer.length + htmlSider.length) + '</p>' +
     '<input type="search" id="tvSok" placeholder="' + t("Søk etter tegning …") + '" autocomplete="off">' +
     '<div id="tvListe"></div>' +
+    '<p class="tv-hint">' + t("Ett trykk velger · dobbelttrykk åpner") + '</p>' +
     '<div class="tv-bunn"><label>' + t("Side") + ' <input type="number" id="tvSide" min="1" value="1"></label>' +
     '<button class="primary" id="tvLegg" disabled>' + t("Legg ved") + '</button></div>';
 
-  let valgt = null;
+  // FLERVALG (Emils regler 25.08.2026): ett trykk velger/velger bort,
+  // dobbelttrykk ÅPNER (PDF i fullskjermviseren, HTML i ny fane), og
+  // «Legg ved» legger ved alt som er valgt i ÉN omgang — også HTML-sider.
+  // Valget overlever søk. VIKTIG: et klikk tegner ALDRI lista på nytt —
+  // gjorde den det, ville dobbelttrykket landet på en død node.
+  const alle = svar.filer.concat(htmlSider);
+  const valgte = new Map();   // id → fil-objekt
+
+  const oppdaterKnapp = () => {
+    $("tvLegg").disabled = !valgte.size;
+    $("tvLegg").textContent = t("Legg ved") + (valgte.size ? " (" + valgte.size + ")" : "");
+  };
+
+  const apneFil = async (f) => {
+    if (erHtml(f.name)) {
+      try { await apneHtmlTegning(f); }
+      catch (err) {
+        alert(err.message === "IKKE_INNLOGGET"
+          ? t("Du må være innlogget for å åpne tegninger fra SharePoint.")
+          : t("Kunne ikke åpne HTML-siden: ") + err.message);
+      }
+    } else {
+      visTegning({ fil: f.name, itemId: f.id,
+        side: Math.max(1, Math.round(Number($("tvSide").value) || 1)),
+        storrelse: f.size || 0 });
+    }
+  };
+
+  const rad = (f, ikonNavn, meta) =>
+    '<div class="lib-item' + (valgte.has(f.id) ? " valgt" : "") + '" data-id="' + esc(f.id) +
+    '" data-type="' + (erHtml(f.name) ? "html" : "pdf") + '">' +
+    '<div class="n">' + ikon(ikonNavn) + ' ' + esc(f.name) + '</div>' +
+    '<div class="m">' + meta + '</div></div>';
+
   const tegn = (q) => {
     const s = q.trim().toLowerCase();
     const treff = svar.filer.filter(f => f.name.toLowerCase().includes(s));
     const treffHtml = htmlSider.filter(f => f.name.toLowerCase().includes(s));
-    // 🌐 HTML-sidene (f.eks. tegningskatalogen) er en egen kategori: de
-    // legges ikke ved en markering, de ÅPNES — i ny fane, bak innloggingen.
     const htmlDel = treffHtml.length
-      ? '<p class="tv-kat">HTML</p>' + treffHtml.map(f =>
-          '<div class="lib-item" data-html-id="' + esc(f.id) + '">' +
-          '<div class="n">' + ikon("apne") + ' ' + esc(f.name) + '</div>' +
-          '<div class="m">' + t("Åpnes i ny fane") + '</div></div>').join("")
+      ? '<p class="tv-kat">HTML</p>' + treffHtml.map(f => rad(f, "apne", "HTML")).join("")
       : "";
     const pdfDel = treff.length
       ? (treffHtml.length ? '<p class="tv-kat">PDF</p>' : "") + treff.map(f =>
-          '<div class="lib-item' + (valgt && valgt.id === f.id ? " valgt" : "") + '" data-id="' + esc(f.id) + '">' +
-          '<div class="n">' + ikon("tegning") + ' ' + esc(f.name) + '</div>' +
-          '<div class="m">' + mb(f.size).toFixed(1) + ' MB' +
-          (mb(f.size) > ADVAR_MB ? ' · <span style="color:var(--accent2)">' + t("stor fil") + '</span>' : "") + '</div></div>').join("")
+          rad(f, "tegning", mb(f.size).toFixed(1) + ' MB' +
+            (mb(f.size) > ADVAR_MB ? ' · <span style="color:var(--accent2)">' + t("stor fil") + '</span>' : ""))).join("")
       : "";
     $("tvListe").innerHTML = (htmlDel + pdfDel) ||
       '<p style="color:var(--muted)">' + t("Ingen treff.") + '</p>';
-    $("tvListe").querySelectorAll("[data-html-id]").forEach(d => {
-      d.onclick = async () => {
-        try { await apneHtmlTegning(htmlSider.find(f => f.id === d.dataset.htmlId)); }
-        catch (err) {
-          alert(err.message === "IKKE_INNLOGGET"
-            ? t("Du må være innlogget for å åpne tegninger fra SharePoint.")
-            : t("Kunne ikke åpne HTML-siden: ") + err.message);
-        }
-      };
-    });
     $("tvListe").querySelectorAll(".lib-item[data-id]").forEach(d => {
+      const finn = () => alle.find(f => f.id === d.dataset.id) || null;
       d.onclick = () => {
-        valgt = svar.filer.find(f => f.id === d.dataset.id) || null;
-        $("tvLegg").disabled = !valgt;
-        tegn($("tvSok").value);
+        const f = finn();
+        if (!f) return;
+        if (valgte.has(f.id)) valgte.delete(f.id); else valgte.set(f.id, f);
+        d.classList.toggle("valgt", valgte.has(f.id));
+        oppdaterKnapp();
       };
+      d.ondblclick = () => { const f = finn(); if (f) apneFil(f); };
     });
   };
   $("tvSok").addEventListener("input", () => tegn($("tvSok").value));
   tegn("");
+  oppdaterKnapp();
 
   $("tvLegg").onclick = () => {
-    if (!valgt) return;
+    if (!valgte.size) return;
     const side = Math.max(1, Math.round(Number($("tvSide").value) || 1));
-    c.tegninger = tegningerI(c).concat([{
-      fil: valgt.name, itemId: valgt.id, side, storrelse: valgt.size || 0
-    }]);
+    const nye = [...valgte.values()].map(f => erHtml(f.name)
+      ? { fil: f.name, itemId: f.id, side: 1, storrelse: f.size || 0, html: true }
+      : { fil: f.name, itemId: f.id, side, storrelse: f.size || 0 });
+    c.tegninger = tegningerI(c).concat(nye);
     persist();
     pushSharedComments();
     renderCommentList();
@@ -1522,7 +1546,14 @@ export function openMarkerPopup(c) {
         return;
       }
       const v = tegningerI(c)[Number(t.dataset.tegning)];
-      if (v) visTegning(v);
+      if (!v) return;
+      if (v.html) {
+        apneHtmlVedlegg(v).catch(err => alert(err.message === "IKKE_INNLOGGET"
+          ? t("Du må være innlogget for å åpne tegninger fra SharePoint.")
+          : t("Kunne ikke åpne HTML-siden: ") + err.message));
+      } else {
+        visTegning(v);
+      }
     };
   });
   fyllMiniatyrer(el, c);
