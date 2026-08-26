@@ -4,7 +4,7 @@
 import { $, S, esc, loadingEl, loadingText } from "./state.js";
 import { t } from "./i18n.js";
 import { byggLettKopi, lettNavn, lettParametre } from "./lite.js";
-import { clearLoadFlag, hentBuffer, loadModel, setLoadFlag } from "./ifc.js";
+import { afterLoad, clearLoadFlag, hentBuffer, loadModel, setLoadFlag } from "./ifc.js";
 import { bildeUrl, lastOpp } from "./bilder.js";
 import { lagreOgSynk, leggTilImportertMarkering, vaskMarkering } from "./markers.js";
 import { tegningNavn } from "./tegninger.js";
@@ -269,6 +269,12 @@ async function byggMedModus(modus) {
         const buf = await hentBuffer();
         if (!buf) throw new Error(t("Fant ikke modellfilen igjen – åpne den på nytt"));
         await loadModel(buf);
+        // AFTERLOAD ER IKKE VALGFRITT: loadModel nullstiller modelltilstanden
+        // (markeringer, materiell, grupper), og afterLoad er den som leser alt
+        // tilbake fra lager. Uten dette kallet pakket Byggeplass-knappen en
+        // JSON med 0 markeringer og 0 grupper etter stort prosjekt-omlastingen
+        // — det var Emils «Heissjakt forsvinner»-feil 26.08.
+        afterLoad();
         clearLoadFlag();
       } finally {
         S.lettOverstyr = null;

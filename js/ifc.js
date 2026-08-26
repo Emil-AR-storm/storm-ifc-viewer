@@ -533,6 +533,7 @@ på("btnLight", "click", async () => {
       const buf = await hentBuffer();
       if (!buf) throw new Error(t("Fant ikke modellfilen igjen – åpne den på nytt"));
       await loadModel(buf);
+      afterLoad();   // leser markeringer, materiell og grupper tilbake (samme glipp som i stort prosjekt)
       clearLoadFlag();
     } catch (err) {
       clearLoadFlag();
