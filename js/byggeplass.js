@@ -202,7 +202,7 @@ if (btn) btn.addEventListener("click", async () => {
     loadingText.textContent = t("Laster opp arbeidstegningene …");
     const antTegninger = await lastOppTegninger(prosjekt, token);
 
-    await visQr(prosjekt, fil, ids.size, vaskede.length, bildeteller, antallInn, antTegninger, uendret);
+    await visQr(prosjekt, fil, ids.size, vaskede.length, bildeteller, antallInn, antTegninger, uendret, grupperForEksport().length);
     oppdaterBadge();   // innboksen er tømt nå — telleren skal bort
   } catch (err) {
     console.error(err);
@@ -473,7 +473,7 @@ async function lastOppTegninger(prosjekt, token) {
 // Vises etter vellykket opplasting: QR-en peker på WORKER/<prosjektnr>.
 // Koden er IKKE i QR-en — montøren skal skrive den selv. Last ned som PNG
 // og lim inn i en arbeidstegning eller heng på brakkeveggen.
-async function visQr(prosjekt, fil, antall, antMark, antBilder, antInn, antTegninger, uendret) {
+async function visQr(prosjekt, fil, antall, antMark, antBilder, antInn, antTegninger, uendret, antGrupper) {
   if (!window.QRCode) {
     await new Promise((res, rej) => {
       const s = document.createElement("script");
@@ -504,6 +504,7 @@ async function visQr(prosjekt, fil, antall, antMark, antBilder, antInn, antTegni
     "<p style='margin:0 0 14px;font-size:13px;color:#555'>" + esc(fil) + " · " + antall + " elementer · " +
       (antMark || 0) + " markeringer · " + (antBilder || 0) + " bilder" +
       (antTegninger ? " · " + antTegninger + " tegninger" : "") +
+      (antGrupper ? " · " + antGrupper + " " + t("grupper") : "") +
       (antInn ? " · " + antInn + " fra byggeplassen hentet inn" : "") +
       (uendret ? "<br><span style='color:#16a34a'>Modellen er uendret — ingen ny revisjon laget</span>" : "") + "</p>" +
     "<div id='qrRute' style='display:flex;justify-content:center'></div>" +
