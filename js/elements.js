@@ -160,10 +160,10 @@ export async function showProperties(expressID) {
   }
 
   body.innerHTML =
-    (S.lightLoaded ? "" : '<div class="prop-actions"><button id="paHide">' + ikon("skjul") + ' ' + t("Skjul element") + '</button></div>') +
+    '<div class="prop-actions"><button id="paHide">' + ikon("skjul") + ' ' + t("Skjul element") + '</button></div>' +
     rows.map(([k,v]) =>
     `<div class="prop-row"><div class="k">${esc(String(k))}</div><div class="v">${esc(String(v))}</div></div>`).join("");
-  if (!S.lightLoaded) $("paHide").onclick = () => hideElement(expressID);
+  $("paHide").onclick = () => hideElement(expressID);   // virker nå også i 🪶 (synkMergedSkjuling)
   apnePanel("propPanel");
 }
 
@@ -445,8 +445,8 @@ function showMultiSummary() {
   // så enkeltelementer kan ikke skjules (samme grunn som i showProperties).
   const antall = S.multiSel.size;
   $("propBody").innerHTML =
-    (S.lightLoaded ? "" : '<div class="prop-actions"><button id="paHideSel">' + ikon("skjul") + ' ' +
-      t("Skjul {0} valgte", antall) + '</button></div>') +
+    '<div class="prop-actions"><button id="paHideSel">' + ikon("skjul") + ' ' +
+      t("Skjul {0} valgte", antall) + '</button></div>' +
     '<div class="prop-row" style="font-weight:600"><div class="k">' + t("Sum volum") + '</div><div class="v">' + fmtVol(totVol) + '</div></div>' +
     '<div class="prop-row" style="font-weight:600"><div class="k">' + t("Sum areal (fotavtrykk)") + '</div><div class="v">' + fmtArea(totArea) + '</div></div>' +
     '<div class="prop-row"><div class="k">' + t("Sum lengde (lengste mål)") + '</div><div class="v">' + totLen.toFixed(2) + ' m</div></div>' +
@@ -454,7 +454,7 @@ function showMultiSummary() {
     vist.map(it => '<div class="prop-row"><div class="k">' + esc(it.name) + '</div><div class="v">' + fmtVol(it.vol) + '</div></div>').join("") +
     (items.length > vist.length ? '<p style="color:var(--muted); font-size:11px; margin-top:6px">' + t("… og {0} til (summene øverst gjelder alle). Endre grensen i ⚙ Innstillinger → Visning.", items.length - vist.length) + '</p>' : "") +
     '<p style="color:var(--muted); font-size:11px; margin-top:8px">' + t("Shift-klikk legger til/fjerner. Shift + dra lager markeringsboks: mot høyre = kun synlige, mot venstre = alt i boksen. Vanlig klikk nullstiller.") + '</p>';
-  if (!S.lightLoaded) $("paHideSel").onclick = () => hideElements(new Set(S.multiSel.keys()));
+  $("paHideSel").onclick = () => hideElements(new Set(S.multiSel.keys()));   // virker nå også i 🪶
   apnePanel("propPanel");
 }
 

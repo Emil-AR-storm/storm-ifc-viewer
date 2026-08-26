@@ -5,10 +5,9 @@
 //  · Kontoret lagrer grupper (fra shift-klikk/markeringsboks-utvalget) og de
 //    følger prosjektet ut via Byggeplass-knappen (grupper-feltet i
 //    .markeringer.json — samme reise som materiellet).
-//  · Byggeplassen (lettmodus) henter dem fra Workerens JSON og kan TRYKKE på
-//    dem. Der flyr bare kameraet — den lette kopien har sammenslått geometri,
-//    så enkeltvis skjuling finnes ikke i lettmodus (samme grunn som at
-//    «Skjul»-knappen i egenskapspanelet er borte der).
+//  · Byggeplassen (lettmodus) henter dem fra Workerens JSON og kan trykke på
+//    dem — alt annet skjules og kameraet flyr dit, akkurat som på kontoret
+//    (skjuling i sammenslått geometri: synkMergedSkjuling i display.js).
 //
 // Lagring lokalt: én localStorage-nøkkel per modellfil, samme mønster som
 // materiellet. Vasking: alt som kommer utenfra (Worker-JSON) går gjennom
@@ -103,11 +102,12 @@ export function aktiverGruppe(g) {
     if (b) { boks.union(b); funnet++; }
   }
   if (!funnet) { alert(t("Fant ikke elementene i denne modellen.")); return; }
-  if (!S.lightLoaded) {
-    const andre = [];
-    for (const id of bokser.keys()) if (!iGruppen.has(id)) andre.push(id);
-    if (andre.length) hideElements(andre);   // angre-post lages der
-  }
+  // Skjuling virker nå også i lettmodus (synkMergedSkjuling i display.js
+  // kollapser trekantene i den sammenslåtte geometrien) — montøren får
+  // samme fokusvisning som kontoret.
+  const andre = [];
+  for (const id of bokser.keys()) if (!iGruppen.has(id)) andre.push(id);
+  if (andre.length) hideElements(andre);   // angre-post lages der
   const c = boks.getCenter(new THREE.Vector3());
   const radius = boks.getSize(new THREE.Vector3()).length() / 2;
   let dir = camera.position.clone().sub(c);
@@ -184,9 +184,7 @@ function tegnPanel() {
       '<button data-gr-slett="' + esc(g.id) + '" title="' + t("Slett") + '" style="padding:3px 8px">' + ikon("slett") + "</button>") +
       "</div></div>").join("") +
       '<p style="color:var(--muted);font-size:11px;margin-top:6px">' +
-      (LETT
-        ? t("Trykk på en gruppe, så flyr kameraet dit.")
-        : t("Trykk på en gruppe: alt annet skjules og kameraet flyr dit. «Vis alle» henter tilbake resten.")) + "</p>";
+      t("Trykk på en gruppe: alt annet skjules og kameraet flyr dit. «Vis alle» henter tilbake resten.") + "</p>";
   }
   body.innerHTML = html;
   const inp = $("grNavn"), knapp = $("grLagre");

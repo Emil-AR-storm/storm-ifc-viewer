@@ -119,6 +119,7 @@ export const ORDBOK = {
   "Gruppe lagret": { en: "Group saved", pl: "Grupa zapisana", lt: "Grupė išsaugota" },
   "Gruppe slettet": { en: "Group deleted", pl: "Grupa usunięta", lt: "Grupė ištrinta" },
   "Objektgrupper": { en: "Object groups", pl: "Grupy obiektów", lt: "Objektų grupės" },
+  "Velg elementer med shift-klikk eller shift-dra, åpne Grupper (i Bygg Info) og lagre utvalget med navn. Trykk på en lagret gruppe for å hente den fram: alt annet skjules og kameraet flyr dit. Vis alle henter tilbake resten.": { en: "Select elements with shift-click or shift-drag, open Groups (under Building Info) and save the selection with a name. Click a saved group to bring it back: everything else is hidden and the camera flies to it. Show all brings the rest back.", pl: "Zaznacz elementy shift-klikiem lub shift-przeciąganiem, otwórz Grupy (w Info o budynku) i zapisz zaznaczenie pod nazwą. Kliknij zapisaną grupę: cała reszta zostanie ukryta, a kamera poleci do niej. Pokaż wszystko przywraca resztę.", lt: "Pažymėkite elementus shift-spustelėjimu arba shift-vilkimu, atidarykite Grupes (Pastato info) ir išsaugokite pažymėjimą su pavadinimu. Spustelėkite išsaugotą grupę: visa kita paslepiama, o kamera nuskrenda prie jos. Rodyti viską grąžina likusius." },
   "Armeringstype": { en: "Reinforcement type", pl: "Typ zbrojenia", lt: "Armatūros tipas" },
   "Dimensjon": { en: "Dimension", pl: "Wymiar", lt: "Matmuo" },
   "Stang": { en: "Bar", pl: "Pręt", lt: "Strypas" },

@@ -101,7 +101,7 @@ export const KORT = [
   {
     hvor: "begge", ikonNavn: "fokus",
     tittel: "Objektgrupper",
-    tekst: "Velg elementer med shift-klikk eller shift-dra, åpne Grupper (i Bygg Info) og lagre utvalget med navn. Trykk på en lagret gruppe for å hente den fram: kameraet flyr dit, og på kontoret skjules alt annet. Vis alle henter tilbake resten."
+    tekst: "Velg elementer med shift-klikk eller shift-dra, åpne Grupper (i Bygg Info) og lagre utvalget med navn. Trykk på en lagret gruppe for å hente den fram: alt annet skjules og kameraet flyr dit. Vis alle henter tilbake resten."
   },
   {
     hvor: "kontor", ikonNavn: "tegning",

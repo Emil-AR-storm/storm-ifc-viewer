@@ -407,7 +407,9 @@ export function lightElementBoxes(idSet, out) {
   S.modelGroup.children.forEach(m => {
     if (!m.userData.merged) return;
     const p = m.geometry.getAttribute("position").array;
-    const ix = m.geometry.getIndex().array;
+    // origIndex finnes når noe er skjult (synkMergedSkjuling) — boksene skal
+    // ALLTID regnes fra hele elementet, ikke fra den kollapsede indeksen
+    const ix = m.userData.origIndex || m.geometry.getIndex().array;
     for (const r of (m.userData.ranges || [])) {
       if (idSet && !idSet.has(r.id)) continue;
       let b = boxes.get(r.id);

@@ -49,7 +49,9 @@ export function slåSammenScene(children, opts) {
       let b = bøtter.get(key);
       if (!b) { b = { mat: m.material, deler: [] }; bøtter.set(key, b); }
       const pos = m.geometry.getAttribute("position").array;
-      const idx = m.geometry.getIndex().array;
+      // origIndex finnes når noe er skjult (synkMergedSkjuling i display.js):
+      // kopien skal ha HELE modellen, ikke det som tilfeldigvis vises nå
+      const idx = m.userData.origIndex || m.geometry.getIndex().array;
       b.deler.push({ pos, idx, ranges: m.userData.ranges || [] });
       continue;
     }
