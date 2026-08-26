@@ -174,7 +174,8 @@ function tegnPanel() {
   html += '<h4 style="margin:12px 0 4px">' + t("Lagrede grupper") +
     ' <span style="color:var(--muted);font-size:11px">(' + liste.length + ')</span></h4>';
   if (!liste.length) {
-    html += '<p style="color:var(--muted);font-size:12px">' + t("Ingen grupper lagret ennå.") + "</p>";
+    html += '<p style="color:var(--muted);font-size:12px">' + t("Ingen grupper lagret ennå.") +
+      (LETT ? " " + t("Grupper laget på kontoret kommer hit når Byggeplass-knappen trykkes på nytt.") : "") + "</p>";
   } else {
     html += liste.map(g =>
       '<div class="qty-row"><div class="n" data-gr-vis="' + esc(g.id) + '" style="cursor:pointer">' +
