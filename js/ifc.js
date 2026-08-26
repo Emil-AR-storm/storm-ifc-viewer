@@ -4,7 +4,7 @@ import { $, på, S, esc, loadingEl, loadingText, lukkPaneler, nullstillModellSta
 import { t } from "./i18n.js";
 import { harWorker, kall, metaFor, tømMeta } from "./ifcrpc.js";
 import { byggLettKopi, lettNavn } from "./lite.js";
-import { hiddenIDs } from "./display.js";
+import { hiddenIDs, typeSkjultLett } from "./display.js";
 import { clearSelection } from "./elements.js";
 import { loadComments, renderCommentList } from "./markers.js";
 import { miniCanvas, renderMiniMap } from "./minimap.js";
@@ -215,6 +215,7 @@ function clearModel() {
   renderer.domElement.style.cursor = "";
   renderer.clippingPlanes = [];
   hiddenIDs.clear();
+  typeSkjultLett.clear();
   tomTegningsbuffer();      // tegninger hører til forrige modell
   renderCommentList();
   clearSelection();

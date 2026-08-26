@@ -40,7 +40,8 @@ export function setGhost(on, silent) {
     saveAppear();
   }
   S.modelGroup.children.forEach(m => {
-    m.material = S.ghostOn ? ghostMat(m) : m.userData.origMat;
+    m.material = S.ghostOn ? ghostMat(m)
+      : (S.lettFargerPå && m.userData.merged && m.userData.fargeMat ? m.userData.fargeMat : m.userData.origMat);
   });
 }
 
@@ -52,6 +53,10 @@ på("btnGhost", "click", () => {
 
 // ---------- Skjul / vis ----------
 export const hiddenIDs = new Set();
+
+// 🎨 Id-er skjult via TYPE-raden i lav kvalitet. Egen mengde, ikke hiddenIDs:
+// da kan «vis type» aldri dra med seg elementer noen har skjult enkeltvis.
+export const typeSkjultLett = new Set();
 
 // Skjuler et helt sett i ÉN gjennomgang av meshene. Å kalle hideElement per
 // element ville gått gjennom hele modellen én gang per id – med noen hundre
@@ -93,12 +98,13 @@ export function synkMergedSkjuling() {
     const ranges = m.userData.ranges || [];
     const idx = m.geometry.getIndex();
     if (!idx) return;
-    const harSkjulte = ranges.some(r => hiddenIDs.has(r.id));
+    const erSkjult = (id) => hiddenIDs.has(id) || typeSkjultLett.has(id);
+    const harSkjulte = ranges.some(r => erSkjult(r.id));
     if (!harSkjulte && !m.userData.origIndex) return;   // aldri rørt — ingenting å gjøre
     if (!m.userData.origIndex) m.userData.origIndex = idx.array.slice();
     const orig = m.userData.origIndex, arr = idx.array;
     for (const r of ranges) {
-      if (hiddenIDs.has(r.id)) arr.fill(0, r.start, r.start + r.count);
+      if (erSkjult(r.id)) arr.fill(0, r.start, r.start + r.count);
       else arr.set(orig.subarray(r.start, r.start + r.count), r.start);
     }
     idx.needsUpdate = true;
@@ -125,7 +131,7 @@ export function showElements(ider) {
 // «Vis alle» skal stå framme så lenge NOE er skjult – enkeltelement eller type.
 // Lå før som en kopiert enlinjes tre steder, og de tre var ikke like.
 export function oppdaterVisAlle() {
-  const noeSkjult = hiddenIDs.size > 0 ||
+  const noeSkjult = hiddenIDs.size > 0 || typeSkjultLett.size > 0 ||
     (S.typeInfo ? [...S.typeInfo.values()].some(g => g.hidden) : false);
   $("btnShowAll").style.display = noeSkjult ? "" : "none";
 }
@@ -134,10 +140,13 @@ på("btnShowAll", "click", () => {
   // Avtrykk FØR: «Vis alle» kan gjøre om en hel dags skjuling på ett klikk
   const før = visningsAvtrykk();
   hiddenIDs.clear();
+  typeSkjultLett.clear();
   if (S.typeInfo) for (const [, g] of S.typeInfo) g.hidden = false;
+  if (S.typeInfoLett) for (const [, g] of S.typeInfoLett) g.hidden = false;
   S.appear.hiddenTypes = []; saveAppear();
   if (S.modelGroup) S.modelGroup.children.forEach(m => m.visible = true);
   synkMergedSkjuling();
+  if ($("colorPanel").classList.contains("open") && S.lightLoaded && S.typeInfoLett) renderColorPanelLett();
   $("btnShowAll").style.display = "none";
   if ($("colorPanel").classList.contains("open")) renderColorPanel();
   meldAngre(før, "Vis alle");
@@ -150,6 +159,7 @@ på("btnShowAll", "click", () => {
 export function visningsAvtrykk() {
   return {
     skjulteIder: [...hiddenIDs],
+    lettTyperSkjult: S.typeInfoLett ? [...S.typeInfoLett].filter(([, g]) => g.hidden).map(([k]) => k) : [],
     skjulteTyper: S.typeInfo ? [...S.typeInfo].filter(([, g]) => g.hidden).map(([k]) => k) : [],
     farger: S.typeInfo ? Object.fromEntries([...S.typeInfo].map(([k, g]) => [k, g.color])) : {},
     typeColorsOn: S.typeColorsOn,
@@ -172,6 +182,14 @@ export function settVisning(a) {
   }
   hiddenIDs.clear();
   a.skjulteIder.forEach(id => hiddenIDs.add(id));
+  typeSkjultLett.clear();
+  if (S.typeInfoLett) {
+    const sk = new Set(a.lettTyperSkjult || []);
+    for (const [k, g] of S.typeInfoLett) {
+      g.hidden = sk.has(k);
+      if (g.hidden) g.ids.forEach(id => typeSkjultLett.add(id));
+    }
+  }
   synkMergedSkjuling();
 
   // Materialene settes i én gjennomgang: ghost > typefarger > original.
@@ -285,16 +303,157 @@ export function resetColors() {
   meldAngre(før, "Originalfarger");
 }
 
+// ---------- 🎨 Utseende i SAMMENSLÅTT geometri (🪶 lav kvalitet / lett kopi) ----------
+// Panelet viste før bare bakgrunnen i lav kvalitet. Nå (26.08.2026):
+//  · SKJUL/VIS PER TYPE rir på kollaps-mekanikken (synkMergedSkjuling):
+//    typens id-er legges i typeSkjultLett og trekantene kollapses.
+//  · FARGELEGG ETTER TYPE males som farger per punkt (vertex-farger): hvert
+//    sammenslått mesh får et fargeattributt, og hvert elementrange males i
+//    typens farge. Punkter i sveiste sømmer deles av naboelementer, så en
+//    hårfin fargeblødning i kontaktflatene kan skje — kosmetisk, ikke feil.
+//  · Kantlinjer per type finnes fortsatt bare i full kvalitet (kantgeometri
+//    per element i sammenslåtte mesh er for tungt på store modeller).
+
+// Typenøkkelen for et element: fra GLB-egenskapene på byggeplassen, fra
+// IFC-tråden (metaFor) i 🪶 på kontoret.
+function lettTypeKey(id) {
+  let tn = "";
+  if (S.glbProps && S.glbProps.size) {
+    const p = S.glbProps.get(id);
+    tn = (p && p[2]) || "";
+  } else {
+    tn = typeFor(id) || "";
+  }
+  return (tn || "UKJENT").toUpperCase().replace(/^IFC/, "");
+}
+
+async function byggTypeInfoLett() {
+  if (S.typeInfoLett) return;
+  if (!(S.glbProps && S.glbProps.size)) await sikreMeta(alleElementIder);
+  S.typeInfoLett = new Map();
+  for (const id of alleElementIder()) {
+    const key = lettTypeKey(id);
+    let g = S.typeInfoLett.get(key);
+    if (!g) {
+      g = { label: TYPE_LABELS[key] || key, ids: [], hidden: false,
+            color: S.appear.colors[key] || PALETTE[S.typeInfoLett.size % PALETTE.length] };
+      S.typeInfoLett.set(key, g);
+    }
+    g.ids.push(id);
+  }
+}
+
+function lettFargeMat(m) {
+  if (!m.userData.fargeMat) {
+    m.userData.fargeMat = new THREE.MeshLambertMaterial({ vertexColors: true, color: 0xffffff, side: THREE.DoubleSide });
+  }
+  return m.userData.fargeMat;
+}
+
+// Maler fargeattributtet etter typefargene — bruker ALLTID originalindeksen,
+// så også skjulte (kollapsede) elementer får riktig farge når de vises igjen.
+function malLettFarger() {
+  const c = new THREE.Color();
+  S.modelGroup.children.forEach(m => {
+    if (!m.userData.merged) return;
+    const g = m.geometry;
+    let attr = g.getAttribute("color");
+    if (!attr) {
+      attr = new THREE.BufferAttribute(new Float32Array(g.getAttribute("position").count * 3).fill(1), 3);
+      g.setAttribute("color", attr);
+    }
+    const ix = m.userData.origIndex || g.getIndex().array;
+    const a = attr.array;
+    for (const r of (m.userData.ranges || [])) {
+      const info = S.typeInfoLett.get(lettTypeKey(r.id));
+      c.set((info && info.color) || "#ffffff");
+      for (let i = r.start; i < r.start + r.count; i++) {
+        const vi = ix[i] * 3;
+        a[vi] = c.r; a[vi + 1] = c.g; a[vi + 2] = c.b;
+      }
+    }
+    attr.needsUpdate = true;
+  });
+}
+
+export function settLettFarger(paa, medAngre) {
+  const før = S.lettFargerPå;
+  if (paa && S.ghostOn) setGhost(false);   // samme forrang som i full kvalitet: farger slår av ghost
+  S.lettFargerPå = paa;
+  S.modelGroup.children.forEach(m => {
+    if (!m.userData.merged) return;
+    if (!m.userData.origMat) m.userData.origMat = m.material;
+    m.material = paa ? lettFargeMat(m) : m.userData.origMat;
+  });
+  if (paa) malLettFarger();
+  if (medAngre && før !== paa && S.pushAngre) S.pushAngre({
+    tekst: paa ? "Fargelegg etter type" : "Originalfarger",
+    angre: () => settLettFarger(før, false),
+    gjenopprett: () => settLettFarger(paa, false)
+  });
+}
+
+function settLettTypeSkjult(g, skjul, medAngre) {
+  g.hidden = skjul;
+  g.ids.forEach(id => { if (skjul) typeSkjultLett.add(id); else typeSkjultLett.delete(id); });
+  synkMergedSkjuling();
+  oppdaterVisAlle();
+  if ($("colorPanel").classList.contains("open")) renderColorPanelLett();
+  if (medAngre && S.pushAngre) S.pushAngre({
+    tekst: skjul ? "Type skjult" : "Type vist",
+    angre: () => settLettTypeSkjult(g, !skjul, false),
+    gjenopprett: () => settLettTypeSkjult(g, skjul, false)
+  });
+}
+
+export function renderColorPanelLett() {
+  const bgVal = "#" + scene.background.getHexString();
+  let html =
+    '<div class="prop-actions">' +
+    '<button id="colApplyLett" class="primary">' + ikon("utseende") + ' ' + t("Fargelegg etter type") + '</button>' +
+    '<button id="colResetLett">' + t("Originalfarger") + '</button></div>' +
+    '<div class="qty-row"><div class="n">' + t("Bakgrunn") + '</div><div class="c"><input type="color" id="colBg" value="' + bgVal + '"></div></div>';
+  const keys = [...S.typeInfoLett.keys()];
+  keys.forEach((key, i) => {
+    const g = S.typeInfoLett.get(key);
+    html += '<div class="qty-row"><div class="n">' + esc(t(g.label)) +
+      ' <span style="color:var(--muted);font-size:11px">(' + g.ids.length + ')</span></div>' +
+      '<div class="c" style="display:flex; align-items:center; gap:8px">' +
+      '<button data-lett-hide="' + i + '" title="' + t("Skjul/vis") + '" style="padding:3px 8px">' + ikon(g.hidden ? "skjul" : "vis") + '</button>' +
+      '<input type="color" data-lett-type="' + i + '" value="' + g.color + '"></div></div>';
+  });
+  html += '<p style="color:var(--muted);font-size:11px;margin-top:10px">' + t("Kantlinjer per type finnes bare i full kvalitet.") + '</p>';
+  $("colorBody").innerHTML = html;
+  $("colBg").oninput = (e) => { scene.background.set(e.target.value); saveBg(e.target.value); };
+  $("colApplyLett").onclick = () => settLettFarger(true, true);
+  $("colResetLett").onclick = () => settLettFarger(false, true);
+  $("colorBody").querySelectorAll("button[data-lett-hide]").forEach(b =>
+    b.onclick = () => {
+      const g = S.typeInfoLett.get(keys[Number(b.dataset.lettHide)]);
+      settLettTypeSkjult(g, !g.hidden, true);
+    });
+  $("colorBody").querySelectorAll("input[data-lett-type]").forEach(inp =>
+    inp.oninput = () => {
+      const key = keys[Number(inp.dataset.lettType)];
+      const g = S.typeInfoLett.get(key);
+      g.color = inp.value;
+      S.appear.colors[key] = inp.value;
+      saveAppear();
+      if (S.lettFargerPå) malLettFarger();
+    });
+}
+
 på("btnColors", "click", async () => {
   if (!S.modelGroup) return;
   const panel = $("colorPanel");
   if (panel.classList.contains("open")) { panel.classList.remove("open"); return; }
   if (S.lightLoaded) {
-    const bgVal = "#" + scene.background.getHexString();
-    $("colorBody").innerHTML =
-      '<div class="qty-row"><div class="n">' + t("Bakgrunn") + '</div><div class="c"><input type="color" id="colBg" value="' + bgVal + '"></div></div>' +
-      '<p style="color:var(--muted); font-size:11px; margin-top:10px">' + t("Fargelegging og skjuling per type er ikke tilgjengelig i lav kvalitet. Last modellen i full kvalitet for å bruke det.") + '</p>';
-    $("colBg").oninput = (e) => { scene.background.set(e.target.value); saveBg(e.target.value); };
+    if (!S.typeInfoLett) {
+      $("colorBody").innerHTML = '<p style="color:var(--muted)">' + t("Leser elementdata …") + '</p>';
+      apnePanel("colorPanel");
+      await byggTypeInfoLett();
+    }
+    renderColorPanelLett();
   } else {
     if (!S.typeInfo) { await sikreMeta(alleElementIder); buildTypeInfo(); }
     renderColorPanel();

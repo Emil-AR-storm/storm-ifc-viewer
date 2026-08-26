@@ -4,7 +4,7 @@ import { $, på, S, apnePanel, dec, esc, ikon, loadingEl, loadingText } from "./
 import { t } from "./i18n.js";
 import { TETTHET } from "./config.js";
 import { profilKgPerM } from "./profiler.js";
-import { hiddenIDs, hideElement, hideElements } from "./display.js";
+import { hiddenIDs, hideElement, hideElements, typeSkjultLett } from "./display.js";
 import { alleElementIder, lightElementBoxes } from "./ifc.js";
 import { kall, metaFor, sikreMeta } from "./ifcrpc.js";
 import { axesGroup, camera, canvas, controls, grid, koteGroup, markerGroup, measureGroup, pointer, raycaster, renderer, scene, selGroup } from "./scene.js";
@@ -1215,7 +1215,8 @@ function idsVisibleInRect(x0, y0, x1, y1) {
 // Bygges én gang per markering: å spørre per element ville blitt O(n²).
 export function skjulteIder() {
   const skjult = new Set(hiddenIDs);
-  if (!S.modelGroup || S.lightLoaded) return skjult;  // sammenslått geometri: bare hiddenIDs gjelder
+  typeSkjultLett.forEach(id => skjult.add(id));
+  if (!S.modelGroup || S.lightLoaded) return skjult;  // sammenslått geometri: hiddenIDs + typeSkjultLett gjelder
   const synlige = new Set();
   S.modelGroup.children.forEach(m => {
     const id = m.userData.expressID;

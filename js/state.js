@@ -165,6 +165,8 @@ export function modellStartverdier() {
     multiSel: new Map(),
     allBoxCache: null,
     typeInfo: null, typeColorsOn: false,
+    typeInfoLett: null,       // 🎨 i sammenslått geometri: Map key → {label, ids, hidden, color}
+    lettFargerPå: false,      // typefargene (vertex-farger) er malt på
     ghostOn: false,
     miniInfo: null, miniBase: null,
     // Hvilken etasje minikart-trykk lander deg på. −1 = «Original», altså
