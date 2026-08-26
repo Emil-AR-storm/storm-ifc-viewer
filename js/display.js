@@ -64,6 +64,7 @@ export function hideElements(ider) {
   const nye = [...sett].filter(id => !hiddenIDs.has(id));
   sett.forEach(id => hiddenIDs.add(id));
   S.modelGroup.children.forEach(m => { if (sett.has(m.userData.expressID)) m.visible = false; });
+  synkMergedSkjuling();
   clearSelection();   // tømmer også S.multiSel – de skjulte skal ikke bli liggende i utvalget
   $("propPanel").classList.remove("open");
   $("btnShowAll").style.display = "";
@@ -75,6 +76,34 @@ export function hideElements(ider) {
 }
 
 export function hideElement(expressID) { hideElements([expressID]); }
+
+// ---------- Skjul i SAMMENSLÅTT geometri (🪶 lav kvalitet / lett kopi) ----------
+// Ett merged mesh inneholder mange elementer, så visible-flagget kan ikke
+// skjule ett av dem — det var derfor Skjul var avslått i lav kvalitet, ikke
+// filstørrelsen. Løsningen: trekantene til de skjulte elementene KOLLAPSES —
+// indeksene i elementets range settes til 0, som gir trekanter uten areal.
+// De verken tegnes eller treffes av raycast. Indeksens LENGDE og rangene
+// endres ALDRI, så alle offset-baserte invarianter består (hitID,
+// selectElement, mengder). Originalindeksen ligger i userData.origIndex og
+// legges tilbake spenn for spenn når elementet vises igjen.
+export function synkMergedSkjuling() {
+  if (!S.modelGroup) return;
+  S.modelGroup.children.forEach(m => {
+    if (!m.userData.merged) return;
+    const ranges = m.userData.ranges || [];
+    const idx = m.geometry.getIndex();
+    if (!idx) return;
+    const harSkjulte = ranges.some(r => hiddenIDs.has(r.id));
+    if (!harSkjulte && !m.userData.origIndex) return;   // aldri rørt — ingenting å gjøre
+    if (!m.userData.origIndex) m.userData.origIndex = idx.array.slice();
+    const orig = m.userData.origIndex, arr = idx.array;
+    for (const r of ranges) {
+      if (hiddenIDs.has(r.id)) arr.fill(0, r.start, r.start + r.count);
+      else arr.set(orig.subarray(r.start, r.start + r.count), r.start);
+    }
+    idx.needsUpdate = true;
+  });
+}
 
 // Motstykket til hideElements – brukes av ↩ Angre. Et element skal bare bli
 // synlig igjen hvis TYPEN det hører til ikke er skjult i 🎨 Utseende; ellers
@@ -88,6 +117,7 @@ export function showElements(ider) {
   if (S.modelGroup) S.modelGroup.children.forEach(m => {
     if (sett.has(m.userData.expressID)) m.visible = !typeSkjult.has(m);
   });
+  synkMergedSkjuling();
   oppdaterVisAlle();
   if ($("colorPanel").classList.contains("open") && S.typeInfo) renderColorPanel();
 }
@@ -107,6 +137,7 @@ på("btnShowAll", "click", () => {
   if (S.typeInfo) for (const [, g] of S.typeInfo) g.hidden = false;
   S.appear.hiddenTypes = []; saveAppear();
   if (S.modelGroup) S.modelGroup.children.forEach(m => m.visible = true);
+  synkMergedSkjuling();
   $("btnShowAll").style.display = "none";
   if ($("colorPanel").classList.contains("open")) renderColorPanel();
   meldAngre(før, "Vis alle");
@@ -141,6 +172,7 @@ export function settVisning(a) {
   }
   hiddenIDs.clear();
   a.skjulteIder.forEach(id => hiddenIDs.add(id));
+  synkMergedSkjuling();
 
   // Materialene settes i én gjennomgang: ghost > typefarger > original.
   // Rekkefølgen er den samme som setGhost/applyTypeColors bruker hver for seg.
@@ -241,6 +273,7 @@ export function resetColors() {
     S.modelGroup.children.forEach(m => { m.material = m.userData.origMat; m.visible = true; });
   }
   hiddenIDs.clear();
+  synkMergedSkjuling();
   if (S.typeInfo) for (const [, g] of S.typeInfo) g.hidden = false;
   $("btnShowAll").style.display = "none";
   // Egne, tomme lister – ikke de som ligger i DEFAULT_APPEAR. Object.assign
