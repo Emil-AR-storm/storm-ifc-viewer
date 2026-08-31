@@ -432,34 +432,61 @@ export function elemDisplayName(id) {
 
 // ---------- Flervalg (shift-klikk) med samlede mengder ----------
 
-function showMultiSummary() {
-  let totVol = 0, totLen = 0, totArea = 0;
-  const items = [];
-  for (const [id, q] of S.multiSel) {
-    totVol += q.vol;
-    totLen += q.dims[0];
-    totArea += q.area || 0;
-    items.push({ id, name: elemDisplayName(id), vol: q.vol });
+// Asynkron fordi navnene (metaFor) må hentes fra IFC-tråden første gang —
+// samme grep som Søk og Mengder (sikreMeta caches, så det koster bare én
+// runde). Kallerne venter ikke; panelet fyller seg når svaret kommer. Uten
+// dette sto utvalget som «ID 134, ID 159 …» til man hadde åpnet Mengder.
+async function showMultiSummary() {
+  const antElem = S.multiSel.size;
+  if (antElem && !S.glbActive && S.modelID !== null) {
+    try { await sikreMeta(alleElementIder); } catch (_) {}
   }
-  // 📦 Materiell i utvalget. Tallene er PARAMETRISKE (målene brukeren satte
-  // × antall), samme prinsipp som i Mengder — aldri gjettet fra geometri.
-  // Objekter som er slettet eller skjult i mellomtiden lukes ut av settet her:
-  // de kan ikke lenger pekes på, og skal ikke bli liggende igjen i summene.
-  const matItems = [];
+  // Grupperes NØYAKTIG som Mengder (computeQuantities): samme gruppenøkkel
+  // (ObjectType/navn + materiale), samme radformat — «24 stk · 82.6 m ·
+  // 1.3 m² · 0.185 m³». Da leses flervalget og Mengder som samme verktøy.
+  const grupper = new Map();
+  let totVol = 0, totLen = 0, totArea = 0;
+  for (const [id, q] of S.multiSel) {
+    let name = "", objType = "", typeName = "", material = "";
+    if (S.glbActive) {
+      const p = S.glbProps ? S.glbProps.get(id) : null;
+      if (p) { name = p[0] || ""; objType = p[1] || ""; typeName = (p[2] || "").replace(/^Ifc/, ""); material = p[3] || ""; }
+    } else {
+      const meta = metaFor(id);
+      if (meta) { name = meta.name || ""; objType = meta.objectType || ""; typeName = meta.typeName || ""; material = meta.material || ""; }
+    }
+    const key = (objType || name.replace(/:\d+$/, "") || typeName || "Ukjent") + (material ? " · " + material : "");
+    const len = q.len || (q.dims ? q.dims[0] : 0) || 0;
+    const vol = q.vol || 0, area = q.area || 0;
+    totVol += vol; totLen += len; totArea += area;
+    let g = grupper.get(key);
+    if (!g) grupper.set(key, g = { count: 0, len: 0, area: 0, vol: 0, type: typeName });
+    g.count++; g.len += len; g.area += area; g.vol += vol;
+  }
+  // 📦 Materiell i utvalget — egne grupper med PARAMETRISKE tall (målene
+  // brukeren satte × antall), samme nøkkel og type som radene deres i Mengder
+  // (materiellMengdeRader). Objekter som er slettet eller skjult i mellomtiden
+  // lukes ut av settet her: de kan ikke pekes på, og skal ikke bli i summene.
   if (S.multiSelMat && S.multiSelMat.size) {
     const alle = new Map((S.materiell || []).map(p => [p.id, p]));
     for (const id of [...S.multiSelMat]) {
       const p = alle.get(id);
       if (!p || p.skjult) { S.multiSelMat.delete(id); continue; }
-      totArea += (p.lengde / 1000) * (p.bredde / 1000) * p.antall;
-      matItems.push({ navn: p.navn || materiellTypeLabel(p), antall: p.antall });
+      const label = materiellTypeLabel(p);
+      const L = p.lengde / 1000, B = p.bredde / 1000, H = p.tykkelse / 1000;
+      const len = Math.max(L, B, H) * p.antall, area = L * B * p.antall;
+      totLen += len; totArea += area;
+      const key = (p.navn || label) + " · " + label;
+      let g = grupper.get(key);
+      if (!g) grupper.set(key, g = { count: 0, len: 0, area: 0, vol: 0, type: "Materiell" });
+      g.count += p.antall; g.len += len; g.area += area;
     }
   }
-  const antElem = S.multiSel.size;
   const antMat = S.multiSelMat ? S.multiSelMat.size : 0;
   if (!antElem && !antMat) { $("propPanel").classList.remove("open"); return; }
   // Hvor mange rader lista viser før den kortes av. Settes i ⚙ Innstillinger →
   // Visning → «Elementer i lista». 0 = vis alle (kan bli tregt på tusenvis).
+  const items = [...grupper.entries()].sort((a, b) => b[1].count - a[1].count);
   const grense = listeGrense();
   const vist = grense > 0 ? items.slice(0, grense) : items;
   $("propTitle").textContent =
@@ -478,9 +505,16 @@ function showMultiSummary() {
     '<div class="prop-row" style="font-weight:600"><div class="k">' + t("Sum areal (fotavtrykk)") + '</div><div class="v">' + fmtArea(totArea) + '</div></div>' +
     '<div class="prop-row"><div class="k">' + t("Sum lengde (lengste mål)") + '</div><div class="v">' + totLen.toFixed(2) + ' m</div></div>' +
     '<div class="prop-row"><div class="k">' + t("Antall") + '</div><div class="v">' + (antElem + antMat) + t(" stk") + '</div></div>' +
-    vist.map(it => '<div class="prop-row"><div class="k">' + esc(it.name) + '</div><div class="v">' + fmtVol(it.vol) + '</div></div>').join("") +
+    vist.map(([key, g]) =>
+      '<div class="qty-row"><div class="n">' + esc(key) +
+      (g.type ? ' <span style="color:var(--muted);font-size:11px">(' + esc(typeVisning(g.type)) + ')</span>' : "") +
+      '</div><div class="c">' + tallDeler([
+        g.count + t(" stk"),
+        g.len.toFixed(dec()) + ' m',
+        fmtArea(g.area),
+        fmtVol(g.vol)
+      ]) + '</div></div>').join("") +
     (items.length > vist.length ? '<p style="color:var(--muted); font-size:11px; margin-top:6px">' + t("… og {0} til (summene øverst gjelder alle). Endre grensen i ⚙ Innstillinger → Visning.", items.length - vist.length) + '</p>' : "") +
-    matItems.map(it => '<div class="prop-row"><div class="k">📦 ' + esc(it.navn) + '</div><div class="v">' + it.antall + t(" stk") + '</div></div>').join("") +
     '<p style="color:var(--muted); font-size:11px; margin-top:8px">' + t("Shift-klikk legger til/fjerner. Shift + dra lager markeringsboks: mot høyre = kun synlige, mot venstre = alt i boksen. Vanlig klikk nullstiller.") + '</p>';
   if (antElem) $("paHideSel").onclick = () => hideElements(new Set(S.multiSel.keys()));   // virker nå også i 🪶
   apnePanel("propPanel");
