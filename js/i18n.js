@@ -582,6 +582,8 @@ export const ORDBOK = {
   "Merk": { en: "Mark", pl: "Oznaczenie", lt: "Žymuo" },
   "Merk: ": { en: "Mark: ", pl: "Oznaczenie: ", lt: "Žymuo: " },
   "{0} elementer valgt": { en: "{0} elements selected", pl: "Wybrano elementów: {0}", lt: "Pasirinkta elementų: {0}" },
+  "{0} materiell valgt": { en: "{0} material objects selected", pl: "Wybrano materiałów: {0}", lt: "Pasirinkta medžiagų: {0}" },
+  "{0} elementer og {1} materiell valgt": { en: "{0} elements and {1} material objects selected", pl: "Wybrano {0} elementów i {1} materiałów", lt: "Pasirinkta {0} elementų ir {1} medžiagų" },
   "Sum volum": { en: "Total volume", pl: "Suma objętości", lt: "Bendras tūris" },
   "Sum areal (fotavtrykk)": { en: "Total area (footprint)", pl: "Suma powierzchni (rzut)", lt: "Bendras plotas (projekcija)" },
   "Sum lengde (lengste mål)": { en: "Total length (longest dimension)", pl: "Suma długości (najdłuższy wymiar)", lt: "Bendras ilgis (ilgiausias matmuo)" },

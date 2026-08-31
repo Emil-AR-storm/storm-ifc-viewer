@@ -27,7 +27,7 @@ import { GRAPH, SP, authHeaders, graphGet, spTokenSilent } from "./sharepoint.js
 import {
   ARM_DIM, ARM_TYPER, MALTYPER, byggMateriellObjekt, finnObjekt,
   lagreMateriellLokalt, materiellForEksport, materiellGroup,
-  materiellTypeLabel, tegnMateriell, vaskMateriell
+  materiellTypeLabel, oppdaterMateriellValgEffekt, tegnMateriell, vaskMateriell
 } from "./materiell-vis.js";
 
 // ---------- Tilstand ----------
@@ -152,41 +152,21 @@ function oppdater(id, felter, angreTekst) {
 }
 
 // ---------- 🔵 Valg og markeringseffekt ----------
-// Samme blå som elementvalget i modellen (selMat i elements.js), så «valgt»
-// ser likt ut uansett hva man har trykket på.
-const SEL_FARGE = 0x3b82f6, SEL_EMISSIVE = 0x1d4ed8;
-
-function settValgEffekt(gruppe, paa) {
-  gruppe.traverse(m => {
-    if (m.isSprite || !m.isMesh || !m.material) return;
-    if (paa) {
-      if (!m.userData.matOrig) m.userData.matOrig = m.material;
-      if (!m.userData.matSel) {
-        const s = m.userData.matOrig.clone();
-        s.color.set(SEL_FARGE);
-        if (s.emissive) s.emissive.set(SEL_EMISSIVE);
-        m.userData.matSel = s;
-      }
-      m.material = m.userData.matSel;
-    } else if (m.userData.matOrig) {
-      m.material = m.userData.matOrig;
-    }
-  });
-}
-
-function oppdaterValgEffekt() {
-  materiellGroup.children.forEach(o => settValgEffekt(o, o.userData.materiellId === valgtId));
-}
+// Selve effekten (samme blå som elementvalget) bor i materiell-vis.js, fordi
+// flervalget fra elements.js også trenger den i lettmodus. Her settes bare
+// HVEM som er enkeltvalgt — S.materiellValgtId er speilet elements.js og
+// materiell-vis.js leser når effekten males.
 
 function velg(id) {
   valgtId = id;
-  oppdaterValgEffekt();
+  S.materiellValgtId = id;
+  oppdaterMateriellValgEffekt();
   oppdaterValgBar();
   if (S.materiellModeBarTegn && S.mode === "materiell") S.materiellModeBarTegn();
 }
 
 // tegnMateriell() bygger objektene på nytt — effekten og knapperaden må på igjen
-S.etterTegnMateriell = () => { oppdaterValgEffekt(); oppdaterValgBar(); };
+S.etterTegnMateriell = () => { oppdaterMateriellValgEffekt(); oppdaterValgBar(); };
 
 // ---------- Knapperaden for det valgte objektet ----------
 // Egen flytende rad (ikke modeBar): den skal virke i ALLE moduser, også når

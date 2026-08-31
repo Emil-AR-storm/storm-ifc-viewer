@@ -8,7 +8,7 @@ import { hiddenIDs, hideElement, hideElements, typeSkjultLett } from "./display.
 import { alleElementIder, lightElementBoxes } from "./ifc.js";
 import { kall, metaFor, sikreMeta } from "./ifcrpc.js";
 import { axesGroup, camera, canvas, controls, grid, koteGroup, markerGroup, measureGroup, pointer, raycaster, renderer, scene, selGroup } from "./scene.js";
-import { leggMateriellIMengder } from "./materiell-vis.js";
+import { leggMateriellIMengder, materiellGroup, materiellTypeLabel, oppdaterMateriellValgEffekt } from "./materiell-vis.js";
 
 const selMat = new THREE.MeshLambertMaterial({ color: 0x3b82f6, emissive: 0x1d4ed8, side: THREE.DoubleSide });
 
@@ -40,6 +40,12 @@ function clearSelectionVisual() {
 export function clearSelection() {
   clearSelectionVisual();
   S.multiSel.clear();
+  // 📦 materiell-flervalget nullstilles i samme slengen — «vanlig klikk
+  // nullstiller» skal gjelde hele utvalget, ikke bare IFC-delen av det
+  if (S.multiSelMat && S.multiSelMat.size) {
+    S.multiSelMat.clear();
+    oppdaterMateriellValgEffekt();
+  }
 }
 
 // Finn expressID fra et raycast-treff (også i sammenslått geometri)
@@ -435,26 +441,48 @@ function showMultiSummary() {
     totArea += q.area || 0;
     items.push({ id, name: elemDisplayName(id), vol: q.vol });
   }
+  // 📦 Materiell i utvalget. Tallene er PARAMETRISKE (målene brukeren satte
+  // × antall), samme prinsipp som i Mengder — aldri gjettet fra geometri.
+  // Objekter som er slettet eller skjult i mellomtiden lukes ut av settet her:
+  // de kan ikke lenger pekes på, og skal ikke bli liggende igjen i summene.
+  const matItems = [];
+  if (S.multiSelMat && S.multiSelMat.size) {
+    const alle = new Map((S.materiell || []).map(p => [p.id, p]));
+    for (const id of [...S.multiSelMat]) {
+      const p = alle.get(id);
+      if (!p || p.skjult) { S.multiSelMat.delete(id); continue; }
+      totArea += (p.lengde / 1000) * (p.bredde / 1000) * p.antall;
+      matItems.push({ navn: p.navn || materiellTypeLabel(p), antall: p.antall });
+    }
+  }
+  const antElem = S.multiSel.size;
+  const antMat = S.multiSelMat ? S.multiSelMat.size : 0;
+  if (!antElem && !antMat) { $("propPanel").classList.remove("open"); return; }
   // Hvor mange rader lista viser før den kortes av. Settes i ⚙ Innstillinger →
   // Visning → «Elementer i lista». 0 = vis alle (kan bli tregt på tusenvis).
   const grense = listeGrense();
   const vist = grense > 0 ? items.slice(0, grense) : items;
-  $("propTitle").textContent = t("{0} elementer valgt", S.multiSel.size);
+  $("propTitle").textContent =
+    antElem && antMat ? t("{0} elementer og {1} materiell valgt", antElem, antMat)
+    : antMat ? t("{0} materiell valgt", antMat)
+    : t("{0} elementer valgt", antElem);
   // Samme «Skjul»-knapp som når ett element er valgt – her skjuler den hele
   // utvalget. Ikke i lav kvalitet / lett kopi: der er geometrien slått sammen,
   // så enkeltelementer kan ikke skjules (samme grunn som i showProperties).
-  const antall = S.multiSel.size;
+  // Knappen gjelder IFC-elementene — materiell skjules fra sin egen knapperad
+  // eller 📦-panelet, og vises derfor bare når utvalget har elementer.
   $("propBody").innerHTML =
-    '<div class="prop-actions"><button id="paHideSel">' + ikon("skjul") + ' ' +
-      t("Skjul {0} valgte", antall) + '</button></div>' +
+    (antElem ? '<div class="prop-actions"><button id="paHideSel">' + ikon("skjul") + ' ' +
+      t("Skjul {0} valgte", antElem) + '</button></div>' : "") +
     '<div class="prop-row" style="font-weight:600"><div class="k">' + t("Sum volum") + '</div><div class="v">' + fmtVol(totVol) + '</div></div>' +
     '<div class="prop-row" style="font-weight:600"><div class="k">' + t("Sum areal (fotavtrykk)") + '</div><div class="v">' + fmtArea(totArea) + '</div></div>' +
     '<div class="prop-row"><div class="k">' + t("Sum lengde (lengste mål)") + '</div><div class="v">' + totLen.toFixed(2) + ' m</div></div>' +
-    '<div class="prop-row"><div class="k">' + t("Antall") + '</div><div class="v">' + S.multiSel.size + t(" stk") + '</div></div>' +
+    '<div class="prop-row"><div class="k">' + t("Antall") + '</div><div class="v">' + (antElem + antMat) + t(" stk") + '</div></div>' +
     vist.map(it => '<div class="prop-row"><div class="k">' + esc(it.name) + '</div><div class="v">' + fmtVol(it.vol) + '</div></div>').join("") +
     (items.length > vist.length ? '<p style="color:var(--muted); font-size:11px; margin-top:6px">' + t("… og {0} til (summene øverst gjelder alle). Endre grensen i ⚙ Innstillinger → Visning.", items.length - vist.length) + '</p>' : "") +
+    matItems.map(it => '<div class="prop-row"><div class="k">📦 ' + esc(it.navn) + '</div><div class="v">' + it.antall + t(" stk") + '</div></div>').join("") +
     '<p style="color:var(--muted); font-size:11px; margin-top:8px">' + t("Shift-klikk legger til/fjerner. Shift + dra lager markeringsboks: mot høyre = kun synlige, mot venstre = alt i boksen. Vanlig klikk nullstiller.") + '</p>';
-  $("paHideSel").onclick = () => hideElements(new Set(S.multiSel.keys()));   // virker nå også i 🪶
+  if (antElem) $("paHideSel").onclick = () => hideElements(new Set(S.multiSel.keys()));   // virker nå også i 🪶
   apnePanel("propPanel");
 }
 
@@ -496,9 +524,51 @@ function selectElementsSet(idSet) {
   }
 }
 
+// ---------- 📦 Materiell i flervalget ----------
+// Materiell-objektene er ikke IFC-elementer (egne id-er, egen gruppe), men
+// skal kunne markeres på NØYAKTIG samme måte: shift-klikk legger til/fjerner,
+// markeringsboksen fanger dem, vanlig klikk nullstiller. Utvalget bor i
+// S.multiSelMat, og effekten males av materiell-vis.js — som også lastes på
+// byggeplassen, så dette virker i begge moduser.
+
+// Raycast mot materiellGroup — pick() over ser BARE modellen, med vilje
+// (materiell.js sier det selv). Navnelappene (sprites) er ingen treff-flate.
+function pickMateriell(clientX, clientY) {
+  if (!materiellGroup.children.length) return null;
+  pointer.x = (clientX / innerWidth) * 2 - 1;
+  pointer.y = -(clientY / innerHeight) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  const hits = raycaster.intersectObjects(materiellGroup.children, true);
+  for (const h of hits) {
+    if (h.object.isSprite) continue;
+    // treff bak snittplanet hopper vi over — samme regel som pick()
+    if (renderer.clippingPlanes.length &&
+        !renderer.clippingPlanes.every(p => p.distanceToPoint(h.point) >= -0.001)) continue;
+    let o = h.object;
+    while (o && !o.userData.materiellId) o = o.parent;
+    if (o && o.userData.materiellId) return { id: o.userData.materiellId, distance: h.distance };
+  }
+  return null;
+}
+
+function toggleMateriellValg(id) {
+  if (S.multiSelMat.has(id)) S.multiSelMat.delete(id);
+  else S.multiSelMat.add(id);
+  oppdaterMateriellValgEffekt();
+}
+
 // Felles shift-klikk-logikk (brukes både ved klikk og små drag)
 function shiftClickAt(x, y) {
   const hit = pick(x, y);
+  const mHit = pickMateriell(x, y);
+  // Materiell nærmest kameraet? Da er det materiellet klikket gjelder — du
+  // trykte på det du så, samme regel som for elementene.
+  if (mHit && (!hit || mHit.distance < hit.distance)) {
+    toggleMateriellValg(mHit.id);
+    if (S.multiSel.size || S.multiSelMat.size) showMultiSummary();
+    else $("propPanel").classList.remove("open");
+    return;
+  }
   if (!hit) return;
   const id = hitID(hit);
   if (id == null) return;
@@ -507,7 +577,7 @@ function shiftClickAt(x, y) {
   if (S.multiSel.has(id)) S.multiSel.delete(id);
   else S.multiSel.set(id, elementQuantities(id));
   selectElementsSet(new Set(S.multiSel.keys()));
-  if (S.multiSel.size) showMultiSummary();
+  if (S.multiSel.size || S.multiSelMat.size) showMultiSummary();
   else $("propPanel").classList.remove("open");
 }
 
@@ -1115,7 +1185,7 @@ function renderQuantities(full) {
 export function refreshNumbers() {
   if ($("qtyPanel").classList.contains("open") && S.qtyCache) renderQuantities(S.qtyCache);
   if ($("propPanel").classList.contains("open")) {
-    if (S.multiSel.size) showMultiSummary();
+    if (S.multiSel.size || (S.multiSelMat && S.multiSelMat.size)) showMultiSummary();
     else if (S.currentPropID != null) showProperties(S.currentPropID);
   }
 }
@@ -1163,7 +1233,9 @@ function idsVisibleInRect(x0, y0, x1, y1) {
   // Kaster readRenderTargetPixels (kontekst tapt, driverfeil), ville modellen
   // før blitt stående i flate ID-farger på svart bakgrunn – permanent, uten
   // feilmelding. Derfor leses alt FØR try, og settes tilbake i finally.
-  const overlays = [markerGroup, measureGroup, koteGroup, axesGroup, selGroup];
+  // materiellGroup er med: den tegnes i sine egne farger, og pikslene ville
+  // blitt dekodet som tilfeldige IFC-id-er i avlesningen under.
+  const overlays = [markerGroup, measureGroup, koteGroup, axesGroup, selGroup, materiellGroup];
   const vis = overlays.map(g => g.visible);
   const gridVis = grid.visible;
   const bg = scene.background;
@@ -1258,16 +1330,71 @@ function idsAllInRect(x0, y0, x1, y1) {
   return ids;
 }
 
+// 📦 Materiell i markeringsboksen: geometrisk test av objektets projiserte
+// boks, samme prinsipp som idsAllInRect. GPU-passet (synlige) kjenner bare
+// IFC-id-er, så materiell testes geometrisk uansett hvilken vei boksen dras —
+// materiell ligger åpent oppå bakke og dekker, så «skjult bak noe» er ikke et
+// praktisk skille der. Skjulte objekter finnes ikke i materiellGroup
+// (tegnMateriell hopper over dem), så de kan aldri fanges.
+const _mBox = new THREE.Box3(), _mTmp = new THREE.Box3();
+
+function materiellIRect(x0, y0, x1, y1) {
+  const ut = new Set();
+  if (!materiellGroup.children.length) return ut;
+  const minX = Math.min(x0, x1), maxX = Math.max(x0, x1);
+  const minY = Math.min(y0, y1), maxY = Math.max(y0, y1);
+  const v = new THREE.Vector3();
+  const planes = renderer.clippingPlanes;
+  camera.updateMatrixWorld(true);
+  for (const o of materiellGroup.children) {
+    if (!o.userData.materiellId) continue;
+    // boksen UTEN navnelappen — spriten er skjermskalert og ville blåst den
+    // opp langt utenfor selve stabelen
+    o.updateWorldMatrix(true, true);
+    _mBox.makeEmpty();
+    o.traverse(m => {
+      if (!m.isMesh || m.isSprite || !m.geometry) return;
+      _mTmp.setFromObject(m);
+      _mBox.union(_mTmp);
+    });
+    if (_mBox.isEmpty()) continue;
+    _mBox.getCenter(v);
+    if (v.clone().applyMatrix4(camera.matrixWorldInverse).z >= 0) continue; // bak kameraet
+    if (planes.length) {
+      let ok = true;
+      for (const p of planes) if (p.distanceToPoint(v) < 0 && !_mBox.intersectsPlane(p)) { ok = false; break; }
+      if (!ok) continue; // utenfor aktivt snitt/etasjefilter
+    }
+    let sMinX = Infinity, sMaxX = -Infinity, sMinY = Infinity, sMaxY = -Infinity;
+    for (let ci = 0; ci < 8; ci++) {
+      v.set(ci & 1 ? _mBox.max.x : _mBox.min.x, ci & 2 ? _mBox.max.y : _mBox.min.y, ci & 4 ? _mBox.max.z : _mBox.min.z);
+      v.project(camera);
+      const px = (v.x + 1) / 2 * innerWidth, py = (1 - v.y) / 2 * innerHeight;
+      if (px < sMinX) sMinX = px; if (px > sMaxX) sMaxX = px;
+      if (py < sMinY) sMinY = py; if (py > sMaxY) sMaxY = py;
+    }
+    if (sMaxX >= minX && sMinX <= maxX && sMaxY >= minY && sMinY <= maxY) ut.add(o.userData.materiellId);
+  }
+  return ut;
+}
+
 function finishBoxSelect(b) {
   const visibleOnly = b.x1 >= b.x0; // venstre→høyre = kun synlige
   const ids = visibleOnly ? idsVisibleInRect(b.x0, b.y0, b.x1, b.y1) : idsAllInRect(b.x0, b.y0, b.x1, b.y1);
   // siste skanse: skjulte elementer skal aldri kunne markeres, uansett hvilken vei boksen dras
   const skjult = skjulteIder();
   for (const id of skjult) ids.delete(id);
-  if (!ids.size) return;
-  const q = quantitiesForSet(ids);
-  for (const id of ids) S.multiSel.set(id, q.get(id) || { dims: [0, 0, 0], vol: 0 });
-  selectElementsSet(new Set(S.multiSel.keys()));
+  const matIds = materiellIRect(b.x0, b.y0, b.x1, b.y1);
+  if (!ids.size && !matIds.size) return;
+  if (ids.size) {
+    const q = quantitiesForSet(ids);
+    for (const id of ids) S.multiSel.set(id, q.get(id) || { dims: [0, 0, 0], vol: 0 });
+    selectElementsSet(new Set(S.multiSel.keys()));
+  }
+  if (matIds.size) {
+    for (const id of matIds) S.multiSelMat.add(id);
+    oppdaterMateriellValgEffekt();
+  }
   showMultiSummary();
 }
 

@@ -163,6 +163,10 @@ export function modellStartverdier() {
     // søk, valg og visning
     searchIndex: null, lastQuery: "",
     multiSel: new Map(),
+    // 📦 Materiell-id-er i flervalget (shift-klikk/markeringsboks, elements.js).
+    // Egen Set fordi materiell-objektene ikke er IFC-elementer — de har sine
+    // egne id-er (M-…) og bor i materiellGroup, ikke i modelGroup.
+    multiSelMat: new Set(),
     allBoxCache: null,
     typeInfo: null, typeColorsOn: false,
     typeInfoLett: null,       // 🎨 i sammenslått geometri: Map key → {label, ids, hidden, color}
@@ -316,6 +320,8 @@ S.oppsettOK = false;      // settes av oppsett.js når firmaoppsettet er lest
 // Settes av modulen som eier funksjonen, for å unngå sirkulære importer.
 // Alle kall er beskyttet med if (S.x) – en modul som ikke er lastet gir
 // stille ingen effekt.
+S.materiellValgtId = null; // materiell.js ← det enkeltvalgte materiell-objektet
+                           // (materiell-vis.js leser den når valgeffekten males)
 S.onModelLoaded = null;   // compare.js  ← kalles av ifc.js etter lasting
 S.onSharedReady = null;   // share.js    ← kalles av ifc.js etter lasting
 // onSignedIn KJEDES: både usersync.js og oppsett.js henger seg på, og hver av
