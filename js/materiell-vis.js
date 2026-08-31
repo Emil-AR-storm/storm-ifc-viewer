@@ -515,13 +515,51 @@ export function tegnMateriell() {
     if (skjulteMaltyper.has(p.maltype) || p.skjult) continue;
     materiellGroup.add(byggMateriellObjekt(p));
   }
-  // materiell.js legger markeringseffekten (blått valg) på igjen etter hver
-  // omtegning — objektene er nye instanser hver gang.
+  // markeringseffekten (blått valg) må på igjen etter hver omtegning —
+  // objektene er nye instanser hver gang. På kontoret gjør materiell.js det
+  // (kroken tegner også knapperaden); i lettmodus finnes ikke materiell.js,
+  // og da males effekten direkte her.
   if (S.etterTegnMateriell) S.etterTegnMateriell();
+  else oppdaterMateriellValgEffekt();
 }
 
 export function finnObjekt(id) {
   return materiellGroup.children.find(o => o.userData.materiellId === id) || null;
+}
+
+// ---------- 🔵 Markeringseffekten (blått valg) ----------
+// Samme blå som elementvalget i modellen (selMat i elements.js), så «valgt»
+// ser likt ut uansett hva man har trykket på. Bor HER og ikke i materiell.js
+// fordi flervalget (shift-klikk og markeringsboksen i elements.js) også skal
+// virke på byggeplassen — og bygg.html laster aldri materiell.js.
+const SEL_FARGE = 0x3b82f6, SEL_EMISSIVE = 0x1d4ed8;
+
+export function settValgEffekt(gruppe, paa) {
+  gruppe.traverse(m => {
+    if (m.isSprite || !m.isMesh || !m.material) return;
+    if (paa) {
+      if (!m.userData.matOrig) m.userData.matOrig = m.material;
+      if (!m.userData.matSel) {
+        const s = m.userData.matOrig.clone();
+        s.color.set(SEL_FARGE);
+        if (s.emissive) s.emissive.set(SEL_EMISSIVE);
+        m.userData.matSel = s;
+      }
+      m.material = m.userData.matSel;
+    } else if (m.userData.matOrig) {
+      m.material = m.userData.matOrig;
+    }
+  });
+}
+
+// Maler effekten på ALLE objektene ut fra hele valget: enkeltvalget
+// (S.materiellValgtId, satt av materiell.js) OG flervalget (S.multiSelMat,
+// fylt av shift-klikk/markeringsboksen i elements.js). Én funksjon eier
+// effekten — da kan ikke enkeltvalg og flervalg viske ut hverandre.
+export function oppdaterMateriellValgEffekt() {
+  materiellGroup.children.forEach(o => settValgEffekt(o,
+    o.userData.materiellId === S.materiellValgtId ||
+    (S.multiSelMat ? S.multiSelMat.has(o.userData.materiellId) : false)));
 }
 
 // ---------- Lagring (kontor) ----------
