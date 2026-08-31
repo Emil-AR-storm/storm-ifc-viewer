@@ -17,7 +17,7 @@ import { $, S, apnePanel, esc, ikon, på } from "./state.js";
 import { t } from "./i18n.js";
 import { camera, controls } from "./scene.js";
 import { allElementBoxes } from "./elements.js";
-import { hideElements } from "./display.js";
+import { hiddenIDs, hideElements, showElements } from "./display.js";
 import { mmTilScene } from "./materiell-vis.js";
 
 const LETT = document.documentElement.dataset.lett === "1";
@@ -102,6 +102,14 @@ export function aktiverGruppe(g) {
     if (b) { boks.union(b); funnet++; }
   }
   if (!funnet) { alert(t("Fant ikke elementene i denne modellen.")); return; }
+  // GRUPPAS EGNE ELEMENTER HENTES ALLTID FRAM FØRST. Forrige gruppe kan ha
+  // skjult nettopp dem: «Fundamenter» skjuler armeringen, og trykket på
+  // «Armering» etterpå viste da ingenting — armeringen var fortsatt skjult
+  // fra forrige gruppe (Emils funn 31.08). Bare gruppas elementer vises igjen,
+  // ikke alt (typer skjult i 🎨 Utseende skal forbli som brukeren satte dem);
+  // resten skjules uansett i neste steg.
+  const skjulteIGruppen = g.ids.filter(id => hiddenIDs.has(id));
+  if (skjulteIGruppen.length) showElements(skjulteIGruppen);
   // Skjuling virker nå også i lettmodus (synkMergedSkjuling i display.js
   // kollapser trekantene i den sammenslåtte geometrien) — montøren får
   // samme fokusvisning som kontoret.
