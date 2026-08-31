@@ -80,7 +80,11 @@ canvas.addEventListener("pointerup", (e) => {
   }
   const hit = pick(e.clientX, e.clientY);
   if (!hit) {
-    if (!S.mode) { clearSelection(); $("propPanel").classList.remove("open"); }
+    // Shift eies av flervalget (elements.js) — og det kan ha truffet MATERIELL,
+    // som pick() med vilje ikke ser. Uten shift-unntaket her ble et shift-klikk
+    // på materiell nullstilt som «klikk i tomrommet» rett etter at elements.js
+    // hadde lagt objektet til i utvalget (Emils funn 31.08).
+    if (!S.mode && !e.shiftKey) { clearSelection(); $("propPanel").classList.remove("open"); }
     return;
   }
   if (S.mode === "marker") {
