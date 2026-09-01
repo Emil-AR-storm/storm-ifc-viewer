@@ -28,7 +28,7 @@
 import * as THREE from "three";
 import { $, S, apnePanel, esc, ikon, på } from "./state.js";
 import { t } from "./i18n.js";
-import { canvas, frameHooks, makeLabel, raycaster, scene, updateScreenScaled } from "./scene.js";
+import { canvas, raycaster, scene } from "./scene.js";
 import { allElementBoxes, hitID, pick, toCsv } from "./elements.js";
 import { alleElementIder } from "./ifc.js";
 import { metaFor, sikreMeta } from "./ifcrpc.js";
@@ -106,6 +106,25 @@ export function konveksHull(punkter) {
   }
   nedre.pop(); ovre.pop();
   return nedre.concat(ovre);
+}
+
+// Flatene KLYNGES til åpninger: flater nær hverandre hører til samme åpning.
+// Emil markerte alle portene i én omgang og trykket Ferdig — da må systemet
+// selv se hvilke flater som hører sammen (single-linkage på avstand).
+export function grupperFlater(flater, maksAvstand) {
+  const grupper = [];
+  for (const f of flater) {
+    if (!f || !f.p) continue;
+    const treff = grupper.filter(g => g.some(x =>
+      Math.hypot(x.p.x - f.p.x, x.p.y - f.p.y, x.p.z - f.p.z) <= maksAvstand));
+    if (!treff.length) { grupper.push([f]); continue; }
+    treff[0].push(f);
+    for (const r of treff.slice(1)) {
+      treff[0].push(...r);
+      grupper.splice(grupper.indexOf(r), 1);
+    }
+  }
+  return grupper;
 }
 
 // Utsparingen regnes ut fra FLATENE brukeren trykket på (Emils runde 3: én
@@ -437,33 +456,65 @@ function tegnAlt() {
     // og Lørenskog-skjermbildene. Konstant skjermstørrelse (updateScreenScaled).
     if (visLapper) {
       const ex = Math.cos(v.rot), ez = -Math.sin(v.rot);
-      // lappene ligger PÅ utsiden av elementet (10 cm ut langs fasadenormalen)
-      // og tegnes MED dybdetest — da skjules de bak vegger og materiell i
-      // stedet for å flyte over alt (Emils runde 4). Gamle lagrede vegger
-      // mangler normalen; da brukes rotasjonen som reserve.
+      // Teksten SITTER PÅ ELEMENTFLATEN som på tegningene — flate dekaler
+      // limt 10 mm utenpå ytterhuden, i veggens plan, med dybdetest. Ikke
+      // svevende skjermlapper (Emils runde 4 og 5): de fløt over alt og ble
+      // uleselige. Dekalene har fast FYSISK størrelse og følger veggen.
       const nx = v.nx !== undefined ? v.nx : Math.sin(v.rot);
       const nz = v.nz !== undefined ? v.nz : Math.cos(v.rot);
-      const utX = nx * (tilScene(v.tMm) / 2 + 0.1 / (S.enhetSkala || 1));
-      const utZ = nz * (tilScene(v.tMm) / 2 + 0.1 / (S.enhetSkala || 1));
-      const sw = makeLabel(v.sw, "#ffffff");
-      sw.userData.px = 22;
-      sw.userData.aspect = sw.scale.x / sw.scale.y;
+      const nv = new THREE.Vector3(nx, 0, nz).normalize();
+      const utD = tilScene(v.tMm) / 2 + 0.01 / (S.enhetSkala || 1);
+      const L = tilScene(v.lengdeMm), H = tilScene(v.hoydeMm);
+      const sw = tekstDekal(v.sw, 220, L * 0.45);
+      sw.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), nv);
       sw.position.set(
-        v.x - ex * tilScene(v.lengdeMm) * 0.38 + utX,
-        v.y + tilScene(v.hoydeMm) * 0.26,
-        v.z - ez * tilScene(v.lengdeMm) * 0.38 + utZ);
+        v.x - ex * L * 0.32 + nv.x * utD,
+        v.y + H * 0.24,
+        v.z - ez * L * 0.32 + nv.z * utD);
       swGroup.add(sw);
-      const dim = makeLabel(v.lengdeMm + "×" + v.hoydeMm + "MM", "#e8ecf2");
-      dim.userData.px = 15;
-      dim.userData.aspect = dim.scale.x / dim.scale.y;
-      dim.position.set(v.x + utX, v.y, v.z + utZ);
+      const dim = tekstDekal(v.lengdeMm + "×" + v.hoydeMm + "MM", 150, L * 0.6);
+      dim.quaternion.copy(sw.quaternion);
+      dim.position.set(v.x + nv.x * utD, v.y - H * 0.1, v.z + nv.z * utD);
       swGroup.add(dim);
     }
   }
 }
 
-// Lappene skal ha konstant størrelse på skjermen, som materiell-navnene.
-frameHooks.push(() => updateScreenScaled(swGroup));
+// ---------- 🏷 Tekst-dekaler: flate skilt limt på elementflaten ----------
+// Hvit boks med sort tekst, som elementmerkene på Moelv-tegningen. Teksturen
+// caches per tekst (SW-03 går igjen hundrevis av ganger); materialet og
+// geometrien er per dekal og ryddes av ryddTegning.
+const dekalCache = new Map();
+
+function dekalTekstur(tekst) {
+  if (dekalCache.has(tekst)) return dekalCache.get(tekst);
+  const pad = 16, fs = 64;
+  const mc = document.createElement("canvas").getContext("2d");
+  mc.font = "bold " + fs + "px sans-serif";
+  const w = Math.ceil(mc.measureText(tekst).width + pad * 2);
+  const c = document.createElement("canvas");
+  c.width = w; c.height = fs + pad * 2;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, c.width, c.height);
+  ctx.strokeStyle = "#11161d"; ctx.lineWidth = 5; ctx.strokeRect(2, 2, c.width - 4, c.height - 4);
+  ctx.font = "bold " + fs + "px sans-serif";
+  ctx.fillStyle = "#11161d"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText(tekst, c.width / 2, c.height / 2 + 2);
+  const ut = { tex: new THREE.CanvasTexture(c), aspect: c.width / c.height };
+  dekalCache.set(tekst, ut);
+  return ut;
+}
+
+// hoydeMm = ønsket skilthøyde i mm; maksBredde (sceneenheter) krymper skiltet
+// så det aldri stikker utenfor elementet det sitter på.
+function tekstDekal(tekst, hoydeMm, maksBredde) {
+  const { tex, aspect } = dekalTekstur(tekst);
+  let h = tilScene(hoydeMm), w = h * aspect;
+  if (maksBredde > 0 && w > maksBredde) { const k = maksBredde / w; w *= k; h *= k; }
+  return new THREE.Mesh(new THREE.PlaneGeometry(Math.max(w, 1e-6), Math.max(h, 1e-6)),
+    new THREE.MeshBasicMaterial({ map: tex }));
+}
 
 // Kalles av afterLoad (ifc.js) når en modell er åpnet, og av clearModel når
 // den lukkes — samme kroker som materiell og grupper bruker.
@@ -522,12 +573,14 @@ async function generer() {
     });
     const rot = Math.atan2(-f.ez, f.ex);
     fasadeInfo.push({ off, rot });
-    // Bare søyler som STÅR PÅ BAKKEN deler fasaden i spenn. En søyleforlenger
-    // som begynner oppe på en bjelke (over porter) bærer veggen, men skal
-    // IKKE lage skjøt — elementene over porten løper forbi, som på
-    // Moelv-tegningen (Emils runde 2 og 4). Toppen regnes fortsatt av ALLE.
-    const bakke = f.soyler.filter(k => k.s.minY <= okBetong + 1.0 / (S.enhetSkala || 1));
-    const spennSoyler = bakke.length >= 2 ? bakke : f.soyler;
+    // SØYLEFORLENGERNE BESTEMMER SKJØTENE (Emils regel runde 5): bare søyler
+    // som når helt til TOPPEN av fasaden deler veggen i spenn. Korte
+    // tilleggssøyler og losholter rundt utsparinger når aldri toppen, og kan
+    // dermed aldri bli misforstått som skjøtepunkter — mens forlengerne over
+    // portene gir skjøt på riktig plass.
+    const toppTol = 0.8 / (S.enhetSkala || 1);
+    const toppS = f.soyler.filter(k => k.s.maxY >= f.toppY - toppTol);
+    const spennSoyler = toppS.length >= 2 ? toppS : f.soyler;
     const t0 = spennSoyler[0].t, t1 = spennSoyler[spennSoyler.length - 1].t;
     if (o.ringmur) {
       const p = midt((t0 + t1) / 2 + tS / 2, 0);
@@ -632,9 +685,17 @@ async function generer() {
 }
 
 function fjernGenerertMateriell() {
+  // Fjerner både de id-sporede stablene fra forrige generering OG alle
+  // sandwich-stabler med SW-nummer-navn: tidligere versjoner sporet ikke
+  // id-ene, og de gamle stablene ble liggende igjen for hver generering —
+  // det var derfor 3D-en fløt over av SW-stabler fra gamle kjøringer
+  // (avlest rett fra localStorage i nettleseren, 01.09).
   const ider = new Set((lagret && lagret.materiellIder) || []);
-  if (!ider.size) return;
-  S.materiell = (S.materiell || []).filter(p => !ider.has(p.id));
+  const generertNavn = /^SW-\d{2}$/;
+  const foer = (S.materiell || []).length;
+  S.materiell = (S.materiell || []).filter(p =>
+    !ider.has(p.id) && !(p.maltype === "sandwich" && generertNavn.test(p.navn || "")));
+  if ((S.materiell || []).length === foer) return;
   tegnMateriell();
   lagreMateriellLokalt();
   S.qtyCache = null;
@@ -724,7 +785,7 @@ function tegnUtspBar() {
   el.style.display = "flex";
   el.innerHTML =
     '<span style="font-size:12px;max-width:340px">' +
-    t("Trykk på flatene rundt åpningen: innsiden av søylene på sidene, undersiden av bjelken over. Én flate per side.") +
+    t("Trykk på flatene rundt åpningene: innsiden av søylene på sidene, undersiden av bjelken over. Én flate per side — du kan markere flere åpninger før Ferdig.") +
     ' <b>' + t("{0} flater valgt", utspMark.flater.length) + '</b></span>' +
     '<button id="swUtspFerdig" class="primary" style="padding:3px 10px">' + t("Ferdig") + '</button>' +
     '<button id="swUtspAvbryt" style="padding:3px 10px">' + t("Avbryt") + '</button>';
@@ -753,16 +814,26 @@ function avsluttUtspMark() {
 
 function fullforUtspMark() {
   if (!utspMark) return;
-  const u = utsparingFraFlater(utspMark.flater, 0.5 / (S.enhetSkala || 1));
-  if (u.feil) {
+  const e = S.enhetSkala || 1;
+  // flater innenfor 4 m hører til samme åpning — da kan alle åpningene
+  // markeres i én omgang og Ferdig trykkes til slutt (Emils runde 5)
+  const klynger = grupperFlater(utspMark.flater, 4.0 / e);
+  const o = oppsett();
+  o.utsparinger = (o.utsparinger || []).filter(x => x && x.min);   // gamle formater ryddes
+  let lagt = 0, feilet = 0;
+  for (const kl of klynger) {
+    const u = utsparingFraFlater(kl, 0.5 / e);
+    if (u.feil) { feilet++; continue; }
+    lagt++;
+    o.utsparinger.push({ navn: t("Utsparing {0}", o.utsparinger.length + 1), min: u.min, max: u.max });
+  }
+  if (!lagt) {
     alert(t("Utsparingen trenger to motstående sider — trykk på innsiden av søylene på hver side av åpningen."));
     return;
   }
-  const o = oppsett();
-  o.utsparinger = (o.utsparinger || []).filter(x => x && x.min);   // gamle formater ryddes
-  o.utsparinger.push({ navn: t("Utsparing {0}", o.utsparinger.length + 1), min: u.min, max: u.max });
   skrivLagret();
   avsluttUtspMark();
+  if (feilet) alert(t("{0} utsparinger lagt til — {1} område manglet to motstående sider og ble hoppet over.", lagt, feilet));
 }
 
 // Klikkene fanges på window i FANGSTFASEN (samme oppskrift som materiell.js):
