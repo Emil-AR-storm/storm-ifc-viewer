@@ -33,7 +33,9 @@ import {
 // ---------- Tilstand ----------
 let plasserer = null;      // { p, gruppe } — objektet som henger på pekeren
 let valgtId = null;        // markert objekt (roter/skjul/slett/flytt)
-let drar = null;           // { id, fra: Vector3 } under flytting
+let drar = null;           // { id, fra: Vector3 } under flytting (drag i materiell-modus)
+let flytter = null;        // { id, fra: Vector3 } — Flytt-knappen: objektet følger
+                           // pekeren til neste trykk, i ALLE moduser (Emil 01.09)
 let nedPos = null;         // vår egen nedtrykks-posisjon (klikk kontra drag)
 const ROT_STEG = Math.PI / 12;   // 15°
 const KLIKK_PX = 8;
@@ -193,12 +195,18 @@ function oppdaterValgBar() {
     '<span style="font-size:12px;font-weight:600;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
     '<span style="display:inline-block;width:9px;height:9px;border-radius:3px;background:' + esc(p.farge) + ';margin-right:6px"></span>' +
     esc(p.navn || materiellTypeLabel(p)) + (p.antall > 1 ? " ×" + p.antall : "") + "</span>" +
+    '<button id="mvFlytt" class="btn" title="' + t("Flytt: objektet følger pekeren — trykk der det skal stå") + '" style="padding:3px 8px">✥ ' + t("Flytt") + '</button>' +
     '<button id="mvRotV" class="btn" title="' + t("Roter 15° mot venstre") + '" style="padding:3px 8px">⟲</button>' +
     '<button id="mvRotH" class="btn" title="' + t("Roter 15° mot høyre") + '" style="padding:3px 8px">⟳</button>' +
     '<button id="mvSkjul" class="btn" title="' + t("Skjul/vis") + '" style="padding:3px 8px">' + ikon("skjul") + "</button>" +
     '<button id="mvSlett" class="btn" title="' + t("Slett") + '" style="padding:3px 8px">' + ikon("slett") + "</button>" +
     '<button id="mvRediger" class="btn" title="' + t("Rediger") + '" style="padding:3px 8px">' + ikon("rediger") + "</button>" +
     '<button id="mvLukk" class="btn" title="' + t("Ferdig") + '" style="padding:3px 8px">' + t("Ferdig") + "</button>";
+  $("mvFlytt").onclick = () => {
+    const o = valgtId && finnObjekt(valgtId);
+    if (!o) return;
+    flytter = { id: valgtId, fra: o.position.clone() };
+  };
   $("mvRotV").onclick = () => { const q = hentP(valgtId); if (q) oppdater(q.id, { rot: q.rot + ROT_STEG }, "Materiell rotert"); };
   $("mvRotH").onclick = () => { const q = hentP(valgtId); if (q) oppdater(q.id, { rot: q.rot - ROT_STEG }, "Materiell rotert"); };
   $("mvSkjul").onclick = () => {
@@ -277,9 +285,10 @@ window.addEventListener("pointerdown", (e) => {
   // Shift er markeringsboksens og flervalgets tast (elements.js) — materiell
   // holder fingrene av fatet, ellers valgte et shift-klikk BÅDE objektet og
   // startet boksmodus (Emils funn 21.08).
-  if (e.shiftKey && !plasserer && !drar) return;
+  if (e.shiftKey && !plasserer && !drar && !flytter) return;
   nedPos = { x: e.clientX, y: e.clientY };
   if (!overCanvas(e) || e.button !== 0) return;
+  if (flytter) { e.stopPropagation(); return; }     // flytteklikket tas på pointerup
   if (plasserer) { e.stopPropagation(); return; }   // plasseringsklikket tas på pointerup
   // Drag av et objekt starter KUN i materiell-modus — ellers eier kameraet
   // draget, og et klikk (pointerup under 8 px) velger objektet uansett modus.
@@ -294,6 +303,12 @@ window.addEventListener("pointerdown", (e) => {
 }, true);
 
 window.addEventListener("pointermove", (e) => {
+  if (flytter) {
+    const o = finnObjekt(flytter.id);
+    const pt = o ? pekPunkt(e.clientX, e.clientY, o) : null;
+    if (pt && o) o.position.copy(pt);
+    return;
+  }
   if (plasserer) {
     const pt = pekPunkt(e.clientX, e.clientY, plasserer.gruppe);
     if (pt) plasserer.gruppe.position.copy(pt);
@@ -308,10 +323,27 @@ window.addEventListener("pointermove", (e) => {
 }, true);
 
 window.addEventListener("pointerup", (e) => {
-  if (e.shiftKey && !plasserer && !drar) return;   // shift = markeringsboksen sin
+  if (e.shiftKey && !plasserer && !drar && !flytter) return;   // shift = markeringsboksen sin
   const ned = nedPos;
   nedPos = null;
   if (!overCanvas(e) || e.button !== 0) return;
+
+  // Flytt-knappen: dette trykket setter objektet ned der det står nå
+  if (flytter) {
+    const fra = flytter.fra, id = flytter.id;
+    flytter = null;
+    e.stopPropagation(); slippKamera(e);
+    const o = finnObjekt(id);
+    if (o && o.position.distanceToSquared(fra) > 1e-12) {
+      const til = o.position.clone();
+      oppdater(id, { x: til.x, y: til.y, z: til.z }, null);
+      post("Materiell flyttet",
+        () => oppdater(id, { x: fra.x, y: fra.y, z: fra.z }, null),
+        () => oppdater(id, { x: til.x, y: til.y, z: til.z }, null));
+    }
+    velg(id);
+    return;
+  }
 
   if (plasserer) {
     e.stopPropagation(); slippKamera(e);
@@ -364,6 +396,12 @@ window.addEventListener("pointercancel", () => { drar = null; nedPos = null; }, 
 
 window.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
+  if (flytter) {   // avbrutt flytting: objektet tilbake der det sto
+    const o = finnObjekt(flytter.id);
+    if (o) o.position.copy(flytter.fra);
+    flytter = null;
+    return;
+  }
   if (plasserer) { avbrytPlassering(); return; }
   if (valgtId) { velg(null); return; }
   if (iModus()) settMateriellModus(false);
