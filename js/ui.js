@@ -412,7 +412,9 @@ window.addEventListener("keydown", (e) => {
     // Sto de bakerst i denne rekka, ville Esc lukket et panel BAK sløret mens
     // kortene ble stående — og da ser Esc ut som om den ikke virker.
     if (hjelpApen()) { lukkHjelp(); return; }
-    if ($("commentDialog").classList.contains("open")) { $("commentDialog").classList.remove("open"); return; }
+    // via cancelComment, ikke bare classList: ⭕▭-forhåndsvisningen og
+    // pendingPoint/pendingOmrade skal ryddes når dialogen forlates med Esc
+    if ($("commentDialog").classList.contains("open")) { if (window.cancelComment) window.cancelComment(); else $("commentDialog").classList.remove("open"); return; }
     if ($("setMenu").classList.contains("open")) { closeSettings(); return; }
     if (S.clipPickFace) { stopFacePick(); showClipBar(); return; }
     if (S.mode) { setMode(S.mode); return; } // slår av gjeldende modus
