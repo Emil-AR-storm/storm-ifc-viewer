@@ -28,8 +28,8 @@
 import * as THREE from "three";
 import { $, S, apnePanel, esc, ikon, på } from "./state.js";
 import { t } from "./i18n.js";
-import { frameHooks, makeLabel, scene, updateScreenScaled } from "./scene.js";
-import { allElementBoxes, pick, toCsv } from "./elements.js";
+import { canvas, frameHooks, makeLabel, raycaster, scene, updateScreenScaled } from "./scene.js";
+import { allElementBoxes, hitID, pick, toCsv } from "./elements.js";
 import { alleElementIder } from "./ifc.js";
 import { metaFor, sikreMeta } from "./ifcrpc.js";
 import { MALTYPER, lagreMateriellLokalt, mmTilScene, ribbonPosisjoner, tegnMateriell, trpProfil, vaskMateriell } from "./materiell-vis.js";
@@ -437,22 +437,26 @@ function tegnAlt() {
     // og Lørenskog-skjermbildene. Konstant skjermstørrelse (updateScreenScaled).
     if (visLapper) {
       const ex = Math.cos(v.rot), ez = -Math.sin(v.rot);
-      const sw = makeLabel(v.sw, "#e8ecf2");
-      sw.userData.px = 13;
+      // lappene ligger PÅ utsiden av elementet (10 cm ut langs fasadenormalen)
+      // og tegnes MED dybdetest — da skjules de bak vegger og materiell i
+      // stedet for å flyte over alt (Emils runde 4). Gamle lagrede vegger
+      // mangler normalen; da brukes rotasjonen som reserve.
+      const nx = v.nx !== undefined ? v.nx : Math.sin(v.rot);
+      const nz = v.nz !== undefined ? v.nz : Math.cos(v.rot);
+      const utX = nx * (tilScene(v.tMm) / 2 + 0.1 / (S.enhetSkala || 1));
+      const utZ = nz * (tilScene(v.tMm) / 2 + 0.1 / (S.enhetSkala || 1));
+      const sw = makeLabel(v.sw, "#ffffff");
+      sw.userData.px = 22;
       sw.userData.aspect = sw.scale.x / sw.scale.y;
-      sw.material.depthTest = false;
-      sw.renderOrder = 996;
       sw.position.set(
-        v.x - ex * tilScene(v.lengdeMm) * 0.40,
-        v.y + tilScene(v.hoydeMm) * 0.28,
-        v.z - ez * tilScene(v.lengdeMm) * 0.40);
+        v.x - ex * tilScene(v.lengdeMm) * 0.38 + utX,
+        v.y + tilScene(v.hoydeMm) * 0.26,
+        v.z - ez * tilScene(v.lengdeMm) * 0.38 + utZ);
       swGroup.add(sw);
-      const dim = makeLabel(v.lengdeMm + "×" + v.hoydeMm + "MM", "#aeb8c4");
-      dim.userData.px = 10;
+      const dim = makeLabel(v.lengdeMm + "×" + v.hoydeMm + "MM", "#e8ecf2");
+      dim.userData.px = 15;
       dim.userData.aspect = dim.scale.x / dim.scale.y;
-      dim.material.depthTest = false;
-      dim.renderOrder = 995;
-      dim.position.set(v.x, v.y, v.z);
+      dim.position.set(v.x + utX, v.y, v.z + utZ);
       swGroup.add(dim);
     }
   }
@@ -518,7 +522,13 @@ async function generer() {
     });
     const rot = Math.atan2(-f.ez, f.ex);
     fasadeInfo.push({ off, rot });
-    const t0 = f.soyler[0].t, t1 = f.soyler[f.soyler.length - 1].t;
+    // Bare søyler som STÅR PÅ BAKKEN deler fasaden i spenn. En søyleforlenger
+    // som begynner oppe på en bjelke (over porter) bærer veggen, men skal
+    // IKKE lage skjøt — elementene over porten løper forbi, som på
+    // Moelv-tegningen (Emils runde 2 og 4). Toppen regnes fortsatt av ALLE.
+    const bakke = f.soyler.filter(k => k.s.minY <= okBetong + 1.0 / (S.enhetSkala || 1));
+    const spennSoyler = bakke.length >= 2 ? bakke : f.soyler;
+    const t0 = spennSoyler[0].t, t1 = spennSoyler[spennSoyler.length - 1].t;
     if (o.ringmur) {
       const p = midt((t0 + t1) / 2 + tS / 2, 0);
       ringmur.push({ x: p.x, z: p.z,
@@ -546,9 +556,9 @@ async function generer() {
       const kutt = apninger
         .filter(a => Math.min(a.toppMm, rTopp) - Math.max(a.bunnMm, rBunn) > 10)
         .map(a => [a.fraMm, a.tilMm_]);
-      for (let i = 0; i < f.soyler.length - 1; i++) {
-        const sFra = i === 0 ? hjFraMm : tilMm(f.soyler[i].t) + SW_KLARING_MM;
-        const sTil = i === f.soyler.length - 2 ? hjTilMm : tilMm(f.soyler[i + 1].t) - SW_KLARING_MM;
+      for (let i = 0; i < spennSoyler.length - 1; i++) {
+        const sFra = i === 0 ? hjFraMm : tilMm(spennSoyler[i].t) + SW_KLARING_MM;
+        const sTil = i === spennSoyler.length - 2 ? hjTilMm : tilMm(spennSoyler[i + 1].t) - SW_KLARING_MM;
         const fullMm = sTil - sFra;
         if (fullMm < SW_MIN_BIT_MM) continue;
         for (const [bFra, bTil] of delOppMedUtsparinger(sFra, sTil, kutt)) {
@@ -556,7 +566,7 @@ async function generer() {
           const tMid = tilScene((bFra + bTil) / 2);
           const p = midt(tMid, baseY + tilScene(rBunn + radH / 2));
           vegger.push({
-            x: p.x, y: p.y, z: p.z, rot, fi, tMid,
+            x: p.x, y: p.y, z: p.z, rot, fi, tMid, nx: f.nx, nz: f.nz,
             lengdeMm: Math.round(lengdeMm), hoydeMm: radH, tMm: o.tykkelseMm,
             // kapp: rad-kapp, bit kappet av utsparing, ELLER kortere enn 2 m —
             // alt under 2000 mm er kapp og heter SW-XX (Emils regel runde 3)
@@ -595,8 +605,10 @@ async function generer() {
     const info = fasadeInfo[g.fi] || fasadeInfo[0] || { off: 0, rot: 0 };
     const rad = fasadeRad.get(g.fi) || 0;
     fasadeRad.set(g.fi, rad + 1);
-    const ut = info.off + tilScene(2500) + rad * tilScene(g.hoydeMm + 1200);
-    const tMid = g.tSum / g.antall;
+    const ut = info.off + tilScene(5000) + rad * tilScene(g.hoydeMm + 1500);
+    const tSpenn = f.soyler[f.soyler.length - 1].t - f.soyler[0].t;
+    const tMid = Math.max(f.soyler[0].t + tilScene(g.lengdeMm) / 2,
+      Math.min(f.soyler[0].t + tSpenn - tilScene(g.lengdeMm) / 2, g.tSum / g.antall));
     const p = vaskMateriell({
       id: "SW-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 7),
       maltype: "sandwich", navn: sw, farge: o.farge,
@@ -767,20 +779,55 @@ window.addEventListener("pointerup", (e) => {
   utspMark.ned = null;
   if (Math.hypot(e.clientX - ned.x, e.clientY - ned.y) > 8) return;   // kameradrag
   e.stopPropagation();
+  // Kameraet fikk pointerdown-en (rotasjon skal virke i modusen) — svelger vi
+  // pointerup-en uten å rydde, blir kameraet stående og tro at knappen holdes
+  // og «låser seg i rotasjon». Samme kur som materiell.js: syntetisk
+  // pointercancel, som SimpleControls håndterer fra før.
+  try { canvas.dispatchEvent(new PointerEvent("pointercancel", { pointerId: e.pointerId })); }
+  catch (_) { try { canvas.dispatchEvent(new Event("pointercancel")); } catch (__) {} }
   const hit = pick(e.clientX, e.clientY);
   if (!hit || !hit.face) return;
   const n = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
+  // IFC-geometri har ofte vilkårlig vindingsretning — normalen kan like
+  // gjerne peke INN i søylen som ut. Men flata brukeren SER har alltid
+  // normalen sin MOT kameraet: peker den med blikket, snus den. Det var
+  // dette som ga «trenger to motstående sider» med 17 flater valgt
+  // (Emils skjermbilde 01.09 18:14).
+  if (n.dot(raycaster.ray.direction) > 0) n.multiplyScalar(-1);
   utspMark.flater.push({ p: { x: hit.point.x, y: hit.point.y, z: hit.point.z },
                          n: { x: n.x, y: n.y, z: n.z } });
-  // liten oransje prikk på flata, så man ser hva som er valgt
-  const r = 0.06 / (S.enhetSkala || 1);
-  const prikk = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 8),
-    new THREE.MeshBasicMaterial({ color: "#f59e0b", depthTest: false }));
-  prikk.renderOrder = 997;
-  prikk.position.copy(hit.point);
-  utspMark.prikker.add(prikk);
+  // hele SIDEN av elementet farges blå — som når sammenligningen farger
+  // elementer, bare for én flate (Emils runde 4). Flaten finnes fra
+  // elementets boks: kvadranten som normalen peker ut av.
+  utspMark.prikker.add(byggFlateMerke(hit, n));
   tegnUtspBar();
 }, true);
+
+// Blå, halvgjennomsiktig plate lagt oppå siden brukeren trykket på.
+function byggFlateMerke(hit, n) {
+  const id = hitID(hit);
+  const b = id != null ? allElementBoxes().get(id) : null;
+  const løft = 0.015 / (S.enhetSkala || 1);   // 15 mm ut, mot z-fighting
+  let w = 0.4 / (S.enhetSkala || 1), h = w;
+  const senter = hit.point.clone();
+  if (b) {
+    const ax = Math.abs(n.x) >= Math.abs(n.y) && Math.abs(n.x) >= Math.abs(n.z) ? "x"
+      : Math.abs(n.y) >= Math.abs(n.z) ? "y" : "z";
+    if (ax === "x") { w = b.max.z - b.min.z; h = b.max.y - b.min.y; }
+    else if (ax === "y") { w = b.max.x - b.min.x; h = b.max.z - b.min.z; }
+    else { w = b.max.x - b.min.x; h = b.max.y - b.min.y; }
+    senter.set((b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2, (b.min.z + b.max.z) / 2);
+    senter[ax] = n[ax] >= 0 ? b.max[ax] : b.min[ax];
+  }
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(Math.max(w, 1e-6), Math.max(h, 1e-6)),
+    new THREE.MeshBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.45,
+      side: THREE.DoubleSide, depthWrite: false }));
+  const nv = new THREE.Vector3(n.x, n.y, n.z).normalize();
+  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), nv);
+  m.position.copy(senter).addScaledVector(nv, løft);
+  m.renderOrder = 997;
+  return m;
+}
 
 window.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && utspMark) { e.stopPropagation(); avsluttUtspMark(); }
