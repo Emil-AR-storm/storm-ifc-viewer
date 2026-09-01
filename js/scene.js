@@ -306,9 +306,15 @@ export const axesGroup = new THREE.Group();
 
 export const selGroup = new THREE.Group();
 
+// ⭕▭ Områdene til markeringene (markers.js tegner dem). EGEN gruppe og ikke
+// markerGroup: skalerMarkeringer setter skalaen på ALT i markerGroup hvert
+// bilde (boblene skal ha konstant skjermstørrelse), og det ville dratt
+// områdene — som skal ha ekte størrelse i modellen — ut av fasong.
+export const omradeGroup = new THREE.Group();
+
 axesGroup.visible = false;
 
-scene.add(markerGroup, measureGroup, koteGroup, axesGroup, selGroup);
+scene.add(markerGroup, measureGroup, koteGroup, axesGroup, selGroup, omradeGroup);
 
 export function fitToModel() {
   if (!S.modelGroup) return;

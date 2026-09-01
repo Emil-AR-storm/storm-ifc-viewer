@@ -16,7 +16,7 @@ import { finnNevnte, koblNevning, nevnKandidater, nevningHtml } from "./nevning.
 import { fmtTid, lydStottes, startOpptak } from "./lyd.js";
 import { fristTilISO, fullforOppgave, opprettOppgave, planUrl, plannerToken } from "./planner.js";
 import { setMode } from "./modes.js";
-import { camera, controls, frameHooks, markerGroup, renderer } from "./scene.js";
+import { camera, controls, frameHooks, markerGroup, omradeGroup, raycaster, renderer } from "./scene.js";
 import { GRAPH, SP, authHeaders, graphGet, spTokenSilent } from "./sharepoint.js";
 import { MAKS_LYD_PER_MARKERING, MAKS_PER_MARKERING, bildeUrl, erBildefil, lastOpp, leggTilBilder, lydNavn, lydUrl, slettBilder, trygtLyd } from "./bilder.js";
 import { ADVAR_MB, antallSider, apneHtmlTegning, apneHtmlVedlegg, erHtml, gyldigSide, hentTegninger, mb, sideBilde, velgMappe, visStatus } from "./tegninger.js";
@@ -110,6 +110,7 @@ async function lastLettMarkeringer() {
       : t("Fikk ikke hentet markeringene. Det du ser kan mangle noe.");
   }
   markerGroup.clear();
+  ryddOmrader();
   S.comments.forEach(addMarkerSprite);
   merkUsendte();          // J5: det som ligger i køen finnes ikke hos Workeren ennå
   renderCommentList();
@@ -219,6 +220,7 @@ function merkUsendte() {
   }
   // tegn markeringene på nytt så de blasse blir blasse
   markerGroup.clear();
+  ryddOmrader();
   S.comments.forEach(addMarkerSprite);
 }
 
@@ -339,6 +341,18 @@ export function vaskMarkering(r) {
   // malId mangler, for da vet ingen hvilken mal svarene hører til.
   if (Array.isArray(r.skjema)) c.skjema = r.skjema
     .map(vaskSkjema).filter(Boolean).slice(0, MAKS_SKJEMA_PER_MARKERING);
+  // ⭕▭ Området markeringen gjelder: sirkel eller firkant på et valgt nivå,
+  // tegnet med dra-og-slipp. Samme feltvask som alt annet: bare kjente felter,
+  // og et område uten utstrekning kastes — det er et klikk, ikke et område.
+  if (r.omrade && typeof r.omrade === "object") {
+    const o = r.omrade;
+    const rx = Math.abs(Number(o.rx) || 0), rz = Math.abs(Number(o.rz) || 0);
+    if (rx > 0 && rz > 0) c.omrade = {
+      form: o.form === "firkant" ? "firkant" : "sirkel",
+      x: Number(o.x) || 0, y: Number(o.y) || 0, z: Number(o.z) || 0,
+      rx, rz
+    };
+  }
   return c;
 }
 
@@ -370,6 +384,7 @@ async function syncSharedComments(stille) {
     });
     S.comments = remote.concat(localOnly);
     markerGroup.clear();
+    ryddOmrader();
     S.comments.forEach(addMarkerSprite);
     persist();
     S.sharedOK = true;
@@ -539,8 +554,69 @@ function addMarkerSprite(comment) {
   sprite.renderOrder = 999;
   sprite.userData.commentId = comment.id;
   markerGroup.add(sprite);
+  // ⭕▭ har markeringen et område, tegnes det i samme slengen — bobla står i
+  // senteret av området, så de hører sammen og skal leve og dø sammen
+  if (comment.omrade) addOmradeMesh(comment);
   skalerMarkeringer();   // riktig størrelse med en gang, ikke først ved neste bilde
 }
+
+// ---------- ⭕▭ Området markeringen gjelder ----------
+// Flate + kantlinje på et valgt nivå. Fargen følger FRISTSYSTEMET — samme
+// hastegradsring som bobla (frist.js), så rødt område = det haster, uten å
+// åpne noe. Løst har ingen ring (null) og får statusgrønn i stedet.
+function omradeFarge(c) {
+  return HASTEGRAD[hastegradFor(c)].ring || STATUS["Løst"].col;
+}
+
+// Bygger flate + kant med ENHETSMÅL (radius 1); posisjon og rx/rz legges som
+// skala på gruppa. Da kan forhåndsvisningen under draget gjenbruke samme mesh
+// og bare endre skalaen — ingen ny geometri per musebevegelse.
+function byggOmradeMesh(form, farge) {
+  const g = new THREE.Group();
+  const flateGeo = form === "firkant" ? new THREE.PlaneGeometry(2, 2) : new THREE.CircleGeometry(1, 64);
+  flateGeo.rotateX(-Math.PI / 2);   // flatt på gulvet, normalen opp
+  const flate = new THREE.Mesh(flateGeo, new THREE.MeshBasicMaterial({
+    color: farge, transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false }));
+  flate.renderOrder = 2;
+  const pkt = [];
+  if (form === "firkant") pkt.push([-1, -1], [1, -1], [1, 1], [-1, 1]);
+  else for (let i = 0; i < 64; i++) { const a = i / 64 * Math.PI * 2; pkt.push([Math.cos(a), Math.sin(a)]); }
+  const kantGeo = new THREE.BufferGeometry().setFromPoints(pkt.map(p => new THREE.Vector3(p[0], 0, p[1])));
+  // kanten tegnes gjennom vegger (depthTest false), som bobla — flaten ikke:
+  // en halvgjennomsiktig flate oppå ALT hadde gjort modellen uleselig
+  const kant = new THREE.LineLoop(kantGeo, new THREE.LineBasicMaterial({
+    color: farge, transparent: true, opacity: 0.9, depthTest: false }));
+  kant.renderOrder = 998;
+  g.add(flate, kant);
+  return g;
+}
+
+function addOmradeMesh(c) {
+  const o = c.omrade;
+  const g = byggOmradeMesh(o.form, omradeFarge(c));
+  if (c.usendt) g.traverse(m => { if (m.material) m.material.opacity *= 0.5; });
+  g.position.set(o.x, o.y, o.z);
+  g.scale.set(Math.max(o.rx, 1e-6), 1, Math.max(o.rz, 1e-6));
+  g.userData.commentId = c.id;
+  omradeGroup.add(g);
+}
+
+// Fjerner områdene til ÉN markering (id) eller alle (null). Geometrien
+// disposes — områdene bygges på nytt ved statusbytte, og uten dispose ville
+// hvert bytte lagt igjen en geometri på GPU-en.
+function fjernOmrader(id) {
+  omradeGroup.children.slice().forEach(g => {
+    if (id != null && g.userData.commentId != id) return;
+    g.traverse(m => {
+      if (m.geometry) m.geometry.dispose();
+      if (m.material) m.material.dispose();
+    });
+    omradeGroup.remove(g);
+  });
+}
+
+// clearModel i ifc.js tømmer markerGroup ved modellbytte — områdene skal med.
+export function ryddOmrader() { fjernOmrader(null); }
 
 // Felt som endrer hvordan markeringen SER UT i 3D.
 //
@@ -557,6 +633,7 @@ function updateComment(c, patch) {
   Object.assign(c, patch);
 
   if (TEGNEFELT.some(f => patch[f] !== undefined)) {
+    fjernOmrader(c.id);   // området farges av samme frist/status — tegnes på nytt under
     markerGroup.children.filter(s => s.userData.commentId == c.id).forEach(s => {
       markerGroup.remove(s);
       // Materialet lages nytt for hver sprite i addMarkerSprite og ble tidligere
@@ -1601,6 +1678,7 @@ export function deleteComment(id) {
   if (c && (alleBilder(c).length || lydI(c).length)) slettBilder(alleBilder(c).concat(lydFiler(c)));
   S.comments = S.comments.filter(c => c.id != id);
   markerGroup.children.filter(s => s.userData.commentId == id).forEach(s => markerGroup.remove(s));
+  fjernOmrader(id);
   persist(); pushSharedComments(); renderCommentList();
 }
 
@@ -1662,10 +1740,161 @@ export function forberedNyMarkering() {
   av.onchange = () => { felt.disabled = av.checked; if (av.checked) felt.value = ""; };
 }
 
+// ---------- ⭕▭ Tegne et område (dra og slipp) ----------
+// I markering-modus kan man i stedet for et enkelt trykk MARKERE OMRÅDET
+// saken gjelder: velg sirkel eller firkant og et nivå i kontrollinja, dra i
+// modellen — slipp, og markeringsdialogen åpner som vanlig. Bobla settes i
+// senteret av området (Emils bestilling 31.08).
+//
+// PEKELOGIKKEN er materiell.js sin oppskrift: lytterne ligger på window i
+// FANGSTFASEN og stopper hendelsen FØR kameraet (SimpleControls på canvas)
+// ser den — da starter aldri rotasjonen, og ingenting må ryddes etterpå.
+// Et drag som ikke starter mens et område-valg er aktivt røres aldri.
+let omrForm = null;     // null | "sirkel" | "firkant"
+let omrNiva = -1;       // indeks i S.storeyList, -1 = bakkenivå
+let omrDrag = null;     // { fra: Vector3, mesh: Group } under tegning
+
+// Høyden området legges på. Nivåene er de samme etasjene som minikartets
+// etasjevelger bruker (S.storeyList, bygget av clip.js) — men her er det
+// GULVET som gjelder, ikke øyehøyden: området ligger PÅ dekket, løftet 5 cm
+// så det ikke flimrer mot betongen (z-fighting).
+function omrNivaY() {
+  const loft = 0.05 / (S.enhetSkala || 1);
+  const e = omrNiva >= 0 && S.storeyList && S.storeyList[omrNiva];
+  if (e) return e.yBase + loft;
+  return (S.modelBox ? S.modelBox.min.y : 0) + loft;
+}
+
+// Skjæringen mellom blikket og nivåplanet — punktet under pekeren, på nivået.
+const _omrNdc = new THREE.Vector2();
+const _omrPlan = new THREE.Plane();
+const _omrPkt = new THREE.Vector3();
+
+function omrPunkt(clientX, clientY, y) {
+  const r = renderer.domElement.getBoundingClientRect();
+  _omrNdc.set(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
+  raycaster.setFromCamera(_omrNdc, camera);
+  _omrPlan.set(new THREE.Vector3(0, 1, 0), -y);
+  return raycaster.ray.intersectPlane(_omrPlan, _omrPkt) ? _omrPkt.clone() : null;
+}
+
+// Geometrien fra et drag. Firkant dras HJØRNE TIL HJØRNE (som markeringsboksen
+// i flervalget); sirkel dras fra SENTERET og ut til kanten — det er slik man
+// peker på «her, og cirka så langt rundt».
+function omrFraDrag(fra, til) {
+  if (omrForm === "firkant") {
+    return { form: "firkant",
+      x: (fra.x + til.x) / 2, y: fra.y, z: (fra.z + til.z) / 2,
+      rx: Math.abs(til.x - fra.x) / 2, rz: Math.abs(til.z - fra.z) / 2 };
+  }
+  const r = Math.hypot(til.x - fra.x, til.z - fra.z);
+  return { form: "sirkel", x: fra.x, y: fra.y, z: fra.z, rx: r, rz: r };
+}
+
+const OMR_MIN_M = 0.1;   // under 10 cm er det et klikk, ikke et område
+
+window.addEventListener("pointerdown", (e) => {
+  if (S.mode !== "marker" || !omrForm || e.button !== 0) return;
+  if (e.shiftKey) return;   // shift er flervalgets tast (elements.js) — også her
+  if (e.target !== renderer.domElement || !S.modelGroup) return;
+  const pt = omrPunkt(e.clientX, e.clientY, omrNivaY());
+  if (!pt) return;
+  e.stopPropagation();   // kameraet skal ikke rotere mens området dras
+  const mesh = byggOmradeMesh(omrForm, "#3b82f6");   // nøytral blå til fristen er valgt
+  mesh.position.copy(pt);
+  mesh.scale.set(1e-6, 1, 1e-6);
+  omradeGroup.add(mesh);
+  omrDrag = { fra: pt, mesh };
+}, true);
+
+window.addEventListener("pointermove", (e) => {
+  if (!omrDrag) return;
+  e.stopPropagation();
+  const til = omrPunkt(e.clientX, e.clientY, omrDrag.fra.y);
+  if (!til) return;
+  const o = omrFraDrag(omrDrag.fra, til);
+  omrDrag.mesh.position.set(o.x, o.y, o.z);
+  omrDrag.mesh.scale.set(Math.max(o.rx, 1e-6), 1, Math.max(o.rz, 1e-6));
+}, true);
+
+window.addEventListener("pointerup", (e) => {
+  if (!omrDrag) return;
+  const d = omrDrag;
+  omrDrag = null;
+  e.stopPropagation();
+  d.mesh.traverse(m => {
+    if (m.geometry) m.geometry.dispose();
+    if (m.material) m.material.dispose();
+  });
+  omradeGroup.remove(d.mesh);   // forhåndsvisningen bort — den ekte tegnes ved lagring
+  const til = omrPunkt(e.clientX, e.clientY, d.fra.y);
+  if (!til) return;
+  const o = omrFraDrag(d.fra, til);
+  const min = OMR_MIN_M / (S.enhetSkala || 1);
+  if (o.rx < min || o.rz < min) return;   // for lite — regn det som et feiltrykk
+  S.pendingPoint = new THREE.Vector3(o.x, o.y, o.z);   // bobla i senteret
+  S.pendingOmrade = o;
+  forberedNyMarkering();
+  $("commentDialog").classList.add("open");
+  setTimeout(() => { const f = $("commentText"); if (f) f.focus(); }, 50);
+}, true);
+
+window.addEventListener("pointercancel", () => {
+  if (!omrDrag) return;
+  omradeGroup.remove(omrDrag.mesh);
+  omrDrag = null;
+}, true);
+
+// Kontrollinja i markering-modus: sirkel/firkant-valg + nivå. Kalles av
+// updateModeBar (modes.js) via S — modes.js kan ikke importere markers.js
+// (markers.js importerer setMode derfra), samme krok-mønster som materiell.
+S.omradeModeBar = (bar) => {
+  const lbl = bar.querySelector(".lbl");
+  const boks = document.createElement("span");
+  boks.style.cssText = "display:inline-flex;gap:6px;align-items:center;margin-left:10px";
+  boks.innerHTML =
+    '<span style="color:var(--muted);font-size:12px">' + t("eller marker område:") + '</span>' +
+    '<button id="mbOmrSirkel" title="' + t("Dra fra senter og ut — området blir en sirkel") + '">' + t("Sirkel") + '</button>' +
+    '<button id="mbOmrFirkant" title="' + t("Dra fra hjørne til hjørne — området blir en firkant") + '">' + t("Firkant") + '</button>' +
+    '<select id="mbOmrNiva" title="' + t("Nivået området legges på — samme etasjer som minikartet") + '">' +
+    '<option value="-1">' + t("Bakkenivå") + '</option></select>';
+  bar.appendChild(boks);
+
+  const tegnKnapper = () => {
+    $("mbOmrSirkel").classList.toggle("active", omrForm === "sirkel");
+    $("mbOmrFirkant").classList.toggle("active", omrForm === "firkant");
+    if (lbl) lbl.textContent = omrForm
+      ? t("Dra i modellen der området skal ligge — slipp for å skrive markeringen")
+      : t("Trykk på modellen for å plassere markering");
+  };
+  $("mbOmrSirkel").onclick = () => { omrForm = omrForm === "sirkel" ? null : "sirkel"; tegnKnapper(); };
+  $("mbOmrFirkant").onclick = () => { omrForm = omrForm === "firkant" ? null : "firkant"; tegnKnapper(); };
+
+  // Etasjelista bygges først når noen faktisk er i markering-modus — samme
+  // latskap som minikartets velger. Er modellen uten etasjer, står
+  // «Bakkenivå» igjen alene, og det er et ærlig svar.
+  const sel = $("mbOmrNiva");
+  (S.sikreEtasjeliste ? S.sikreEtasjeliste() : Promise.resolve(S.storeyList || []))
+    .then(liste => {
+      if (!$("mbOmrNiva")) return;   // linja er tegnet om i mellomtiden
+      (liste || []).forEach((et, i) => {
+        const op = document.createElement("option");
+        op.value = String(i);
+        op.textContent = et.name;
+        sel.appendChild(op);
+      });
+      if (omrNiva >= 0 && omrNiva < (liste || []).length) sel.value = String(omrNiva);
+      else { omrNiva = -1; sel.value = "-1"; }
+    })
+    .catch(() => {});
+  sel.onchange = () => { omrNiva = Number(sel.value); };
+  tegnKnapper();
+};
+
 window.saveComment = function() {
   const text = $("commentText").value.trim();
   $("commentDialog").classList.remove("open");
-  if (!text || !S.pendingPoint) { S.pendingPoint = null; nullstillNyeBilder(); return; }
+  if (!text || !S.pendingPoint) { S.pendingPoint = null; S.pendingOmrade = null; nullstillNyeBilder(); return; }
   const c = {
     // klokkeslett + tilfeldig hale: to som lager markering i samme millisekund
     // (delt fil, hele Storm) skal ikke få samme ID
@@ -1687,6 +1916,9 @@ window.saveComment = function() {
     x: S.pendingPoint.x, y: S.pendingPoint.y, z: S.pendingPoint.z,
     date: naaTekst()
   };
+  // ⭕▭ ble markeringen tegnet som et område, følger området med markeringen —
+  // gjennom samme vask, samme delte fil og samme eksport som alt annet
+  if (S.pendingOmrade) { c.omrade = S.pendingOmrade; S.pendingOmrade = null; }
   // IFC-elementet markeringen står på, hvis noe var valgt da den ble laget.
   // Er ingenting valgt, settes ingenting – et tomt felt er ærlig, en gjetning
   // ser riktig ut og da oppdager ingen den.
@@ -1703,7 +1935,10 @@ window.saveComment = function() {
   if (LETT) {
     sendHendelse({ type: "ny-markering", markering: {
       id: c.id, text: c.text, author: c.author, date: c.date,
-      status: "Åpen", x: c.x, y: c.y, z: c.z
+      status: "Åpen", x: c.x, y: c.y, z: c.z,
+      // området må med i hendelsen — kontoret vasker det i byggeplass.js
+      // (vaskMarkering) på samme måte som resten av markeringen
+      omrade: c.omrade || undefined
     } }).then(ok => {
       if (ok) { alert(t("Markeringen er sendt til prosjektlederen.")); return; }
       merkUsendte();          // J5: tegn den blass og merk den «ikke sendt»
@@ -1724,6 +1959,7 @@ window.saveComment = function() {
 window.cancelComment = function() {
   $("commentDialog").classList.remove("open");
   S.pendingPoint = null;
+  S.pendingOmrade = null;
   nullstillNyeBilder();
 };
 
@@ -1941,6 +2177,7 @@ export function tegnAlleMarkeringerPaNytt() {
     markerGroup.remove(s);
     if (s.material) s.material.dispose();   // ikke .map — den er delt, se updateComment
   });
+  ryddOmrader();   // fargene følger dagen/grensene — områdene tegnes på nytt med
   (S.comments || []).forEach(addMarkerSprite);
   S.miniSkitten = true;
 }

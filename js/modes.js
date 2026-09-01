@@ -81,6 +81,10 @@ export function updateModeBar() {
     modeBar.classList.add("open");
   } else if (S.mode === "marker") {
     modeBar.innerHTML = '<span class="lbl">' + t("Trykk på modellen for å plassere markering") + '</span>';
+    // ⭕▭ Område-valgene (sirkel/firkant + nivå) eies av markers.js og legges
+    // på via S — samme krok-mønster som materiell, av samme grunn: markers.js
+    // importerer setMode herfra, så modes.js kan ikke importere tilbake.
+    if (S.omradeModeBar) S.omradeModeBar(modeBar);
     modeBar.classList.add("open");
   } else if (S.mode === "materiell" && S.materiellModeBar) {
     // 📦 materiell-verktøyet eier innholdet sitt selv (js/materiell.js)
