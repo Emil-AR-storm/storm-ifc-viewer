@@ -614,10 +614,17 @@ export const OMR_KANT_PX = 3.5;   // kontur-tykkelse i piksler
 // gjenbruke samme mesh og bare endre skala, ingen ny geometri per musedrag.
 function byggOmradeMesh(form, farge) {
   const g = new THREE.Group();
-  // fyllet: NESTEN gjennomsiktig — volumet skal vise HVOR, ikke dekke over hva
-  const fyllGeo = form === "firkant"
-    ? new THREE.BoxGeometry(2, 1, 2)
-    : new THREE.CylinderGeometry(1, 1, 1, 64, 1);
+  // fyllet: NESTEN gjennomsiktig — volumet skal vise HVOR, ikke dekke over hva.
+  // Sirkelen er en ELLIPSOIDE (flatklemt kule), ikke en sylinder: da er den
+  // rund i alle retninger og leses som en sirkel uansett synsvinkel
+  // (Emils funn 01.09 — sylinderen så ut som en boks med lokk).
+  let fyllGeo;
+  if (form === "firkant") {
+    fyllGeo = new THREE.BoxGeometry(2, 1, 2);
+  } else {
+    fyllGeo = new THREE.SphereGeometry(1, 48, 32);
+    fyllGeo.scale(1, 0.5, 1);   // y-spennet −0.5..0.5, som boksen
+  }
   fyllGeo.translate(0, 0.5, 0);
   const fyll = new THREE.Mesh(fyllGeo, new THREE.MeshBasicMaterial({
     color: farge, transparent: true, opacity: 0.08, side: THREE.DoubleSide, depthWrite: false }));
@@ -648,15 +655,31 @@ function byggOmradeMesh(form, farge) {
       g.add(new THREE.LineSegments(kantGeo, new THREE.LineBasicMaterial({ color: farge })));
     });
   } else {
-    // konturen på SYLINDEREN er silhuetten sett fra der du står — samme grep
+    // konturen på SIRKELEN er silhuetten sett fra der du står — samme grep
     // som Blenders outline: en litt større kopi tegnet med BAKSIDENE
-    // («inverted hull»). Det som stikker utenfor forsiden er nøyaktig
-    // omrisset fra din vinkel, og det følger med når kameraet flyttes.
+    // («inverted hull»), og det som stikker utenfor omrisset er kanten.
+    //
+    // TRIKSET SOM FÅR DET TIL Å VIRKE MED GJENNOMSIKTIG FYLL: hos Blender er
+    // innmaten tett og dekker skallets innside av seg selv. Vårt fyll er 92 %
+    // gjennomsiktig, så uten hjelp fylte skallet HELE formen med farge i
+    // stedet for å bli en kant (Emils funn 01.09). Derfor tegnes først en
+    // USYNLIG DYBDEMASKE — samme form, skriver bare dybde, ingen farge —
+    // som blokkerer skallets innside. Igjen står bare selve silhuettkanten,
+    // og den følger med når kameraet flyttes.
+    //
+    // renderOrder-rekka: modellen (0) → dybdemasken (995, etter modellen så
+    // den ikke lager hull i vegger) → skallet (996) → fyllet (gjennomsiktig
+    // pass, tegner over sin egen dybde fordi three-ens standard depthFunc er
+    // LessEqual).
+    const maske = new THREE.Mesh(fyllGeo.clone(), new THREE.MeshBasicMaterial({ colorWrite: false }));
+    maske.renderOrder = 995;
     const hull = new THREE.Mesh(fyllGeo.clone(), new THREE.MeshBasicMaterial({
       color: farge, side: THREE.BackSide }));
-    hull.scale.set(1.05, 1.03, 1.05);
-    hull.position.y = -0.008;   // så silhuetten også ses langs bunnkanten
-    g.add(hull);
+    // 5 % større OM SENTERET (ikke om basen — da ble kanten borte nederst)
+    hull.scale.set(1.05, 1.05, 1.05);
+    hull.position.y = -0.025;
+    hull.renderOrder = 996;
+    g.add(maske, hull);
   }
   return g;
 }
@@ -2006,7 +2029,7 @@ S.omradeModeBar = (bar) => {
   boks.style.cssText = "display:inline-flex;gap:6px;align-items:center;margin-left:10px";
   boks.innerHTML =
     '<span style="color:var(--muted);font-size:12px">' + t("eller marker område:") + '</span>' +
-    '<button id="mbOmrSirkel" title="' + t("Dra grunnflaten fra hjørne til hjørne — området blir en sylinder") + '">' + t("Sirkel") + '</button>' +
+    '<button id="mbOmrSirkel" title="' + t("Dra grunnflaten fra hjørne til hjørne — området blir en rund sirkel") + '">' + t("Sirkel") + '</button>' +
     '<button id="mbOmrFirkant" title="' + t("Dra grunnflaten fra hjørne til hjørne — området blir en boks") + '">' + t("Firkant") + '</button>' +
     '<select id="mbOmrNiva" title="' + t("Nivået området legges på — samme etasjer som minikartet") + '">' +
     '<option value="-1">' + t("Bakkenivå") + '</option></select>';
