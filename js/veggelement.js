@@ -8,10 +8,10 @@
 //    25 mm fra søylesenter (to naboelementer får 50 mm mellomrom), og radene
 //    stables med 1100- og 1000-høyder til topp av søyleforlengerne — går ikke
 //    høyden opp, kappes øverste rad (Emils valg 01.09)
-//  · utsparinger (dører/vinduer/porter) lages ved å VELGE elementene som
-//    rammer inn åpningen (shift-klikk søylene på sidene og bjelken over) og
-//    trykke «Legg til utsparing» — alt innenfor rammen blir åpning
-//    (Emils runde 2: mer presist enn å tegne bokser for hånd)
+//  · utsparinger (dører/vinduer/porter): trykk «Marker utsparing» og pek på
+//    FLATENE rundt åpningen — innsiden av søylene på sidene, undersiden av
+//    bjelken over. Én flate per side (Emils runde 3: hele elementer dro med
+//    seg tre gale sider hver gang)
 //  · hver unik lengde×høyde får et SW-nummer (SW-01, SW-02 …); kappede
 //    tilpasningsbiter heter SW-XX, som på Moelv-tegningene
 //  · veggene tegnes PÅ PLASS i 3D med valgt farge, OG hvert SW-nummer legges
@@ -28,17 +28,18 @@
 import * as THREE from "three";
 import { $, S, apnePanel, esc, ikon, på } from "./state.js";
 import { t } from "./i18n.js";
-import { scene } from "./scene.js";
-import { allElementBoxes, toCsv } from "./elements.js";
+import { frameHooks, makeLabel, scene, updateScreenScaled } from "./scene.js";
+import { allElementBoxes, pick, toCsv } from "./elements.js";
 import { alleElementIder } from "./ifc.js";
 import { metaFor, sikreMeta } from "./ifcrpc.js";
-import { lagreMateriellLokalt, morkere, tegnMateriell, vaskMateriell } from "./materiell-vis.js";
+import { MALTYPER, lagreMateriellLokalt, mmTilScene, ribbonPosisjoner, tegnMateriell, trpProfil, vaskMateriell } from "./materiell-vis.js";
 
 // ---------- Konstanter (Emils regler) ----------
 export const SW_KLARING_MM = 25;      // fra søylesenter til elementende
 export const SW_HOYDER = [1100, 1000]; // radhøydene som finnes, mm
 export const SW_MIN_BIT_MM = 100;     // kortere biter enn dette droppes
 export const SW_TOL_MM = 5;           // to lengder innenfor dette = samme SW-nummer
+export const SW_KAPP_UNDER_MM = 2000; // kortere elementer er KAPP → SW-XX (Emils regel)
 
 // ═══════════════════ RENE REGNEFUNKSJONER (testes i Node) ═══════════════════
 
@@ -107,47 +108,53 @@ export function konveksHull(punkter) {
   return nedre.concat(ovre);
 }
 
-// Utsparingen regnes ut fra elementene som RAMMER INN åpningen (Emils runde 2:
-// marker søylene/bjelkene rundt, alt innenfor blir utsparing). Ren tallfunksjon:
-// `bokser` er [{min:{x,y,z}, max:{x,y,z}}]. Reglene:
-//  · stående elementer (høyde > 1,2 × største planmål) er SIDENE — åpningen
-//    går fra innsiden av venstre til innsiden av høyre
-//  · liggende elementer over midten setter TOPPEN (undersiden av bjelken);
-//    under midten setter BUNNEN (oversiden). Uten bjelke under: gulvet
-//    (utvalgets bunn); uten bjelke over: utvalgets topp
-//  · finnes ikke to sider, brukes hele utvalgets boks — ærlig reserve
-export function utsparingFraBokser(bokser) {
-  if (!bokser || !bokser.length) return null;
-  const alle = { min: { x: Infinity, y: Infinity, z: Infinity }, max: { x: -Infinity, y: -Infinity, z: -Infinity } };
-  for (const b of bokser) for (const a of ["x", "y", "z"]) {
-    alle.min[a] = Math.min(alle.min[a], b.min[a]);
-    alle.max[a] = Math.max(alle.max[a], b.max[a]);
+// Utsparingen regnes ut fra FLATENE brukeren trykket på (Emils runde 3: én
+// flate per side — å bruke hele elementet dro med seg tre gale sider hver
+// gang). Hver flate er {p:{x,y,z}, n:{x,y,z}} — treffpunktet og flatenormalen:
+//  · normal mest vannrett: flata er en SIDE. Peker den i +akse, ligger
+//    åpningen på plussiden (venstre grense); peker den i −akse, høyre grense.
+//    Aksen (x eller z) er den normalen peker mest langs.
+//  · normal mest NED: undersiden av en bjelke = TOPPEN av åpningen.
+//    normal mest OPP: oversiden av en bjelke/gulv = BUNNEN.
+//  · uten bunn går åpningen til gulvet, uten topp til veggtoppen (±1e9 —
+//    genereringen klipper mot radene uansett).
+// Returnerer {min:[x,y,z], max:[x,y,z]} eller {feil: "..."} når sidene mangler.
+export function utsparingFraFlater(flater, slark) {
+  if (!flater || !flater.length) return { feil: "tom" };
+  const SLARK = Number(slark) > 0 ? Number(slark) : 0.5;   // sideveis raushet (sceneenheter)
+  const grenser = { x: [null, null], z: [null, null] };   // [min, maks] per akse
+  let bunn = null, topp = null;
+  const pkt = [];
+  for (const f of flater) {
+    if (!f || !f.p || !f.n) continue;
+    pkt.push(f.p);
+    if (Math.abs(f.n.y) >= Math.max(Math.abs(f.n.x), Math.abs(f.n.z))) {
+      if (f.n.y < 0) topp = topp === null ? f.p.y : Math.min(topp, f.p.y);
+      else bunn = bunn === null ? f.p.y : Math.max(bunn, f.p.y);
+      continue;
+    }
+    const akse = Math.abs(f.n.x) >= Math.abs(f.n.z) ? "x" : "z";
+    const g = grenser[akse];
+    if (f.n[akse] > 0) g[0] = g[0] === null ? f.p[akse] : Math.max(g[0], f.p[akse]);
+    else g[1] = g[1] === null ? f.p[akse] : Math.min(g[1], f.p[akse]);
   }
-  const staende = bokser.filter(b =>
-    (b.max.y - b.min.y) > 1.2 * Math.max(b.max.x - b.min.x, b.max.z - b.min.z));
-  const liggende = bokser.filter(b => !staende.includes(b));
-  // åpningens akse: den retningen sidene står lengst fra hverandre i
-  const spred = (akse) => {
-    const c = staende.map(b => (b.min[akse] + b.max[akse]) / 2);
-    return c.length ? Math.max(...c) - Math.min(...c) : 0;
-  };
-  const akse = spred("x") >= spred("z") ? "x" : "z";
-  const ut = { min: { ...alle.min }, max: { ...alle.max }, reserve: false };
-  const midt = (alle.min[akse] + alle.max[akse]) / 2;
-  const venstre = staende.filter(b => (b.min[akse] + b.max[akse]) / 2 < midt);
-  const hoyre = staende.filter(b => (b.min[akse] + b.max[akse]) / 2 >= midt);
-  if (venstre.length && hoyre.length) {
-    const a = Math.max(...venstre.map(b => b.max[akse]));
-    const bb = Math.min(...hoyre.map(b => b.min[akse]));
-    if (bb > a) { ut.min[akse] = a; ut.max[akse] = bb; }
-    else ut.reserve = true;
-  } else ut.reserve = true;
-  const yMidt = (alle.min.y + alle.max.y) / 2;
-  const over = liggende.filter(b => (b.min.y + b.max.y) / 2 >= yMidt);
-  const under = liggende.filter(b => (b.min.y + b.max.y) / 2 < yMidt);
-  if (over.length) ut.max.y = Math.min(...over.map(b => b.min.y));
-  if (under.length) ut.min.y = Math.max(...under.map(b => b.max.y));
-  return ut;
+  // åpningens akse = den som har begge sidene; har begge det, den bredeste
+  let akse = null;
+  for (const a of ["x", "z"]) {
+    const g = grenser[a];
+    if (g[0] !== null && g[1] !== null && g[1] > g[0] &&
+        (!akse || (g[1] - g[0]) > (grenser[akse][1] - grenser[akse][0]))) akse = a;
+  }
+  if (!akse) return { feil: "sider" };
+  const annen = akse === "x" ? "z" : "x";
+  const av = pkt.map(p => p[annen]);
+  const STOR = 1e9;
+  const min = { x: 0, y: bunn === null ? -STOR : bunn, z: 0 };
+  const max = { x: 0, y: topp === null ? STOR : topp, z: 0 };
+  min[akse] = grenser[akse][0]; max[akse] = grenser[akse][1];
+  min[annen] = Math.min(...av) - SLARK; max[annen] = Math.max(...av) + SLARK;
+  if (max.y <= min.y) return { feil: "hoyde" };
+  return { min: [min.x, min.y, min.z], max: [max.x, max.y, max.z] };
 }
 
 // SW-nummereringen: hver unik lengde×høyde (innenfor SW_TOL_MM) får et nummer.
@@ -388,24 +395,71 @@ function tegnAlt() {
     m.rotation.y = r.rot;
     swGroup.add(m);
   }
-  // Elementene tegnes med KANTSTREK i en mørkere tone av elementfargen —
-  // uten den fløt radene sammen til én grå flate, og ingenting så ut som
-  // veggelementer (Emils funn runde 2). Geometrien deles: alle elementene er
-  // like bokser, bare skalert — én geometri og én kantgeometri for alle.
-  const veggGeo = new THREE.BoxGeometry(1, 1, 1);
-  const kantGeo = new THREE.EdgesGeometry(veggGeo);
-  const veggMat = new THREE.MeshLambertMaterial({ color: o.farge || "#dfe5ec", side: THREE.DoubleSide });
-  const kantMat = new THREE.LineBasicMaterial({ color: morkere(o.farge || "#dfe5ec") });
+  // Elementene tegnes som EKTE SANDWICHPANELER — samme oppskrift som
+  // materiell-modellen Emil pekte på (runde 3): lys isolasjonskjerne synlig i
+  // endene, og et tynt blikk med mikroprofil i elementfargen på begge sider.
+  // Panelet bygges liggende (samme akser som materiell) og reises opp 90°.
+  const farge = o.farge || "#dfe5ec";
+  const fargeMat = new THREE.MeshLambertMaterial({ color: farge, side: THREE.DoubleSide });
+  const kjerneMat = new THREE.MeshLambertMaterial({ color: "#e8e4da", side: THREE.DoubleSide });
+  const mal = MALTYPER.sandwich;
+  const visLapper = (lagret.vegger || []).length <= 400;   // tusenvis av lapper kveler bilderaten
   for (const v of lagret.vegger || []) {
-    const m = new THREE.Mesh(veggGeo, veggMat);
-    m.scale.set(tilScene(v.lengdeMm), tilScene(v.hoydeMm), tilScene(v.tMm));
-    m.position.set(v.x, v.y, v.z);
-    m.rotation.y = v.rot;
-    m.userData.sw = v.sw;
-    m.add(new THREE.LineSegments(kantGeo, kantMat));
-    swGroup.add(m);
+    const el = new THREE.Group();
+    const inner = new THREE.Group();
+    const kjerne = new THREE.Mesh(new THREE.BoxGeometry(
+      tilScene(Math.max(v.lengdeMm - 4, 10)), tilScene(Math.max(v.tMm - 8, 10)), tilScene(Math.max(v.hoydeMm - 4, 10))), kjerneMat);
+    kjerne.position.y = mmTilScene(v.tMm / 2);
+    inner.add(kjerne);
+    const profS = trpProfil(v.hoydeMm, mal.deling, mal.profilHoyde)
+      .map(([x, y]) => [mmTilScene(x), mmTilScene(y)]);
+    const lag = () => {
+      const pos = ribbonPosisjoner(profS, mmTilScene(v.lengdeMm));
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(pos), 3));
+      geo.computeVertexNormals();
+      return new THREE.Mesh(geo, fargeMat);
+    };
+    const ytter = lag();
+    ytter.position.y = mmTilScene(v.tMm - mal.profilHoyde);
+    const indre = lag();
+    indre.scale.y = -1;
+    indre.position.y = mmTilScene(mal.profilHoyde);
+    inner.add(ytter, indre);
+    inner.rotation.x = -Math.PI / 2;          // reis panelet: høyden opp
+    inner.position.z = tilScene(v.tMm) / 2;   // tykkelsen sentrert om veggplanet
+    el.add(inner);
+    el.position.set(v.x, v.y, v.z);
+    el.rotation.y = v.rot;
+    el.userData.sw = v.sw;
+    swGroup.add(el);
+    // 🏷 SW-nummer i øvre hjørne + dimensjon i midten — som på Moelv-tegningen
+    // og Lørenskog-skjermbildene. Konstant skjermstørrelse (updateScreenScaled).
+    if (visLapper) {
+      const ex = Math.cos(v.rot), ez = -Math.sin(v.rot);
+      const sw = makeLabel(v.sw, "#e8ecf2");
+      sw.userData.px = 13;
+      sw.userData.aspect = sw.scale.x / sw.scale.y;
+      sw.material.depthTest = false;
+      sw.renderOrder = 996;
+      sw.position.set(
+        v.x - ex * tilScene(v.lengdeMm) * 0.40,
+        v.y + tilScene(v.hoydeMm) * 0.28,
+        v.z - ez * tilScene(v.lengdeMm) * 0.40);
+      swGroup.add(sw);
+      const dim = makeLabel(v.lengdeMm + "×" + v.hoydeMm + "MM", "#aeb8c4");
+      dim.userData.px = 10;
+      dim.userData.aspect = dim.scale.x / dim.scale.y;
+      dim.material.depthTest = false;
+      dim.renderOrder = 995;
+      dim.position.set(v.x, v.y, v.z);
+      swGroup.add(dim);
+    }
   }
 }
+
+// Lappene skal ha konstant størrelse på skjermen, som materiell-navnene.
+frameHooks.push(() => updateScreenScaled(swGroup));
 
 // Kalles av afterLoad (ifc.js) når en modell er åpnet, og av clearModel når
 // den lukkes — samme kroker som materiell og grupper bruker.
@@ -442,7 +496,9 @@ async function generer() {
   // Ringmur og vegger per fasade
   const ringmur = [];
   const vegger = [];
-  for (const f of fasader) {
+  const fasadeInfo = [];   // {off, rot} per fasade — til stabelplasseringen
+  for (let fi = 0; fi < fasader.length; fi++) {
+    const f = fasader[fi];
     // Veggen (og ringmuren) står FLUKT inntil utsiden av søylene. Utsiden
     // måles fra de FAKTISKE søyleboksene på fasaden — senteravvik pluss halve
     // boksen langs normalen — ikke fra en medianbredde. Da ligger elementet
@@ -461,6 +517,7 @@ async function generer() {
       y
     });
     const rot = Math.atan2(-f.ez, f.ex);
+    fasadeInfo.push({ off, rot });
     const t0 = f.soyler[0].t, t1 = f.soyler[f.soyler.length - 1].t;
     if (o.ringmur) {
       const p = midt((t0 + t1) / 2 + tS / 2, 0);
@@ -499,9 +556,11 @@ async function generer() {
           const tMid = tilScene((bFra + bTil) / 2);
           const p = midt(tMid, baseY + tilScene(rBunn + radH / 2));
           vegger.push({
-            x: p.x, y: p.y, z: p.z, rot,
+            x: p.x, y: p.y, z: p.z, rot, fi, tMid,
             lengdeMm: Math.round(lengdeMm), hoydeMm: radH, tMm: o.tykkelseMm,
-            tilpasset: tilpassetRad || lengdeMm < fullMm - SW_TOL_MM
+            // kapp: rad-kapp, bit kappet av utsparing, ELLER kortere enn 2 m —
+            // alt under 2000 mm er kapp og heter SW-XX (Emils regel runde 3)
+            tilpasset: tilpassetRad || lengdeMm < fullMm - SW_TOL_MM || lengdeMm < SW_KAPP_UNDER_MM
           });
         }
       }
@@ -520,21 +579,35 @@ async function generer() {
   const perSw = new Map();
   for (const v of vegger) {
     if (v.sw === "SW-XX") continue;
-    if (!perSw.has(v.sw)) perSw.set(v.sw, { lengdeMm: v.lengdeMm, hoydeMm: v.hoydeMm, antall: 0 });
-    perSw.get(v.sw).antall++;
+    if (!perSw.has(v.sw)) perSw.set(v.sw, { lengdeMm: v.lengdeMm, hoydeMm: v.hoydeMm, antall: 0, fi: v.fi, tSum: 0 });
+    const g = perSw.get(v.sw);
+    g.antall++;
+    g.tSum += v.tMid;
   }
+  // Stablene settes UTENFOR FASADEN der elementene skal monteres (Emils runde
+  // 3): hver SW plasseres ved tyngdepunktet sitt langs sin fasade, parallelt
+  // med veggen, og flere SW-er på samme fasade legges i rader utover. Kan
+  // etterpå flyttes for hånd med Flytt-knappen i materiell.
   const nyeIder = [];
-  let plassX = gulv.x + gulv.bredde / 2 + tilScene(3000);
-  const plassZ = gulv.z - gulv.dybde / 2;
+  const fasadeRad = new Map();
   for (const [sw, g] of [...perSw.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const f = fasader[g.fi] || fasader[0];
+    const info = fasadeInfo[g.fi] || fasadeInfo[0] || { off: 0, rot: 0 };
+    const rad = fasadeRad.get(g.fi) || 0;
+    fasadeRad.set(g.fi, rad + 1);
+    const ut = info.off + tilScene(2500) + rad * tilScene(g.hoydeMm + 1200);
+    const tMid = g.tSum / g.antall;
     const p = vaskMateriell({
       id: "SW-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 7),
       maltype: "sandwich", navn: sw, farge: o.farge,
       lengde: g.lengdeMm, bredde: g.hoydeMm, tykkelse: o.tykkelseMm,
-      antall: g.antall, x: plassX, y: okBetong, z: plassZ, rot: 0
+      antall: g.antall,
+      x: f.p.x + f.ex * tMid + f.nx * ut,
+      y: okBetong,
+      z: f.p.z + f.ez * tMid + f.nz * ut,
+      rot: info.rot
     });
     if (p) { nyeIder.push(p.id); S.materiell = (S.materiell || []).concat([p]); }
-    plassX += tilScene(g.lengdeMm + 1000);
   }
   tegnMateriell();
   lagreMateriellLokalt();
@@ -612,35 +685,106 @@ function lesOppsettFraPanel() {
   return o;
 }
 
-// Legger til en utsparing fra elementene som er valgt i modellen (shift-klikk
-// på søylene/bjelkene som rammer inn åpningen). Selve regnestykket er
-// utsparingFraBokser — her hentes bare boksene til utvalget.
-function leggTilUtsparing() {
-  const ider = S.multiSel && S.multiSel.size ? [...S.multiSel.keys()]
-    : (S.currentPropID != null ? [S.currentPropID] : []);
-  if (ider.length < 2) {
-    alert(t("Velg først elementene som rammer inn åpningen (shift-klikk): søylene på sidene og bjelken over — så trykk her igjen."));
+// ---------- 🎯 Marker utsparing: trykk på FLATENE rundt åpningen ----------
+// Emils regel (runde 3): trykk på ÉN flate per side — innsiden av søylene på
+// hver side, undersiden av bjelken over, evt. oversiden av en bjelke under.
+// Hvert trykk gir treffpunkt + flatenormal; utsparingFraFlater regner boksen.
+// Kameraet virker som vanlig underveis (bare selve KLIKKET fanges), og små
+// markører viser hvilke flater som er valgt.
+let utspMark = null;   // { flater: [], ned: {x,y}, prikker: Group } når aktiv
+
+function utspBarEl() {
+  let el = $("swUtspBar");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "swUtspBar";
+    el.style.cssText = "position:fixed;left:50%;transform:translateX(-50%);bottom:64px;" +
+      "z-index:40;display:none;gap:6px;align-items:center;background:var(--panel);" +
+      "border:1px solid var(--border);border-radius:10px;padding:6px 10px;box-shadow:0 4px 18px rgba(0,0,0,.35)";
+    document.body.appendChild(el);
+  }
+  return el;
+}
+
+function tegnUtspBar() {
+  const el = utspBarEl();
+  if (!utspMark) { el.style.display = "none"; el.innerHTML = ""; return; }
+  el.style.display = "flex";
+  el.innerHTML =
+    '<span style="font-size:12px;max-width:340px">' +
+    t("Trykk på flatene rundt åpningen: innsiden av søylene på sidene, undersiden av bjelken over. Én flate per side.") +
+    ' <b>' + t("{0} flater valgt", utspMark.flater.length) + '</b></span>' +
+    '<button id="swUtspFerdig" class="primary" style="padding:3px 10px">' + t("Ferdig") + '</button>' +
+    '<button id="swUtspAvbryt" style="padding:3px 10px">' + t("Avbryt") + '</button>';
+  $("swUtspFerdig").onclick = fullforUtspMark;
+  $("swUtspAvbryt").onclick = () => avsluttUtspMark();
+}
+
+function startUtspMark() {
+  if (!S.modelGroup) { alert(t("Åpne en modell først.")); return; }
+  const prikker = new THREE.Group();
+  swGroup.add(prikker);
+  utspMark = { flater: [], ned: null, prikker };
+  $("swPanel").classList.remove("open");   // panelet i veien for modellen
+  tegnUtspBar();
+}
+
+function avsluttUtspMark() {
+  if (!utspMark) return;
+  utspMark.prikker.traverse(m => { if (m.geometry) m.geometry.dispose(); if (m.material) m.material.dispose(); });
+  swGroup.remove(utspMark.prikker);
+  utspMark = null;
+  tegnUtspBar();
+  tegnPanel();
+  apnePanel("swPanel");
+}
+
+function fullforUtspMark() {
+  if (!utspMark) return;
+  const u = utsparingFraFlater(utspMark.flater, 0.5 / (S.enhetSkala || 1));
+  if (u.feil) {
+    alert(t("Utsparingen trenger to motstående sider — trykk på innsiden av søylene på hver side av åpningen."));
     return;
   }
-  const alle = allElementBoxes();
-  const bokser = [];
-  for (const id of ider) {
-    const b = alle.get(id);
-    if (b) bokser.push({ min: { x: b.min.x, y: b.min.y, z: b.min.z },
-                         max: { x: b.max.x, y: b.max.y, z: b.max.z } });
-  }
-  const u = utsparingFraBokser(bokser);
-  if (!u) { alert(t("Fant ikke boksene til de valgte elementene.")); return; }
   const o = oppsett();
-  o.utsparinger = (o.utsparinger || []).filter(x => x && x.min);   // gamle id-lister ryddes
-  o.utsparinger.push({
-    navn: t("Utsparing {0}", o.utsparinger.length + 1),
-    min: [u.min.x, u.min.y, u.min.z], max: [u.max.x, u.max.y, u.max.z]
-  });
+  o.utsparinger = (o.utsparinger || []).filter(x => x && x.min);   // gamle formater ryddes
+  o.utsparinger.push({ navn: t("Utsparing {0}", o.utsparinger.length + 1), min: u.min, max: u.max });
   skrivLagret();
-  tegnPanel();
-  if (u.reserve) alert(t("Fant ikke to sider i utvalget — utsparingen ble hele utvalgets boks. Sjekk målene i lista."));
+  avsluttUtspMark();
 }
+
+// Klikkene fanges på window i FANGSTFASEN (samme oppskrift som materiell.js):
+// kameraet får dra som vanlig — bare et trykk under 8 px behandles, og da
+// stoppes det FØR elementvalget i main.js ser det.
+window.addEventListener("pointerdown", (e) => {
+  if (!utspMark || e.button !== 0) return;
+  utspMark.ned = { x: e.clientX, y: e.clientY };
+}, true);
+
+window.addEventListener("pointerup", (e) => {
+  if (!utspMark || e.button !== 0 || !utspMark.ned) return;
+  const ned = utspMark.ned;
+  utspMark.ned = null;
+  if (Math.hypot(e.clientX - ned.x, e.clientY - ned.y) > 8) return;   // kameradrag
+  e.stopPropagation();
+  const hit = pick(e.clientX, e.clientY);
+  if (!hit || !hit.face) return;
+  const n = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
+  utspMark.flater.push({ p: { x: hit.point.x, y: hit.point.y, z: hit.point.z },
+                         n: { x: n.x, y: n.y, z: n.z } });
+  // liten oransje prikk på flata, så man ser hva som er valgt
+  const r = 0.06 / (S.enhetSkala || 1);
+  const prikk = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 8),
+    new THREE.MeshBasicMaterial({ color: "#f59e0b", depthTest: false }));
+  prikk.renderOrder = 997;
+  prikk.position.copy(hit.point);
+  utspMark.prikker.add(prikk);
+  tegnUtspBar();
+}, true);
+
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && utspMark) { e.stopPropagation(); avsluttUtspMark(); }
+}, true);
 
 function tegnPanel() {
   const body = $("swBody");
@@ -667,8 +811,8 @@ function tegnPanel() {
     felt("swInnF", "Innvendig farge (til lista)", o.innFarge, "text") +
     '<h4 style="margin:10px 0 4px">' + t("Utsparinger (dører, vinduer, porter)") + '</h4>' +
     '<p style="color:var(--muted);font-size:11px;margin:2px 0 6px">' +
-      t("Shift-klikk elementene som rammer inn åpningen (søylene på sidene og bjelken over/under), og trykk knappen. Alt innenfor rammen blir utsparing.") + '</p>' +
-    '<div class="prop-actions"><button id="swNyUtsp">' + ikon("boks") + ' ' + t("Legg til utsparing fra valgte elementer") + '</button></div>' +
+      t("Trykk «Marker utsparing», og trykk så på flatene rundt åpningen i modellen: innsiden av søylene på sidene og undersiden av bjelken over. Én flate per side.") + '</p>' +
+    '<div class="prop-actions"><button id="swNyUtsp">' + ikon("boks") + ' ' + t("Marker utsparing") + '</button></div>' +
     (!utsp.length
       ? '<p style="color:var(--muted);font-size:12px">' + t("Ingen utsparinger lagt til ennå.") + '</p>'
       : utsp.map((u, i) =>
@@ -697,7 +841,7 @@ function tegnPanel() {
   };
   $("swListe").onclick = () => { lesOppsettFraPanel(); lastNedListe(); };
   $("swFjern").onclick = () => { lesOppsettFraPanel(); fjernAltGenerert(); };
-  $("swNyUtsp").onclick = () => { lesOppsettFraPanel(); leggTilUtsparing(); };
+  $("swNyUtsp").onclick = () => { lesOppsettFraPanel(); startUtspMark(); };
   body.querySelectorAll("button[data-sw-slett-utsp]").forEach(b =>
     b.onclick = () => {
       lesOppsettFraPanel();
