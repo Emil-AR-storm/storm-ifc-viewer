@@ -341,16 +341,19 @@ export function vaskMarkering(r) {
   // malId mangler, for da vet ingen hvilken mal svarene hører til.
   if (Array.isArray(r.skjema)) c.skjema = r.skjema
     .map(vaskSkjema).filter(Boolean).slice(0, MAKS_SKJEMA_PER_MARKERING);
-  // ⭕▭ Området markeringen gjelder: sirkel eller firkant på et valgt nivå,
+  // ⭕▭ Området markeringen gjelder: boks eller sylinder på et valgt nivå,
   // tegnet med dra-og-slipp. Samme feltvask som alt annet: bare kjente felter,
   // og et område uten utstrekning kastes — det er et klikk, ikke et område.
+  // h er høyden i sceneenheter; 0 (gamle, flate områder) tegnes som en tynn
+  // skive, se addOmradeMesh.
   if (r.omrade && typeof r.omrade === "object") {
     const o = r.omrade;
     const rx = Math.abs(Number(o.rx) || 0), rz = Math.abs(Number(o.rz) || 0);
     if (rx > 0 && rz > 0) c.omrade = {
       form: o.form === "firkant" ? "firkant" : "sirkel",
       x: Number(o.x) || 0, y: Number(o.y) || 0, z: Number(o.z) || 0,
-      rx, rz
+      rx, rz,
+      h: Math.abs(Number(o.h) || 0)
     };
   }
   return c;
@@ -561,42 +564,115 @@ function addMarkerSprite(comment) {
 }
 
 // ---------- ⭕▭ Området markeringen gjelder ----------
-// Flate + kantlinje på et valgt nivå. Fargen følger FRISTSYSTEMET — samme
-// hastegradsring som bobla (frist.js), så rødt område = det haster, uten å
-// åpne noe. Løst har ingen ring (null) og får statusgrønn i stedet.
+// 3D-VOLUM på et valgt nivå: firkant = boks, sirkel = sylinder. Fyllet er
+// nesten gjennomsiktig; konturen er det som skal leses. Fargen følger
+// FRISTSYSTEMET — samme hastegradsring som bobla (frist.js), så rødt volum =
+// det haster, uten å åpne noe. Løst har ingen ring (null) → statusgrønn.
 function omradeFarge(c) {
   return HASTEGRAD[hastegradFor(c)].ring || STATUS["Løst"].col;
 }
 
-// Bygger flate + kant med ENHETSMÅL (radius 1); posisjon og rx/rz legges som
-// skala på gruppa. Da kan forhåndsvisningen under draget gjenbruke samme mesh
-// og bare endre skalaen — ingen ny geometri per musebevegelse.
+// Konturen på BOKSEN er kantene, tegnet med three-ens «fat lines» — vanlig
+// linewidth ignoreres av WebGL (samme grunn og samme motor som kantlinjene i
+// outline.js; filene ligger i service workerens skall, så dette virker også
+// uten dekning på byggeplassen). Motoren lastes ved første område.
+let omrLinje = null, omrLinjeLast = null;
+
+function sikreOmrLinjemotor() {
+  if (omrLinje) return Promise.resolve(omrLinje);
+  if (!omrLinjeLast) omrLinjeLast = Promise.all([
+    import("three/addons/lines/LineSegmentsGeometry.js"),
+    import("three/addons/lines/LineMaterial.js"),
+    import("three/addons/lines/LineSegments2.js")
+  ]).then(([g, m, s]) => {
+    if (!g.LineSegmentsGeometry || !m.LineMaterial || !s.LineSegments2)
+      throw new Error("Linjemotoren mangler klassene");
+    omrLinje = { Geo: g.LineSegmentsGeometry, Mat: m.LineMaterial, Seg: s.LineSegments2 };
+    return omrLinje;
+  });
+  return omrLinjeLast;
+}
+
+// Linjematerialene trenger skjermoppløsningen for å holde tykkelsen i piksler.
+// Ett materiale per område (fargen er per område), så alle holdes i takt her.
+const omrLinjeMats = new Set();
+const _omrSt = new THREE.Vector2();
+let _omrStB = -1, _omrStH = -1;
+
+frameHooks.push(() => {
+  if (!omrLinjeMats.size) return;
+  renderer.getSize(_omrSt);
+  if (_omrSt.x === _omrStB && _omrSt.y === _omrStH) return;
+  _omrStB = _omrSt.x; _omrStH = _omrSt.y;
+  omrLinjeMats.forEach(m => m.resolution.set(_omrSt.x, _omrSt.y));
+});
+
+export const OMR_KANT_PX = 3.5;   // kontur-tykkelse i piksler
+
+// ENHETSGEOMETRI: alt spenner x/z fra −1 til 1 og y fra 0 til 1, med basen i
+// origo. Gruppa skaleres (rx, h, rz) — da kan forhåndsvisningen under draget
+// gjenbruke samme mesh og bare endre skala, ingen ny geometri per musedrag.
 function byggOmradeMesh(form, farge) {
   const g = new THREE.Group();
-  const flateGeo = form === "firkant" ? new THREE.PlaneGeometry(2, 2) : new THREE.CircleGeometry(1, 64);
-  flateGeo.rotateX(-Math.PI / 2);   // flatt på gulvet, normalen opp
-  const flate = new THREE.Mesh(flateGeo, new THREE.MeshBasicMaterial({
-    color: farge, transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false }));
-  flate.renderOrder = 2;
-  const pkt = [];
-  if (form === "firkant") pkt.push([-1, -1], [1, -1], [1, 1], [-1, 1]);
-  else for (let i = 0; i < 64; i++) { const a = i / 64 * Math.PI * 2; pkt.push([Math.cos(a), Math.sin(a)]); }
-  const kantGeo = new THREE.BufferGeometry().setFromPoints(pkt.map(p => new THREE.Vector3(p[0], 0, p[1])));
-  // kanten tegnes gjennom vegger (depthTest false), som bobla — flaten ikke:
-  // en halvgjennomsiktig flate oppå ALT hadde gjort modellen uleselig
-  const kant = new THREE.LineLoop(kantGeo, new THREE.LineBasicMaterial({
-    color: farge, transparent: true, opacity: 0.9, depthTest: false }));
-  kant.renderOrder = 998;
-  g.add(flate, kant);
+  // fyllet: NESTEN gjennomsiktig — volumet skal vise HVOR, ikke dekke over hva
+  const fyllGeo = form === "firkant"
+    ? new THREE.BoxGeometry(2, 1, 2)
+    : new THREE.CylinderGeometry(1, 1, 1, 64, 1);
+  fyllGeo.translate(0, 0.5, 0);
+  const fyll = new THREE.Mesh(fyllGeo, new THREE.MeshBasicMaterial({
+    color: farge, transparent: true, opacity: 0.08, side: THREE.DoubleSide, depthWrite: false }));
+  fyll.renderOrder = 2;
+  g.add(fyll);
+  if (form === "firkant") {
+    // konturen = kantene, som Emil ba om. Fat lines henges på når motoren er
+    // lastet — gruppa kan alt være fjernet igjen da (statusbytte), derfor
+    // sjekkes parent. Faller motoren, tegnes en vanlig 1 px-strek i stedet:
+    // tynn kontur er bedre enn ingen.
+    const kantGeo = new THREE.EdgesGeometry(fyllGeo);
+    sikreOmrLinjemotor().then(L => {
+      if (!g.parent) { kantGeo.dispose(); return; }
+      const lg = new L.Geo();
+      lg.setPositions(kantGeo.getAttribute("position").array);
+      lg.computeBoundingBox(); lg.computeBoundingSphere();
+      kantGeo.dispose();
+      const mat = new L.Mat({ color: farge, linewidth: OMR_KANT_PX, worldUnits: false,
+        polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
+      renderer.getSize(_omrSt);
+      mat.resolution.set(_omrSt.x, _omrSt.y);
+      omrLinjeMats.add(mat);
+      const linjer = new L.Seg(lg, mat);
+      linjer.raycast = () => {};
+      g.add(linjer);
+    }).catch(() => {
+      if (!g.parent) { kantGeo.dispose(); return; }
+      g.add(new THREE.LineSegments(kantGeo, new THREE.LineBasicMaterial({ color: farge })));
+    });
+  } else {
+    // konturen på SYLINDEREN er silhuetten sett fra der du står — samme grep
+    // som Blenders outline: en litt større kopi tegnet med BAKSIDENE
+    // («inverted hull»). Det som stikker utenfor forsiden er nøyaktig
+    // omrisset fra din vinkel, og det følger med når kameraet flyttes.
+    const hull = new THREE.Mesh(fyllGeo.clone(), new THREE.MeshBasicMaterial({
+      color: farge, side: THREE.BackSide }));
+    hull.scale.set(1.05, 1.03, 1.05);
+    hull.position.y = -0.008;   // så silhuetten også ses langs bunnkanten
+    g.add(hull);
+  }
   return g;
+}
+
+// Gamle områder ble lagret flate (uten h) — de tegnes som en tynn skive i
+// stedet for å forsvinne. 4 cm er nok til at silhuetten synes.
+function omrHoydeEllerSkive(o) {
+  return o.h > 0 ? o.h : 0.04 / (S.enhetSkala || 1);
 }
 
 function addOmradeMesh(c) {
   const o = c.omrade;
   const g = byggOmradeMesh(o.form, omradeFarge(c));
-  if (c.usendt) g.traverse(m => { if (m.material) m.material.opacity *= 0.5; });
+  if (c.usendt) g.traverse(m => { if (m.material) { m.material.transparent = true; m.material.opacity *= 0.5; } });
   g.position.set(o.x, o.y, o.z);
-  g.scale.set(Math.max(o.rx, 1e-6), 1, Math.max(o.rz, 1e-6));
+  g.scale.set(Math.max(o.rx, 1e-6), omrHoydeEllerSkive(o), Math.max(o.rz, 1e-6));
   g.userData.commentId = c.id;
   omradeGroup.add(g);
 }
@@ -609,7 +685,7 @@ function fjernOmrader(id) {
     if (id != null && g.userData.commentId != id) return;
     g.traverse(m => {
       if (m.geometry) m.geometry.dispose();
-      if (m.material) m.material.dispose();
+      if (m.material) { omrLinjeMats.delete(m.material); m.material.dispose(); }
     });
     omradeGroup.remove(g);
   });
@@ -1778,71 +1854,147 @@ function omrPunkt(clientX, clientY, y) {
   return raycaster.ray.intersectPlane(_omrPlan, _omrPkt) ? _omrPkt.clone() : null;
 }
 
-// Geometrien fra et drag. Firkant dras HJØRNE TIL HJØRNE (som markeringsboksen
-// i flervalget); sirkel dras fra SENTERET og ut til kanten — det er slik man
-// peker på «her, og cirka så langt rundt».
+// Grunnflaten fra et drag. BEGGE former dras HJØRNE TIL HJØRNE — det er den
+// eneste ryddige måten å stille bredde og lengde hver for seg (Emil 31.08).
+// Sirkelen blir sylinderen som passer inni det dragde rektangelet.
 function omrFraDrag(fra, til) {
-  if (omrForm === "firkant") {
-    return { form: "firkant",
-      x: (fra.x + til.x) / 2, y: fra.y, z: (fra.z + til.z) / 2,
-      rx: Math.abs(til.x - fra.x) / 2, rz: Math.abs(til.z - fra.z) / 2 };
-  }
-  const r = Math.hypot(til.x - fra.x, til.z - fra.z);
-  return { form: "sirkel", x: fra.x, y: fra.y, z: fra.z, rx: r, rz: r };
+  return { form: omrForm,
+    x: (fra.x + til.x) / 2, y: fra.y, z: (fra.z + til.z) / 2,
+    rx: Math.abs(til.x - fra.x) / 2, rz: Math.abs(til.z - fra.z) / 2, h: 0 };
 }
 
-const OMR_MIN_M = 0.1;   // under 10 cm er det et klikk, ikke et område
+const OMR_MIN_M = 0.1;    // under 10 cm grunnflate er det et klikk, ikke et område
+const OMR_MIN_H_M = 0.02; // laveste høyde — en skive, aldri 0
+
+// Høyden stilles ETTER at grunnflaten er sluppet: pekeren opp/ned = volumet
+// vokser/krymper, neste trykk låser den. Høyden leses av ved å skjære blikket
+// mot et STÅENDE plan gjennom senteret, vendt mot kameraet — da svarer en
+// bevegelse oppover på skjermen alltid til høyere volum, uansett vinkel.
+let omrHoyde = null;   // { o, mesh } mens høyden stilles
+let omrForhandsvisning = null;   // den blå kopien som står mens dialogen er åpen
+
+function fjernOmrForhandsvisning() {
+  const mesh = omrForhandsvisning;
+  omrForhandsvisning = null;
+  if (!mesh) return;
+  mesh.traverse(m => {
+    if (m.geometry) m.geometry.dispose();
+    if (m.material) { omrLinjeMats.delete(m.material); m.material.dispose(); }
+  });
+  omradeGroup.remove(mesh);
+}
+
+function omrHoydeFra(clientX, clientY) {
+  const r = renderer.domElement.getBoundingClientRect();
+  _omrNdc.set(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
+  raycaster.setFromCamera(_omrNdc, camera);
+  const n = new THREE.Vector3();
+  camera.getWorldDirection(n);
+  n.y = 0;
+  if (n.lengthSq() < 1e-9) n.set(0, 0, 1);   // rett ovenfra: et plan må velges
+  n.normalize();
+  const o = omrHoyde.o;
+  _omrPlan.setFromNormalAndCoplanarPoint(n, new THREE.Vector3(o.x, o.y, o.z));
+  if (!raycaster.ray.intersectPlane(_omrPlan, _omrPkt)) return null;
+  return Math.max(OMR_MIN_H_M / (S.enhetSkala || 1), _omrPkt.y - o.y);
+}
+
+function avbrytOmrTegning() {
+  const mesh = (omrDrag && omrDrag.mesh) || (omrHoyde && omrHoyde.mesh);
+  omrDrag = null;
+  omrHoyde = null;
+  if (!mesh) return;
+  mesh.traverse(m => {
+    if (m.geometry) m.geometry.dispose();
+    if (m.material) { omrLinjeMats.delete(m.material); m.material.dispose(); }
+  });
+  omradeGroup.remove(mesh);
+}
 
 window.addEventListener("pointerdown", (e) => {
+  // Trinn 2 aktivt? Da LÅSER dette trykket høyden — dialogen åpner på pointerup.
+  if (omrHoyde) { e.stopPropagation(); return; }
   if (S.mode !== "marker" || !omrForm || e.button !== 0) return;
   if (e.shiftKey) return;   // shift er flervalgets tast (elements.js) — også her
   if (e.target !== renderer.domElement || !S.modelGroup) return;
   const pt = omrPunkt(e.clientX, e.clientY, omrNivaY());
   if (!pt) return;
   e.stopPropagation();   // kameraet skal ikke rotere mens området dras
+  fjernOmrForhandsvisning();   // en glemt forhåndsvisning skal ikke bli stående
   const mesh = byggOmradeMesh(omrForm, "#3b82f6");   // nøytral blå til fristen er valgt
   mesh.position.copy(pt);
-  mesh.scale.set(1e-6, 1, 1e-6);
+  mesh.scale.set(1e-6, OMR_MIN_H_M / (S.enhetSkala || 1), 1e-6);
   omradeGroup.add(mesh);
   omrDrag = { fra: pt, mesh };
 }, true);
 
 window.addEventListener("pointermove", (e) => {
-  if (!omrDrag) return;
-  e.stopPropagation();
-  const til = omrPunkt(e.clientX, e.clientY, omrDrag.fra.y);
-  if (!til) return;
-  const o = omrFraDrag(omrDrag.fra, til);
-  omrDrag.mesh.position.set(o.x, o.y, o.z);
-  omrDrag.mesh.scale.set(Math.max(o.rx, 1e-6), 1, Math.max(o.rz, 1e-6));
+  // Trinn 1: grunnflaten følger pekeren på nivåplanet
+  if (omrDrag) {
+    e.stopPropagation();
+    const til = omrPunkt(e.clientX, e.clientY, omrDrag.fra.y);
+    if (!til) return;
+    const o = omrFraDrag(omrDrag.fra, til);
+    omrDrag.mesh.position.set(o.x, o.y, o.z);
+    omrDrag.mesh.scale.x = Math.max(o.rx, 1e-6);
+    omrDrag.mesh.scale.z = Math.max(o.rz, 1e-6);
+    return;
+  }
+  // Trinn 2: høyden følger pekeren (ingen knapp holdes)
+  if (omrHoyde) {
+    const h = omrHoydeFra(e.clientX, e.clientY);
+    if (h == null) return;
+    omrHoyde.o.h = h;
+    omrHoyde.mesh.scale.y = h;
+  }
 }, true);
 
 window.addEventListener("pointerup", (e) => {
+  // Trinn 2 → ferdig: høyden er låst, dialogen åpner. Forhåndsvisningen står
+  // til dialogen lukkes, så man ser volumet mens man skriver.
+  if (omrHoyde && !omrDrag) {
+    const H = omrHoyde;
+    omrHoyde = null;
+    e.stopPropagation();
+    omrForhandsvisning = H.mesh;   // står til dialogen lukkes — se saveComment/cancelComment
+    const o = H.o;
+    // bobla i senteret av VOLUMET, ikke bare grunnflaten
+    S.pendingPoint = new THREE.Vector3(o.x, o.y + o.h / 2, o.z);
+    S.pendingOmrade = o;
+    forberedNyMarkering();
+    $("commentDialog").classList.add("open");
+    setTimeout(() => { const f = $("commentText"); if (f) f.focus(); }, 50);
+    return;
+  }
+  // Trinn 1 → slipp: grunnflaten er satt, gå til høyde-trinnet
   if (!omrDrag) return;
   const d = omrDrag;
   omrDrag = null;
   e.stopPropagation();
-  d.mesh.traverse(m => {
-    if (m.geometry) m.geometry.dispose();
-    if (m.material) m.material.dispose();
-  });
-  omradeGroup.remove(d.mesh);   // forhåndsvisningen bort — den ekte tegnes ved lagring
   const til = omrPunkt(e.clientX, e.clientY, d.fra.y);
-  if (!til) return;
-  const o = omrFraDrag(d.fra, til);
+  const o = til ? omrFraDrag(d.fra, til) : null;
   const min = OMR_MIN_M / (S.enhetSkala || 1);
-  if (o.rx < min || o.rz < min) return;   // for lite — regn det som et feiltrykk
-  S.pendingPoint = new THREE.Vector3(o.x, o.y, o.z);   // bobla i senteret
-  S.pendingOmrade = o;
-  forberedNyMarkering();
-  $("commentDialog").classList.add("open");
-  setTimeout(() => { const f = $("commentText"); if (f) f.focus(); }, 50);
+  if (!o || o.rx < min || o.rz < min) {   // for lite — regn det som et feiltrykk
+    omradeGroup.remove(d.mesh);
+    d.mesh.traverse(m => {
+      if (m.geometry) m.geometry.dispose();
+      if (m.material) { omrLinjeMats.delete(m.material); m.material.dispose(); }
+    });
+    return;
+  }
+  o.h = OMR_MIN_H_M / (S.enhetSkala || 1);
+  omrHoyde = { o, mesh: d.mesh };
 }, true);
 
 window.addEventListener("pointercancel", () => {
-  if (!omrDrag) return;
-  omradeGroup.remove(omrDrag.mesh);
-  omrDrag = null;
+  if (omrDrag || omrHoyde) avbrytOmrTegning();
+}, true);
+
+// Esc avbryter tegningen — FØR den vanlige Esc-lytteren lukker paneler.
+window.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape" || (!omrDrag && !omrHoyde)) return;
+  e.stopPropagation();
+  avbrytOmrTegning();
 }, true);
 
 // Kontrollinja i markering-modus: sirkel/firkant-valg + nivå. Kalles av
@@ -1854,8 +2006,8 @@ S.omradeModeBar = (bar) => {
   boks.style.cssText = "display:inline-flex;gap:6px;align-items:center;margin-left:10px";
   boks.innerHTML =
     '<span style="color:var(--muted);font-size:12px">' + t("eller marker område:") + '</span>' +
-    '<button id="mbOmrSirkel" title="' + t("Dra fra senter og ut — området blir en sirkel") + '">' + t("Sirkel") + '</button>' +
-    '<button id="mbOmrFirkant" title="' + t("Dra fra hjørne til hjørne — området blir en firkant") + '">' + t("Firkant") + '</button>' +
+    '<button id="mbOmrSirkel" title="' + t("Dra grunnflaten fra hjørne til hjørne — området blir en sylinder") + '">' + t("Sirkel") + '</button>' +
+    '<button id="mbOmrFirkant" title="' + t("Dra grunnflaten fra hjørne til hjørne — området blir en boks") + '">' + t("Firkant") + '</button>' +
     '<select id="mbOmrNiva" title="' + t("Nivået området legges på — samme etasjer som minikartet") + '">' +
     '<option value="-1">' + t("Bakkenivå") + '</option></select>';
   bar.appendChild(boks);
@@ -1864,7 +2016,7 @@ S.omradeModeBar = (bar) => {
     $("mbOmrSirkel").classList.toggle("active", omrForm === "sirkel");
     $("mbOmrFirkant").classList.toggle("active", omrForm === "firkant");
     if (lbl) lbl.textContent = omrForm
-      ? t("Dra i modellen der området skal ligge — slipp for å skrive markeringen")
+      ? t("Dra grunnflaten fra hjørne til hjørne, slipp — dra så opp/ned for høyden, og trykk for å skrive markeringen")
       : t("Trykk på modellen for å plassere markering");
   };
   $("mbOmrSirkel").onclick = () => { omrForm = omrForm === "sirkel" ? null : "sirkel"; tegnKnapper(); };
@@ -1894,6 +2046,7 @@ S.omradeModeBar = (bar) => {
 window.saveComment = function() {
   const text = $("commentText").value.trim();
   $("commentDialog").classList.remove("open");
+  fjernOmrForhandsvisning();   // den ekte tegnes av addMarkerSprite med fristfarge
   if (!text || !S.pendingPoint) { S.pendingPoint = null; S.pendingOmrade = null; nullstillNyeBilder(); return; }
   const c = {
     // klokkeslett + tilfeldig hale: to som lager markering i samme millisekund
@@ -1958,6 +2111,7 @@ window.saveComment = function() {
 
 window.cancelComment = function() {
   $("commentDialog").classList.remove("open");
+  fjernOmrForhandsvisning();
   S.pendingPoint = null;
   S.pendingOmrade = null;
   nullstillNyeBilder();
