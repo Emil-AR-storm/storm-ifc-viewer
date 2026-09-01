@@ -2,7 +2,7 @@
 import * as THREE from "three";
 import { $, esc, S, writePrefs } from "./state.js";
 import { t } from "./i18n.js";
-import { axesGroup, camera, controls, frameHooks, grid, koteGroup, markerGroup, measureGroup, renderer, scene, selGroup } from "./scene.js";
+import { axesGroup, camera, controls, frameHooks, grid, koteGroup, markerGroup, measureGroup, omradeGroup, renderer, scene, selGroup } from "./scene.js";
 
 // ---------- 🗺 Minikart (ovenfra, trykk for å flytte deg) ----------
 export const miniCanvas = $("miniMap");
@@ -16,7 +16,7 @@ export function renderMiniMap() {
   // og heiste variablene med null-verdier, ville en feil på første linje gitt
   // renderer.clippingPlanes = null i finally – og three.js venter et array.
   // Da hadde vi byttet et sjeldent svart skjerm mot et garantert et.
-  const overlays = [markerGroup, measureGroup, koteGroup, axesGroup, selGroup];
+  const overlays = [markerGroup, measureGroup, koteGroup, axesGroup, selGroup, omradeGroup];
   const vis = overlays.map(g => g.visible);
   const gridVis = grid.visible;
   const prevClip = renderer.clippingPlanes;

@@ -6,7 +6,7 @@ import { harWorker, kall, metaFor, tømMeta } from "./ifcrpc.js";
 import { byggLettKopi, lettNavn } from "./lite.js";
 import { hiddenIDs, typeSkjultLett } from "./display.js";
 import { clearSelection } from "./elements.js";
-import { loadComments, renderCommentList } from "./markers.js";
+import { loadComments, renderCommentList, ryddOmrader } from "./markers.js";
 import { miniCanvas, renderMiniMap } from "./minimap.js";
 import { oppdaterOutline } from "./outline.js";
 import { restoreAppearance } from "./prefs.js";
@@ -192,6 +192,7 @@ function clearModel() {
     S.modelGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); });
   }
   markerGroup.clear();
+  ryddOmrader();          // ⭕▭ markeringenes områder hører til modellen som lukkes
   measureGroup.clear();
   koteGroup.clear();
   axesGroup.clear();

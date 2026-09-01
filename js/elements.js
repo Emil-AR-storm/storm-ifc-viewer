@@ -7,7 +7,7 @@ import { profilKgPerM } from "./profiler.js";
 import { hiddenIDs, hideElement, hideElements, typeSkjultLett } from "./display.js";
 import { alleElementIder, lightElementBoxes } from "./ifc.js";
 import { kall, metaFor, sikreMeta } from "./ifcrpc.js";
-import { axesGroup, camera, canvas, controls, grid, koteGroup, markerGroup, measureGroup, pointer, raycaster, renderer, scene, selGroup } from "./scene.js";
+import { axesGroup, camera, canvas, controls, grid, koteGroup, markerGroup, measureGroup, omradeGroup, pointer, raycaster, renderer, scene, selGroup } from "./scene.js";
 import { leggMateriellIMengder, materiellGroup, materiellTypeLabel, oppdaterMateriellValgEffekt } from "./materiell-vis.js";
 
 const selMat = new THREE.MeshLambertMaterial({ color: 0x3b82f6, emissive: 0x1d4ed8, side: THREE.DoubleSide });
@@ -1269,7 +1269,7 @@ function idsVisibleInRect(x0, y0, x1, y1) {
   // feilmelding. Derfor leses alt FØR try, og settes tilbake i finally.
   // materiellGroup er med: den tegnes i sine egne farger, og pikslene ville
   // blitt dekodet som tilfeldige IFC-id-er i avlesningen under.
-  const overlays = [markerGroup, measureGroup, koteGroup, axesGroup, selGroup, materiellGroup];
+  const overlays = [markerGroup, measureGroup, koteGroup, axesGroup, selGroup, materiellGroup, omradeGroup];
   const vis = overlays.map(g => g.visible);
   const gridVis = grid.visible;
   const bg = scene.background;

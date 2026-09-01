@@ -28,13 +28,16 @@ import { LETT } from "./lett.js";
 // bedre. «Bygg Info» sier hva det faktisk er: informasjon om BYGGET.
 // `hjelp` er forklaringsteksten som vises når man holder musepekeren over.
 export const GRUPPER = [
-  { id: "mal",      navn: "Mål",              ikonNavn: "maal",
+  // «Måleverktøy» og «Visning», ikke «Mål» og «Utseende»: gruppene het det
+  // samme som verktøy INNE i gruppa (Mål-knappen og Utseende-panelet), og da
+  // kunne ingen si «trykk på Mål» uten å måtte forklare hvilken (Emil 31.08).
+  { id: "mal",      navn: "Måleverktøy",      ikonNavn: "maal",
     hjelp: "Måleverktøy: avstand, kote og aksesystem",
     knapper: ["btnMeasure", "btnKote", "btnAxes"] },
   { id: "info",     navn: "Bygg Info",        ikonNavn: "sok",
     hjelp: "Informasjon om bygget: markeringer, mengder, søk og sammenligning",
     knapper: ["btnMarker", "btnQty", "btnSearch", "btnGrupper", "btnCompare"] },
-  { id: "utseende", navn: "Utseende",         ikonNavn: "utseende",
+  { id: "utseende", navn: "Visning",          ikonNavn: "utseende",
     hjelp: "Snitt, etasjer, gjennomsiktig og farger",
     knapper: ["btnClip", "btnStorey", "btnGhost", "btnColors"] },
   { id: "bygg",     navn: "Storm-Byggeplass", ikonNavn: "lastned",
