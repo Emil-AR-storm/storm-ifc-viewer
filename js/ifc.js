@@ -178,6 +178,7 @@ export function afterLoad() {
   loadComments();
   if (S.lastMateriell) S.lastMateriell(); // 📦 materiell plassert i denne modellen
   if (S.lastGrupper) S.lastGrupper();     // 🎯 objektgrupper lagret for denne modellen
+  if (S.lastSW) S.lastSW();               // 🧱 genererte veggelementer for denne modellen
   restoreAppearance(); // legger på lagret fargelegging/skjuling/transparent
   oppdaterOutline();   // ▣ kantlinjer, hvis de sto på da forrige modell ble lukket
   if (S.visForsteHjelp) S.visForsteHjelp(); // ❓ gjennomgangen, første gang på byggeplass
@@ -193,6 +194,7 @@ function clearModel() {
   }
   markerGroup.clear();
   ryddOmrader();          // ⭕▭ markeringenes områder hører til modellen som lukkes
+  if (S.ryddSW) S.ryddSW();   // 🧱 genererte veggelementer likeså
   measureGroup.clear();
   koteGroup.clear();
   axesGroup.clear();

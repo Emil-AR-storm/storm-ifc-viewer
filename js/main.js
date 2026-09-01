@@ -16,7 +16,8 @@ import "./outline.js";
 import "./hjelp.js";
 import "./materiell-vis.js";   // 📦 materiell: visningen (lastes av begge sider)
 import "./materiell.js";       // 📦 materiell: verktøyet (kun kontor)
-import "./grupper.js";         // 🎯 objektgrupper: lagre og hente fram flervalg
+import "./grupper.js";
+import "./veggelement.js";   // 🧱 SW-generator: veggelementer på stålmodeller (kun kontor)         // 🎯 objektgrupper: lagre og hente fram flervalg
 import "./markers.js";
 import "./minimap.js";
 import "./viewcube.js";
