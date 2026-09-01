@@ -8,9 +8,10 @@
 //    25 mm fra søylesenter (to naboelementer får 50 mm mellomrom), og radene
 //    stables med 1100- og 1000-høyder til topp av søyleforlengerne — går ikke
 //    høyden opp, kappes øverste rad (Emils valg 01.09)
-//  · utsparinger (dører/vinduer/porter) er OMRÅDE-FIRKANTER fra markerings-
-//    verktøyet som hukes av i panelet — bare de avhukede lager hull, en vanlig
-//    avviksmarkering skal aldri kappe en vegg
+//  · utsparinger (dører/vinduer/porter) lages ved å VELGE elementene som
+//    rammer inn åpningen (shift-klikk søylene på sidene og bjelken over) og
+//    trykke «Legg til utsparing» — alt innenfor rammen blir åpning
+//    (Emils runde 2: mer presist enn å tegne bokser for hånd)
 //  · hver unik lengde×høyde får et SW-nummer (SW-01, SW-02 …); kappede
 //    tilpasningsbiter heter SW-XX, som på Moelv-tegningene
 //  · veggene tegnes PÅ PLASS i 3D med valgt farge, OG hvert SW-nummer legges
@@ -31,7 +32,7 @@ import { scene } from "./scene.js";
 import { allElementBoxes, toCsv } from "./elements.js";
 import { alleElementIder } from "./ifc.js";
 import { metaFor, sikreMeta } from "./ifcrpc.js";
-import { lagreMateriellLokalt, tegnMateriell, vaskMateriell } from "./materiell-vis.js";
+import { lagreMateriellLokalt, morkere, tegnMateriell, vaskMateriell } from "./materiell-vis.js";
 
 // ---------- Konstanter (Emils regler) ----------
 export const SW_KLARING_MM = 25;      // fra søylesenter til elementende
@@ -104,6 +105,49 @@ export function konveksHull(punkter) {
   }
   nedre.pop(); ovre.pop();
   return nedre.concat(ovre);
+}
+
+// Utsparingen regnes ut fra elementene som RAMMER INN åpningen (Emils runde 2:
+// marker søylene/bjelkene rundt, alt innenfor blir utsparing). Ren tallfunksjon:
+// `bokser` er [{min:{x,y,z}, max:{x,y,z}}]. Reglene:
+//  · stående elementer (høyde > 1,2 × største planmål) er SIDENE — åpningen
+//    går fra innsiden av venstre til innsiden av høyre
+//  · liggende elementer over midten setter TOPPEN (undersiden av bjelken);
+//    under midten setter BUNNEN (oversiden). Uten bjelke under: gulvet
+//    (utvalgets bunn); uten bjelke over: utvalgets topp
+//  · finnes ikke to sider, brukes hele utvalgets boks — ærlig reserve
+export function utsparingFraBokser(bokser) {
+  if (!bokser || !bokser.length) return null;
+  const alle = { min: { x: Infinity, y: Infinity, z: Infinity }, max: { x: -Infinity, y: -Infinity, z: -Infinity } };
+  for (const b of bokser) for (const a of ["x", "y", "z"]) {
+    alle.min[a] = Math.min(alle.min[a], b.min[a]);
+    alle.max[a] = Math.max(alle.max[a], b.max[a]);
+  }
+  const staende = bokser.filter(b =>
+    (b.max.y - b.min.y) > 1.2 * Math.max(b.max.x - b.min.x, b.max.z - b.min.z));
+  const liggende = bokser.filter(b => !staende.includes(b));
+  // åpningens akse: den retningen sidene står lengst fra hverandre i
+  const spred = (akse) => {
+    const c = staende.map(b => (b.min[akse] + b.max[akse]) / 2);
+    return c.length ? Math.max(...c) - Math.min(...c) : 0;
+  };
+  const akse = spred("x") >= spred("z") ? "x" : "z";
+  const ut = { min: { ...alle.min }, max: { ...alle.max }, reserve: false };
+  const midt = (alle.min[akse] + alle.max[akse]) / 2;
+  const venstre = staende.filter(b => (b.min[akse] + b.max[akse]) / 2 < midt);
+  const hoyre = staende.filter(b => (b.min[akse] + b.max[akse]) / 2 >= midt);
+  if (venstre.length && hoyre.length) {
+    const a = Math.max(...venstre.map(b => b.max[akse]));
+    const bb = Math.min(...hoyre.map(b => b.min[akse]));
+    if (bb > a) { ut.min[akse] = a; ut.max[akse] = bb; }
+    else ut.reserve = true;
+  } else ut.reserve = true;
+  const yMidt = (alle.min.y + alle.max.y) / 2;
+  const over = liggende.filter(b => (b.min.y + b.max.y) / 2 >= yMidt);
+  const under = liggende.filter(b => (b.min.y + b.max.y) / 2 < yMidt);
+  if (over.length) ut.max.y = Math.min(...over.map(b => b.min.y));
+  if (under.length) ut.min.y = Math.max(...under.map(b => b.max.y));
+  return ut;
 }
 
 // SW-nummereringen: hver unik lengde×høyde (innenfor SW_TOL_MM) får et nummer.
@@ -185,6 +229,7 @@ async function hentSoyler() {
     if (soyleTypeNavn(id) !== "Column") continue;
     rå.push({ cx: (b.min.x + b.max.x) / 2, cz: (b.min.z + b.max.z) / 2,
       minY: b.min.y, maxY: b.max.y,
+      bx: b.max.x - b.min.x, bz: b.max.z - b.min.z,
       bredde: Math.min(b.max.x - b.min.x, b.max.z - b.min.z) });
   }
   const tol = 0.15 / (S.enhetSkala || 1);   // 15 cm: samme punkt = samme søyle
@@ -195,6 +240,8 @@ async function hentSoyler() {
       treff.minY = Math.min(treff.minY, s.minY);
       treff.maxY = Math.max(treff.maxY, s.maxY);
       treff.bredde = Math.max(treff.bredde, s.bredde);
+      treff.bx = Math.max(treff.bx, s.bx);
+      treff.bz = Math.max(treff.bz, s.bz);
     } else ut.push({ ...s });
   }
   return ut;
@@ -236,25 +283,26 @@ export function fasaderFra(soyler, tolScene) {
   return ut;
 }
 
-// Utsparingene: avhukede område-firkanter, projisert inn på fasaden.
-// Returnerer [{fraMm, tilMm, bunnMm, toppMm}] relativt til fasadestart/SW-basen.
-function utsparingerPaFasade(fasade, baseY, valgteIder) {
+// Utsparingene: boksene brukeren har lagt til fra valgte elementer
+// (oppsett.utsparinger = [{navn, min:[x,y,z], max:[x,y,z]}]), projisert inn
+// på fasaden. Returnerer [{fraMm, tilMm_, bunnMm, toppMm}] relativt til
+// fasadestart/SW-basen.
+function utsparingerPaFasade(fasade, baseY, liste) {
   const ut = [];
-  for (const c of S.comments || []) {
-    const o = c.omrade;
-    if (!o || o.form !== "firkant" || !valgteIder.has(String(c.id))) continue;
-    // nær nok fasaden sideveis? (senteret innenfor boksens egen dybde + 1 m)
-    const avst = Math.abs((o.x - fasade.p.x) * fasade.nx + (o.z - fasade.p.z) * fasade.nz);
-    if (avst > Math.max(o.rx, o.rz) + 1.0 / (S.enhetSkala || 1)) continue;
+  for (const u of liste || []) {
+    if (!u || !u.min || !u.max) continue;
+    const cx = (u.min[0] + u.max[0]) / 2, cz = (u.min[2] + u.max[2]) / 2;
+    // nær nok fasaden sideveis? (senteret innenfor boksens egen dybde + 1,5 m)
+    const avst = Math.abs((cx - fasade.p.x) * fasade.nx + (cz - fasade.p.z) * fasade.nz);
+    const dyp = Math.max(u.max[0] - u.min[0], u.max[2] - u.min[2]) / 2;
+    if (avst > dyp + 1.5 / (S.enhetSkala || 1)) continue;
     // hjørnene projisert på fasadeaksen → intervall i mm
     const ts = [];
-    for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
-      const px = o.x + sx * o.rx, pz = o.z + sz * o.rz;
+    for (const px of [u.min[0], u.max[0]]) for (const pz of [u.min[2], u.max[2]])
       ts.push((px - fasade.p.x) * fasade.ex + (pz - fasade.p.z) * fasade.ez);
-    }
     ut.push({
       fraMm: tilMm(Math.min(...ts)), tilMm_: tilMm(Math.max(...ts)),
-      bunnMm: tilMm(o.y - baseY), toppMm: tilMm((o.y + (o.h || 0)) - baseY)
+      bunnMm: tilMm(u.min[1] - baseY), toppMm: tilMm(u.max[1] - baseY)
     });
   }
   return ut;
@@ -288,7 +336,7 @@ const STD_OPPSETT = {
   ringmur: false, ringHoydeMm: 500, tykkelseMm: 120,
   farge: "#dfe5ec", isolasjon: "PIR", utvFarge: "RAL 1015", innFarge: "9010",
   prosjekt: "", oppdragsnr: "", sted: "", sign: "",
-  utsparinger: []   // markering-id-er som er huket av som åpninger
+  utsparinger: []   // [{navn, min:[x,y,z], max:[x,y,z]}] fra valgte elementer
 };
 
 function oppsett() {
@@ -340,12 +388,21 @@ function tegnAlt() {
     m.rotation.y = r.rot;
     swGroup.add(m);
   }
+  // Elementene tegnes med KANTSTREK i en mørkere tone av elementfargen —
+  // uten den fløt radene sammen til én grå flate, og ingenting så ut som
+  // veggelementer (Emils funn runde 2). Geometrien deles: alle elementene er
+  // like bokser, bare skalert — én geometri og én kantgeometri for alle.
+  const veggGeo = new THREE.BoxGeometry(1, 1, 1);
+  const kantGeo = new THREE.EdgesGeometry(veggGeo);
+  const veggMat = new THREE.MeshLambertMaterial({ color: o.farge || "#dfe5ec", side: THREE.DoubleSide });
+  const kantMat = new THREE.LineBasicMaterial({ color: morkere(o.farge || "#dfe5ec") });
   for (const v of lagret.vegger || []) {
-    const m = boks(o.farge || "#dfe5ec", 1);
+    const m = new THREE.Mesh(veggGeo, veggMat);
     m.scale.set(tilScene(v.lengdeMm), tilScene(v.hoydeMm), tilScene(v.tMm));
     m.position.set(v.x, v.y, v.z);
     m.rotation.y = v.rot;
     m.userData.sw = v.sw;
+    m.add(new THREE.LineSegments(kantGeo, kantMat));
     swGroup.add(m);
   }
 }
@@ -371,7 +428,6 @@ async function generer() {
   const ringH = o.ringmur ? tilScene(o.ringHoydeMm) : 0;
   const baseY = okBetong + ringH;                           // SW starter på gulv eller ringmur
   const tS = tilScene(o.tykkelseMm);
-  const valgte = new Set((o.utsparinger || []).map(String));
 
   // Gulvet: søylenes utstrekning + utstikk, OK betong øverst
   const hull = konveksHull(soyler.map(s => ({ x: s.cx, z: s.cz })));
@@ -387,9 +443,18 @@ async function generer() {
   const ringmur = [];
   const vegger = [];
   for (const f of fasader) {
-    // veggen (og ringmuren) står INNTIL utsiden av søylene:
-    // senterlinja = søylelinja + (søylebredde/2 + tykkelse/2) utover
-    const off = f.kolBredde / 2 + tS / 2;
+    // Veggen (og ringmuren) står FLUKT inntil utsiden av søylene. Utsiden
+    // måles fra de FAKTISKE søyleboksene på fasaden — senteravvik pluss halve
+    // boksen langs normalen — ikke fra en medianbredde. Da ligger elementet
+    // rett på veggen selv når søylene har fotplater eller ulik størrelse
+    // (Emils funn runde 2: veggene sto ikke inntil).
+    let ytreFlate = 0;
+    for (const k of f.soyler) {
+      const lat = (k.s.cx - f.p.x) * f.nx + (k.s.cz - f.p.z) * f.nz;
+      const halv = (Math.abs(f.nx) * k.s.bx + Math.abs(f.nz) * k.s.bz) / 2;
+      ytreFlate = Math.max(ytreFlate, lat + halv);
+    }
+    const off = ytreFlate + tS / 2;
     const midt = (tMid, y) => ({
       x: f.p.x + f.ex * tMid + f.nx * off,
       z: f.p.z + f.ez * tMid + f.nz * off,
@@ -398,17 +463,24 @@ async function generer() {
     const rot = Math.atan2(-f.ez, f.ex);
     const t0 = f.soyler[0].t, t1 = f.soyler[f.soyler.length - 1].t;
     if (o.ringmur) {
-      const p = midt((t0 + t1) / 2, okBetong + ringH / 2 - tilScene(o.betongMm + o.isoMm) / 2);
+      const p = midt((t0 + t1) / 2 + tS / 2, 0);
       ringmur.push({ x: p.x, z: p.z,
         y: okBetong + (ringH - tilScene(o.betongMm + o.isoMm)) / 2,
-        lengde: (t1 - t0) + f.kolBredde + 2 * tS,   // lukker hjørnene
+        lengde: (t1 - t0) + 2 * off,   // samme hjørneregel som veggene
         hoyde: ringH + tilScene(o.betongMm + o.isoMm),   // fra gulvets underkant og opp
         tykkelse: tS, rot });
     }
     const toppMm = tilMm(f.toppY - baseY);
     const { rader, kappMm } = radMiks(toppMm);
     const alleRader = rader.concat(kappMm ? [kappMm] : []);
-    const apninger = utsparingerPaFasade(f, baseY, valgte);
+    const apninger = utsparingerPaFasade(f, baseY, o.utsparinger);
+    // HJØRNENE gjøres som på Moelv-tegningen: hver fasade LØPER FORBI hjørnet
+    // i sin sluttende (dekker naboveggens endeflate, helt ut til ytterhjørnet),
+    // og starter FLUKT mot innsiden av forrige fasades vegg. Rundt bygget gir
+    // det pinwheel-hjørner — ett element stikker forbi i hvert hjørne, aldri to.
+    const offMm = tilMm(off);
+    const hjFraMm = tilMm(t0) - offMm + o.tykkelseMm / 2;   // start: mot naboens innside
+    const hjTilMm = tilMm(t1) + offMm + o.tykkelseMm / 2;   // slutt: forbi, til ytterhjørnet
     let bunnMm = 0;
     for (const radH of alleRader) {
       const tilpassetRad = kappMm > 0 && radH === kappMm && radH !== 1000 && radH !== 1100;
@@ -418,8 +490,8 @@ async function generer() {
         .filter(a => Math.min(a.toppMm, rTopp) - Math.max(a.bunnMm, rBunn) > 10)
         .map(a => [a.fraMm, a.tilMm_]);
       for (let i = 0; i < f.soyler.length - 1; i++) {
-        const sFra = tilMm(f.soyler[i].t) + SW_KLARING_MM;
-        const sTil = tilMm(f.soyler[i + 1].t) - SW_KLARING_MM;
+        const sFra = i === 0 ? hjFraMm : tilMm(f.soyler[i].t) + SW_KLARING_MM;
+        const sTil = i === f.soyler.length - 2 ? hjTilMm : tilMm(f.soyler[i + 1].t) - SW_KLARING_MM;
         const fullMm = sTil - sFra;
         if (fullMm < SW_MIN_BIT_MM) continue;
         for (const [bFra, bTil] of delOppMedUtsparinger(sFra, sTil, kutt)) {
@@ -536,10 +608,38 @@ function lesOppsettFraPanel() {
   o.oppdragsnr = txt("swOppdrag");
   o.sted = txt("swSted");
   o.sign = txt("swSign");
-  o.utsparinger = [...document.querySelectorAll("#swBody input[data-sw-utsp]:checked")]
-    .map(i => i.dataset.swUtsp);
   skrivLagret();
   return o;
+}
+
+// Legger til en utsparing fra elementene som er valgt i modellen (shift-klikk
+// på søylene/bjelkene som rammer inn åpningen). Selve regnestykket er
+// utsparingFraBokser — her hentes bare boksene til utvalget.
+function leggTilUtsparing() {
+  const ider = S.multiSel && S.multiSel.size ? [...S.multiSel.keys()]
+    : (S.currentPropID != null ? [S.currentPropID] : []);
+  if (ider.length < 2) {
+    alert(t("Velg først elementene som rammer inn åpningen (shift-klikk): søylene på sidene og bjelken over — så trykk her igjen."));
+    return;
+  }
+  const alle = allElementBoxes();
+  const bokser = [];
+  for (const id of ider) {
+    const b = alle.get(id);
+    if (b) bokser.push({ min: { x: b.min.x, y: b.min.y, z: b.min.z },
+                         max: { x: b.max.x, y: b.max.y, z: b.max.z } });
+  }
+  const u = utsparingFraBokser(bokser);
+  if (!u) { alert(t("Fant ikke boksene til de valgte elementene.")); return; }
+  const o = oppsett();
+  o.utsparinger = (o.utsparinger || []).filter(x => x && x.min);   // gamle id-lister ryddes
+  o.utsparinger.push({
+    navn: t("Utsparing {0}", o.utsparinger.length + 1),
+    min: [u.min.x, u.min.y, u.min.z], max: [u.max.x, u.max.y, u.max.z]
+  });
+  skrivLagret();
+  tegnPanel();
+  if (u.reserve) alert(t("Fant ikke to sider i utvalget — utsparingen ble hele utvalgets boks. Sjekk målene i lista."));
 }
 
 function tegnPanel() {
@@ -547,9 +647,7 @@ function tegnPanel() {
   if (!body) return;
   const o = oppsett();
   const antall = (lagret && lagret.vegger || []).length;
-  // område-firkantene som kan være utsparinger
-  const kandidater = (S.comments || []).filter(c => c.omrade && c.omrade.form === "firkant");
-  const valgte = new Set((o.utsparinger || []).map(String));
+  const utsp = (o.utsparinger || []).filter(u => u && u.min);
   body.innerHTML =
     '<h4 style="margin:0 0 4px">' + t("Gulv") + '</h4>' +
     felt("swBetong", "Betong (mm)", o.betongMm) +
@@ -568,15 +666,17 @@ function tegnPanel() {
     felt("swUtvF", "Utvendig farge (til lista)", o.utvFarge, "text") +
     felt("swInnF", "Innvendig farge (til lista)", o.innFarge, "text") +
     '<h4 style="margin:10px 0 4px">' + t("Utsparinger (dører, vinduer, porter)") + '</h4>' +
-    (!kandidater.length
-      ? '<p style="color:var(--muted);font-size:12px">' +
-        t("Ingen område-firkanter i modellen ennå. Tegn utsparingene med Markering → Firkant først — bare de du huker av her blir åpninger.") + '</p>'
-      : kandidater.map(c =>
-        '<label style="display:flex;gap:6px;align-items:center;font-size:12px"><input type="checkbox" data-sw-utsp="' + esc(String(c.id)) + '"' +
-        (valgte.has(String(c.id)) ? " checked" : "") + '> ' +
-        esc((c.text || "").slice(0, 40) || t("Uten tekst")) +
+    '<p style="color:var(--muted);font-size:11px;margin:2px 0 6px">' +
+      t("Shift-klikk elementene som rammer inn åpningen (søylene på sidene og bjelken over/under), og trykk knappen. Alt innenfor rammen blir utsparing.") + '</p>' +
+    '<div class="prop-actions"><button id="swNyUtsp">' + ikon("boks") + ' ' + t("Legg til utsparing fra valgte elementer") + '</button></div>' +
+    (!utsp.length
+      ? '<p style="color:var(--muted);font-size:12px">' + t("Ingen utsparinger lagt til ennå.") + '</p>'
+      : utsp.map((u, i) =>
+        '<div class="qty-row"><div class="n" style="font-size:12px">' + esc(u.navn || ("#" + (i + 1))) +
         ' <span style="color:var(--muted)">' +
-        Math.round(tilMm(c.omrade.rx * 2)) + "×" + Math.round(tilMm(c.omrade.h || 0)) + " mm</span></label>").join("")) +
+        Math.round(tilMm(Math.max(u.max[0] - u.min[0], u.max[2] - u.min[2]))) + "×" +
+        Math.round(tilMm(u.max[1] - u.min[1])) + " mm</span></div>" +
+        '<div class="c"><button data-sw-slett-utsp="' + i + '" title="' + t("Slett") + '" style="padding:3px 8px">' + ikon("slett") + '</button></div></div>').join("")) +
     '<h4 style="margin:10px 0 4px">' + t("Til lista") + '</h4>' +
     felt("swProsjekt", "Prosjekt", o.prosjekt, "text") +
     felt("swOppdrag", "Oppdragsnummer", o.oppdragsnr, "text") +
@@ -597,6 +697,15 @@ function tegnPanel() {
   };
   $("swListe").onclick = () => { lesOppsettFraPanel(); lastNedListe(); };
   $("swFjern").onclick = () => { lesOppsettFraPanel(); fjernAltGenerert(); };
+  $("swNyUtsp").onclick = () => { lesOppsettFraPanel(); leggTilUtsparing(); };
+  body.querySelectorAll("button[data-sw-slett-utsp]").forEach(b =>
+    b.onclick = () => {
+      lesOppsettFraPanel();
+      const o2 = oppsett();
+      o2.utsparinger.splice(Number(b.dataset.swSlettUtsp), 1);
+      skrivLagret();
+      tegnPanel();
+    });
 }
 
 på("btnSW", "click", () => {
