@@ -152,6 +152,7 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
   <button id="btnSaveLite" title="Eksporter forenklet modell (.glb) som funker på mobil" data-i18n-title><svg class="ikon"><use href="#i-lagre"/></svg><span class="btn-t" data-i18n>Lett kopi</span></button>
   <button id="btnGrupper" title="Objektgrupper: lagre et utvalg med navn og hent det fram igjen" data-i18n-title><svg class="ikon"><use href="#i-fokus"/></svg><span class="btn-t" data-i18n>Grupper</span></button>
   <button id="btnMateriell" title="Materiell: legg inn vareleveranser i modellen så alle ser hvor de skal ligge" data-i18n-title><svg class="ikon"><use href="#i-materiell"/></svg><span class="btn-t" data-i18n>Materiell</span></button>
+  <button id="btnSW" title="SW-generator: automatiske veggelementer på stålmodeller" data-i18n-title><svg class="ikon"><use href="#i-materiell"/></svg><span class="btn-t" data-i18n>SW-generator</span></button>
   <button id="btnRapport" title="Last ned statusrapport som PDF" data-i18n-title><svg class="ikon"><use href="#i-tegning"/></svg><span class="btn-t" data-i18n>Rapport</span></button>
   <button id="btnByggeplass" title="Last opp lett kopi til byggeplass-lenka (Cloudflare)" data-i18n-title><svg class="ikon"><use href="#i-lastned"/></svg><span class="btn-t" data-i18n>Publiser Byggeplass</span></button>
   <button id="btnHjul" title="Navigasjonshjul – naviger uten mus" data-i18n-title><svg class="ikon"><use href="#i-hjul"/></svg><span class="btn-t" data-i18n>Navigasjon</span></button>
@@ -222,6 +223,11 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
 <div class="panel" id="grupperPanel">
   <header><span data-i18n>Grupper</span><button onclick="document.getElementById('grupperPanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="grupperBody"></div>
+</div>
+
+<div class="panel" id="swPanel">
+  <header><span data-i18n>SW-generator</span><button onclick="document.getElementById('swPanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <div class="body" id="swBody"></div>
 </div>
 
 <div class="panel" id="materiellPanel">
