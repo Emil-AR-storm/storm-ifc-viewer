@@ -783,6 +783,9 @@ function tegnAlt() {
     el.rotation.y = v.rot;
     el.userData.sw = v.sw;
     el.userData.swId = v.id;
+    // Id-en settes på HVER mesh, ikke bare gruppa: da trenger ikke plukkingen
+    // å gå oppover i treet, og et treff kan ikke gå tapt underveis.
+    el.traverse(m => { m.userData.swId = v.id; });
     swGroup.add(el);
     // 🏷 SW-nummer i øvre hjørne + dimensjon i midten — som på Moelv-tegningen
     // og Lørenskog-skjermbildene. Konstant skjermstørrelse (updateScreenScaled).
@@ -844,8 +847,10 @@ function tekstDekal(tekst, hoydeMm, maksBredde) {
   const { tex, aspect } = dekalTekstur(tekst);
   let h = tilScene(hoydeMm), w = h * aspect;
   if (maksBredde > 0 && w > maksBredde) { const k = maksBredde / w; w *= k; h *= k; }
-  return new THREE.Mesh(new THREE.PlaneGeometry(Math.max(w, 1e-6), Math.max(h, 1e-6)),
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(Math.max(w, 1e-6), Math.max(h, 1e-6)),
     new THREE.MeshBasicMaterial({ map: tex }));
+  m.raycast = () => {};   // lappene er skilt, ikke noe å trykke på
+  return m;
 }
 
 // Kalles av afterLoad (ifc.js) når en modell er åpnet, og av clearModel når
@@ -1075,7 +1080,51 @@ async function generer() {
 // Elementene beholder basFraMm/basTilMm + dFra/dTil; ALT annet (utstrekning,
 // posisjon, lengde, SW-nummer, skjult) er avledet — derfor kommer et skjult
 // element tilbake så snart du drar tilbake.
+// Vegger generert FØR runde 14 mangler id, fasadebasis og basis-utstrekning,
+// og var derfor umulige å plukke i justeringsmodus (Emils funn 02.09) — de
+// ligger i localStorage og tegnes opp igjen uten å bli generert på nytt.
+// Her fylles feltene inn fra det som finnes: rot gir fasaderetningen,
+// tMid + lengdeMm gir utstrekningen, og y grupperer radene.
+function migrerVegger() {
+  if (!lagret || !lagret.vegger) return;
+  const rader = new Map();
+  lagret.vegger.forEach((v, i) => {
+    if (v.id === undefined || v.id === null) v.id = "v" + i;
+    if (v.ex === undefined) { v.ex = Math.cos(v.rot || 0); v.ez = -Math.sin(v.rot || 0); }
+    if (v.fx === undefined) { v.fx = v.x - v.ex * (v.tMid || 0); v.fz = v.z - v.ez * (v.tMid || 0); }
+    if (v.basFraMm === undefined) {
+      const midMm = tilMm(v.tMid || 0);
+      v.basFraMm = Math.round(midMm - (v.lengdeMm || 0) / 2);
+      v.basTilMm = Math.round(midMm + (v.lengdeMm || 0) / 2);
+    }
+    if (v.dFra === undefined) v.dFra = 0;
+    if (v.dTil === undefined) v.dTil = 0;
+    if (v.rev === undefined) v.rev = 0;
+    if (v.fullMm === undefined) v.fullMm = v.lengdeMm || 0;
+    if (v.rBunnMm === undefined) v.rBunnMm = 0;
+    if (v.radIdx === undefined) {
+      const k = Math.round((v.y || 0) * 1000) + "|" + v.hoydeMm;
+      if (!rader.has(k)) rader.set(k, rader.size);
+      v.radIdx = rader.get(k);
+    }
+  });
+}
+
+// Holdepunktene et drag snapper til: fasadens søylepunkter (10 mm fra senter
+// og søylekanten) PLUSS skjøtene i de andre radene på samme fasade — de er
+// like nyttige å låse mot, og de finnes også for eldre, migrerte vegger som
+// ikke har søylepunktene lagret.
+function snappPunkter(v) {
+  const ut = (v.snapp || []).slice();
+  for (const w of (lagret && lagret.vegger) || []) {
+    if (w.fi !== v.fi || w.id === v.id) continue;
+    ut.push(w.basFraMm, w.basTilMm);
+  }
+  return ut.filter(n => isFinite(n));
+}
+
 function loesAlleJusteringer() {
+  migrerVegger();
   if (!lagret || !lagret.vegger) return;
   const o = lagret.oppsett || STD_OPPSETT;
   const grupper = new Map();
@@ -1254,7 +1303,7 @@ let just = null;   // { valgt: Set<id>, drar: {…} | null, markorer: Group }
 function veggMedId(id) { return (lagret && lagret.vegger || []).find(v => v.id === id); }
 
 // Elementgruppa under pekeren, blant de genererte veggene
-function pekVegg(cx, cy) {
+function pekVeggEn(cx, cy) {
   const r = canvas.getBoundingClientRect();
   const ndc = new THREE.Vector2(((cx - r.left) / r.width) * 2 - 1,
                                 -((cy - r.top) / r.height) * 2 + 1);
@@ -1263,7 +1312,24 @@ function pekVegg(cx, cy) {
   for (const h of treff) {
     let o = h.object;
     while (o && o.userData.swId === undefined) o = o.parent;
-    if (o && o.userData.swId !== undefined) return { v: veggMedId(o.userData.swId), punkt: h.point };
+    if (o && o.userData.swId !== undefined) {
+      const v = veggMedId(o.userData.swId);
+      if (v && !v.skjult) return { v, punkt: h.point };
+    }
+  }
+  return null;
+}
+
+// Treffer ikke midt på, prøves en liten ring rundt pekeren. Et element sett
+// nesten på kant er bare noen piksler bredt på skjermen, og da er et treff
+// på millimeteren for mye å kreve.
+function pekVegg(cx, cy) {
+  swGroup.updateMatrixWorld(true);   // matrisene må være ferske før raycast
+  const treff = pekVeggEn(cx, cy);
+  if (treff) return treff;
+  for (const [dx, dy] of [[6, 0], [-6, 0], [0, 6], [0, -6], [6, 6], [-6, -6], [6, -6], [-6, 6]]) {
+    const t = pekVeggEn(cx + dx, cy + dy);
+    if (t) return t;
   }
   return null;
 }
@@ -1300,10 +1366,19 @@ function tegnJustBar() {
   const el = jBarEl();
   if (!just) { el.style.display = "none"; el.innerHTML = ""; return; }
   el.style.display = "flex";
+  // Hva som er markert vises med mål, så det er synlig at trykket registrerte
+  const valgtTekst = [...just.valgt]
+    .map(id => veggMedId(id))
+    .filter(Boolean)
+    .map(v => (v.sw || "SW-XX") + " " + v.lengdeMm + "×" + v.hoydeMm)
+    .slice(0, 4)
+    .join(", ");
   el.innerHTML =
-    '<span style="font-size:12px;max-width:360px">' +
+    '<span style="font-size:12px;max-width:400px">' +
     t("Trykk på et veggelement og dra i enden for å stille lengden. Shift+klikk for å ta flere. Kanten snapper til søylene.") +
-    ' <b>' + t("{0} valgt", just.valgt.size) + '</b></span>' +
+    ' <b>' + t("{0} valgt", just.valgt.size) + '</b>' +
+    (valgtTekst ? ' <span style="color:var(--muted)">' + esc(valgtTekst) + '</span>' : "") +
+    '</span>' +
     '<button id="swJustNull" style="padding:3px 10px">' + t("Nullstill") + '</button>' +
     '<button id="swJustFerdig" class="primary" style="padding:3px 10px">' + t("Ferdig") + '</button>';
   $("swJustNull").onclick = () => {
@@ -1332,6 +1407,7 @@ function merkValgte() {
     g.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), nv);
     g.position.set(v.x, v.y, v.z).addScaledVector(nv, tilScene(v.tMm) / 2 + 0.02 / (S.enhetSkala || 1));
     g.renderOrder = 998;
+    g.raycast = () => {};   // markeringen er bare til å se på
     just.markorer.add(g);
   }
 }
@@ -1393,7 +1469,7 @@ window.addEventListener("pointermove", (e) => {
   const b = d.base.get(d.id) || { dFra: 0, dTil: 0 };
   const basKant = d.ende === "fra" ? v.basFraMm + b.dFra : v.basTilMm + b.dTil;
   // kanten snappes, og SAMME forskyvning gis til alle markerte
-  const snappet = snappKant(basKant + (naMm - d.startMm), v.snapp, 150);
+  const snappet = snappKant(basKant + (naMm - d.startMm), snappPunkter(v), 150);
   const delta = Math.round(snappet - basKant);
   for (const id of just.valgt) {
     const w = veggMedId(id);
