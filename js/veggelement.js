@@ -145,20 +145,25 @@ export function utsparingFraFlater(flater, slark) {
   let bunn = null, topp = null;
   const pkt = [];
   const sideBokser = [], liggBokser = [];
+  // Hvilke grenser kom fra et FAKTISK trykk? En firkantet åpning har bare to
+  // MÅL (bredde × høyde) uansett hvor mange flater som markeres — kilden per
+  // kant er det som viser at den tredje/fjerde flata faktisk ble brukt
+  // (Emil runde 7: «markert 3 sider, det kommer bare opp 2 mål»).
+  const fraFlate = { x: [false, false], z: [false, false], topp: false, bunn: false };
   for (const f of flater) {
     if (!f || !f.p || !f.n) continue;
     pkt.push(f.p);
     if (Math.abs(f.n.y) >= Math.max(Math.abs(f.n.x), Math.abs(f.n.z))) {
-      if (f.n.y < 0) topp = topp === null ? f.p.y : Math.min(topp, f.p.y);
-      else bunn = bunn === null ? f.p.y : Math.max(bunn, f.p.y);
+      if (f.n.y < 0) { topp = topp === null ? f.p.y : Math.min(topp, f.p.y); fraFlate.topp = true; }
+      else { bunn = bunn === null ? f.p.y : Math.max(bunn, f.p.y); fraFlate.bunn = true; }
       if (f.boks) liggBokser.push(f.boks);
       continue;
     }
     if (f.boks) sideBokser.push(f.boks);
     const akse = Math.abs(f.n.x) >= Math.abs(f.n.z) ? "x" : "z";
     const g = grenser[akse];
-    if (f.n[akse] > 0) g[0] = g[0] === null ? f.p[akse] : Math.max(g[0], f.p[akse]);
-    else g[1] = g[1] === null ? f.p[akse] : Math.min(g[1], f.p[akse]);
+    if (f.n[akse] > 0) { g[0] = g[0] === null ? f.p[akse] : Math.max(g[0], f.p[akse]); fraFlate[akse][0] = true; }
+    else { g[1] = g[1] === null ? f.p[akse] : Math.min(g[1], f.p[akse]); fraFlate[akse][1] = true; }
   }
   // åpningens akse: helst den som har begge sidene, ellers den som har én
   let akse = null;
@@ -198,7 +203,15 @@ export function utsparingFraFlater(flater, slark) {
   min[akse] = g[0]; max[akse] = g[1];
   min[annen] = Math.min(...av) - SLARK; max[annen] = Math.max(...av) + SLARK;
   if (max.y <= min.y) return { feil: "hoyde" };
-  return { min: [min.x, min.y, min.z], max: [max.x, max.y, max.z] };
+  // Kildene, til panelet: "flate" = brukeren trykket der, "ender" = fylt fra
+  // endene av de markerte elementene (2/3-sider-regelen), "åpen" = gulv/topp.
+  const kilde = {
+    sider: fraFlate[akse][0] && fraFlate[akse][1] ? "flater" : "ender",
+    topp: fraFlate.topp ? "flate" : (topp !== null ? "ender" : "åpen"),
+    bunn: fraFlate.bunn ? "flate" : (bunn !== null ? "ender" : "åpen")
+  };
+  return { min: [min.x, min.y, min.z], max: [max.x, max.y, max.z],
+           kilde, antFlater: pkt.length };
 }
 
 // SW-nummereringen: hver unik lengde×høyde (innenfor SW_TOL_MM) får et nummer.
@@ -875,7 +888,8 @@ function fullforUtspMark() {
     const u = utsparingFraFlater(kl, 0.5 / e);
     if (u.feil) { feilet++; continue; }
     lagt++;
-    o.utsparinger.push({ navn: t("Utsparing {0}", o.utsparinger.length + 1), min: u.min, max: u.max });
+    o.utsparinger.push({ navn: t("Utsparing {0}", o.utsparinger.length + 1), min: u.min, max: u.max,
+                         flater: u.antFlater, kilde: u.kilde });
   }
   if (!lagt) {
     alert(t("Utsparingen trenger to motstående sider — trykk på innsiden av søylene på hver side av åpningen."));
@@ -960,6 +974,24 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && utspMark) { e.stopPropagation(); avsluttUtspMark(); }
 }, true);
 
+// Én linje under målene som viser HVOR grensene kom fra. En firkantet åpning
+// har bare to mål (bredde × høyde) uansett hvor mange flater som markeres —
+// denne linja viser at den tredje og fjerde flata faktisk ble brukt, og hva
+// som ble fylt automatisk (Emil runde 7: «markert 3 sider, bare 2 mål»).
+function utspKildeTekst(u) {
+  const biter = [];
+  if (u.flater) biter.push(t("{0} flater markert", u.flater));
+  const k = u.kilde || {};
+  if (k.topp === "flate") biter.push(t("topp fra flate"));
+  else if (k.topp === "ender") biter.push(t("topp fra søyleendene"));
+  else if (k.topp === "åpen") biter.push(t("topp åpen"));
+  if (k.bunn === "flate") biter.push(t("bunn fra flate"));
+  else if (k.bunn === "ender") biter.push(t("bunn fra søyleendene"));
+  else if (k.bunn === "åpen") biter.push(t("bunn: gulvet"));
+  if (k.sider === "ender") biter.push(t("side fra bjelkeendene"));
+  return biter.join(" · ");
+}
+
 function tegnPanel() {
   const body = $("swBody");
   if (!body) return;
@@ -993,7 +1025,10 @@ function tegnPanel() {
         '<div class="qty-row"><div class="n" style="font-size:12px">' + esc(u.navn || ("#" + (i + 1))) +
         ' <span style="color:var(--muted)">' +
         Math.round(tilMm(Math.max(u.max[0] - u.min[0], u.max[2] - u.min[2]))) + "×" +
-        (u.max[1] - u.min[1] > 1e8 ? t("full høyde") : Math.round(tilMm(u.max[1] - u.min[1])) + " mm") + "</span></div>" +
+        (u.max[1] - u.min[1] > 1e8 ? t("full høyde") : Math.round(tilMm(u.max[1] - u.min[1])) + " mm") + "</span>" +
+        (utspKildeTekst(u)
+          ? '<br><span style="color:var(--muted);font-size:11px">' + esc(utspKildeTekst(u)) + "</span>" : "") +
+        "</div>" +
         '<div class="c"><button data-sw-slett-utsp="' + i + '" title="' + t("Slett") + '" style="padding:3px 8px">' + ikon("slett") + '</button></div></div>').join("")) +
     '<h4 style="margin:10px 0 4px">' + t("Til lista") + '</h4>' +
     felt("swProsjekt", "Prosjekt", o.prosjekt, "text") +
