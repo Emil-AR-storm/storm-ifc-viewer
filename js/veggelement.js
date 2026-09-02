@@ -192,9 +192,23 @@ export function utsparingFraFlater(flater, slark) {
     if (g[1] === null) g[1] = Math.min(...liggBokser.map(b => b.max[akse]));
   }
   if (g[0] === null || g[1] === null || g[1] <= g[0]) return { feil: "sider" };
-  // manglende topp/bunn: endene av de markerte søylene (Emils 2-sider-regel)
-  if (topp === null && sideBokser.length) topp = Math.max(...sideBokser.map(b => b.max.y));
-  if (bunn === null && sideBokser.length) bunn = Math.min(...sideBokser.map(b => b.min.y));
+  // TOPP OG BUNN LIGGER MELLOM DE MARKERTE PUNKTENE (Emils regel 02.09):
+  // «enden av de 2 markerte søylene blir enden av toppen og bunnen». To søyler
+  // av ulik lengde gir da OVERLAPPET deres, ikke union — union var det som
+  // sendte åpningen ca. 1 m for høyt opp og for langt ned (Emils bilde 4/5).
+  // En markert vannrett flate (bjelke) kan bare STRAMME grensen, aldri utvide
+  // den forbi søyleendene.
+  const sideTopp = sideBokser.length ? Math.min(...sideBokser.map(b => b.max.y)) : null;
+  const sideBunn = sideBokser.length ? Math.max(...sideBokser.map(b => b.min.y)) : null;
+  let toppKlippet = false, bunnKlippet = false;
+  if (sideTopp !== null) {
+    if (topp === null) topp = sideTopp;
+    else if (sideTopp < topp) { topp = sideTopp; toppKlippet = true; }
+  }
+  if (sideBunn !== null) {
+    if (bunn === null) bunn = sideBunn;
+    else if (sideBunn > bunn) { bunn = sideBunn; bunnKlippet = true; }
+  }
   const annen = akse === "x" ? "z" : "x";
   const av = pkt.map(p => p[annen]);
   const STOR = 1e9;
@@ -207,8 +221,8 @@ export function utsparingFraFlater(flater, slark) {
   // endene av de markerte elementene (2/3-sider-regelen), "åpen" = gulv/topp.
   const kilde = {
     sider: fraFlate[akse][0] && fraFlate[akse][1] ? "flater" : "ender",
-    topp: fraFlate.topp ? "flate" : (topp !== null ? "ender" : "åpen"),
-    bunn: fraFlate.bunn ? "flate" : (bunn !== null ? "ender" : "åpen")
+    topp: fraFlate.topp && !toppKlippet ? "flate" : (topp !== null ? "ender" : "åpen"),
+    bunn: fraFlate.bunn && !bunnKlippet ? "flate" : (bunn !== null ? "ender" : "åpen")
   };
   return { min: [min.x, min.y, min.z], max: [max.x, max.y, max.z],
            kilde, antFlater: pkt.length };
@@ -306,9 +320,33 @@ async function hentSoyler() {
       treff.bredde = Math.max(treff.bredde, s.bredde);
       treff.bx = Math.max(treff.bx, s.bx);
       treff.bz = Math.max(treff.bz, s.bz);
-    } else ut.push({ ...s });
+      treff.deler.push({ minY: s.minY, maxY: s.maxY });
+    } else ut.push({ ...s, deler: [{ minY: s.minY, maxY: s.maxY }] });
+  }
+  // Har søyla en SØYLEFORLENGER? Forlengeren er et EGET søyleelement som står
+  // oppå søyla (Emils bilde 1: de blå stubbene på toppen). Finner vi to deler
+  // der den øvre starter der den nedre slutter, står søyla under en forlenger.
+  const stakkTol = 0.3 / (S.enhetSkala || 1);
+  for (const u of ut) {
+    const d = u.deler.slice().sort((a, b) => a.minY - b.minY);
+    u.harForlenger = d.some((x, i) => i > 0 && x.minY >= d[i - 1].maxY - stakkTol);
   }
   return ut;
+}
+
+// KUN SØYLER UNDER EN SØYLEFORLENGER ER VEGG (Emils regel 02.09): korte
+// tilbygg-rammer uten forlenger — to søyler og en bjelke — skal ikke dra
+// fasaden ut; veggen går forbi dem, og de blir stående utenfor/innenfor.
+// Finner vi ingen forlengere i modellen (alt er tegnet som én søyle),
+// faller vi tilbake på søylene som når toppen, og til slutt på alle.
+export function veggSoyler(soyler, toppTol) {
+  const alle = (soyler || []).filter(Boolean);
+  if (alle.length < 3) return alle;
+  const medForlenger = alle.filter(s => s.harForlenger);
+  if (medForlenger.length >= 3) return medForlenger;
+  const toppen = Math.max(...alle.map(s => s.maxY));
+  const hoye = alle.filter(s => s.maxY >= toppen - (Number(toppTol) || 0));
+  return hoye.length >= 3 ? hoye : alle;
 }
 
 // Fasadene: kantene i det konvekse hullet av søylesentrene. Hver fasade får
@@ -558,11 +596,14 @@ S.ryddSW = () => { lagret = null; ryddTegning(); };
 // ---------- Selve genereringen ----------
 async function generer() {
   const o = oppsett();
-  const soyler = await hentSoyler();
-  if (soyler.length < 3) {
-    alert(t("Fant bare {0} søyler (IfcColumn) i modellen — trenger minst 3 for å finne fasadene.", soyler.length));
+  const alleSoyler = await hentSoyler();
+  if (alleSoyler.length < 3) {
+    alert(t("Fant bare {0} søyler (IfcColumn) i modellen — trenger minst 3 for å finne fasadene.", alleSoyler.length));
     return;
   }
+  // Bare søylene UNDER SØYLEFORLENGERE er vegg — de bestemmer både fasadene
+  // (konvekst hull) og skjøtene. Rammer uten forlenger står utenfor veggen.
+  const soyler = veggSoyler(alleSoyler, 0.8 / (S.enhetSkala || 1));
   const kolTol = Math.max(0.3 / (S.enhetSkala || 1), soyler[0].bredde * 2);
   const fasader = fasaderFra(soyler, kolTol);
   if (!fasader.length) { alert(t("Fant ingen fasader å sette veggelementer på.")); return; }
@@ -588,6 +629,7 @@ async function generer() {
   for (const u of (o.utsparinger || [])) {
     if (!u || !u.min) continue;
     const cx = (u.min[0] + u.max[0]) / 2, cz = (u.min[2] + u.max[2]) / 2;
+    const halvX = (u.max[0] - u.min[0]) / 2, halvZ = (u.max[2] - u.min[2]) / 2;
     let besteFi = -1, besteAvst = Infinity;
     for (let fi = 0; fi < fasader.length; fi++) {
       const f = fasader[fi];
@@ -595,6 +637,11 @@ async function generer() {
       const len = f.soyler[f.soyler.length - 1].t;
       if (tt < f.soyler[0].t - 1 || tt > len + 1) continue;   // utenfor fasadens lengde
       const avst = Math.abs((cx - f.p.x) * f.nx + (cz - f.p.z) * f.nz);
+      // UTSPARINGEN HØRER BARE TIL VEGGEN DEN ER LAGET I (Emil 02.09): fasaden
+      // må faktisk gå GJENNOM åpningsboksen. Uten dette kunne en port kappe
+      // veggen på motsatt side av et smalt bygg, fordi den var «nærmest» der.
+      const rekkevidde = Math.abs(f.nx) * halvX + Math.abs(f.nz) * halvZ + 1.0 / (S.enhetSkala || 1);
+      if (avst > rekkevidde) continue;
       if (avst < besteAvst) { besteAvst = avst; besteFi = fi; }
     }
     if (besteFi >= 0) {
