@@ -822,7 +822,8 @@ function tegnAlt() {
       swGroup.add(dim);
     }
   }
-  tegnUtspMerking();
+  try { tegnUtspMerking(); }
+  catch (err) { console.warn("Utsparingsmerkingen kunne ikke tegnes:", err); }
 }
 
 // ---------- 📐 Utsparingsmerking: stiplet kryss + mål ----------
@@ -830,16 +831,66 @@ function tegnAlt() {
 // kryss, ett mål for HELE åpningen (bredde × høyde), og for hvert element som
 // går gjennom området et lite mål på HVOR DYPT det må kappes inn.
 // Skrus av og på med «Vis utsparingsmål» i panelet.
-function tegnUtspMerking() {
-  if (!lagret || !lagret.utspVis || !lagret.utspVis.length) return;
+// SW-basen (topp ringmur). Mangler den i lagringen — vegger generert av en
+// eldre versjon — regnes den ut av et element: y er radens midte.
+function baseYNaa() {
+  if (lagret && lagret.baseY !== undefined) return lagret.baseY;
+  for (const v of (lagret && lagret.vegger) || [])
+    if (v.rBunnMm !== undefined && v.hoydeMm) return v.y - tilScene(v.rBunnMm + v.hoydeMm / 2);
+  return 0;
+}
+
+// Åpningene projisert på fasadene, REGNET UT VED TEGNING. Tidligere ble dette
+// bare lagret ved generering (lagret.utspVis), og da viste merkingen
+// ingenting på vegger som alt lå i localStorage fra en tidligere generering —
+// som er den vanlige situasjonen, siden veggene tegnes opp igjen når modellen
+// åpnes (Emils funn 02.09). Nå følger merkingen også med når en utsparing
+// legges til eller slettes i panelet, uten å generere på nytt.
+function utspPaFasader() {
+  if (!lagret) return [];
   const o = lagret.oppsett || STD_OPPSETT;
-  if (o.visUtsp === false) return;
   const fasader = lagret.fasader || [];
-  const baseY = lagret.baseY || 0;
+  const liste = (o.utsparinger || []).filter(u => u && u.min && u.max);
+  if (!fasader.length || !liste.length) return lagret.utspVis || [];
+  const bY = baseYNaa();
+  const ut = [];
+  for (const u of liste) {
+    const cx = (u.min[0] + u.max[0]) / 2, cz = (u.min[2] + u.max[2]) / 2;
+    const halvX = (u.max[0] - u.min[0]) / 2, halvZ = (u.max[2] - u.min[2]) / 2;
+    let bi = -1, best = Infinity;
+    for (let fi = 0; fi < fasader.length; fi++) {
+      const f = fasader[fi];
+      const tt = (cx - f.px) * f.ex + (cz - f.pz) * f.ez;
+      if (tt < f.t0 - 1 || tt > f.t1 + 1) continue;          // utenfor fasadens lengde
+      const avst = Math.abs((cx - f.px) * f.nx + (cz - f.pz) * f.nz);
+      const rekkevidde = Math.abs(f.nx) * halvX + Math.abs(f.nz) * halvZ + 1.0 / (S.enhetSkala || 1);
+      if (avst > rekkevidde) continue;                        // hører til en annen vegg
+      if (avst < best) { best = avst; bi = fi; }
+    }
+    if (bi < 0) continue;
+    const f = fasader[bi];
+    const ts = [];
+    for (const px of [u.min[0], u.max[0]]) for (const pz of [u.min[2], u.max[2]])
+      ts.push((px - f.px) * f.ex + (pz - f.pz) * f.ez);
+    ut.push({ fi: bi, fraMm: tilMm(Math.min(...ts)), tilMm_: tilMm(Math.max(...ts)),
+              bunnMm: tilMm(u.min[1] - bY), toppMm: tilMm(u.max[1] - bY) });
+  }
+  return ut.length ? ut : (lagret.utspVis || []);
+}
+
+function tegnUtspMerking() {
+  if (!lagret) return;
+  const o0 = lagret.oppsett || STD_OPPSETT;
+  if (o0.visUtsp === false) return;
+  const apninger = utspPaFasader();
+  if (!apninger.length) return;
+  const o = o0;
+  const fasader = lagret.fasader || [];
+  const baseY = baseYNaa();
   const strekMat = new THREE.LineDashedMaterial({
     color: 0x11161d, dashSize: 0.12 / (S.enhetSkala || 1),
     gapSize: 0.08 / (S.enhetSkala || 1), depthTest: false });
-  for (const a of lagret.utspVis) {
+  for (const a of apninger) {
     const f = fasader[a.fi];
     if (!f) continue;
     // veggplanet, litt utenfor panelet så streken ikke drukner i det
@@ -1888,6 +1939,10 @@ function tegnPanel() {
     '<div class="prop-actions"><button id="swNyUtsp">' + ikon("boks") + ' ' + t("Marker utsparing") + '</button></div>' +
     '<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="swVisUtsp"' +
       (o.visUtsp === false ? "" : " checked") + '> ' + t("Vis utsparingsmål (stiplet kryss + kappdybde)") + '</label>' +
+    (o.visUtsp !== false && utsp.length && !(lagret && (lagret.fasader || []).length)
+      ? '<p style="color:var(--muted);font-size:11px;margin:2px 0">' +
+        t("Trykk «Generer SW + gulv/ringmur» for å få fram utsparingsmålene — veggene er laget av en eldre versjon.") + '</p>'
+      : "") +
     (!utsp.length
       ? '<p style="color:var(--muted);font-size:12px">' + t("Ingen utsparinger lagt til ennå.") + '</p>'
       : utsp.map((u, i) =>
