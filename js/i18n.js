@@ -662,6 +662,7 @@ export const ORDBOK = {
   "Veggelement justert": { en: "Wall element adjusted", pl: "Element ścienny dostosowany", lt: "Sienos elementas pareguliuotas" },
   "Justeringer nullstilt": { en: "Adjustments reset", pl: "Dostosowania wyzerowane", lt: "Reguliavimai atstatyti" },
   "Vis utsparingsmål (stiplet kryss + kappdybde)": { en: "Show opening dimensions (dashed cross + cut depth)", pl: "Pokaż wymiary otworów (przerywany krzyż + głębokość docięcia)", lt: "Rodyti praėjimo matmenis (brūkšninis kryžius + kirpimo gylis)" },
+  "Trykk «Generer SW + gulv/ringmur» for å få fram utsparingsmålene — veggene er laget av en eldre versjon.": { en: "Press \u00abGenerate SW + floor/ring wall\u00bb to bring up the opening dimensions — the walls were made by an older version.", pl: "Naciśnij \u00abGeneruj SW + posadzka/ława\u00bb, aby wyświetlić wymiary otworów — ściany utworzono starszą wersją.", lt: "Paspauskite \u00abGeneruoti SW + grindys/žiedinė siena\u00bb, kad būtų parodyti praėjimų matmenys — sienos sukurtos senesne versija." },
   "{0} flater markert": { en: "{0} faces marked", pl: "Zaznaczono ścianek: {0}", lt: "Pažymėta paviršių: {0}" },
   "topp fra flate": { en: "top from face", pl: "góra ze ścianki", lt: "viršus iš paviršiaus" },
   "topp fra søyleendene": { en: "top from column ends", pl: "góra z końców słupów", lt: "viršus iš kolonų galų" },
