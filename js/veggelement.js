@@ -127,50 +127,75 @@ export function grupperFlater(flater, maksAvstand) {
   return grupper;
 }
 
-// Utsparingen regnes ut fra FLATENE brukeren trykket på (Emils runde 3: én
-// flate per side — å bruke hele elementet dro med seg tre gale sider hver
-// gang). Hver flate er {p:{x,y,z}, n:{x,y,z}} — treffpunktet og flatenormalen:
-//  · normal mest vannrett: flata er en SIDE. Peker den i +akse, ligger
-//    åpningen på plussiden (venstre grense); peker den i −akse, høyre grense.
-//    Aksen (x eller z) er den normalen peker mest langs.
-//  · normal mest NED: undersiden av en bjelke = TOPPEN av åpningen.
-//    normal mest OPP: oversiden av en bjelke/gulv = BUNNEN.
-//  · uten bunn går åpningen til gulvet, uten topp til veggtoppen (±1e9 —
-//    genereringen klipper mot radene uansett).
-// Returnerer {min:[x,y,z], max:[x,y,z]} eller {feil: "..."} når sidene mangler.
+// Utsparingen regnes ut fra FLATENE brukeren trykket på, og HULLENE i
+// rammen fylles fra ENDENE av de markerte elementene (Emils tegning runde 6):
+//  · normal mest vannrett: flata er en SIDE (fortegnet sier venstre/høyre,
+//    aksen er den normalen peker mest langs)
+//  · normal mest ned/opp: undersiden av bjelke = TOPP, oversiden = BUNN
+//  · 2 sider (to søyler): topp og bunn = ENDENE av de markerte søylene
+//  · 3 sider (U): den manglende siden speiles fra elementene på tvers —
+//    to søyler + bjelke over gir bunn = søylenes underkant; bjelke over og
+//    under + én søyle gir den andre siden = bjelkenes ender
+//  · helt uten holdepunkt: gulvet / veggtoppen (±1e9, klippes av radene)
+// Hver flate er {p, n, boks?} der boks er elementets AABB ({min,max} xyz).
 export function utsparingFraFlater(flater, slark) {
   if (!flater || !flater.length) return { feil: "tom" };
   const SLARK = Number(slark) > 0 ? Number(slark) : 0.5;   // sideveis raushet (sceneenheter)
   const grenser = { x: [null, null], z: [null, null] };   // [min, maks] per akse
   let bunn = null, topp = null;
   const pkt = [];
+  const sideBokser = [], liggBokser = [];
   for (const f of flater) {
     if (!f || !f.p || !f.n) continue;
     pkt.push(f.p);
     if (Math.abs(f.n.y) >= Math.max(Math.abs(f.n.x), Math.abs(f.n.z))) {
       if (f.n.y < 0) topp = topp === null ? f.p.y : Math.min(topp, f.p.y);
       else bunn = bunn === null ? f.p.y : Math.max(bunn, f.p.y);
+      if (f.boks) liggBokser.push(f.boks);
       continue;
     }
+    if (f.boks) sideBokser.push(f.boks);
     const akse = Math.abs(f.n.x) >= Math.abs(f.n.z) ? "x" : "z";
     const g = grenser[akse];
     if (f.n[akse] > 0) g[0] = g[0] === null ? f.p[akse] : Math.max(g[0], f.p[akse]);
     else g[1] = g[1] === null ? f.p[akse] : Math.min(g[1], f.p[akse]);
   }
-  // åpningens akse = den som har begge sidene; har begge det, den bredeste
+  // åpningens akse: helst den som har begge sidene, ellers den som har én
   let akse = null;
   for (const a of ["x", "z"]) {
     const g = grenser[a];
     if (g[0] !== null && g[1] !== null && g[1] > g[0] &&
         (!akse || (g[1] - g[0]) > (grenser[akse][1] - grenser[akse][0]))) akse = a;
   }
+  if (!akse) for (const a of ["x", "z"]) if (grenser[a][0] !== null || grenser[a][1] !== null) akse = a;
+  // helt uten sideflater: aksen og grensene hentes fra de liggende bjelkenes
+  // felles utstrekning (bjelke over + under markert = endene deres er sidene)
+  if (!akse && liggBokser.length) {
+    for (const a of ["x", "z"]) {
+      const lo = Math.max(...liggBokser.map(b => b.min[a]));
+      const hi = Math.min(...liggBokser.map(b => b.max[a]));
+      if (hi > lo && (!akse || hi - lo > grenser[akse][1] - grenser[akse][0])) {
+        akse = a; grenser[a] = [lo, hi];
+      }
+    }
+  }
   if (!akse) return { feil: "sider" };
+  // manglende side i aksen: fyll fra de liggende elementenes ender
+  const g = grenser[akse];
+  if ((g[0] === null || g[1] === null) && liggBokser.length) {
+    if (g[0] === null) g[0] = Math.max(...liggBokser.map(b => b.min[akse]));
+    if (g[1] === null) g[1] = Math.min(...liggBokser.map(b => b.max[akse]));
+  }
+  if (g[0] === null || g[1] === null || g[1] <= g[0]) return { feil: "sider" };
+  // manglende topp/bunn: endene av de markerte søylene (Emils 2-sider-regel)
+  if (topp === null && sideBokser.length) topp = Math.max(...sideBokser.map(b => b.max.y));
+  if (bunn === null && sideBokser.length) bunn = Math.min(...sideBokser.map(b => b.min.y));
   const annen = akse === "x" ? "z" : "x";
   const av = pkt.map(p => p[annen]);
   const STOR = 1e9;
   const min = { x: 0, y: bunn === null ? -STOR : bunn, z: 0 };
   const max = { x: 0, y: topp === null ? STOR : topp, z: 0 };
-  min[akse] = grenser[akse][0]; max[akse] = grenser[akse][1];
+  min[akse] = g[0]; max[akse] = g[1];
   min[annen] = Math.min(...av) - SLARK; max[annen] = Math.max(...av) + SLARK;
   if (max.y <= min.y) return { feil: "hoyde" };
   return { min: [min.x, min.y, min.z], max: [max.x, max.y, max.z] };
@@ -317,12 +342,8 @@ function utsparingerPaFasade(fasade, baseY, liste) {
   const ut = [];
   for (const u of liste || []) {
     if (!u || !u.min || !u.max) continue;
-    const cx = (u.min[0] + u.max[0]) / 2, cz = (u.min[2] + u.max[2]) / 2;
-    // nær nok fasaden sideveis? (senteret innenfor boksens egen dybde + 1,5 m)
-    const avst = Math.abs((cx - fasade.p.x) * fasade.nx + (cz - fasade.p.z) * fasade.nz);
-    const dyp = Math.max(u.max[0] - u.min[0], u.max[2] - u.min[2]) / 2;
-    if (avst > dyp + 1.5 / (S.enhetSkala || 1)) continue;
-    // hjørnene projisert på fasadeaksen → intervall i mm
+    // hvilken vegg utsparingen hører til er alt avgjort (utspPerFasade i
+    // generer) — her projiseres den bare inn på fasadeaksen
     const ts = [];
     for (const px of [u.min[0], u.max[0]]) for (const pz of [u.min[2], u.max[2]])
       ts.push((px - fasade.p.x) * fasade.ex + (pz - fasade.p.z) * fasade.ez);
@@ -548,6 +569,27 @@ async function generer() {
     bredde: maxX - minX + 2 * ut, dybde: maxZ - minZ + 2 * ut
   };
 
+  // Hver utsparing hører til ÉN vegg — den fasaden senteret ligger nærmest
+  // (Emils runde 6: en åpning nær et hjørne skal aldri kappe naboveggen).
+  const utspPerFasade = new Map();
+  for (const u of (o.utsparinger || [])) {
+    if (!u || !u.min) continue;
+    const cx = (u.min[0] + u.max[0]) / 2, cz = (u.min[2] + u.max[2]) / 2;
+    let besteFi = -1, besteAvst = Infinity;
+    for (let fi = 0; fi < fasader.length; fi++) {
+      const f = fasader[fi];
+      const tt = (cx - f.p.x) * f.ex + (cz - f.p.z) * f.ez;
+      const len = f.soyler[f.soyler.length - 1].t;
+      if (tt < f.soyler[0].t - 1 || tt > len + 1) continue;   // utenfor fasadens lengde
+      const avst = Math.abs((cx - f.p.x) * f.nx + (cz - f.p.z) * f.nz);
+      if (avst < besteAvst) { besteAvst = avst; besteFi = fi; }
+    }
+    if (besteFi >= 0) {
+      if (!utspPerFasade.has(besteFi)) utspPerFasade.set(besteFi, []);
+      utspPerFasade.get(besteFi).push(u);
+    }
+  }
+
   // Ringmur og vegger per fasade
   const ringmur = [];
   const vegger = [];
@@ -582,18 +624,10 @@ async function generer() {
     const toppS = f.soyler.filter(k => k.s.maxY >= f.toppY - toppTol);
     const spennSoyler = toppS.length >= 2 ? toppS : f.soyler;
     const t0 = spennSoyler[0].t, t1 = spennSoyler[spennSoyler.length - 1].t;
-    if (o.ringmur) {
-      const p = midt((t0 + t1) / 2 + tS / 2, 0);
-      ringmur.push({ x: p.x, z: p.z,
-        y: okBetong + (ringH - tilScene(o.betongMm + o.isoMm)) / 2,
-        lengde: (t1 - t0) + 2 * off,   // samme hjørneregel som veggene
-        hoyde: ringH + tilScene(o.betongMm + o.isoMm),   // fra gulvets underkant og opp
-        tykkelse: tS, rot });
-    }
     const toppMm = tilMm(f.toppY - baseY);
     const { rader, kappMm } = radMiks(toppMm);
     const alleRader = rader.concat(kappMm ? [kappMm] : []);
-    const apninger = utsparingerPaFasade(f, baseY, o.utsparinger);
+    const apninger = utsparingerPaFasade(f, baseY, utspPerFasade.get(fi) || []);
     // HJØRNENE gjøres som på Moelv-tegningen: hver fasade LØPER FORBI hjørnet
     // i sin sluttende (dekker naboveggens endeflate, helt ut til ytterhjørnet),
     // og starter FLUKT mot innsiden av forrige fasades vegg. Rundt bygget gir
@@ -601,6 +635,22 @@ async function generer() {
     const offMm = tilMm(off);
     const hjFraMm = tilMm(t0) - offMm + o.tykkelseMm / 2;   // start: mot naboens innside
     const hjTilMm = tilMm(t1) + offMm + o.tykkelseMm / 2;   // slutt: forbi, til ytterhjørnet
+    if (o.ringmur) {
+      // Ringmuren kappes der en utsparing går til bunns (porter) — Emils
+      // runde 6. bunnMm er relativt SW-basen (topp ringmur), så «når ned til
+      // ringmuren» = bunn under −(ringmurhøyde − 10 cm). Vinduer rører den ikke.
+      const rKutt = apninger
+        .filter(a => a.bunnMm <= -tilMm(ringH) + 100)
+        .map(a => [a.fraMm, a.tilMm_]);
+      for (const [rFra, rTil] of delOppMedUtsparinger(hjFraMm, hjTilMm, rKutt)) {
+        const pR = midt(tilScene((rFra + rTil) / 2), 0);
+        ringmur.push({ x: pR.x, z: pR.z,
+          y: okBetong + (ringH - tilScene(o.betongMm + o.isoMm)) / 2,
+          lengde: tilScene(rTil - rFra),
+          hoyde: ringH + tilScene(o.betongMm + o.isoMm),   // fra gulvets underkant og opp
+          tykkelse: tS, rot });
+      }
+    }
     let bunnMm = 0;
     for (const radH of alleRader) {
       const tilpassetRad = kappMm > 0 && radH === kappMm && radH !== 1000 && radH !== 1100;
@@ -865,8 +915,14 @@ window.addEventListener("pointerup", (e) => {
   // dette som ga «trenger to motstående sider» med 17 flater valgt
   // (Emils skjermbilde 01.09 18:14).
   if (n.dot(raycaster.ray.direction) > 0) n.multiplyScalar(-1);
+  // elementets boks følger med: endene av markerte søyler/bjelker fyller ut
+  // sidene som ikke er markert (Emils regel runde 6)
+  const bid = hitID(hit);
+  const bb = bid != null ? allElementBoxes().get(bid) : null;
   utspMark.flater.push({ p: { x: hit.point.x, y: hit.point.y, z: hit.point.z },
-                         n: { x: n.x, y: n.y, z: n.z } });
+                         n: { x: n.x, y: n.y, z: n.z },
+                         boks: bb ? { min: { x: bb.min.x, y: bb.min.y, z: bb.min.z },
+                                      max: { x: bb.max.x, y: bb.max.y, z: bb.max.z } } : undefined });
   // hele SIDEN av elementet farges blå — som når sammenligningen farger
   // elementer, bare for én flate (Emils runde 4). Flaten finnes fra
   // elementets boks: kvadranten som normalen peker ut av.
@@ -937,7 +993,7 @@ function tegnPanel() {
         '<div class="qty-row"><div class="n" style="font-size:12px">' + esc(u.navn || ("#" + (i + 1))) +
         ' <span style="color:var(--muted)">' +
         Math.round(tilMm(Math.max(u.max[0] - u.min[0], u.max[2] - u.min[2]))) + "×" +
-        Math.round(tilMm(u.max[1] - u.min[1])) + " mm</span></div>" +
+        (u.max[1] - u.min[1] > 1e8 ? t("full høyde") : Math.round(tilMm(u.max[1] - u.min[1])) + " mm") + "</span></div>" +
         '<div class="c"><button data-sw-slett-utsp="' + i + '" title="' + t("Slett") + '" style="padding:3px 8px">' + ikon("slett") + '</button></div></div>').join("")) +
     '<h4 style="margin:10px 0 4px">' + t("Til lista") + '</h4>' +
     felt("swProsjekt", "Prosjekt", o.prosjekt, "text") +
