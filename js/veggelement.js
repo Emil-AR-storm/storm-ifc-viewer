@@ -35,11 +35,20 @@ import { metaFor, sikreMeta } from "./ifcrpc.js";
 import { MALTYPER, lagreMateriellLokalt, mmTilScene, ribbonPosisjoner, tegnMateriell, trpProfil, vaskMateriell } from "./materiell-vis.js";
 
 // ---------- Konstanter (Emils regler) ----------
-export const SW_KLARING_MM = 25;      // fra søylesenter til elementende
+// SKJØTEN ER 20 mm (Moelv/Lørenskog, bekreftet av Emil 02.09): hvert element
+// slutter 10 mm fra søylesenter, så to naboelementer får 20 mm mellom seg.
+// Moelv fasade 1: «3800 · 20 · 4290 · 20 · 5980 · 20 …»; Lørenskog akse
+// D–C = 4600 c/c → element 4580. Var 25 (=50 mm skjøt) fram til runde 11.
+export const SW_KLARING_MM = 10;      // fra søylesenter til elementende
 export const SW_HOYDER = [1100, 1000]; // radhøydene som finnes, mm
 export const SW_MIN_BIT_MM = 100;     // kortere biter enn dette droppes
 export const SW_TOL_MM = 5;           // to lengder innenfor dette = samme SW-nummer
-export const SW_KAPP_UNDER_MM = 2000; // kortere elementer er KAPP → SW-XX (Emils regel)
+// LENGDE GJØR IKKE ET ELEMENT TIL KAPP. Lørenskog SW-02 er 1836,6 mm og har
+// ekte nummer; Moelv SW-XX er 2560 mm. Et element er kapp når det FAKTISK er
+// skåret — av en utsparing, av en tilpasningsrad, eller mot eksisterende bygg.
+// Grensa finnes bare som valgfri innstilling (o.kappUnderMm, standard av).
+export const SW_KAPP_UNDER_MM = 2000;
+export const SW_MIN_FELT_MM = 1000;  // to skjøter nærmere enn dette blir ÉN
 
 // ═══════════════════ RENE REGNEFUNKSJONER (testes i Node) ═══════════════════
 
@@ -66,9 +75,69 @@ export function radMiks(hoydeMm) {
   return { rader, kappMm };
 }
 
-// Elementlengden mellom to søyler: senteravstand minus 25 mm i hver ende.
-export function spennLengdeMm(senteravstandMm) {
-  return Math.round((Number(senteravstandMm) || 0) - 2 * SW_KLARING_MM);
+// Elementlengden mellom to søyler: senteravstand minus klaringen i hver ende
+// (10 + 10 mm = 20 mm skjøt).
+export function spennLengdeMm(senteravstandMm, klaringMm) {
+  const k = Number(klaringMm) >= 0 ? Number(klaringMm) : SW_KLARING_MM;
+  return Math.round((Number(senteravstandMm) || 0) - 2 * k);
+}
+
+// «1100, 1100, 1100, 1100, 1000, 1000» → [1100,1100,1100,1100,1000,1000].
+// Tåler mellomrom, semikolon, linjeskift og x/× mellom tallene.
+export function parseRadHoyder(tekst) {
+  return String(tekst == null ? "" : tekst)
+    .split(/[^0-9]+/)
+    .map(n => Math.round(Number(n)))
+    .filter(n => isFinite(n) && n >= 100 && n <= 4000);
+}
+
+// RADSTABELEN NEDENFRA OG OPP (Emils valg 02.09). `oppgitt` er stabelen han
+// skriver i panelet — f.eks. 6400 mm vegg som «1100,1100,1100,1100,1000,1000»,
+// altså SW-05-trikset fra Moelv for å slippe småkapp. Går stabelen tom før
+// veggen er full, GJENTAS den siste høyden (Lørenskog: 1300, 1100, 1000,
+// 1000 …). Er feltet tomt, brukes automatikken i radMiks.
+// Resten legges som TILPASNINGSRAD nederst eller øverst — referansene har den
+// nederst; Emil kan velge.
+// Returnerer { rader, kappMm, kappIndex } der rader er ORDNET nedenfra og opp.
+export function radStabel(hoydeMm, oppgitt, kappNederst) {
+  const H = Math.max(0, Math.round(Number(hoydeMm) || 0));
+  const liste = parseRadHoyder(oppgitt);
+  let rader = [], kappMm = 0;
+  if (!liste.length) {
+    const m = radMiks(H);
+    rader = m.rader.slice();
+    kappMm = m.kappMm;
+  } else {
+    let sum = 0;
+    for (let i = 0; rader.length < 400; i++) {
+      const h = liste[Math.min(i, liste.length - 1)];
+      if (!(h > 0) || sum + h > H + 20) break;
+      rader.push(h); sum += h;
+    }
+    const rest = H - sum;
+    kappMm = rest >= 20 ? Math.round(rest) : 0;
+  }
+  if (!kappMm) return { rader, kappMm: 0, kappIndex: -1 };
+  if (kappNederst) return { rader: [kappMm].concat(rader), kappMm, kappIndex: 0 };
+  return { rader: rader.concat([kappMm]), kappMm, kappIndex: rader.length };
+}
+
+// TETTE SKJØTER SLÅS SAMMEN. To søyleforlengere som står nærmere hverandre enn
+// `minFeltMm` skal ikke gi to skjøter og en 660 mm strimmel mellom seg —
+// minste feltelement i referansene er 1836,6 mm (Lørenskog SW-02).
+// `ts` er skjøteposisjonene i mm langs fasaden. Første og siste beholdes
+// alltid: de er veggens ender.
+export function samleTetteSoyler(ts, minFeltMm) {
+  const liste = (ts || []).slice().sort((a, b) => a - b);
+  const min = Number(minFeltMm) > 0 ? Number(minFeltMm) : 0;
+  if (liste.length <= 2 || !min) return liste;
+  const ut = [liste[0]];
+  for (let i = 1; i < liste.length - 1; i++)
+    if (liste[i] - ut[ut.length - 1] >= min) ut.push(liste[i]);
+  const siste = liste[liste.length - 1];
+  while (ut.length > 1 && siste - ut[ut.length - 1] < min) ut.pop();
+  ut.push(siste);
+  return ut;
 }
 
 // Deler intervallet [fra, til] (mm langs fasaden) opp rundt utsparinger.
@@ -252,22 +321,28 @@ export function utsparingFraFlater(flater, slark) {
            kilde, antFlater: pkt.length };
 }
 
-// SW-nummereringen: hver unik lengde×høyde (innenfor SW_TOL_MM) får et nummer.
-// Sortert på lengde, så høyde (1100 før 1000) — deterministisk, som listene.
-// `elementer`: [{lengdeMm, hoydeMm, tilpasset}]. Returnerer Map "L|H" → "SW-01".
+// SW-NUMRENE FØLGER VEGGEN, IKKE ET SORTERT REGISTER. Lørenskog fasade F→A:
+// felt F–E = SW-05/06, E–D = SW-07(1300)/08(1100)/09(1000), D–C = SW-10/11/12 …
+// Numrene går altså fasade for fasade, felt for felt langs fasaden, og radene
+// NEDENFRA OG OPP — første gang en lengde×høyde dukker opp får den neste
+// nummer. `elementer` må derfor komme i genereringsrekkefølge.
 export function swNummerering(elementer) {
   const nokkel = (e) => Math.round(e.lengdeMm / SW_TOL_MM) * SW_TOL_MM + "|" + e.hoydeMm;
-  const unike = new Map();
-  for (const e of elementer) {
-    if (e.tilpasset) continue;
-    const k = nokkel(e);
-    if (!unike.has(k)) unike.set(k, { lengdeMm: e.lengdeMm, hoydeMm: e.hoydeMm });
-  }
-  const sortert = [...unike.entries()].sort((a, b) =>
-    a[1].lengdeMm - b[1].lengdeMm || b[1].hoydeMm - a[1].hoydeMm);
   const ut = new Map();
-  sortert.forEach(([k], i) => ut.set(k, "SW-" + String(i + 1).padStart(2, "0")));
+  for (const e of elementer || []) {
+    if (!e || e.tilpasset) continue;
+    const k = nokkel(e);
+    if (!ut.has(k)) ut.set(k, "SW-" + String(ut.size + 1).padStart(2, "0"));
+  }
   return { numre: ut, nokkel };
+}
+
+// Navnet på en KAPPBIT. Moelv skriver SW-XX; Lørenskog skriver forelderens
+// nummer med stjerne (SW-15*) — «samme element, men skåret».
+// `forelder` er nummeret hele feltelementet i samme rad har, om det finnes.
+export function kappNavn(forelder, stil) {
+  if (stil === "stjerne" && forelder) return forelder + "*";
+  return "SW-XX";
 }
 
 // Lista i Moelv-formatet, som rader til toCsv. Tilpassede biter (SW-XX) samles
@@ -456,6 +531,14 @@ function skrivLagret() {
 const STD_OPPSETT = {
   betongMm: 200, isoMm: 300, utstikkMm: 200,
   ringmur: false, ringHoydeMm: 500, tykkelseMm: 120,
+  // Radoppsettet (runde 11): tom streng = automatikk. Skriver Emil
+  // «1100,1100,1100,1100,1000,1000» bygges veggen slik NEDENFRA OG OPP, og
+  // siste høyde gjentas hvis stabelen går tom før veggen er full.
+  radHoyder: "", kappNederst: true,
+  klaringMm: SW_KLARING_MM,     // 10 mm hver side = 20 mm skjøt
+  minFeltMm: SW_MIN_FELT_MM,    // skjøter nærmere enn dette slås sammen
+  kappUnderMm: 0,               // 0 = lengde alene gjør ikke noe til kapp
+  kappStil: "xx",               // "xx" = SW-XX (Moelv), "stjerne" = SW-15* (Lørenskog)
   farge: "#dfe5ec", isolasjon: "PIR", utvFarge: "RAL 1015", innFarge: "9010",
   prosjekt: "", oppdragsnr: "", sted: "", sign: "",
   utsparinger: []   // [{navn, min:[x,y,z], max:[x,y,z]}] fra valgte elementer
@@ -463,7 +546,10 @@ const STD_OPPSETT = {
 
 function oppsett() {
   if (!lagret) lagret = lesLagret() || { oppsett: { ...STD_OPPSETT }, vegger: [], gulv: null, ringmur: null, materiellIder: [] };
-  if (!lagret.oppsett) lagret.oppsett = { ...STD_OPPSETT };
+  // Et oppsett lagret av en ELDRE versjon mangler de nye nøklene (radHoyder,
+  // klaringMm, minFeltMm …). Uten denne fletten blir de undefined, og
+  // genereringen regner med NaN.
+  lagret.oppsett = { ...STD_OPPSETT, ...(lagret.oppsett || {}) };
   return lagret.oppsett;
 }
 
@@ -706,11 +792,13 @@ async function generer() {
     // portene gir skjøt på riktig plass.
     const toppTol = 0.8 / (S.enhetSkala || 1);
     const toppS = f.soyler.filter(k => k.s.maxY >= f.toppY - toppTol);
-    const spennSoyler = toppS.length >= 2 ? toppS : f.soyler;
-    const t0 = spennSoyler[0].t, t1 = spennSoyler[spennSoyler.length - 1].t;
+    const spennS = toppS.length >= 2 ? toppS : f.soyler;
+    // Tette forlengere (hjørne- og avstivningssøyler i par) gir ÉN skjøt, ikke
+    // to skjøter og en 660 mm strimmel mellom seg (Emil 02.09).
+    const skjot = samleTetteSoyler(spennS.map(k => tilMm(k.t)), o.minFeltMm);
+    const t0 = tilScene(skjot[0]), t1 = tilScene(skjot[skjot.length - 1]);
     const toppMm = tilMm(f.toppY - baseY);
-    const { rader, kappMm } = radMiks(toppMm);
-    const alleRader = rader.concat(kappMm ? [kappMm] : []);
+    const { rader: alleRader, kappIndex } = radStabel(toppMm, o.radHoyder, o.kappNederst);
     const apninger = utsparingerPaFasade(f, baseY, utspPerFasade.get(fi) || []);
     // HJØRNENE gjøres som på Moelv-tegningen: hver fasade LØPER FORBI hjørnet
     // i sin sluttende (dekker naboveggens endeflate, helt ut til ytterhjørnet),
@@ -720,34 +808,47 @@ async function generer() {
     const hjFraMm = tilMm(t0) - offMm + o.tykkelseMm / 2;   // start: mot naboens innside
     const hjTilMm = tilMm(t1) + offMm + o.tykkelseMm / 2;   // slutt: forbi, til ytterhjørnet
     if (o.ringmur) {
-      // Ringmuren kappes der en utsparing går til bunns (porter) — Emils
-      // runde 6. bunnMm er relativt SW-basen (topp ringmur), så «når ned til
-      // ringmuren» = bunn under −(ringmurhøyde − 10 cm). Vinduer rører den ikke.
-      const rKutt = apninger
-        .filter(a => a.bunnMm <= -tilMm(ringH) + 100)
-        .map(a => [a.fraMm, a.tilMm_]);
-      for (const [rFra, rTil] of delOppMedUtsparinger(hjFraMm, hjTilMm, rKutt)) {
-        const pR = midt(tilScene((rFra + rTil) / 2), 0);
+      // RINGMUREN BEHANDLES SOM EN RAD (Emil 02.09): den kappes rundt en
+      // utsparing på nøyaktig samme måte som veggelementene, og får en
+      // fyllbit under åpningen når åpningen ikke går helt ned til gulvets
+      // underkant. Før sto ringmuren igjen i døråpningen.
+      // Båndet i mm regnet fra SW-basen (topp ringmur = 0):
+      const rmTopp = 0;
+      const rmBunn = -(tilMm(ringH) + o.betongMm + o.isoMm);
+      const rmBit = (bunnMm, hoydeMm, fraMm, tilMm2) => {
+        const pR = midt(tilScene((fraMm + tilMm2) / 2), 0);
         ringmur.push({ x: pR.x, z: pR.z,
-          y: okBetong + (ringH - tilScene(o.betongMm + o.isoMm)) / 2,
-          lengde: tilScene(rTil - rFra),
-          hoyde: ringH + tilScene(o.betongMm + o.isoMm),   // fra gulvets underkant og opp
+          y: baseY + tilScene(bunnMm + hoydeMm / 2),
+          lengde: tilScene(tilMm2 - fraMm),
+          hoyde: tilScene(hoydeMm),
           tykkelse: tS, rot });
-      }
+      };
+      const rmApn = apninger
+        .filter(a => Math.min(a.toppMm, rmTopp) - Math.max(a.bunnMm, rmBunn) > 10);
+      const rKutt = rmApn.map(a => [a.fraMm, a.tilMm_]);
+      for (const [rFra, rTil] of delOppMedUtsparinger(hjFraMm, hjTilMm, rKutt))
+        rmBit(rmBunn, rmTopp - rmBunn, rFra, rTil);
+      for (const b of utspFyllBiter(rmBunn, rmTopp, hjFraMm, hjTilMm, rmApn, SW_MIN_BIT_MM))
+        rmBit(b.bunnMm, b.hoydeMm, b.fraMm, b.tilMm_);
     }
-    let bunnMm = 0;
-    for (const radH of alleRader) {
-      const tilpassetRad = kappMm > 0 && radH === kappMm && radH !== 1000 && radH !== 1100;
-      const rBunn = bunnMm, rTopp = bunnMm + radH;
-      // åpningene som faktisk kutter denne raden (mer enn 1 cm overlapp)
-      const radApninger = apninger
-        .filter(a => Math.min(a.toppMm, rTopp) - Math.max(a.bunnMm, rBunn) > 10);
-      const kutt = radApninger.map(a => [a.fraMm, a.tilMm_]);
-      for (let i = 0; i < spennSoyler.length - 1; i++) {
-        const sFra = i === 0 ? hjFraMm : tilMm(spennSoyler[i].t) + SW_KLARING_MM;
-        const sTil = i === spennSoyler.length - 2 ? hjTilMm : tilMm(spennSoyler[i + 1].t) - SW_KLARING_MM;
-        const fullMm = sTil - sFra;
-        if (fullMm < SW_MIN_BIT_MM) continue;
+    // RAMMEN RUNDT LØKKA: FELT UTENPÅ, RADER INNENFOR (Emil 02.09). Da kommer
+    // elementene i samme rekkefølge som numrene på Lørenskog-tegningene —
+    // felt for felt langs fasaden, radene nedenfra og opp — og swNummerering
+    // trenger bare å dele ut neste nummer ved første gangs bruk.
+    const radBunn = [];        // bunnMm per rad, nedenfra
+    { let b = 0; for (const h of alleRader) { radBunn.push(b); b += h; } }
+    const kl = o.klaringMm;
+    for (let i = 0; i < skjot.length - 1; i++) {
+      const sFra = i === 0 ? hjFraMm : skjot[i] + kl;
+      const sTil = i === skjot.length - 2 ? hjTilMm : skjot[i + 1] - kl;
+      const fullMm = sTil - sFra;
+      if (fullMm < SW_MIN_BIT_MM) continue;
+      for (let r = 0; r < alleRader.length; r++) {
+        const radH = alleRader[r], rBunn = radBunn[r], rTopp = rBunn + radH;
+        const tilpassetRad = r === kappIndex;
+        const radApninger = apninger
+          .filter(a => Math.min(a.toppMm, rTopp) - Math.max(a.bunnMm, rBunn) > 10);
+        const kutt = radApninger.map(a => [a.fraMm, a.tilMm_]);
         for (const [bFra, bTil] of delOppMedUtsparinger(sFra, sTil, kutt)) {
           const lengdeMm = bTil - bFra;
           const tMid = tilScene((bFra + bTil) / 2);
@@ -755,31 +856,39 @@ async function generer() {
           vegger.push({
             x: p.x, y: p.y, z: p.z, rot, fi, tMid, nx: f.nx, nz: f.nz,
             lengdeMm: Math.round(lengdeMm), hoydeMm: radH, tMm: o.tykkelseMm,
-            // kapp: rad-kapp, bit kappet av utsparing, ELLER kortere enn 2 m —
-            // alt under 2000 mm er kapp og heter SW-XX (Emils regel runde 3)
-            tilpasset: tilpassetRad || lengdeMm < fullMm - SW_TOL_MM || lengdeMm < SW_KAPP_UNDER_MM
+            fullMm: Math.round(fullMm),
+            // Kapp = FAKTISK skåret: tilpasningsraden, eller en bit som er
+            // kortere enn feltet fordi en utsparing tok resten. Lengde alene
+            // gjør det ikke — o.kappUnderMm er av som standard (runde 11).
+            tilpasset: tilpassetRad || lengdeMm < fullMm - SW_TOL_MM ||
+                       (o.kappUnderMm > 0 && lengdeMm < o.kappUnderMm)
           });
         }
         // 🚪 RESTEN AV RADEN I ÅPNINGENS BREDDE: biten over døra (og under et
-        // vindu). Alltid kapp — høyden er ikke en radhøyde — så den heter SW-XX.
+        // vindu). Alltid kapp — høyden er ikke en radhøyde.
         for (const b of utspFyllBiter(rBunn, rTopp, sFra, sTil, radApninger, SW_MIN_BIT_MM)) {
           const tMid = tilScene((b.fraMm + b.tilMm_) / 2);
           const p = midt(tMid, baseY + tilScene(b.bunnMm + b.hoydeMm / 2));
           vegger.push({
             x: p.x, y: p.y, z: p.z, rot, fi, tMid, nx: f.nx, nz: f.nz,
             lengdeMm: Math.round(b.tilMm_ - b.fraMm), hoydeMm: b.hoydeMm,
-            tMm: o.tykkelseMm, tilpasset: true
+            tMm: o.tykkelseMm, fullMm: Math.round(fullMm), tilpasset: true
           });
         }
       }
-      bunnMm = rTopp;
     }
   }
   if (!vegger.length) { alert(t("Ingen veggelementer ble generert — sjekk at modellen har søyler med høyde.")); return; }
 
   // SW-numrene
   const { numre, nokkel } = swNummerering(vegger);
-  for (const v of vegger) v.sw = v.tilpasset ? "SW-XX" : (numre.get(nokkel(v)) || "SW-XX");
+  for (const v of vegger) {
+    if (!v.tilpasset) { v.sw = numre.get(nokkel(v)) || "SW-XX"; continue; }
+    // Kappbiten arver forelderens nummer med stjerne når Emil har valgt
+    // Lørenskog-stilen: hele feltelementet i samme rad er forelderen.
+    const forelder = numre.get(nokkel({ lengdeMm: v.fullMm, hoydeMm: v.hoydeMm }));
+    v.sw = kappNavn(forelder, o.kappStil);
+  }
 
   // 📦 Leveransestablene i Materiell: én stabel per SW-nummer (Emils valg:
   // begge deler — vegg på plass OG stabler). Forrige generering ryddes først.
@@ -891,6 +1000,12 @@ function lesOppsettFraPanel() {
   o.ringmur = !!($("swRingmur") || {}).checked;
   o.ringHoydeMm = num("swRingH", o.ringHoydeMm);
   o.tykkelseMm = Math.max(30, Math.min(500, num("swTykk", o.tykkelseMm)));
+  o.radHoyder = (($("swRadH") || {}).value || "").trim();
+  o.kappNederst = !!($("swKappNed") || {}).checked;
+  o.klaringMm = Math.max(0, Math.min(100, num("swKlaring", o.klaringMm)));
+  o.minFeltMm = Math.max(0, Math.min(6000, num("swMinFelt", o.minFeltMm)));
+  o.kappUnderMm = Math.max(0, Math.min(6000, num("swKappUnder", o.kappUnderMm)));
+  o.kappStil = (($("swKappStil") || {}).value === "stjerne") ? "stjerne" : "xx";
   o.farge = ($("swFarge") || {}).value || o.farge;
   o.isolasjon = txt("swIsoType") || o.isolasjon;
   o.utvFarge = txt("swUtvF");
@@ -1093,6 +1208,21 @@ function tegnPanel() {
     felt("swRingH", "Høyde over gulv (mm)", o.ringHoydeMm) +
     '<h4 style="margin:10px 0 4px">' + t("Veggelementer") + '</h4>' +
     felt("swTykk", "Tykkelse (mm) — samme som ringmuren", o.tykkelseMm) +
+    felt("swKlaring", "Klaring fra søylesenter (mm) — 10 gir 20 mm skjøt", o.klaringMm) +
+    '<label>' + t("Radhøyder nedenfra (mm) — tom = automatisk") +
+      '<input type="text" id="swRadH" maxlength="200" value="' + esc(o.radHoyder || "") + '"></label>' +
+    '<p style="color:var(--muted);font-size:11px;margin:2px 0 6px">' +
+      t("Skriv stabelen nedenfra og opp, f.eks. «1100, 1100, 1100, 1100, 1000, 1000». Siste høyde gjentas hvis veggen er høyere. Sum: {0} mm.",
+        parseRadHoyder(o.radHoyder).reduce((a, b) => a + b, 0)) + '</p>' +
+    '<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="swKappNed"' +
+      (o.kappNederst ? " checked" : "") + '> ' + t("Tilpasningsraden nederst (som Moelv/Lørenskog)") + '</label>' +
+    felt("swMinFelt", "Minste felt (mm) — tettere skjøter slås sammen", o.minFeltMm) +
+    felt("swKappUnder", "Alt kortere enn (mm) er kapp — 0 = av", o.kappUnderMm) +
+    '<label>' + t("Navn på kappbiter") +
+      '<select id="swKappStil">' +
+      '<option value="xx"' + (o.kappStil !== "stjerne" ? " selected" : "") + '>SW-XX (Moelv)</option>' +
+      '<option value="stjerne"' + (o.kappStil === "stjerne" ? " selected" : "") + '>SW-15* (Lørenskog)</option>' +
+      '</select></label>' +
     '<label>' + t("Farge") + '<input type="color" id="swFarge" value="' + esc(o.farge) + '"></label>' +
     felt("swIsoType", "Isolasjon (til lista)", o.isolasjon, "text") +
     felt("swUtvF", "Utvendig farge (til lista)", o.utvFarge, "text") +
