@@ -225,6 +225,28 @@ export function rektMinusHull(bredde, hoyde, hull, minMm) {
   return biter.filter(b => b.x1 - b.x0 >= min && b.y1 - b.y0 >= min);
 }
 
+// UTSNITT AV MIKROPROFILEN. Bølgen på et sandwichpanel skal være LIK over
+// hele elementet (Emil 02.09) — også når elementet tegnes som flere biter
+// rundt et hakk. Derfor lages profilen ÉN gang for elementets fulle høyde,
+// og hver bit får utsnittet mellom `fra` og `til` — samme fase som naboen.
+// Genererte vi profilen per bit i stedet, startet bølgen på nytt i hver bit
+// og hakket så ut som et forskjøvet element.
+// `profil`: [[x, y]] med x voksende fra 0. Svaret har x forskjøvet til 0.
+export function profilUtsnitt(profil, fra, til) {
+  const p = profil || [];
+  if (p.length < 2 || !(til > fra)) return [];
+  const y = (a, b, x) => a[1] + (b[1] - a[1]) * ((x - a[0]) / ((b[0] - a[0]) || 1));
+  const ut = [];
+  for (let i = 0; i < p.length - 1; i++) {
+    const a = p[i], b = p[i + 1];
+    if (b[0] <= fra || a[0] >= til) continue;
+    const ax = Math.max(a[0], fra), bx = Math.min(b[0], til);
+    if (!ut.length) ut.push([ax - fra, ax === a[0] ? a[1] : y(a, b, ax)]);
+    ut.push([bx - fra, bx === b[0] ? b[1] : y(a, b, bx)]);
+  }
+  return ut;
+}
+
 // Konveks hull av søylesentrene (monotone chain). Punkter: {x, z}.
 // Returnerer hjørnene MOT KLOKKA, uten duplikater.
 export function konveksHull(punkter) {
@@ -653,15 +675,18 @@ function tegnAlt() {
   // Ett panelstykke: isolasjonskjerne + ytter- og innerhud med mikroprofil.
   // Bygges LIGGENDE (samme akser som materiell) og reises 90° opp, så x er
   // lengden, y høyden og z tykkelsen i elementets egen ramme.
-  const byggPanel = (lengdeMm, hoydeMm, tMm) => {
+  const byggPanel = (lengdeMm, hoydeMm, tMm, profilFull, fra, til) => {
     const inner = new THREE.Group();
     const kjerne = new THREE.Mesh(new THREE.BoxGeometry(
       tilScene(Math.max(lengdeMm - 4, 10)), tilScene(Math.max(tMm - 8, 10)),
       tilScene(Math.max(hoydeMm - 4, 10))), kjerneMat);
     kjerne.position.y = mmTilScene(tMm / 2);
     inner.add(kjerne);
-    const profS = trpProfil(hoydeMm, mal.deling, mal.profilHoyde)
+    // Bølgen klippes ut av ELEMENTETS profil, ikke laget på nytt for biten —
+    // da står ribbene i flukt tvers over hakket.
+    const profS = profilUtsnitt(profilFull, fra, til)
       .map(([x, y]) => [mmTilScene(x), mmTilScene(y)]);
+    if (profS.length < 2) return inner;
     const lag = () => {
       const pos = ribbonPosisjoner(profS, mmTilScene(lengdeMm));
       const geo = new THREE.BufferGeometry();
@@ -687,8 +712,9 @@ function tegnAlt() {
     const deler = v.hull && v.hull.length
       ? rektMinusHull(v.lengdeMm, v.hoydeMm, v.hull, 20)
       : [{ x0: 0, x1: v.lengdeMm, y0: 0, y1: v.hoydeMm }];
+    const profilFull = trpProfil(v.hoydeMm, mal.deling, mal.profilHoyde);
     for (const d of deler) {
-      const g = byggPanel(d.x1 - d.x0, d.y1 - d.y0, v.tMm);
+      const g = byggPanel(d.x1 - d.x0, d.y1 - d.y0, v.tMm, profilFull, d.y0, d.y1);
       g.position.x += tilScene((d.x0 + d.x1) / 2 - v.lengdeMm / 2);
       g.position.y += tilScene((d.y0 + d.y1) / 2 - v.hoydeMm / 2);
       el.add(g);
