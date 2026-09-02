@@ -629,6 +629,9 @@ scene.add(swGroup);
 function lagringsNokkel() { return "storm-ifc-sw::" + S.fileName; }
 
 let lagret = null;   // { oppsett, vegger, gulv, ringmur, materiellIder }
+// Justeringsmodus. Deklareres her fordi ryddTegning() må kunne se den for å
+// la markeringsgruppa stå (se kommentaren der).
+let just = null;     // { valgt: Set<id>, drar: {…} | null, markorer: Group }
 
 function lesLagret() {
   try { return JSON.parse(localStorage.getItem(lagringsNokkel()) || "null"); }
@@ -671,6 +674,11 @@ function oppsett() {
 // ---------- Tegning ----------
 function ryddTegning() {
   swGroup.children.slice().forEach(o => {
+    // Markeringsgruppa i justeringsmodus eies av justeringen, ikke av
+    // tegningen. Uten dette unntaket rev tegnAlt() den ut av swGroup ved
+    // første drag, og den blå markeringen ble borte for godt etter et
+    // sekund (Emils funn 02.09).
+    if (just && o === just.markorer) return;
     o.traverse(m => {
       if (m.geometry) m.geometry.dispose();
       if (m.material) m.material.dispose();
@@ -922,7 +930,7 @@ function tekstDekal(tekst, hoydeMm, maksBredde) {
 // Kalles av afterLoad (ifc.js) når en modell er åpnet, og av clearModel når
 // den lukkes — samme kroker som materiell og grupper bruker.
 S.lastSW = () => { lagret = lesLagret(); loesAlleJusteringer(); tegnAlt(); };
-S.ryddSW = () => { lagret = null; ryddTegning(); };
+S.ryddSW = () => { if (just) avsluttJuster(); lagret = null; ryddTegning(); };
 
 // ---------- Selve genereringen ----------
 async function generer() {
@@ -1188,12 +1196,16 @@ function migrerVegger() {
 // like nyttige å låse mot, og de finnes også for eldre, migrerte vegger som
 // ikke har søylepunktene lagret.
 function snappPunkter(v) {
-  const ut = (v.snapp || []).slice();
+  const ut = (v.snapp || []).slice();     // søylepunktene: 10 mm fra senter + søylekant
   for (const w of (lagret && lagret.vegger) || []) {
     if (w.fi !== v.fi || w.id === v.id) continue;
+    // ENDENE AV DE ANDRE VEGGELEMENTENE (Emil 02.09) — både der de STÅR nå
+    // og der de opprinnelig ble generert. Da låser en kant seg like godt mot
+    // et element du alt har justert som mot den opprinnelige skjøten.
+    if (!w.skjult && w.fraMm !== undefined) ut.push(w.fraMm, w.tilMm);
     ut.push(w.basFraMm, w.basTilMm);
   }
-  return ut.filter(n => isFinite(n));
+  return [...new Set(ut.filter(n => isFinite(n)))];
 }
 
 function loesAlleJusteringer() {
@@ -1372,8 +1384,6 @@ function lesOppsettFraPanel() {
 // søylesenter eller til søylekanten. Drar du inn i naboen blir den kortere, og
 // under 100 mm forsvinner den — men kommer tilbake når du drar tilbake, fordi
 // ingenting slettes: alt er avledet av basFraMm/basTilMm + dFra/dTil.
-let just = null;   // { valgt: Set<id>, drar: {…} | null, markorer: Group }
-
 function veggMedId(id) { return (lagret && lagret.vegger || []).find(v => v.id === id); }
 
 // Elementgruppa under pekeren, blant de genererte veggene
