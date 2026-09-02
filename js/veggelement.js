@@ -87,6 +87,30 @@ export function delOppMedUtsparinger(fra, til, apninger) {
   return biter.filter(([b0, b1]) => b1 - b0 >= SW_MIN_BIT_MM);
 }
 
+// Fyller det som er IGJEN av en rad INNE i en åpnings bredde — over og under
+// åpningen — når åpningen ikke dekker hele radhøyden (Emil 02.09).
+// Uten dette ble HELE raden kappet bort så snart åpningen så vidt tok i den:
+// en 2250 mm dør i 1100-rader spiste rad 0, 1 OG 2 = 3300 mm, og hullet ble
+// ca. 1 m for høyt. Nå står det en tilpasset bit (SW-XX) på 1520×1050 over
+// døra, som på Moelv-tegningene.
+// Returnerer [{fraMm, tilMm_, bunnMm, hoydeMm}] — alt i mm fra SW-basen.
+export function utspFyllBiter(rBunn, rTopp, sFra, sTil, apninger, minHoyde) {
+  const minH = Number(minHoyde) > 0 ? Number(minHoyde) : SW_MIN_BIT_MM;
+  const ut = [];
+  for (const a of apninger || []) {
+    if (!a) continue;
+    const f0 = Math.max(sFra, a.fraMm), f1 = Math.min(sTil, a.tilMm_);
+    if (f1 - f0 < SW_MIN_BIT_MM) continue;               // åpningen er ikke i dette spennet
+    const o0 = Math.max(rBunn, a.bunnMm), o1 = Math.min(rTopp, a.toppMm);
+    if (o1 - o0 <= 10) continue;                          // rører ikke raden
+    if (o0 - rBunn >= minH)                               // strimmel UNDER åpningen (vindu)
+      ut.push({ fraMm: f0, tilMm_: f1, bunnMm: rBunn, hoydeMm: Math.round(o0 - rBunn) });
+    if (rTopp - o1 >= minH)                               // strimmel OVER åpningen (dør/port)
+      ut.push({ fraMm: f0, tilMm_: f1, bunnMm: Math.round(o1), hoydeMm: Math.round(rTopp - o1) });
+  }
+  return ut;
+}
+
 // Konveks hull av søylesentrene (monotone chain). Punkter: {x, z}.
 // Returnerer hjørnene MOT KLOKKA, uten duplikater.
 export function konveksHull(punkter) {
@@ -716,9 +740,9 @@ async function generer() {
       const tilpassetRad = kappMm > 0 && radH === kappMm && radH !== 1000 && radH !== 1100;
       const rBunn = bunnMm, rTopp = bunnMm + radH;
       // åpningene som faktisk kutter denne raden (mer enn 1 cm overlapp)
-      const kutt = apninger
-        .filter(a => Math.min(a.toppMm, rTopp) - Math.max(a.bunnMm, rBunn) > 10)
-        .map(a => [a.fraMm, a.tilMm_]);
+      const radApninger = apninger
+        .filter(a => Math.min(a.toppMm, rTopp) - Math.max(a.bunnMm, rBunn) > 10);
+      const kutt = radApninger.map(a => [a.fraMm, a.tilMm_]);
       for (let i = 0; i < spennSoyler.length - 1; i++) {
         const sFra = i === 0 ? hjFraMm : tilMm(spennSoyler[i].t) + SW_KLARING_MM;
         const sTil = i === spennSoyler.length - 2 ? hjTilMm : tilMm(spennSoyler[i + 1].t) - SW_KLARING_MM;
@@ -734,6 +758,17 @@ async function generer() {
             // kapp: rad-kapp, bit kappet av utsparing, ELLER kortere enn 2 m —
             // alt under 2000 mm er kapp og heter SW-XX (Emils regel runde 3)
             tilpasset: tilpassetRad || lengdeMm < fullMm - SW_TOL_MM || lengdeMm < SW_KAPP_UNDER_MM
+          });
+        }
+        // 🚪 RESTEN AV RADEN I ÅPNINGENS BREDDE: biten over døra (og under et
+        // vindu). Alltid kapp — høyden er ikke en radhøyde — så den heter SW-XX.
+        for (const b of utspFyllBiter(rBunn, rTopp, sFra, sTil, radApninger, SW_MIN_BIT_MM)) {
+          const tMid = tilScene((b.fraMm + b.tilMm_) / 2);
+          const p = midt(tMid, baseY + tilScene(b.bunnMm + b.hoydeMm / 2));
+          vegger.push({
+            x: p.x, y: p.y, z: p.z, rot, fi, tMid, nx: f.nx, nz: f.nz,
+            lengdeMm: Math.round(b.tilMm_ - b.fraMm), hoydeMm: b.hoydeMm,
+            tMm: o.tykkelseMm, tilpasset: true
           });
         }
       }
