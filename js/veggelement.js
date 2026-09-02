@@ -180,6 +180,51 @@ export function utspFyllBiter(rBunn, rTopp, sFra, sTil, apninger, minHoyde) {
   return ut;
 }
 
+// EN UTSPARING SOM BARE DELVIS DEKKER EN RAD SKAL IKKE LAGE ET NYTT,
+// KORT ELEMENT — DEN SKAL SKJÆRES UT AV ELEMENTET (Emil 02.09).
+// Moelv SW-01, fasade 1 nede til høyre: SW-11 4620MM og SW-06 3780MM går
+// rett gjennom vinduene og beholder BÅDE full feltlengde, radhøyden og
+// nummeret sitt — vinduet er bare et hakk i panelet. Bare når åpningen tar
+// HELE radhøyden deles raden i to korte elementer (Moelv SW-XX 650MM ved
+// siden av porten).
+// Deler åpningene i raden i «hele» (deler raden) og «notch» (skjæres ut).
+export function delRadApninger(rBunn, rTopp, apninger, tolMm) {
+  const tol = Number(tolMm) >= 0 ? Number(tolMm) : SW_MIN_BIT_MM;
+  const hele = [], notch = [];
+  for (const a of apninger || []) {
+    if (!a) continue;
+    if (Math.min(a.toppMm, rTopp) - Math.max(a.bunnMm, rBunn) <= 10) continue;
+    if (a.bunnMm <= rBunn + tol && a.toppMm >= rTopp - tol) hele.push(a);
+    else notch.push(a);
+  }
+  return { hele, notch };
+}
+
+// Rektangelet minus hullene, som delrektangler — til 3D-tegningen. Elementet
+// er ÉTT element i lista (SW-11 4620×1000), men tegnes som de bitene som står
+// igjen rundt hakket. Guillotine-oppdeling: hvert hull kløyver bitene det
+// treffer i venstre/høyre/under/over.
+// `hull` og svaret er i elementets egne mm: x fra venstre ende, y fra bunnen.
+export function rektMinusHull(bredde, hoyde, hull, minMm) {
+  const min = Number(minMm) > 0 ? Number(minMm) : 20;
+  let biter = [{ x0: 0, x1: Number(bredde) || 0, y0: 0, y1: Number(hoyde) || 0 }];
+  for (const h of hull || []) {
+    if (!h) continue;
+    const neste = [];
+    for (const b of biter) {
+      const ix0 = Math.max(b.x0, h.x0), ix1 = Math.min(b.x1, h.x1);
+      const iy0 = Math.max(b.y0, h.y0), iy1 = Math.min(b.y1, h.y1);
+      if (ix1 <= ix0 || iy1 <= iy0) { neste.push(b); continue; }   // treffer ikke
+      if (b.x0 < ix0) neste.push({ x0: b.x0, x1: ix0, y0: b.y0, y1: b.y1 });
+      if (ix1 < b.x1) neste.push({ x0: ix1, x1: b.x1, y0: b.y0, y1: b.y1 });
+      if (b.y0 < iy0) neste.push({ x0: ix0, x1: ix1, y0: b.y0, y1: iy0 });
+      if (iy1 < b.y1) neste.push({ x0: ix0, x1: ix1, y0: iy1, y1: b.y1 });
+    }
+    biter = neste;
+  }
+  return biter.filter(b => b.x1 - b.x0 >= min && b.y1 - b.y0 >= min);
+}
+
 // Konveks hull av søylesentrene (monotone chain). Punkter: {x, z}.
 // Returnerer hjørnene MOT KLOKKA, uten duplikater.
 export function konveksHull(punkter) {
@@ -605,31 +650,49 @@ function tegnAlt() {
   const kjerneMat = new THREE.MeshLambertMaterial({ color: "#e8e4da", side: THREE.DoubleSide });
   const mal = MALTYPER.sandwich;
   const visLapper = (lagret.vegger || []).length <= 400;   // tusenvis av lapper kveler bilderaten
-  for (const v of lagret.vegger || []) {
-    const el = new THREE.Group();
+  // Ett panelstykke: isolasjonskjerne + ytter- og innerhud med mikroprofil.
+  // Bygges LIGGENDE (samme akser som materiell) og reises 90° opp, så x er
+  // lengden, y høyden og z tykkelsen i elementets egen ramme.
+  const byggPanel = (lengdeMm, hoydeMm, tMm) => {
     const inner = new THREE.Group();
     const kjerne = new THREE.Mesh(new THREE.BoxGeometry(
-      tilScene(Math.max(v.lengdeMm - 4, 10)), tilScene(Math.max(v.tMm - 8, 10)), tilScene(Math.max(v.hoydeMm - 4, 10))), kjerneMat);
-    kjerne.position.y = mmTilScene(v.tMm / 2);
+      tilScene(Math.max(lengdeMm - 4, 10)), tilScene(Math.max(tMm - 8, 10)),
+      tilScene(Math.max(hoydeMm - 4, 10))), kjerneMat);
+    kjerne.position.y = mmTilScene(tMm / 2);
     inner.add(kjerne);
-    const profS = trpProfil(v.hoydeMm, mal.deling, mal.profilHoyde)
+    const profS = trpProfil(hoydeMm, mal.deling, mal.profilHoyde)
       .map(([x, y]) => [mmTilScene(x), mmTilScene(y)]);
     const lag = () => {
-      const pos = ribbonPosisjoner(profS, mmTilScene(v.lengdeMm));
+      const pos = ribbonPosisjoner(profS, mmTilScene(lengdeMm));
       const geo = new THREE.BufferGeometry();
       geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(pos), 3));
       geo.computeVertexNormals();
       return new THREE.Mesh(geo, fargeMat);
     };
     const ytter = lag();
-    ytter.position.y = mmTilScene(v.tMm - mal.profilHoyde);
+    ytter.position.y = mmTilScene(tMm - mal.profilHoyde);
     const indre = lag();
     indre.scale.y = -1;
     indre.position.y = mmTilScene(mal.profilHoyde);
     inner.add(ytter, indre);
-    inner.rotation.x = -Math.PI / 2;          // reis panelet: høyden opp
-    inner.position.z = tilScene(v.tMm) / 2;   // tykkelsen sentrert om veggplanet
-    el.add(inner);
+    inner.rotation.x = -Math.PI / 2;         // reis panelet: høyden opp
+    inner.position.z = tilScene(tMm) / 2;    // tykkelsen sentrert om veggplanet
+    return inner;
+  };
+  for (const v of lagret.vegger || []) {
+    const el = new THREE.Group();
+    // 🚪 HAKK ETTER UTSPARINGER: elementet er ÉTT element i lista med full
+    // høyde og full feltlengde (Moelv SW-11 4620MM med vindu i), men tegnes
+    // som bitene som står igjen rundt hakket.
+    const deler = v.hull && v.hull.length
+      ? rektMinusHull(v.lengdeMm, v.hoydeMm, v.hull, 20)
+      : [{ x0: 0, x1: v.lengdeMm, y0: 0, y1: v.hoydeMm }];
+    for (const d of deler) {
+      const g = byggPanel(d.x1 - d.x0, d.y1 - d.y0, v.tMm);
+      g.position.x += tilScene((d.x0 + d.x1) / 2 - v.lengdeMm / 2);
+      g.position.y += tilScene((d.y0 + d.y1) / 2 - v.hoydeMm / 2);
+      el.add(g);
+    }
     el.position.set(v.x, v.y, v.z);
     el.rotation.y = v.rot;
     el.userData.sw = v.sw;
@@ -848,31 +911,33 @@ async function generer() {
         const tilpassetRad = r === kappIndex;
         const radApninger = apninger
           .filter(a => Math.min(a.toppMm, rTopp) - Math.max(a.bunnMm, rBunn) > 10);
-        const kutt = radApninger.map(a => [a.fraMm, a.tilMm_]);
+        // Bare åpninger som tar HELE radhøyden deler raden i to korte
+        // elementer. De som bare skjærer inn i den blir HAKK i elementet —
+        // elementet står med full høyde og full feltlengde (Emil 02.09,
+        // Moelv SW-11/SW-06).
+        const { hele, notch } = delRadApninger(rBunn, rTopp, radApninger, SW_MIN_BIT_MM);
+        const kutt = hele.map(a => [a.fraMm, a.tilMm_]);
         for (const [bFra, bTil] of delOppMedUtsparinger(sFra, sTil, kutt)) {
           const lengdeMm = bTil - bFra;
           const tMid = tilScene((bFra + bTil) / 2);
           const p = midt(tMid, baseY + tilScene(rBunn + radH / 2));
+          // hakkene i ELEMENTETS egne mm: x fra venstre ende, y fra bunnen
+          const hull = [];
+          for (const a of notch) {
+            const x0 = Math.max(bFra, a.fraMm) - bFra, x1 = Math.min(bTil, a.tilMm_) - bFra;
+            const y0 = Math.max(rBunn, a.bunnMm) - rBunn, y1 = Math.min(rTopp, a.toppMm) - rBunn;
+            if (x1 - x0 > 10 && y1 - y0 > 10) hull.push({ x0, x1, y0, y1 });
+          }
           vegger.push({
             x: p.x, y: p.y, z: p.z, rot, fi, tMid, nx: f.nx, nz: f.nz,
             lengdeMm: Math.round(lengdeMm), hoydeMm: radH, tMm: o.tykkelseMm,
             fullMm: Math.round(fullMm),
-            // Kapp = FAKTISK skåret: tilpasningsraden, eller en bit som er
-            // kortere enn feltet fordi en utsparing tok resten. Lengde alene
-            // gjør det ikke — o.kappUnderMm er av som standard (runde 11).
+            hull: hull.length ? hull : undefined,
+            // Kapp = FAKTISK skåret i LENGDEN: tilpasningsraden, eller en bit
+            // som er kortere enn feltet fordi en port tok resten. Et hakk
+            // gjør det IKKE — Moelv beholder SW-06 3780MM med vindu i.
             tilpasset: tilpassetRad || lengdeMm < fullMm - SW_TOL_MM ||
                        (o.kappUnderMm > 0 && lengdeMm < o.kappUnderMm)
-          });
-        }
-        // 🚪 RESTEN AV RADEN I ÅPNINGENS BREDDE: biten over døra (og under et
-        // vindu). Alltid kapp — høyden er ikke en radhøyde.
-        for (const b of utspFyllBiter(rBunn, rTopp, sFra, sTil, radApninger, SW_MIN_BIT_MM)) {
-          const tMid = tilScene((b.fraMm + b.tilMm_) / 2);
-          const p = midt(tMid, baseY + tilScene(b.bunnMm + b.hoydeMm / 2));
-          vegger.push({
-            x: p.x, y: p.y, z: p.z, rot, fi, tMid, nx: f.nx, nz: f.nz,
-            lengdeMm: Math.round(b.tilMm_ - b.fraMm), hoydeMm: b.hoydeMm,
-            tMm: o.tykkelseMm, fullMm: Math.round(fullMm), tilpasset: true
           });
         }
       }
