@@ -1407,3 +1407,11 @@ body:not(.har-modell) #btnFit { display: none !important; }
   #verktoygrupper { padding-left: 6px; gap: 4px; }
   #verktoygrupper .btn-t { display: none; }   /* bare ikoner på liten skjerm */
 }
+
+/* 📐 «Utfyll PDF» i SW-panelet. Merknadsfeltet er det ENESTE flerlinjefeltet i
+   panelet, og et <textarea> uten bredde er 20 tegn bredt uansett hvor bredt
+   panelet er — feltene i dette panelet er ellers nakne nettleserstandarder. */
+#swBody textarea {
+  width: 100%; box-sizing: border-box; resize: vertical;
+  font-family: inherit; font-size: 13px;
+}
