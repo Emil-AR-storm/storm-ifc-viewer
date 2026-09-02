@@ -655,6 +655,13 @@ export const ORDBOK = {
   "Trykk på et veggelement og dra i enden for å stille lengden. Shift+klikk for å ta flere. Kanten snapper til søylene.": { en: "Click a wall element and drag its end to set the length. Shift+click to take several. The edge snaps to the columns.", pl: "Kliknij element ścienny i przeciągnij jego koniec, aby ustawić długość. Shift+klik, aby wybrać kilka. Krawędź przyciąga się do słupów.", lt: "Spustelėkite sienos elementą ir vilkite jo galą, kad nustatytumėte ilgį. Shift+spustelėjimas kelių pasirinkimui. Kraštas prilimpa prie kolonų." },
   "{0} valgt": { en: "{0} selected", pl: "Wybrano {0}", lt: "Pasirinkta: {0}" },
   "Nullstill": { en: "Reset", pl: "Zeruj", lt: "Atstatyti" },
+  // runde 16: splitt, angre og utsparingsmerking
+  "Del i to": { en: "Split in two", pl: "Podziel na dwa", lt: "Dalyti į du" },
+  "Elementet er for kort å dele — hver halvdel må bli minst 100 mm.": { en: "The element is too short to split — each half must be at least 100 mm.", pl: "Element jest za krótki do podziału — każda połowa musi mieć co najmniej 100 mm.", lt: "Elementas per trumpas dalyti — kiekviena pusė turi būti bent 100 mm." },
+  "Veggelement delt": { en: "Wall element split", pl: "Element ścienny podzielony", lt: "Sienos elementas padalytas" },
+  "Veggelement justert": { en: "Wall element adjusted", pl: "Element ścienny dostosowany", lt: "Sienos elementas pareguliuotas" },
+  "Justeringer nullstilt": { en: "Adjustments reset", pl: "Dostosowania wyzerowane", lt: "Reguliavimai atstatyti" },
+  "Vis utsparingsmål (stiplet kryss + kappdybde)": { en: "Show opening dimensions (dashed cross + cut depth)", pl: "Pokaż wymiary otworów (przerywany krzyż + głębokość docięcia)", lt: "Rodyti praėjimo matmenis (brūkšninis kryžius + kirpimo gylis)" },
   "{0} flater markert": { en: "{0} faces marked", pl: "Zaznaczono ścianek: {0}", lt: "Pažymėta paviršių: {0}" },
   "topp fra flate": { en: "top from face", pl: "góra ze ścianki", lt: "viršus iš paviršiaus" },
   "topp fra søyleendene": { en: "top from column ends", pl: "góra z końców słupów", lt: "viršus iš kolonų galų" },

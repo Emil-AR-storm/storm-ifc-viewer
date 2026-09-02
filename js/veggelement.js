@@ -653,6 +653,7 @@ const STD_OPPSETT = {
   minFeltMm: SW_MIN_FELT_MM,    // skjøter nærmere enn dette slås sammen
   kappUnderMm: 0,               // 0 = lengde alene gjør ikke noe til kapp
   kappStil: "xx",               // "xx" = SW-XX (Moelv), "stjerne" = SW-15* (Lørenskog)
+  visUtsp: true,                // stiplet kryss + mål på utsparingene
   farge: "#dfe5ec", isolasjon: "PIR", utvFarge: "RAL 1015", innFarge: "9010",
   prosjekt: "", oppdragsnr: "", sted: "", sign: "",
   utsparinger: []   // [{navn, min:[x,y,z], max:[x,y,z]}] fra valgte elementer
@@ -811,6 +812,71 @@ function tegnAlt() {
       dim.quaternion.copy(sw.quaternion);
       dim.position.set(v.x + nv.x * utD, v.y - H * 0.1, v.z + nv.z * utD);
       swGroup.add(dim);
+    }
+  }
+  tegnUtspMerking();
+}
+
+// ---------- 📐 Utsparingsmerking: stiplet kryss + mål ----------
+// Som på Moelv-tegningen (Emil 02.09): åpningen får en stiplet ramme med
+// kryss, ett mål for HELE åpningen (bredde × høyde), og for hvert element som
+// går gjennom området et lite mål på HVOR DYPT det må kappes inn.
+// Skrus av og på med «Vis utsparingsmål» i panelet.
+function tegnUtspMerking() {
+  if (!lagret || !lagret.utspVis || !lagret.utspVis.length) return;
+  const o = lagret.oppsett || STD_OPPSETT;
+  if (o.visUtsp === false) return;
+  const fasader = lagret.fasader || [];
+  const baseY = lagret.baseY || 0;
+  const strekMat = new THREE.LineDashedMaterial({
+    color: 0x11161d, dashSize: 0.12 / (S.enhetSkala || 1),
+    gapSize: 0.08 / (S.enhetSkala || 1), depthTest: false });
+  for (const a of lagret.utspVis) {
+    const f = fasader[a.fi];
+    if (!f) continue;
+    // veggplanet, litt utenfor panelet så streken ikke drukner i det
+    const utD = f.off + tilScene(o.tykkelseMm) / 2 + 0.03 / (S.enhetSkala || 1);
+    const pkt = (mm, y) => new THREE.Vector3(
+      f.px + f.ex * tilScene(mm) + f.nx * utD, y,
+      f.pz + f.ez * tilScene(mm) + f.nz * utD);
+    const y0 = baseY + tilScene(a.bunnMm), y1 = baseY + tilScene(a.toppMm);
+    const h0 = pkt(a.fraMm, y0), h1 = pkt(a.tilMm_, y0);
+    const t0 = pkt(a.fraMm, y1), t1 = pkt(a.tilMm_, y1);
+    const geo = new THREE.BufferGeometry().setFromPoints([
+      h0, h1, h1, t1, t1, t0, t0, h0,     // rammen
+      h0, t1, h1, t0                      // krysset
+    ]);
+    const linje = new THREE.LineSegments(geo, strekMat);
+    linje.computeLineDistances();          // MÅ til, ellers blir streken hel
+    linje.renderOrder = 999;
+    linje.raycast = () => {};
+    swGroup.add(linje);
+    // totalmålet midt i åpningen
+    const bredde = Math.round(a.tilMm_ - a.fraMm);
+    const hoyde = Math.abs(a.toppMm) > 1e8 ? null : Math.round(a.toppMm - a.bunnMm);
+    const nv = new THREE.Vector3(f.nx, 0, f.nz).normalize();
+    const midtMm = (a.fraMm + a.tilMm_) / 2;
+    const tot = tekstDekal(bredde + "×" + (hoyde === null ? "—" : hoyde) + " MM", 260,
+      tilScene(Math.max(bredde * 0.8, 600)));
+    tot.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), nv);
+    tot.position.copy(pkt(midtMm, (y0 + y1) / 2));
+    tot.renderOrder = 1000;
+    tot.raycast = () => {};
+    swGroup.add(tot);
+    // KAPPDYBDEN per element som går gjennom området
+    for (const v of lagret.vegger || []) {
+      if (v.skjult || v.fi !== a.fi || v.fraMm === undefined) continue;
+      const x0 = Math.max(v.fraMm, a.fraMm), x1 = Math.min(v.tilMm, a.tilMm_);
+      if (x1 - x0 <= 10) continue;
+      const b0 = Math.max(v.rBunnMm, a.bunnMm), b1 = Math.min(v.rBunnMm + v.hoydeMm, a.toppMm);
+      const dybde = Math.round(b1 - b0);
+      if (dybde <= 10 || dybde >= v.hoydeMm - 10) continue;   // hel rad = ikke et kapp
+      const lapp = tekstDekal("↕ " + dybde, 170, tilScene(Math.max(x1 - x0, 400)));
+      lapp.quaternion.copy(tot.quaternion);
+      lapp.position.copy(pkt((x0 + x1) / 2, baseY + tilScene((b0 + b1) / 2)));
+      lapp.renderOrder = 1000;
+      lapp.raycast = () => {};
+      swGroup.add(lapp);
     }
   }
 }
@@ -1066,8 +1132,15 @@ async function generer() {
     off: (fasadeInfo[i] || {}).off || 0, rot: (fasadeInfo[i] || {}).rot || 0
   }));
 
+  // Åpningene lagres PROJISERT på fasaden, så merkingen kan tegnes uten å
+  // regne fasadene ut fra modellen på nytt.
+  const utspVis = [];
+  for (let fi = 0; fi < fasader.length; fi++)
+    for (const a of utsparingerPaFasade(fasader[fi], baseY, utspPerFasade.get(fi) || []))
+      utspVis.push({ fi, fraMm: a.fraMm, tilMm_: a.tilMm_, bunnMm: a.bunnMm, toppMm: a.toppMm });
+
   lagret = { oppsett: o, vegger, gulv, ringmur, materiellIder: [],
-             fasader: fasadeLagret, okBetong };
+             fasader: fasadeLagret, okBetong, baseY, utspVis };
   loesAlleJusteringer();
   byggStabler();
   skrivLagret();
@@ -1280,6 +1353,7 @@ function lesOppsettFraPanel() {
   o.minFeltMm = Math.max(0, Math.min(6000, num("swMinFelt", o.minFeltMm)));
   o.kappUnderMm = Math.max(0, Math.min(6000, num("swKappUnder", o.kappUnderMm)));
   o.kappStil = (($("swKappStil") || {}).value === "stjerne") ? "stjerne" : "xx";
+  if ($("swVisUtsp")) o.visUtsp = !!$("swVisUtsp").checked;
   o.farge = ($("swFarge") || {}).value || o.farge;
   o.isolasjon = txt("swIsoType") || o.isolasjon;
   o.utvFarge = txt("swUtvF");
@@ -1379,11 +1453,15 @@ function tegnJustBar() {
     ' <b>' + t("{0} valgt", just.valgt.size) + '</b>' +
     (valgtTekst ? ' <span style="color:var(--muted)">' + esc(valgtTekst) + '</span>' : "") +
     '</span>' +
+    '<button id="swJustSplitt" style="padding:3px 10px"' + (just.valgt.size ? "" : " disabled") + '>✂ ' + t("Del i to") + '</button>' +
     '<button id="swJustNull" style="padding:3px 10px">' + t("Nullstill") + '</button>' +
     '<button id="swJustFerdig" class="primary" style="padding:3px 10px">' + t("Ferdig") + '</button>';
+  $("swJustSplitt").onclick = () => splittValgte();
   $("swJustNull").onclick = () => {
+    const foer = justBilde();
     for (const v of (lagret && lagret.vegger) || []) { v.dFra = 0; v.dTil = 0; v.rev = 0; }
     loesAlleJusteringer(); byggStabler(); skrivLagret(); tegnAlt(); merkValgte();
+    postJust("Justeringer nullstilt", foer);
   };
   $("swJustFerdig").onclick = () => avsluttJuster();
 }
@@ -1401,7 +1479,7 @@ function merkValgte() {
     if (!v || v.skjult) continue;
     const g = new THREE.Mesh(
       new THREE.PlaneGeometry(tilScene(v.lengdeMm), tilScene(v.hoydeMm)),
-      new THREE.MeshBasicMaterial({ color: 0x22c55e, transparent: true, opacity: 0.35,
+      new THREE.MeshBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.40,
         side: THREE.DoubleSide, depthWrite: false }));
     const nv = new THREE.Vector3(v.nx, 0, v.nz).normalize();
     g.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), nv);
@@ -1410,6 +1488,85 @@ function merkValgte() {
     g.raycast = () => {};   // markeringen er bare til å se på
     just.markorer.add(g);
   }
+}
+
+// ---------- Angre/gjenopprett for justeringene ----------
+// Elementene er rene tall, så et øyeblikksbilde av hele lista er nok — og da
+// virker angre også på SPLITTER, som legger til et element.
+function justBilde() {
+  return JSON.parse(JSON.stringify((lagret && lagret.vegger) || []));
+}
+
+function settJustBilde(liste) {
+  if (!lagret) return;
+  lagret.vegger = JSON.parse(JSON.stringify(liste));
+  loesAlleJusteringer();
+  byggStabler();
+  skrivLagret();
+  tegnAlt();
+  if (just) { rensValgte(); merkValgte(); tegnJustBar(); }
+  tegnPanel();
+}
+
+function postJust(tekst, foer) {
+  const etter = justBilde();
+  if (JSON.stringify(foer) === JSON.stringify(etter)) return;   // ingenting skjedde
+  if (S.pushAngre) S.pushAngre({
+    tekst,
+    angre: () => settJustBilde(foer),
+    gjenopprett: () => settJustBilde(etter)
+  });
+}
+
+// Etter angre kan et markert element være borte (en splitt ble angret)
+function rensValgte() {
+  if (!just) return;
+  for (const id of [...just.valgt]) if (!veggMedId(id)) just.valgt.delete(id);
+}
+
+// ---------- ✂ Splitt: del ett element i to ----------
+// Deler på midten, med skjøteklaringen mellom halvdelene. Etterpå kan skjøten
+// dras dit den skal — den nye halvdelen er et helt vanlig element.
+export function splittKanter(fraMm, tilMm, klaringMm, minBitMm) {
+  const k = Number(klaringMm) >= 0 ? Number(klaringMm) : SW_KLARING_MM;
+  const min = Number(minBitMm) > 0 ? Number(minBitMm) : SW_MIN_BIT_MM;
+  const midt = (fraMm + tilMm) / 2;
+  const a = [fraMm, Math.round(midt - k)];
+  const b = [Math.round(midt + k), tilMm];
+  if (a[1] - a[0] < min || b[1] - b[0] < min) return null;   // for lite å dele
+  return [a, b];
+}
+
+function splittValgte() {
+  if (!just || !lagret) return;
+  const foer = justBilde();
+  const o = lagret.oppsett || STD_OPPSETT;
+  let delt = 0;
+  for (const id of [...just.valgt]) {
+    const v = veggMedId(id);
+    if (!v || v.skjult) continue;
+    const kanter = splittKanter(v.fraMm, v.tilMm, o.klaringMm, SW_MIN_BIT_MM);
+    if (!kanter) continue;
+    const rev = 1 + Math.max(0, ...(lagret.vegger || []).map(w => w.rev || 0));
+    const ny = JSON.parse(JSON.stringify(v));
+    ny.id = "s" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    // begge halvdelene får ny BASIS og nullede forskyvninger — da er de
+    // vanlige elementer som kan dras videre hver for seg
+    v.basFraMm = kanter[0][0]; v.basTilMm = kanter[0][1]; v.dFra = 0; v.dTil = 0; v.rev = rev;
+    ny.basFraMm = kanter[1][0]; ny.basTilMm = kanter[1][1]; ny.dFra = 0; ny.dTil = 0; ny.rev = rev;
+    // full feltlengde arves, så begge halvdelene regnes som kapp
+    lagret.vegger.splice(lagret.vegger.indexOf(v) + 1, 0, ny);
+    just.valgt.add(ny.id);
+    delt++;
+  }
+  if (!delt) { alert(t("Elementet er for kort å dele — hver halvdel må bli minst 100 mm.")); return; }
+  loesAlleJusteringer();
+  byggStabler();
+  skrivLagret();
+  tegnAlt();
+  merkValgte();
+  tegnJustBar();
+  postJust("Veggelement delt", foer);
 }
 
 function startJuster() {
@@ -1454,7 +1611,7 @@ window.addEventListener("pointerdown", (e) => {
     const w = veggMedId(id);
     if (w) base.set(id, { dFra: w.dFra || 0, dTil: w.dTil || 0 });
   }
-  just.drar = { id: v.id, ende, startMm, base, rev };
+  just.drar = { id: v.id, ende, startMm, base, rev, foer: justBilde() };
   e.stopPropagation();   // kameraet skal ikke rotere mens vi drar
   merkValgte(); tegnJustBar();
 }, true);
@@ -1487,6 +1644,7 @@ window.addEventListener("pointermove", (e) => {
 window.addEventListener("pointerup", (e) => {
   if (!just || e.button !== 0) return;
   if (!just.drar) { just.ned = null; return; }
+  const foer = just.drar.foer;
   just.drar = null;
   just.ned = null;
   e.stopPropagation();
@@ -1497,6 +1655,8 @@ window.addEventListener("pointerup", (e) => {
   skrivLagret();
   tegnAlt();
   merkValgte();
+  tegnJustBar();
+  postJust("Veggelement justert", foer);
 }, true);
 
 window.addEventListener("keydown", (e) => {
@@ -1716,6 +1876,8 @@ function tegnPanel() {
     '<p style="color:var(--muted);font-size:11px;margin:2px 0 6px">' +
       t("Trykk «Marker utsparing», og trykk så på flatene rundt åpningen i modellen: innsiden av søylene på sidene og undersiden av bjelken over. Én flate per side.") + '</p>' +
     '<div class="prop-actions"><button id="swNyUtsp">' + ikon("boks") + ' ' + t("Marker utsparing") + '</button></div>' +
+    '<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="swVisUtsp"' +
+      (o.visUtsp === false ? "" : " checked") + '> ' + t("Vis utsparingsmål (stiplet kryss + kappdybde)") + '</label>' +
     (!utsp.length
       ? '<p style="color:var(--muted);font-size:12px">' + t("Ingen utsparinger lagt til ennå.") + '</p>'
       : utsp.map((u, i) =>
@@ -1749,6 +1911,7 @@ function tegnPanel() {
   $("swListe").onclick = () => { lesOppsettFraPanel(); lastNedListe(); };
   $("swFjern").onclick = () => { lesOppsettFraPanel(); fjernAltGenerert(); };
   $("swNyUtsp").onclick = () => { lesOppsettFraPanel(); startUtspMark(); };
+  if ($("swVisUtsp")) $("swVisUtsp").onchange = () => { lesOppsettFraPanel(); tegnAlt(); };
   if ($("swJusterBtn")) $("swJusterBtn").onclick = () => { lesOppsettFraPanel(); startJuster(); };
   body.querySelectorAll("button[data-sw-slett-utsp]").forEach(b =>
     b.onclick = () => {
