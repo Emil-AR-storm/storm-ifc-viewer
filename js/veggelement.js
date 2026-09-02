@@ -659,6 +659,14 @@ const STD_OPPSETT = {
   visUtsp: true,                // stiplet kryss + mål på utsparingene
   farge: "#dfe5ec", isolasjon: "PIR", utvFarge: "RAL 1015", innFarge: "9010",
   prosjekt: "", oppdragsnr: "", sted: "", sign: "",
+  // 📐 «Utfyll PDF»: rutene i Storm-tittelfeltet på instruksjonstegninga.
+  // Tomme her betyr «hentes fra Til lista-feltene over» (pdfProsjekt,
+  // pdfUndertittel, pdfOppdrag, pdfTegnet) eller «står tom på papiret»
+  // (pdfKontroll, pdfGodkjent) — aldri en oppdiktet verdi.
+  pdfFase: "Utførelsesfase", pdfTittel: "", pdfNr: "SW-01",
+  pdfProsjekt: "", pdfUndertittel: "", pdfOppdrag: "",
+  pdfTegnet: "", pdfKontroll: "", pdfGodkjent: "", pdfDato: "",
+  pdfMerknad: "",
   utsparinger: []   // [{navn, min:[x,y,z], max:[x,y,z]}] fra valgte elementer
 };
 
@@ -1425,8 +1433,94 @@ function lesOppsettFraPanel() {
   o.oppdragsnr = txt("swOppdrag");
   o.sted = txt("swSted");
   o.sign = txt("swSign");
+  if ($("swPdfFase")) {
+    o.pdfFase = txt("swPdfFase");
+    o.pdfTittel = txt("swPdfTittel");
+    o.pdfNr = txt("swPdfNr") || "SW-01";
+    o.pdfProsjekt = txt("swPdfProsjekt");
+    o.pdfUndertittel = txt("swPdfUnder");
+    o.pdfOppdrag = txt("swPdfOppdrag");
+    o.pdfTegnet = txt("swPdfTegnet");
+    o.pdfKontroll = txt("swPdfKontroll");
+    o.pdfGodkjent = txt("swPdfGodkjent");
+    o.pdfDato = txt("swPdfDato");
+    o.pdfMerknad = (($("swPdfMerknad") || {}).value || "").trim();
+  }
   skrivLagret();
   return o;
+}
+
+// ---------- 📐 Instruksjonstegning (PDF i Moelv-format) ----------
+// Feltene tittelfeltet skal fylles med. Tomt «Utfyll PDF»-felt arver fra
+// Til lista-feltet over, så ingen trenger å skrive prosjektnavnet to ganger.
+export function pdfFelt(o, iDag) {
+  return {
+    fase: o.pdfFase || "",
+    prosjekt: o.pdfProsjekt || o.prosjekt || "",
+    undertittel: o.pdfUndertittel || o.sted || "",
+    tittel: o.pdfTittel || t("SW-Elementer"),
+    oppdragsnr: o.pdfOppdrag || o.oppdragsnr || "",
+    tegnet: o.pdfTegnet || o.sign || "",
+    kontroll: o.pdfKontroll || "",
+    godkjent: o.pdfGodkjent || "",
+    dato: o.pdfDato || iDag,
+    nr: o.pdfNr || "SW-01",
+    merknad: o.pdfMerknad || ""
+  };
+}
+
+// Byggets EKTE aksenavn, når 🔠 Akser er bygget. Fasadeposisjonen regnes ut til
+// et verdenspunkt, og treffer den en akselinje innenfor toleransen, brukes
+// navnet derfra. Ellers null — og da faller sw-tegning.js tilbake på A, B, C.
+//
+// MERK at begge aksefamiliene sjekkes: en fasade langs Z krysses av
+// tallaksene, en fasade langs X av bokstavaksene. Hvilken det er, kommer an på
+// hvordan bygget står — det skal ikke gjettes her.
+function akseNavnFor(fi) {
+  const L = S.akseLinjer;
+  const f = ((lagret && lagret.fasader) || [])[fi];
+  if (!L || !f) return () => null;
+  const tol = L.tol > 0 ? L.tol : 0.4 / (S.enhetSkala || 1);
+  return (_fi, mm) => {
+    const tt = tilScene(mm);
+    const wx = f.px + f.ex * tt, wz = f.pz + f.ez * tt;
+    let best = null, bestD = tol;
+    for (const a of L.x || []) { const d = Math.abs(wx - a.c); if (d <= bestD) { bestD = d; best = a.navn; } }
+    for (const a of L.z || []) { const d = Math.abs(wz - a.c); if (d <= bestD) { bestD = d; best = a.navn; } }
+    return best;
+  };
+}
+
+async function lastNedTegning() {
+  const o = lesOppsettFraPanel();
+  if (!lagret || !(lagret.vegger || []).length) {
+    alert(t("Generer veggelementene først."));
+    return;
+  }
+  if (!(lagret.fasader || []).length) {
+    alert(t("Veggene er laget av en eldre versjon — trykk «Generer SW + gulv/ringmur» før du tegner."));
+    return;
+  }
+  const knapp = $("swTegning");
+  if (knapp) knapp.disabled = true;
+  try {
+    const mod = await import("./sw-tegning.js");
+    await mod.lastNedTegning({
+      vegger: lagret.vegger,
+      fasader: lagret.fasader,
+      oppsett: o,
+      utsparinger: utspPaFasader(),
+      // ett navneoppslag per fasade — akseNavnFor lukker over fasaden
+      aksenavn: (fi, mm) => akseNavnFor(fi)(fi, mm),
+      felt: pdfFelt(o, mod.idag())
+    });
+  } catch (err) {
+    console.warn("Instruksjonstegning:", err);
+    alert(t("Klarte ikke å lage tegninga: ") + (err && err.message || err));
+  } finally {
+    const b = $("swTegning");
+    if (b) b.disabled = false;
+  }
 }
 
 // ---------- ✥ Juster elementer: dra i endene ----------
@@ -1959,9 +2053,34 @@ function tegnPanel() {
     felt("swOppdrag", "Oppdragsnummer", o.oppdragsnr, "text") +
     felt("swSted", "Sted", o.sted, "text") +
     felt("swSign", "Sign.", o.sign, "text") +
+    // 📐 Rutene i Storm-tittelfeltet på instruksjonstegninga. Står de tomme,
+    // arves de fra Til lista-feltene over — derfor er hjelpeteksten viktigere
+    // enn den ser ut: uten den ser tomme felt ut som manglende data.
+    '<h4 style="margin:10px 0 4px">' + t("Utfyll PDF") + '</h4>' +
+    '<p style="color:var(--muted);font-size:11px;margin:2px 0 6px">' +
+      t("Dette fyller Storm-tittelfeltet på instruksjonstegninga. Tomt felt hentes fra «Til lista» over; Kontroll og Godkjent står tomme på papiret hvis du ikke fyller dem.") + '</p>' +
+    felt("swPdfNr", "Tegningsnummer (nummeret øker per ark)", o.pdfNr || "SW-01", "text") +
+    felt("swPdfTittel", "Tegningstittel", o.pdfTittel, "text") +
+    felt("swPdfFase", "Prosjektfase", o.pdfFase, "text") +
+    felt("swPdfProsjekt", "Prosjektnavn (linje 1)", o.pdfProsjekt, "text") +
+    felt("swPdfUnder", "Undertittel (linje 2)", o.pdfUndertittel, "text") +
+    felt("swPdfOppdrag", "Oppdragsnummer", o.pdfOppdrag, "text") +
+    felt("swPdfTegnet", "Tegnet av", o.pdfTegnet, "text") +
+    felt("swPdfKontroll", "Kontrollert av", o.pdfKontroll, "text") +
+    felt("swPdfGodkjent", "Godkjent av", o.pdfGodkjent, "text") +
+    felt("swPdfDato", "Utsendt dato (tom = i dag)", o.pdfDato, "text") +
+    '<label>' + t("Merknad ved fasaden") +
+      '<textarea id="swPdfMerknad" rows="2" maxlength="300" placeholder="' +
+      esc(t("Veggelementer må kappes og tilpasses til eksisterende fasade. L-Beslag festes til eks. fasade.")) +
+      '">' + esc(o.pdfMerknad || "") + '</textarea></label>' +
+    '<p style="color:var(--muted);font-size:11px;margin:2px 0 6px">' +
+      (S.akseLinjer
+        ? t("Aksenavnene hentes fra 🔠 Akser.")
+        : t("Aksenavnene blir A, B, C … per fasade. Bygg aksene i 🔠 Akser først hvis du vil ha byggets egne aksenavn på tegninga.")) + '</p>' +
     '<div class="prop-actions" style="margin-top:10px;flex-wrap:wrap">' +
     '<button id="swGenerer" class="primary">' + ikon("boks") + ' ' + t("Generer SW + gulv/ringmur") + '</button>' +
     '<button id="swJusterBtn">✥ ' + t("Juster elementer") + '</button>' +
+    '<button id="swTegning">' + ikon("tegning") + ' ' + t("Last ned instruksjonstegning (PDF)") + '</button>' +
     '<button id="swListe">' + ikon("lastned") + ' ' + t("Last ned liste (Excel/CSV)") + '</button>' +
     '<button id="swFjern">' + ikon("slett") + ' ' + t("Fjern genererte") + '</button></div>' +
     (antall ? '<p style="color:var(--muted);font-size:12px;margin-top:6px">' +
@@ -1974,6 +2093,7 @@ function tegnPanel() {
     finally { const b = $("swGenerer"); if (b) b.disabled = false; }
   };
   $("swListe").onclick = () => { lesOppsettFraPanel(); lastNedListe(); };
+  if ($("swTegning")) $("swTegning").onclick = lastNedTegning;
   $("swFjern").onclick = () => { lesOppsettFraPanel(); fjernAltGenerert(); };
   $("swNyUtsp").onclick = () => { lesOppsettFraPanel(); startUtspMark(); };
   if ($("swVisUtsp")) $("swVisUtsp").onchange = () => { lesOppsettFraPanel(); tegnAlt(); };

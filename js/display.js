@@ -132,9 +132,21 @@ export function showElements(ider) {
 // Lå før som en kopiert enlinjes tre steder, og de tre var ikke like.
 export function oppdaterVisAlle() {
   const noeSkjult = hiddenIDs.size > 0 || typeSkjultLett.size > 0 ||
-    (S.typeInfo ? [...S.typeInfo.values()].some(g => g.hidden) : false);
+    (S.typeInfo ? [...S.typeInfo.values()].some(g => g.hidden) : false) ||
+    // 👁 En skjult MARKERING teller også. Uten dette sto «Vis alle» borte mens
+    // tre bobler var skjult, og det fantes ingen ett-klikks vei tilbake.
+    !!(S.markeringNoeSkjult && S.markeringNoeSkjult());
   $("btnShowAll").style.display = noeSkjult ? "" : "none";
 }
+
+// Kroker markers.js leser. Settes her fordi display.js eier «Vis alle» og
+// 🎨-panelet — markers.js kan ikke importere denne fila (sirkel via ifc.js).
+S.oppdaterVisAlle = oppdaterVisAlle;
+S.tegnUtseendePanel = () => {
+  if (!$("colorPanel") || !$("colorPanel").classList.contains("open")) return;
+  if (S.lightLoaded) { if (S.typeInfoLett) renderColorPanelLett(); }
+  else if (S.typeInfo) renderColorPanel();
+};
 
 på("btnShowAll", "click", () => {
   // Avtrykk FØR: «Vis alle» kan gjøre om en hel dags skjuling på ett klikk
@@ -148,6 +160,7 @@ på("btnShowAll", "click", () => {
   synkMergedSkjuling();
   if ($("colorPanel").classList.contains("open") && S.lightLoaded && S.typeInfoLett) renderColorPanelLett();
   $("btnShowAll").style.display = "none";
+  if (S.visAlleMarkeringer) S.visAlleMarkeringer();   // 👁 markeringene med
   if ($("colorPanel").classList.contains("open")) renderColorPanel();
   meldAngre(før, "Vis alle");
 });
@@ -441,6 +454,8 @@ export function renderColorPanelLett() {
       saveAppear();
       if (S.lettFargerPå) malLettFarger();
     });
+  // 👁 Markeringene finnes også på byggeplassen — der brukes de mest.
+  if (S.markeringUtseendeRader) S.markeringUtseendeRader($("colorBody"));
 }
 
 på("btnColors", "click", async () => {
@@ -549,4 +564,7 @@ export function renderColorPanel() {
   // 📦 Materiell (leveranser) får egne rader nederst — de tegnes av
   // materiell-vis.js, som eier objektene (fargen settes per objekt der).
   if (S.materiellUtseendeRader) S.materiellUtseendeRader($("colorBody"));
+  // 👁 «Markeringer»-gruppa. Egne rader, fordi markeringene ikke er
+  // IFC-elementer og dermed ikke finnes i S.typeInfo.
+  if (S.markeringUtseendeRader) S.markeringUtseendeRader($("colorBody"));
 }
