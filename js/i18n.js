@@ -650,6 +650,11 @@ export const ORDBOK = {
   "Minste felt (mm) — tettere skjøter slås sammen": { en: "Smallest bay (mm) — closer joints are merged", pl: "Najmniejsze pole (mm) — bliższe styki są łączone", lt: "Mažiausias tarpas (mm) — artimesnės siūlės sujungiamos" },
   "Alt kortere enn (mm) er kapp — 0 = av": { en: "Anything shorter than (mm) is off-cut — 0 = off", pl: "Wszystko krótsze niż (mm) to docinka — 0 = wyłączone", lt: "Viskas trumpiau nei (mm) yra atraiža — 0 = išjungta" },
   "Navn på kappbiter": { en: "Naming of off-cuts", pl: "Nazewnictwo docinek", lt: "Atraižų pavadinimai" },
+  // runde 14: håndjustering
+  "Juster elementer": { en: "Adjust elements", pl: "Dostosuj elementy", lt: "Reguliuoti elementus" },
+  "Trykk på et veggelement og dra i enden for å stille lengden. Shift+klikk for å ta flere. Kanten snapper til søylene.": { en: "Click a wall element and drag its end to set the length. Shift+click to take several. The edge snaps to the columns.", pl: "Kliknij element ścienny i przeciągnij jego koniec, aby ustawić długość. Shift+klik, aby wybrać kilka. Krawędź przyciąga się do słupów.", lt: "Spustelėkite sienos elementą ir vilkite jo galą, kad nustatytumėte ilgį. Shift+spustelėjimas kelių pasirinkimui. Kraštas prilimpa prie kolonų." },
+  "{0} valgt": { en: "{0} selected", pl: "Wybrano {0}", lt: "Pasirinkta: {0}" },
+  "Nullstill": { en: "Reset", pl: "Zeruj", lt: "Atstatyti" },
   "{0} flater markert": { en: "{0} faces marked", pl: "Zaznaczono ścianek: {0}", lt: "Pažymėta paviršių: {0}" },
   "topp fra flate": { en: "top from face", pl: "góra ze ścianki", lt: "viršus iš paviršiaus" },
   "topp fra søyleendene": { en: "top from column ends", pl: "góra z końców słupów", lt: "viršus iš kolonų galų" },
