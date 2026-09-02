@@ -28,7 +28,7 @@
 import * as THREE from "three";
 import { $, S, apnePanel, esc, ikon, på } from "./state.js";
 import { t } from "./i18n.js";
-import { canvas, raycaster, scene } from "./scene.js";
+import { camera, canvas, raycaster, scene } from "./scene.js";
 import { allElementBoxes, hitID, pick, toCsv } from "./elements.js";
 import { alleElementIder } from "./ifc.js";
 import { metaFor, sikreMeta } from "./ifcrpc.js";
@@ -243,6 +243,53 @@ export function profilUtsnitt(profil, fra, til) {
     const ax = Math.max(a[0], fra), bx = Math.min(b[0], til);
     if (!ut.length) ut.push([ax - fra, ax === a[0] ? a[1] : y(a, b, ax)]);
     ut.push([bx - fra, bx === b[0] ? b[1] : y(a, b, bx)]);
+  }
+  return ut;
+}
+
+// ═══ HÅNDJUSTERING: dra i elementene ═══════════════════════════════════════
+// Emils regel 02.09: drar du høyre ende av et element mot høyre, blir naboen
+// til høyre kortere. Blir naboen under 100 mm, forsvinner den — men den
+// KOMMER TILBAKE når du drar tilbake så det er mer enn 100 mm igjen av den.
+// Derfor endres aldri noe ødeleggende: hvert element beholder sin GENERERTE
+// utstrekning (basFraMm/basTilMm) pluss to forskyvninger (dFra/dTil), og
+// hvem som vinner en overlapp avgjøres av `rev` — den som ble dratt sist.
+
+// Snapp en kant til nærmeste holdepunkt (10 mm fra søylesenter, eller
+// søylekanten) hvis den er innenfor toleransen. Ellers rundes til 5 mm.
+export function snappKant(mm, punkter, toleranseMm) {
+  const tol = Number(toleranseMm) > 0 ? Number(toleranseMm) : 150;
+  let best = null, bestAvst = Infinity;
+  for (const p of punkter || []) {
+    const d = Math.abs(p - mm);
+    if (d <= tol && d < bestAvst) { best = p; bestAvst = d; }
+  }
+  return best !== null ? best : Math.round(mm / 5) * 5;
+}
+
+// Løser én rad: hvem står hvor etter justeringene. `elementer` er
+// [{id, fraMm, tilMm, rev}] i SAMME fasade og rad, og fraMm/tilMm er
+// basis + forskyvning. Den sist dratte (høyest rev) krever plassen sin
+// først; de andre klippes av det som alt er tatt. Blir det under `minBitMm`
+// igjen, er elementet skjult — ikke slettet.
+export function loesRad(elementer, minBitMm) {
+  const min = Number(minBitMm) > 0 ? Number(minBitMm) : SW_MIN_BIT_MM;
+  const sortert = (elementer || []).slice().sort((a, b) =>
+    (b.rev || 0) - (a.rev || 0) || a.fraMm - b.fraMm);
+  const tatt = [];
+  const ut = new Map();
+  for (const e of sortert) {
+    let f = e.fraMm, t = e.tilMm;
+    for (const [af, at] of tatt) {
+      if (at <= f || af >= t) continue;            // ingen overlapp
+      if (af <= f && at >= t) { f = t = 0; break; }  // helt dekket
+      if (af <= f) f = at;                         // overlapp fra venstre
+      else if (at >= t) t = af;                    // overlapp fra høyre
+      else t = af;                                 // tatt bit midt i: behold venstre
+    }
+    const skjult = !(t - f >= min);
+    ut.set(e.id, { fraMm: f, tilMm: t, skjult });
+    if (!skjult) tatt.push([f, t]);                // skjulte krever ingen plass
   }
   return ut;
 }
@@ -705,12 +752,25 @@ function tegnAlt() {
     return inner;
   };
   for (const v of lagret.vegger || []) {
+    if (v.skjult || !(v.lengdeMm > 0)) continue;   // dratt bort, men ikke slettet
     const el = new THREE.Group();
     // 🚪 HAKK ETTER UTSPARINGER: elementet er ÉTT element i lista med full
     // høyde og full feltlengde (Moelv SW-11 4620MM med vindu i), men tegnes
     // som bitene som står igjen rundt hakket.
-    const deler = v.hull && v.hull.length
-      ? rektMinusHull(v.lengdeMm, v.hoydeMm, v.hull, 20)
+    // Hakkene regnes ut fra radens åpninger og elementets NÅVÆRENDE
+    // utstrekning, så de følger med når elementet dras/strekkes.
+    let hull = v.hull;
+    if (v.apn && v.fraMm !== undefined) {
+      hull = [];
+      for (const a of v.apn) {
+        const x0 = Math.max(v.fraMm, a.fraMm) - v.fraMm, x1 = Math.min(v.tilMm, a.tilMm_) - v.fraMm;
+        const y0 = Math.max(v.rBunnMm, a.bunnMm) - v.rBunnMm;
+        const y1 = Math.min(v.rBunnMm + v.hoydeMm, a.toppMm) - v.rBunnMm;
+        if (x1 - x0 > 10 && y1 - y0 > 10) hull.push({ x0, x1, y0, y1 });
+      }
+    }
+    const deler = hull && hull.length
+      ? rektMinusHull(v.lengdeMm, v.hoydeMm, hull, 20)
       : [{ x0: 0, x1: v.lengdeMm, y0: 0, y1: v.hoydeMm }];
     const profilFull = trpProfil(v.hoydeMm, mal.deling, mal.profilHoyde);
     for (const d of deler) {
@@ -722,6 +782,7 @@ function tegnAlt() {
     el.position.set(v.x, v.y, v.z);
     el.rotation.y = v.rot;
     el.userData.sw = v.sw;
+    el.userData.swId = v.id;
     swGroup.add(el);
     // 🏷 SW-nummer i øvre hjørne + dimensjon i midten — som på Moelv-tegningen
     // og Lørenskog-skjermbildene. Konstant skjermstørrelse (updateScreenScaled).
@@ -789,7 +850,7 @@ function tekstDekal(tekst, hoydeMm, maksBredde) {
 
 // Kalles av afterLoad (ifc.js) når en modell er åpnet, og av clearModel når
 // den lukkes — samme kroker som materiell og grupper bruker.
-S.lastSW = () => { lagret = lesLagret(); tegnAlt(); };
+S.lastSW = () => { lagret = lesLagret(); loesAlleJusteringer(); tegnAlt(); };
 S.ryddSW = () => { lagret = null; ryddTegning(); };
 
 // ---------- Selve genereringen ----------
@@ -874,6 +935,9 @@ async function generer() {
     });
     const rot = Math.atan2(-f.ez, f.ex);
     fasadeInfo.push({ off, rot });
+    // Fasadens basis, så et element kan REGNES OM når det dras: punktet på
+    // veggplanet ved fasade-mm 0, og retningen langs fasaden.
+    const fx = f.p.x + f.nx * off, fz = f.p.z + f.nz * off;
     // SØYLEFORLENGERNE BESTEMMER SKJØTENE (Emils regel runde 5): bare søyler
     // som når helt til TOPPEN av fasaden deler veggen i spenn. Korte
     // tilleggssøyler og losholter rundt utsparinger når aldri toppen, og kan
@@ -885,6 +949,13 @@ async function generer() {
     // Tette forlengere (hjørne- og avstivningssøyler i par) gir ÉN skjøt, ikke
     // to skjøter og en 660 mm strimmel mellom seg (Emil 02.09).
     const skjot = samleTetteSoyler(spennS.map(k => tilMm(k.t)), o.minFeltMm);
+    // Holdepunktene håndjusteringen snapper til: klaringen fra hvert
+    // søylesenter, og søylekantene (Emils ønske 02.09).
+    const snappP = [];
+    for (const k of f.soyler) {
+      const c = tilMm(k.t), halv = tilMm(k.s.bredde) / 2;
+      snappP.push(c - o.klaringMm, c + o.klaringMm, c - halv, c + halv);
+    }
     const t0 = tilScene(skjot[0]), t1 = tilScene(skjot[skjot.length - 1]);
     const toppMm = tilMm(f.toppY - baseY);
     const { rader: alleRader, kappIndex } = radStabel(toppMm, o.radHoyder, o.kappNederst);
@@ -956,12 +1027,22 @@ async function generer() {
           }
           vegger.push({
             x: p.x, y: p.y, z: p.z, rot, fi, tMid, nx: f.nx, nz: f.nz,
+            // til håndjusteringen: stabil id, fasadebasis, basis-utstrekning,
+            // radband og radens åpninger (hakkene regnes ut på nytt ved
+            // tegning, så de følger elementet når det strekkes)
+            id: "v" + vegger.length, fx, fz, ex: f.ex, ez: f.ez,
+            radIdx: r, rBunnMm: rBunn,
+            basFraMm: Math.round(bFra), basTilMm: Math.round(bTil), dFra: 0, dTil: 0, rev: 0,
+            fraMm: Math.round(bFra), tilMm: Math.round(bTil),
+            apn: radApninger.map(a => ({ fraMm: a.fraMm, tilMm_: a.tilMm_, bunnMm: a.bunnMm, toppMm: a.toppMm })),
+            snapp: snappP,
             lengdeMm: Math.round(lengdeMm), hoydeMm: radH, tMm: o.tykkelseMm,
             fullMm: Math.round(fullMm),
             hull: hull.length ? hull : undefined,
             // Kapp = FAKTISK skåret i LENGDEN: tilpasningsraden, eller en bit
             // som er kortere enn feltet fordi en port tok resten. Et hakk
             // gjør det IKKE — Moelv beholder SW-06 3780MM med vindu i.
+            tilpassetRad,
             tilpasset: tilpassetRad || lengdeMm < fullMm - SW_TOL_MM ||
                        (o.kappUnderMm > 0 && lengdeMm < o.kappUnderMm)
           });
@@ -972,61 +1053,114 @@ async function generer() {
   if (!vegger.length) { alert(t("Ingen veggelementer ble generert — sjekk at modellen har søyler med høyde.")); return; }
 
   // SW-numrene
-  const { numre, nokkel } = swNummerering(vegger);
-  for (const v of vegger) {
-    if (!v.tilpasset) { v.sw = numre.get(nokkel(v)) || "SW-XX"; continue; }
-    // Kappbiten arver forelderens nummer med stjerne når Emil har valgt
-    // Lørenskog-stilen: hele feltelementet i samme rad er forelderen.
-    const forelder = numre.get(nokkel({ lengdeMm: v.fullMm, hoydeMm: v.hoydeMm }));
-    v.sw = kappNavn(forelder, o.kappStil);
-  }
+  // Fasadene lagres kompakt, så stablene kan settes opp på nytt etter en
+  // håndjustering — uten å regne ut fasadene fra modellen igjen.
+  const fasadeLagret = fasader.map((f, i) => ({
+    px: f.p.x, pz: f.p.z, ex: f.ex, ez: f.ez, nx: f.nx, nz: f.nz,
+    t0: f.soyler[0].t, t1: f.soyler[f.soyler.length - 1].t,
+    off: (fasadeInfo[i] || {}).off || 0, rot: (fasadeInfo[i] || {}).rot || 0
+  }));
 
-  // 📦 Leveransestablene i Materiell: én stabel per SW-nummer (Emils valg:
-  // begge deler — vegg på plass OG stabler). Forrige generering ryddes først.
+  lagret = { oppsett: o, vegger, gulv, ringmur, materiellIder: [],
+             fasader: fasadeLagret, okBetong };
+  loesAlleJusteringer();
+  byggStabler();
+  skrivLagret();
+  tegnAlt();
+  tegnPanel();
+}
+
+// ---------- Justeringene løses opp, og alt avledet regnes om ----------
+// Kjøres etter generering, etter hvert drag, og når en modell åpnes igjen.
+// Elementene beholder basFraMm/basTilMm + dFra/dTil; ALT annet (utstrekning,
+// posisjon, lengde, SW-nummer, skjult) er avledet — derfor kommer et skjult
+// element tilbake så snart du drar tilbake.
+function loesAlleJusteringer() {
+  if (!lagret || !lagret.vegger) return;
+  const o = lagret.oppsett || STD_OPPSETT;
+  const grupper = new Map();
+  for (const v of lagret.vegger) {
+    if (v.basFraMm === undefined) continue;   // generert av en eldre versjon
+    const k = v.fi + "|" + v.radIdx;
+    if (!grupper.has(k)) grupper.set(k, []);
+    grupper.get(k).push(v);
+  }
+  for (const liste of grupper.values()) {
+    const res = loesRad(liste.map(v => ({
+      id: v.id,
+      fraMm: v.basFraMm + (v.dFra || 0),
+      tilMm: v.basTilMm + (v.dTil || 0),
+      rev: v.rev || 0
+    })), SW_MIN_BIT_MM);
+    for (const v of liste) {
+      const r = res.get(v.id);
+      if (!r) continue;
+      v.skjult = !!r.skjult;
+      v.fraMm = Math.round(r.fraMm);
+      v.tilMm = Math.round(r.tilMm);
+      v.lengdeMm = Math.max(0, Math.round(r.tilMm - r.fraMm));
+      const midMm = (r.fraMm + r.tilMm) / 2;
+      v.tMid = tilScene(midMm);
+      v.x = v.fx + v.ex * v.tMid;
+      v.z = v.fz + v.ez * v.tMid;
+      // Et STREKKET element er ikke kapp — Moelv SW-05 er 6490 mm i et
+      // 5980-felt og har ekte nummer. Bare et FORKORTET er kapp.
+      v.tilpasset = !!v.tilpassetRad || v.lengdeMm < v.fullMm - SW_TOL_MM ||
+                    (o.kappUnderMm > 0 && v.lengdeMm < o.kappUnderMm);
+    }
+  }
+  const synlige = lagret.vegger.filter(v => !v.skjult);
+  const { numre, nokkel } = swNummerering(synlige);
+  for (const v of lagret.vegger) {
+    if (v.skjult) { v.sw = ""; continue; }
+    if (!v.tilpasset) { v.sw = numre.get(nokkel(v)) || "SW-XX"; continue; }
+    v.sw = kappNavn(numre.get(nokkel({ lengdeMm: v.fullMm, hoydeMm: v.hoydeMm })), o.kappStil);
+  }
+}
+
+// 📦 Leveransestablene i Materiell: én stabel per SW-nummer, satt UTENFOR
+// fasaden der elementene skal monteres. Bygges opp på nytt etter hver
+// justering, så antallene i Mengder følger med.
+function byggStabler() {
+  if (!lagret) return;
+  const o = lagret.oppsett || STD_OPPSETT;
   fjernGenerertMateriell();
+  const fasader = lagret.fasader || [];
+  const okBetong = lagret.okBetong || 0;
   const perSw = new Map();
-  for (const v of vegger) {
-    if (v.sw === "SW-XX") continue;
+  for (const v of lagret.vegger || []) {
+    if (v.skjult || !v.sw || v.tilpasset) continue;
     if (!perSw.has(v.sw)) perSw.set(v.sw, { lengdeMm: v.lengdeMm, hoydeMm: v.hoydeMm, antall: 0, fi: v.fi, tSum: 0 });
     const g = perSw.get(v.sw);
     g.antall++;
     g.tSum += v.tMid;
   }
-  // Stablene settes UTENFOR FASADEN der elementene skal monteres (Emils runde
-  // 3): hver SW plasseres ved tyngdepunktet sitt langs sin fasade, parallelt
-  // med veggen, og flere SW-er på samme fasade legges i rader utover. Kan
-  // etterpå flyttes for hånd med Flytt-knappen i materiell.
   const nyeIder = [];
   const fasadeRad = new Map();
-  for (const [sw, g] of [...perSw.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+  for (const [sw, g] of [...perSw.entries()].sort((a, b) => a[0].localeCompare(b[0], "no"))) {
     const f = fasader[g.fi] || fasader[0];
-    const info = fasadeInfo[g.fi] || fasadeInfo[0] || { off: 0, rot: 0 };
+    if (!f) continue;
     const rad = fasadeRad.get(g.fi) || 0;
     fasadeRad.set(g.fi, rad + 1);
-    const ut = info.off + tilScene(5000) + rad * tilScene(g.hoydeMm + 1500);
-    const tSpenn = f.soyler[f.soyler.length - 1].t - f.soyler[0].t;
-    const tMid = Math.max(f.soyler[0].t + tilScene(g.lengdeMm) / 2,
-      Math.min(f.soyler[0].t + tSpenn - tilScene(g.lengdeMm) / 2, g.tSum / g.antall));
-    const p = vaskMateriell({
+    const ut = f.off + tilScene(5000) + rad * tilScene(g.hoydeMm + 1500);
+    const tMid = Math.max(f.t0 + tilScene(g.lengdeMm) / 2,
+      Math.min(f.t1 - tilScene(g.lengdeMm) / 2, g.tSum / g.antall));
+    const pkt = vaskMateriell({
       id: "SW-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 7),
       maltype: "sandwich", navn: sw, farge: o.farge,
       lengde: g.lengdeMm, bredde: g.hoydeMm, tykkelse: o.tykkelseMm,
       antall: g.antall,
-      x: f.p.x + f.ex * tMid + f.nx * ut,
+      x: f.px + f.ex * tMid + f.nx * ut,
       y: okBetong,
-      z: f.p.z + f.ez * tMid + f.nz * ut,
-      rot: info.rot
+      z: f.pz + f.ez * tMid + f.nz * ut,
+      rot: f.rot
     });
-    if (p) { nyeIder.push(p.id); S.materiell = (S.materiell || []).concat([p]); }
+    if (pkt) { nyeIder.push(pkt.id); S.materiell = (S.materiell || []).concat([pkt]); }
   }
+  lagret.materiellIder = nyeIder;
   tegnMateriell();
   lagreMateriellLokalt();
   S.qtyCache = null;
-
-  lagret = { oppsett: o, vegger, gulv, ringmur, materiellIder: nyeIder };
-  skrivLagret();
-  tegnAlt();
-  tegnPanel();
 }
 
 function fjernGenerertMateriell() {
@@ -1059,7 +1193,7 @@ function fjernAltGenerert() {
 function lastNedListe() {
   if (!lagret || !(lagret.vegger || []).length) { alert(t("Generer veggelementene først.")); return; }
   const o = lagret.oppsett;
-  const rader = swListeRader(lagret.vegger, {
+  const rader = swListeRader(lagret.vegger.filter(v => !v.skjult), {
     prosjekt: o.prosjekt, oppdragsnr: o.oppdragsnr, sted: o.sted, sign: o.sign,
     dato: new Date().toLocaleDateString("no-NO"),
     tykkelseMm: o.tykkelseMm, isolasjon: o.isolasjon,
@@ -1108,6 +1242,190 @@ function lesOppsettFraPanel() {
   skrivLagret();
   return o;
 }
+
+// ---------- ✥ Juster elementer: dra i endene ----------
+// Emils ønske 02.09: trykk på et element og dra i enden for å stille lengden.
+// Shift+klikk markerer flere, som dras samtidig. Kanten snapper til 10 mm fra
+// søylesenter eller til søylekanten. Drar du inn i naboen blir den kortere, og
+// under 100 mm forsvinner den — men kommer tilbake når du drar tilbake, fordi
+// ingenting slettes: alt er avledet av basFraMm/basTilMm + dFra/dTil.
+let just = null;   // { valgt: Set<id>, drar: {…} | null, markorer: Group }
+
+function veggMedId(id) { return (lagret && lagret.vegger || []).find(v => v.id === id); }
+
+// Elementgruppa under pekeren, blant de genererte veggene
+function pekVegg(cx, cy) {
+  const r = canvas.getBoundingClientRect();
+  const ndc = new THREE.Vector2(((cx - r.left) / r.width) * 2 - 1,
+                                -((cy - r.top) / r.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  const treff = raycaster.intersectObjects(swGroup.children, true);
+  for (const h of treff) {
+    let o = h.object;
+    while (o && o.userData.swId === undefined) o = o.parent;
+    if (o && o.userData.swId !== undefined) return { v: veggMedId(o.userData.swId), punkt: h.point };
+  }
+  return null;
+}
+
+// Peker-posisjonen i fasade-mm: skjæringen mellom blikket og VEGGPLANET til
+// elementet som dras. Da følger kanten pekeren uansett kameravinkel.
+const _jPlan = new THREE.Plane();
+const _jPkt = new THREE.Vector3();
+function fasadeMm(cx, cy, v) {
+  const r = canvas.getBoundingClientRect();
+  const ndc = new THREE.Vector2(((cx - r.left) / r.width) * 2 - 1,
+                                -((cy - r.top) / r.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  const n = new THREE.Vector3(v.nx, 0, v.nz).normalize();
+  _jPlan.setFromNormalAndCoplanarPoint(n, new THREE.Vector3(v.x, v.y, v.z));
+  if (!raycaster.ray.intersectPlane(_jPlan, _jPkt)) return null;
+  return tilMm((_jPkt.x - v.fx) * v.ex + (_jPkt.z - v.fz) * v.ez);
+}
+
+function jBarEl() {
+  let el = $("swJustBar");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "swJustBar";
+    el.style.cssText = "position:fixed;left:50%;transform:translateX(-50%);bottom:64px;" +
+      "z-index:40;display:none;gap:6px;align-items:center;background:var(--panel);" +
+      "border:1px solid var(--border);border-radius:10px;padding:6px 10px;box-shadow:0 4px 18px rgba(0,0,0,.35)";
+    document.body.appendChild(el);
+  }
+  return el;
+}
+
+function tegnJustBar() {
+  const el = jBarEl();
+  if (!just) { el.style.display = "none"; el.innerHTML = ""; return; }
+  el.style.display = "flex";
+  el.innerHTML =
+    '<span style="font-size:12px;max-width:360px">' +
+    t("Trykk på et veggelement og dra i enden for å stille lengden. Shift+klikk for å ta flere. Kanten snapper til søylene.") +
+    ' <b>' + t("{0} valgt", just.valgt.size) + '</b></span>' +
+    '<button id="swJustNull" style="padding:3px 10px">' + t("Nullstill") + '</button>' +
+    '<button id="swJustFerdig" class="primary" style="padding:3px 10px">' + t("Ferdig") + '</button>';
+  $("swJustNull").onclick = () => {
+    for (const v of (lagret && lagret.vegger) || []) { v.dFra = 0; v.dTil = 0; v.rev = 0; }
+    loesAlleJusteringer(); byggStabler(); skrivLagret(); tegnAlt(); merkValgte();
+  };
+  $("swJustFerdig").onclick = () => avsluttJuster();
+}
+
+// Grønn kant rundt de markerte elementene
+function merkValgte() {
+  if (!just) return;
+  just.markorer.children.slice().forEach(m => {
+    if (m.geometry) m.geometry.dispose();
+    if (m.material) m.material.dispose();
+    just.markorer.remove(m);
+  });
+  for (const id of just.valgt) {
+    const v = veggMedId(id);
+    if (!v || v.skjult) continue;
+    const g = new THREE.Mesh(
+      new THREE.PlaneGeometry(tilScene(v.lengdeMm), tilScene(v.hoydeMm)),
+      new THREE.MeshBasicMaterial({ color: 0x22c55e, transparent: true, opacity: 0.35,
+        side: THREE.DoubleSide, depthWrite: false }));
+    const nv = new THREE.Vector3(v.nx, 0, v.nz).normalize();
+    g.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), nv);
+    g.position.set(v.x, v.y, v.z).addScaledVector(nv, tilScene(v.tMm) / 2 + 0.02 / (S.enhetSkala || 1));
+    g.renderOrder = 998;
+    just.markorer.add(g);
+  }
+}
+
+function startJuster() {
+  if (!lagret || !(lagret.vegger || []).length) { alert(t("Generer veggelementene først.")); return; }
+  const markorer = new THREE.Group();
+  swGroup.add(markorer);
+  just = { valgt: new Set(), drar: null, markorer };
+  $("swPanel").classList.remove("open");
+  tegnJustBar();
+}
+
+function avsluttJuster() {
+  if (!just) return;
+  just.markorer.traverse(m => { if (m.geometry) m.geometry.dispose(); if (m.material) m.material.dispose(); });
+  swGroup.remove(just.markorer);
+  just = null;
+  tegnJustBar();
+  tegnPanel();
+  apnePanel("swPanel");
+}
+
+window.addEventListener("pointerdown", (e) => {
+  if (!just || e.button !== 0 || e.target !== canvas) return;
+  const treff = pekVegg(e.clientX, e.clientY);
+  just.ned = { x: e.clientX, y: e.clientY };
+  if (!treff || !treff.v) { just.drar = null; return; }
+  const v = treff.v;
+  if (e.shiftKey) {
+    if (just.valgt.has(v.id)) just.valgt.delete(v.id); else just.valgt.add(v.id);
+    e.stopPropagation();
+    merkValgte(); tegnJustBar();
+    return;
+  }
+  if (!just.valgt.has(v.id)) { just.valgt.clear(); just.valgt.add(v.id); }
+  const startMm = fasadeMm(e.clientX, e.clientY, v);
+  if (startMm === null) return;
+  // Hvilken ENDE dras? Den halvparten av elementet trykket havnet i.
+  const ende = startMm < (v.fraMm + v.tilMm) / 2 ? "fra" : "til";
+  const rev = 1 + Math.max(0, ...(lagret.vegger || []).map(w => w.rev || 0));
+  const base = new Map();
+  for (const id of just.valgt) {
+    const w = veggMedId(id);
+    if (w) base.set(id, { dFra: w.dFra || 0, dTil: w.dTil || 0 });
+  }
+  just.drar = { id: v.id, ende, startMm, base, rev };
+  e.stopPropagation();   // kameraet skal ikke rotere mens vi drar
+  merkValgte(); tegnJustBar();
+}, true);
+
+window.addEventListener("pointermove", (e) => {
+  if (!just || !just.drar) return;
+  const d = just.drar;
+  const v = veggMedId(d.id);
+  if (!v) return;
+  const naMm = fasadeMm(e.clientX, e.clientY, v);
+  if (naMm === null) return;
+  const b = d.base.get(d.id) || { dFra: 0, dTil: 0 };
+  const basKant = d.ende === "fra" ? v.basFraMm + b.dFra : v.basTilMm + b.dTil;
+  // kanten snappes, og SAMME forskyvning gis til alle markerte
+  const snappet = snappKant(basKant + (naMm - d.startMm), v.snapp, 150);
+  const delta = Math.round(snappet - basKant);
+  for (const id of just.valgt) {
+    const w = veggMedId(id);
+    const wb = d.base.get(id);
+    if (!w || !wb) continue;
+    if (d.ende === "fra") w.dFra = wb.dFra + delta; else w.dTil = wb.dTil + delta;
+    w.rev = d.rev;
+  }
+  loesAlleJusteringer();
+  tegnAlt();
+  merkValgte();
+  e.stopPropagation();
+}, true);
+
+window.addEventListener("pointerup", (e) => {
+  if (!just || e.button !== 0) return;
+  if (!just.drar) { just.ned = null; return; }
+  just.drar = null;
+  just.ned = null;
+  e.stopPropagation();
+  try { canvas.dispatchEvent(new PointerEvent("pointercancel", { pointerId: e.pointerId })); }
+  catch (_) { try { canvas.dispatchEvent(new Event("pointercancel")); } catch (__) {} }
+  loesAlleJusteringer();
+  byggStabler();
+  skrivLagret();
+  tegnAlt();
+  merkValgte();
+}, true);
+
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && just) { e.stopPropagation(); avsluttJuster(); }
+}, true);
 
 // ---------- 🎯 Marker utsparing: trykk på FLATENE rundt åpningen ----------
 // Emils regel (runde 3): trykk på ÉN flate per side — innsiden av søylene på
@@ -1340,6 +1658,7 @@ function tegnPanel() {
     felt("swSign", "Sign.", o.sign, "text") +
     '<div class="prop-actions" style="margin-top:10px;flex-wrap:wrap">' +
     '<button id="swGenerer" class="primary">' + ikon("boks") + ' ' + t("Generer SW + gulv/ringmur") + '</button>' +
+    '<button id="swJusterBtn">✥ ' + t("Juster elementer") + '</button>' +
     '<button id="swListe">' + ikon("lastned") + ' ' + t("Last ned liste (Excel/CSV)") + '</button>' +
     '<button id="swFjern">' + ikon("slett") + ' ' + t("Fjern genererte") + '</button></div>' +
     (antall ? '<p style="color:var(--muted);font-size:12px;margin-top:6px">' +
@@ -1354,6 +1673,7 @@ function tegnPanel() {
   $("swListe").onclick = () => { lesOppsettFraPanel(); lastNedListe(); };
   $("swFjern").onclick = () => { lesOppsettFraPanel(); fjernAltGenerert(); };
   $("swNyUtsp").onclick = () => { lesOppsettFraPanel(); startUtspMark(); };
+  if ($("swJusterBtn")) $("swJusterBtn").onclick = () => { lesOppsettFraPanel(); startJuster(); };
   body.querySelectorAll("button[data-sw-slett-utsp]").forEach(b =>
     b.onclick = () => {
       lesOppsettFraPanel();
