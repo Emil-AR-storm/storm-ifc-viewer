@@ -887,9 +887,12 @@ function tegnUtspMerking() {
   const o = o0;
   const fasader = lagret.fasader || [];
   const baseY = baseYNaa();
+  // Merkingen skal SKJULES BAK OBJEKT, som SW-lappene og målene på veggene
+  // (Emil 02.09). Derfor vanlig dybdetest og ingen renderOrder — det var
+  // depthTest:false som lot krysset på baksiden skinne gjennom fasaden.
   const strekMat = new THREE.LineDashedMaterial({
     color: 0x11161d, dashSize: 0.12 / (S.enhetSkala || 1),
-    gapSize: 0.08 / (S.enhetSkala || 1), depthTest: false });
+    gapSize: 0.08 / (S.enhetSkala || 1) });
   for (const a of apninger) {
     const f = fasader[a.fi];
     if (!f) continue;
@@ -907,7 +910,6 @@ function tegnUtspMerking() {
     ]);
     const linje = new THREE.LineSegments(geo, strekMat);
     linje.computeLineDistances();          // MÅ til, ellers blir streken hel
-    linje.renderOrder = 999;
     linje.raycast = () => {};
     swGroup.add(linje);
     // totalmålet midt i åpningen
@@ -919,7 +921,6 @@ function tegnUtspMerking() {
       tilScene(Math.max(bredde * 0.8, 600)));
     tot.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), nv);
     tot.position.copy(pkt(midtMm, (y0 + y1) / 2));
-    tot.renderOrder = 1000;
     tot.raycast = () => {};
     swGroup.add(tot);
     // KAPPDYBDEN per element som går gjennom området
@@ -933,7 +934,6 @@ function tegnUtspMerking() {
       const lapp = tekstDekal("↕ " + dybde, 170, tilScene(Math.max(x1 - x0, 400)));
       lapp.quaternion.copy(tot.quaternion);
       lapp.position.copy(pkt((x0 + x1) / 2, baseY + tilScene((b0 + b1) / 2)));
-      lapp.renderOrder = 1000;
       lapp.raycast = () => {};
       swGroup.add(lapp);
     }
