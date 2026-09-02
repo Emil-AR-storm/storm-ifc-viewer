@@ -133,6 +133,10 @@ function axisLetter(i) {
 
 function buildAxes() {
   S.axesBuilt = true;
+  // Nullstilles FØR de tidlige retur-ene under: en modell som ikke gir akser
+  // skal ikke arve navnene fra den forrige. Instruksjonstegninga ville da
+  // skrevet forrige byggs aksenavn over denne fasaden.
+  S.akseLinjer = null;
   if (!S.modelGroup || !S.modelBox) return;
   const boxes = sourceBoxes();
   if (boxes.length < 2) return;
@@ -246,6 +250,19 @@ function buildAxes() {
   }
   dimChain(xs, "x", minZ - one * 2.5); // tallakser: kjede utenfor akse-merkelappene
   dimChain(zs, "z", minX - one * 2.5); // bokstavakser
+
+  // 📐 Aksene legges også fram som REN DATA, ikke bare som linjer i scenen.
+  // Instruksjonstegninga (js/sw-tegning.js) skal skrive byggets EKTE aksenavn
+  // over fasaden, og har ingen vei til dem gjennom axesGroup — der ligger de
+  // som sprites med en tekstur på.
+  //
+  // Koordinatene er i MODELLENHETER, som resten av fila: `x` er akser med fast
+  // x (tallakser), `z` er akser med fast z (bokstavakser).
+  S.akseLinjer = {
+    x: xs.map((g, i) => ({ c: g.c, navn: String(i + 1) })),
+    z: zs.map((g, i) => ({ c: g.c, navn: axisLetter(i) })),
+    tol: tol
+  };
 }
 
 // Eksponert via S, ikke import: ui.js må kunne bygge aksene på nytt når

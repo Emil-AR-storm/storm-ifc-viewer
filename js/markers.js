@@ -34,6 +34,105 @@ på("btnComments", "click", () => {
 
 function storageKey(){ return "storm-ifc-comments::" + S.fileName; }
 
+// ---------- 👁 Skjul markeringer ----------
+// EGEN, LOKAL LISTE — flagget ligger IKKE på markeringen. Hadde det ligget der,
+// ville persist() + pushSharedComments() sendt det til SharePoint, og en
+// markering én person skjuler på sin skjerm ville forsvunnet for hele
+// byggeplassen. Skjuling er en VISNING, på linje med hiddenIDs i display.js.
+//
+// Bieffekt som er gratis: markeringer som alt ligger i localStorage står ikke i
+// settet, og er dermed synlige. Ingen migrering og ingen «vei tilbake» å glemme
+// — som runde 18 lærte oss å se etter.
+const skjulteMark = new Set();
+function skjulKey(){ return "storm-ifc-skjulte-mark::" + S.fileName; }
+
+function lastSkjulteMark() {
+  skjulteMark.clear();
+  try {
+    const raw = localStorage.getItem(skjulKey());
+    (raw ? JSON.parse(raw) : []).forEach(id => skjulteMark.add(String(id)));
+  } catch (_) {}
+}
+
+function lagreSkjulteMark() {
+  try { localStorage.setItem(skjulKey(), JSON.stringify([...skjulteMark])); } catch (_) {}
+}
+
+// Ider kommer både som tall (Date.now()) og streng (SharePoint) — resten av
+// fila sammenligner med == med vilje. Settet holder ALLTID strenger, så
+// markeringSkjult(5) og markeringSkjult("5") gir samme svar.
+export const markeringSkjult = (id) => skjulteMark.has(String(id));
+
+export function skjulteMarkeringerAntall() {
+  return (S.comments || []).filter(c => markeringSkjult(c.id)).length;
+}
+
+// Setter .visible på boblene OG områdene fra samme sett. Ett sted, så de to
+// aldri kan si forskjellige ting om samme markering.
+export function synkMarkeringSkjuling() {
+  markerGroup.children.forEach(s => { s.visible = !markeringSkjult(s.userData.commentId); });
+  omradeGroup.children.forEach(g => { g.visible = !markeringSkjult(g.userData.commentId); });
+  S.miniSkitten = true;
+  // «Vis alle» eies av display.js. Kroken settes der, så markers.js slipper å
+  // importere display.js — det ville lukket sirkelen markers → display → ifc → markers.
+  if (S.oppdaterVisAlle) S.oppdaterVisAlle();
+}
+
+// ETT sted som endrer skjulingen. Øyeknappen i markeringskortet og gruppa i
+// 🎨 Utseende kaller begge hit, og begge panelene tegnes på nytt etterpå — det
+// er slik de to holder seg i sync uten at den ene trenger å vite om den andre.
+function tegnPanelerPaNytt() {
+  if ($("commentPanel") && $("commentPanel").classList.contains("open")) renderCommentList();
+  else if ($("commentCount")) $("commentCount").textContent = S.comments.length;
+  if (S.tegnUtseendePanel) S.tegnUtseendePanel();
+}
+
+export function settMarkeringSkjult(id, skjul) {
+  const n = String(id);
+  if (skjul) skjulteMark.add(n); else skjulteMark.delete(n);
+  lagreSkjulteMark();
+  synkMarkeringSkjuling();
+  // Bobla står ikke og peker på en markering som ikke er der lenger.
+  if (skjul && popFor && String(popFor.id) === n) closeMarkerPopup();
+  tegnPanelerPaNytt();
+}
+
+export function settAlleMarkeringerSkjult(skjul) {
+  skjulteMark.clear();
+  if (skjul) (S.comments || []).forEach(c => skjulteMark.add(String(c.id)));
+  lagreSkjulteMark();
+  synkMarkeringSkjuling();
+  if (skjul) closeMarkerPopup();
+  tegnPanelerPaNytt();
+}
+
+// Kroker display.js leser: «Vis alle» skal også hente fram markeringene, og
+// knappen skal stå framme så lenge én markering er skjult.
+S.markeringNoeSkjult = () => skjulteMark.size > 0;
+S.visAlleMarkeringer = () => { if (skjulteMark.size) settAlleMarkeringerSkjult(false); };
+
+// 🎨 «Markeringer» som gruppe i Utseende. Én øyeknapp for alle, og et tall som
+// sier hvor mange som er skjult enkeltvis — uten det ville gruppa sett «på» ut
+// mens tre bobler var borte fra kortene.
+S.markeringUtseendeRader = (body) => {
+  if (!body) return;
+  const alle = (S.comments || []).length;
+  if (!alle) return;
+  const skjult = skjulteMarkeringerAntall();
+  const alleSkjult = skjult === alle;
+  const boks = document.createElement("div");
+  boks.innerHTML =
+    '<div class="qty-row" style="margin-top:10px"><div class="n" style="font-weight:700">' +
+      t("Markeringer") + '</div><div class="c"></div></div>' +
+    '<div class="qty-row"><div class="n">' + t("Alle markeringer") +
+      ' <span style="color:var(--muted);font-size:11px">(' + alle +
+      (skjult ? " · " + t("{0} skjult", skjult) : "") + ')</span></div>' +
+      '<div class="c"><button data-mark-alle="1" title="' + t("Skjul/vis") +
+      '" style="padding:3px 8px">' + ikon(alleSkjult ? "skjul" : "vis") + '</button></div></div>';
+  body.appendChild(boks);
+  boks.querySelector("button[data-mark-alle]").onclick = () => settAlleMarkeringerSkjult(!alleSkjult);
+};
+
 // @-nevning i «Ny markering»-dialogen. Kobles én gang; kandidatlista hentes
 // på nytt hver gang man skriver @, så den virker også etter at ansattlista
 // har kommet fra SharePoint.
@@ -48,6 +147,7 @@ export function loadComments() {
     const raw = localStorage.getItem(storageKey());
     S.comments = raw ? JSON.parse(raw) : [];
   } catch(_) { S.comments = []; }
+  lastSkjulteMark();          // skjulingen er per fil, som markeringene selv
   S.comments.forEach(addMarkerSprite);
   renderCommentList();
   syncSharedComments(); // hent delte markeringer fra SharePoint i bakgrunnen
@@ -111,6 +211,7 @@ async function lastLettMarkeringer() {
   }
   markerGroup.clear();
   ryddOmrader();
+  lastSkjulteMark();
   S.comments.forEach(addMarkerSprite);
   merkUsendte();          // J5: det som ligger i køen finnes ikke hos Workeren ennå
   renderCommentList();
@@ -556,6 +657,9 @@ function addMarkerSprite(comment) {
   sprite.position.set(comment.x, comment.y, comment.z);
   sprite.renderOrder = 999;
   sprite.userData.commentId = comment.id;
+  // Settes HER, ikke i en runde etterpå: en skjult markering skal ikke rekke
+  // å vises i ett bilde når lista tegnes på nytt.
+  sprite.visible = !markeringSkjult(comment.id);
   markerGroup.add(sprite);
   // ⭕▭ har markeringen et område, tegnes det i samme slengen — bobla står i
   // senteret av området, så de hører sammen og skal leve og dø sammen
@@ -697,6 +801,7 @@ function addOmradeMesh(c) {
   g.position.set(o.x, o.y, o.z);
   g.scale.set(Math.max(o.rx, 1e-6), omrHoydeEllerSkive(o), Math.max(o.rz, 1e-6));
   g.userData.commentId = c.id;
+  g.visible = !markeringSkjult(c.id);
   omradeGroup.add(g);
 }
 
@@ -1613,7 +1718,10 @@ export function pickMarker(clientX, clientY) {
   mPt.x = (clientX / innerWidth) * 2 - 1;
   mPt.y = -(clientY / innerHeight) * 2 + 1;
   mRay.setFromCamera(mPt, camera);
-  const hits = mRay.intersectObjects(markerGroup.children, false);
+  // Filtreres EKSPLISITT på .visible. Raycasteren i three hopper ikke over
+  // usynlige objekter av seg selv, og en skjult markering som fortsatt kan
+  // klikkes fram er verre enn ingen skjuling.
+  const hits = mRay.intersectObjects(markerGroup.children.filter(s => s.visible), false);
   if (!hits.length) return null;
   const id = hits[0].object.userData.commentId;
   return S.comments.find(c => c.id == id) || null;
@@ -1778,6 +1886,9 @@ export function deleteComment(id) {
   S.comments = S.comments.filter(c => c.id != id);
   markerGroup.children.filter(s => s.userData.commentId == id).forEach(s => markerGroup.remove(s));
   fjernOmrader(id);
+  // Uten dette samler nøkkelen opp id-er til markeringer som ikke finnes, og
+  // en ny markering som tilfeldigvis får samme id ville startet skjult.
+  if (skjulteMark.delete(String(id))) lagreSkjulteMark();
   persist(); pushSharedComments(); renderCommentList();
 }
 
@@ -2292,9 +2403,21 @@ export function renderCommentList() {
     // forteller det samme.
     const ft = fristTekstFor(c);
     const ring = HASTEGRAD[ft.hast].ring;
-    return '<div class="comment" data-id="' + esc(c.id) + '" style="border-left:3px solid ' + STATUS[st].col + '">' +
+    // 👁 Skjult markering tegnes blass — kortet skal LESES som avslått, ellers
+    // sitter man og leter etter en boble i modellen som ikke er der.
+    const skjult = markeringSkjult(c.id);
+    return '<div class="comment' + (skjult ? " skjult" : "") + '" data-id="' + esc(c.id) +
+      '" style="border-left:3px solid ' + STATUS[st].col + (skjult ? ";opacity:.5" : "") + '">' +
       '<div class="meta"><span>' + esc((c.author ? c.author + " · " : "") + (c.date || "")) + '</span>' +
-        '<span class="del" data-del="' + esc(c.id) + '">' + t("Slett") + '</span></div>' +
+        '<span>' +
+        // Øyeknappen står i KORTET, ikke i 3D-en: den skjulte markeringen er
+        // per definisjon ikke synlig i modellen, så knappen som henter den
+        // tilbake må ligge et sted som fortsatt finnes.
+        '<button class="cm-skjul" data-skjul="' + esc(c.id) + '" title="' +
+          esc(skjult ? t("Vis denne markeringen") : t("Skjul denne markeringen")) +
+          '" style="padding:1px 6px;margin-right:6px">' + ikon(skjult ? "skjul" : "vis") + '</button>' +
+        '<span class="del" data-del="' + esc(c.id) + '">' + t("Slett") + '</span>' +
+        '</span></div>' +
       '<div>' + esc(c.text) + '</div>' +
       '<div class="meta" style="margin-top:4px"><span>' +
         '<span style="color:' + STATUS[st].col + '">●</span> ' + t(st) +
@@ -2337,10 +2460,21 @@ export function renderCommentList() {
   if ($("cmAllTasks")) $("cmAllTasks").onclick = () => sendTilPlanner(apne);
   body.querySelectorAll(".comment").forEach(el => {
     el.addEventListener("click", (e) => {
+      // closest, ikke e.target: knappen har et svg-ikon inni seg, og klikket
+      // treffer <svg> — getAttribute på det gir null, og knappen ville vært død.
+      const skjulEl = e.target.closest ? e.target.closest("[data-skjul]") : null;
+      if (skjulEl) {
+        const id = skjulEl.getAttribute("data-skjul");
+        settMarkeringSkjult(id, !markeringSkjult(id));
+        return;
+      }
       const delId = e.target.getAttribute("data-del");
       if (delId) { deleteComment(delId); closeMarkerPopup(); return; }
       const c = S.comments.find(c => c.id == el.dataset.id);
-      if (c) { goToComment(c); openMarkerPopup(c); }
+      // En skjult markering flyr vi IKKE til: kameraet ville landet foran en
+      // boble som ikke er der, og bobla pekt på ingenting. Øyeknappen er
+      // handlingen på et skjult kort.
+      if (c && !markeringSkjult(c.id)) { goToComment(c); openMarkerPopup(c); }
     });
   });
 }
