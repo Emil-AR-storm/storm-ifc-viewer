@@ -157,6 +157,32 @@ export function trekkFra(rekt, hull) {
   return biter;
 }
 
+// ---------- Ser vi fasaden fra UTSIDA eller innsida? ----------
+// EMILS FUNN 03.09: alle fasadene sto speilvendt i PDF-en. Lengdene, radhøydene
+// og SW-numrene var riktige — rekkefølgen fra venstre til høyre var snudd.
+// 3D-modellen er fasit, og der ser man veggen utenfra.
+//
+// Årsaken ligger i fasadens egen akse. `fasaderFra` går rundt det konvekse
+// hullet og setter tangenten e = (ex, ez) langs kanten, og normalen
+// n = (ez, −ex) rettet UTOVER. For en montør som står utenfor og ser på veggen
+// er blikkretningen d = −n og opp u = (0, 1, 0), så skjermens høyre er
+//
+//     r = d × u = (nz, 0, −nx)
+//
+// Peker den lagrede tangenten motsatt vei — altså e · r < 0 — løper fasadens
+// mm-akse mot VENSTRE på skjermen, og alt må speiles om fasadens midtpunkt før
+// det tegnes. Med hullet gått mot klokka er n = (ez, −ex) alltid utover, og da
+// er e · r = −1 for hver eneste fasade. Det er derfor ALLE fire sto speilvendt.
+//
+// Regnet ut per fasade, ikke hardkodet: en modell med motsatt hullretning skal
+// ikke bli speilvendt av at vi «vet» svaret for ett bygg.
+export function speilvendt(f) {
+  const ex = Number(f && f.ex) || 0, ez = Number(f && f.ez) || 0;
+  const nx = Number(f && f.nx) || 0, nz = Number(f && f.nz) || 0;
+  if (!nx && !nz) return false;   // gammel lagring uten normal — la den stå
+  return ex * nz - ez * nx < 0;
+}
+
 // Bokstavakser: A, B … Z, AA, AB … Samme funksjon som js/axes.js bruker.
 export function aksebokstav(i) {
   let s = "";
@@ -218,19 +244,38 @@ export function byggTegningsmodell(inn) {
     const rader = raderFra(vegger, fi);
     const veggToppMm = Math.max(...el.map(v => v.rBunnMm + v.hoydeMm));
 
+    // Speilingen om fasadens midtpunkt. Snur bare x-aksen (langs fasaden);
+    // høyder, radhøyder og SW-numre er uberørt.
+    const sp = speilvendt(fasader[fi]);
+    const spX = (mm) => (sp ? fraMm + tilMm - mm : mm);
+    // et intervall snus også ende for ende, ellers blir fra > til
+    const spI = (a2, b2) => (sp ? [fraMm + tilMm - b2, fraMm + tilMm - a2] : [a2, b2]);
+
+    // Aksenavnene slås opp i ORIGINALE mm — oppslaget går via et verdenspunkt,
+    // og det flytter seg ikke av at tegninga speiles. Bokstavfallbacken settes
+    // ETTER speilingen, så A alltid står lengst til venstre slik montøren ser
+    // veggen.
+    const navn0 = akser.map(mm => aksenavn(fi, mm));
+    const akserV = sp ? akser.map(spX).reverse() : akser;
+    const navnV = sp ? navn0.slice().reverse() : navn0;
+
     // 🔩 Stålet på denne fasaden. Klippes i bredden til fasaden, men IKKE i
     // høyden: en søyleforlenger som stikker opp over veggen er nettopp det
     // Emil vil se (02.09).
     const mittStal = stal.filter(b => b.fi === fi &&
       Math.min(b.tilMm_, tilMm) - Math.max(b.fraMm, fraMm) > 20)
-      .map(b => ({ fraMm: Math.max(b.fraMm, fraMm), tilMm: Math.min(b.tilMm_, tilMm),
-                   bunnMm: b.bunnMm, toppMm: b.toppMm }));
+      .map(b => {
+        const [f2, t2] = spI(Math.max(b.fraMm, fraMm), Math.min(b.tilMm_, tilMm));
+        return { fraMm: f2, tilMm: t2, bunnMm: b.bunnMm, toppMm: b.toppMm };
+      });
 
     // Ringmuren: BITENE som faktisk ble laget, ikke ett bånd tvers over.
     // Ett bånd viste ringmur under porten, der den er kappet bort (Emil 03.09).
     const mineRm = rmBiter
-      ? rmBiter.filter(b => b.fi === fi).map(b => ({
-          fraMm: b.fraMm, tilMm: b.tilMm_, bunnMm: b.bunnMm, toppMm: b.toppMm }))
+      ? rmBiter.filter(b => b.fi === fi).map(b => {
+          const [f2, t2] = spI(b.fraMm, b.tilMm_);
+          return { fraMm: f2, tilMm: t2, bunnMm: b.bunnMm, toppMm: b.toppMm };
+        })
       : (o.ringmur ? [{ fraMm, tilMm, bunnMm: rmBunnMm, toppMm: 0 }] : []);
 
     // Tegnehøyden er ikke veggens høyde: stålet kan stikke både over og under.
@@ -249,21 +294,24 @@ export function byggTegningsmodell(inn) {
       nullMm,
       ringmurBiter: mineRm,
       stal: mittStal,
-      akser: akser.map((mm, i) => ({ mm, navn: aksenavn(fi, mm) || aksebokstav(i) })),
-      kjede: malkjede(akser, klaring),
+      speilvendt: sp,
+      akser: akserV.map((mm, i) => ({ mm, navn: navnV[i] || aksebokstav(i) })),
+      kjede: malkjede(akserV, klaring),
       rader,
-      elementer: el.map(v => ({
-        fraMm: v.fraMm, tilMm: v.tilMm, bunnMm: v.rBunnMm, hoydeMm: v.hoydeMm,
-        sw: v.sw || "", tilpasset: !!v.tilpasset
-      })).sort((a, b) => a.bunnMm - b.bunnMm || a.fraMm - b.fraMm),
-      utsparinger: utsp.filter(a => a.fi === fi).map(a => ({
-        fraMm: a.fraMm, tilMm: a.tilMm_,
-        bunnMm: a.bunnMm,
-        // «full høyde» lagres som ±1e9 — klipp den til veggen, ellers blir
-        // rektangelet uendelig høyt og tegninga svart.
-        toppMm: Math.abs(a.toppMm) > 1e8 ? veggToppMm : a.toppMm,
-        full: Math.abs(a.toppMm) > 1e8
-      }))
+      elementer: el.map(v => {
+        const [f2, t2] = spI(v.fraMm, v.tilMm);
+        return { fraMm: f2, tilMm: t2, bunnMm: v.rBunnMm, hoydeMm: v.hoydeMm,
+                 sw: v.sw || "", tilpasset: !!v.tilpasset };
+      }).sort((a, b) => a.bunnMm - b.bunnMm || a.fraMm - b.fraMm),
+      utsparinger: utsp.filter(a => a.fi === fi).map(a => {
+        const [f2, t2] = spI(a.fraMm, a.tilMm_);
+        return { fraMm: f2, tilMm: t2,
+          bunnMm: a.bunnMm,
+          // «full høyde» lagres som ±1e9 — klipp den til veggen, ellers blir
+          // rektangelet uendelig høyt og tegninga svart.
+          toppMm: Math.abs(a.toppMm) > 1e8 ? veggToppMm : a.toppMm,
+          full: Math.abs(a.toppMm) > 1e8 };
+      })
     });
   }
   return { fasader: ut };
