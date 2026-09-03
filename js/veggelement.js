@@ -1575,22 +1575,30 @@ function ringmurPaFasader() {
   const biter = (lagret && lagret.ringmur) || [];
   if (!fasader.length || !biter.length) return null;
   const baseY = baseYNaa();
+  const naer = Math.max(0.8 / (S.enhetSkala || 1),
+    tilScene((lagret.oppsett || STD_OPPSETT).tykkelseMm) * 3);
   const ut = [];
   for (const r of biter) {
-    let best = -1, bestD = Infinity;
+    const lMm = tilMm(r.lengde), hMm = tilMm(r.hoyde);
+    // NÆRMESTE fasade BLANT DE BITEN LIGGER LANGS. Første versjon tok bare
+    // nærmeste plan, uten å sjekke at biten faktisk ligger innenfor fasadens
+    // utstrekning — og en ringmurbit ute i et hjørne er like nær naboens plan.
+    // Da ble den lagt på nabofasaden, havnet utenfor dens ender og forsvant:
+    // fasade 3 sto uten ringmur i høyre hjørne (Emil 03.09).
+    let best = -1, bestD = Infinity, bestMid = 0;
     for (let fi = 0; fi < fasader.length; fi++) {
       const f = fasader[fi];
       const dd = Math.abs((r.x - f.px) * f.nx + (r.z - f.pz) * f.nz);
-      if (dd < bestD) { bestD = dd; best = fi; }
+      if (dd > naer || dd >= bestD) continue;
+      const midMm = tilMm((r.x - f.px) * f.ex + (r.z - f.pz) * f.ez);
+      const fT0 = tilMm(Math.min(f.t0, f.t1)) - lMm, fT1 = tilMm(Math.max(f.t0, f.t1)) + lMm;
+      if (midMm < fT0 || midMm > fT1) continue;
+      best = fi; bestD = dd; bestMid = midMm;
     }
     if (best < 0) continue;
-    const f = fasader[best];
-    const tMid = (r.x - f.px) * f.ex + (r.z - f.pz) * f.ez;
-    const lMm = tilMm(r.lengde), hMm = tilMm(r.hoyde);
-    const midMm = tilMm(tMid);
     const bunn = tilMm(r.y - baseY) - hMm / 2;
     ut.push({ fi: best,
-      fraMm: Math.round(midMm - lMm / 2), tilMm_: Math.round(midMm + lMm / 2),
+      fraMm: Math.round(bestMid - lMm / 2), tilMm_: Math.round(bestMid + lMm / 2),
       bunnMm: Math.round(bunn), toppMm: Math.round(bunn + hMm) });
   }
   return ut.length ? ut : null;
@@ -1623,6 +1631,8 @@ async function lastNedTegning() {
       oppsett: o,
       utsparinger: utspPaFasader(),
       ringmurBiter: ringmurPaFasader(),
+      // scene → mm. Den rene delen skal ikke vite om S.enhetSkala.
+      tilMm,
       stal: await stalPaFasader(),
       aksenavn: (fi, mm) => navnFor(fi)(fi, mm),
       felt: pdfFelt(o, mod.idag()),
