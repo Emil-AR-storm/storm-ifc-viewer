@@ -797,6 +797,7 @@ export const ORDBOK = {
   "Fargelegg etter type": { en: "Colour by type", pl: "Koloruj wg typu", lt: "Spalvinti pagal tipą" },
   "Originalfarger": { en: "Original colours", pl: "Oryginalne kolory", lt: "Originalios spalvos" },
   "Skjul/vis": { en: "Hide/show", pl: "Ukryj/pokaż", lt: "Slėpti/rodyti" },
+  "Logo i tittelfeltet": { en: "Logo in the title block", pl: "Logo w tabelce rysunkowej", lt: "Logotipas brėžinio antraštėje" },
   "Fasade {0}": { en: "Facade {0}", pl: "Elewacja {0}", lt: "Fasadas {0}" },
   "Gesims": { en: "Parapet", pl: "Gzyms", lt: "Karnizas" },
   "Fant ingen fasader med veggelementer å tegne.": { en: "Found no facades with wall elements to draw.", pl: "Nie znaleziono elewacji z elementami ściennymi do narysowania.", lt: "Nerasta fasadų su sienų elementais, kuriuos būtų galima nubraižyti." },

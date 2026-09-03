@@ -33,6 +33,11 @@ import { allElementBoxes, hitID, pick, toCsv } from "./elements.js";
 import { alleElementIder } from "./ifc.js";
 import { metaFor, sikreMeta } from "./ifcrpc.js";
 import { MALTYPER, lagreMateriellLokalt, mmTilScene, ribbonPosisjoner, tegnMateriell, trpProfil, vaskMateriell } from "./materiell-vis.js";
+// 🖼 Logoene i tittelfeltet kommer fra SAMME SharePoint-mappe som rapportens,
+// gjennom samme to funksjoner. To lister med logoer ville drevet fra hverandre
+// første gang noen la til en fil bare i den ene.
+import { hentLogo, hentLogoer } from "./tegninger.js";
+import { ryddLogonavn } from "./rapport.js";
 
 // ---------- Konstanter (Emils regler) ----------
 // SKJØTEN ER 20 mm (Moelv/Lørenskog, bekreftet av Emil 02.09): hvert element
@@ -667,6 +672,9 @@ const STD_OPPSETT = {
   pdfProsjekt: "", pdfUndertittel: "", pdfOppdrag: "",
   pdfTegnet: "", pdfKontroll: "", pdfGodkjent: "", pdfDato: "",
   pdfMerknad: "",
+  // Logoen huskes på FILNAVN, ikke itemId: SharePoint gir samme fil ny itemId
+  // hvis den lastes opp på nytt, og da ville valget stille falt bort.
+  pdfLogo: "",
   utsparinger: []   // [{navn, min:[x,y,z], max:[x,y,z]}] fra valgte elementer
 };
 
@@ -1469,26 +1477,123 @@ export function pdfFelt(o, iDag) {
   };
 }
 
-// Byggets EKTE aksenavn, når 🔠 Akser er bygget. Fasadeposisjonen regnes ut til
-// et verdenspunkt, og treffer den en akselinje innenfor toleransen, brukes
-// navnet derfra. Ellers null — og da faller sw-tegning.js tilbake på A, B, C.
+// Byggets EKTE aksenavn, når 🔠 Akser er bygget.
 //
-// MERK at begge aksefamiliene sjekkes: en fasade langs Z krysses av
-// tallaksene, en fasade langs X av bokstavaksene. Hvilken det er, kommer an på
-// hvordan bygget står — det skal ikke gjettes her.
+// FEILEN SOM MÅTTE RETTES (Emil 03.09): første versjon lette i BEGGE
+// aksefamiliene og tok den nærmeste. For en fasade som går langs X har alle
+// punktene på fasaden nesten samme z — og da traff SAMME bokstavakse på hvert
+// eneste punkt. Fasade 1 fikk «A, A, A» og fasade 2 «6, D, 6».
+//
+// Bare familien som KRYSSER fasaden kan navngi punkter langs den:
+//  · fasade langs X krysses av linjene med fast x (tallaksene)
+//  · fasade langs Z krysses av linjene med fast z (bokstavaksene)
+// En skrå fasade krysses av begge på skrå, og da er det ingen av dem som gir et
+// ærlig navn — den faller tilbake på A, B, C for seg.
 function akseNavnFor(fi) {
   const L = S.akseLinjer;
   const f = ((lagret && lagret.fasader) || [])[fi];
   if (!L || !f) return () => null;
+  const ax = Math.abs(f.ex), az = Math.abs(f.ez);
+  // 0,92 ≈ 23° skrå. Mer enn det, og aksene står ikke på tvers av fasaden.
+  const langsX = ax > 0.92, langsZ = az > 0.92;
+  if (!langsX && !langsZ) return () => null;
+  const linjer = langsX ? (L.x || []) : (L.z || []);
+  if (!linjer.length) return () => null;
   const tol = L.tol > 0 ? L.tol : 0.4 / (S.enhetSkala || 1);
   return (_fi, mm) => {
     const tt = tilScene(mm);
-    const wx = f.px + f.ex * tt, wz = f.pz + f.ez * tt;
+    const v = langsX ? f.px + f.ex * tt : f.pz + f.ez * tt;
     let best = null, bestD = tol;
-    for (const a of L.x || []) { const d = Math.abs(wx - a.c); if (d <= bestD) { bestD = d; best = a.navn; } }
-    for (const a of L.z || []) { const d = Math.abs(wz - a.c); if (d <= bestD) { bestD = d; best = a.navn; } }
+    for (const a of linjer) { const dd = Math.abs(v - a.c); if (dd <= bestD) { bestD = dd; best = a.navn; } }
     return best;
   };
+}
+
+// ---------- 🔩 Stålet projisert på fasadene, REGNET UT VED TEGNING ----------
+// Emil 03.09: «stål rundt portene/stålbjelker og søyler som ikke er tildekket
+// av veggelement vises ikke på tegningen, det skal de».
+//
+// REGNES UT VED TEGNING, ikke lagret ved generering. Stålet står i modellen —
+// og modellen ER åpen, for SW-panelet krever den. Hadde det blitt lagret i
+// `generer()`, ville tegninga stått uten stål for alle som åpner en modell med
+// vegger som alt ligger i localStorage. Det er nøyaktig fella fra runde 18.
+//
+// Rekkefølgen i tegninga gjør klippingen: stålet tegnes FØR elementene, så det
+// som ligger bak veggen blir dekket, og bare det frie stålet står igjen.
+const STAL_TYPER = ["Column", "Beam", "Member", "Plate"];
+
+async function stalPaFasader() {
+  const fasader = (lagret && lagret.fasader) || [];
+  if (!fasader.length) return [];
+  if (!S.glbActive) await sikreMeta(alleElementIder);
+  const bokser = allElementBoxes();
+  // Hvor nær veggplanet må boksens SENTER stå? En søyle på fasaden ligger på
+  // planet; en takbjelke innover i bygget har senteret sitt langt inne og skal
+  // IKKE bli et digert rektangel over hele fasaden.
+  const naer = Math.max(0.8 / (S.enhetSkala || 1),
+    tilScene((lagret.oppsett || STD_OPPSETT).tykkelseMm) * 3);
+  const baseY = baseYNaa();
+  const ut = [];
+  for (const [id, b] of bokser) {
+    if (STAL_TYPER.indexOf(soyleTypeNavn(id)) === -1) continue;
+    const cx = (b.min.x + b.max.x) / 2, cz = (b.min.z + b.max.z) / 2;
+    // NÆRMESTE fasade, ikke den første som er innenfor toleransen. En bjelke
+    // ved et hjørne ligger nær to fasadeplan, og «første treff» la den på den
+    // fasaden som tilfeldigvis kom først i lista.
+    let best = -1, bestD = Infinity, bestT = null;
+    for (let fi = 0; fi < fasader.length; fi++) {
+      const f = fasader[fi];
+      const dd = Math.abs((cx - f.px) * f.nx + (cz - f.pz) * f.nz);
+      if (dd > naer || dd >= bestD) continue;
+      // hele boksen projiseres på fasadeaksen — alle fire hjørnene, som
+      // utsparingerPaFasade gjør
+      const ts = [];
+      for (const pxx of [b.min.x, b.max.x]) for (const pz of [b.min.z, b.max.z])
+        ts.push((pxx - f.px) * f.ex + (pz - f.pz) * f.ez);
+      const t0 = Math.min(...ts), t1 = Math.max(...ts);
+      // og den må faktisk ligge LANGS fasaden, ikke bare nær planet dens
+      const fT0 = Math.min(f.t0, f.t1) - naer, fT1 = Math.max(f.t0, f.t1) + naer;
+      if (t1 < fT0 || t0 > fT1) continue;
+      best = fi; bestD = dd; bestT = [t0, t1];
+    }
+    if (best < 0) continue;
+    const fraMm = tilMm(bestT[0]), tilMm_ = tilMm(bestT[1]);
+    if (tilMm_ - fraMm < 20) continue;
+    ut.push({ fi: best, fraMm: Math.round(fraMm), tilMm_: Math.round(tilMm_),
+      bunnMm: Math.round(tilMm(b.min.y - baseY)),
+      toppMm: Math.round(tilMm(b.max.y - baseY)) });
+  }
+  return ut;
+}
+
+// ---------- Ringmurbitene projisert på fasadene ----------
+// Ringmuren lagres som biter i scenerommet ({x, z, y, lengde, hoyde, rot}) —
+// og den er ALT kappet der utsparingene tar den. Tegninga må bruke bitene, ikke
+// ett bånd tvers over fasaden: da sto det ringmur under porten (Emil 03.09).
+function ringmurPaFasader() {
+  const fasader = (lagret && lagret.fasader) || [];
+  const biter = (lagret && lagret.ringmur) || [];
+  if (!fasader.length || !biter.length) return null;
+  const baseY = baseYNaa();
+  const ut = [];
+  for (const r of biter) {
+    let best = -1, bestD = Infinity;
+    for (let fi = 0; fi < fasader.length; fi++) {
+      const f = fasader[fi];
+      const dd = Math.abs((r.x - f.px) * f.nx + (r.z - f.pz) * f.nz);
+      if (dd < bestD) { bestD = dd; best = fi; }
+    }
+    if (best < 0) continue;
+    const f = fasader[best];
+    const tMid = (r.x - f.px) * f.ex + (r.z - f.pz) * f.ez;
+    const lMm = tilMm(r.lengde), hMm = tilMm(r.hoyde);
+    const midMm = tilMm(tMid);
+    const bunn = tilMm(r.y - baseY) - hMm / 2;
+    ut.push({ fi: best,
+      fraMm: Math.round(midMm - lMm / 2), tilMm_: Math.round(midMm + lMm / 2),
+      bunnMm: Math.round(bunn), toppMm: Math.round(bunn + hMm) });
+  }
+  return ut.length ? ut : null;
 }
 
 async function lastNedTegning() {
@@ -1505,14 +1610,23 @@ async function lastNedTegning() {
   if (knapp) knapp.disabled = true;
   try {
     const mod = await import("./sw-tegning.js");
+    // Ett navneoppslag per FASADE, ikke per punkt: akseNavnFor gjør oppslaget
+    // i S.akseLinjer én gang og lukker over fasaden.
+    const navnere = new Map();
+    const navnFor = (fi) => {
+      if (!navnere.has(fi)) navnere.set(fi, akseNavnFor(fi));
+      return navnere.get(fi);
+    };
     await mod.lastNedTegning({
       vegger: lagret.vegger,
       fasader: lagret.fasader,
       oppsett: o,
       utsparinger: utspPaFasader(),
-      // ett navneoppslag per fasade — akseNavnFor lukker over fasaden
-      aksenavn: (fi, mm) => akseNavnFor(fi)(fi, mm),
-      felt: pdfFelt(o, mod.idag())
+      ringmurBiter: ringmurPaFasader(),
+      stal: await stalPaFasader(),
+      aksenavn: (fi, mm) => navnFor(fi)(fi, mm),
+      felt: pdfFelt(o, mod.idag()),
+      hentLogo: () => hentLogo((($("swPdfLogo") || {}).value) || "")
     });
   } catch (err) {
     console.warn("Instruksjonstegning:", err);
@@ -2073,6 +2187,8 @@ function tegnPanel() {
       '<textarea id="swPdfMerknad" rows="2" maxlength="300" placeholder="' +
       esc(t("Veggelementer må kappes og tilpasses til eksisterende fasade. L-Beslag festes til eks. fasade.")) +
       '">' + esc(o.pdfMerknad || "") + '</textarea></label>' +
+    '<label>' + t("Logo i tittelfeltet") +
+      '<select id="swPdfLogo"><option value="">' + esc(t("Innebygd Storm-logo")) + '</option></select></label>' +
     '<p style="color:var(--muted);font-size:11px;margin:2px 0 6px">' +
       (S.akseLinjer
         ? t("Aksenavnene hentes fra 🔠 Akser.")
@@ -2094,6 +2210,7 @@ function tegnPanel() {
   };
   $("swListe").onclick = () => { lesOppsettFraPanel(); lastNedListe(); };
   if ($("swTegning")) $("swTegning").onclick = lastNedTegning;
+  fyllLogovalgSW();
   $("swFjern").onclick = () => { lesOppsettFraPanel(); fjernAltGenerert(); };
   $("swNyUtsp").onclick = () => { lesOppsettFraPanel(); startUtspMark(); };
   if ($("swVisUtsp")) $("swVisUtsp").onchange = () => { lesOppsettFraPanel(); tegnAlt(); };
@@ -2106,6 +2223,37 @@ function tegnPanel() {
       skrivLagret();
       tegnPanel();
     });
+}
+
+// Logolista hentes fra SharePoint FØRSTE gang panelet tegnes, og huskes så
+// lenge fanen står åpen. Feiler hentingen (ikke innlogget, ingen dekning) står
+// bare «Innebygd Storm-logo» igjen — tegninga lages likevel.
+let swLogoer = null;
+
+async function fyllLogovalgSW() {
+  if (!$("swPdfLogo")) return;
+  if (!swLogoer) {
+    try { swLogoer = await hentLogoer(); } catch (_) { swLogoer = []; }
+  }
+  // Panelet kan ha blitt tegnet på nytt mens vi ventet på SharePoint — hent
+  // elementet ETTER ventingen, ellers fylles en <select> som er kastet.
+  const v = $("swPdfLogo");
+  if (!v) return;
+  for (const l of swLogoer) {
+    const o = document.createElement("option");
+    o.value = l.itemId; o.textContent = ryddLogonavn(l.fil); o.dataset.fil = l.fil;
+    v.appendChild(o);
+  }
+  const husket = (oppsett() || {}).pdfLogo;
+  if (husket) {
+    const treff = [...v.options].find(o => o.dataset.fil === husket);
+    if (treff) v.value = treff.value;
+  }
+  v.onchange = () => {
+    const o = v.selectedOptions[0];
+    oppsett().pdfLogo = (o && o.dataset.fil) || "";
+    skrivLagret();
+  };
 }
 
 på("btnSW", "click", () => {

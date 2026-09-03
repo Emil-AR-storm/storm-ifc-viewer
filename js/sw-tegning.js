@@ -43,12 +43,16 @@ export const TF = {
 export const FARGE = {
   element: [230, 210, 181],   // #E6D2B5 — den lyse okeren i Moelv
   ringmur: [192, 192, 192],   // #C0C0C0
+  // 🔩 Stålet bak veggen. Kald grå, tydelig forskjellig fra ringmurens varme
+  // nøytrale — på et A0-ark lest fra to meter må montøren se med én gang om det
+  // er betong eller stål han står foran.
+  stal: [193, 205, 216],      // #C1CDD8 — kald grå, mørk nok til å synes i en tynn slintre
   strek: [0, 0, 0]
 };
 
 // Strektykkelser i punkt. Skjøten mellom to elementer i samme rad er TYKK i
 // Moelv — det er den streken montøren følger når han setter elementene.
-export const STREK = { tynn: 0.5, kjede: 0.5, skjot: 1.8, utsp: 1.4, ramme: 0.9 };
+export const STREK = { tynn: 0.5, kjede: 0.5, skjot: 1.8, utsp: 1.4, ramme: 0.9, stal: 0.8 };
 
 export const SKRIFT = { sw: 10, lengde: 10, kjede: 9, hoyde: 8, niva: 9,
                         tittel: 20, skala: 11, merknad: 8,
@@ -123,6 +127,36 @@ export function malkjede(akser, klaringMm) {
   return ut;
 }
 
+// ---------- Rektangel minus hull ----------
+// ET ELEMENT MED EN UTSPARING I SEG SKAL IKKE TEGNES OVER HULLET.
+// Første versjon fylte elementet helt og malte et hvitt rektangel oppå
+// etterpå. Det virket helt til stålet skulle med: stålet må tegnes FØR
+// elementene (ellers ligger det oppå veggen det står bak), og da malte det
+// hvite rektangelet over stålet i porten igjen.
+//
+// Nå trekkes åpningene FRA elementet, og det som blir igjen tegnes som opptil
+// fire biter. Da er hullet aldri malt over — det er rett og slett ikke tegnet.
+// Rene tall, x langs fasaden og y over SW-basen, begge i mm.
+const SUB_TOL = 1;
+
+export function trekkFra(rekt, hull) {
+  let biter = [rekt];
+  for (const h of hull || []) {
+    const neste = [];
+    for (const r of biter) {
+      const ox0 = Math.max(r.x0, h.x0), ox1 = Math.min(r.x1, h.x1);
+      const oy0 = Math.max(r.y0, h.y0), oy1 = Math.min(r.y1, h.y1);
+      if (ox1 - ox0 <= SUB_TOL || oy1 - oy0 <= SUB_TOL) { neste.push(r); continue; }
+      if (r.x0 < ox0 - SUB_TOL) neste.push({ x0: r.x0, x1: ox0, y0: r.y0, y1: r.y1 });
+      if (ox1 < r.x1 - SUB_TOL) neste.push({ x0: ox1, x1: r.x1, y0: r.y0, y1: r.y1 });
+      if (r.y0 < oy0 - SUB_TOL) neste.push({ x0: ox0, x1: ox1, y0: r.y0, y1: oy0 });
+      if (oy1 < r.y1 - SUB_TOL) neste.push({ x0: ox0, x1: ox1, y0: oy1, y1: r.y1 });
+    }
+    biter = neste;
+  }
+  return biter;
+}
+
 // Bokstavakser: A, B … Z, AA, AB … Samme funksjon som js/axes.js bruker.
 export function aksebokstav(i) {
   let s = "";
@@ -158,6 +192,8 @@ export function byggTegningsmodell(inn) {
   const fasader = inn.fasader || [];
   const o = inn.oppsett || {};
   const utsp = inn.utsparinger || [];
+  const rmBiter = inn.ringmurBiter || null;
+  const stal = inn.stal || [];
   const aksenavn = typeof inn.aksenavn === "function" ? inn.aksenavn : () => null;
   const klaring = Math.max(0, Number(o.klaringMm) || 0);
   // ±0.000 er GULVET. Med ringmur står SW-basen «ringHoydeMm» over gulvet;
@@ -180,17 +216,39 @@ export function byggTegningsmodell(inn) {
     const fraMm = Math.min(akser[0], minEl);
     const tilMm = Math.max(akser[akser.length - 1], maksEl);
     const rader = raderFra(vegger, fi);
-    const toppMm = Math.max(...el.map(v => v.rBunnMm + v.hoydeMm));
+    const veggToppMm = Math.max(...el.map(v => v.rBunnMm + v.hoydeMm));
+
+    // 🔩 Stålet på denne fasaden. Klippes i bredden til fasaden, men IKKE i
+    // høyden: en søyleforlenger som stikker opp over veggen er nettopp det
+    // Emil vil se (02.09).
+    const mittStal = stal.filter(b => b.fi === fi &&
+      Math.min(b.tilMm_, tilMm) - Math.max(b.fraMm, fraMm) > 20)
+      .map(b => ({ fraMm: Math.max(b.fraMm, fraMm), tilMm: Math.min(b.tilMm_, tilMm),
+                   bunnMm: b.bunnMm, toppMm: b.toppMm }));
+
+    // Ringmuren: BITENE som faktisk ble laget, ikke ett bånd tvers over.
+    // Ett bånd viste ringmur under porten, der den er kappet bort (Emil 03.09).
+    const mineRm = rmBiter
+      ? rmBiter.filter(b => b.fi === fi).map(b => ({
+          fraMm: b.fraMm, tilMm: b.tilMm_, bunnMm: b.bunnMm, toppMm: b.toppMm }))
+      : (o.ringmur ? [{ fraMm, tilMm, bunnMm: rmBunnMm, toppMm: 0 }] : []);
+
+    // Tegnehøyden er ikke veggens høyde: stålet kan stikke både over og under.
+    // Gesimsmarkøren og radhøydekjeden skal likevel følge VEGGEN — derfor to
+    // tall, veggToppMm og toppMm.
+    const toppMm = Math.max(veggToppMm, ...mittStal.map(b => b.toppMm), veggToppMm);
+    const bunnMm = Math.min(0, o.ringmur ? rmBunnMm : 0,
+      ...mineRm.map(b => b.bunnMm), ...mittStal.map(b => b.bunnMm));
 
     ut.push({
       fi,
       navn: t("Fasade {0}", fi + 1),
       fraMm, tilMm,
       lengdeMm: tilMm - fraMm,
-      bunnMm: o.ringmur ? rmBunnMm : 0,
-      toppMm,
+      bunnMm, toppMm, veggToppMm,
       nullMm,
-      ringmur: o.ringmur ? { bunnMm: rmBunnMm, toppMm: 0 } : null,
+      ringmurBiter: mineRm,
+      stal: mittStal,
       akser: akser.map((mm, i) => ({ mm, navn: aksenavn(fi, mm) || aksebokstav(i) })),
       kjede: malkjede(akser, klaring),
       rader,
@@ -203,7 +261,7 @@ export function byggTegningsmodell(inn) {
         bunnMm: a.bunnMm,
         // «full høyde» lagres som ±1e9 — klipp den til veggen, ellers blir
         // rektangelet uendelig høyt og tegninga svart.
-        toppMm: Math.abs(a.toppMm) > 1e8 ? toppMm : a.toppMm,
+        toppMm: Math.abs(a.toppMm) > 1e8 ? veggToppMm : a.toppMm,
         full: Math.abs(a.toppMm) > 1e8
       }))
     });
@@ -370,6 +428,18 @@ export function logoSvg() {
     '</g></svg>';
 }
 
+// jsPDF vil ha formatet oppgitt. Det leses av data-URL-en, ikke gjettet til
+// «PNG»: en JPEG-logo fra SharePoint lagt inn som PNG kom ikke med i det hele
+// tatt, og feilen var stille.
+export function bildeFormat(logo) {
+  if (logo && logo.format) return logo.format;
+  const m = /^data:image\/([a-z0-9.+-]+)/i.exec((logo && logo.data) || "");
+  const t2 = (m ? m[1] : "png").toLowerCase();
+  if (t2 === "jpeg" || t2 === "jpg") return "JPEG";
+  if (t2 === "webp") return "WEBP";
+  return "PNG";
+}
+
 async function logoBilde() {
   try {
     if (!document.getElementById("storm-ord")) return null;
@@ -385,7 +455,10 @@ async function logoBilde() {
     const ctx = c.getContext("2d");
     ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, c.width, c.height);
     ctx.drawImage(img, 0, 0, c.width, c.height);
-    return { data: c.toDataURL("image/png"), b: 948, h: 224 };
+    // `innebygd` sier at dette er MERKET alene — ordet «ENTREPRENØR» finnes
+    // ikke i symbolet og settes som tekst under. En logofil fra SharePoint er
+    // hele logoen, og skal ikke få teksten på toppen av sin egen.
+    return { data: c.toDataURL("image/png"), b: 948, h: 224, innebygd: true, format: "PNG" };
   } catch (_) { return null; }
 }
 
@@ -441,19 +514,28 @@ function tegnTittelfelt(d, felt, logo, nr) {
   celle(d, TF.x0, R[1], "Prosjektfase", felt.fase, SKRIFT.tfStor);
 
   // logoen, sentrert i sin egen rad
-  if (logo) {
-    // BREDDEN styrer, ikke høyden. Målt på Moelv er merket + ordet 242 pt bredt
-    // i et 399,6 pt bredt felt — altså 60 %. Styrte høyden (78 pt) ble logoen
-    // 330 pt bred og fylte nesten hele feltet.
-    const b = (TF.x1 - TF.x0) * 0.60;
-    const h = b * (logo.h / logo.b);
+  if (logo && logo.data) {
+    // BREDDEN styrer for det innebygde merket: målt på Moelv er merket + ordet
+    // 242 pt bredt i et 399,6 pt bredt felt — altså 60 %. Styrte høyden (78 pt)
+    // ble logoen 330 pt bred og fylte nesten hele feltet.
+    //
+    // En logofil fra SharePoint kan ha et helt annet forhold, og må BEGRENSES
+    // AV BEGGE VEIER: en høy og smal logo ville vokst ut av raden om bare
+    // bredden styrte, og en lang og lav ville stukket ut i sidene.
+    const bandH = R[3] - R[2] - (logo.innebygd ? 30 : 16);
+    const maksB = (TF.x1 - TF.x0) * (logo.innebygd ? 0.60 : 0.80);
+    const k = Math.min(maksB / logo.b, bandH / logo.h);
+    const b = logo.b * k, h = logo.h * k;
+    const ly = R[2] + 8;
     try {
-      d.addImage(logo.data, "PNG", TF.x0 + (TF.x1 - TF.x0 - b) / 2, R[2] + 8, b, h);
-    } catch (_) {}
-    d.setFontSize(Math.max(9, b * 0.058)); d.setFont("helvetica", "bold");
-    const e = T("ENTREPRENØR");
-    d.text(e, TF.x0 + (TF.x1 - TF.x0 - d.getTextWidth(e)) / 2, R[2] + 8 + h + 13);
-    d.setFont("helvetica", "normal");
+      d.addImage(logo.data, bildeFormat(logo), TF.x0 + (TF.x1 - TF.x0 - b) / 2, ly, b, h);
+    } catch (err) { console.warn("Logoen kom ikke inn i tegninga:", err && err.message); }
+    if (logo.innebygd) {
+      d.setFontSize(Math.max(9, b * 0.058)); d.setFont("helvetica", "bold");
+      const e = T("ENTREPRENØR");
+      d.text(e, TF.x0 + (TF.x1 - TF.x0 - d.getTextWidth(e)) / 2, ly + h + 13);
+      d.setFont("helvetica", "normal");
+    }
   }
 
   // prosjekt + tegningstittel til venstre, skjemarutene til høyre
@@ -516,7 +598,10 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad) {
   const px = (mm) => x + (mm - f.fraMm) / skala * MM;                 // langs fasaden
   const py = (mm) => yVegg + (f.toppMm - mm) / skala * MM;            // høyde over SW-basen
   const veggB = f.lengdeMm / skala * MM;
-  const yVegg = yTopp + PLASS.tittel + PLASS.akse + PLASS.kjede;      // veggens TOPP
+  // yVegg er toppen av TEGNINGA, ikke av veggen: stikker en søyleforlenger opp
+  // over veggen, er f.toppMm høyere enn f.veggToppMm. Gesimsmarkøren og
+  // radhøydekjeden bruker py(f.veggToppMm).
+  const yVegg = yTopp + PLASS.tittel + PLASS.akse + PLASS.kjede;
   const yBunn = py(f.bunnMm);
 
   d.setDrawColor(0, 0, 0); d.setTextColor(0, 0, 0);
@@ -557,30 +642,50 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad) {
     d.text(tx, mid - d.getTextWidth(tx) / 2, yKj - 4);
   }
 
-  // ── fundamentstripa (ringmuren)
-  if (f.ringmur) {
-    const y0 = py(f.ringmur.toppMm), y1 = py(f.ringmur.bunnMm);
-    d.setFillColor(FARGE.ringmur[0], FARGE.ringmur[1], FARGE.ringmur[2]);
-    d.setLineWidth(STREK.tynn);
-    d.rect(x - 8, y0, veggB + 16, y1 - y0, "FD");
-  }
+  // Hullene som skal trekkes fra alt som ligger i veggplanet: åpningene.
+  const hull = f.utsparinger.map(a => ({
+    x0: a.fraMm, x1: a.tilMm, y0: a.bunnMm, y1: a.toppMm }));
+  // En bit i mm → et rektangel i punkt.
+  const tegnBit = (r, stil, lw) => {
+    const bx = px(r.x0), bw = (r.x1 - r.x0) / skala * MM;
+    const by = py(r.y1), bh = (r.y1 - r.y0) / skala * MM;
+    if (bw <= 0.2 || bh <= 0.2) return;
+    d.setLineWidth(lw == null ? STREK.tynn : lw);
+    d.rect(bx, by, bw, bh, stil);
+  };
 
-  // ── elementene
-  d.setLineWidth(STREK.tynn);
-  for (const e of f.elementer) {
-    const ex = px(e.fraMm), ew = (e.tilMm - e.fraMm) / skala * MM;
-    const ey = py(e.bunnMm + e.hoydeMm), eh = e.hoydeMm / skala * MM;
-    if (ew <= 0.2 || eh <= 0.2) continue;
-    d.setFillColor(FARGE.element[0], FARGE.element[1], FARGE.element[2]);
-    d.rect(ex, ey, ew, eh, "FD");
-  }
-  // skjøtene mellom to elementer i SAMME rad tegnes tykke, oppå fyllet
+  // ── fundamentstripa: BITENE ringmuren faktisk ble laget i.
+  // Ett bånd tvers over viste ringmur under porten, der den er kappet bort.
+  d.setFillColor(FARGE.ringmur[0], FARGE.ringmur[1], FARGE.ringmur[2]);
+  for (const r of f.ringmurBiter)
+    for (const bit of trekkFra({ x0: r.fraMm, x1: r.tilMm, y0: r.bunnMm, y1: r.toppMm }, hull))
+      tegnBit(bit, "FD");
+
+  // ── 🔩 stålet, FØR elementene. Det som ligger bak veggen blir dekket av
+  // elementene under; det som står fritt — rammene rundt portene,
+  // søyleforlengerne over veggen — står igjen synlig. Det er hele mekanismen:
+  // ingen klipping, bare riktig rekkefølge.
+  d.setFillColor(FARGE.stal[0], FARGE.stal[1], FARGE.stal[2]);
+  for (const b of f.stal)
+    tegnBit({ x0: b.fraMm, x1: b.tilMm, y0: Math.max(b.bunnMm, f.bunnMm),
+              y1: Math.min(b.toppMm, f.toppMm) }, "FD", STREK.stal);
+
+  // ── elementene, med åpningene TRUKKET FRA. Se trekkFra: et hvitt rektangel
+  // oppå ville malt over stålet i porten.
+  d.setFillColor(FARGE.element[0], FARGE.element[1], FARGE.element[2]);
+  const biterFor = (e) => trekkFra(
+    { x0: e.fraMm, x1: e.tilMm, y0: e.bunnMm, y1: e.bunnMm + e.hoydeMm }, hull);
+  for (const e of f.elementer) for (const bit of biterFor(e)) tegnBit(bit, "FD");
+
+  // skjøtene mellom to elementer i SAMME rad tegnes tykke, oppå fyllet — men
+  // bare på den delen av høyden som ikke er hull
   for (const e of f.elementer) {
     const naboer = f.elementer.filter(o => o !== e && o.bunnMm === e.bunnMm &&
       Math.abs(o.fraMm - e.tilMm) < 60);
     if (!naboer.length) continue;
-    const ey = py(e.bunnMm + e.hoydeMm), eh = e.hoydeMm / skala * MM;
-    strek(d, px(e.tilMm), ey, px(e.tilMm), ey + eh, STREK.skjot);
+    for (const bit of trekkFra({ x0: e.tilMm - 1, x1: e.tilMm + 1,
+        y0: e.bunnMm, y1: e.bunnMm + e.hoydeMm }, hull))
+      strek(d, px(e.tilMm), py(bit.y1), px(e.tilMm), py(bit.y0), STREK.skjot);
   }
 
   // ── aksene som strek-punkt gjennom veggen
@@ -588,17 +693,18 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad) {
   d.setLineWidth(STREK.tynn);
   for (const a of f.akser) d.line(px(a.mm), yVegg, px(a.mm), yBunn + 26);
   // ±0.000 gjennom fundamentstripa
-  if (f.ringmur) d.line(x - 18, py(f.nullMm), x + veggB + 18, py(f.nullMm));
+  if (f.ringmurBiter.length) d.line(x - 18, py(f.nullMm), x + veggB + 18, py(f.nullMm));
   strekPunkt(d, false);
 
-  // ── utsparingene: hvitt rektangel, tykk kontur, stiplet kryss
+  // ── utsparingene: tykk kontur og stiplet kryss. INGEN HVIT FYLL — hullet er
+  // aldri tegnet (se trekkFra), og et hvitt rektangel her ville skjult stålet
+  // i portåpninga.
   for (const a of f.utsparinger) {
     const ax0 = px(Math.max(a.fraMm, f.fraMm)), ax1 = px(Math.min(a.tilMm, f.tilMm));
-    const ay0 = py(Math.min(a.toppMm, f.toppMm)), ay1 = py(Math.max(a.bunnMm, 0));
+    const ay0 = py(Math.min(a.toppMm, f.veggToppMm)), ay1 = py(Math.max(a.bunnMm, f.bunnMm));
     if (ax1 - ax0 <= 0.5 || ay1 - ay0 <= 0.5) continue;
-    d.setFillColor(255, 255, 255);
     d.setLineWidth(STREK.utsp);
-    d.rect(ax0, ay0, ax1 - ax0, ay1 - ay0, "FD");
+    d.rect(ax0, ay0, ax1 - ax0, ay1 - ay0, "S");
     stiplet(d, true);
     d.setLineWidth(STREK.tynn);
     d.line(ax0, ay0, ax1, ay1);
@@ -629,6 +735,14 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad) {
   }
 
   // ── kappdybden per element som går gjennom en åpning (runde 16–19)
+  //
+  // TALLET SKAL STÅ PÅ PANELET, IKKE INNE I HULLET. Første versjon satte det
+  // midt i det utskårne området — altså midt i porten, som et løst tall som
+  // svevde i åpninga. Nå legges det i den BREDESTE biten av elementet som
+  // fortsatt står igjen i samme høydebånd, altså på panelet montøren skal
+  // kappe. Blir det ingenting igjen (åpninga tar hele elementets bredde i det
+  // båndet), står det midt i kuttet som før — da finnes det ikke noe panel å
+  // legge det på.
   d.setFontSize(SKRIFT.hoyde);
   for (const a of f.utsparinger) {
     for (const e of f.elementer) {
@@ -637,14 +751,18 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad) {
       const b0 = Math.max(e.bunnMm, a.bunnMm), b1 = Math.min(e.bunnMm + e.hoydeMm, a.toppMm);
       const dybde = Math.round(b1 - b0);
       if (dybde <= 10 || dybde >= e.hoydeMm - 10) continue;   // hel rad = ikke et kapp
-      boksTekst(d, String(dybde), (px(x0) + px(x1)) / 2, (py(b0) + py(b1)) / 2 + 3,
-        SKRIFT.hoyde, "midt");
+      const rester = trekkFra({ x0: e.fraMm, x1: e.tilMm, y0: b0, y1: b1 }, hull)
+        .sort((p, q) => (q.x1 - q.x0) - (p.x1 - p.x0));
+      const r = rester[0];
+      const mx = r ? (px(r.x0) + px(r.x1)) / 2 : (px(x0) + px(x1)) / 2;
+      const my = r ? (py(r.y0) + py(r.y1)) / 2 : (py(b0) + py(b1)) / 2;
+      boksTekst(d, String(dybde), mx, my + 3, SKRIFT.hoyde, "midt");
     }
   }
 
   // ── loddrett radhøydekjede + nivåmarkørene
   const xKj = x + veggB + 22;
-  strek(d, xKj, yVegg, xKj, py(0), STREK.kjede);
+  strek(d, xKj, py(f.veggToppMm), xKj, py(0), STREK.kjede);
   d.setFontSize(SKRIFT.hoyde);
   for (const r of f.rader) {
     const y0 = py(r.bunnMm + r.hoydeMm), y1 = py(r.bunnMm);
@@ -655,7 +773,8 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad) {
       { angle: 90 });
   }
   const xNiva = x + veggB + PLASS.hoydekjede + PLASS.niva - 14;
-  nivaMarkor(d, xKj + 8, xNiva, yVegg, t("Gesims"), kote(f.toppMm - f.nullMm));
+  nivaMarkor(d, xKj + 8, xNiva, py(f.veggToppMm), t("Gesims"),
+    kote(f.veggToppMm - f.nullMm));
   nivaMarkor(d, xKj + 8, xNiva, py(f.nullMm), "01", kote(0));
 
   // ── merknaden til venstre, med pil inn mot fasaden
@@ -673,13 +792,14 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad) {
 }
 
 // ---------- Hele tegninga ----------
-// `logo` kan sendes inn ferdig (testen gjør det — den har ingen nettleser å
-// male SVG-en på). Utelates den, males den fra sidas eget <defs>.
+// `logo` kan sendes inn ferdig — enten valgt fra SharePoint i panelet, eller
+// av testen, som ikke har noen nettleser å male SVG-en på. Er den tom, males
+// Storm-merket fra sidas eget <defs>.
 export async function tegn(jsPDF, modell, felt, logoInn) {
   const merknad = (felt.merknad || "").trim();
   const medMerknad = !!merknad;
   const ark = fordelPaArk(modell.fasader, medMerknad);
-  const logo = logoInn !== undefined ? logoInn : await logoBilde();
+  const logo = (logoInn && logoInn.data) ? logoInn : await logoBilde();
   let d = null;
   for (let i = 0; i < ark.length; i++) {
     d = nyttArk(jsPDF, i === 0, d);
@@ -703,8 +823,16 @@ export async function tegn(jsPDF, modell, felt, logoInn) {
 export async function lastNedTegning(opts) {
   const modell = byggTegningsmodell(opts);
   if (!modell.fasader.length) throw new Error(t("Fant ingen fasader med veggelementer å tegne."));
+  // Logoen hentes FØR jsPDF: feiler SharePoint, skal tegninga lages med det
+  // innebygde merket — ikke stoppe.
+  let logo = null;
+  if (typeof opts.hentLogo === "function") {
+    try { logo = await opts.hentLogo(); } catch (err) {
+      console.warn("Fikk ikke logoen fra SharePoint:", err && err.message);
+    }
+  }
   const jsPDF = await hentJsPDF();
-  const d = await tegn(jsPDF, modell, opts.felt || {});
+  const d = await tegn(jsPDF, modell, opts.felt || {}, logo);
   const navn = ((opts.felt && opts.felt.nr) || "SW-01") + " " +
     ((opts.felt && opts.felt.prosjekt) || "instruksjonstegning");
   d.save(navn.replace(/[\\/:*?"<>|]+/g, "-").trim() + ".pdf");
