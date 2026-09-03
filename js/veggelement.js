@@ -728,12 +728,29 @@ function tegnAlt() {
       swGroup.add(iso);
     }
   }
+  // 🧱 RINGMUREN: samme dra-funksjon som veggelementene (Emil 03.09).
+  // Hver bit får swId, så «Juster elementer» plukker den opp uendret, og en
+  // dimensjonslapp i midten slik elementene har.
+  const visRmLapper = (lagret.ringmur || []).length <= 400;
   for (const r of lagret.ringmur || []) {
+    if (r.skjult || (r.lengdeMm !== undefined && !(r.lengdeMm > 0))) continue;
     const m = boks("#8a8f98", 1);
     m.scale.set(r.lengde, r.hoyde, r.tykkelse);
     m.position.set(r.x, r.y, r.z);
     m.rotation.y = r.rot;
+    if (r.id !== undefined) m.userData.swId = r.id;
     swGroup.add(m);
+    if (visRmLapper && r.id !== undefined && r.lengdeMm !== undefined) {
+      const nx = r.nx !== undefined ? r.nx : Math.sin(r.rot);
+      const nz = r.nz !== undefined ? r.nz : Math.cos(r.rot);
+      const nv = new THREE.Vector3(nx, 0, nz).normalize();
+      const utD = (r.tykkelse || tilScene(r.tMm || 200)) / 2 + 0.01 / (S.enhetSkala || 1);
+      const dim = tekstDekal(r.lengdeMm + "\u00d7" + (r.hoydeMm || 0) + "MM", 150,
+        (r.lengde || 1) * 0.7);
+      dim.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), nv);
+      dim.position.set(r.x + nv.x * utD, r.y, r.z + nv.z * utD);
+      swGroup.add(dim);
+    }
   }
   // Elementene tegnes som EKTE SANDWICHPANELER — samme oppskrift som
   // materiell-modellen Emil pekte på (runde 3): lys isolasjonskjerne synlig i
@@ -1128,9 +1145,21 @@ async function generer() {
       // Båndet i mm regnet fra SW-basen (topp ringmur = 0):
       const rmTopp = 0;
       const rmBunn = -(tilMm(ringH) + o.betongMm + o.isoMm);
+      // ✥ RINGMURBITENE ER JUSTERBARE ELEMENTER, som veggene (Emil 03.09).
+      // De får samme felter «Juster elementer» krever: stabil id, fasadebasis,
+      // basis-utstrekning og to forskyvninger. Alt annet (x, z, lengde) er
+      // avledet og regnes om i loesAlleJusteringer — nøyaktig som for veggene.
       const rmBit = (bunnMm, hoydeMm, fraMm, tilMm2) => {
         const pR = midt(tilScene((fraMm + tilMm2) / 2), 0);
-        ringmur.push({ x: pR.x, z: pR.z,
+        ringmur.push({
+          id: "r" + ringmur.length, fi, ringmur: true, radIdx: "rm",
+          fx, fz, ex: f.ex, ez: f.ez, nx: f.nx, nz: f.nz,
+          basFraMm: Math.round(fraMm), basTilMm: Math.round(tilMm2), dFra: 0, dTil: 0, rev: 0,
+          fraMm: Math.round(fraMm), tilMm: Math.round(tilMm2),
+          lengdeMm: Math.round(tilMm2 - fraMm), fullMm: Math.round(tilMm2 - fraMm),
+          bunnMm: Math.round(bunnMm), hoydeMm: Math.round(hoydeMm), tMm: o.tykkelseMm,
+          snapp: snappP,
+          x: pR.x, z: pR.z,
           y: baseY + tilScene(bunnMm + hoydeMm / 2),
           lengde: tilScene(tilMm2 - fraMm),
           hoyde: tilScene(hoydeMm),
@@ -1272,7 +1301,11 @@ function migrerVegger() {
 // ikke har søylepunktene lagret.
 function snappPunkter(v) {
   const ut = (v.snapp || []).slice();     // søylepunktene: 10 mm fra senter + søylekant
-  for (const w of (lagret && lagret.vegger) || []) {
+  // En ringmurbit snapper mot de ANDRE RINGMURBITENE, et veggelement mot de
+  // andre veggelementene — hver liste for seg.
+  const naboer = v.ringmur ? ((lagret && lagret.ringmur) || [])
+                           : ((lagret && lagret.vegger) || []);
+  for (const w of naboer) {
     if (w.fi !== v.fi || w.id === v.id) continue;
     // ENDENE AV DE ANDRE VEGGELEMENTENE (Emil 02.09) — både der de STÅR nå
     // og der de opprinnelig ble generert. Da låser en kant seg like godt mot
@@ -1318,12 +1351,54 @@ function loesAlleJusteringer() {
                     (o.kappUnderMm > 0 && v.lengdeMm < o.kappUnderMm);
     }
   }
+  // ✥ Ringmuren løses på nøyaktig samme vis. Egen løkke, ikke samme liste:
+  // ringmurbitene har ingen SW-nummer, ingen leveransestabel og ingen linje i
+  // CSV-lista — de skal ikke gjennom noe av det som følger under.
+  loesRingmur();
+
   const synlige = lagret.vegger.filter(v => !v.skjult);
   const { numre, nokkel } = swNummerering(synlige);
   for (const v of lagret.vegger) {
     if (v.skjult) { v.sw = ""; continue; }
     if (!v.tilpasset) { v.sw = numre.get(nokkel(v)) || "SW-XX"; continue; }
     v.sw = kappNavn(numre.get(nokkel({ lengdeMm: v.fullMm, hoydeMm: v.hoydeMm })), o.kappStil);
+  }
+}
+
+// ✥ Ringmuren løst opp etter de samme reglene som veggradene: én gruppe per
+// fasade (radIdx «rm»), samme loesRad, samme minste bit. Biter fra en eldre
+// generering mangler basFraMm og hoppes over — de tegnes som før, men kan
+// ikke dras før neste generering.
+function loesRingmur() {
+  const biter = (lagret && lagret.ringmur) || [];
+  if (!biter.length) return;
+  const grupper = new Map();
+  for (const r of biter) {
+    if (r.basFraMm === undefined) continue;
+    const k = r.fi + "|rm";
+    if (!grupper.has(k)) grupper.set(k, []);
+    grupper.get(k).push(r);
+  }
+  for (const liste of grupper.values()) {
+    const res = loesRad(liste.map(r => ({
+      id: r.id,
+      fraMm: r.basFraMm + (r.dFra || 0),
+      tilMm: r.basTilMm + (r.dTil || 0),
+      rev: r.rev || 0
+    })), SW_MIN_BIT_MM);
+    for (const r of liste) {
+      const res2 = res.get(r.id);
+      if (!res2) continue;
+      r.skjult = !!res2.skjult;
+      r.fraMm = Math.round(res2.fraMm);
+      r.tilMm = Math.round(res2.tilMm);
+      r.lengdeMm = Math.max(0, Math.round(res2.tilMm - res2.fraMm));
+      const midMm = (res2.fraMm + res2.tilMm) / 2;
+      r.tMid = tilScene(midMm);
+      r.x = r.fx + r.ex * r.tMid;
+      r.z = r.fz + r.ez * r.tMid;
+      r.lengde = tilScene(r.lengdeMm);
+    }
   }
 }
 
@@ -1637,7 +1712,25 @@ async function lastNedTegning() {
 // søylesenter eller til søylekanten. Drar du inn i naboen blir den kortere, og
 // under 100 mm forsvinner den — men kommer tilbake når du drar tilbake, fordi
 // ingenting slettes: alt er avledet av basFraMm/basTilMm + dFra/dTil.
-function veggMedId(id) { return (lagret && lagret.vegger || []).find(v => v.id === id); }
+// Finner et justerbart element — vegg ELLER ringmurbit. Begge har id, basis og
+// forskyvninger, og hele justeringen bryr seg ikke om hvilken av dem det er.
+function veggMedId(id) {
+  return ((lagret && lagret.vegger) || []).find(v => v.id === id) ||
+         ((lagret && lagret.ringmur) || []).find(r => r.id === id);
+}
+
+// Hvilken liste et element bor i. Ringmurbiter og veggelementer justeres med
+// samme kode (Emil 03.09), men de ligger i hver sin array.
+function listeFor(v) {
+  return v && v.ringmur ? (lagret.ringmur = lagret.ringmur || [])
+                        : (lagret.vegger = lagret.vegger || []);
+}
+
+// Neste revisjonsnummer i elementets EGEN liste — en ringmurbit skal ikke
+// arve revisjonen til et veggdrag.
+function nesteRev(v) {
+  return 1 + Math.max(0, ...listeFor(v).map(w => w.rev || 0));
+}
 
 // Elementgruppa under pekeren, blant de genererte veggene
 function pekVeggEn(cx, cy) {
@@ -1707,7 +1800,7 @@ function tegnJustBar() {
   const valgtTekst = [...just.valgt]
     .map(id => veggMedId(id))
     .filter(Boolean)
-    .map(v => (v.sw || "SW-XX") + " " + v.lengdeMm + "×" + v.hoydeMm)
+    .map(v => (v.sw || (v.ringmur ? t("Ringmur") : "SW-XX")) + " " + v.lengdeMm + "×" + v.hoydeMm)
     .slice(0, 4)
     .join(", ");
   el.innerHTML =
@@ -1722,7 +1815,8 @@ function tegnJustBar() {
   $("swJustSplitt").onclick = () => splittValgte();
   $("swJustNull").onclick = () => {
     const foer = justBilde();
-    for (const v of (lagret && lagret.vegger) || []) { v.dFra = 0; v.dTil = 0; v.rev = 0; }
+    for (const v of [...((lagret && lagret.vegger) || []), ...((lagret && lagret.ringmur) || [])])
+      { v.dFra = 0; v.dTil = 0; v.rev = 0; }
     loesAlleJusteringer(); byggStabler(); skrivLagret(); tegnAlt(); merkValgte();
     postJust("Justeringer nullstilt", foer);
   };
@@ -1756,13 +1850,23 @@ function merkValgte() {
 // ---------- Angre/gjenopprett for justeringene ----------
 // Elementene er rene tall, så et øyeblikksbilde av hele lista er nok — og da
 // virker angre også på SPLITTER, som legger til et element.
+// Angre-bildet må ta med BEGGE listene. Uten ringmuren ville et drag i den
+// vært usynlig for angre — og et angre av et veggdrag ville dratt ringmuren
+// tilbake til der den var før veggen ble rørt.
 function justBilde() {
-  return JSON.parse(JSON.stringify((lagret && lagret.vegger) || []));
+  return JSON.parse(JSON.stringify({
+    vegger: (lagret && lagret.vegger) || [],
+    ringmur: (lagret && lagret.ringmur) || []
+  }));
 }
 
-function settJustBilde(liste) {
+function settJustBilde(bilde) {
   if (!lagret) return;
-  lagret.vegger = JSON.parse(JSON.stringify(liste));
+  // Bakoverkompatibelt: et bilde tatt før ringmuren ble justerbar er en naken
+  // array av vegger.
+  const b = Array.isArray(bilde) ? { vegger: bilde, ringmur: lagret.ringmur } : bilde;
+  lagret.vegger = JSON.parse(JSON.stringify(b.vegger || []));
+  if (b.ringmur) lagret.ringmur = JSON.parse(JSON.stringify(b.ringmur));
   loesAlleJusteringer();
   byggStabler();
   skrivLagret();
@@ -1810,7 +1914,7 @@ function splittValgte() {
     if (!v || v.skjult) continue;
     const kanter = splittKanter(v.fraMm, v.tilMm, o.klaringMm, SW_MIN_BIT_MM);
     if (!kanter) continue;
-    const rev = 1 + Math.max(0, ...(lagret.vegger || []).map(w => w.rev || 0));
+    const rev = nesteRev(v);
     const ny = JSON.parse(JSON.stringify(v));
     ny.id = "s" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     // begge halvdelene får ny BASIS og nullede forskyvninger — da er de
@@ -1818,7 +1922,8 @@ function splittValgte() {
     v.basFraMm = kanter[0][0]; v.basTilMm = kanter[0][1]; v.dFra = 0; v.dTil = 0; v.rev = rev;
     ny.basFraMm = kanter[1][0]; ny.basTilMm = kanter[1][1]; ny.dFra = 0; ny.dTil = 0; ny.rev = rev;
     // full feltlengde arves, så begge halvdelene regnes som kapp
-    lagret.vegger.splice(lagret.vegger.indexOf(v) + 1, 0, ny);
+    const liste = listeFor(v);
+    liste.splice(liste.indexOf(v) + 1, 0, ny);
     just.valgt.add(ny.id);
     delt++;
   }
@@ -1868,7 +1973,7 @@ window.addEventListener("pointerdown", (e) => {
   if (startMm === null) return;
   // Hvilken ENDE dras? Den halvparten av elementet trykket havnet i.
   const ende = startMm < (v.fraMm + v.tilMm) / 2 ? "fra" : "til";
-  const rev = 1 + Math.max(0, ...(lagret.vegger || []).map(w => w.rev || 0));
+  const rev = nesteRev(v);
   const base = new Map();
   for (const id of just.valgt) {
     const w = veggMedId(id);

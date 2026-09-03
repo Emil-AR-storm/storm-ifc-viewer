@@ -170,6 +170,20 @@ export function ringmurTilFasader(biter, fasader, tilMmFn, baseY) {
   const ut = [];
   for (const r of biter || []) {
     if (!r) continue;
+    if (r.skjult) continue;                 // dratt bort i «Juster elementer»
+    // 🧱 Biter fra en justerbar ringmur BÆRER fasaden og målene sine selv
+    // (Emil 03.09). Da følger tegningen draget, og hjørnet kan ikke gjettes
+    // feil. Eldre lagring har ikke feltene og faller til retningsregelen.
+    if (r.fi !== undefined && fasader[r.fi] && isFinite(Number(r.fraMm))
+        && isFinite(Number(r.tilMm)) && r.tilMm > r.fraMm) {
+      const hMm0 = isFinite(Number(r.hoydeMm)) ? Number(r.hoydeMm) : tilMmFn(r.hoyde);
+      const bunn0 = isFinite(Number(r.bunnMm)) ? Number(r.bunnMm)
+        : tilMmFn(r.y - (baseY || 0)) - hMm0 / 2;
+      ut.push({ fi: r.fi,
+        fraMm: Math.round(r.fraMm), tilMm_: Math.round(r.tilMm),
+        bunnMm: Math.round(bunn0), toppMm: Math.round(bunn0 + hMm0) });
+      continue;
+    }
     const harRot = isFinite(Number(r.rot));
     let best = -1, bestD = Infinity;
     for (let fi = 0; fi < fasader.length; fi++) {
@@ -484,8 +498,14 @@ export function byggTegningsmodell(inn) {
       const l = hjorneLapp(fasader[fi], o.tykkelseMm, tilMmFn);
       akser = [veggFraMm + l.foran, veggTilMm - l.bak];
     }
-    const fraMm = Math.min(akser[0], veggFraMm, ...naboRå.map(b => b.fraMm));
-    const tilMm = Math.max(akser[akser.length - 1], veggTilMm, ...naboRå.map(b => b.tilMm));
+    // Ringmuren er med i utstrekningen: løper den forbi veggen i hjørnet, skal
+    // betongplata under den også være der. Ellers stakk muren ut over enden av
+    // gulvet (Emil 03.09). Målt i ORIGINALE mm — speilingen kommer etterpå.
+    const rmMine = (rmBiter || []).filter(b => b.fi === fi);
+    const fraMm = Math.min(akser[0], veggFraMm, ...naboRå.map(b => b.fraMm),
+      ...rmMine.map(b => b.fraMm));
+    const tilMm = Math.max(akser[akser.length - 1], veggTilMm, ...naboRå.map(b => b.tilMm),
+      ...rmMine.map(b => b.tilMm_));
     const rader = raderFra(vegger, fi);
     const veggToppMm = Math.max(...el.map(v => v.rBunnMm + v.hoydeMm));
 
@@ -521,12 +541,20 @@ export function byggTegningsmodell(inn) {
 
     // Ringmuren: BITENE som faktisk ble laget, ikke ett bånd tvers over.
     // Ett bånd viste ringmur under porten, der den er kappet bort (Emil 03.09).
-    const mineRm = rmBiter
+    // RINGMUREN OG GULVET ER TO TING (Emil 03.09).
+    // Ringmuren er murt opp per fasade og KAPPES av portene; gulvet er én
+    // sammenhengende plate under hele bygget. Da de lå i ett grått felt, ble
+    // hver loddrette strek i feltet — hjørneskjøten, portkantene — en strek
+    // gjennom betonggulvet. Ringmuren klippes derfor til båndet over gulvet
+    // (nullMm … 0), og gulvet tegnes for seg som ett rektangel uten kutt.
+    const mineRm = (rmBiter
       ? rmBiter.filter(b => b.fi === fi).map(b => {
           const [f2, t2] = spI(b.fraMm, b.tilMm_);
           return { fraMm: f2, tilMm: t2, bunnMm: b.bunnMm, toppMm: b.toppMm };
         })
-      : (o.ringmur ? [{ fraMm, tilMm, bunnMm: rmBunnMm, toppMm: 0 }] : []);
+      : (o.ringmur ? [{ fraMm, tilMm, bunnMm: rmBunnMm, toppMm: 0 }] : []))
+      .map(b => ({ ...b, bunnMm: Math.max(b.bunnMm, nullMm) }))
+      .filter(b => b.toppMm - b.bunnMm > 1);
 
     // Tegnehøyden er ikke veggens høyde: stålet kan stikke både over og under.
     // Gesimsmarkøren og radhøydekjeden skal likevel følge VEGGEN — derfor to
@@ -543,6 +571,10 @@ export function byggTegningsmodell(inn) {
       bunnMm, toppMm, veggToppMm,
       nullMm,
       ringmurBiter: mineRm,
+      // Gulvet: ett rektangel, aldri kappet. Bare når det finnes en ringmur —
+      // det er den eneste gangen vi kjenner oppbyggingen.
+      gulv: o.ringmur && nullMm > rmBunnMm
+        ? { bunnMm: rmBunnMm, toppMm: nullMm } : null,
       stal: mittStal,
       speilvendt: sp,
       akser: akserV.map((mm, i) => ({ mm, navn: navnV[i] || aksebokstav(i) })),
@@ -946,8 +978,11 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad, elFarge) {
   }
 
   // Hullene som skal trekkes fra alt som ligger i veggplanet: åpningene.
+  // Hullene stanses ved gulvets overside — plata er sammenhengende under en
+  // port, og et hull som gikk lenger ned ville kappet den.
+  const gulvT = f.gulv ? f.gulv.toppMm : f.bunnMm;
   const hull = f.utsparinger.map(a => ({
-    x0: a.fraMm, x1: a.tilMm, y0: a.bunnMm, y1: a.toppMm }));
+    x0: a.fraMm, x1: a.tilMm, y0: Math.max(a.bunnMm, gulvT), y1: a.toppMm }));
   // En bit i mm → et rektangel i punkt.
   const tegnBit = (r, stil, lw) => {
     const bx = px(r.x0), bw = (r.x1 - r.x0) / skala * MM;
@@ -960,9 +995,10 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad, elFarge) {
   // Fyller bitene av ett rektangel og streker BARE sidene som ligger på
   // rektangelets egen ytterkant. Se ytterkanter(): ett element skal ha én
   // kontur, ikke én per bit.
-  const tegnMedHull = (rekt, lw) => {
+  const tegnMedHull = (rekt, lw, bareFyll) => {
     const biter = trekkFra(rekt, hull);
     for (const b of biter) tegnBit(b, "F");
+    if (bareFyll) return;                 // se hjørnestripas ringmurdel
     d.setLineWidth(lw == null ? STREK.tynn : lw);
     for (const b of biter) {
       const k = ytterkanter(b, rekt);
@@ -974,6 +1010,15 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad, elFarge) {
       if (k.bunn) d.line(x1, y2, x2, y2);
     }
   };
+
+  // ── betonggulvet, HELT FØRST og som ETT rektangel. Aldri kappet: plata er
+  // sammenhengende under hele bygget, også under portene. Tegnes den i samme
+  // felt som ringmuren, får den hver loddrette skjøtestrek fra veggen over —
+  // og en støpeskjøt som ikke finnes (Emil 03.09).
+  if (f.gulv) {
+    d.setFillColor(FARGE.ringmur[0], FARGE.ringmur[1], FARGE.ringmur[2]);
+    tegnBit({ x0: f.fraMm, x1: f.tilMm, y0: f.gulv.bunnMm, y1: f.gulv.toppMm }, "FD");
+  }
 
   // ── 🔩 stålet, FØRST av alt.
   //
@@ -1011,13 +1056,27 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad, elFarge) {
   // INGEN SW-lapp: stripa er ikke et element på DENNE fasaden, og et nummer
   // her ville dukket opp på feil elementliste.
   for (const b of (f.nabovegg || [])) {
+    // ringmurens del av stripa — bare båndet OVER gulvet
     if (f.ringmurBiter.length) {
       const rb = f.ringmurBiter[0];
       d.setFillColor(FARGE.ringmur[0], FARGE.ringmur[1], FARGE.ringmur[2]);
-      tegnMedHull({ x0: b.fraMm, x1: b.tilMm, y0: rb.bunnMm, y1: rb.toppMm });
+      // BARE FYLL, ingen kontur: ringmuren er sammenhengende betong forbi
+      // hjørnet. Med kontur fikk stripa en loddrett strek ned gjennom
+      // ringmuren — skjøten i veggen over, tegnet i muren under (Emil 03.09).
+      tegnMedHull({ x0: b.fraMm, x1: b.tilMm, y0: rb.bunnMm, y1: rb.toppMm },
+        null, true);
     }
+    // VEGGEN TEGNES RAD FOR RAD, ikke som ett høyt rektangel.
+    // Naboens vegg er stablet av de samme radene som vår egen. Tegnet i ett
+    // ble stripa stående som én diger plate på 3600 mm, uten de vannrette
+    // strekene som viser topp og bunn av hvert element (Emil 03.09).
     d.setFillColor(EF[0], EF[1], EF[2]);
-    tegnMedHull({ x0: b.fraMm, x1: b.tilMm, y0: 0, y1: f.veggToppMm });
+    if (f.rader.length) {
+      for (const r of f.rader)
+        tegnMedHull({ x0: b.fraMm, x1: b.tilMm, y0: r.bunnMm, y1: r.bunnMm + r.hoydeMm });
+    } else {
+      tegnMedHull({ x0: b.fraMm, x1: b.tilMm, y0: 0, y1: f.veggToppMm });
+    }
   }
 
   // ── elementene, med åpningene TRUKKET FRA. Se trekkFra: et hvitt rektangel
@@ -1050,7 +1109,10 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad, elFarge) {
   // i portåpninga.
   for (const a of f.utsparinger) {
     const ax0 = px(Math.max(a.fraMm, f.fraMm)), ax1 = px(Math.min(a.tilMm, f.tilMm));
-    const ay0 = py(Math.min(a.toppMm, f.veggToppMm)), ay1 = py(Math.max(a.bunnMm, f.bunnMm));
+    // Klippes til GULVETS OVERSIDE, ikke til tegningas bunn: en port går ned
+    // til gulvet, ikke ned gjennom plata. Kanten sto før nede i betongen.
+    const gulvTopp = f.gulv ? f.gulv.toppMm : f.bunnMm;
+    const ay0 = py(Math.min(a.toppMm, f.veggToppMm)), ay1 = py(Math.max(a.bunnMm, gulvTopp));
     if (ax1 - ax0 <= 0.5 || ay1 - ay0 <= 0.5) continue;
     d.setLineWidth(STREK.utsp);
     d.rect(ax0, ay0, ax1 - ax0, ay1 - ay0, "S");
