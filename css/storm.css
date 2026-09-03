@@ -1456,3 +1456,37 @@ body:not(.har-modell) #btnFit { display: none !important; }
   border-bottom: 1px solid var(--border);
   padding-bottom: 4px;
 }
+
+/* «Navn på kappbiter»: en fast «SW-»-forstavelse foran et fritt tekstfelt
+   (Emil 03.09). Feltet er et BARNEBARN av <label>, så regelen for
+   «#swBody > label > input» treffer det ikke — det trenger sin egen. */
+#swBody .sw-prefiks { display: flex; align-items: stretch; margin-top: 3px; }
+#swBody .sw-prefiks > span {
+  display: flex; align-items: center;
+  padding: 0 7px;
+  border: 1px solid var(--border); border-right: 0;
+  border-radius: 6px 0 0 6px;
+  font-size: 13px; color: var(--muted);
+  white-space: nowrap;
+}
+#swBody .sw-prefiks > input {
+  flex: 1; min-width: 0; box-sizing: border-box;
+  font-family: inherit; font-size: 13px;
+  border-radius: 0 6px 6px 0;
+}
+
+/* Lagre-raden nederst: navnefeltet tar plassen som er, knappen beholder sin.
+   Uten min-width: 0 presser feltet knappen ut av panelet. */
+#swBody .prop-actions.sw-lagre { flex-wrap: nowrap; }
+#swBody .prop-actions.sw-lagre > input {
+  flex: 1; min-width: 0; box-sizing: border-box;
+  font-family: inherit; font-size: 13px;
+}
+
+/* Navnet på et lagret resultat er en lenke å trykke på, ikke en knapp å se på. */
+#swBody button.sw-last {
+  background: none; border: 0; padding: 0;
+  color: inherit; font: inherit; text-align: left;
+  text-decoration: underline; cursor: pointer;
+}
+#swBody button.sw-last:hover { color: var(--accent, inherit); }
