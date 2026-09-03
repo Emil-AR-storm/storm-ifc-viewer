@@ -87,24 +87,18 @@ const FASE_ET = [["Fase", 297.5], ["Revisjon", 330.2], ["Status", 373.7]];
 
 // ═══════════════════════ REN LOGIKK ═══════════════════════
 
-// Skjøtepunktene (aksene) på en fasade.
+// ---------- Skjøtepunktene (aksene) på en fasade ----------
 //
-// HJØRNELAPPEN MÅTTE REGNES BORT (Emil 03.09: «endene av veggene på høyre og
-// venstre side er feil»). Generatoren lar hver fasade LØPE FORBI hjørnet i sin
-// sluttende og starte flukt mot naboens innside — pinwheel, som på Moelv. Da
-// er FØRSTE elementets basFraMm ikke søylesenter minus klaringen, men
-//     hjFraMm = skjot[0] − off + tykkelse/2
-// og siste elementets basTilMm er
-//     hjTilMm = skjot[siste] + off + tykkelse/2
+// FØRSTEVALG: `f.skjot` — søylesentrene slik generatoren regnet dem, lagret på
+// fasaden. Ingen rekonstruksjon, ingen hjørnematematikk, ingen feilkilde.
 //
-// Første versjon regnet ytterste akse som «basFraMm − klaring», og da havnet
-// aksesirklene på veggens ENDER i stedet for på søylesentrene. Lappen rundt
-// hjørnet ble usynlig — nettopp det montøren skal se.
-//
-// `off` og `tykkelseMm` ligger lagret, så lappen kan regnes eksakt bort.
-// Mangler `off` (vegger fra en eldre versjon) faller vi tilbake på den gamle
-// utregningen: heller en akse 10 mm feil enn ingen akse.
-export function aksepunkter(vegger, fi, klaringMm, tolMm, lapp) {
+// RESERVE for vegger generert før skjot ble lagret: regn dem baklengs ut av
+// elementgrensene. Da må pinwheel-lappen bort, og den er USYMMETRISK:
+//     hjFraMm = skjot[0]     − off + tykkelse/2   →  lapp foran = off − t/2
+//     hjTilMm = skjot[siste] + off + tykkelse/2   →  lapp bak   = off + t/2
+// Første versjon brukte samme tall i begge ender, og da lå siste akse 200 mm
+// feil — nettopp hjørneskjøten Emil skal lese av tegninga (03.09).
+export function aksepunkter(vegger, fi, klaringMm, tolMm, lappFor, lappBak) {
   const tol = tolMm > 0 ? tolMm : 30;
   const hele = (vegger || []).filter(v =>
     v.fi === fi && !v.skjult && v.basFraMm !== undefined && !v.tilpasset && !v.tilpassetRad);
@@ -117,7 +111,8 @@ export function aksepunkter(vegger, fi, klaringMm, tolMm, lapp) {
     if (v.basFraMm > minFra + tol) kand.push(v.basFraMm - klaringMm);
     if (v.basTilMm < maksTil - tol) kand.push(v.basTilMm + klaringMm);
   }
-  if (lapp > 0) kand.push(minFra + lapp, maksTil - lapp);
+  const lf = lappFor > 0 ? lappFor : 0, lb = lappBak > 0 ? lappBak : 0;
+  if (lf || lb) kand.push(minFra + lf, maksTil - lb);
   else kand.push(minFra - klaringMm, maksTil + klaringMm);
   kand.sort((a, b) => a - b);
   const ut = [];
@@ -129,12 +124,76 @@ export function aksepunkter(vegger, fi, klaringMm, tolMm, lapp) {
   return ut.map(g => Math.round(g.sum / g.n));
 }
 
-// Hjørnelappen i mm: «off − tykkelse/2», begge lagret på fasaden.
+// Hjørnelappen i mm, i BEGGE ender. Se aksepunkter: den er usymmetrisk.
 export function hjorneLapp(f, tykkelseMm, tilMmFn) {
   const off = Number(f && f.off);
-  if (!isFinite(off) || off <= 0) return 0;
-  const l = tilMmFn(off) - (Number(tykkelseMm) || 0) / 2;
-  return l > 0 ? Math.round(l) : 0;
+  const halv = (Number(tykkelseMm) || 0) / 2;
+  if (!isFinite(off) || off <= 0) return { foran: 0, bak: 0 };
+  const om = tilMmFn(off);
+  return { foran: Math.max(0, Math.round(om - halv)), bak: Math.max(0, Math.round(om + halv)) };
+}
+
+// Aksene for én fasade: lagrede skjøtepunkter når de finnes, ellers reserven.
+export function akserFor(f, vegger, fi, klaringMm, tolMm, tykkelseMm, tilMmFn) {
+  if (f && Array.isArray(f.skjot) && f.skjot.length >= 2)
+    return f.skjot.map(v => Math.round(v)).sort((a, b) => a - b);
+  const l = hjorneLapp(f, tykkelseMm, tilMmFn);
+  return aksepunkter(vegger, fi, klaringMm, tolMm, l.foran, l.bak);
+}
+
+// ---------- Ringmurbitene tilordnet fasadene ----------
+// TILORDNES ETTER RETNING, IKKE AVSTAND.
+//
+// To forsøk på avstand feilet på samme sted: fasade 3 sto uten ringmur i
+// høyre hjørne. Grunnen er at avstanden til EGEN fasade er konstant `off`
+// (~250 mm — biten står på veggens ytterflate), mens avstanden til NABOENS
+// plan går mot null når man nærmer seg hjørnet. Den siste biten på en fasade
+// er derfor nærmere naboens plan enn sin egen, ble lagt der, havnet utenfor
+// naboens ender og forsvant.
+//
+// Hver ringmurbit bærer `rot` = atan2(−ez, ex) fra fasaden som laget den. Det
+// er en EKSAKT identifikasjon: fire sider av et bygg gir fire ulike vinkler,
+// og parallelle sider skiller seg med π. Er to fasader helt kollineære (sjelden),
+// avgjør avstanden mellom dem — der er den et gyldig argument.
+export function vinkelDiff(a, b) {
+  let d = (Number(a) || 0) - (Number(b) || 0);
+  while (d > Math.PI) d -= 2 * Math.PI;
+  while (d < -Math.PI) d += 2 * Math.PI;
+  return d;
+}
+
+export const ROT_TOL = 0.05;   // ~3 grader
+
+export function ringmurTilFasader(biter, fasader, tilMmFn, baseY) {
+  if (!Array.isArray(biter) || !biter.length || !Array.isArray(fasader) || !fasader.length)
+    return null;
+  const ut = [];
+  for (const r of biter || []) {
+    if (!r) continue;
+    const harRot = isFinite(Number(r.rot));
+    let best = -1, bestD = Infinity;
+    for (let fi = 0; fi < fasader.length; fi++) {
+      const f = fasader[fi];
+      // Retningen først. Mangler biten `rot` (svært gammel lagring), faller vi
+      // tilbake på nærmeste plan — da er hjørnet usikkert, men det er bedre
+      // enn å kaste biten bort.
+      if (harRot) {
+        const fRot = isFinite(Number(f.rot)) ? Number(f.rot) : Math.atan2(-f.ez, f.ex);
+        if (Math.abs(vinkelDiff(r.rot, fRot)) > ROT_TOL) continue;
+      }
+      const dd = Math.abs((r.x - f.px) * f.nx + (r.z - f.pz) * f.nz);
+      if (dd < bestD) { bestD = dd; best = fi; }
+    }
+    if (best < 0) continue;
+    const f = fasader[best];
+    const lMm = tilMmFn(r.lengde), hMm = tilMmFn(r.hoyde);
+    const midMm = tilMmFn((r.x - f.px) * f.ex + (r.z - f.pz) * f.ez);
+    const bunn = tilMmFn(r.y - (baseY || 0)) - hMm / 2;
+    ut.push({ fi: best,
+      fraMm: Math.round(midMm - lMm / 2), tilMm_: Math.round(midMm + lMm / 2),
+      bunnMm: Math.round(bunn), toppMm: Math.round(bunn + hMm) });
+  }
+  return ut.length ? ut : null;
 }
 
 // ---------- Målkjeden over fasaden ----------
@@ -335,9 +394,12 @@ export function byggTegningsmodell(inn) {
     // poenget med lappen, og kjeden må måle veggen, ikke aksene.
     const veggFraMm = Math.min(...el.map(v => v.fraMm));
     const veggTilMm = Math.max(...el.map(v => v.tilMm));
-    const lapp = hjorneLapp(fasader[fi], o.tykkelseMm, tilMmFn);
-    let akser = aksepunkter(vegger, fi, klaring, o.aksetolMm, lapp);
-    if (!akser.length) akser = [veggFraMm + lapp, veggTilMm - lapp];
+    let akser = akserFor(fasader[fi], vegger, fi, klaring, o.aksetolMm,
+      o.tykkelseMm, tilMmFn);
+    if (akser.length < 2) {
+      const l = hjorneLapp(fasader[fi], o.tykkelseMm, tilMmFn);
+      akser = [veggFraMm + l.foran, veggTilMm - l.bak];
+    }
     const fraMm = Math.min(akser[0], veggFraMm);
     const tilMm = Math.max(akser[akser.length - 1], veggTilMm);
     const rader = raderFra(vegger, fi);

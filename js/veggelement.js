@@ -1095,6 +1095,13 @@ async function generer() {
     // Tette forlengere (hjørne- og avstivningssøyler i par) gir ÉN skjøt, ikke
     // to skjøter og en 660 mm strimmel mellom seg (Emil 02.09).
     const skjot = samleTetteSoyler(spennS.map(k => tilMm(k.t)), o.minFeltMm);
+    // 📐 SKJØTEPUNKTENE LAGRES. Instruksjonstegninga trenger dem til
+    // aksesirklene og målkjeden, og har fram til nå regnet dem BAKLENGS ut av
+    // elementgrensene. Det gikk galt i hjørnene, der pinwheel-lappen er
+    // usymmetrisk (−off+t/2 i starten, +off+t/2 i slutten): aksene havnet
+    // 200 mm feil i den ene enden (Emil 03.09). Ett tall lagret her fjerner
+    // hele klassen av feil.
+    fasadeInfo[fi].skjot = skjot.map(v => Math.round(v));
     // Holdepunktene håndjusteringen snapper til: klaringen fra hvert
     // søylesenter, og søylekantene (Emils ønske 02.09).
     const snappP = [];
@@ -1204,7 +1211,8 @@ async function generer() {
   const fasadeLagret = fasader.map((f, i) => ({
     px: f.p.x, pz: f.p.z, ex: f.ex, ez: f.ez, nx: f.nx, nz: f.nz,
     t0: f.soyler[0].t, t1: f.soyler[f.soyler.length - 1].t,
-    off: (fasadeInfo[i] || {}).off || 0, rot: (fasadeInfo[i] || {}).rot || 0
+    off: (fasadeInfo[i] || {}).off || 0, rot: (fasadeInfo[i] || {}).rot || 0,
+    skjot: (fasadeInfo[i] || {}).skjot || null
   }));
 
   // Åpningene lagres PROJISERT på fasaden, så merkingen kan tegnes uten å
@@ -1570,38 +1578,14 @@ async function stalPaFasader() {
 // Ringmuren lagres som biter i scenerommet ({x, z, y, lengde, hoyde, rot}) —
 // og den er ALT kappet der utsparingene tar den. Tegninga må bruke bitene, ikke
 // ett bånd tvers over fasaden: da sto det ringmur under porten (Emil 03.09).
-function ringmurPaFasader() {
-  const fasader = (lagret && lagret.fasader) || [];
-  const biter = (lagret && lagret.ringmur) || [];
-  if (!fasader.length || !biter.length) return null;
-  const baseY = baseYNaa();
-  const naer = Math.max(0.8 / (S.enhetSkala || 1),
-    tilScene((lagret.oppsett || STD_OPPSETT).tykkelseMm) * 3);
-  const ut = [];
-  for (const r of biter) {
-    const lMm = tilMm(r.lengde), hMm = tilMm(r.hoyde);
-    // NÆRMESTE fasade BLANT DE BITEN LIGGER LANGS. Første versjon tok bare
-    // nærmeste plan, uten å sjekke at biten faktisk ligger innenfor fasadens
-    // utstrekning — og en ringmurbit ute i et hjørne er like nær naboens plan.
-    // Da ble den lagt på nabofasaden, havnet utenfor dens ender og forsvant:
-    // fasade 3 sto uten ringmur i høyre hjørne (Emil 03.09).
-    let best = -1, bestD = Infinity, bestMid = 0;
-    for (let fi = 0; fi < fasader.length; fi++) {
-      const f = fasader[fi];
-      const dd = Math.abs((r.x - f.px) * f.nx + (r.z - f.pz) * f.nz);
-      if (dd > naer || dd >= bestD) continue;
-      const midMm = tilMm((r.x - f.px) * f.ex + (r.z - f.pz) * f.ez);
-      const fT0 = tilMm(Math.min(f.t0, f.t1)) - lMm, fT1 = tilMm(Math.max(f.t0, f.t1)) + lMm;
-      if (midMm < fT0 || midMm > fT1) continue;
-      best = fi; bestD = dd; bestMid = midMm;
-    }
-    if (best < 0) continue;
-    const bunn = tilMm(r.y - baseY) - hMm / 2;
-    ut.push({ fi: best,
-      fraMm: Math.round(bestMid - lMm / 2), tilMm_: Math.round(bestMid + lMm / 2),
-      bunnMm: Math.round(bunn), toppMm: Math.round(bunn + hMm) });
-  }
-  return ut.length ? ut : null;
+// Ringmurbitene projisert på fasadene. REGELEN (tilordning etter retning, ikke
+// avstand) ligger i js/sw-tegning.js som en ren funksjon — der kan den prøves.
+// Her hentes bare dataene ut av lagringen.
+async function ringmurPaFasader(mod) {
+  return mod.ringmurTilFasader(
+    (lagret && lagret.ringmur) || [],
+    (lagret && lagret.fasader) || [],
+    tilMm, baseYNaa());
 }
 
 async function lastNedTegning() {
@@ -1630,7 +1614,7 @@ async function lastNedTegning() {
       fasader: lagret.fasader,
       oppsett: o,
       utsparinger: utspPaFasader(),
-      ringmurBiter: ringmurPaFasader(),
+      ringmurBiter: await ringmurPaFasader(mod),
       // scene → mm. Den rene delen skal ikke vite om S.enhetSkala.
       tilMm,
       stal: await stalPaFasader(),
