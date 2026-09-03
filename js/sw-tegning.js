@@ -196,6 +196,77 @@ export function ringmurTilFasader(biter, fasader, tilMmFn, baseY) {
   return ut.length ? ut : null;
 }
 
+// Nabostripene legges på kjeden som egne segmenter i endene. De har ingen
+// skjøt mot første element: generatoren lar veggen starte FLUKT mot naboens
+// innside. Moelv har 20 mm der, men det er deres detalj — kjeden skal si det
+// generatoren faktisk lager.
+export function kjedeMedNabo(kjede, striper, vFra, vTil) {
+  const ut = (kjede || []).slice();
+  for (const s of (striper || [])) {
+    const mm = Math.round(s.tilMm - s.fraMm);
+    if (mm <= 0) continue;
+    if (s.tilMm <= vFra + 1) ut.unshift({ fraMm: s.fraMm, tilMm: s.tilMm, mm });
+    else if (s.fraMm >= vTil - 1) ut.push({ fraMm: s.fraMm, tilMm: s.tilMm, mm });
+  }
+  return ut;
+}
+
+// ---------- Nabofasadens veggende i hjørnet ----------
+// MOELV VISER DEN, OG DET ER DEN EMIL SER ETTER (03.09).
+// På Moelv SW-01 fasade 2, ved akse 1, står en 120 mm bred stripe helt ute i
+// enden — full vegghøyde, UTEN SW-nummer, med «120» som eget segment i
+// målkjeden. 120 mm er veggtykkelsen: det er NABOFASADENS vegg sett på enden.
+//
+// Pinwheel-hjørnet gjør at hver fasade løper forbi hjørnet i sin sluttende og
+// starter flukt mot naboens innside. Fra utsiden av fasade i ser man derfor
+// naboens veggende i START-enden, og ingenting i slutt-enden — der er ens egen
+// vegg det ytterste. Tegninga vår tok bare med elementer med `fi === i`, og
+// da fantes naboen ikke i det hele tatt.
+//
+// REGNES GEOMETRISK, ikke av hullrekkefølgen: naboens veggrektangel i plan
+// projiseres på denne fasadens akse, og bare hjørnene som ligger i DENNE
+// fasadens veggbånd teller. Da virker det også for skjeve hjørner, og det
+// spiller ingen rolle om en fasade er hoppet over fordi den hadde færre enn to
+// søyler.
+export function naboveggEnder(fasader, fi, veggMm, tykkelseMm, tilMmFn, tilSceneFn) {
+  const f = fasader && fasader[fi];
+  if (!f || !veggMm) return [];
+  const t = tilSceneFn(tykkelseMm);
+  const halv = t / 2;
+  const egen = veggMm[fi];
+  if (!egen) return [];
+  const ut = [];
+  for (let j = 0; j < fasader.length; j++) {
+    if (j === fi) continue;
+    const g = fasader[j], v = veggMm[j];
+    if (!g || !v) continue;
+    const cs = [];
+    for (const sMm of [v.fraMm, v.tilMm]) {
+      const sc = tilSceneFn(sMm);
+      for (const u of [g.off - halv, g.off + halv]) {
+        const qx = g.px + g.ex * sc + g.nx * u;
+        const qz = g.pz + g.ez * sc + g.nz * u;
+        // Ligger hjørnet i DENNE fasadens veggbånd?
+        if (Math.abs((qx - f.px) * f.nx + (qz - f.pz) * f.nz - f.off) > t) continue;
+        cs.push(tilMmFn((qx - f.px) * f.ex + (qz - f.pz) * f.ez));
+      }
+    }
+    if (cs.length < 2) continue;
+    const a2 = Math.round(Math.min(...cs)), b2 = Math.round(Math.max(...cs));
+    if (b2 - a2 < 1) continue;
+    // UTENFOR egen vegg, og INNTIL den. Ligger stripa innenfor, er det enden
+    // vår egen vegg dekker — der skal ingenting tegnes. Og en fasade langt
+    // borte som tilfeldigvis treffer planet skal ikke gi en stripe i løse
+    // lufta.
+    const utenfor = b2 <= egen.fraMm + 1 || a2 >= egen.tilMm - 1;
+    const inntil = Math.abs(b2 - egen.fraMm) <= 2 * tykkelseMm ||
+                   Math.abs(a2 - egen.tilMm) <= 2 * tykkelseMm;
+    if (!utenfor || !inntil) continue;
+    ut.push({ fraMm: a2, tilMm: b2 });
+  }
+  return ut.sort((p2, q) => p2.fraMm - q.fraMm);
+}
+
 // ---------- Målkjeden over fasaden ----------
 // Kjeden går fra der VEGGEN starter til der den slutter, med en skjøt
 // (2 × klaring) på hver INDRE akse imellom:
@@ -370,6 +441,7 @@ export function byggTegningsmodell(inn) {
   // veggelement.js (den kjenner S.enhetSkala), og sendes inn — den rene
   // delen skal ikke vite om modellens enheter.
   const tilMmFn = typeof inn.tilMm === "function" ? inn.tilMm : ((u) => Number(u) || 0);
+  const tilSceneFn = typeof inn.tilScene === "function" ? inn.tilScene : ((mm) => Number(mm) || 0);
   const vegger = (inn.vegger || []).filter(v => !v.skjult && v.fi !== undefined);
   const fasader = inn.fasader || [];
   const o = inn.oppsett || {};
@@ -378,6 +450,14 @@ export function byggTegningsmodell(inn) {
   const stal = inn.stal || [];
   const aksenavn = typeof inn.aksenavn === "function" ? inn.aksenavn : () => null;
   const klaring = Math.max(0, Number(o.klaringMm) || 0);
+  // Veggens utstrekning per fasade — naboveggEnder trenger NABOENS, ikke bare
+  // denne fasadens.
+  const veggPerFasade = fasader.map((_, j) => {
+    const e2 = vegger.filter(v => v.fi === j);
+    return e2.length
+      ? { fraMm: Math.min(...e2.map(v => v.fraMm)), tilMm: Math.max(...e2.map(v => v.tilMm)) }
+      : null;
+  });
   // ±0.000 er GULVET. Med ringmur står SW-basen «ringHoydeMm» over gulvet;
   // uten ringmur er SW-basen søylefoten, altså gulvet selv.
   const nullMm = o.ringmur ? -Math.max(0, Number(o.ringHoydeMm) || 0) : 0;
@@ -389,6 +469,10 @@ export function byggTegningsmodell(inn) {
   for (let fi = 0; fi < fasader.length; fi++) {
     const el = vegger.filter(v => v.fi === fi);
     if (!el.length) continue;                 // en fasade uten elementer tegnes ikke
+    // 🧱 Nabofasadens veggende i hjørnet — se naboveggEnder.
+    const naboRå = naboveggEnder(fasader, fi, veggPerFasade, o.tykkelseMm,
+      tilMmFn, tilSceneFn);
+
     // Veggens FAKTISKE ender. Med pinwheel-hjørner løper veggen forbi ytterste
     // akse i den ene enden og starter innenfor i den andre — det er hele
     // poenget med lappen, og kjeden må måle veggen, ikke aksene.
@@ -400,8 +484,8 @@ export function byggTegningsmodell(inn) {
       const l = hjorneLapp(fasader[fi], o.tykkelseMm, tilMmFn);
       akser = [veggFraMm + l.foran, veggTilMm - l.bak];
     }
-    const fraMm = Math.min(akser[0], veggFraMm);
-    const tilMm = Math.max(akser[akser.length - 1], veggTilMm);
+    const fraMm = Math.min(akser[0], veggFraMm, ...naboRå.map(b => b.fraMm));
+    const tilMm = Math.max(akser[akser.length - 1], veggTilMm, ...naboRå.map(b => b.tilMm));
     const rader = raderFra(vegger, fi);
     const veggToppMm = Math.max(...el.map(v => v.rBunnMm + v.hoydeMm));
 
@@ -412,6 +496,10 @@ export function byggTegningsmodell(inn) {
     // et intervall snus også ende for ende, ellers blir fra > til
     const spI = (a2, b2) => (sp ? [fraMm + tilMm - b2, fraMm + tilMm - a2] : [a2, b2]);
     const [vFra, vTil] = spI(veggFraMm, veggTilMm);
+    const naboStriper = naboRå.map(b => {
+      const [a3, b3] = spI(b.fraMm, b.tilMm);
+      return { fraMm: a3, tilMm: b3 };
+    }).sort((p2, q) => p2.fraMm - q.fraMm);
 
     // Aksenavnene slås opp i ORIGINALE mm — oppslaget går via et verdenspunkt,
     // og det flytter seg ikke av at tegninga speiles. Bokstavfallbacken settes
@@ -459,8 +547,11 @@ export function byggTegningsmodell(inn) {
       speilvendt: sp,
       akser: akserV.map((mm, i) => ({ mm, navn: navnV[i] || aksebokstav(i) })),
       veggFraMm: vFra, veggTilMm: vTil,
-      // kjeden måles på VEGGEN; bare de INDRE aksene gir skjøt
-      kjede: malkjede(vFra, vTil, akserV.slice(1, -1), klaring),
+      nabovegg: naboStriper,
+      // kjeden måles på VEGGEN, og nabostripene legges på som egne segmenter
+      // i endene — som Moelvs «120» ved akse 1
+      kjede: kjedeMedNabo(malkjede(vFra, vTil, akserV.slice(1, -1), klaring),
+                          naboStriper, vFra, vTil),
       rader,
       elementer: el.map(v => {
         const [f2, t2] = spI(v.fraMm, v.tilMm);
@@ -914,6 +1005,20 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad, elFarge) {
   d.setFillColor(FARGE.ringmur[0], FARGE.ringmur[1], FARGE.ringmur[2]);
   for (const r of f.ringmurBiter)
     tegnMedHull({ x0: r.fraMm, x1: r.tilMm, y0: r.bunnMm, y1: r.toppMm });
+
+  // ── 🧱 nabofasadens veggende i hjørnet. Full vegghøyde i elementfargen, og
+  // ringmurens del i grått — naboens ringmur løper forbi hjørnet på samme vis.
+  // INGEN SW-lapp: stripa er ikke et element på DENNE fasaden, og et nummer
+  // her ville dukket opp på feil elementliste.
+  for (const b of (f.nabovegg || [])) {
+    if (f.ringmurBiter.length) {
+      const rb = f.ringmurBiter[0];
+      d.setFillColor(FARGE.ringmur[0], FARGE.ringmur[1], FARGE.ringmur[2]);
+      tegnMedHull({ x0: b.fraMm, x1: b.tilMm, y0: rb.bunnMm, y1: rb.toppMm });
+    }
+    d.setFillColor(EF[0], EF[1], EF[2]);
+    tegnMedHull({ x0: b.fraMm, x1: b.tilMm, y0: 0, y1: f.veggToppMm });
+  }
 
   // ── elementene, med åpningene TRUKKET FRA. Se trekkFra: et hvitt rektangel
   // oppå ville malt over stålet i porten.

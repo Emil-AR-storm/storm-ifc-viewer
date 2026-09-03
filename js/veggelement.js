@@ -1615,8 +1615,8 @@ async function lastNedTegning() {
       oppsett: o,
       utsparinger: utspPaFasader(),
       ringmurBiter: await ringmurPaFasader(mod),
-      // scene → mm. Den rene delen skal ikke vite om S.enhetSkala.
-      tilMm,
+      // scene ↔ mm. Den rene delen skal ikke vite om S.enhetSkala.
+      tilMm, tilScene,
       stal: await stalPaFasader(),
       aksenavn: (fi, mm) => navnFor(fi)(fi, mm),
       felt: pdfFelt(o, mod.idag()),
