@@ -29,7 +29,7 @@ import * as THREE from "three";
 import { $, S, apnePanel, esc, ikon, på } from "./state.js";
 import { t } from "./i18n.js";
 import { camera, canvas, raycaster, scene } from "./scene.js";
-import { allElementBoxes, hitID, pick, toCsv } from "./elements.js";
+import { allElementBoxes, hitID, pick, sumFormel, toCsv } from "./elements.js";
 import { alleElementIder } from "./ifc.js";
 import { metaFor, sikreMeta } from "./ifcrpc.js";
 import { MALTYPER, lagreMateriellLokalt, mmTilScene, ribbonPosisjoner, tegnMateriell, trpProfil, vaskMateriell } from "./materiell-vis.js";
@@ -459,9 +459,14 @@ export function swNummerering(elementer) {
 // Navnet på en KAPPBIT. Moelv skriver SW-XX; Lørenskog skriver forelderens
 // nummer med stjerne (SW-15*) — «samme element, men skåret».
 // `forelder` er nummeret hele feltelementet i samme rad har, om det finnes.
-export function kappNavn(forelder, stil) {
-  if (stil === "stjerne" && forelder) return forelder + "*";
-  return "SW-XX";
+export function kappNavn(forelder, tekst) {
+  const s = String(tekst == null ? "" : tekst).trim();
+  // «*» alene (og den gamle verdien "stjerne") betyr Lørenskog-stilen:
+  // forelderens nummer med stjerne. Alt annet er Emils egen tekst.
+  if (s === "*" || s === "stjerne") return forelder ? forelder + "*" : "SW-XX";
+  const rest = s.replace(/^SW[-\s]*/i, "").trim();   // «SW-18*» og «18*» er samme
+  if (!rest || rest.toUpperCase() === "XX") return "SW-XX";
+  return "SW-" + rest;
 }
 
 // Lista i Moelv-formatet, som rader til toCsv. Tilpassede biter (SW-XX) samles
@@ -471,13 +476,16 @@ export function swListeRader(elementer, felter) {
   const grupper = new Map();
   for (const e of elementer) {
     const navn = e.sw || "SW-XX";
+    // KAPP KJENNES PÅ ELEMENTET, ikke på navnet. Da kappnavnet ble fritt
+    // (Emil 03.09) sluttet «SW-XX» å være noe å kjenne kapp igjen på.
+    const kapp = !!e.tilpasset || navn === "SW-XX" || /\*$/.test(navn);
     const k = navn + "|" + Math.round(e.lengdeMm) + "|" + e.hoydeMm;
-    if (!grupper.has(k)) grupper.set(k, { navn, lengdeMm: Math.round(e.lengdeMm), hoydeMm: e.hoydeMm, antall: 0 });
+    if (!grupper.has(k)) grupper.set(k, { navn, kapp, lengdeMm: Math.round(e.lengdeMm), hoydeMm: e.hoydeMm, antall: 0 });
     grupper.get(k).antall++;
   }
   const sortert = [...grupper.values()].sort((a, b) => {
-    const ax = a.navn === "SW-XX", bx = b.navn === "SW-XX";
-    if (ax !== bx) return ax ? 1 : -1;         // SW-XX nederst
+    const ax = a.kapp, bx = b.kapp;
+    if (ax !== bx) return ax ? 1 : -1;         // kappbitene nederst
     return a.navn.localeCompare(b.navn, "no") || a.lengdeMm - b.lengdeMm;
   });
   const m2 = (g) => g.lengdeMm / 1000 * g.hoydeMm / 1000 * g.antall;
@@ -489,14 +497,17 @@ export function swListeRader(elementer, felter) {
     ["Elementnr.", "Length [mm]", "Heigth [mm]", "Thickness [mm]", "Count [stk]",
      "Insulation", "Exterior Colour", "Interior Colour", "m2"]
   ];
-  let sumAnt = 0, sumM2 = 0;
+  const forsteData = ut.length + 1;            // første datarad i arket
   for (const g of sortert) {
-    sumAnt += g.antall; sumM2 += m2(g);
     ut.push([g.navn, g.lengdeMm, g.hoydeMm, f.tykkelseMm || "", g.antall,
       f.isolasjon || "", f.utvFarge || "", f.innFarge || "", nb(m2(g), 1)]);
   }
-  ut.push(["Total", "", "", f.tykkelseMm || "", sumAnt, f.isolasjon || "",
-    f.utvFarge || "", f.innFarge || "", nb(sumM2, 1)]);
+  // SUM-formler, ikke ferdige tall (Emil 03.09): summen skal vise hvilke rader
+  // den kommer fra, og følge med om noen redigerer arket etterpå.
+  const sisteData = ut.length;                 // radnummer i arket (1-basert)
+  ut.push(["Total", "", "", f.tykkelseMm || "",
+    sumFormel(4, forsteData, sisteData), f.isolasjon || "",
+    f.utvFarge || "", f.innFarge || "", sumFormel(8, forsteData, sisteData)]);
   return ut;
 }
 
@@ -660,7 +671,10 @@ const STD_OPPSETT = {
   klaringMm: SW_KLARING_MM,     // 10 mm hver side = 20 mm skjøt
   minFeltMm: SW_MIN_FELT_MM,    // skjøter nærmere enn dette slås sammen
   kappUnderMm: 0,               // 0 = lengde alene gjør ikke noe til kapp
-  kappStil: "xx",               // "xx" = SW-XX (Moelv), "stjerne" = SW-15* (Lørenskog)
+  // Navnet på kappbitene SKRIVES FRITT (Emil 03.09) — alltid med «SW-» foran.
+  // «XX» gir SW-XX (Moelv), «18*» gir SW-18*, og «*» alene gir forelderens
+  // nummer med stjerne (Lørenskog). Den gamle nøkkelen kappStil migreres.
+  kappTekst: "XX",
   visUtsp: true,                // stiplet kryss + mål på utsparingene
   farge: "#dfe5ec", isolasjon: "PIR", utvFarge: "RAL 1015", innFarge: "9010",
   prosjekt: "", oppdragsnr: "", sted: "", sign: "",
@@ -684,6 +698,12 @@ function oppsett() {
   // klaringMm, minFeltMm …). Uten denne fletten blir de undefined, og
   // genereringen regner med NaN.
   lagret.oppsett = { ...STD_OPPSETT, ...(lagret.oppsett || {}) };
+  // Et oppsett fra før kappnavnet ble fritt har `kappStil` i stedet. Uten
+  // denne linja ville Lørenskog-valget stille falt tilbake til SW-XX.
+  if (lagret.oppsett.kappStil !== undefined) {
+    lagret.oppsett.kappTekst = lagret.oppsett.kappStil === "stjerne" ? "*" : "XX";
+    delete lagret.oppsett.kappStil;
+  }
   return lagret.oppsett;
 }
 
@@ -703,6 +723,142 @@ function ryddTegning() {
   });
 }
 
+// ---------- 💾 Lagrede SW-resultater ----------
+// Emil 03.09: samme tanke som «Lagrede grupper» i Bygginfo — du gir resultatet
+// et navn, og kan hente det tilbake senere. Det som lagres er TALLENE
+// (oppsett, vegger, gulv, ringmur, fasader), ikke 3D-objektene: stablene og
+// tegninga bygges opp igjen av byggStabler()/tegnAlt() ved innlasting, akkurat
+// som når en fil åpnes på nytt. Lagringen er per modellfil, som resten av
+// SW-dataene.
+function lagredeNokkel() { return "storm-ifc-sw-lagrede::" + S.fileName; }
+
+function lesLagrede() {
+  try {
+    const l = JSON.parse(localStorage.getItem(lagredeNokkel()) || "[]");
+    return Array.isArray(l) ? l : [];
+  } catch (_) { return []; }
+}
+
+function skrivLagrede(liste) {
+  try { localStorage.setItem(lagredeNokkel(), JSON.stringify(liste)); return true; }
+  catch (_) { return false; }   // full localStorage — sier fra i stedet for å svelge det
+}
+
+// Øyeblikksbildet. Materiell-id-ene tas MED VILJE ikke med: de peker på
+// stabler som ikke finnes lenger når resultatet lastes inn igjen, og
+// byggStabler() lager nye.
+function swOyeblikksbilde() {
+  if (!lagret) return null;
+  const b = JSON.parse(JSON.stringify({
+    oppsett: lagret.oppsett || STD_OPPSETT,
+    vegger: lagret.vegger || [],
+    gulv: lagret.gulv || null,
+    ringmur: lagret.ringmur || [],
+    fasader: lagret.fasader || [],
+    okBetong: lagret.okBetong || 0,
+    baseY: lagret.baseY,
+    skjul: lagret.skjul || {}
+  }));
+  return b;
+}
+
+function lagreResultat(navn) {
+  const rent = String(navn || "").trim().slice(0, 60);
+  if (!rent) { alert(t("Gi resultatet et navn før du lagrer det.")); return; }
+  if (!lagret || !(lagret.vegger || []).length) {
+    alert(t("Generer veggelementene først.")); return;
+  }
+  const liste = lesLagrede();
+  const fra_for = liste.findIndex(p => p.navn === rent);
+  if (fra_for >= 0 && !confirm(t("«{0}» finnes allerede. Skal den skrives over?", rent))) return;
+  const post = { navn: rent, dato: new Date().toISOString().slice(0, 10),
+    antall: (lagret.vegger || []).filter(v => !v.skjult).length,
+    data: swOyeblikksbilde() };
+  if (fra_for >= 0) liste[fra_for] = post; else liste.push(post);
+  if (!skrivLagrede(liste)) {
+    alert(t("Klarte ikke å lagre — nettleserens lagring er full. Slett et gammelt resultat og prøv igjen."));
+    return;
+  }
+  tegnPanel();
+}
+
+function lastInnResultat(navn) {
+  const post = lesLagrede().find(p => p.navn === navn);
+  if (!post || !post.data) return;
+  fjernGenerertMateriell();
+  lagret = JSON.parse(JSON.stringify(post.data));
+  lagret.materiellIder = [];
+  oppsett();                 // migrerer et oppsett lagret av en eldre versjon
+  loesAlleJusteringer();
+  byggStabler();
+  skrivLagret();
+  tegnAlt();
+  tegnPanel();
+  if (S.tegnUtseendePanel) S.tegnUtseendePanel();
+}
+
+function slettResultat(navn) {
+  if (!confirm(t("Slette «{0}»?", navn))) return;
+  skrivLagrede(lesLagrede().filter(p => p.navn !== navn));
+  tegnPanel();
+}
+
+// ---------- 👁 «SW-generator» i 🎨 Utseende ----------
+// Emil 03.09: alt SW-generatoren har satt PÅ BYGGET skal kunne skjules —
+// uavhengig av bunkene med veggelementer rundt bygget, som ligger i
+// 📦 Materiell og har sine egne rader der. Skjulingen er en VISNINGStilstand
+// og lagres i `lagret.skjul`, altså per fil, sammen med resten av SW-dataene.
+const SKJUL_DELER = [
+  { n: "vegger", navn: "Veggelementer" },
+  { n: "gulv", navn: "Gulv og isolasjon" },
+  { n: "ringmur", navn: "Ringmur" },
+  { n: "merking", navn: "Merking og mål" }
+];
+
+function skjulNaa() {
+  if (!lagret) return {};
+  if (!lagret.skjul) lagret.skjul = {};
+  return lagret.skjul;
+}
+
+function settSkjul(navn, verdi) {
+  if (!lagret) return;
+  const sk = skjulNaa();
+  if (navn === "alt") for (const d of SKJUL_DELER) sk[d.n] = verdi;
+  sk[navn] = verdi;
+  if (navn !== "alt" && !verdi) sk.alt = false;
+  if (navn !== "alt") sk.alt = SKJUL_DELER.every(d => sk[d.n]);
+  skrivLagret();
+  tegnAlt();
+  if (S.tegnUtseendePanel) S.tegnUtseendePanel();
+}
+
+S.swUtseendeRader = (body) => {
+  if (!body || !lagret) return;
+  const antV = (lagret.vegger || []).length;
+  if (!antV && !lagret.gulv && !(lagret.ringmur || []).length) return;
+  const sk = skjulNaa();
+  const rad = (navn, tekst, ekstra) =>
+    '<div class="qty-row"><div class="n">' + esc(t(tekst)) +
+      (ekstra ? ' <span style="color:var(--muted);font-size:11px">(' + ekstra + ')</span>' : "") +
+    '</div><div class="c"><button data-sw-skjul="' + navn + '" title="' + t("Skjul/vis") +
+    '" style="padding:3px 8px">' + ikon(sk[navn] ? "skjul" : "vis") + '</button></div></div>';
+  const boks = document.createElement("div");
+  boks.innerHTML =
+    '<div class="qty-row" style="margin-top:10px"><div class="n" style="font-weight:700">' +
+      t("SW-generator") + '</div><div class="c"></div></div>' +
+    rad("alt", "Alt på bygget") +
+    rad("vegger", "Veggelementer", antV || "") +
+    (lagret.gulv ? rad("gulv", "Gulv og isolasjon") : "") +
+    ((lagret.ringmur || []).length ? rad("ringmur", "Ringmur", (lagret.ringmur || []).length) : "") +
+    rad("merking", "Merking og mål") +
+    '<p style="color:var(--muted);font-size:11px;margin:2px 0 6px">' +
+      t("Bunkene med veggelementer rundt bygget ligger i 📦 Materiell og skjules i sine egne rader over.") + '</p>';
+  body.appendChild(boks);
+  boks.querySelectorAll("button[data-sw-skjul]").forEach(b =>
+    b.onclick = () => settSkjul(b.dataset.swSkjul, !sk[b.dataset.swSkjul]));
+};
+
 function boks(farge, opacity) {
   const m = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1),
     new THREE.MeshLambertMaterial({ color: farge, side: THREE.DoubleSide,
@@ -715,7 +871,8 @@ function tegnAlt() {
   ryddTegning();
   if (!lagret) return;
   const o = lagret.oppsett || STD_OPPSETT;
-  if (lagret.gulv) {
+  const sk = lagret.skjul || {};
+  if (lagret.gulv && !sk.gulv) {
     const g = lagret.gulv;
     const betong = boks("#9aa3ad", 1);
     betong.scale.set(g.bredde, tilScene(o.betongMm), g.dybde);
@@ -731,8 +888,8 @@ function tegnAlt() {
   // 🧱 RINGMUREN: samme dra-funksjon som veggelementene (Emil 03.09).
   // Hver bit får swId, så «Juster elementer» plukker den opp uendret, og en
   // dimensjonslapp i midten slik elementene har.
-  const visRmLapper = (lagret.ringmur || []).length <= 400;
-  for (const r of lagret.ringmur || []) {
+  const visRmLapper = (lagret.ringmur || []).length <= 400 && !sk.merking;
+  for (const r of (sk.ringmur ? [] : lagret.ringmur || [])) {
     if (r.skjult || (r.lengdeMm !== undefined && !(r.lengdeMm > 0))) continue;
     const m = boks("#8a8f98", 1);
     m.scale.set(r.lengde, r.hoyde, r.tykkelse);
@@ -760,7 +917,7 @@ function tegnAlt() {
   const fargeMat = new THREE.MeshLambertMaterial({ color: farge, side: THREE.DoubleSide });
   const kjerneMat = new THREE.MeshLambertMaterial({ color: "#e8e4da", side: THREE.DoubleSide });
   const mal = MALTYPER.sandwich;
-  const visLapper = (lagret.vegger || []).length <= 400;   // tusenvis av lapper kveler bilderaten
+  const visLapper = (lagret.vegger || []).length <= 400 && !sk.merking;   // tusenvis av lapper kveler bilderaten
   // Ett panelstykke: isolasjonskjerne + ytter- og innerhud med mikroprofil.
   // Bygges LIGGENDE (samme akser som materiell) og reises 90° opp, så x er
   // lengden, y høyden og z tykkelsen i elementets egen ramme.
@@ -793,7 +950,7 @@ function tegnAlt() {
     inner.position.z = tilScene(tMm) / 2;    // tykkelsen sentrert om veggplanet
     return inner;
   };
-  for (const v of lagret.vegger || []) {
+  for (const v of (sk.vegger ? [] : lagret.vegger || [])) {
     if (v.skjult || !(v.lengdeMm > 0)) continue;   // dratt bort, men ikke slettet
     const el = new THREE.Group();
     // 🚪 HAKK ETTER UTSPARINGER: elementet er ÉTT element i lista med full
@@ -855,8 +1012,10 @@ function tegnAlt() {
       swGroup.add(dim);
     }
   }
-  try { tegnUtspMerking(); }
-  catch (err) { console.warn("Utsparingsmerkingen kunne ikke tegnes:", err); }
+  if (!sk.merking) {
+    try { tegnUtspMerking(); }
+    catch (err) { console.warn("Utsparingsmerkingen kunne ikke tegnes:", err); }
+  }
 }
 
 // ---------- 📐 Utsparingsmerking: stiplet kryss + mål ----------
@@ -1425,7 +1584,7 @@ function loesAlleJusteringer() {
   for (const v of lagret.vegger) {
     if (v.skjult) { v.sw = ""; continue; }
     if (!v.tilpasset) { v.sw = numre.get(nokkel(v)) || "SW-XX"; continue; }
-    v.sw = kappNavn(numre.get(nokkel({ lengdeMm: v.fullMm, hoydeMm: v.hoydeMm })), o.kappStil);
+    v.sw = kappNavn(numre.get(nokkel({ lengdeMm: v.fullMm, hoydeMm: v.hoydeMm })), o.kappTekst);
   }
 }
 
@@ -1578,7 +1737,7 @@ function lesOppsettFraPanel() {
   o.klaringMm = Math.max(0, Math.min(100, num("swKlaring", o.klaringMm)));
   o.minFeltMm = Math.max(0, Math.min(6000, num("swMinFelt", o.minFeltMm)));
   o.kappUnderMm = Math.max(0, Math.min(6000, num("swKappUnder", o.kappUnderMm)));
-  o.kappStil = (($("swKappStil") || {}).value === "stjerne") ? "stjerne" : "xx";
+  if ($("swKappTekst")) o.kappTekst = $("swKappTekst").value;
   if ($("swVisUtsp")) o.visUtsp = !!$("swVisUtsp").checked;
   o.farge = ($("swFarge") || {}).value || o.farge;
   o.isolasjon = txt("swIsoType") || o.isolasjon;
@@ -2279,6 +2438,7 @@ function tegnPanel() {
   if (!body) return;
   const o = oppsett();
   const antall = (lagret && lagret.vegger || []).length;
+  const lagrede = lesLagrede();
   const utsp = (o.utsparinger || []).filter(u => u && u.min);
   body.innerHTML =
     '<h4 style="margin:0 0 4px">' + t("Gulv") + '</h4>' +
@@ -2304,10 +2464,11 @@ function tegnPanel() {
     felt("swMinFelt", "Minste felt (mm) — tettere skjøter slås sammen", o.minFeltMm) +
     felt("swKappUnder", "Alt kortere enn (mm) er kapp — 0 = av", o.kappUnderMm) +
     '<label>' + t("Navn på kappbiter") +
-      '<select id="swKappStil">' +
-      '<option value="xx"' + (o.kappStil !== "stjerne" ? " selected" : "") + '>SW-XX (Moelv)</option>' +
-      '<option value="stjerne"' + (o.kappStil === "stjerne" ? " selected" : "") + '>SW-15* (Lørenskog)</option>' +
-      '</select></label>' +
+      '<span class="sw-prefiks"><span>SW-</span>' +
+      '<input type="text" id="swKappTekst" maxlength="20" value="' +
+      esc(o.kappTekst || "XX") + '"></span></label>' +
+    '<p style="color:var(--muted);font-size:11px;margin:2px 0 6px">' +
+      t("Skriv bare slutten — «SW-» settes alltid foran. «XX» gir SW-XX (Moelv), «18*» gir SW-18*. Bare «*» gir forelderens nummer med stjerne (Lørenskog).") + '</p>' +
     '<label>' + t("Farge") + '<input type="color" id="swFarge" value="' + esc(o.farge) + '"></label>' +
     felt("swIsoType", "Isolasjon (til lista)", o.isolasjon, "text") +
     felt("swUtvF", "Utvendig farge (til lista)", o.utvFarge, "text") +
@@ -2371,7 +2532,26 @@ function tegnPanel() {
     '<button id="swListe">' + ikon("lastned") + ' ' + t("Last ned liste (Excel/CSV)") + '</button>' +
     '<button id="swFjern">' + ikon("slett") + ' ' + t("Fjern genererte") + '</button></div>' +
     (antall ? '<p style="color:var(--muted);font-size:12px;margin-top:6px">' +
-      t("{0} veggelementer generert. Stablene ligger i 📦 Materiell og telles i Mengder.", antall) + '</p>' : "");
+      t("{0} veggelementer generert. Stablene ligger i 📦 Materiell og telles i Mengder.", antall) + '</p>' : "") +
+    // 💾 Lagrede resultater — helt nederst, som «Lagrede grupper» i Bygginfo.
+    '<h4 style="margin:14px 0 4px">' + t("Lagrede SW-resultater") + '</h4>' +
+    '<p style="color:var(--muted);font-size:11px;margin:2px 0 6px">' +
+      t("Gi resultatet et navn og lagre det. Trykk på navnet senere for å laste hele resultatet inn på bygget igjen.") + '</p>' +
+    '<div class="prop-actions sw-lagre">' +
+      '<input type="text" id="swLagreNavn" maxlength="60" placeholder="' +
+      esc(t("Navn på resultatet")) + '">' +
+      '<button id="swLagreBtn">' + ikon("lagre") + ' ' + t("Lagre") + '</button></div>' +
+    (lagrede.length
+      ? lagrede.map(pst =>
+        '<div class="qty-row"><div class="n" style="font-size:12px">' +
+          '<button class="sw-last" data-sw-last="' + esc(pst.navn) + '">' +
+          esc(pst.navn) + '</button>' +
+          ' <span style="color:var(--muted);font-size:11px">' +
+          esc([pst.dato, pst.antall ? t("{0} element", pst.antall) : ""].filter(Boolean).join(" · ")) +
+          '</span></div>' +
+        '<div class="c"><button data-sw-slett-lagret="' + esc(pst.navn) + '" title="' + t("Slett") +
+        '" style="padding:3px 8px">' + ikon("slett") + '</button></div></div>').join("")
+      : '<p style="color:var(--muted);font-size:12px">' + t("Ingen lagrede resultater ennå.") + '</p>');
   $("swGenerer").onclick = async () => {
     lesOppsettFraPanel();
     $("swGenerer").disabled = true;
@@ -2380,6 +2560,14 @@ function tegnPanel() {
     finally { const b = $("swGenerer"); if (b) b.disabled = false; }
   };
   $("swListe").onclick = () => { lesOppsettFraPanel(); lastNedListe(); };
+  if ($("swLagreBtn")) $("swLagreBtn").onclick = () => {
+    lesOppsettFraPanel();
+    lagreResultat(($("swLagreNavn") || {}).value);
+  };
+  body.querySelectorAll("button[data-sw-last]").forEach(b =>
+    b.onclick = () => lastInnResultat(b.dataset.swLast));
+  body.querySelectorAll("button[data-sw-slett-lagret]").forEach(b =>
+    b.onclick = () => slettResultat(b.dataset.swSlettLagret));
   if ($("swTegning")) $("swTegning").onclick = lastNedTegning;
   fyllLogovalgSW();
   $("swFjern").onclick = () => { lesOppsettFraPanel(); fjernAltGenerert(); };

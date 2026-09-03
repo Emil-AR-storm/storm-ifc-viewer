@@ -966,6 +966,25 @@ const csvAreaDec = () => Math.max(dec(), 3);
 // leverandørens tabell uten at avrunding kommer i veien.
 const csvVektDec = () => Math.max(dec(), 2);
 
+// ---------- SUM-formler i regnearkene ----------
+// Emil 03.09: summen skal STÅ SOM =SUM(...) i arket, ikke som et ferdig tall.
+// Da ser man hvilke rader summen kommer fra, og den følger med hvis noen
+// sletter eller filtrerer en rad i Excel etterpå. Et statisk tall lyver stille.
+// Kolonneområdet bruker «:», som betyr det samme i norsk og engelsk Excel —
+// argumentskilletegnet (som ER lokalavhengig) trengs ikke i en enkel SUM.
+export function kolBokstav(i) {
+  let n = Math.floor(Number(i) || 0), s = "";
+  while (n >= 0) { s = String.fromCharCode(65 + (n % 26)) + s; n = Math.floor(n / 26) - 1; }
+  return s;
+}
+
+// `fraRad`/`tilRad` er RADNUMRE I ARKET (1-basert, som i Excel) — ikke indekser.
+export function sumFormel(kolonne, fraRad, tilRad) {
+  if (!(tilRad >= fraRad) || !(fraRad >= 1)) return "";
+  const c = kolBokstav(kolonne);
+  return "=SUM(" + c + fraRad + ":" + c + tilRad + ")";
+}
+
 export function qtyGroupRows(cache) {
   // «Kg/m» står med vilje rett ved siden av kg. Den er en KONTROLL, ikke et
   // salgstall: ser du 61 kg/m på en HEB200, er modellen bygget med ekte
@@ -976,6 +995,7 @@ export function qtyGroupRows(cache) {
     t("Sum lengde (m)"), t("Sum areal (m2)"), t("Sum volum (m3)"),
     t("Forskaling (m2)"), t("Vekt (kg)"), t("Kg/m"), t("Kilde"), t("Geometri (kg)"), t("Avvik %"),
     t("Uten vekt (stk)"), t("Umulig volum (stk)")]];
+  const forste = out.length + 1;        // første datarad, som radnummer i arket
   cache.groups.forEach(([key, g]) => out.push([key, g.type || "", g.material || "", g.count,
     nb(g.length, csvLenDec()), nb(g.area, csvAreaDec()), nb(g.vol, csvVolDec()),
     nb(g.forskaling, csvAreaDec()), nb(g.kg, csvVektDec()),
@@ -991,10 +1011,14 @@ export function qtyGroupRows(cache) {
     [s[0] + g.count, s[1] + g.length, s[2] + g.vol, s[3] + g.area, s[4] + g.forskaling, s[5] + g.kg,
      s[6] + (g.utenVekt || 0), s[7] + (g.umulige || 0), s[8] + (g.kgGeo || 0)],
     [0, 0, 0, 0, 0, 0, 0, 0, 0]);
+  const siste = out.length;            // siste datarad
+  const S_ = (kol) => sumFormel(kol, forste, siste);
   out.push([]);
-  out.push([t("SUM"), "", "", tot[0], nb(tot[1], csvLenDec()), nb(tot[3], csvAreaDec()),
-    nb(tot[2], csvVolDec()), nb(tot[4], csvAreaDec()), nb(tot[5], csvVektDec()), "", "",
-    nb(tot[8], csvVektDec()), "", tot[6] || "", tot[7] || ""]);
+  // Tallene står i `tot` fortsatt — de brukes til å avgjøre om cellen skal
+  // være TOM. En 0 i «uten vekt» ser ut som en kontrollert kolonne.
+  out.push([t("SUM"), "", "", S_(3), S_(4), S_(5),
+    S_(6), S_(7), S_(8), "", "",
+    tot[8] > 0 ? S_(11) : "", "", tot[6] ? S_(13) : "", tot[7] ? S_(14) : ""]);
   return out;
 }
 
@@ -1012,6 +1036,16 @@ export function qtyElementRows(cache) {
     r.vektKilde ? t(r.vektKilde) : "", r.profil || "",
     r.nomKgPerM ? nb(r.nomKgPerM, csvVektDec()) : "",
     r.umuligVolum ? t("JA") : ""]));
+  // Sumrad også her (Emil 03.09), som formler. Bare kolonnene det er MENING i
+  // å summere: lengste mål, areal, volum, forskaling og vekt. Lengde/bredde/
+  // høyde er mål på hvert element — en sum av dem betyr ingenting.
+  if (cache.rows.length) {
+    // INGEN tom rad her: hele elementarket skal ha like mange kolonner på
+    // hver rad (den invarianten er testet, og Excel liker den).
+    const S_ = (kol) => sumFormel(kol, 2, cache.rows.length + 1);
+    out.push([t("SUM"), "", "", "", "", "", "", "", "",
+      S_(9), S_(10), S_(11), S_(12), S_(13), "", "", "", ""]);
+  }
   return out;
 }
 
