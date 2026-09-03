@@ -567,4 +567,7 @@ export function renderColorPanel() {
   // 👁 «Markeringer»-gruppa. Egne rader, fordi markeringene ikke er
   // IFC-elementer og dermed ikke finnes i S.typeInfo.
   if (S.markeringUtseendeRader) S.markeringUtseendeRader($("colorBody"));
+  // 🧱 «SW-generator»-gruppa: alt generatoren har satt på bygget. Bunkene med
+  // veggelementer rundt bygget er materiell og har sine egne rader over.
+  if (S.swUtseendeRader) S.swUtseendeRader($("colorBody"));
 }
