@@ -54,9 +54,14 @@ export const FARGE = {
 // Moelv — det er den streken montøren følger når han setter elementene.
 export const STREK = { tynn: 0.5, kjede: 0.5, skjot: 1.8, utsp: 1.4, ramme: 0.9, stal: 0.8 };
 
-export const SKRIFT = { sw: 10, lengde: 10, kjede: 9, hoyde: 8, niva: 9,
-                        tittel: 20, skala: 11, merknad: 8,
-                        tfEtikett: 6, tfVerdi: 11, tfStor: 17, tfNr: 20 };
+// Skriftstørrelsene er FORSTØRRET fra Moelv-målene (Emil 03.09: «teksten i
+// pdf må forstørres, den er alt for liten»). Moelv er tegnet i 1:50–1:60 der
+// elementene er store flater; våre vaskehaller går i 1:20, og da ble 10 pt
+// borte i et A0-ark man leser stående. Tallene i tittelfeltet kan ikke vokse
+// like mye — cellehøydene der er målt på Moelv og ligger fast.
+export const SKRIFT = { sw: 15, lengde: 15, kjede: 13, hoyde: 12, niva: 13,
+                        tittel: 26, skala: 15, merknad: 11, akse: 16,
+                        tfEtikett: 7, tfVerdi: 12, tfStor: 18, tfNr: 22 };
 
 // Standardmålestokker, minst tall først. Moelv bruker 1:50 og 1:60 på samme ark.
 export const SKALAER = [20, 25, 50, 60, 75, 100, 125, 150, 200, 250, 300, 400, 500];
@@ -64,16 +69,16 @@ export const SKALAER = [20, 25, 50, 60, 75, 100, 125, 150, 200, 250, 300, 400, 5
 // Plassen rundt selve opprisset, i punkt. Måltatt på Moelv: aksesirklene ligger
 // ~95 pt over veggen, målkjeden ~25 pt over.
 export const PLASS = {
-  tittel: 40,      // fasadetittel + målestokk over blokka
-  akse: 70,        // aksesirkler + hjelpelinjen
-  kjede: 28,       // målkjeden mellom aksene og veggen
-  hoydekjede: 46,  // loddrett radhøydekjede ved sida
-  niva: 150,       // nivåmarkørene «Gesims ▼ +13.100»
-  merknad: 250,    // merknadsteksten til venstre, bare når det finnes en
-  luft: 46         // mellom to fasadeblokker
+  tittel: 50,      // fasadetittel + målestokk over blokka
+  akse: 82,        // aksesirkler + hjelpelinjen
+  kjede: 36,       // målkjeden mellom aksene og veggen
+  hoydekjede: 54,  // loddrett radhøydekjede ved sida
+  niva: 170,       // nivåmarkørene «Gesims ▼ +13.100»
+  merknad: 260,    // merknadsteksten til venstre, bare når det finnes en
+  luft: 52         // mellom to fasadeblokker
 };
 
-export const AKSE_R = 17;    // radius i aksesirkelen
+export const AKSE_R = 21;    // radius i aksesirkelen
 export const SKRAVUR_PT = 6; // avstand mellom skravurlinjene på stålet, i punkt
 
 // Fase / Revisjon / Status — måltatt avstand fra tittelfeltets venstrekant.
@@ -82,17 +87,38 @@ const FASE_ET = [["Fase", 297.5], ["Revisjon", 330.2], ["Status", 373.7]];
 
 // ═══════════════════════ REN LOGIKK ═══════════════════════
 
-// Aksepunktene: samler feltgrensene fra elementene som er HELE FELT. Bare de
-// har basFraMm/basTilMm nøyaktig på søylesenter ± klaringen; en strimmel ved
-// siden av en port har grensa si midt i feltet og ville laget en falsk akse.
-export function aksepunkter(vegger, fi, klaringMm, tolMm) {
+// Skjøtepunktene (aksene) på en fasade.
+//
+// HJØRNELAPPEN MÅTTE REGNES BORT (Emil 03.09: «endene av veggene på høyre og
+// venstre side er feil»). Generatoren lar hver fasade LØPE FORBI hjørnet i sin
+// sluttende og starte flukt mot naboens innside — pinwheel, som på Moelv. Da
+// er FØRSTE elementets basFraMm ikke søylesenter minus klaringen, men
+//     hjFraMm = skjot[0] − off + tykkelse/2
+// og siste elementets basTilMm er
+//     hjTilMm = skjot[siste] + off + tykkelse/2
+//
+// Første versjon regnet ytterste akse som «basFraMm − klaring», og da havnet
+// aksesirklene på veggens ENDER i stedet for på søylesentrene. Lappen rundt
+// hjørnet ble usynlig — nettopp det montøren skal se.
+//
+// `off` og `tykkelseMm` ligger lagret, så lappen kan regnes eksakt bort.
+// Mangler `off` (vegger fra en eldre versjon) faller vi tilbake på den gamle
+// utregningen: heller en akse 10 mm feil enn ingen akse.
+export function aksepunkter(vegger, fi, klaringMm, tolMm, lapp) {
   const tol = tolMm > 0 ? tolMm : 30;
+  const hele = (vegger || []).filter(v =>
+    v.fi === fi && !v.skjult && v.basFraMm !== undefined && !v.tilpasset && !v.tilpassetRad);
+  if (!hele.length) return [];
+  const minFra = Math.min(...hele.map(v => v.basFraMm));
+  const maksTil = Math.max(...hele.map(v => v.basTilMm));
   const kand = [];
-  for (const v of vegger || []) {
-    if (v.fi !== fi || v.skjult) continue;
-    if (v.basFraMm === undefined || v.tilpasset || v.tilpassetRad) continue;
-    kand.push(v.basFraMm - klaringMm, v.basTilMm + klaringMm);
+  for (const v of hele) {
+    // INDRE grenser: der ER basFraMm/basTilMm søylesenter ± klaringen
+    if (v.basFraMm > minFra + tol) kand.push(v.basFraMm - klaringMm);
+    if (v.basTilMm < maksTil - tol) kand.push(v.basTilMm + klaringMm);
   }
+  if (lapp > 0) kand.push(minFra + lapp, maksTil - lapp);
+  else kand.push(minFra - klaringMm, maksTil + klaringMm);
   kand.sort((a, b) => a - b);
   const ut = [];
   for (const x of kand) {
@@ -103,22 +129,32 @@ export function aksepunkter(vegger, fi, klaringMm, tolMm) {
   return ut.map(g => Math.round(g.sum / g.n));
 }
 
-// Målkjeden over fasaden. Hver akse har en skjøt PÅ seg (2 × klaring), og
-// mellom skjøtene står elementlengden:
-//   3790 · 20 · 4290 · 20 · 5980 …
+// Hjørnelappen i mm: «off − tykkelse/2», begge lagret på fasaden.
+export function hjorneLapp(f, tykkelseMm, tilMmFn) {
+  const off = Number(f && f.off);
+  if (!isFinite(off) || off <= 0) return 0;
+  const l = tilMmFn(off) - (Number(tykkelseMm) || 0) / 2;
+  return l > 0 ? Math.round(l) : 0;
+}
+
+// ---------- Målkjeden over fasaden ----------
+// Kjeden går fra der VEGGEN starter til der den slutter, med en skjøt
+// (2 × klaring) på hver INDRE akse imellom:
+//     5800 · 20 · 5600
 //
-// KJEDEN SLUTTER DER ELEMENTENE SLUTTER, ikke i aksesenteret. Moelv leser
-// 3800 i første segment mot vårt 3790, og det er ikke en feil i kjeden: Moelv
-// lar det første elementet gå helt ut til hjørneaksen, mens generatoren gir
-// klaring i BEGGE ender av hvert felt (basFraMm = akse + klaring). Kjeden skal
-// vise elementene som faktisk blir laget — ellers står det ett mål på tegninga
-// og et annet på elementlista, og montøren tror det er han som har målt feil.
-export function malkjede(akser, klaringMm) {
-  if (!akser || akser.length < 2) return [];
+// Tallene er elementlengdene som faktisk blir laget — det er dem montøren skal
+// kappe etter, og de må stemme med elementlista. De YTTERSTE aksene får ingen
+// skjøt: der løper veggen forbi hjørnet, og lappen ligger inne i første og
+// siste segment. Aksesirklene over viser hvor søylene står.
+export function malkjede(veggFraMm, veggTilMm, indreAkser, klaringMm) {
+  if (!(veggTilMm > veggFraMm)) return [];
   const k = Math.max(0, klaringMm || 0);
-  const pkt = [akser[0] + k];
-  for (let i = 1; i < akser.length - 1; i++) { pkt.push(akser[i] - k); pkt.push(akser[i] + k); }
-  pkt.push(akser[akser.length - 1] - k);
+  const pkt = [veggFraMm];
+  for (const a of (indreAkser || [])) {
+    if (a - k <= pkt[pkt.length - 1] || a + k >= veggTilMm) continue;
+    pkt.push(a - k, a + k);
+  }
+  pkt.push(veggTilMm);
   const ut = [];
   for (let i = 0; i < pkt.length - 1; i++) {
     const mm = Math.round(pkt[i + 1] - pkt[i]);
@@ -176,6 +212,25 @@ export function hexTilRgb(hex, reserve) {
 // fire biter. Da er hullet aldri malt over — det er rett og slett ikke tegnet.
 // Rene tall, x langs fasaden og y over SW-basen, begge i mm.
 const SUB_TOL = 1;
+
+// ETT ELEMENT SKAL HA ÉN KONTUR, IKKE ÉN PER BIT.
+// Da bitene ble tegnet med «FD» fikk hver bit sin egen ramme, og et element
+// med en dør under seg fikk fire streker inni seg — det så ut som tre
+// elementer i stedet for ett (Emil 03.09).
+//
+// Løsningen: fyll bitene UTEN kontur, og strek bare de sidene som ligger på
+// elementets EGEN ytterkant. Sidene som ble til av kuttet er hullets kanter,
+// og de tegnes av utsparingen selv. Ligger hullet inntil en ytterkant, finnes
+// det ingen bit der — og da skal streken heller ikke være der.
+export function ytterkanter(bit, rekt, tol) {
+  const t = tol > 0 ? tol : SUB_TOL;
+  return {
+    venstre: Math.abs(bit.x0 - rekt.x0) <= t,
+    hoyre: Math.abs(bit.x1 - rekt.x1) <= t,
+    bunn: Math.abs(bit.y0 - rekt.y0) <= t,
+    topp: Math.abs(bit.y1 - rekt.y1) <= t
+  };
+}
 
 export function trekkFra(rekt, hull) {
   let biter = [rekt];
@@ -252,6 +307,10 @@ export function kote(mm) {
 // spørre 🔠 Akser om det virkelige navnet; svarer den null, faller vi tilbake
 // på bokstaver per fasade.
 export function byggTegningsmodell(inn) {
+  // Fasadens `off` er lagret i SCENEenheter. Omregningen til mm eies av
+  // veggelement.js (den kjenner S.enhetSkala), og sendes inn — den rene
+  // delen skal ikke vite om modellens enheter.
+  const tilMmFn = typeof inn.tilMm === "function" ? inn.tilMm : ((u) => Number(u) || 0);
   const vegger = (inn.vegger || []).filter(v => !v.skjult && v.fi !== undefined);
   const fasader = inn.fasader || [];
   const o = inn.oppsett || {};
@@ -271,14 +330,16 @@ export function byggTegningsmodell(inn) {
   for (let fi = 0; fi < fasader.length; fi++) {
     const el = vegger.filter(v => v.fi === fi);
     if (!el.length) continue;                 // en fasade uten elementer tegnes ikke
-    let akser = aksepunkter(vegger, fi, klaring, o.aksetolMm);
-    const minEl = Math.min(...el.map(v => v.fraMm));
-    const maksEl = Math.max(...el.map(v => v.tilMm));
-    if (!akser.length) akser = [minEl - klaring, maksEl + klaring];
-    // fasaden skal alltid dekke elementene, også der en strimmel stikker
-    // forbi ytterste akse
-    const fraMm = Math.min(akser[0], minEl);
-    const tilMm = Math.max(akser[akser.length - 1], maksEl);
+    // Veggens FAKTISKE ender. Med pinwheel-hjørner løper veggen forbi ytterste
+    // akse i den ene enden og starter innenfor i den andre — det er hele
+    // poenget med lappen, og kjeden må måle veggen, ikke aksene.
+    const veggFraMm = Math.min(...el.map(v => v.fraMm));
+    const veggTilMm = Math.max(...el.map(v => v.tilMm));
+    const lapp = hjorneLapp(fasader[fi], o.tykkelseMm, tilMmFn);
+    let akser = aksepunkter(vegger, fi, klaring, o.aksetolMm, lapp);
+    if (!akser.length) akser = [veggFraMm + lapp, veggTilMm - lapp];
+    const fraMm = Math.min(akser[0], veggFraMm);
+    const tilMm = Math.max(akser[akser.length - 1], veggTilMm);
     const rader = raderFra(vegger, fi);
     const veggToppMm = Math.max(...el.map(v => v.rBunnMm + v.hoydeMm));
 
@@ -288,6 +349,7 @@ export function byggTegningsmodell(inn) {
     const spX = (mm) => (sp ? fraMm + tilMm - mm : mm);
     // et intervall snus også ende for ende, ellers blir fra > til
     const spI = (a2, b2) => (sp ? [fraMm + tilMm - b2, fraMm + tilMm - a2] : [a2, b2]);
+    const [vFra, vTil] = spI(veggFraMm, veggTilMm);
 
     // Aksenavnene slås opp i ORIGINALE mm — oppslaget går via et verdenspunkt,
     // og det flytter seg ikke av at tegninga speiles. Bokstavfallbacken settes
@@ -334,7 +396,9 @@ export function byggTegningsmodell(inn) {
       stal: mittStal,
       speilvendt: sp,
       akser: akserV.map((mm, i) => ({ mm, navn: navnV[i] || aksebokstav(i) })),
-      kjede: malkjede(akserV, klaring),
+      veggFraMm: vFra, veggTilMm: vTil,
+      // kjeden måles på VEGGEN; bare de INDRE aksene gir skjøt
+      kjede: malkjede(vFra, vTil, akserV.slice(1, -1), klaring),
       rader,
       elementer: el.map(v => {
         const [f2, t2] = spI(v.fraMm, v.tilMm);
@@ -703,7 +767,7 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad, elFarge) {
   // ── aksesirklene og hjelpelinja
   const yAkseL = yTopp + PLASS.tittel + AKSE_R * 2 + 6;   // linja sirklene står på
   strek(d, px(f.akser[0].mm) - 30, yAkseL, px(f.akser[f.akser.length - 1].mm) + 30, yAkseL, STREK.tynn);
-  d.setFontSize(12);
+  d.setFontSize(SKRIFT.akse);
   for (const a of f.akser) {
     const ax = px(a.mm);
     d.setLineWidth(STREK.tynn);
@@ -715,9 +779,8 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad, elFarge) {
   }
 
   // ── målkjeden mellom aksene
-  const yKj = yVegg - PLASS.kjede + 16;
-  strek(d, px(f.kjede.length ? f.kjede[0].fraMm : f.fraMm), yKj,
-           px(f.kjede.length ? f.kjede[f.kjede.length - 1].tilMm : f.tilMm), yKj, STREK.kjede);
+  const yKj = yVegg - PLASS.kjede + SKRIFT.kjede + 6;
+  strek(d, px(f.veggFraMm), yKj, px(f.veggTilMm), yKj, STREK.kjede);
   d.setFontSize(SKRIFT.kjede);
   for (const s of f.kjede) {
     hake(d, px(s.fraMm), yKj, false);
@@ -739,6 +802,24 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad, elFarge) {
     if (bw <= 0.2 || bh <= 0.2) return;
     d.setLineWidth(lw == null ? STREK.tynn : lw);
     d.rect(bx, by, bw, bh, stil);
+  };
+
+  // Fyller bitene av ett rektangel og streker BARE sidene som ligger på
+  // rektangelets egen ytterkant. Se ytterkanter(): ett element skal ha én
+  // kontur, ikke én per bit.
+  const tegnMedHull = (rekt, lw) => {
+    const biter = trekkFra(rekt, hull);
+    for (const b of biter) tegnBit(b, "F");
+    d.setLineWidth(lw == null ? STREK.tynn : lw);
+    for (const b of biter) {
+      const k = ytterkanter(b, rekt);
+      const x1 = px(b.x0), x2 = px(b.x1), y1 = py(b.y1), y2 = py(b.y0);
+      if (Math.abs(x2 - x1) <= 0.2 || Math.abs(y2 - y1) <= 0.2) continue;
+      if (k.venstre) d.line(x1, y1, x1, y2);
+      if (k.hoyre) d.line(x2, y1, x2, y2);
+      if (k.topp) d.line(x1, y1, x2, y1);
+      if (k.bunn) d.line(x1, y2, x2, y2);
+    }
   };
 
   // ── 🔩 stålet, FØRST av alt.
@@ -770,15 +851,13 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad, elFarge) {
   // Ett bånd tvers over viste ringmur under porten, der den er kappet bort.
   d.setFillColor(FARGE.ringmur[0], FARGE.ringmur[1], FARGE.ringmur[2]);
   for (const r of f.ringmurBiter)
-    for (const bit of trekkFra({ x0: r.fraMm, x1: r.tilMm, y0: r.bunnMm, y1: r.toppMm }, hull))
-      tegnBit(bit, "FD");
+    tegnMedHull({ x0: r.fraMm, x1: r.tilMm, y0: r.bunnMm, y1: r.toppMm });
 
   // ── elementene, med åpningene TRUKKET FRA. Se trekkFra: et hvitt rektangel
   // oppå ville malt over stålet i porten.
   d.setFillColor(EF[0], EF[1], EF[2]);
-  const biterFor = (e) => trekkFra(
-    { x0: e.fraMm, x1: e.tilMm, y0: e.bunnMm, y1: e.bunnMm + e.hoydeMm }, hull);
-  for (const e of f.elementer) for (const bit of biterFor(e)) tegnBit(bit, "FD");
+  for (const e of f.elementer)
+    tegnMedHull({ x0: e.fraMm, x1: e.tilMm, y0: e.bunnMm, y1: e.bunnMm + e.hoydeMm });
 
   // skjøtene mellom to elementer i SAMME rad tegnes tykke, oppå fyllet — men
   // bare på den delen av høyden som ikke er hull
@@ -821,20 +900,26 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad, elFarge) {
   }
 
   // ── merkelappene til slutt, så ingenting legger seg over dem
-  // Ligger punktet inne i en åpning? Da er det hull der, og en merkelapp der
-  // ville stått midt i vinduet og skjult krysset.
-  const iApning = (mm, hoyde) => f.utsparinger.some(a =>
-    mm > a.fraMm + 20 && mm < a.tilMm - 20 && hoyde > a.bunnMm + 20 && hoyde < a.toppMm - 20);
+  // MERKELAPPENE LEGGES PÅ DEN BITEN SOM FAKTISK STÅR IGJEN.
+  // Første versjon sjekket bare om elementets hjørne og midtpunkt lå i en
+  // åpning, og droppet lappen om de gjorde det. Et element som løper forbi en
+  // stor port har begge punktene inne i porten — og da sto elementet uten
+  // nummer i det hele tatt. Nå velges den bredeste resten, samme regel som
+  // kappdybden bruker.
   for (const e of f.elementer) {
-    const ex = px(e.fraMm), ew = (e.tilMm - e.fraMm) / skala * MM;
-    const ey = py(e.bunnMm + e.hoydeMm), eh = e.hoydeMm / skala * MM;
-    if (ew < 14 || eh < 9) continue;                 // for smal bit — lappen ville dekket den
-    const midt = (e.fraMm + e.tilMm) / 2, midtH = e.bunnMm + e.hoydeMm / 2;
-    if (!iApning(e.fraMm + 60, e.bunnMm + e.hoydeMm - 60))
-      boksTekst(d, e.sw, ex + 4, ey + SKRIFT.sw * 0.95 + 1.5, SKRIFT.sw);
-    if (!iApning(midt, midtH))
-      boksTekst(d, e.tilMm - e.fraMm + "MM", ex + ew / 2, ey + eh / 2 + SKRIFT.lengde * 0.35,
-        SKRIFT.lengde, "midt");
+    const rekt = { x0: e.fraMm, x1: e.tilMm, y0: e.bunnMm, y1: e.bunnMm + e.hoydeMm };
+    const rest = trekkFra(rekt, hull).sort((p2, q) => (q.x1 - q.x0) - (p2.x1 - p2.x0))[0];
+    if (!rest) continue;                              // helt dekket av åpninga
+    const rx = px(rest.x0), rw = (rest.x1 - rest.x0) / skala * MM;
+    const ry = py(rest.y1), rh = (rest.y1 - rest.y0) / skala * MM;
+    // grensa følger SKRIFTEN, ikke et fast tall: da teksten ble forstørret
+    // ville et 14 pt bredt element fått en lapp bredere enn seg selv
+    if (rw < SKRIFT.sw * 1.7 || rh < SKRIFT.sw * 1.25) continue;
+    boksTekst(d, e.sw, rx + 4, ry + SKRIFT.sw * 0.95 + 1.5, SKRIFT.sw);
+    // LENGDEN er elementets HELE lengde, ikke restens — det er elementet som
+    // bestilles og kappes, ikke biten som synes på tegninga.
+    boksTekst(d, e.tilMm - e.fraMm + "MM", rx + rw / 2, ry + rh / 2 + SKRIFT.lengde * 0.35,
+      SKRIFT.lengde, "midt");
   }
 
   // ── kappdybden per element som går gjennom en åpning (runde 16–19)
