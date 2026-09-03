@@ -1408,10 +1408,51 @@ body:not(.har-modell) #btnFit { display: none !important; }
   #verktoygrupper .btn-t { display: none; }   /* bare ikoner på liten skjerm */
 }
 
-/* 📐 «Utfyll PDF» i SW-panelet. Merknadsfeltet er det ENESTE flerlinjefeltet i
-   panelet, og et <textarea> uten bredde er 20 tegn bredt uansett hvor bredt
-   panelet er — feltene i dette panelet er ellers nakne nettleserstandarder. */
-#swBody textarea {
-  width: 100%; box-sizing: border-box; resize: vertical;
-  font-family: inherit; font-size: 13px;
+/* ---------- 🧱 SW-generatorpanelet ----------
+   FELTENE FLØT OM HVERANDRE (Emil 03.09). Panelet bygges av
+   «<label>tekst<input></label>», og <label> er inline som standard. Med to
+   felt hadde det gått; med tjue ble resultatet at etiketten til ett felt sto
+   på samme linje som feltet FØR det — «Betong (mm) [200] Isolasjon (mm)» —
+   og lange etiketter brakk midt i en input. Ingenting var galt med verdiene;
+   panelet var bare uleselig.
+
+   Hvert felt får derfor sin egen blokk: etikett over, felt under, full bredde.
+   Avkrysningsboksene har display:flex i en style-attributt og beholder den —
+   inline stil slår denne regelen, som er meningen: der SKAL boksen stå ved
+   siden av teksten. */
+#swBody > label {
+  display: block;
+  margin: 9px 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.35;
+}
+#swBody > label > input[type=text],
+#swBody > label > input[type=number],
+#swBody > label > select,
+#swBody > label > textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 3px;
+  font-family: inherit;
+  font-size: 13px;
+}
+/* Fargevelgeren skal IKKE være full bredde — en 100 % bred fargeflate leses
+   som en overskrift, ikke som et valg. */
+#swBody > label > input[type=color] {
+  display: block;
+  margin-top: 3px;
+  width: 58px; height: 26px; padding: 0;
+}
+#swBody > label > textarea { resize: vertical; min-height: 44px; }
+
+/* Seksjonsoverskriftene skal kunne skilles fra etikettene. Uten streken hadde
+   «Ringmur» og «Høyde over gulv (mm)» samme vekt, og panelet ble én lang
+   liste uten inndeling. */
+#swBody h4 {
+  font-size: 13px;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 4px;
 }
