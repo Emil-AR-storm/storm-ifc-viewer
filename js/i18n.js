@@ -1498,4 +1498,9 @@ export const ORDBOK = {
   "Alt på bygget": { en: "Everything on the building", pl: "Wszystko na budynku", lt: "Viskas ant pastato" },
   "Gulv og isolasjon": { en: "Floor and insulation", pl: "Podłoga i izolacja", lt: "Grindys ir izoliacija" },
   "Merking og mål": { en: "Labels and dimensions", pl: "Oznaczenia i wymiary", lt: "Žymos ir matmenys" },
+  "Grupper (Excel)": { en: "Groups (Excel)", pl: "Grupy (Excel)", lt: "Grupės (Excel)" },
+  "Klarte ikke å lage Excel-fila: ": { en: "Could not create the Excel file: ", pl: "Nie udało się utworzyć pliku Excel: ", lt: "Nepavyko sukurti Excel failo: " },
+  "Mengder per element": { en: "Quantities per element", pl: "Ilości na element", lt: "Kiekiai pagal elementą" },
+  "SW-liste": { en: "SW list", pl: "Lista SW", lt: "SW sąrašas" },
+  "Last ned liste (Excel)": { en: "Download list (Excel)", pl: "Pobierz listę (Excel)", lt: "Atsisiųsti sąrašą (Excel)" },
 };

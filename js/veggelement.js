@@ -29,7 +29,7 @@ import * as THREE from "three";
 import { $, S, apnePanel, esc, ikon, på } from "./state.js";
 import { t } from "./i18n.js";
 import { camera, canvas, raycaster, scene } from "./scene.js";
-import { allElementBoxes, hitID, pick, sumFormel, toCsv } from "./elements.js";
+import { allElementBoxes, hitID, lastNedXlsx, pick, sumFormel } from "./elements.js";
 import { alleElementIder } from "./ifc.js";
 import { metaFor, sikreMeta } from "./ifcrpc.js";
 import { MALTYPER, lagreMateriellLokalt, mmTilScene, ribbonPosisjoner, tegnMateriell, trpProfil, vaskMateriell } from "./materiell-vis.js";
@@ -469,7 +469,7 @@ export function kappNavn(forelder, tekst) {
   return "SW-" + rest;
 }
 
-// Lista i Moelv-formatet, som rader til toCsv. Tilpassede biter (SW-XX) samles
+// Lista i Moelv-formatet, som rader til regnearket. Tilpassede biter (SW-XX) samles
 // på like mål. m² = lengde × høyde × antall.
 export function swListeRader(elementer, felter) {
   const f = felter || {};
@@ -1706,13 +1706,15 @@ function lastNedListe() {
     tykkelseMm: o.tykkelseMm, isolasjon: o.isolasjon,
     utvFarge: o.utvFarge, innFarge: o.innFarge
   });
-  const blob = new Blob(["﻿" + toCsv(rader)], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = (S.fileName || "modell").replace(/\.(ifc|glb)$/i, "") + " - SW-liste.csv";
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  // 📊 EKTE EXCEL-FIL, ikke CSV (Emil 03.09): CSV-en var riktig på PC-en og
+  // feil i mailen, fordi Excel på nett og Outlook alltid leser «,» som
+  // skilletegn. Se lastNedXlsx i elements.js.
+  const navn = (S.fileName || "modell").replace(/\.(ifc|glb)$/i, "");
+  lastNedXlsx(navn + " - SW-liste.xlsx", t("SW-liste"), rader)
+    .catch(err => {
+      console.warn("SW-lista kunne ikke lages:", err);
+      alert(t("Klarte ikke å lage Excel-fila: ") + (err && err.message || err));
+    });
 }
 
 // ---------- Panelet ----------
@@ -2529,7 +2531,7 @@ function tegnPanel() {
     '<button id="swGenerer" class="primary">' + ikon("boks") + ' ' + t("Generer SW + gulv/ringmur") + '</button>' +
     '<button id="swJusterBtn">✥ ' + t("Juster elementer") + '</button>' +
     '<button id="swTegning">' + ikon("tegning") + ' ' + t("Last ned instruksjonstegning (PDF)") + '</button>' +
-    '<button id="swListe">' + ikon("lastned") + ' ' + t("Last ned liste (Excel/CSV)") + '</button>' +
+    '<button id="swListe">' + ikon("lastned") + ' ' + t("Last ned liste (Excel)") + '</button>' +
     '<button id="swFjern">' + ikon("slett") + ' ' + t("Fjern genererte") + '</button></div>' +
     (antall ? '<p style="color:var(--muted);font-size:12px;margin-top:6px">' +
       t("{0} veggelementer generert. Stablene ligger i 📦 Materiell og telles i Mengder.", antall) + '</p>' : "") +

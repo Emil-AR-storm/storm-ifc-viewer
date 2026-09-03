@@ -3,6 +3,7 @@ import * as THREE from "three";
 import { $, på, S, apnePanel, dec, esc, ikon, loadingEl, loadingText } from "./state.js";
 import { t } from "./i18n.js";
 import { TETTHET } from "./config.js";
+import { kolBokstav, sumFormel } from "./regneark.js";
 import { profilKgPerM } from "./profiler.js";
 import { hiddenIDs, hideElement, hideElements, typeSkjultLett } from "./display.js";
 import { alleElementIder, lightElementBoxes } from "./ifc.js";
@@ -945,11 +946,28 @@ export function toCsv(rows) {
 
 function download(name, text, mime) {
   const blob = new Blob(["﻿" + text], { type: (mime || "text/csv") + ";charset=utf-8" });
+  lastNed(name, blob);
+}
+
+// Blob → fil på disk. Samme trikset for CSV og .xlsx.
+function lastNed(name, blob) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url; a.download = name;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+// 📊 EKTE EXCEL-FIL, ikke CSV (Emil 03.09).
+// CSV-en var riktig på PC-en og feil i mailen: skrivebords-Excel leser «;»
+// fordi Windows' listeskilletegn er «;» i norsk oppsett, men Excel på nett og
+// forhåndsvisningen i Outlook bruker alltid «,» — og da havnet hele raden i
+// kolonne A. En .xlsx har ingen skilletegn, så den åpnes likt overalt; i
+// tillegg overlever SUM-formlene og «mulig tap av data»-advarselen forsvinner.
+// Modulen lastes DYNAMISK, så den ligger ikke i lettmodus-skallet.
+export async function lastNedXlsx(filnavn, arknavn, rader) {
+  const X = await import("./xlsx.js");
+  lastNed(filnavn, new Blob([X.lagXlsx(arknavn, rader)], { type: X.XLSX_MIME }));
 }
 
 function baseName() {
@@ -969,21 +987,12 @@ const csvVektDec = () => Math.max(dec(), 2);
 // ---------- SUM-formler i regnearkene ----------
 // Emil 03.09: summen skal STÅ SOM =SUM(...) i arket, ikke som et ferdig tall.
 // Da ser man hvilke rader summen kommer fra, og den følger med hvis noen
-// sletter eller filtrerer en rad i Excel etterpå. Et statisk tall lyver stille.
-// Kolonneområdet bruker «:», som betyr det samme i norsk og engelsk Excel —
-// argumentskilletegnet (som ER lokalavhengig) trengs ikke i en enkel SUM.
-export function kolBokstav(i) {
-  let n = Math.floor(Number(i) || 0), s = "";
-  while (n >= 0) { s = String.fromCharCode(65 + (n % 26)) + s; n = Math.floor(n / 26) - 1; }
-  return s;
-}
-
-// `fraRad`/`tilRad` er RADNUMRE I ARKET (1-basert, som i Excel) — ikke indekser.
-export function sumFormel(kolonne, fraRad, tilRad) {
-  if (!(tilRad >= fraRad) || !(fraRad >= 1)) return "";
-  const c = kolBokstav(kolonne);
-  return "=SUM(" + c + fraRad + ":" + c + tilRad + ")";
-}
+// sletter eller filtrerer en rad etterpå. Et statisk tall lyver stille.
+//
+// Selve regningen bor i js/regneark.js — den er uten avhengigheter, så
+// js/xlsx.js kan bruke de SAMME funksjonene uten å dra inn resten av
+// elements.js. Re-eksporteres her fordi det er her radene lages.
+export { kolBokstav, sumFormel } from "./regneark.js";
 
 export function qtyGroupRows(cache) {
   // «Kg/m» står med vilje rett ved siden av kg. Den er en KONTROLL, ikke et
@@ -1163,7 +1172,7 @@ function renderQuantities(full) {
   $("qtyBody").innerHTML =
     nedtrekk +
     '<div class="prop-actions">' +
-      '<button id="qtyCsvG" class="primary" title="' + t("Én rad per gruppe, bare valgt objekttype") + '">' + ikon("lastned") + ' ' + t("Grupper (CSV)") + '</button>' +
+      '<button id="qtyCsvG" class="primary" title="' + t("Én rad per gruppe, bare valgt objekttype") + '">' + ikon("lastned") + ' ' + t("Grupper (Excel)") + '</button>' +
       '<button id="qtyCsvE" title="' + t("Én rad per element – for mengdeberegning og vareordre") + '">' + ikon("lastned") + ' ' + t("Alle elementer") + '</button>' +
       '<button id="qtyCopy" title="' + t("Lim rett inn i et åpent regneark") + '">' + ikon("kopier") + ' ' + t("Kopier") + '</button>' +
     '</div>' +
@@ -1234,8 +1243,14 @@ function renderQuantities(full) {
   const selM = $("qtyMat");
   if (selM) selM.onchange = () => { S.qtyMat = selM.value; renderQuantities(full); };
 
-  $("qtyCsvG").onclick = () => download(baseName() + filnavnDel + " - mengder.csv", toCsv(qtyGroupRows(cache)));
-  $("qtyCsvE").onclick = () => download(baseName() + filnavnDel + " - mengder per element.csv", toCsv(qtyElementRows(cache)));
+  const arkFeil = (err) => {
+    console.warn("Regnearket kunne ikke lages:", err);
+    alert(t("Klarte ikke å lage Excel-fila: ") + (err && err.message || err));
+  };
+  $("qtyCsvG").onclick = () => lastNedXlsx(baseName() + filnavnDel + " - mengder.xlsx",
+    t("Mengder"), qtyGroupRows(cache)).catch(arkFeil);
+  $("qtyCsvE").onclick = () => lastNedXlsx(baseName() + filnavnDel + " - mengder per element.xlsx",
+    t("Mengder per element"), qtyElementRows(cache)).catch(arkFeil);
   $("qtyCopy").onclick = async () => {
     // tabulator lar deg lime rett inn i celler i et åpent ark
     const tsv = qtyGroupRows(cache).map(r => r.join("\t")).join("\r\n");
