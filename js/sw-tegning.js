@@ -374,6 +374,41 @@ export function hexTilRgb(hex, reserve) {
   return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
 }
 
+// ---------- Samme SKYGGE som i 3D ----------
+// Emil 03.09: tegninga hadde LYSERE veggelementer enn modellen. Fargefeltet var
+// riktig — men i 3D er #dfe5ec belyst, og en belyst flate er mørkere enn
+// heksverdien. Målt på Emils skjermbilde: #dfe5ec ble (143,147,152) på veggen.
+//
+// Faktoren er ikke gjettet. Den er three.js sin egen irradiansregning for
+// MeshLambertMaterial med lyssettingen i js/scene.js:
+//     AmbientLight 0.85
+//   + DirectionalLight 0.5 (utfyllslyset fra (−30,20,−30)) × n·l = 0.635
+//   ────────────────────────────────────────────
+//     1.1675 / π = 0.3716
+// altså en fasade som er snudd bort fra hovedlyset — skyggen de FLESTE
+// veggflatene i modellen får, og den Emil sammenligner tegninga med.
+// Endres lyssettingen i scene.js, må dette tallet endres med den. Regningen
+// gjøres i LINEÆRT rom, som i three.js: ganger man heksverdiene direkte blir
+// resultatet for lyst (og feil på en måte som er vanskelig å se).
+export const SKYGGE = (0.85 + 0.5 * 0.635) / Math.PI;
+
+export function srgbTilLinear(u) {
+  return u <= 0.04045 ? u / 12.92 : Math.pow((u + 0.055) / 1.055, 2.4);
+}
+
+export function linearTilSrgb(u) {
+  return u <= 0.0031308 ? u * 12.92 : 1.055 * Math.pow(u, 1 / 2.4) - 0.055;
+}
+
+// Fargen slik den SES i modellen. Faktor 1 gir fargen uendret.
+export function skyggetFarge(rgb, faktor) {
+  const f = faktor == null ? SKYGGE : Number(faktor);
+  return (rgb || []).map(v => {
+    const lin = srgbTilLinear(Math.max(0, Math.min(255, Number(v) || 0)) / 255) * f;
+    return Math.max(0, Math.min(255, Math.round(255 * linearTilSrgb(lin))));
+  });
+}
+
 // ---------- Rektangel minus hull ----------
 // ET ELEMENT MED EN UTSPARING I SEG SKAL IKKE TEGNES OVER HULLET.
 // Første versjon fylte elementet helt og malte et hvitt rektangel oppå
@@ -640,7 +675,9 @@ export function byggTegningsmodell(inn) {
       })
     });
   }
-  return { fasader: ut, elementFarge: hexTilRgb(o.farge, FARGE.element) };
+  // Fargen tegnes med SAMME SKYGGE som i 3D — se skyggetFarge.
+  return { fasader: ut,
+    elementFarge: skyggetFarge(hexTilRgb(o.farge, FARGE.element)) };
 }
 
 // Blokkas mål i punkt ved en gitt målestokk.
