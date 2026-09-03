@@ -1295,6 +1295,69 @@ function migrerVegger() {
   });
 }
 
+// 🧱 Ringmur laget FØR den ble justerbar (Emil 03.09) har bare {x,z,y,lengde,
+// hoyde,tykkelse,rot}. Uten id er biten ikke plukkbar, og uten fasadebasis kan
+// ikke draget regne mm. Her fylles feltene ut av det som finnes — fasaden
+// kjennes igjen på RETNINGEN (samme regel som tegninga bruker), ikke på
+// avstanden: i hjørnet er en bit alltid nærmere naboens plan enn sitt eget.
+// Da slipper Emil å generere veggene på nytt for å kunne dra i muren.
+function migrerRingmur() {
+  if (!lagret || !lagret.ringmur || !lagret.ringmur.length) return;
+  const fasader = lagret.fasader || [];
+  const baseY = baseYNaa();
+  lagret.ringmur.forEach((r, i) => {
+    if (r.id === undefined || r.id === null) r.id = "r" + i;
+    if (r.ringmur === undefined) r.ringmur = true;
+    if (r.radIdx === undefined) r.radIdx = "rm";
+    if (r.fi === undefined && fasader.length) {
+      let best = -1, bestD = Infinity;
+      for (let j = 0; j < fasader.length; j++) {
+        const f = fasader[j];
+        const fRot = isFinite(Number(f.rot)) ? Number(f.rot) : Math.atan2(-f.ez, f.ex);
+        if (isFinite(Number(r.rot)) && Math.abs(vinkelDiffLokal(r.rot, fRot)) > 0.05) continue;
+        const dd = Math.abs((r.x - f.px) * f.nx + (r.z - f.pz) * f.nz);
+        if (dd < bestD) { bestD = dd; best = j; }
+      }
+      if (best >= 0) r.fi = best;
+    }
+    const f = fasader[r.fi];
+    if (f && r.ex === undefined) { r.ex = f.ex; r.ez = f.ez; r.nx = f.nx; r.nz = f.nz; }
+    if (r.ex === undefined) { r.ex = Math.cos(r.rot || 0); r.ez = -Math.sin(r.rot || 0); }
+    if (r.nx === undefined) { r.nx = Math.sin(r.rot || 0); r.nz = Math.cos(r.rot || 0); }
+    if (r.basFraMm === undefined) {
+      // midtpunktet langs fasadeaksen — fra fasadens eget punkt når vi har det
+      const midMm = f ? tilMm((r.x - f.px) * f.ex + (r.z - f.pz) * f.ez)
+                      : tilMm(r.tMid || 0);
+      const lMm = r.lengdeMm !== undefined ? r.lengdeMm : tilMm(r.lengde || 0);
+      r.basFraMm = Math.round(midMm - lMm / 2);
+      r.basTilMm = Math.round(midMm + lMm / 2);
+    }
+    if (r.fx === undefined) {
+      const midMm = (r.basFraMm + r.basTilMm) / 2;
+      r.fx = r.x - r.ex * tilScene(midMm);
+      r.fz = r.z - r.ez * tilScene(midMm);
+    }
+    if (r.dFra === undefined) r.dFra = 0;
+    if (r.dTil === undefined) r.dTil = 0;
+    if (r.rev === undefined) r.rev = 0;
+    if (r.fraMm === undefined) { r.fraMm = r.basFraMm; r.tilMm = r.basTilMm; }
+    if (r.lengdeMm === undefined) r.lengdeMm = Math.round(r.tilMm - r.fraMm);
+    if (r.fullMm === undefined) r.fullMm = r.lengdeMm;
+    if (r.hoydeMm === undefined) r.hoydeMm = Math.round(tilMm(r.hoyde || 0));
+    if (r.bunnMm === undefined) r.bunnMm = Math.round(tilMm(r.y - baseY) - r.hoydeMm / 2);
+    if (r.tMm === undefined) r.tMm = Math.round(tilMm(r.tykkelse || 0));
+  });
+}
+
+// Samme vinkelregel som sw-tegning.js bruker. Duplisert med vilje: migreringen
+// skal ikke tvinge inn en import av tegnemodulen (den lastes dynamisk).
+function vinkelDiffLokal(a, b) {
+  let d = (Number(a) || 0) - (Number(b) || 0);
+  while (d > Math.PI) d -= 2 * Math.PI;
+  while (d < -Math.PI) d += 2 * Math.PI;
+  return d;
+}
+
 // Holdepunktene et drag snapper til: fasadens søylepunkter (10 mm fra senter
 // og søylekanten) PLUSS skjøtene i de andre radene på samme fasade — de er
 // like nyttige å låse mot, og de finnes også for eldre, migrerte vegger som
@@ -1318,6 +1381,7 @@ function snappPunkter(v) {
 
 function loesAlleJusteringer() {
   migrerVegger();
+  migrerRingmur();
   if (!lagret || !lagret.vegger) return;
   const o = lagret.oppsett || STD_OPPSETT;
   const grupper = new Map();
@@ -1939,6 +2003,14 @@ function splittValgte() {
 
 function startJuster() {
   if (!lagret || !(lagret.vegger || []).length) { alert(t("Generer veggelementene først.")); return; }
+  // Migrer og tegn på nytt FØR modusen åpnes: en ringmur laget av en eldre
+  // versjon mangler id-en plukkingen trenger, og da klikket man rett gjennom
+  // muren og traff søyla bak (Emil 03.09). Etter migreringen bærer hver bit
+  // id-en, og tegninga må gjøres om for at meshen skal få den.
+  loesAlleJusteringer();
+  byggStabler();
+  skrivLagret();
+  tegnAlt();
   const markorer = new THREE.Group();
   swGroup.add(markorer);
   just = { valgt: new Set(), drar: null, markorer };
