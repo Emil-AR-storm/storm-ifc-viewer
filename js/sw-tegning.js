@@ -74,6 +74,7 @@ export const PLASS = {
 };
 
 export const AKSE_R = 17;    // radius i aksesirkelen
+export const SKRAVUR_PT = 6; // avstand mellom skravurlinjene på stålet, i punkt
 
 // Fase / Revisjon / Status — måltatt avstand fra tittelfeltets venstrekant.
 // Står likt i toppboksen og i nederste rad, derfor én liste.
@@ -125,6 +126,43 @@ export function malkjede(akser, klaringMm) {
     ut.push({ fraMm: pkt[i], tilMm: pkt[i + 1], mm });
   }
   return ut;
+}
+
+// ---------- 45°-skravur i et rektangel ----------
+// STÅLET MÅ SKILLES FRA PANELET UANSETT HVILKEN FARGE EMIL VELGER.
+// Da elementfargen begynte å følge «Farge»-feltet, valgte han #dfe5ec — og
+// stålets #C1CDD8 ble praktisk talt samme lys blågrå. En fast stålfarge kan
+// ALDRI holdes trygt unna en farge brukeren står fritt til å sette.
+//
+// Skravuren løser det for godt: den er en form, ikke en nyanse, og er dessuten
+// den vanlige måten å vise stål i et oppriss. Linjene regnes ut analytisk
+// (u + v = c, klippet mot boksen) i stedet for med clip() — da er det ingen
+// grafikktilstand som kan lekke ut til resten av tegninga.
+//
+// Avstanden er i PUNKT, ikke i mm: skravuren skal se like tett ut i 1:20 og
+// 1:100.
+export function skravurLinjer(x, y, b, h, avstand) {
+  const d = avstand > 0 ? avstand : 5;
+  const ut = [];
+  for (let c = d; c < b + h; c += d) {
+    const u1 = Math.max(0, c - h), u2 = Math.min(b, c);
+    if (u2 - u1 < 0.1) continue;
+    ut.push([x + u1, y + (c - u1), x + u2, y + (c - u2)]);
+  }
+  return ut;
+}
+
+// ---------- Fargen på veggelementene ----------
+// SKAL FØLGE «Farge»-feltet i SW-panelet, ikke Moelv-okeren (Emil 03.09).
+// Tegninga og 3D-modellen viser samme vegg, og da kan de ikke ha hver sin
+// farge — da tror montøren det er to ulike leveranser.
+// Moelv-okeren står igjen som reserve for en ugyldig verdi, aldri som fasit.
+export function hexTilRgb(hex, reserve) {
+  const res = reserve || FARGE.element;
+  let h = String(hex || "").trim().replace(/^#/, "");
+  if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+  if (!/^[0-9a-f]{6}$/i.test(h)) return res;
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
 }
 
 // ---------- Rektangel minus hull ----------
@@ -314,7 +352,7 @@ export function byggTegningsmodell(inn) {
       })
     });
   }
-  return { fasader: ut };
+  return { fasader: ut, elementFarge: hexTilRgb(o.farge, FARGE.element) };
 }
 
 // Blokkas mål i punkt ved en gitt målestokk.
@@ -641,7 +679,8 @@ function hake(d, x, y, loddrett) {
 }
 
 // ---------- Én fasadeblokk ----------
-function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad) {
+function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad, elFarge) {
+  const EF = elFarge || FARGE.element;
   const xTittel = RAMME.x0 + 40;      // Moelv: tittelen i margen, ikke over veggen
   const px = (mm) => x + (mm - f.fraMm) / skala * MM;                 // langs fasaden
   const py = (mm) => yVegg + (f.toppMm - mm) / skala * MM;            // høyde over SW-basen
@@ -702,6 +741,31 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad) {
     d.rect(bx, by, bw, bh, stil);
   };
 
+  // ── 🔩 stålet, FØRST av alt.
+  //
+  // RETTET 03.09: sto tidligere ETTER fundamentstripa, og da malte en lang
+  // stålbjelke seg oppå ringmuren — søyler bak ringmuren skinte gjennom
+  // betongen. Rekkefølgen ER klippingen her: det som ligger bakerst i
+  // virkeligheten må tegnes først. Nederst stål, så ringmur, så veggelementer.
+  // Det som fortsatt står synlig er nettopp det som ikke er tildekket.
+  for (const b of f.stal) {
+    const bit = { x0: b.fraMm, x1: b.tilMm, y0: Math.max(b.bunnMm, f.bunnMm),
+                  y1: Math.min(b.toppMm, f.toppMm) };
+    const sx = px(bit.x0), sw = (bit.x1 - bit.x0) / skala * MM;
+    const sy = py(bit.y1), sh = (bit.y1 - bit.y0) / skala * MM;
+    if (sw <= 0.2 || sh <= 0.2) continue;
+    d.setFillColor(FARGE.stal[0], FARGE.stal[1], FARGE.stal[2]);
+    d.setLineWidth(STREK.stal);
+    d.rect(sx, sy, sw, sh, "FD");
+    // skravuren oppå fyllet, tynn nok til å ikke tette igjen flata
+    d.setLineWidth(STREK.tynn * 0.7);
+    for (const [x1, y1, x2, y2] of skravurLinjer(sx, sy, sw, sh, SKRAVUR_PT))
+      d.line(x1, y1, x2, y2);
+    // konturen på nytt, så skravuren ikke stikker ut over kanten visuelt
+    d.setLineWidth(STREK.stal);
+    d.rect(sx, sy, sw, sh, "S");
+  }
+
   // ── fundamentstripa: BITENE ringmuren faktisk ble laget i.
   // Ett bånd tvers over viste ringmur under porten, der den er kappet bort.
   d.setFillColor(FARGE.ringmur[0], FARGE.ringmur[1], FARGE.ringmur[2]);
@@ -709,18 +773,9 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad) {
     for (const bit of trekkFra({ x0: r.fraMm, x1: r.tilMm, y0: r.bunnMm, y1: r.toppMm }, hull))
       tegnBit(bit, "FD");
 
-  // ── 🔩 stålet, FØR elementene. Det som ligger bak veggen blir dekket av
-  // elementene under; det som står fritt — rammene rundt portene,
-  // søyleforlengerne over veggen — står igjen synlig. Det er hele mekanismen:
-  // ingen klipping, bare riktig rekkefølge.
-  d.setFillColor(FARGE.stal[0], FARGE.stal[1], FARGE.stal[2]);
-  for (const b of f.stal)
-    tegnBit({ x0: b.fraMm, x1: b.tilMm, y0: Math.max(b.bunnMm, f.bunnMm),
-              y1: Math.min(b.toppMm, f.toppMm) }, "FD", STREK.stal);
-
   // ── elementene, med åpningene TRUKKET FRA. Se trekkFra: et hvitt rektangel
   // oppå ville malt over stålet i porten.
-  d.setFillColor(FARGE.element[0], FARGE.element[1], FARGE.element[2]);
+  d.setFillColor(EF[0], EF[1], EF[2]);
   const biterFor = (e) => trekkFra(
     { x0: e.fraMm, x1: e.tilMm, y0: e.bunnMm, y1: e.bunnMm + e.hoydeMm }, hull);
   for (const e of f.elementer) for (const bit of biterFor(e)) tegnBit(bit, "FD");
@@ -856,7 +911,7 @@ export async function tegn(jsPDF, modell, felt, logoInn) {
     const skalaer = [];
     for (const b of ark[i].fasader) {
       const x = RAMME.x0 + 20 + (medMerknad ? PLASS.merknad : 0);
-      tegnFasade(d, b.f, b.skala, x, b.y, medMerknad, merknad);
+      tegnFasade(d, b.f, b.skala, x, b.y, medMerknad, merknad, modell.elementFarge);
       skalaer.push("1:" + b.skala);
     }
     tegnTittelfelt(d, Object.assign({}, felt, {
