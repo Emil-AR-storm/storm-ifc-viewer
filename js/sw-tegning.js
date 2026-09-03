@@ -210,6 +210,35 @@ export function ringmurTilFasader(biter, fasader, tilMmFn, baseY) {
   return ut.length ? ut : null;
 }
 
+// ---------- Ringmuren flettes til sammenhengende betong ----------
+// Ringmuren er STØPT/MURT i ett forbi hjørnet. Bitene i lagringen er bare
+// oppdelingen vår, og hver bit fikk sin egen kontur — så der veggen over har
+// en skjøt, fikk muren under en loddrett strek som ikke finnes (Emil 03.09).
+// Biter som ligger inntil hverandre i samme bånd (samme bunn og topp) slås
+// derfor sammen til én. Portene skiller fortsatt: der er det et ekte gap, og
+// ENDEN AV MUREN skal ha strek.
+export const FLETT_TOL_MM = 2;
+export function flettRingmur(biter, tolMm) {
+  const tol = tolMm == null ? FLETT_TOL_MM : tolMm;
+  const grupper = new Map();
+  for (const b of biter || []) {
+    if (!b || !(b.tilMm - b.fraMm > 0)) continue;
+    const k = Math.round(b.bunnMm) + "|" + Math.round(b.toppMm);
+    if (!grupper.has(k)) grupper.set(k, []);
+    grupper.get(k).push({ ...b });
+  }
+  const ut = [];
+  for (const liste of grupper.values()) {
+    liste.sort((a, b) => a.fraMm - b.fraMm);
+    let n = null;
+    for (const b of liste) {
+      if (n && b.fraMm <= n.tilMm + tol) n.tilMm = Math.max(n.tilMm, b.tilMm);
+      else { n = { ...b }; ut.push(n); }
+    }
+  }
+  return ut.sort((a, b) => a.fraMm - b.fraMm || a.bunnMm - b.bunnMm);
+}
+
 // Nabostripene legges på kjeden som egne segmenter i endene. De har ingen
 // skjøt mot første element: generatoren lar veggen starte FLUKT mot naboens
 // innside. Moelv har 20 mm der, men det er deres detalj — kjeden skal si det
@@ -555,13 +584,23 @@ export function byggTegningsmodell(inn) {
       : (o.ringmur ? [{ fraMm, tilMm, bunnMm: rmBunnMm, toppMm: 0 }] : []))
       .map(b => ({ ...b, bunnMm: Math.max(b.bunnMm, nullMm) }))
       .filter(b => b.toppMm - b.bunnMm > 1);
+    // 🧱 HJØRNESTRIPAS RINGMURDEL ER SAMME MUR. Naboens ringmur løper forbi
+    // hjørnet, så stripas bånd legges inn i lista og flettes sammen med
+    // muren ved siden av. Da får ENDEN AV MUREN strek — og skjøten i veggen
+    // over blir ikke tegnet ned i betongen (Emil 03.09).
+    const rmBand = mineRm.length
+      ? { bunnMm: mineRm[0].bunnMm, toppMm: mineRm[0].toppMm } : null;
+    const rmFlettet = flettRingmur(rmBand
+      ? mineRm.concat(naboStriper.map(b => ({ fraMm: b.fraMm, tilMm: b.tilMm,
+          bunnMm: rmBand.bunnMm, toppMm: rmBand.toppMm })))
+      : mineRm);
 
     // Tegnehøyden er ikke veggens høyde: stålet kan stikke både over og under.
     // Gesimsmarkøren og radhøydekjeden skal likevel følge VEGGEN — derfor to
     // tall, veggToppMm og toppMm.
     const toppMm = Math.max(veggToppMm, ...mittStal.map(b => b.toppMm), veggToppMm);
     const bunnMm = Math.min(0, o.ringmur ? rmBunnMm : 0,
-      ...mineRm.map(b => b.bunnMm), ...mittStal.map(b => b.bunnMm));
+      ...rmFlettet.map(b => b.bunnMm), ...mittStal.map(b => b.bunnMm));
 
     ut.push({
       fi,
@@ -570,7 +609,7 @@ export function byggTegningsmodell(inn) {
       lengdeMm: tilMm - fraMm,
       bunnMm, toppMm, veggToppMm,
       nullMm,
-      ringmurBiter: mineRm,
+      ringmurBiter: rmFlettet,
       // Gulvet: ett rektangel, aldri kappet. Bare når det finnes en ringmur —
       // det er den eneste gangen vi kjenner oppbyggingen.
       gulv: o.ringmur && nullMm > rmBunnMm
@@ -995,10 +1034,9 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad, elFarge) {
   // Fyller bitene av ett rektangel og streker BARE sidene som ligger på
   // rektangelets egen ytterkant. Se ytterkanter(): ett element skal ha én
   // kontur, ikke én per bit.
-  const tegnMedHull = (rekt, lw, bareFyll) => {
+  const tegnMedHull = (rekt, lw) => {
     const biter = trekkFra(rekt, hull);
     for (const b of biter) tegnBit(b, "F");
-    if (bareFyll) return;                 // se hjørnestripas ringmurdel
     d.setLineWidth(lw == null ? STREK.tynn : lw);
     for (const b of biter) {
       const k = ytterkanter(b, rekt);
@@ -1056,16 +1094,9 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad, elFarge) {
   // INGEN SW-lapp: stripa er ikke et element på DENNE fasaden, og et nummer
   // her ville dukket opp på feil elementliste.
   for (const b of (f.nabovegg || [])) {
-    // ringmurens del av stripa — bare båndet OVER gulvet
-    if (f.ringmurBiter.length) {
-      const rb = f.ringmurBiter[0];
-      d.setFillColor(FARGE.ringmur[0], FARGE.ringmur[1], FARGE.ringmur[2]);
-      // BARE FYLL, ingen kontur: ringmuren er sammenhengende betong forbi
-      // hjørnet. Med kontur fikk stripa en loddrett strek ned gjennom
-      // ringmuren — skjøten i veggen over, tegnet i muren under (Emil 03.09).
-      tegnMedHull({ x0: b.fraMm, x1: b.tilMm, y0: rb.bunnMm, y1: rb.toppMm },
-        null, true);
-    }
+    // Stripas RINGMURDEL tegnes ikke her: den er flettet inn i
+    // `f.ringmurBiter` (se flettRingmur). Tegnet for seg fikk muren enten en
+    // falsk skjøtestrek ved veggskjøten, eller mistet streken i sin egen ende.
     // VEGGEN TEGNES RAD FOR RAD, ikke som ett høyt rektangel.
     // Naboens vegg er stablet av de samme radene som vår egen. Tegnet i ett
     // ble stripa stående som én diger plate på 3600 mm, uten de vannrette
