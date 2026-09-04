@@ -320,6 +320,146 @@ export function konveksHull(punkter) {
   return nedre.concat(ovre);
 }
 
+// ═════════ RANDVANDRING: fasadene følger byggets FAKTISKE kontur ═════════
+// Et konvekst hull kan ikke ha innvendige hjørner. På et L-, T- eller U-formet
+// bygg spenner hullet en diagonal over hakket, og generatoren satte lydig
+// veggelement på diagonalen — Emils lagerbygg 04.09: to «vegger» på 10 012 mm
+// i løse lufta. Randvandringen går i stedet LANGS veggen etter
+// høyrehåndsregelen: fra hver søyle prøves HØYRE, RETT FRAM og VENSTRE i den
+// rekkefølgen, og nærmeste søyle i den retningen blir den neste. Det gir
+// riktig kontur for alle rettvinklede grunnriss, uansett hakk og tilbygg.
+
+// Byggets hovedretning: medianen av retningene mellom nære søylepar, målt
+// mod 90°. Et rotert bygg behandles dermed som et akseparallelt.
+export function hovedVinkel(soyler, maksAvstand) {
+  const maks = Number(maksAvstand) > 0 ? Number(maksAvstand) : Infinity;
+  const v = [];
+  for (let i = 0; i < soyler.length; i++)
+    for (let j = i + 1; j < soyler.length; j++) {
+      const dx = soyler[j].cx - soyler[i].cx, dz = soyler[j].cz - soyler[i].cz;
+      const L = Math.hypot(dx, dz);
+      if (L < 1e-9 || L > maks) continue;
+      const a = ((Math.atan2(dz, dx) * 180 / Math.PI) % 90 + 90) % 90;
+      v.push(((a + 45) % 90) - 45);
+    }
+  if (!v.length) return 0;
+  v.sort((a, b) => a - b);
+  return v[Math.floor(v.length / 2)] * Math.PI / 180;
+}
+
+// Rekkefølgen søylene står i langs veggen (indekser), eller null når
+// vandringen ikke kommer helt rundt — da er bygget ikke rettvinklet, og
+// kalleren faller tilbake på konveksHull som før.
+export function randRekke(soyler, latTol, maksAvstand) {
+  const n = (soyler || []).length;
+  const lat = Number(latTol) > 0 ? Number(latTol) : 0;
+  if (n < 3 || !lat) return null;
+  const th = hovedVinkel(soyler, maksAvstand);
+  const c = Math.cos(th), sn = Math.sin(th);
+  const P = soyler.map(x => ({ u: x.cx * c + x.cz * sn, v: -x.cx * sn + x.cz * c }));
+  let start = 0;
+  for (let i = 1; i < n; i++) {
+    const a = Math.round(P[i].v / lat), b = Math.round(P[start].v / lat);
+    if (a < b || (a === b && P[i].u < P[start].u)) start = i;
+  }
+  const rekke = [start], brukt = new Set([start]);
+  let dx = 1, dz = 0;
+  for (let steg = 0; steg < n * 4; steg++) {
+    const cur = P[rekke[rekke.length - 1]];
+    let valgt = -1, vdx = 0, vdz = 0;
+    for (const [ndx, ndz] of [[dz, -dx], [dx, dz], [-dz, dx]]) {
+      let best = -1, bestL = Infinity;
+      for (let i = 0; i < n; i++) {
+        if (brukt.has(i) && !(i === start && rekke.length > 2)) continue;
+        const fram = (P[i].u - cur.u) * ndx + (P[i].v - cur.v) * ndz;
+        const side = Math.abs((P[i].u - cur.u) * ndz - (P[i].v - cur.v) * ndx);
+        if (fram <= 1e-6 || side > lat) continue;
+        if (fram < bestL) { bestL = fram; best = i; }
+      }
+      if (best >= 0) { valgt = best; vdx = ndx; vdz = ndz; break; }
+    }
+    if (valgt < 0) return null;
+    dx = vdx; dz = vdz;
+    if (valgt === start) return rekke.length >= 3 ? rekke : null;
+    rekke.push(valgt); brukt.add(valgt);
+  }
+  return null;
+}
+
+// Fasadene langs randen. Samme form som fasaderFra, men konturen kan ha
+// innvendige hjørner. Returnerer null når vandringen ikke lukker seg.
+export function fasaderLangsRand(soyler, latTol, maksAvstand) {
+  const rekke = randRekke(soyler, latTol, maksAvstand);
+  if (!rekke) return null;
+  const R = rekke.map(i => soyler[i]), n = R.length;
+  const th = hovedVinkel(soyler, maksAvstand);
+  const c = Math.cos(th), sn = Math.sin(th);
+  const rot = (x) => ({ u: x.cx * c + x.cz * sn, v: -x.cx * sn + x.cz * c });
+  // Retningen mellom hvert nabopar, rundet til nærmeste akse i byggets frame.
+  const retn = [];
+  for (let i = 0; i < n; i++) {
+    const a = rot(R[i]), b = rot(R[(i + 1) % n]);
+    const du = b.u - a.u, dv = b.v - a.v;
+    retn.push(Math.abs(du) >= Math.abs(dv) ? (du > 0 ? [1, 0] : [-1, 0]) : (dv > 0 ? [0, 1] : [0, -1]));
+  }
+  const lik = (a, b) => a[0] === b[0] && a[1] === b[1];
+  let start = 0;
+  for (let i = 0; i < n; i++) if (!lik(retn[i], retn[(i - 1 + n) % n])) { start = i; break; }
+  const lop = [];
+  let cur = [R[start]], dd = retn[start];
+  for (let k = 0; k < n; k++) {
+    const i = (start + k) % n;
+    cur.push(R[(i + 1) % n]);
+    if (!lik(retn[(i + 1) % n], retn[i])) { lop.push({ punkter: cur, dd: retn[i] }); cur = [R[(i + 1) % n]]; }
+  }
+  if (cur.length > 1) lop.push({ punkter: cur, dd: retn[(start - 1 + n) % n] });
+  // Utover-normalen finnes ved å prøve begge og se hvilken som peker UT av
+  // konturen. Tyngdepunktet duger ikke: på et L-bygg ligger tyngdepunktet på
+  // feil side av veggene rundt hakket.
+  const poly = R.map(x => ({ x: x.cx, z: x.cz }));
+  const inni = (px, pz) => {
+    let inne = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const a = poly[i], b = poly[j];
+      if ((a.z > pz) !== (b.z > pz) && px < (b.x - a.x) * (pz - a.z) / (b.z - a.z) + a.x) inne = !inne;
+    }
+    return inne;
+  };
+  const ut = [];
+  for (const { punkter, dd } of lop) {
+    if (punkter.length < 2) continue;
+    const ex = dd[0] * c - dd[1] * sn, ez = dd[0] * sn + dd[1] * c;
+    let nx = ez, nz = -ex;
+    const mx = punkter.reduce((a, x) => a + x.cx, 0) / punkter.length;
+    const mz = punkter.reduce((a, x) => a + x.cz, 0) / punkter.length;
+    const prov = Math.max(...punkter.map(x => Math.max(x.bx, x.bz))) + 1e-6;
+    if (inni(mx + nx * prov, mz + nz * prov)) { nx = -nx; nz = -nz; }
+    const p = { x: punkter[0].cx, z: punkter[0].cz };
+    const paKant = punkter.map(s => ({ s, t: (s.cx - p.x) * ex + (s.cz - p.z) * ez }))
+      .sort((a, b) => a.t - b.t);
+    ut.push({
+      p, ex, ez, nx, nz, soyler: paKant,
+      toppY: Math.max(...paKant.map(k => k.s.maxY)),
+      kolBredde: paKant.map(k => k.s.bredde).sort((a, b) => a - b)[Math.floor(paKant.length / 2)]
+    });
+  }
+  return ut.length >= 3 ? knyttNaboer(ut) : null;
+}
+
+// Hver fasade får naboenes utover-normaler. Hjørnelappen (pinwheel) trenger
+// dem for å vite om hjørnet er UTVENDIG (naboveggen ligger foran enden, og
+// elementet må løpe forbi) eller INNVENDIG (naboveggen ligger bak enden, og
+// elementet må stoppe tilsvarende kortere).
+export function knyttNaboer(fasader) {
+  const m = fasader.length;
+  for (let i = 0; i < m; i++) {
+    const f = fasader[(i - 1 + m) % m], n2 = fasader[(i + 1) % m];
+    fasader[i].forrigeN = { x: f.nx, z: f.nz };
+    fasader[i].nesteN = { x: n2.nx, z: n2.nz };
+  }
+  return fasader;
+}
+
 // Flatene KLYNGES til åpninger: flater nær hverandre hører til samme åpning.
 // Emil markerte alle portene i én omgang og trykket Ferdig — da må systemet
 // selv se hvilke flater som hører sammen (single-linkage på avstand).
@@ -528,6 +668,14 @@ function soyleTypeNavn(id) {
   return m ? m.typeName : "";
 }
 
+// To bokser hører til SAMME søylestabel når de overlapper i grunnrisset,
+// eller når sentrene står nærmere enn `tol`. Overlappregelen er den som
+// fanger T- og L-forlengere oppå en firkantsøyle.
+export function sammeSoyle(a, b, tol) {
+  if (a.mnx <= b.mxx && b.mnx <= a.mxx && a.mnz <= b.mxz && b.mnz <= a.mxz) return true;
+  return Math.hypot(a.cx - b.cx, a.cz - b.cz) < (Number(tol) || 0);
+}
+
 async function hentSoyler() {
   if (!S.glbActive) await sikreMeta(alleElementIder);
   const bokser = allElementBoxes();
@@ -535,30 +683,42 @@ async function hentSoyler() {
   for (const [id, b] of bokser) {
     if (soyleTypeNavn(id) !== "Column") continue;
     rå.push({ cx: (b.min.x + b.max.x) / 2, cz: (b.min.z + b.max.z) / 2,
+      mnx: b.min.x, mnz: b.min.z, mxx: b.max.x, mxz: b.max.z,
       minY: b.min.y, maxY: b.max.y,
       bx: b.max.x - b.min.x, bz: b.max.z - b.min.z,
       bredde: Math.min(b.max.x - b.min.x, b.max.z - b.min.z) });
   }
-  const tol = 0.15 / (S.enhetSkala || 1);   // 15 cm: samme punkt = samme søyle
+  // SØYLE + FORLENGER SLÅS SAMMEN PÅ OVERLAPP I GRUNNRISSET, ikke på avstand
+  // mellom sentrene (Emils lagerbygg 04.09). Forlengerne er T- og L-profiler
+  // som står oppå en firkantsøyle, og et T-tverrsnitt har tyngdepunkt et helt
+  // annet sted enn en firkant: med 15 cm senterkrav ble 10 av 22 forlengere
+  // på Hegdalringen aldri koblet til søyla si, søyla mistet skjøten sin, og
+  // veggen ble ett element på 25 m. Overlapper boksene, er det samme søyle.
+  const tol = 0.15 / (S.enhetSkala || 1);
   const ut = [];
   for (const s of rå) {
-    const treff = ut.find(u => Math.hypot(u.cx - s.cx, u.cz - s.cz) < tol);
+    const treff = ut.find(u => sammeSoyle(u, s, tol));
     if (treff) {
       treff.minY = Math.min(treff.minY, s.minY);
       treff.maxY = Math.max(treff.maxY, s.maxY);
-      treff.bredde = Math.max(treff.bredde, s.bredde);
-      treff.bx = Math.max(treff.bx, s.bx);
-      treff.bz = Math.max(treff.bz, s.bz);
-      treff.deler.push({ minY: s.minY, maxY: s.maxY });
-    } else ut.push({ ...s, deler: [{ minY: s.minY, maxY: s.maxY }] });
+      treff.mnx = Math.min(treff.mnx, s.mnx); treff.mnz = Math.min(treff.mnz, s.mnz);
+      treff.mxx = Math.max(treff.mxx, s.mxx); treff.mxz = Math.max(treff.mxz, s.mxz);
+      treff.deler.push({ minY: s.minY, maxY: s.maxY, cx: s.cx, cz: s.cz,
+        bx: s.bx, bz: s.bz, bredde: s.bredde });
+    } else ut.push({ ...s, deler: [{ minY: s.minY, maxY: s.maxY, cx: s.cx, cz: s.cz,
+      bx: s.bx, bz: s.bz, bredde: s.bredde }] });
   }
   // Har søyla en SØYLEFORLENGER? Forlengeren er et EGET søyleelement som står
   // oppå søyla (Emils bilde 1: de blå stubbene på toppen). Finner vi to deler
   // der den øvre starter der den nedre slutter, står søyla under en forlenger.
+  // SENTER OG BREDDE tas fra den NEDERSTE delen — den ekte søyla. En forlenger
+  // med annen profil skal verken flytte skjøtepunktet eller dytte veggen ut.
   const stakkTol = 0.3 / (S.enhetSkala || 1);
   for (const u of ut) {
     const d = u.deler.slice().sort((a, b) => a.minY - b.minY);
     u.harForlenger = d.some((x, i) => i > 0 && x.minY >= d[i - 1].maxY - stakkTol);
+    u.cx = d[0].cx; u.cz = d[0].cz;
+    u.bx = d[0].bx; u.bz = d[0].bz; u.bredde = d[0].bredde;
   }
   return ut;
 }
@@ -611,7 +771,7 @@ export function fasaderFra(soyler, tolScene) {
       kolBredde: paKant.map(k => k.s.bredde).sort((a, b) => a - b)[Math.floor(paKant.length / 2)]
     });
   }
-  return ut;
+  return knyttNaboer(ut);
 }
 
 // Utsparingene: boksene brukeren har lagt til fra valgte elementer
@@ -1187,7 +1347,11 @@ async function generer() {
   // (konvekst hull) og skjøtene. Rammer uten forlenger står utenfor veggen.
   const soyler = veggSoyler(alleSoyler, 0.8 / (S.enhetSkala || 1));
   const kolTol = Math.max(0.3 / (S.enhetSkala || 1), soyler[0].bredde * 2);
-  const fasader = fasaderFra(soyler, kolTol);
+  // Randvandringen først — den takler innvendige hjørner (L, T, U, tilbygg).
+  // Klarer den ikke å lukke konturen, er bygget ikke rettvinklet, og vi faller
+  // tilbake på det konvekse hullet som før.
+  const fasader = fasaderLangsRand(soyler, kolTol, 15 / (S.enhetSkala || 1))
+    || fasaderFra(soyler, kolTol);
   if (!fasader.length) { alert(t("Fant ingen fasader å sette veggelementer på.")); return; }
 
   const okBetong = Math.min(...soyler.map(s => s.minY));   // OK betong = bunn av søylene
@@ -1294,8 +1458,16 @@ async function generer() {
     // og starter FLUKT mot innsiden av forrige fasades vegg. Rundt bygget gir
     // det pinwheel-hjørner — ett element stikker forbi i hvert hjørne, aldri to.
     const offMm = tilMm(off);
-    const hjFraMm = tilMm(t0) - offMm + o.tykkelseMm / 2;   // start: mot naboens innside
-    const hjTilMm = tilMm(t1) + offMm + o.tykkelseMm / 2;   // slutt: forbi, til ytterhjørnet
+    // Fortegnet leses av NABOENS utover-normal: peker den samme vei som denne
+    // fasaden løper, er hjørnet utvendig og elementet skal forbi (+off); peker
+    // den motsatt, er hjørnet INNVENDIG (L-bygg) og elementet skal tilsvarende
+    // kortere (−off). Uten dette dyttet hjørnelappen veggen ut i lufta i hvert
+    // innvendig hjørne (Emils lagerbygg 04.09). På et rektangel er begge +1,
+    // så vaskehallen og alle konvekse bygg får nøyaktig samme mål som før.
+    const sStart = f.forrigeN ? -Math.sign(f.forrigeN.x * f.ex + f.forrigeN.z * f.ez) || 1 : 1;
+    const sSlutt = f.nesteN ? Math.sign(f.nesteN.x * f.ex + f.nesteN.z * f.ez) || 1 : 1;
+    const hjFraMm = tilMm(t0) - sStart * offMm + o.tykkelseMm / 2;   // start: mot naboens innside
+    const hjTilMm = tilMm(t1) + sSlutt * offMm + o.tykkelseMm / 2;   // slutt: forbi, til ytterhjørnet
     if (o.ringmur) {
       // RINGMUREN BEHANDLES SOM EN RAD (Emil 02.09): den kappes rundt en
       // utsparing på nøyaktig samme måte som veggelementene, og får en
@@ -2346,13 +2518,19 @@ function fullforUtspMark() {
 // Klikkene fanges på window i FANGSTFASEN (samme oppskrift som materiell.js):
 // kameraet får dra som vanlig — bare et trykk under 8 px behandles, og da
 // stoppes det FØR elementvalget i main.js ser det.
+// Trykket må ha landet PÅ lerretet. Uten denne sjekken fanget window-lytteren
+// også trykk på knappene i modus-baren (#swUtspBar ligger over lerretet), og
+// «Ferdig»/«Avbryt» plukket i tillegg flata bak knappen (Emils funn 03.09).
+// Samme guard som overCanvas() i materiell.js.
 window.addEventListener("pointerdown", (e) => {
   if (!utspMark || e.button !== 0) return;
+  if (e.target !== canvas) { utspMark.ned = null; return; }
   utspMark.ned = { x: e.clientX, y: e.clientY };
 }, true);
 
 window.addEventListener("pointerup", (e) => {
   if (!utspMark || e.button !== 0 || !utspMark.ned) return;
+  if (e.target !== canvas) { utspMark.ned = null; return; }
   const ned = utspMark.ned;
   utspMark.ned = null;
   if (Math.hypot(e.clientX - ned.x, e.clientY - ned.y) > 8) return;   // kameradrag
