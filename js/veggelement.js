@@ -54,6 +54,16 @@ export const SW_TOL_MM = 5;           // to lengder innenfor dette = samme SW-nu
 // Grensa finnes bare som valgfri innstilling (o.kappUnderMm, standard av).
 export const SW_KAPP_UNDER_MM = 2000;
 export const SW_MIN_FELT_MM = 1000;  // to skjøter nærmere enn dette blir ÉN
+// Hvor stor del av fasadehøyden en søyle må nå for å telle som veggsøyle.
+// To terskler, fordi de to spørsmålene ikke er like strenge:
+//  • SW_VEGGANDEL — for å TA INN en søyle som ikke har forlenger. Streng, ellers
+//    kommer sekundær fasadeavstivning med: Sundland har CFSHS100x5-stolper som
+//    når 80 % av veggen, mot gavlsøylenes 92 %.
+//  • SW_SPENNANDEL — for å BEHOLDE en søyle som allerede er med i konturen.
+//    Romslig; her skal bare losholter og korte stubber ut. Arendals laveste
+//    søyle på pulttaket når 86 % og må aldri falle ut.
+export const SW_VEGGANDEL = 0.85;
+export const SW_SPENNANDEL = 0.6;
 
 // ═══════════════════ RENE REGNEFUNKSJONER (testes i Node) ═══════════════════
 
@@ -775,26 +785,60 @@ export function fasaderFra(soyler, tolScene) {
 }
 
 // Hvilke søyler DELER veggen i spenn. Regelen fra runde 5 var «bare søyler som
-// når fasadens HØYESTE punkt» — den forutsetter at fasadetoppen er vannrett.
-// Arendal 04.09: langveggen faller 1200 mm fra 8500 til 7300 over 30 m, og med
-// 800 mm toleranse ble de to nederste søylene silt bort. Veggen sluttet på
-// 17 910 mm av 29 820 — 11,9 m uten et eneste veggelement.
-// Nå måles hver søyle mot LINJA mellom første og siste søyle på fasaden, ikke
-// mot ett toppunkt. Et jevnt fall beholder alle søylene; en kort losholt over
-// en port ligger fortsatt langt under linja og faller ut som før. På en
-// vannrett fasade er linja konstant, og svaret er nøyaktig det gamle.
-export function spennSoyler(soyler, toppTol) {
+// når fasadens HØYESTE punkt» — den forutsetter at fasadetoppen er vannrett, og
+// falt på Arendals pulttak (04.09: 1200 mm fall over 30 m, veggen sluttet 11,9 m
+// for tidlig). Nå ser vi på HELE søyla i stedet for bare toppen:
+//
+//   en søyle deler veggen når den STÅR PÅ OK BETONG og NÅR MINST `andel`
+//   av fasadens høyde.
+//
+// Det skiller riktig i alle tilfellene vi har møtt:
+//   • pulttak/gavl — søylene når 86–92 % av høyden og beholdes alle sammen
+//   • losholt over en port — står på gulvet, men når bare 19 % → ut
+//   • mesanin- og vindavstivningssøyler — starter langt over gulvet → ut
+// Endesøylene beholdes alltid; de er hjørnene, uansett høyde.
+export function spennSoyler(soyler, okBetong, andel, bunnTol) {
   const n = (soyler || []).length;
   if (n < 3) return soyler || [];
-  const tol = Number(toppTol) > 0 ? Number(toppTol) : 0;
-  const t0 = soyler[0].t, t1 = soyler[n - 1].t;
-  const y0 = soyler[0].s.maxY, y1 = soyler[n - 1].s.maxY;
-  const spenn = t1 - t0;
-  const linje = (t) => (Math.abs(spenn) < 1e-9 ? Math.max(y0, y1)
-    : y0 + (y1 - y0) * (t - t0) / spenn);
+  const ok = Number(okBetong);
+  if (!Number.isFinite(ok)) return soyler;
+  const del = Number(andel) > 0 ? Number(andel) : 0.7;
+  const bt = Number(bunnTol) > 0 ? Number(bunnTol) : 0;
+  const topp = Math.max(...soyler.map(k => k.s.maxY));
+  const minTopp = ok + (topp - ok) * del;
   const ut = soyler.filter((k, i) =>
-    i === 0 || i === n - 1 || k.s.maxY >= linje(k.t) - tol);
+    i === 0 || i === n - 1 || (k.s.minY <= ok + bt && k.s.maxY >= minTopp));
   return ut.length >= 2 ? ut : soyler;
+}
+
+// GAVLSØYLER UTEN FORLENGER (Sundland 04.09). `veggSoyler` bruker forlengerne
+// til å finne KONTUREN, og det er riktig — en tilbyggsramme uten forlenger skal
+// ikke dra fasaden ut. Men på gavlene bærer søylene taket direkte og har ingen
+// forlenger i det hele tatt. Da satt gavlen igjen med bare de to hjørnesøylene,
+// og hele veggen ble ETT element på 24 120 mm per rad.
+// Konturen røres ikke. Vi legger bare til søyler som allerede STÅR I fasadens
+// plan, innenfor fasadens lengde, og som består samme hele-søyla-prøve som
+// over. Innvendige søylerekker ligger meter unna fasadeplanet og kommer aldri
+// med.
+export function fasadeSoyler(fasade, alleSoyler, kolTol, okBetong, andel) {
+  const paa = fasade.soyler.slice();
+  const kjent = new Set(paa.map(k => k.s));
+  const t0 = paa[0].t, t1 = paa[paa.length - 1].t;
+  const tol = Number(kolTol) > 0 ? Number(kolTol) : 0;
+  const ok = Number(okBetong);
+  const del = Number(andel) > 0 ? Number(andel) : 0.7;
+  const topp = Math.max(...paa.map(k => k.s.maxY));
+  const minTopp = ok + (topp - ok) * del;
+  for (const sø of alleSoyler || []) {
+    if (kjent.has(sø)) continue;
+    const t = (sø.cx - fasade.p.x) * fasade.ex + (sø.cz - fasade.p.z) * fasade.ez;
+    const avst = Math.abs((sø.cx - fasade.p.x) * fasade.nx + (sø.cz - fasade.p.z) * fasade.nz);
+    if (avst > tol || t < t0 + tol || t > t1 - tol) continue;
+    if (!(sø.minY <= ok + tol && sø.maxY >= minTopp)) continue;
+    paa.push({ s: sø, t });
+  }
+  paa.sort((a, b) => a.t - b.t);
+  return paa;
 }
 
 // Utsparingene: boksene brukeren har lagt til fra valgte elementer
@@ -1378,6 +1422,11 @@ async function generer() {
   if (!fasader.length) { alert(t("Fant ingen fasader å sette veggelementer på.")); return; }
 
   const okBetong = Math.min(...soyler.map(s => s.minY));   // OK betong = bunn av søylene
+  // Gavlsøyler uten forlenger skal likevel dele veggen (Sundland 04.09).
+  for (const f of fasader) {
+    f.soyler = fasadeSoyler(f, alleSoyler, kolTol, okBetong, SW_VEGGANDEL);
+    f.toppY = Math.max(...f.soyler.map(k => k.s.maxY));
+  }
   const ringH = o.ringmur ? tilScene(o.ringHoydeMm) : 0;
   const baseY = okBetong + ringH;                           // SW starter på gulv eller ringmur
   const tS = tilScene(o.tykkelseMm);
@@ -1452,8 +1501,7 @@ async function generer() {
     // tilleggssøyler og losholter rundt utsparinger når aldri toppen, og kan
     // dermed aldri bli misforstått som skjøtepunkter — mens forlengerne over
     // portene gir skjøt på riktig plass.
-    const toppTol = 0.8 / (S.enhetSkala || 1);
-    const spennS = spennSoyler(f.soyler, toppTol);
+    const spennS = spennSoyler(f.soyler, okBetong, SW_SPENNANDEL, kolTol);
     // Tette forlengere (hjørne- og avstivningssøyler i par) gir ÉN skjøt, ikke
     // to skjøter og en 660 mm strimmel mellom seg (Emil 02.09).
     const skjot = samleTetteSoyler(spennS.map(k => tilMm(k.t)), o.minFeltMm);
