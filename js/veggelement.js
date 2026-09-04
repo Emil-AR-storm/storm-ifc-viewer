@@ -774,6 +774,29 @@ export function fasaderFra(soyler, tolScene) {
   return knyttNaboer(ut);
 }
 
+// Hvilke søyler DELER veggen i spenn. Regelen fra runde 5 var «bare søyler som
+// når fasadens HØYESTE punkt» — den forutsetter at fasadetoppen er vannrett.
+// Arendal 04.09: langveggen faller 1200 mm fra 8500 til 7300 over 30 m, og med
+// 800 mm toleranse ble de to nederste søylene silt bort. Veggen sluttet på
+// 17 910 mm av 29 820 — 11,9 m uten et eneste veggelement.
+// Nå måles hver søyle mot LINJA mellom første og siste søyle på fasaden, ikke
+// mot ett toppunkt. Et jevnt fall beholder alle søylene; en kort losholt over
+// en port ligger fortsatt langt under linja og faller ut som før. På en
+// vannrett fasade er linja konstant, og svaret er nøyaktig det gamle.
+export function spennSoyler(soyler, toppTol) {
+  const n = (soyler || []).length;
+  if (n < 3) return soyler || [];
+  const tol = Number(toppTol) > 0 ? Number(toppTol) : 0;
+  const t0 = soyler[0].t, t1 = soyler[n - 1].t;
+  const y0 = soyler[0].s.maxY, y1 = soyler[n - 1].s.maxY;
+  const spenn = t1 - t0;
+  const linje = (t) => (Math.abs(spenn) < 1e-9 ? Math.max(y0, y1)
+    : y0 + (y1 - y0) * (t - t0) / spenn);
+  const ut = soyler.filter((k, i) =>
+    i === 0 || i === n - 1 || k.s.maxY >= linje(k.t) - tol);
+  return ut.length >= 2 ? ut : soyler;
+}
+
 // Utsparingene: boksene brukeren har lagt til fra valgte elementer
 // (oppsett.utsparinger = [{navn, min:[x,y,z], max:[x,y,z]}]), projisert inn
 // på fasaden. Returnerer [{fraMm, tilMm_, bunnMm, toppMm}] relativt til
@@ -1430,8 +1453,7 @@ async function generer() {
     // dermed aldri bli misforstått som skjøtepunkter — mens forlengerne over
     // portene gir skjøt på riktig plass.
     const toppTol = 0.8 / (S.enhetSkala || 1);
-    const toppS = f.soyler.filter(k => k.s.maxY >= f.toppY - toppTol);
-    const spennS = toppS.length >= 2 ? toppS : f.soyler;
+    const spennS = spennSoyler(f.soyler, toppTol);
     // Tette forlengere (hjørne- og avstivningssøyler i par) gir ÉN skjøt, ikke
     // to skjøter og en 660 mm strimmel mellom seg (Emil 02.09).
     const skjot = samleTetteSoyler(spennS.map(k => tilMm(k.t)), o.minFeltMm);
