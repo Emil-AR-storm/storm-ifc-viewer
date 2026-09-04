@@ -64,6 +64,13 @@ export const SW_MIN_FELT_MM = 1000;  // to skjøter nærmere enn dette blir ÉN
 //    søyle på pulttaket når 86 % og må aldri falle ut.
 export const SW_VEGGANDEL = 0.85;
 export const SW_SPENNANDEL = 0.6;
+// Hvor mange veggelement som kan merkes med SW-nummer og mål i 3D før lappene
+// slås av for å berge bilderaten. Sto på 400 fra runde 5, da et bygg sjelden
+// ga mer enn et par hundre element. Etter runde 19c deles gavlene riktig, og
+// Sundland (54 × 24 m) passerte grensa — merkingen forsvant uten et ord
+// (Emil 04.09). Grensa er nå satt der den faktisk gjør vondt, ikke der et
+// normalt lagerbygg lander, og den sier fra i konsollen når den slår inn.
+export const SW_MAKS_LAPPER = 2000;
 
 // ═══════════════════ RENE REGNEFUNKSJONER (testes i Node) ═══════════════════
 
@@ -1144,7 +1151,11 @@ function tegnAlt() {
   const fargeMat = new THREE.MeshLambertMaterial({ color: farge, side: THREE.DoubleSide });
   const kjerneMat = new THREE.MeshLambertMaterial({ color: "#e8e4da", side: THREE.DoubleSide });
   const mal = MALTYPER.sandwich;
-  const visLapper = (lagret.vegger || []).length <= 400 && !sk.merking;   // tusenvis av lapper kveler bilderaten
+  const antV = (lagret.vegger || []).length;
+  const visLapper = antV <= SW_MAKS_LAPPER && !sk.merking;
+  if (antV > SW_MAKS_LAPPER && !sk.merking)
+    console.warn("SW: " + antV + " veggelement er over grensa på " + SW_MAKS_LAPPER
+      + " — SW-nummer og mål tegnes ikke i 3D. Lista og PDF-en er uendret.");
   // Ett panelstykke: isolasjonskjerne + ytter- og innerhud med mikroprofil.
   // Bygges LIGGENDE (samme akser som materiell) og reises 90° opp, så x er
   // lengden, y høyden og z tykkelsen i elementets egen ramme.
