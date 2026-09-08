@@ -81,6 +81,16 @@ export const SW_SPENNANDEL = 0.6;
 // (Emil 04.09). Grensa er nå satt der den faktisk gjør vondt, ikke der et
 // normalt lagerbygg lander, og den sier fra i konsollen når den slår inn.
 export const SW_MAKS_LAPPER = 2000;
+// Hvor langt UTENFOR åpningsboksen et veggplan får ligge og likevel eie
+// åpningen, i meter. Boksen er alt 500 mm dyp til hver side (SLARK i
+// utsparingFraFlater), så søyleaksen ligger godt innenfor med 300 mm i tillegg.
+// Sto på 1000 mm, og var da så romslig at nabovegger stjal hverandres åpninger.
+export const APN_SLARK = 0.3;
+// Versjonen av åpningsregelen. Innervegger bygget med en eldre regel bygges
+// på nytt ÉN gang når fila åpnes, så en utsparing som ble stjålet av en vegg
+// på tvers forsvinner av seg selv. Merket er NYTT og har aldri vært satt av en
+// bugget migrering — lærdommen fra runde 20e står i migrerOppsett.
+export const APN_REGEL = 2;
 
 // ═══════════════════ RENE REGNEFUNKSJONER (testes i Node) ═══════════════════
 
@@ -920,8 +930,13 @@ export function utsparingFraFlater(flater, slark) {
     topp: fraFlate.topp && !toppKlippet ? "flate" : (topp !== null ? "ender" : "åpen"),
     bunn: fraFlate.bunn && !bunnKlippet ? "flate" : (bunn !== null ? "ender" : "åpen")
   };
+  // 🧭 ÅPNINGENS EGEN AKSE lagres. Den er kjent her — den kommer av
+  // sideflatene brukeren trykket på — og er det eneste som skiller «veggen
+  // som løper LANGS åpningen» fra «veggen som krysser den». Uten den kunne en
+  // innervegg på tvers stjele en åpning fra ytterveggen (Emil 08.09: en
+  // utsparing i et vindu lagde en ekstra utsparing i innerveggen).
   return { min: [min.x, min.y, min.z], max: [max.x, max.y, max.z],
-           kilde, antFlater: pkt.length };
+           akse, kilde, antFlater: pkt.length };
 }
 
 // SW-NUMRENE FØLGER VEGGEN, IKKE ET SORTERT REGISTER. Lørenskog fasade F→A:
@@ -1339,6 +1354,21 @@ export function apningPaVegg(f, u, slark) {
   if (!f || !u || !u.min || !u.max) return null;
   const cx = (u.min[0] + u.max[0]) / 2, cz = (u.min[2] + u.max[2]) / 2;
   const halvX = (u.max[0] - u.min[0]) / 2, halvZ = (u.max[2] - u.min[2]) / 2;
+  // 🧭 VEGGEN MÅ LØPE LANGS ÅPNINGEN. En vegg som KRYSSER åpningen skal aldri
+  // eie den, uansett hvor nær planet ligger.
+  //
+  // Dette var hullet i regelen: rekkevidden under regnes av boksens utstrekning
+  // PÅ TVERS AV VEGGEN, og for en vegg på tvers er «på tvers» åpningens
+  // BREDDE. En 4280 mm bred åpning ga dermed 2140 mm rekkevidde til hver side,
+  // og en innervegg et par meter unna stjal den — og fikk et hull som var
+  // 1074 mm bredt, altså boksens dybde (Emil 08.09).
+  //
+  // Aksen lagres på åpningen når den markeres. Er den ikke lagret (markert av
+  // en eldre versjon), leses den av boksen: dybden på tvers er alltid punktenes
+  // spredning pluss 2 × 500 mm slark, så den LENGSTE vannrette siden er aksen.
+  const akse = (u.akse === "x" || u.akse === "z") ? u.akse : (halvX >= halvZ ? "x" : "z");
+  const langs = akse === "x" ? Math.abs(f.ex) : Math.abs(f.ez);
+  if (langs < 0.7) return null;                 // mer enn 45° på tvers
   const tt = (cx - f.px) * f.ex + (cz - f.pz) * f.ez;
   const t0 = Math.min(f.t0, f.t1), t1 = Math.max(f.t0, f.t1);
   if (tt < t0 - 1 || tt > t1 + 1) return null;
@@ -2051,7 +2081,7 @@ function utspPaFasader() {
     let bi = -1, best = Infinity;
     for (let fi = 0; fi < fasader.length; fi++) {
       // Samme regel som innerveggene bruker — én funksjon, ett svar.
-      const avst = apningPaVegg(fasader[fi], u, 1.0 / (S.enhetSkala || 1));
+      const avst = apningPaVegg(fasader[fi], u, APN_SLARK / (S.enhetSkala || 1));
       if (avst === null) continue;
       if (avst < best) { best = avst; bi = fi; }
     }
@@ -2178,6 +2208,14 @@ S.lastSW = () => {
   lagretInner = lesInner();    // 🚪 leses fra sin egen nøkkel, per fil
   loesAlleJusteringer();
   tegnAlt();
+  // 🚪 ÉN GANGS OPPRYDDING (runde 24): innervegger bygget med den gamle,
+  // romslige åpningsregelen kan ha fått en utsparing fra en vegg PÅ TVERS.
+  // De bygges på nytt én gang per fil; merket hindrer at det gjentas.
+  if (lagretInner && (lagretInner.serier || []).length
+      && lagretInner.apnRegel !== APN_REGEL) {
+    lagretInner.apnRegel = APN_REGEL;
+    oppdaterInnerveggerEtterUtsp();
+  }
 };
 S.ryddSW = () => { if (just) avsluttJuster(); lagret = null; ryddTegning(); };
 
@@ -2310,20 +2348,17 @@ async function generer() {
   const utspPerFasade = new Map();
   for (const u of (o.utsparinger || [])) {
     if (!u || !u.min) continue;
-    const cx = (u.min[0] + u.max[0]) / 2, cz = (u.min[2] + u.max[2]) / 2;
-    const halvX = (u.max[0] - u.min[0]) / 2, halvZ = (u.max[2] - u.min[2]) / 2;
     let besteFi = -1, besteAvst = Infinity;
     for (let fi = 0; fi < fasader.length; fi++) {
       const f = fasader[fi];
-      const tt = (cx - f.p.x) * f.ex + (cz - f.p.z) * f.ez;
-      const len = f.soyler[f.soyler.length - 1].t;
-      if (tt < f.soyler[0].t - 1 || tt > len + 1) continue;   // utenfor fasadens lengde
-      const avst = Math.abs((cx - f.p.x) * f.nx + (cz - f.p.z) * f.nz);
-      // UTSPARINGEN HØRER BARE TIL VEGGEN DEN ER LAGET I (Emil 02.09): fasaden
-      // må faktisk gå GJENNOM åpningsboksen. Uten dette kunne en port kappe
-      // veggen på motsatt side av et smalt bygg, fordi den var «nærmest» der.
-      const rekkevidde = Math.abs(f.nx) * halvX + Math.abs(f.nz) * halvZ + 1.0 / (S.enhetSkala || 1);
-      if (avst > rekkevidde) continue;
+      // UTSPARINGEN HØRER BARE TIL VEGGEN DEN ER LAGET I (Emil 02.09). Regelen
+      // bor i apningPaVegg og er den SAMME for yttervegger og innervegger —
+      // to kopier ville før eller siden svart forskjellig.
+      const avst = apningPaVegg(
+        { px: f.p.x, pz: f.p.z, ex: f.ex, ez: f.ez, nx: f.nx, nz: f.nz,
+          t0: f.soyler[0].t, t1: f.soyler[f.soyler.length - 1].t },
+        u, APN_SLARK / (S.enhetSkala || 1));
+      if (avst === null) continue;
       if (avst < besteAvst) { besteAvst = avst; besteFi = fi; }
     }
     if (besteFi >= 0) {
@@ -3720,7 +3755,7 @@ function fullforUtspMark() {
     if (u.feil) { feilet++; continue; }
     lagt++;
     maal.push({ navn: t("Utsparing {0}", maal.length + 1), min: u.min, max: u.max,
-                flater: u.antFlater, kilde: u.kilde });
+                akse: u.akse, flater: u.antFlater, kilde: u.kilde });
   }
   if (!lagt) {
     alert(t("Utsparingen trenger to motstående sider — trykk på innsiden av søylene på hver side av åpningen."));
@@ -4123,7 +4158,7 @@ export function byggEnInnervegg(serie, perId, fi, nV, nR, globaleUtsp) {
   const baseY = okBetong + ringH;
   const stabelMm = Math.max(100, (Number(o.veggHoydeMm) || 0) - tilMm(ringH));
   const { rader, kappIndex } = radStabel(stabelMm, o.radHoyder, o.kappNederst);
-  const slark = 1.0 / (S.enhetSkala || 1);
+  const slark = APN_SLARK / (S.enhetSkala || 1);
   const fasader = [], vegger = [], ringmur = [], utspVis = [];
 
   for (let bi = 0; bi < bein.length; bi++) {
@@ -4289,6 +4324,7 @@ async function byggAlleInnervegger() {
     d.utspVis.push(...bygd.utspVis);
   }
   nummererInner(d);
+  d.apnRegel = APN_REGEL;
   if (tapte.length)
     console.warn("Innervegg: fant ikke søylene til " + tapte.join(", ") +
       " — er det samme modellfil?");
