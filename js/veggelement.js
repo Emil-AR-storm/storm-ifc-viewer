@@ -1240,6 +1240,113 @@ export function innerveggAkse(soyler) {
   return { p, ex, ez, nx, nz, soyler: liste };
 }
 
+// KJEDEN gjennom de markerte søylene.
+//
+// Et hjørne kan ikke leses av «de to søylene som står lengst fra hverandre» —
+// da blir en L til en diagonal tvers gjennom bygget (Emil 08.09, bilde 4).
+// Søylene må først settes i REKKEFØLGE langs veggen: nærmeste ubesøkte nabo,
+// fra den ene enden. Startenden velges ENTYDIG (minste x, så z), så
+// klikkerekkefølgen ikke kan snu kjeden — og dermed ikke speilvende tegninga.
+export function soyleKjede(soyler) {
+  const alle = (soyler || []).filter(s => s && isFinite(s.cx) && isFinite(s.cz));
+  if (alle.length < 3)
+    return alle.slice().sort((a, b) => (a.cx - b.cx) || (a.cz - b.cz));
+  let a = alle[0], b = alle[1], best = -1;
+  for (let i = 0; i < alle.length; i++)
+    for (let j = i + 1; j < alle.length; j++) {
+      const d = Math.hypot(alle[i].cx - alle[j].cx, alle[i].cz - alle[j].cz);
+      if (d > best) { best = d; a = alle[i]; b = alle[j]; }
+    }
+  const start = ((a.cx - b.cx) || (a.cz - b.cz)) <= 0 ? a : b;
+  const igjen = alle.filter(s => s !== start);
+  const ut = [start];
+  while (igjen.length) {
+    const forrige = ut[ut.length - 1];
+    let bi = 0, bd = Infinity;
+    for (let i = 0; i < igjen.length; i++) {
+      const d = Math.hypot(igjen[i].cx - forrige.cx, igjen[i].cz - forrige.cz);
+      if (d < bd) { bd = d; bi = i; }
+    }
+    ut.push(igjen.splice(bi, 1)[0]);
+  }
+  return ut;
+}
+
+// BEINA: kjeden delt der veggen KNEKKER.
+//
+// Ett hjørne gir to bein, en U gir tre. Hjørnesøyla hører til BEGGE beina, så
+// begge veggene når fram til hjørnet. Hvert bein får sin egen akse og sine egne
+// naboer, slik at hjørnet kan lappes med samme pinwheel-regel del A bruker.
+//
+// `lukk` = true legger til det siste beinet tilbake til første søyle — et rom
+// rundt (kontor inne i hallen). Den er et VALG i panelet, ikke noe som gjettes:
+// avstanden fra siste til første søyle kan like godt være en L som er litt
+// dyp, og runde 19–20 viste hva som skjer når vi gjetter.
+export function innerveggBein(soyler, knekkGrader, lukk) {
+  const kjede = soyleKjede(soyler);
+  if (kjede.length < 2) return [];
+  const pkt = (lukk && kjede.length >= 3) ? kjede.concat([kjede[0]]) : kjede;
+  const gr = Number(knekkGrader) > 0 ? Number(knekkGrader) : 25;
+  const grense = Math.cos(gr * Math.PI / 180);
+  const seg = [];
+  for (let i = 0; i < pkt.length - 1; i++) {
+    const dx = pkt[i + 1].cx - pkt[i].cx, dz = pkt[i + 1].cz - pkt[i].cz;
+    const l = Math.hypot(dx, dz);
+    if (l > 1e-9) seg.push({ i, ex: dx / l, ez: dz / l });
+  }
+  if (!seg.length) return [];
+  const knekk = [];
+  let dir = seg[0];
+  for (const s of seg.slice(1))
+    if (dir.ex * s.ex + dir.ez * s.ez < grense) { knekk.push(s.i); dir = s; }
+  const grenser = [0, ...knekk, pkt.length - 1];
+  const ut = [];
+  for (let k = 0; k < grenser.length - 1; k++) {
+    const liste = pkt.slice(grenser[k], grenser[k + 1] + 1);
+    if (liste.length < 2) continue;
+    // Retningen tas fra beinets FØRSTE til SISTE søyle, ikke fra første
+    // segment: en søyle som står litt ute skal ikke dreie beinet.
+    const f = liste[0], l = liste[liste.length - 1];
+    const dx = l.cx - f.cx, dz = l.cz - f.cz;
+    const len = Math.hypot(dx, dz);
+    if (!(len > 1e-9)) continue;
+    const ex = dx / len, ez = dz / len;
+    const ts = liste.map(s => (s.cx - f.cx) * ex + (s.cz - f.cz) * ez);
+    const tmin = Math.min(...ts);
+    const p = { x: f.cx + ex * tmin, z: f.cz + ez * tmin };
+    ut.push({ p, ex, ez, nx: ez, nz: -ex,
+      soyler: liste.map((s, i) => ({ s, t: ts[i] - tmin })).sort((u, v) => u.t - v.t) });
+  }
+  // Naboenes normaler. Fortegnet på siden legges på der de BRUKES, ikke her:
+  // bytter Emil side, skal hjørnelappen bytte side med den.
+  for (let i = 0; i < ut.length; i++) {
+    const forrige = i > 0 ? ut[i - 1] : (lukk && ut.length > 2 ? ut[ut.length - 1] : null);
+    const neste = i < ut.length - 1 ? ut[i + 1] : (lukk && ut.length > 2 ? ut[0] : null);
+    ut[i].forrigeN = forrige ? { x: forrige.nx, z: forrige.nz } : null;
+    ut[i].nesteN = neste ? { x: neste.nx, z: neste.nz } : null;
+  }
+  return ut;
+}
+
+// HØRER ÅPNINGEN TIL DENNE VEGGEN?
+//
+// Regelen er del A sin fra runde 6, trukket ut som én funksjon så ytterveggene
+// og innerveggene ikke kan svare forskjellig: veggplanet må FAKTISK GÅ GJENNOM
+// åpningsboksen, og åpningen må ligge langs veggens lengde. Uten det kunne en
+// port kappe veggen på motsatt side av et smalt bygg fordi den var «nærmest».
+// Svaret er avstanden fra planet (til å velge nærmeste vegg), eller null.
+export function apningPaVegg(f, u, slark) {
+  if (!f || !u || !u.min || !u.max) return null;
+  const cx = (u.min[0] + u.max[0]) / 2, cz = (u.min[2] + u.max[2]) / 2;
+  const halvX = (u.max[0] - u.min[0]) / 2, halvZ = (u.max[2] - u.min[2]) / 2;
+  const tt = (cx - f.px) * f.ex + (cz - f.pz) * f.ez;
+  const t0 = Math.min(f.t0, f.t1), t1 = Math.max(f.t0, f.t1);
+  if (tt < t0 - 1 || tt > t1 + 1) return null;
+  const avst = Math.abs((cx - f.px) * f.nx + (cz - f.pz) * f.nz);
+  const rekkevidde = Math.abs(f.nx) * halvX + Math.abs(f.nz) * halvZ + (Number(slark) || 0);
+  return avst > rekkevidde ? null : avst;
+}
+
 // Hvor langt fra søyleaksen ligger MIDTEN av veggplanet?
 //
 // Samme regning som ytterveggene (runde 2: veggen skal stå FLUKT inntil den
@@ -1283,13 +1390,17 @@ export function innerveggBiter(skjot, rader, kappIndex, klaringMm, minBitMm, end
   if (sk.length < 2 || !rd.length) return ut;
   const kl = Number(klaringMm) || 0;
   const minBit = Number(minBitMm) || 0;
-  const e = Number(endeMm) || 0;
+  // `endeMm` er ett tall (samme i begge ender) eller [fra, til] — hjørnet
+  // trenger ulik lapp i hver ende, en fri ende trenger samme.
+  const e = Array.isArray(endeMm)
+    ? [Number(endeMm[0]) || 0, Number(endeMm[1]) || 0]
+    : [Number(endeMm) || 0, Number(endeMm) || 0];
   const apn = (apninger || []).filter(a => a && isFinite(a.fraMm) && isFinite(a.tilMm_));
   const radBunn = [];
   { let b = 0; for (const h of rd) { radBunn.push(b); b += h; } }
   for (let i = 0; i < sk.length - 1; i++) {
-    const fra = i === 0 ? sk[0] - e : sk[i] + kl;
-    const til = i === sk.length - 2 ? sk[sk.length - 1] + e : sk[i + 1] - kl;
+    const fra = i === 0 ? sk[0] - e[0] : sk[i] + kl;
+    const til = i === sk.length - 2 ? sk[sk.length - 1] + e[1] : sk[i + 1] - kl;
     const full = til - fra;
     if (full < minBit) continue;
     for (let r = 0; r < rd.length; r++) {
@@ -1937,16 +2048,11 @@ function utspPaFasader() {
   const bY = baseYNaa();
   const ut = [];
   for (const u of liste) {
-    const cx = (u.min[0] + u.max[0]) / 2, cz = (u.min[2] + u.max[2]) / 2;
-    const halvX = (u.max[0] - u.min[0]) / 2, halvZ = (u.max[2] - u.min[2]) / 2;
     let bi = -1, best = Infinity;
     for (let fi = 0; fi < fasader.length; fi++) {
-      const f = fasader[fi];
-      const tt = (cx - f.px) * f.ex + (cz - f.pz) * f.ez;
-      if (tt < f.t0 - 1 || tt > f.t1 + 1) continue;          // utenfor fasadens lengde
-      const avst = Math.abs((cx - f.px) * f.nx + (cz - f.pz) * f.nz);
-      const rekkevidde = Math.abs(f.nx) * halvX + Math.abs(f.nz) * halvZ + 1.0 / (S.enhetSkala || 1);
-      if (avst > rekkevidde) continue;                        // hører til en annen vegg
+      // Samme regel som innerveggene bruker — én funksjon, ett svar.
+      const avst = apningPaVegg(fasader[fi], u, 1.0 / (S.enhetSkala || 1));
+      if (avst === null) continue;
       if (avst < best) { best = avst; bi = fi; }
     }
     if (bi < 0) continue;
@@ -3623,6 +3729,11 @@ function fullforUtspMark() {
   if (!tilInner) skrivLagret();
   avsluttUtspMark();
   if (tilInner) innerForhandsvis();
+  // 🚪 EMILS FUNN 08.09: han markerte en dør til innerveggen med den vanlige
+  // «Marker utsparing», den ble lagret som «Utsparing 14» — og ingenting
+  // skjedde med veggen. Åpningen lå i den globale lista, og innerveggene ble
+  // aldri bygget på nytt. Nå gjør de det, og døra kapper veggen den står i.
+  else oppdaterInnerveggerEtterUtsp();
   if (feilet) alert(t("{0} utsparinger lagt til — {1} område manglet to motstående sider og ble hoppet over.", lagt, feilet));
 }
 
@@ -3879,6 +3990,7 @@ function tegnPanel() {
       o2.utsparinger.splice(Number(b.dataset.swSlettUtsp), 1);
       skrivLagret();
       tegnPanel();
+      oppdaterInnerveggerEtterUtsp();   // åpningen forsvinner også fra innerveggen
     });
 }
 
@@ -3937,7 +4049,13 @@ const INNER_STD = {
   ringmur: false, ringHoydeMm: 500,
   klaringMm: SW_KLARING_MM, minFeltMm: SW_MIN_FELT_MM,
   // Endene: 0 = veggen går fra første til siste søylesenter. Se innerveggBiter.
-  endeMm: 0
+  endeMm: 0,
+  // 🔲 Rundt et rom: siste bein går tilbake til første søyle. AV som standard —
+  // en L er det vanlige, og en lukket boks skal være et valg, ikke en gjetning.
+  lukk: false,
+  // Hvor mye retningen må endre seg for at veggen KNEKKER i et hjørne.
+  // 25° tar en rettvinklet L uten å dele en rekke som bukter seg litt.
+  knekkGrader: 25
 };
 
 // PROSJEKTDATAENE BOR ETT STED. Prosjektnavn, oppdragsnummer, sted, sign,
@@ -3991,95 +4109,136 @@ function innerData() {
 // `perId` er id → søylestabel fra hentSoyler(). Serien lagrer element-IDENE,
 // ikke koordinatene: åpnes modellen på nytt, står søylene der de står, og
 // veggen kan bygges opp igjen fra samme søyler uten at noe er frosset fast.
-export function byggEnInnervegg(serie, perId, fi, nV, nR) {
+export function byggEnInnervegg(serie, perId, fi, nV, nR, globaleUtsp) {
   const o = { ...INNER_STD, ...(serie.o || {}) };
   const soyler = [...new Set((serie.ider || []).map(id => perId.get(id)).filter(Boolean))];
-  const akse = innerveggAkse(soyler);
-  if (!akse) return null;
+  // ETT HJØRNE = TO BEIN (Emil 08.09). Er søylene på én linje, kommer det ett
+  // bein ut, og alt under er bit for bit som en rett innervegg.
+  const bein = innerveggBein(soyler, o.knekkGrader, o.lukk);
+  if (!bein.length) return null;
   const sg = Number(serie.side) < 0 ? -1 : 1;
-  const nx = akse.nx * sg, nz = akse.nz * sg;
   const tS = tilScene(o.tykkelseMm);
-  const off = innerveggOffset(akse, sg, tS);
-  const okBetong = Math.min(...akse.soyler.map(k => k.s.minY));
+  const okBetong = Math.min(...soyler.map(s => s.minY));
   const ringH = o.ringmur ? tilScene(o.ringHoydeMm) : 0;
   const baseY = okBetong + ringH;
-  const rot = Math.atan2(-akse.ez, akse.ex);
-  const fx = akse.p.x + nx * off, fz = akse.p.z + nz * off;
-  const skjot = samleTetteSoyler(akse.soyler.map(k => tilMm(k.t)), o.minFeltMm);
   const stabelMm = Math.max(100, (Number(o.veggHoydeMm) || 0) - tilMm(ringH));
   const { rader, kappIndex } = radStabel(stabelMm, o.radHoyder, o.kappNederst);
-  // 🚪 UTSPARINGENE. Boksene ligger på serien (én liste per innervegg, ikke
-  // én felles for hele bygget: to innervegger kan stå rygg mot rygg, og en dør
-  // i den ene skal ikke skjære den andre). De projiseres inn på veggaksen med
-  // samme funksjon del A bruker.
-  const apninger = utsparingerPaFasade(
-    { p: akse.p, ex: akse.ex, ez: akse.ez }, baseY, serie.utsparinger);
-  const biter = innerveggBiter(skjot, rader, kappIndex, o.klaringMm, SW_MIN_BIT_MM,
-    o.endeMm, apninger);
-  const snappP = [];
-  for (const k of akse.soyler) {
-    const c = tilMm(k.t), halv = tilMm(k.s.bredde) / 2;
-    snappP.push(c - o.klaringMm, c + o.klaringMm, c - halv, c + halv);
-  }
-  const felles = { fi, inner: true, fx, fz, ex: akse.ex, ez: akse.ez, nx, nz, rot,
-    tMm: o.tykkelseMm, snapp: snappP };
-  const vegger = biter.map((b, i) => {
-    const tMid = tilScene((b.fraMm + b.tilMm_) / 2);
-    return { ...felles,
-      id: "iv" + (nV + i), tMid,
-      x: fx + akse.ex * tMid, z: fz + akse.ez * tMid,
-      y: baseY + tilScene(b.rBunnMm + b.hoydeMm / 2),
-      radIdx: b.radIdx, rBunnMm: b.rBunnMm,
-      basFraMm: b.fraMm, basTilMm: b.tilMm_, dFra: 0, dTil: 0, rev: 0,
-      fraMm: b.fraMm, tilMm: b.tilMm_,
-      lengdeMm: b.lengdeMm, fullMm: b.fullMm,
-      hoydeMm: b.hoydeMm, radHMm: b.radHMm, hVMm: b.hoydeMm, hHMm: b.hoydeMm,
-      apn: b.apn, hull: b.hull,
-      tilpassetRad: b.tilpassetRad, tilpasset: b.tilpasset };
-  });
-  // RINGMUREN UNDER EN INNERVEGG er en fundamentmur fra gulvet og opp, ikke
-  // ringmuren rundt bygget: gulvplata og isolasjonen hører til del A og skal
-  // ikke lages på nytt inne i bygget. Derfor går den fra OK betong til
-  // «ringHoydeMm» over, og betongMm/isoMm holdes utenfor.
-  const ringmur = [];
-  if (o.ringmur && biter.length) {
-    const rmFra = Math.min(...biter.map(b => b.fraMm));
-    const rmTil = Math.max(...biter.map(b => b.tilMm_));
-    const rmTopp = 0, rmBunn = -Math.round(tilMm(ringH));
-    const rmBit = (bunnMm, hoydeMm, fraMm, tilMm2) => {
-      const tMid = tilScene((fraMm + tilMm2) / 2);
-      ringmur.push({ ...felles,
-        id: "ir" + (nR + ringmur.length), ringmur: true, radIdx: "rm", tMid,
-        basFraMm: Math.round(fraMm), basTilMm: Math.round(tilMm2), dFra: 0, dTil: 0, rev: 0,
-        fraMm: Math.round(fraMm), tilMm: Math.round(tilMm2),
-        lengdeMm: Math.round(tilMm2 - fraMm), fullMm: Math.round(tilMm2 - fraMm),
-        bunnMm: Math.round(bunnMm), hoydeMm: Math.round(hoydeMm),
+  const slark = 1.0 / (S.enhetSkala || 1);
+  const fasader = [], vegger = [], ringmur = [], utspVis = [];
+
+  for (let bi = 0; bi < bein.length; bi++) {
+    const akse = bein[bi];
+    const beinFi = fi + fasader.length;
+    const nx = akse.nx * sg, nz = akse.nz * sg;
+    const off = innerveggOffset(akse, sg, tS);
+    const rot = Math.atan2(-akse.ez, akse.ex);
+    const fx = akse.p.x + nx * off, fz = akse.p.z + nz * off;
+    const skjot = samleTetteSoyler(akse.soyler.map(k => tilMm(k.t)), o.minFeltMm);
+    const t0 = akse.soyler[0].t, t1 = akse.soyler[akse.soyler.length - 1].t;
+
+    // 🚪 UTSPARINGENE. Kandidatene er både seriens egne (markert inne i
+    // innerveggen) og de som er markert med den vanlige «Marker utsparing» —
+    // Emil skal ikke måtte huske hvilken knapp han brukte (08.09). Begge sett
+    // siles med SAMME regel: veggplanet må gå gjennom åpningsboksen. Da kan en
+    // dør i ytterveggen aldri kappe en innervegg, og et bein i en L kan ikke
+    // kappes av en dør som står i det andre beinet.
+    const fLik = { px: akse.p.x, pz: akse.p.z, ex: akse.ex, ez: akse.ez, nx, nz, t0, t1 };
+    const kandidater = [];
+    for (const u of (serie.utsparinger || [])) if (u && u.min && u.max) kandidater.push(u);
+    for (const u of (globaleUtsp || []))
+      if (u && u.min && u.max && kandidater.indexOf(u) === -1) kandidater.push(u);
+    const mine = kandidater.filter(u => apningPaVegg(fLik, u, slark) !== null);
+    const apninger = utsparingerPaFasade(
+      { p: akse.p, ex: akse.ex, ez: akse.ez }, baseY, mine);
+
+    // HJØRNET lappes med del A sin pinwheel-regel (runde 6): det ene beinet
+    // løper forbi og dekker naboens endeflate, det andre starter flukt mot
+    // naboens innside. Fortegnet leses av NABOENS normal, så et innvendig
+    // hjørne (veggen bøyer bort fra panelsiden) trekker seg tilsvarende inn i
+    // stedet for å stikke ut i lufta.
+    // Frie ender — der det ikke er noe nabobein — er som før: søylesenteret,
+    // pluss «Forleng begge ender».
+    // Fortegnene er del A sine, ord for ord (runde 6): `sStart` snur fortegnet
+    // fordi naboen ligger BAK beinet, `sSlutt` ikke. Peker naboens normal samme
+    // vei som beinet løper, er hjørnet utvendig og elementet skal forbi (+off);
+    // peker den motsatt, er hjørnet innvendig og elementet skal tilsvarende
+    // kortere (−off). Første forsøk her hadde fortegnet snudd i startenden, og
+    // det ga et hull på 300 mm i hjørnet — regnet ut, ikke sett.
+    const offMm = tilMm(off);
+    const sStart = akse.forrigeN
+      ? (-Math.sign((akse.forrigeN.x * sg) * akse.ex + (akse.forrigeN.z * sg) * akse.ez) || 1) : 1;
+    const sSlutt = akse.nesteN
+      ? (Math.sign((akse.nesteN.x * sg) * akse.ex + (akse.nesteN.z * sg) * akse.ez) || 1) : 1;
+    // innerveggBiter regner `fra = skjot[0] − eFra` og `til = skjot[siste] + eTil`.
+    const eFra = akse.forrigeN ? sStart * offMm - o.tykkelseMm / 2 : (Number(o.endeMm) || 0);
+    const eTil = akse.nesteN ? sSlutt * offMm + o.tykkelseMm / 2 : (Number(o.endeMm) || 0);
+
+    const biter = innerveggBiter(skjot, rader, kappIndex, o.klaringMm, SW_MIN_BIT_MM,
+      [eFra, eTil], apninger);
+    const snappP = [];
+    for (const k of akse.soyler) {
+      const c = tilMm(k.t), halv = tilMm(k.s.bredde) / 2;
+      snappP.push(c - o.klaringMm, c + o.klaringMm, c - halv, c + halv);
+    }
+    const felles = { fi: beinFi, inner: true, fx, fz, ex: akse.ex, ez: akse.ez, nx, nz, rot,
+      tMm: o.tykkelseMm, snapp: snappP };
+    for (const b of biter) {
+      const tMid = tilScene((b.fraMm + b.tilMm_) / 2);
+      vegger.push({ ...felles,
+        id: "iv" + (nV + vegger.length), tMid,
         x: fx + akse.ex * tMid, z: fz + akse.ez * tMid,
-        y: baseY + tilScene(bunnMm + hoydeMm / 2),
-        lengde: tilScene(tilMm2 - fraMm), hoyde: tilScene(hoydeMm), tykkelse: tS });
-    };
-    // RINGMUREN BEHANDLES SOM EN RAD (samme regel som del A fikk i runde 6):
-    // den kappes rundt en dør og får en fyllbit under et vindu. Ellers sto
-    // ringmuren igjen midt i døråpningen.
-    const rmApn = apninger
-      .filter(a => Math.min(a.toppMm, rmTopp) - Math.max(a.bunnMm, rmBunn) > 10);
-    for (const [rFra, rTil] of delOppMedUtsparinger(rmFra, rmTil, rmApn.map(a => [a.fraMm, a.tilMm_])))
-      rmBit(rmBunn, rmTopp - rmBunn, rFra, rTil);
-    for (const b of utspFyllBiter(rmBunn, rmTopp, rmFra, rmTil, rmApn, SW_MIN_BIT_MM))
-      rmBit(b.bunnMm, b.hoydeMm, b.fraMm, b.tilMm_);
+        y: baseY + tilScene(b.rBunnMm + b.hoydeMm / 2),
+        radIdx: b.radIdx, rBunnMm: b.rBunnMm,
+        basFraMm: b.fraMm, basTilMm: b.tilMm_, dFra: 0, dTil: 0, rev: 0,
+        fraMm: b.fraMm, tilMm: b.tilMm_,
+        lengdeMm: b.lengdeMm, fullMm: b.fullMm,
+        hoydeMm: b.hoydeMm, radHMm: b.radHMm, hVMm: b.hoydeMm, hHMm: b.hoydeMm,
+        apn: b.apn, hull: b.hull,
+        tilpassetRad: b.tilpassetRad, tilpasset: b.tilpasset });
+    }
+    // RINGMUREN UNDER EN INNERVEGG er en fundamentmur fra gulvet og opp, ikke
+    // ringmuren rundt bygget: gulvplata og isolasjonen hører til del A og skal
+    // ikke lages på nytt inne i bygget.
+    if (o.ringmur && biter.length) {
+      const rmFra = Math.min(...biter.map(b => b.fraMm));
+      const rmTil = Math.max(...biter.map(b => b.tilMm_));
+      const rmTopp = 0, rmBunn = -Math.round(tilMm(ringH));
+      const rmBit = (bunnMm, hoydeMm, fraMm, tilMm2) => {
+        const tMid = tilScene((fraMm + tilMm2) / 2);
+        ringmur.push({ ...felles,
+          id: "ir" + (nR + ringmur.length), ringmur: true, radIdx: "rm", tMid,
+          basFraMm: Math.round(fraMm), basTilMm: Math.round(tilMm2), dFra: 0, dTil: 0, rev: 0,
+          fraMm: Math.round(fraMm), tilMm: Math.round(tilMm2),
+          lengdeMm: Math.round(tilMm2 - fraMm), fullMm: Math.round(tilMm2 - fraMm),
+          bunnMm: Math.round(bunnMm), hoydeMm: Math.round(hoydeMm),
+          x: fx + akse.ex * tMid, z: fz + akse.ez * tMid,
+          y: baseY + tilScene(bunnMm + hoydeMm / 2),
+          lengde: tilScene(tilMm2 - fraMm), hoyde: tilScene(hoydeMm), tykkelse: tS });
+      };
+      // Ringmuren behandles som en rad: kappes rundt en dør, fyllbit under et
+      // vindu (del A, runde 6).
+      const rmApn = apninger
+        .filter(a => Math.min(a.toppMm, rmTopp) - Math.max(a.bunnMm, rmBunn) > 10);
+      for (const [rFra, rTil] of delOppMedUtsparinger(rmFra, rmTil,
+          rmApn.map(a => [a.fraMm, a.tilMm_])))
+        rmBit(rmBunn, rmTopp - rmBunn, rFra, rTil);
+      for (const b of utspFyllBiter(rmBunn, rmTopp, rmFra, rmTil, rmApn, SW_MIN_BIT_MM))
+        rmBit(b.bunnMm, b.hoydeMm, b.fraMm, b.tilMm_);
+    }
+    fasader.push({ px: akse.p.x, pz: akse.p.z, ex: akse.ex, ez: akse.ez, nx, nz,
+      t0, t1, off, rot, skjot: skjot.map(v => Math.round(v)), takLinje: null,
+      // Oppsettet FØLGER FASADEN. `fi` er indeksen i fasadelista, og faller én
+      // serie ut (søylene finnes ikke i denne fila), er den ikke lenger samme
+      // indeks som i serier[] — da ville tegningen hentet farge og tykkelse fra
+      // feil vegg.
+      inner: true,
+      navn: (serie.navn || "") + (bein.length > 1 ? " – " + t("bein {0}", bi + 1) : ""),
+      o: { ...o }, baseY, okBetong });
+    for (const a of apninger)
+      utspVis.push({ fi: beinFi, fraMm: Math.round(a.fraMm), tilMm_: Math.round(a.tilMm_),
+        bunnMm: Math.round(a.bunnMm), toppMm: Math.round(a.toppMm) });
   }
-  const fasade = { px: akse.p.x, pz: akse.p.z, ex: akse.ex, ez: akse.ez, nx, nz,
-    t0: akse.soyler[0].t, t1: akse.soyler[akse.soyler.length - 1].t,
-    off, rot, skjot: skjot.map(v => Math.round(v)), takLinje: null,
-    // Oppsettet FØLGER FASADEN. `fi` er indeksen i fasadelista, og faller én
-    // serie ut (søylene finnes ikke i denne fila), er den ikke lenger samme
-    // indeks som i serier[] — da ville tegningen hentet farge og tykkelse fra
-    // feil vegg.
-    inner: true, navn: serie.navn || "", o: { ...o }, baseY, okBetong };
-  const utspVis = apninger.map(a => ({ fi, fraMm: Math.round(a.fraMm),
-    tilMm_: Math.round(a.tilMm_), bunnMm: Math.round(a.bunnMm),
-    toppMm: Math.round(a.toppMm) }));
-  return { fasade, vegger, ringmur, utspVis, baseY, okBetong };
+  return { fasader, vegger, ringmur, utspVis, baseY, okBetong };
 }
 
 // SW-NUMRENE FOR INNERVEGGENE — samme funksjon som ytterveggene, over en annen
@@ -4113,12 +4272,18 @@ async function byggAlleInnervegger() {
   for (const s of alle) for (const id of s.ider || []) perId.set(id, s);
   const tapte = [];
   d.utspVis = [];
+  // De vanlige utsparingene er med som kandidater: Emil skal ikke måtte huske
+  // hvilken av de to «Marker utsparing»-knappene han brukte.
+  const globale = (oppsett().utsparinger || []).filter(u => u && u.min && u.max);
   for (let i = 0; i < d.serier.length; i++) {
     const serie = d.serier[i];
-    const bygd = byggEnInnervegg(serie, perId, d.fasader.length, d.vegger.length, d.ringmur.length);
+    const bygd = byggEnInnervegg(serie, perId, d.fasader.length, d.vegger.length,
+      d.ringmur.length, globale);
     if (!bygd) { tapte.push(serie.navn || "?"); continue; }
-    bygd.fasade.serieIdx = i;   // hvilken rad i panelet fasaden hører til
-    d.fasader.push(bygd.fasade);
+    for (const f of bygd.fasader) {
+      f.serieIdx = i;           // hvilken rad i panelet fasaden hører til
+      d.fasader.push(f);
+    }
     d.vegger.push(...bygd.vegger);
     d.ringmur.push(...bygd.ringmur);
     d.utspVis.push(...bygd.utspVis);
@@ -4336,8 +4501,9 @@ function innerForhandsvis() {
     m.traverse(x => { if (x.geometry) x.geometry.dispose(); if (x.material) x.material.dispose(); });
     g.remove(m);
   });
-  const bygd = byggEnInnervegg(innerMark.serie, innerMark.perId, 0, 0, 0);
-  if (!bygd) return;
+  const globale = (oppsett().utsparinger || []).filter(u => u && u.min && u.max);
+  const bygd = byggEnInnervegg(innerMark.serie, innerMark.perId, 0, 0, 0, globale);
+  if (!bygd || !bygd.fasader.length) return;
   innerMark.bygd = bygd;
   const o = { ...INNER_STD, ...(innerMark.serie.o || {}) };
   // Elementene tegnes i EN EGEN gruppe, ikke i swGroup direkte: forhåndsvisningen
@@ -4347,16 +4513,19 @@ function innerForhandsvis() {
   tegnRingmurBiter(bygd.ringmur, false);
   const nye = swGroup.children.slice(foer);
   for (const m of nye) { swGroup.remove(m); g.add(m); }
-  // Pila: fra søyleaksen og ut mot den valgte siden, midt på veggen.
-  const f = bygd.fasade;
-  const tMid = (f.t0 + f.t1) / 2;
-  const start = new THREE.Vector3(f.px + f.ex * tMid, bygd.baseY + tilScene(o.veggHoydeMm) * 0.6,
-    f.pz + f.ez * tMid);
-  const lengde = Math.max(f.off * 2.5, tilScene(1500));
-  const pil = new THREE.ArrowHelper(new THREE.Vector3(f.nx, 0, f.nz).normalize(),
-    start, lengde, 0x22c55e, lengde * 0.28, lengde * 0.16);
-  pil.renderOrder = 998;
-  g.add(pil);
+  // Pila: fra søyleaksen og ut mot den valgte siden, midt på hvert bein. Ett
+  // hjørne har to bein, og da skal begge pilene peke samme vei ut av rommet —
+  // det er hele beviset på at siden ble riktig.
+  for (const f of bygd.fasader) {
+    const tMid = (f.t0 + f.t1) / 2;
+    const start = new THREE.Vector3(f.px + f.ex * tMid,
+      bygd.baseY + tilScene(o.veggHoydeMm) * 0.6, f.pz + f.ez * tMid);
+    const lengde = Math.max(f.off * 2.5, tilScene(1500));
+    const pil = new THREE.ArrowHelper(new THREE.Vector3(f.nx, 0, f.nz).normalize(),
+      start, lengde, 0x22c55e, lengde * 0.28, lengde * 0.16);
+    pil.renderOrder = 998;
+    g.add(pil);
+  }
 }
 
 async function innerGodkjenn() {
@@ -4374,6 +4543,20 @@ async function innerGodkjenn() {
   skrivInner();
   tegnAlt();
   tegnPanel();
+}
+
+// Bygger innerveggene på nytt fordi den GLOBALE utsparingslista er endret.
+// Gjør ingenting når det ikke finnes innervegger — da er dette del A alene.
+function oppdaterInnerveggerEtterUtsp() {
+  if (!lagretInner || !(lagretInner.serier || []).length) return;
+  byggAlleInnervegger()
+    .then(() => {
+      byggInnerStabler();
+      skrivInner();
+      tegnAlt();
+      tegnPanel();
+    })
+    .catch(err => console.warn("Innerveggene kunne ikke bygges på nytt:", err));
 }
 
 async function slettInnervegg(idx) {
@@ -4450,16 +4633,20 @@ export function innerOppsettFelter(serie) {
     '<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="swIvRingmur"' +
       (o.ringmur ? " checked" : "") + '> ' + t("Med ringmur under innerveggen") + '</label>' +
     felt("swIvRingH", "Ringmurhøyde over gulv (mm)", o.ringHoydeMm) +
-    felt("swIvEnde", "Forleng begge ender forbi ytterste søyle (mm)", o.endeMm) +
+    felt("swIvEnde", "Forleng frie ender forbi ytterste søyle (mm)", o.endeMm) +
     felt("swIvKlaring", "Klaring fra søylesenter (mm)", o.klaringMm) +
+    '<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="swIvLukk"' +
+      (o.lukk ? " checked" : "") + '> ' + t("Lukk veggen rundt et rom (siste bein tilbake til første søyle)") + '</label>' +
     '<p style="color:var(--muted);font-size:11px;margin:2px 0 8px">' +
       t("Vegghøyden måles fra gulvet til topp vegg. Står veggen på ringmur, er ringmuren en del av den høyden — SW-elementene fyller resten.") + '<br>' +
-      t("Endene står som standard i første og siste søylesenter. Skal veggen gå helt inn til ytterveggen, skriv hvor mye den skal forlenges.") + '</p>' +
+      t("Frie ender står i første og siste søylesenter. Skal veggen gå helt inn til ytterveggen, skriv hvor mye den skal forlenges — hjørnene lappes av seg selv.") + '<br>' +
+      t("Marker søylene rundt hjørnet, og veggen knekker der rekka knekker. Skal den gå helt rundt et rom, kryss av «Lukk veggen».") + '</p>' +
     // 🚪 Utsparingene hører til DENNE veggen, ikke til bygget: to innervegger
     // kan stå rygg mot rygg, og en dør i den ene skal ikke skjære den andre.
     '<h4 style="margin:8px 0 4px;font-size:12px">' + t("Utsparinger i denne veggen") + '</h4>' +
     '<p style="color:var(--muted);font-size:11px;margin:2px 0 6px">' +
-      t("Trykk «Marker utsparing» og pek på flatene rundt åpningen — innsiden av søylene på hver side, undersiden av bjelken over. Én flate per side.") + '</p>' +
+      t("Trykk «Marker utsparing» og pek på flatene rundt åpningen — innsiden av søylene på hver side, undersiden av bjelken over. Én flate per side.") + '<br>' +
+      t("Åpninger du har markert med den vanlige «Marker utsparing» over kommer også med: en åpning kapper den veggen den faktisk står i.") + '</p>' +
     '<div class="prop-actions"><button id="swIvNyUtsp">' + ikon("boks") + ' ' +
       t("Marker utsparing") + '</button></div>' +
     (!utsp.length
@@ -4486,6 +4673,12 @@ function innerPanelHtml() {
     if (si === undefined) continue;
     antPer.set(si, (antPer.get(si) || 0) + (v.skjult ? 0 : 1));
   }
+  // Hvor mange BEIN veggen ble delt i — ett hjørne gir to. Står det 1 der Emil
+  // markerte et hjørne, er det knekkgrensa som ikke slo til, og da er tallet
+  // det første stedet å se.
+  const beinPer = new Map();
+  for (const f of d.fasader)
+    if (f.serieIdx !== undefined) beinPer.set(f.serieIdx, (beinPer.get(f.serieIdx) || 0) + 1);
   return '<h4 style="margin:14px 0 4px">🚪 ' + t("Innervegger (egen SW-serie)") + '</h4>' +
     '<p style="color:var(--muted);font-size:11px;margin:2px 0 6px">' +
       t("Innerveggene finnes ikke automatisk — du markerer søylene de skal stå på. De får sin egen SW-serie som starter på SW-01, sin egen instruksjonstegning og sitt eget regneark. Ytterveggene over røres ikke.") + '</p>' +
@@ -4494,6 +4687,7 @@ function innerPanelHtml() {
         '<div class="qty-row"><div class="n" style="font-size:12px">' + esc(s.navn || ("#" + (i + 1))) +
           ' <span style="color:var(--muted)">' +
           t("{0} søyler", (s.ider || []).length) + " · " +
+          ((beinPer.get(i) || 1) > 1 ? t("{0} bein", beinPer.get(i)) + " · " : "") +
           t("{0} element", antPer.get(i) || 0) + " · " +
           (s.o && s.o.veggHoydeMm ? s.o.veggHoydeMm + " mm" : "") + '</span></div>' +
         '<div class="c">' +
@@ -4531,6 +4725,7 @@ function lesInnerFraPanel() {
   o.ringHoydeMm = Math.max(0, Math.min(3000, num("swIvRingH", o.ringHoydeMm)));
   o.endeMm = Math.max(0, Math.min(3000, num("swIvEnde", o.endeMm)));
   o.klaringMm = Math.max(0, Math.min(100, num("swIvKlaring", o.klaringMm)));
+  o.lukk = !!($("swIvLukk") || {}).checked;
 }
 
 // Panelets knapper og felter. Kalles fra tegnPanel().
@@ -4548,7 +4743,8 @@ function koblInnerPanel(body) {
   // Hvert felt i oppsettet tegner forhåndsvisningen på nytt: Emil ser veggen
   // endre seg mens han skriver, i stedet for å måtte godkjenne for å se svaret.
   for (const id of ["swIvHoyde", "swIvRadH", "swIvKappNed", "swIvTykk", "swIvFarge",
-                    "swIvRingmur", "swIvRingH", "swIvEnde", "swIvKlaring", "swIvNavn"]) {
+                    "swIvRingmur", "swIvRingH", "swIvEnde", "swIvKlaring", "swIvNavn",
+                    "swIvLukk"]) {
     const el = $(id);
     if (!el) continue;
     el.onchange = () => { lesInnerFraPanel(); innerForhandsvis(); tegnPanel(); };
