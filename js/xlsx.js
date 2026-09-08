@@ -70,16 +70,30 @@ export function arkNavn(navn) {
   return s || "Ark1";
 }
 
+// Én arbeidsbok, ett eller flere ark. `xlsxFiler(navn, rader)` er det gamle
+// kallet med ett ark; `xlsxFilerFlere([{ navn, rader }, …])` gir flere ark i
+// samme fil — SW-lista i det første, «Materiell» i det andre (Emil 08.09).
 export function xlsxFiler(navn, rader) {
-  const ark = arkNavn(navn);
-  return [
+  return xlsxFilerFlere([{ navn, rader }]);
+}
+export function xlsxFilerFlere(arkListe) {
+  const ark = (arkListe || []).length ? arkListe : [{ navn: "Ark1", rader: [] }];
+  // To ark kan ikke hete det samme — Excel nekter å åpne fila.
+  const brukte = new Set();
+  const navn = ark.map(a => {
+    let n = arkNavn(a.navn), k = 2;
+    while (brukte.has(n)) n = arkNavn(n.slice(0, 28) + " " + k++);
+    brukte.add(n);
+    return n;
+  });
+  const filer = [
     { navn: "[Content_Types].xml",
       data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
         '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
         '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
         '<Default Extension="xml" ContentType="application/xml"/>' +
         '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
-        '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
+        ark.map((_, i) => '<Override PartName="/xl/worksheets/sheet' + (i + 1) + '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>').join("") +
         "</Types>" },
     { navn: "_rels/.rels",
       data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
@@ -90,18 +104,23 @@ export function xlsxFiler(navn, rader) {
       data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
         '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ' +
         'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
-        '<sheets><sheet name="' + xmlEsc(ark) + '" sheetId="1" r:id="rId1"/></sheets></workbook>' },
+        '<sheets>' + ark.map((_, i) => '<sheet name="' + xmlEsc(navn[i]) + '" sheetId="' + (i + 1) + '" r:id="rId' + (i + 1) + '"/>').join("") +
+        '</sheets></workbook>' },
     { navn: "xl/_rels/workbook.xml.rels",
       data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
         '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
-        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' +
-        "</Relationships>" },
-    { navn: "xl/worksheets/sheet1.xml", data: arkXml(rader) }
+        ark.map((_, i) => '<Relationship Id="rId' + (i + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet' + (i + 1) + '.xml"/>').join("") +
+        "</Relationships>" }
   ];
+  ark.forEach((a, i) => filer.push({ navn: "xl/worksheets/sheet" + (i + 1) + ".xml", data: arkXml(a.rader) }));
+  return filer;
 }
 
 export function lagXlsx(navn, rader) {
   return lagZip(xlsxFiler(navn, rader).map(f => ({ navn: f.navn, data: tilBytes(f.data) })));
+}
+export function lagXlsxFlere(arkListe) {
+  return lagZip(xlsxFilerFlere(arkListe).map(f => ({ navn: f.navn, data: tilBytes(f.data) })));
 }
 
 export const XLSX_MIME =
