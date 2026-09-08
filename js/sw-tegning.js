@@ -721,7 +721,9 @@ export function byggTegningsmodell(inn) {
 
     ut.push({
       fi,
-      navn: t("Fasade {0}", fi + 1),
+      // Fasadens eget navn står FØRST når det finnes: innerveggene har navn
+      // («Mesaninvegg»), ytterveggene har bare nummeret sitt.
+      navn: fasader[fi].navn || t("Fasade {0}", fi + 1),
       fraMm, tilMm,
       lengdeMm: tilMm - fraMm,
       bunnMm, toppMm, veggToppMm,
@@ -778,7 +780,10 @@ export function byggTegningsmodell(inn) {
   }
   // Fargen tegnes med SAMME SKYGGE som i 3D — se skyggetFarge.
   return { fasader: ut,
-    elementFarge: skyggetFarge(hexTilRgb(o.farge, FARGE.element)) };
+    elementFarge: skyggetFarge(hexTilRgb(o.farge, FARGE.element)),
+    // Nivåmarkøren øverst heter «Gesims» på en yttervegg. En innervegg har
+    // ingen gesims, og da sender veggelement.js inn sitt eget navn.
+    toppNavn: inn.toppNavn || "Gesims" };
 }
 
 // Blokkas mål i punkt ved en gitt målestokk.
@@ -1105,7 +1110,7 @@ function hake(d, x, y, loddrett) {
 }
 
 // ---------- Én fasadeblokk ----------
-function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad, elFarge) {
+function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad, elFarge, toppNavn) {
   const EF = elFarge || FARGE.element;
   const xTittel = RAMME.x0 + 40;      // Moelv: tittelen i margen, ikke over veggen
   const px = (mm) => x + (mm - f.fraMm) / skala * MM;                 // langs fasaden
@@ -1532,7 +1537,7 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad, elFarge) {
       { angle: 90 });
   }
   const xNiva = x + veggB + PLASS.hoydekjede + PLASS.niva - 14;
-  nivaMarkor(d, xKj + 8, xNiva, py(f.veggToppMm), t("Gesims"),
+  nivaMarkor(d, xKj + 8, xNiva, py(f.veggToppMm), t(toppNavn || "Gesims"),
     kote(f.veggToppMm - f.nullMm));
   nivaMarkor(d, xKj + 8, xNiva, py(f.nullMm), "01", kote(0));
 
@@ -1567,7 +1572,8 @@ export async function tegn(jsPDF, modell, felt, logoInn) {
     const skalaer = [];
     for (const b of ark[i].fasader) {
       const x = RAMME.x0 + 20 + (medMerknad ? PLASS.merknad : 0);
-      tegnFasade(d, b.f, b.skala, x, b.y, medMerknad, merknad, modell.elementFarge);
+      tegnFasade(d, b.f, b.skala, x, b.y, medMerknad, merknad, modell.elementFarge,
+        modell.toppNavn);
       skalaer.push("1:" + b.skala);
     }
     tegnTittelfelt(d, Object.assign({}, felt, {
