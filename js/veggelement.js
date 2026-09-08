@@ -54,12 +54,16 @@ export const SW_TOL_MM = 5;           // to lengder innenfor dette = samme SW-nu
 // Grensa finnes bare som valgfri innstilling (o.kappUnderMm, standard av).
 export const SW_KAPP_UNDER_MM = 2000;
 export const SW_MIN_FELT_MM = 1000;  // to skjøter nærmere enn dette blir ÉN
-// Laveste høyde et SKRÅKAPPET element får ha i den tynne enden. Uten den gikk
-// kilene ut i nesten ingenting: Norsjø-gavlen fikk element som «1881×1095/100»,
-// altså en 1,9 m lang spiss som ender på 10 cm (Emil 08.09). Nå kappes
-// elementet i LENGDEN der taket kommer under denne høyden, og enden står med
-// en rett kant. Justerbart i panelet (o.minSkraMm).
-export const SW_MIN_SKRA_MM = 300;
+// Laveste høyde et SKRÅKAPPET element får ha i den tynne enden.
+//
+// STANDARD ER 0, OG DET ER ET VALG. En minstehøyde og en tett vegg er to sider
+// av samme sak: kapper vi elementet der taket er 300 mm over radbunnen, står
+// det igjen en trekant på 300 mm × 600 mm mellom veggkanten og takflaten — og
+// den er et HULL (Emil 08.09, andre gjennomgang: «elementene stikker enda ikke
+// ut til kanten av taket»). Skal veggen møte taket, må kilen få gå helt ut.
+// Grensa står igjen som innstilling for den som heller vil ha en rett kant enn
+// en spiss, og da er hullet et bevisst valg.
+export const SW_MIN_SKRA_MM = 0;
 // Hvor stor del av fasadehøyden en søyle må nå for å telle som veggsøyle.
 // To terskler, fordi de to spørsmålene ikke er like strenge:
 //  • SW_VEGGANDEL — for å TA INN en søyle som ikke har forlenger. Streng, ellers
@@ -547,9 +551,12 @@ export function takSpenn(linje, fraMm, tilMm, rBunnMm, rToppMm, klaringMm, minBi
   if (!linje || linje.length < 2) return [{ fra: fraMm, til: tilMm }];
   const kl = Number(klaringMm) >= 0 ? Number(klaringMm) : 0;
   const min = Number(minBitMm) > 0 ? Number(minBitMm) : 0;
-  // Tynneste tillatte ende. Aldri mer enn halve radhøyden — ellers ville en
-  // 190 mm tilpasningsrad forsvunnet helt fordi grensa sto på 300.
-  const minH = Math.min(Number(minHoydeMm) > 0 ? Number(minHoydeMm) : min,
+  // Tynneste tillatte ende. NULL BETYR NULL: da går kilen helt ut til der taket
+  // krysser radbunnen, og veggen møter takflaten uten hull. Aldri mer enn halve
+  // radhøyden — ellers ville en 190 mm tilpasningsrad forsvunnet helt fordi
+  // grensa sto på 300.
+  const oppgitt = Number(minHoydeMm);
+  const minH = Math.min(Number.isFinite(oppgitt) ? Math.max(0, oppgitt) : min,
                         (rToppMm - rBunnMm) / 2);
   // Bare knekk som faktisk skjærer DENNE raden gir skjøt. Mønet over en rad
   // som uansett er full i hele feltet skal ikke dele den i to.
@@ -1176,7 +1183,7 @@ const STD_OPPSETT = {
   radHoyder: "", kappNederst: true,
   klaringMm: SW_KLARING_MM,     // 10 mm hver side = 20 mm skjøt
   minFeltMm: SW_MIN_FELT_MM,    // skjøter nærmere enn dette slås sammen
-  minSkraMm: SW_MIN_SKRA_MM,    // tynneste enden på et skråkappet element
+  minSkraMm: SW_MIN_SKRA_MM,    // 0 = kilen går helt ut til taket
   // 🏔 SALTAK-KNAPPEN (Emil 08.09). Veggtoppen følger taket bare når den står
   // PÅ. Standard AV, og det er ikke forsiktighet — det er riktigst for de
   // fleste stålbygg: en gavl med FAGVERK har takstolen liggende i gavlplanet,
@@ -2301,7 +2308,16 @@ function loesAlleJusteringer() {
         // VINKELEN regnes ÉN gang, her, og leses av både 3D-merkinga, lista og
         // instruksjonstegninga. Regnet tre steder ville de tre tallene før
         // eller siden sagt hver sin ting etter et drag.
-        v.skraTekst = v.skra ? vinkelTekst(skraVinkel(v.lengdeMm, v.hVMm, v.hHMm)) : undefined;
+        //
+        // Den regnes av TAKLINJA over elementets utstrekning, ikke av hVMm/hHMm.
+        // Endehøydene er KLIPPET til radbåndet, og et element som dras forbi
+        // der taket krysser radbunnen får da en ende på 5 mm — og en vinkel på
+        // 25,2° der taket faktisk faller 27,4° (Emil 08.09). Panelet skjæres
+        // etter takfallet; høydene forteller hvor høyt det er i hver ende, og
+        // vinkelen forteller hvor bratt kuttet er. To spørsmål, to svar.
+        const ty0 = takHoyde(lin, v.fraMm), ty1 = takHoyde(lin, v.tilMm);
+        v.skraTekst = v.skra
+          ? vinkelTekst(skraVinkel(v.tilMm - v.fraMm, ty0, ty1)) : undefined;
         if (lagret.baseY !== undefined)
           v.y = lagret.baseY + tilScene((v.rBunnMm || 0) + v.hoydeMm / 2);
       }
@@ -2606,9 +2622,47 @@ async function stalPaFasader() {
     if (best < 0) continue;
     const fraMm = tilMm(bestT[0]), tilMm_ = tilMm(bestT[1]);
     if (tilMm_ - fraMm < 20) continue;
-    ut.push({ fi: best, fraMm: Math.round(fraMm), tilMm_: Math.round(tilMm_),
+    ut.push({ fi: best, id, fraMm: Math.round(fraMm), tilMm_: Math.round(tilMm_),
       bunnMm: Math.round(tilMm(b.min.y - baseY)),
       toppMm: Math.round(tilMm(b.max.y - baseY)) });
+  }
+  // 🔩 SILHUETTEN, ikke boksen. En SKRÅ takbjelke har en akse-justert boks som
+  // er like høy som mønet langs hele spennet, og tegnet som et rektangel fylte
+  // den hele gavltrekanten med stål (Emil 08.09: «utfylte områder hvor det ikke
+  // skal være det»). Her hentes den FAKTISKE omrisset ut av trekantene:
+  // punktene projiseres på fasaden, bøttes langs den, og det konvekse hullet av
+  // dem er omrisset. En rett søyle eller bjelke gir nøyaktig samme rektangel som
+  // før — flate bygg endrer seg ikke — mens en skrå bjelke blir en skrå stav.
+  const perId = new Map(ut.map(r => [r.id, r]));
+  const bytter = new Map();   // id → Map(bøtte → [t, minY, maxY])
+  const botte = tilScene(50) || 0.05;
+  const v3 = new THREE.Vector3();
+  forHverTrekant(new Set(perId.keys()), (pos, i0, i1, i2, mtx, id) => {
+    const r = perId.get(id);
+    const f = fasader[r.fi];
+    let m = bytter.get(id);
+    if (!m) { m = new Map(); bytter.set(id, m); }
+    for (const i of [i0, i1, i2]) {
+      v3.fromBufferAttribute(pos, i);
+      if (mtx) v3.applyMatrix4(mtx);
+      const t = (v3.x - f.px) * f.ex + (v3.z - f.pz) * f.ez;
+      const k = Math.round(t / botte);
+      const e = m.get(k);
+      if (!e) m.set(k, [t, v3.y, v3.y]);
+      else { if (v3.y < e[1]) e[1] = v3.y; if (v3.y > e[2]) e[2] = v3.y; }
+    }
+  });
+  for (const r of ut) {
+    const m = bytter.get(r.id);
+    if (!m || m.size < 2) continue;
+    const p = [];
+    for (const [t, lo, hi] of m.values()) {
+      p.push({ x: tilMm(t), z: tilMm(lo - baseY) });
+      if (hi !== lo) p.push({ x: tilMm(t), z: tilMm(hi - baseY) });
+    }
+    const hull = konveksHull(p);
+    if (hull.length >= 3)
+      r.poly = hull.map(q => [Math.round(q.x), Math.round(q.z)]);
   }
   return ut;
 }
@@ -3214,7 +3268,7 @@ function tegnPanel() {
       (o.kappNederst ? " checked" : "") + '> ' + t("Tilpasningsraden nederst (som Moelv/Lørenskog)") + '</label>' +
     felt("swMinFelt", "Minste felt (mm) — tettere skjøter slås sammen", o.minFeltMm) +
     felt("swKappUnder", "Alt kortere enn (mm) er kapp — 0 = av", o.kappUnderMm) +
-    felt("swMinSkra", "Tynneste ende på skråkapp (mm)", o.minSkraMm) +
+    felt("swMinSkra", "Tynneste ende på skråkapp (mm) — 0 = helt inntil taket", o.minSkraMm) +
     '<label>' + t("Navn på kappbiter") +
       '<span class="sw-prefiks"><span>SW-</span>' +
       '<input type="text" id="swKappTekst" maxlength="20" value="' +
