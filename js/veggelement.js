@@ -458,33 +458,30 @@ export function skraVinkel(lengdeMm, hVMm, hHMm) {
 // Mikroprofilen er den samme som på et rett panel: `trpProfil` gir en profil
 // som løper OVER HØYDEN, og på et rett panel ekstruderes hvert profilbånd i
 // full lengde. På et skråkappet panel kan et bånd ikke gå i full lengde — det
-// må stoppe der takkuttet kommer under sin egen høyde. Derfor får hvert bånd
-// sin egen x-utstrekning, og båndet blir et trapes i stedet for et rektangel.
-// Da følger ribbene skråkanten helt ut, uten trappetrinn.
+// finnes bare der OVERKANTEN er høyere enn båndet selv. Derfor får hvert bånd
+// sin egen x-utstrekning fra `toppIntervall`, og båndet blir et trapes i
+// stedet for et rektangel. Da følger ribbene skråkanten helt ut, uten
+// trappetrinn — også på en femkant der bare det ene hjørnet er skåret av.
 //
 // Profilen skal regnes av RADENS høyde, ikke elementets: da står ribbene i
-// flukt med naboelementene i samme rad. Bånd over `hMaks` hoppes over.
+// flukt med naboelementene i samme rad.
 //
-// `profilM` er [[høyde, bulk]] i sceneenheter, `hullM` er hakkene
-// ({x0,x1,y0,y1} i sceneenheter fra elementets venstre nedre hjørne).
-// Ut kommer et flatt posisjonsarray (x, y, z) der z er bulken i profilen.
-export function ribbonSkraPos(profilM, lengdeM, hVM, hHM, hullM) {
+// `profilM` er [[høyde, bulk]] og `toppM` er overkantens polylinje, begge i
+// sceneenheter. `hullM` er hakkene ({x0,x1,y0,y1} fra elementets venstre nedre
+// hjørne). Ut kommer et flatt posisjonsarray (x, y, z) der z er bulken.
+export function ribbonSkraPos(profilM, lengdeM, toppM, hullM) {
   const ut = [];
-  const x0 = -lengdeM / 2, x1 = lengdeM / 2;
-  const hMaks = Math.max(hVM, hHM);
-  const dh = hHM - hVM;
-  // x-intervallet som finnes på høyden z
-  const grense = (z) => {
-    if (Math.abs(dh) < 1e-9) return [x0, x1];
-    const del = Math.min(1, Math.max(0, (z - Math.min(hVM, hHM)) / Math.abs(dh)));
-    return dh > 0 ? [x0 + del * (x1 - x0), x1] : [x0, x1 - del * (x1 - x0)];
-  };
+  const x0 = -lengdeM / 2;
+  const hMaks = Math.max(...(toppM || [[0, 0]]).map(q => q[1]));
   const kl = (v, p, q) => Math.min(q, Math.max(p, v));
   for (let i = 0; i < profilM.length - 1; i++) {
     const [az, ay] = profilM[i], [bz, by] = profilM[i + 1];
     if (az > hMaks + 1e-9 && bz > hMaks + 1e-9) continue;
-    const [aa0, ab0] = grense(Math.min(az, hMaks));
-    const [ba0, bb0] = grense(Math.min(bz, hMaks));
+    const ia = toppIntervall(toppM, Math.min(az, hMaks));
+    const ib = toppIntervall(toppM, Math.min(bz, hMaks));
+    if (!ia || !ib) continue;
+    const aa0 = x0 + ia[0], ab0 = x0 + ia[1];
+    const ba0 = x0 + ib[0], bb0 = x0 + ib[1];
     // hakkene tas bort i LENGDEN, bånd for bånd
     const biter = [[Math.min(aa0, ba0), Math.max(ab0, bb0)]];
     for (const h of (hullM || [])) {
@@ -540,6 +537,87 @@ export function takBand(linje, fraMm, tilMm, yMinMm) {
   return (a === null || b === null || b - a <= 0) ? null : [a, b];
 }
 
+// OVERKANTEN PÅ ETT ELEMENT, slik taket skjærer den.
+//
+// Dette er runde 20c sin kjerne, og Emils egen formulering: «går det an at
+// veggelement med saltak oppfører seg på samme måte som utsparing — at alt
+// utenfor skråkanten fjernes på elementet?» Ja. Elementet beholder feltet sitt
+// og full radhøyde, og taket TAR BORT det som stikker over. Resultatet er en
+// polylinje langs overkanten, i ELEMENTETS egne mm: x fra venstre ende,
+// y over radens bunn.
+//
+//   flatt tak over hele elementet  → [[0, radH], [L, radH]]   (rett rektangel)
+//   taket skjærer det ene hjørnet  → [[0, radH], [x, radH], [L, h]]  (femkant)
+//   taket skjærer hele oversiden   → [[0, hV], [L, hH]]       (trapes)
+//
+// Knekkpunktene er: elementets ender, taklinjas egne knekk, og der taket
+// krysser radens topp og bunn. Alt annet er rette linjer imellom.
+export function takTopp(linje, fraMm, tilMm, rBunnMm, rToppMm) {
+  const radH = rToppMm - rBunnMm;
+  const L = tilMm - fraMm;
+  if (!linje || linje.length < 2 || !(L > 0)) return [[0, radH], [L, radH]];
+  const h = (t) => Math.min(radH, Math.max(0, takHoyde(linje, t) - rBunnMm));
+  const xs = [fraMm, tilMm];
+  for (const [x] of linje) if (x > fraMm && x < tilMm) xs.push(x);
+  // krysningene med radens topp og bunn — der knekker overkanten
+  for (const niva of [rToppMm, rBunnMm]) {
+    for (let i = 1; i < linje.length; i++) {
+      const [x0, y0] = linje[i - 1], [x1, y1] = linje[i];
+      if (x1 === x0 || (y0 - niva) * (y1 - niva) >= 0) continue;
+      const t = x0 + (x1 - x0) * (niva - y0) / (y1 - y0);
+      if (t > fraMm && t < tilMm) xs.push(t);
+    }
+  }
+  xs.sort((a2, b2) => a2 - b2);
+  const ut = [];
+  for (const x of xs) {
+    const px = Math.round((x - fraMm) * 1000) / 1000;
+    if (ut.length && Math.abs(ut[ut.length - 1][0] - px) < 0.5) continue;
+    ut.push([px, Math.round(h(x))]);
+  }
+  // rette punkter midt på en rett strekning fjernes — de sier ingenting
+  for (let i = ut.length - 2; i > 0; i--) {
+    const [x0, y0] = ut[i - 1], [x1, y1] = ut[i], [x2, y2] = ut[i + 1];
+    const paa = x2 === x0 ? y0 : y0 + (y2 - y0) * (x1 - x0) / (x2 - x0);
+    if (Math.abs(y1 - paa) < 1) ut.splice(i, 1);
+  }
+  return ut.length >= 2 ? ut : [[0, radH], [L, radH]];
+}
+
+// Er overkanten skrå i det hele tatt? Ett tall å teste på, ett sted.
+export function toppErSkra(toppP, radHMm) {
+  return (toppP || []).some(q => Math.abs(q[1] - radHMm) > 2);
+}
+
+// Vinkelen på selve SKRÅKUTTET: den bratteste strekningen i overkanten. Å måle
+// over hele elementet ville gitt 0° på en femkant der bare det ene hjørnet er
+// tatt av, og for slakt på et element som er dratt forbi taket.
+export function toppVinkel(toppP) {
+  let best = 0;
+  for (let i = 1; i < (toppP || []).length; i++) {
+    const dx = toppP[i][0] - toppP[i - 1][0], dy = toppP[i][1] - toppP[i - 1][1];
+    if (Math.abs(dx) < 1 || Math.abs(dy) < 1) continue;
+    best = Math.max(best, Math.abs(Math.atan2(dy, dx)));
+  }
+  return Math.round(best * 1800 / Math.PI) / 10;
+}
+
+// x-strekningen der overkanten ligger PÅ ELLER OVER høyden `z`. Taklinja er en
+// øvre konveks hylle klippet til radbåndet, så svaret er alltid ett stykke.
+export function toppIntervall(toppP, z) {
+  const P = toppP || [];
+  if (P.length < 2) return null;
+  let a2 = null, b2 = null;
+  const se = (x) => { if (a2 === null || x < a2) a2 = x; if (b2 === null || x > b2) b2 = x; };
+  for (let i = 0; i < P.length; i++) {
+    if (P[i][1] >= z) se(P[i][0]);
+    if (i === 0) continue;
+    const [x0, y0] = P[i - 1], [x1, y1] = P[i];
+    if ((y0 - z) * (y1 - z) < 0 && y1 !== y0) se(x0 + (x1 - x0) * (z - y0) / (y1 - y0));
+  }
+  return (a2 === null || b2 === null || b2 - a2 <= 0) ? null : [a2, b2];
+}
+
 // ÉN RAD I ÉTT FELT, kappet mot taket. Svaret er bitene raden faktisk består
 // av — vanligvis nøyaktig én, som er hele feltet:
 //   · taket ligger over hele raden      → [{fra, til}] uendret, som før runde 20
@@ -562,29 +640,14 @@ export function takSpenn(linje, fraMm, tilMm, rBunnMm, rToppMm, klaringMm, minBi
   // som uansett er full i hele feltet skal ikke dele den i to.
   const kn = takKnekk(linje, fraMm, tilMm)
     .filter(t => { const y = takHoyde(linje, t); return y > rBunnMm + 1 && y < rToppMm - 1; });
-  // OG der taket krysser radens TOPP. Uten dette ble et element som spenner
-  // over mønet en FEMKANT: skrå opp, flat på radtoppen, skrå ned igjen — og
-  // tegnet som et trapes mellom endehøydene lå halve panelet nede i lufta
-  // (Norsjø gavl, rad 8: endene 433 og 457 mm, mens taket midt imellom står
-  // 1000 mm over radbunnen). Et panel kan skråskjæres, ikke brekkes: derfor
-  // skjøt der skråkappet begynner og slutter.
-  const over = takBand(linje, fraMm, tilMm, rToppMm);
+  // MØNET er den ENESTE grunnen til å skjøte. Fram til runde 20c skjøtet vi
+  // også der taket krysset radens TOPP — og det var feilen Emil pekte på
+  // (08.09): gavlen ble en TRAPP, der hvert felt sto med ett rett element og
+  // en skrå stump ved siden av. Et panel kan ikke brettes, så mønet må være en
+  // skjøt; men et rektangel med ETT avskåret hjørne er en helt vanlig
+  // panelform, og den trenger ingen skjøt. Elementet beholder feltet sitt, og
+  // TAKET SKJÆRER I DET — akkurat som en utsparing gjør (Emils egen modell).
   const g = [fraMm, ...kn, tilMm];
-  const inni = (t) => t > fraMm + 1 && t < tilMm - 1;
-  if (over) {
-    // Er det FULLE stykket langt nok, skjøtes det i begge ender: skråkapp opp,
-    // helt element, skråkapp ned.
-    if (over[1] - over[0] >= min) {
-      for (const t of over) if (inni(t)) g.push(t);
-    } else {
-      // Stikker mønet bare så vidt over radtoppen, ville de to skjøtene gitt
-      // en strimmel på noen få centimeter midt i mønet. Da skjøtes det i
-      // TOPPUNKTET i stedet, og de to bitene møtes der med full høyde.
-      const iA = takKnekk(linje, over[0] - 1, over[1] + 1);
-      const topp = iA.length ? iA[Math.floor(iA.length / 2)] : (over[0] + over[1]) / 2;
-      if (inni(topp)) g.push(topp);
-    }
-  }
   g.sort((x, y) => x - y);
   for (let i = g.length - 1; i > 0; i--) if (g[i] - g[i - 1] < 1) g.splice(i, 1);
   const ut = [];
@@ -1184,6 +1247,7 @@ const STD_OPPSETT = {
   klaringMm: SW_KLARING_MM,     // 10 mm hver side = 20 mm skjøt
   minFeltMm: SW_MIN_FELT_MM,    // skjøter nærmere enn dette slås sammen
   minSkraMm: SW_MIN_SKRA_MM,    // 0 = kilen går helt ut til taket
+  minSkraNullet: true,          // migreringsmerke, se oppsett()
   // 🏔 SALTAK-KNAPPEN (Emil 08.09). Veggtoppen følger taket bare når den står
   // PÅ. Standard AV, og det er ikke forsiktighet — det er riktigst for de
   // fleste stålbygg: en gavl med FAGVERK har takstolen liggende i gavlplanet,
@@ -1221,6 +1285,15 @@ function oppsett() {
   lagret.oppsett = { ...STD_OPPSETT, ...(lagret.oppsett || {}) };
   // Et oppsett fra før kappnavnet ble fritt har `kappStil` i stedet. Uten
   // denne linja ville Lørenskog-valget stille falt tilbake til SW-XX.
+  // 🏔 Runde 20b satte 300 mm som tynneste ende på skråkapp. Det var VÅRT valg,
+  // ikke Emils, og det ga et hull mellom veggkanten og takflaten. Verdien
+  // ligger lagret PER FIL og ville overstyrt den nye standarden på 0 for alle
+  // modeller som alt er generert. Den nulles én gang, og merket lagres — setter
+  // noen 300 bevisst senere, blir det stående.
+  if (lagret.oppsett.minSkraNullet === undefined) {
+    if (lagret.oppsett.minSkraMm === 300) lagret.oppsett.minSkraMm = 0;
+    lagret.oppsett.minSkraNullet = true;
+  }
   if (lagret.oppsett.kappStil !== undefined) {
     lagret.oppsett.kappTekst = lagret.oppsett.kappStil === "stjerne" ? "*" : "XX";
     delete lagret.oppsett.kappStil;
@@ -1484,18 +1557,22 @@ function tegnAlt() {
   // liggende og reist opp som byggPanel: en ExtrudeGeometry ekstruderer i z,
   // og liggende ville kjernen blitt presset ut langs høyden i stedet for
   // gjennom tykkelsen.
-  const byggSkraPanel = (lengdeMm, hVMm, hHMm, tMm, radHMm, hull) => {
+  const byggSkraPanel = (lengdeMm, toppPMm, tMm, radHMm, hull) => {
     const inner = new THREE.Group();
     const L = mmTilScene(lengdeMm), T = mmTilScene(tMm);
-    const hMaks = Math.max(hVMm, hHMm);
+    const hMaks = Math.max(...toppPMm.map(q => q[1]));
     const y0 = -mmTilScene(hMaks) / 2;
     const inn = mmTilScene(2);                       // kjernen trekkes 2 mm inn
-    // Kjernen: trapeset, med hakkene som hull i formen.
+    // Kjernen: elementets faktiske form — bunnkant, høyre kant, overkanten
+    // baklengs — med hakkene som hull i formen.
     const form = new THREE.Shape();
     form.moveTo(-L / 2 + inn, y0 + inn);
     form.lineTo(L / 2 - inn, y0 + inn);
-    form.lineTo(L / 2 - inn, y0 + mmTilScene(hHMm) - inn);
-    form.lineTo(-L / 2 + inn, y0 + mmTilScene(hVMm) - inn);
+    for (let i = toppPMm.length - 1; i >= 0; i--) {
+      const [x, y] = toppPMm[i];
+      form.lineTo(-L / 2 + mmTilScene(x) + (i === toppPMm.length - 1 ? -inn : (i === 0 ? inn : 0)),
+                  y0 + mmTilScene(y) - inn);
+    }
     form.closePath();
     for (const h of (hull || [])) {
       const bane = new THREE.Path();
@@ -1509,14 +1586,14 @@ function tegnAlt() {
     const kjerneGeo = new THREE.ExtrudeGeometry(form, { depth: dyp, bevelEnabled: false });
     kjerneGeo.translate(0, 0, -dyp / 2);
     inner.add(new THREE.Mesh(kjerneGeo, kjerneMat));
-    // Blikket: samme mikroprofil som på et rett panel, klippet mot skråkuttet.
-    // Profilen regnes av RADENS høyde, så ribbene står i flukt med naboene.
+    // Blikket: samme mikroprofil som på et rett panel, klippet mot overkanten.
     const profS = trpProfil(radHMm || hMaks, mal.deling, mal.profilHoyde)
       .map(([x, y]) => [mmTilScene(x), mmTilScene(y)]);
+    const toppS = toppPMm.map(([x, y]) => [mmTilScene(x), mmTilScene(y)]);
     const hullS = (hull || []).map(h => ({
       x0: mmTilScene(h.x0), x1: mmTilScene(h.x1),
       y0: mmTilScene(h.y0), y1: mmTilScene(h.y1) }));
-    const pos = ribbonSkraPos(profS, L, mmTilScene(hVMm), mmTilScene(hHMm), hullS);
+    const pos = ribbonSkraPos(profS, L, toppS, hullS);
     if (pos.length) {
       const ph = mmTilScene(mal.profilHoyde);
       const lag = (utover) => {
@@ -1552,7 +1629,8 @@ function tegnAlt() {
     }
     if (v.skra) {
       // Skråkappet element: ett trapes med bølge og kjerne, åpningene som hull.
-      el.add(byggSkraPanel(v.lengdeMm, v.hVMm, v.hHMm, v.tMm, v.radHMm, hull));
+      el.add(byggSkraPanel(v.lengdeMm,
+        v.toppP || [[0, v.hVMm], [v.lengdeMm, v.hHMm]], v.tMm, v.radHMm, hull));
     } else {
     const deler = hull && hull.length
       ? rektMinusHull(v.lengdeMm, v.hoydeMm, hull, 20)
@@ -2068,13 +2146,13 @@ async function generer() {
         const feltMm = flatt ? fullMm : sp.til - sp.fra;
         for (const [bFra, bTil] of delOppMedUtsparinger(sp.fra, sp.til, kutt)) {
           const lengdeMm = bTil - bFra;
-          // Endehøydene: hvor høyt taket står over radens bunn i hver ende.
-          // Like høye = vanlig rektangel; ulike = skråkapp.
-          const endeH = (t) => Math.min(radH, Math.max(0, Math.round(takHoyde(linje, t) - rBunn)));
-          const hV = flatt ? radH : endeH(bFra);
-          const hH = flatt ? radH : endeH(bTil);
-          const skra = Math.abs(hV - hH) > 2;
-          const hMaks = Math.max(hV, hH);
+          // 🏔 OVERKANTEN: taket skjærer i elementet, som en utsparing gjør.
+          // toppP er polylinja langs overkanten i elementets egne mm.
+          const toppP = flatt ? null : takTopp(linje, bFra, bTil, rBunn, rTopp);
+          const hV = flatt ? radH : toppP[0][1];
+          const hH = flatt ? radH : toppP[toppP.length - 1][1];
+          const skra = !flatt && toppErSkra(toppP, radH);
+          const hMaks = flatt ? radH : Math.max(...toppP.map(q => q[1]));
           if (hMaks < 20) continue;
           const tMid = tilScene((bFra + bTil) / 2);
           const p = midt(tMid, baseY + tilScene(rBunn + hMaks / 2));
@@ -2100,6 +2178,7 @@ async function generer() {
             // radHMm er RADENS fulle høyde; hVMm/hHMm er elementets høyde i
             // venstre og høyre ende. På flatt tak er alle tre like.
             radHMm: radH, hVMm: hV, hHMm: hH, skra: skra || undefined,
+            toppP: skra ? toppP : undefined,
             fullMm: Math.round(feltMm),
             hull: hull.length ? hull : undefined,
             // Kapp = FAKTISK skåret i LENGDEN: tilpasningsraden, eller en bit
@@ -2301,10 +2380,12 @@ function loesAlleJusteringer() {
       // Uten dette beholdt det høyden fra der det sto da det ble generert.
       const lin = ((lagret.fasader || [])[v.fi] || {}).takLinje;
       if (v.radHMm && lin && lin.length > 1) {
-        const h = (t) => Math.min(v.radHMm, Math.max(0, Math.round(takHoyde(lin, t) - (v.rBunnMm || 0))));
-        v.hVMm = h(v.fraMm); v.hHMm = h(v.tilMm);
-        v.hoydeMm = Math.max(v.hVMm, v.hHMm);
-        v.skra = Math.abs(v.hVMm - v.hHMm) > 2 || undefined;
+        const rB = v.rBunnMm || 0;
+        const tp = takTopp(lin, v.fraMm, v.tilMm, rB, rB + v.radHMm);
+        v.toppP = tp; v.hVMm = tp[0][1]; v.hHMm = tp[tp.length - 1][1];
+        v.hoydeMm = Math.max(...tp.map(q => q[1]));
+        v.skra = toppErSkra(tp, v.radHMm) || undefined;
+        if (!v.skra) v.toppP = undefined;
         // VINKELEN regnes ÉN gang, her, og leses av både 3D-merkinga, lista og
         // instruksjonstegninga. Regnet tre steder ville de tre tallene før
         // eller siden sagt hver sin ting etter et drag.
@@ -2315,9 +2396,10 @@ function loesAlleJusteringer() {
         // 25,2° der taket faktisk faller 27,4° (Emil 08.09). Panelet skjæres
         // etter takfallet; høydene forteller hvor høyt det er i hver ende, og
         // vinkelen forteller hvor bratt kuttet er. To spørsmål, to svar.
-        const ty0 = takHoyde(lin, v.fraMm), ty1 = takHoyde(lin, v.tilMm);
-        v.skraTekst = v.skra
-          ? vinkelTekst(skraVinkel(v.tilMm - v.fraMm, ty0, ty1)) : undefined;
+        // Vinkelen måles på selve SKRÅKUTTET — den bratteste strekningen i
+        // overkanten. Målt over hele elementet ville en femkant der bare det
+        // ene hjørnet er tatt av gitt 0°.
+        v.skraTekst = v.skra ? vinkelTekst(toppVinkel(tp)) : undefined;
         if (lagret.baseY !== undefined)
           v.y = lagret.baseY + tilScene((v.rBunnMm || 0) + v.hoydeMm / 2);
       }

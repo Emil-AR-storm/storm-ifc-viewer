@@ -696,7 +696,16 @@ export function byggTegningsmodell(inn) {
                  skra: !!v.skra,
                  hVMm: v.skra ? (sp ? v.hHMm : v.hVMm) : v.hoydeMm,
                  hHMm: v.skra ? (sp ? v.hVMm : v.hHMm) : v.hoydeMm,
-                 // Vinkelen kommer FERDIG REGNET fra veggelement.js (skraVinkel).
+                 // Overkantens polylinje, i ELEMENTETS egne mm. På en speilvendt
+                 // fasade snus elementet ende for ende, og da må polylinja
+                 // reverseres og x speiles om elementets egen lengde — ikke om
+                 // fasadens midtpunkt, som spX gjør.
+                 toppP: v.skra && v.toppP
+                   ? (sp ? v.toppP.slice().reverse()
+                        .map(([x, y]) => [Math.round(v.lengdeMm - x), y])
+                      : v.toppP.map(([x, y]) => [Math.round(x), y]))
+                   : null,
+                 // Vinkelen kommer FERDIG REGNET fra veggelement.js (toppVinkel).
                  // Speilingen snur ikke tallet: en 27,9° skråkant er 27,9° uansett
                  // hvilken vei fasaden vises.
                  skraTekst: v.skraTekst || "",
@@ -1129,16 +1138,32 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad, elFarge) {
       rel.push([pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]]);
     d.lines(rel, pts[0][0], pts[0][1], [1, 1], stil, true);
   };
-  const tegnSkra = (rekt, hVMm, hHMm, lw) => {
-    const bredde = Math.max(1, rekt.x1 - rekt.x0);
-    const toppVed = (xm) => rekt.y0 + hVMm + (hHMm - hVMm) * (xm - rekt.x0) / bredde;
+  // Overkantens høyde ved en x målt fra elementets venstre kant.
+  const toppVed = (toppP, x) => {
+    const P = toppP || [];
+    if (!P.length) return null;
+    if (x <= P[0][0]) return P[0][1];
+    for (let i = 1; i < P.length; i++) {
+      if (x <= P[i][0]) {
+        const [x0, y0] = P[i - 1], [x1, y1] = P[i];
+        return x1 === x0 ? Math.max(y0, y1) : y0 + (y1 - y0) * (x - x0) / (x1 - x0);
+      }
+    }
+    return P[P.length - 1][1];
+  };
+  const tegnSkra = (rekt, toppP, lw) => {
     for (const b of trekkFra(rekt, hull)) {
-      const tv = Math.min(rekt.y1, Math.max(b.y0, toppVed(b.x0)));
-      const th = Math.min(rekt.y1, Math.max(b.y0, toppVed(b.x1)));
-      if (tv - b.y0 < 1 && th - b.y0 < 1) continue;
       if ((b.x1 - b.x0) / skala * MM <= 0.2) continue;
-      const pkt = [[px(b.x0), py(b.y0)], [px(b.x1), py(b.y0)],
-                   [px(b.x1), py(Math.min(th, b.y1))], [px(b.x0), py(Math.min(tv, b.y1))]];
+      // Knekkpunktene i overkanten som ligger inne i denne biten, pluss endene.
+      const a0 = b.x0 - rekt.x0, a1 = b.x1 - rekt.x0;
+      const xs = [a0];
+      for (const [x] of toppP) if (x > a0 + 0.5 && x < a1 - 0.5) xs.push(x);
+      xs.push(a1);
+      const yAbs = (x) => Math.min(rekt.y1, Math.max(b.y0, rekt.y0 + toppVed(toppP, x)));
+      if (xs.every(x => yAbs(x) - b.y0 < 1)) continue;
+      const pkt = [[px(b.x0), py(b.y0)], [px(b.x1), py(b.y0)]];
+      for (let i = xs.length - 1; i >= 0; i--)
+        pkt.push([px(rekt.x0 + xs[i]), py(yAbs(xs[i]))]);
       polygon(pkt, "F");
       d.setLineWidth(lw == null ? STREK.tynn : lw);
       polygon(pkt, "S");
@@ -1248,7 +1273,7 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad, elFarge) {
   d.setFillColor(EF[0], EF[1], EF[2]);
   for (const e of f.elementer) {
     const rekt = { x0: e.fraMm, x1: e.tilMm, y0: e.bunnMm, y1: e.bunnMm + e.hoydeMm };
-    if (e.skra) tegnSkra(rekt, e.hVMm, e.hHMm);
+    if (e.skra && e.toppP) tegnSkra(rekt, e.toppP);
     else tegnMedHull(rekt);
   }
 
@@ -1259,7 +1284,7 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad, elFarge) {
       Math.abs(o.fraMm - e.tilMm) < 60);
     if (!naboer.length) continue;
     for (const bit of trekkFra({ x0: e.tilMm - 1, x1: e.tilMm + 1,
-        y0: e.bunnMm, y1: e.bunnMm + (e.skra ? e.hHMm : e.hoydeMm) }, hull))
+        y0: e.bunnMm, y1: e.bunnMm + (e.skra ? Math.max(1, e.hHMm) : e.hoydeMm) }, hull))
       strek(d, px(e.tilMm), py(bit.y1), px(e.tilMm), py(bit.y0), STREK.skjot);
   }
 
@@ -1303,10 +1328,26 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad, elFarge) {
   // nummer i det hele tatt. Nå velges den bredeste resten, samme regel som
   // kappdybden bruker.
   for (const e of f.elementer) {
-    // Lappen skal ligge INNENFOR elementet: på et skråkappet element er det
-    // den LAVESTE enden som bestemmer hvor det er plass.
-    const rekt = { x0: e.fraMm, x1: e.tilMm, y0: e.bunnMm,
-                   y1: e.bunnMm + (e.skra ? Math.min(e.hVMm, e.hHMm) : e.hoydeMm) };
+    // Lappen skal ligge INNENFOR elementet. På et skråkappet element kan den
+    // ene enden være null høy, og en lapp plassert etter den enden forsvant
+    // helt (Emil 08.09: «noen veggelementer mangler informasjon på
+    // dimensjoner»). Nå letes det opp den strekningen der elementet FAKTISK er
+    // høyt nok til at teksten får plass.
+    let rekt = { x0: e.fraMm, x1: e.tilMm, y0: e.bunnMm, y1: e.bunnMm + e.hoydeMm };
+    if (e.skra && e.toppP) {
+      const trengs = SKRIFT.sw * 1.25 * skala / MM;      // punkt → mm
+      let xa = null, xb = null;
+      const se = (x) => { if (xa === null || x < xa) xa = x; if (xb === null || x > xb) xb = x; };
+      for (let i = 0; i < e.toppP.length; i++) {
+        if (e.toppP[i][1] >= trengs) se(e.toppP[i][0]);
+        if (i === 0) continue;
+        const [x0, y0] = e.toppP[i - 1], [x1, y1] = e.toppP[i];
+        if ((y0 - trengs) * (y1 - trengs) < 0 && y1 !== y0)
+          se(x0 + (x1 - x0) * (trengs - y0) / (y1 - y0));
+      }
+      if (xa === null || xb - xa < 1) continue;          // for lavt overalt
+      rekt = { x0: e.fraMm + xa, x1: e.fraMm + xb, y0: e.bunnMm, y1: e.bunnMm + trengs };
+    }
     const rest = trekkFra(rekt, hull).sort((p2, q) => (q.x1 - q.x0) - (p2.x1 - p2.x0))[0];
     if (!rest) continue;                              // helt dekket av åpninga
     const rx = px(rest.x0), rw = (rest.x1 - rest.x0) / skala * MM;
@@ -1318,9 +1359,23 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad, elFarge) {
     // 🏔 VINKELEN PÅ SKRÅKUTTET står ved selve kuttet — det er den verkstedet
     // skjærer etter, og den hører hjemme på kanten, ikke i elementlista alene.
     if (e.skraTekst) {
-      const mx = px((e.fraMm + e.tilMm) / 2);
-      const my = py(e.bunnMm + (e.hVMm + e.hHMm) / 2);
-      boksTekst(d, e.skraTekst, mx, my - 1.5, SKRIFT.lengde, "midt");
+      // Midt på det BRATTESTE stykket av overkanten — der kuttet faktisk er.
+      let bx = (e.fraMm + e.tilMm) / 2, by = e.bunnMm + e.hoydeMm / 2;
+      if (e.toppP && e.toppP.length > 1) {
+        let best = -1;
+        for (let i = 1; i < e.toppP.length; i++) {
+          const dx = e.toppP[i][0] - e.toppP[i - 1][0];
+          const dy = e.toppP[i][1] - e.toppP[i - 1][1];
+          if (Math.abs(dx) < 1 || Math.abs(dy) < 1) continue;
+          const bratt = Math.abs(dy / dx);
+          if (bratt > best) {
+            best = bratt;
+            bx = e.fraMm + (e.toppP[i][0] + e.toppP[i - 1][0]) / 2;
+            by = e.bunnMm + (e.toppP[i][1] + e.toppP[i - 1][1]) / 2;
+          }
+        }
+      }
+      boksTekst(d, e.skraTekst, px(bx), py(by) - 1.5, SKRIFT.lengde, "midt");
     }
     // LENGDEN er elementets HELE lengde, ikke restens — det er elementet som
     // bestilles og kappes, ikke biten som synes på tegninga.
