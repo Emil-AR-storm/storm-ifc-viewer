@@ -1282,18 +1282,27 @@ function oppsett() {
   // Et oppsett lagret av en ELDRE versjon mangler de nye nøklene (radHoyder,
   // klaringMm, minFeltMm …). Uten denne fletten blir de undefined, og
   // genereringen regner med NaN.
-  lagret.oppsett = { ...STD_OPPSETT, ...(lagret.oppsett || {}) };
-  // Et oppsett fra før kappnavnet ble fritt har `kappStil` i stedet. Uten
-  // denne linja ville Lørenskog-valget stille falt tilbake til SW-XX.
   // 🏔 Runde 20b satte 300 mm som tynneste ende på skråkapp. Det var VÅRT valg,
   // ikke Emils, og det ga et hull mellom veggkanten og takflaten. Verdien
   // ligger lagret PER FIL og ville overstyrt den nye standarden på 0 for alle
   // modeller som alt er generert. Den nulles én gang, og merket lagres — setter
   // noen 300 bevisst senere, blir det stående.
-  if (lagret.oppsett.minSkraNullet === undefined) {
-    if (lagret.oppsett.minSkraMm === 300) lagret.oppsett.minSkraMm = 0;
-    lagret.oppsett.minSkraNullet = true;
-  }
+  //
+  // MERKET MÅ LESES FØR FLETTEN. Første forsøk sto etter, og da hadde
+  // `minSkraNullet: true` fra STD_OPPSETT alt kommet inn i objektet —
+  // `=== undefined` var aldri sann, og migreringen kjørte aldri (Emil 08.09:
+  // veggen sto fortsatt med 300 mm i den tynne enden). En migrering som spør
+  // om en nøkkel finnes, må spørre det RÅ lagrede oppsettet.
+  const raatt = lagret.oppsett || {};
+  const skalNulles = raatt.minSkraNullet === undefined && raatt.minSkraMm === 300;
+  // Et oppsett lagret av en ELDRE versjon mangler de nye nøklene (radHoyder,
+  // klaringMm, minFeltMm …). Uten denne fletten blir de undefined, og
+  // genereringen regner med NaN.
+  lagret.oppsett = { ...STD_OPPSETT, ...raatt };
+  if (skalNulles) lagret.oppsett.minSkraMm = 0;
+  lagret.oppsett.minSkraNullet = true;
+  // Et oppsett fra før kappnavnet ble fritt har `kappStil` i stedet. Uten
+  // denne linja ville Lørenskog-valget stille falt tilbake til SW-XX.
   if (lagret.oppsett.kappStil !== undefined) {
     lagret.oppsett.kappTekst = lagret.oppsett.kappStil === "stjerne" ? "*" : "XX";
     delete lagret.oppsett.kappStil;
@@ -1570,8 +1579,13 @@ function tegnAlt() {
     form.lineTo(L / 2 - inn, y0 + inn);
     for (let i = toppPMm.length - 1; i >= 0; i--) {
       const [x, y] = toppPMm[i];
+      // Overkanten kan gå helt ned til null der elementet ender i en spiss mot
+      // raftet. Trakk vi da 2 mm av som overalt ellers, havnet toppunktet UNDER
+      // bunnkanten, formen ble selvskjærende, og panelet vrengte seg i 3D
+      // (Emil 08.09, da han dro et element ut mot kanten). Overkanten holdes
+      // derfor alltid minst et hårstrå over bunnen.
       form.lineTo(-L / 2 + mmTilScene(x) + (i === toppPMm.length - 1 ? -inn : (i === 0 ? inn : 0)),
-                  y0 + mmTilScene(y) - inn);
+                  Math.max(y0 + inn * 2, y0 + mmTilScene(y) - inn));
     }
     form.closePath();
     for (const h of (hull || [])) {
@@ -2386,6 +2400,10 @@ function loesAlleJusteringer() {
         v.hoydeMm = Math.max(...tp.map(q => q[1]));
         v.skra = toppErSkra(tp, v.radHMm) || undefined;
         if (!v.skra) v.toppP = undefined;
+        // Dras et element helt forbi taket, er det ikke lenger noe panel der.
+        // Uten dette sto det igjen som en flate med null høyde, og geometrien
+        // vrengte seg (Emil 08.09).
+        if (v.hoydeMm < 20) v.skjult = true;
         // VINKELEN regnes ÉN gang, her, og leses av både 3D-merkinga, lista og
         // instruksjonstegninga. Regnet tre steder ville de tre tallene før
         // eller siden sagt hver sin ting etter et drag.

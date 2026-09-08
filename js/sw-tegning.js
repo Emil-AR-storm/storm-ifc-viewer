@@ -1345,17 +1345,33 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad, elFarge) {
         if ((y0 - trengs) * (y1 - trengs) < 0 && y1 !== y0)
           se(x0 + (x1 - x0) * (trengs - y0) / (y1 - y0));
       }
-      if (xa === null || xb - xa < 1) continue;          // for lavt overalt
-      rekt = { x0: e.fraMm + xa, x1: e.fraMm + xb, y0: e.bunnMm, y1: e.bunnMm + trengs };
+      if (xa === null || xb - xa < 1) {
+        // For lavt til teksten overalt. Da settes lappen ved elementets
+        // HØYESTE punkt i stedet for å droppes — et element uten nummer og
+        // mål er verre enn en lapp som ligger litt trangt (Emil 08.09: «det
+        // 7ende veggelementet i akse C til D mangler SW-nummer og dimensjoner»).
+        let hx = e.toppP[0][0], hy = e.toppP[0][1];
+        for (const [qx, qy] of e.toppP) if (qy > hy) { hy = qy; hx = qx; }
+        const halv = Math.max(1, (e.tilMm - e.fraMm) / 4);
+        xa = Math.max(0, hx - halv); xb = Math.min(e.tilMm - e.fraMm, hx + halv);
+        rekt = { x0: e.fraMm + xa, x1: e.fraMm + xb, y0: e.bunnMm,
+                 y1: e.bunnMm + Math.max(hy, 1) };
+      } else {
+        rekt = { x0: e.fraMm + xa, x1: e.fraMm + xb, y0: e.bunnMm, y1: e.bunnMm + trengs };
+      }
     }
     const rest = trekkFra(rekt, hull).sort((p2, q) => (q.x1 - q.x0) - (p2.x1 - p2.x0))[0];
     if (!rest) continue;                              // helt dekket av åpninga
     const rx = px(rest.x0), rw = (rest.x1 - rest.x0) / skala * MM;
     const ry = py(rest.y1), rh = (rest.y1 - rest.y0) / skala * MM;
     // grensa følger SKRIFTEN, ikke et fast tall: da teksten ble forstørret
-    // ville et 14 pt bredt element fått en lapp bredere enn seg selv
-    if (rw < SKRIFT.sw * 1.7 || rh < SKRIFT.sw * 1.25) continue;
-    boksTekst(d, e.sw, rx + 4, ry + SKRIFT.sw * 0.95 + 1.5, SKRIFT.sw);
+    // ville et 14 pt bredt element fått en lapp bredere enn seg selv.
+    // Et SKRÅKAPPET element får litt slakkere høydekrav: rektangelet over er
+    // alt valgt der elementet er høyest, og et element uten nummer er verre
+    // enn en lapp som ligger trangt.
+    const nokPlass = rw >= SKRIFT.sw * 1.7 &&
+                     rh >= SKRIFT.sw * (e.skra ? 0.9 : 1.25);
+    if (nokPlass) boksTekst(d, e.sw, rx + 4, ry + SKRIFT.sw * 0.95 + 1.5, SKRIFT.sw);
     // 🏔 VINKELEN PÅ SKRÅKUTTET står ved selve kuttet — det er den verkstedet
     // skjærer etter, og den hører hjemme på kanten, ikke i elementlista alene.
     if (e.skraTekst) {
@@ -1417,6 +1433,22 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad, elFarge) {
     const y0 = py(r.bunnMm + r.hoydeMm), y1 = py(r.bunnMm);
     hake(d, xKj, y0, true);
     hake(d, xKj, y1, true);
+    // 📏 HENVISNINGSLINJE INN TIL RADEN. På en gavl står kjeden ved den LAVE
+    // enden, og de øverste radene finnes bare inne ved mønet. Uten en linje
+    // inn dit leste kjeden som mål til veggelementer som ikke er der
+    // (Emil 08.09). Linja tegnes bare når raden faktisk slutter et stykke
+    // innenfor kanten — på et flatt bygg går den til veggens ende og blir
+    // aldri tegnet.
+    const iRad = (f.elementer || []).filter(e => Math.abs(e.bunnMm - r.bunnMm) < 2);
+    if (iRad.length) {
+      const xSlutt = px(Math.max(...iRad.map(e => e.tilMm)));
+      if (xKj - xSlutt > 6) {
+        stiplet(d, true);
+        d.setLineWidth(STREK.tynn * 0.7);
+        d.line(xSlutt, y0, xKj, y0);
+        stiplet(d, false);
+      }
+    }
     if (y1 - y0 < 14) continue;
     d.text(T(String(r.hoydeMm)), xKj - 4, (y0 + y1) / 2 + d.getTextWidth(String(r.hoydeMm)) / 2,
       { angle: 90 });
