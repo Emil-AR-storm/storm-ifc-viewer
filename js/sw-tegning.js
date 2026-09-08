@@ -317,6 +317,60 @@ export function naboveggEnder(fasader, fi, veggMm, tykkelseMm, tilMmFn, tilScene
   return ut.sort((p2, q) => p2.fraMm - q.fraMm);
 }
 
+// 🧱 VEGGENS OVERKANT SOM FUNKSJON AV X, i mm langs fasaden.
+//
+// Brukes til å klippe stålet: en SW-tegning viser VEGGEN, og takkonstruksjonen
+// hører hjemme på ståltegninga. På et flatt bygg er dette et tynt bånd med
+// søyletopper; på en gavl er det HELE takstolen, og den fylte gavltrekanten med
+// skravur uten å si noe (Emil 08.09: «hva er de grå skraverte boksene rundt
+// saltaket? hvis det ikke er viktig ta det vekk»).
+//
+// Stålet Emil ba om å se i runde 20c — søyler ved porter, bjelker over
+// åpninger — ligger alltid UNDER veggens overkant og blir stående.
+//
+// Returnerer en funksjon (xMm) → høyeste veggkant der, eller null utenfor
+// veggen. `nabovegg`-stripene teller med: de er også vegg.
+export function veggOverkant(elementer, naboStriper) {
+  const seg = [];
+  for (const e of (elementer || [])) {
+    const L = e.tilMm - e.fraMm;
+    if (!(L > 0)) continue;
+    const P = (e.skra && e.toppP && e.toppP.length > 1)
+      ? e.toppP : [[0, e.hoydeMm], [L, e.hoydeMm]];
+    seg.push({ x0: e.fraMm, x1: e.tilMm, bunn: e.bunnMm, P });
+  }
+  for (const b of (naboStriper || [])) {
+    const h = Number.isFinite(b.toppMm) ? b.toppMm : 0;
+    if (b.tilMm > b.fraMm && h > 0)
+      seg.push({ x0: b.fraMm, x1: b.tilMm, bunn: 0, P: [[0, h], [b.tilMm - b.fraMm, h]] });
+  }
+  const iSeg = (g, x) => {
+    const lx = x - g.x0, P = g.P;
+    if (lx <= P[0][0]) return g.bunn + P[0][1];
+    for (let i = 1; i < P.length; i++) {
+      if (lx <= P[i][0]) {
+        const [a2, b2] = P[i - 1], [c2, d2] = P[i];
+        return g.bunn + (c2 === a2 ? Math.max(b2, d2) : b2 + (d2 - b2) * (lx - a2) / (c2 - a2));
+      }
+    }
+    return g.bunn + P[P.length - 1][1];
+  };
+  const f = (x) => {
+    let h = null;
+    for (const g of seg) {
+      if (x < g.x0 - 0.5 || x > g.x1 + 0.5) continue;
+      const v = iSeg(g, x);
+      if (h === null || v > h) h = v;
+    }
+    return h;
+  };
+  // knekkpunktene, så den som klipper vet hvor linja skifter retning
+  f.knekk = [];
+  for (const g of seg) for (const [lx] of g.P) f.knekk.push(g.x0 + lx);
+  f.knekk.sort((a2, b2) => a2 - b2);
+  return f;
+}
+
 // ---------- Målkjeden over fasaden ----------
 // Kjeden går fra der VEGGEN starter til der den slutter, med en skjøt
 // (2 × klaring) på hver INDRE akse imellom:
@@ -1204,12 +1258,35 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad, elFarge) {
   // betongen. Rekkefølgen ER klippingen her: det som ligger bakerst i
   // virkeligheten må tegnes først. Nederst stål, så ringmur, så veggelementer.
   // Det som fortsatt står synlig er nettopp det som ikke er tildekket.
+  // 🔩 STÅLET KLIPPES TIL VEGGENS OVERKANT. Tegninga viser veggen; det som
+  // stikker opp over den er takkonstruksjonen, og på en gavl fylte den hele
+  // trekanten med skravur (Emil 08.09). Stålet Emil ba om å se — søyler ved
+  // porter, bjelker over åpninger — ligger under veggkanten og blir stående.
+  const vTopp = veggOverkant(f.elementer, f.nabovegg);
   for (const b of f.stal) {
     const bit = { x0: b.fraMm, x1: b.tilMm, y0: Math.max(b.bunnMm, f.bunnMm),
                   y1: Math.min(b.toppMm, f.toppMm) };
+    if ((bit.x1 - bit.x0) / skala * MM <= 0.2) continue;
+    // STÅLET KLIPPES TIL VEGGENS OVERKANT. Alt under den dekkes uansett av
+    // veggelementene, som tegnes etterpå — det som SYNES er bare det som
+    // stikker over, og det er nettopp takkonstruksjonen. Grensa settes til den
+    // LAVESTE veggkanten over bitens spenn: da forsvinner takstolen helt, mens
+    // en søyle som står nede i veggen beholder full høyde og fortsatt vises i
+    // portåpningene.
+    const proveX = [bit.x0, (bit.x0 + bit.x1) / 2, bit.x1,
+      ...vTopp.knekk.filter(x => x > bit.x0 && x < bit.x1)];
+    let klipp = null;
+    for (const x of proveX) {
+      const v = vTopp(x);
+      if (v === null) { klipp = null; break; }      // ingen vegg her: ingen stål
+      klipp = klipp === null ? v : Math.min(klipp, v);
+    }
+    if (klipp === null || klipp <= bit.y0 + 1) continue;
+    bit.y1 = Math.min(bit.y1, klipp);
+    if (bit.y1 - bit.y0 <= 1) continue;
     const sx = px(bit.x0), sw = (bit.x1 - bit.x0) / skala * MM;
     const sy = py(bit.y1), sh = (bit.y1 - bit.y0) / skala * MM;
-    if (sw <= 0.2 || sh <= 0.2) continue;
+    if (sh <= 0.2) continue;
     d.setFillColor(FARGE.stal[0], FARGE.stal[1], FARGE.stal[2]);
     // 🔩 SKRÅ STÅLBIT: tegnes som sitt eget omriss. Uten dette ble hver
     // takbjelke på en gavl et rektangel fra raft til møne, og de la seg oppå
@@ -1218,7 +1295,8 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad, elFarge) {
     // og et rett rektangel går fortsatt den gamle veien under — flate bygg
     // ser nøyaktig ut som før.
     if (b.poly && !erRektangel(b.poly)) {
-      const pkt = b.poly.map(([x, y]) => [px(x), py(Math.max(f.bunnMm, Math.min(f.toppMm, y)))]);
+      const pkt = b.poly.map(([x, y]) =>
+        [px(x), py(Math.max(bit.y0, Math.min(bit.y1, y)))]);
       d.setLineWidth(STREK.stal);
       polygon(pkt, "FD");
       continue;
