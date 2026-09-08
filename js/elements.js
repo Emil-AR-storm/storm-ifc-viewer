@@ -293,7 +293,7 @@ export function sluttMengder(volSum, projSum, toM) {
 // Går gjennom geometrien én gang og gir hver trekant til `cb`. Trukket ut
 // fordi lengdemålingen under trenger to gjennomganger, og den logikken (merged
 // vs. eget mesh, ranges, matrise) skal finnes ÉN gang.
-function forHverTrekant(idSet, cb) {
+export function forHverTrekant(idSet, cb) {
   S.modelGroup.children.forEach(m => {
     if (!m.isMesh) return;
     const p = m.geometry.getAttribute("position");
