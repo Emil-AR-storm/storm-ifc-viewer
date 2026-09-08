@@ -671,6 +671,10 @@ export function byggTegningsmodell(inn) {
                  skra: !!v.skra,
                  hVMm: v.skra ? (sp ? v.hHMm : v.hVMm) : v.hoydeMm,
                  hHMm: v.skra ? (sp ? v.hVMm : v.hHMm) : v.hoydeMm,
+                 // Vinkelen kommer FERDIG REGNET fra veggelement.js (skraVinkel).
+                 // Speilingen snur ikke tallet: en 27,9° skråkant er 27,9° uansett
+                 // hvilken vei fasaden vises.
+                 skraTekst: v.skraTekst || "",
                  sw: v.sw || "", tilpasset: !!v.tilpasset };
       }).sort((a, b) => a.bunnMm - b.bunnMm || a.fraMm - b.fraMm),
       utsparinger: utsp.filter(a => a.fi === fi).map(a => {
@@ -1255,6 +1259,13 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad, elFarge) {
     // ville et 14 pt bredt element fått en lapp bredere enn seg selv
     if (rw < SKRIFT.sw * 1.7 || rh < SKRIFT.sw * 1.25) continue;
     boksTekst(d, e.sw, rx + 4, ry + SKRIFT.sw * 0.95 + 1.5, SKRIFT.sw);
+    // 🏔 VINKELEN PÅ SKRÅKUTTET står ved selve kuttet — det er den verkstedet
+    // skjærer etter, og den hører hjemme på kanten, ikke i elementlista alene.
+    if (e.skraTekst) {
+      const mx = px((e.fraMm + e.tilMm) / 2);
+      const my = py(e.bunnMm + (e.hVMm + e.hHMm) / 2);
+      boksTekst(d, e.skraTekst, mx, my - 1.5, SKRIFT.lengde, "midt");
+    }
     // LENGDEN er elementets HELE lengde, ikke restens — det er elementet som
     // bestilles og kappes, ikke biten som synes på tegninga.
     boksTekst(d, e.tilMm - e.fraMm + "MM", rx + rw / 2, ry + rh / 2 + SKRIFT.lengde * 0.35,
