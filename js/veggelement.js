@@ -1247,7 +1247,7 @@ const STD_OPPSETT = {
   klaringMm: SW_KLARING_MM,     // 10 mm hver side = 20 mm skjøt
   minFeltMm: SW_MIN_FELT_MM,    // skjøter nærmere enn dette slås sammen
   minSkraMm: SW_MIN_SKRA_MM,    // 0 = kilen går helt ut til taket
-  minSkraNullet: true,          // migreringsmerke, se oppsett()
+  minSkra0: true,               // migreringsmerke, se migrerOppsett()
   // 🏔 SALTAK-KNAPPEN (Emil 08.09). Veggtoppen følger taket bare når den står
   // PÅ. Standard AV, og det er ikke forsiktighet — det er riktigst for de
   // fleste stålbygg: en gavl med FAGVERK har takstolen liggende i gavlplanet,
@@ -1277,38 +1277,55 @@ const STD_OPPSETT = {
   utsparinger: []   // [{navn, min:[x,y,z], max:[x,y,z]}] fra valgte elementer
 };
 
-function oppsett() {
-  if (!lagret) lagret = lesLagret() || { oppsett: { ...STD_OPPSETT }, vegger: [], gulv: null, ringmur: null, materiellIder: [] };
-  // Et oppsett lagret av en ELDRE versjon mangler de nye nøklene (radHoyder,
-  // klaringMm, minFeltMm …). Uten denne fletten blir de undefined, og
-  // genereringen regner med NaN.
+// 🔧 MIGRERINGENE AV ET LAGRET OPPSETT — som REN funksjon, så de kan prøves
+// med ekte gamle oppsett i stedet for å leses med øynene.
+//
+// TO GANGER PÅ RAD har en migrering her vært feil uten at noe sa fra:
+//  · runde 20e la sjekken ETTER fletten med STD_OPPSETT, og da hadde merket
+//    alt kommet inn — `=== undefined` var aldri sann.
+//  · runde 20e retta det, men da var skaden gjort: den buggede versjonen hadde
+//    alt STEMPLET oppsettet som ferdig migrert, med 300 fortsatt inni. Den
+//    retta migreringen så stempelet og hoppet over (Emil 08.09: «ingen av
+//    feilene har blitt fikset»).
+//
+// Lærdommen står i koden nå: et migreringsmerke som har vært satt av en
+// bugget migrering er BRENT. Det kan ikke stoles på igjen — migreringen må få
+// et nytt merkenavn, og det gamle ryddes bort.
+//
+// `raatt` er objektet slik det ligger i localStorage. Ut kommer det ferdig
+// flettede oppsettet.
+export function migrerOppsett(raatt, std) {
+  const r = raatt || {};
+  const o = { ...(std || {}), ...r };
+  // Et oppsett fra før kappnavnet ble fritt har `kappStil` i stedet. Uten
+  // dette ville Lørenskog-valget stille falt tilbake til SW-XX.
+  if (r.kappStil !== undefined) {
+    o.kappTekst = r.kappStil === "stjerne" ? "*" : "XX";
+    delete o.kappStil;
+  }
   // 🏔 Runde 20b satte 300 mm som tynneste ende på skråkapp. Det var VÅRT valg,
   // ikke Emils, og det ga et hull mellom veggkanten og takflaten. Verdien
-  // ligger lagret PER FIL og ville overstyrt den nye standarden på 0 for alle
-  // modeller som alt er generert. Den nulles én gang, og merket lagres — setter
-  // noen 300 bevisst senere, blir det stående.
+  // ligger lagret PER FIL og overstyrer standarden på 0.
   //
-  // MERKET MÅ LESES FØR FLETTEN. Første forsøk sto etter, og da hadde
-  // `minSkraNullet: true` fra STD_OPPSETT alt kommet inn i objektet —
-  // `=== undefined` var aldri sann, og migreringen kjørte aldri (Emil 08.09:
-  // veggen sto fortsatt med 300 mm i den tynne enden). En migrering som spør
-  // om en nøkkel finnes, må spørre det RÅ lagrede oppsettet.
-  const raatt = lagret.oppsett || {};
-  const skalNulles = raatt.minSkraNullet === undefined && raatt.minSkraMm === 300;
+  // Merket heter `minSkra0` og IKKE `minSkraNullet`: det gamle navnet ble satt
+  // av den buggede migreringen på oppsett som aldri ble nullet. Det ryddes bort
+  // her, så ingen framtidig migrering tror det betyr noe.
+  if (r.minSkra0 === undefined && r.minSkraMm === 300) o.minSkraMm = 0;
+  o.minSkra0 = true;
+  delete o.minSkraNullet;
+  return o;
+}
+
+function oppsett() {
+  if (!lagret) lagret = lesLagret() || { oppsett: { ...STD_OPPSETT }, vegger: [], gulv: null, ringmur: null, materiellIder: [] };
+  // Migreringene leser det RÅ lagrede oppsettet og fletter inn standardene.
   // Et oppsett lagret av en ELDRE versjon mangler de nye nøklene (radHoyder,
-  // klaringMm, minFeltMm …). Uten denne fletten blir de undefined, og
-  // genereringen regner med NaN.
-  lagret.oppsett = { ...STD_OPPSETT, ...raatt };
-  if (skalNulles) lagret.oppsett.minSkraMm = 0;
-  lagret.oppsett.minSkraNullet = true;
-  // Et oppsett fra før kappnavnet ble fritt har `kappStil` i stedet. Uten
-  // denne linja ville Lørenskog-valget stille falt tilbake til SW-XX.
-  if (lagret.oppsett.kappStil !== undefined) {
-    lagret.oppsett.kappTekst = lagret.oppsett.kappStil === "stjerne" ? "*" : "XX";
-    delete lagret.oppsett.kappStil;
-  }
+  // klaringMm, minFeltMm …); uten fletten blir de undefined og genereringen
+  // regner med NaN.
+  lagret.oppsett = migrerOppsett(lagret.oppsett, STD_OPPSETT);
   return lagret.oppsett;
 }
+
 
 // ---------- Tegning ----------
 function ryddTegning() {
