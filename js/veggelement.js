@@ -1270,7 +1270,13 @@ export function innerveggOffset(akse, side, tykkelse) {
 // derfor det ETTERPRØVBARE valget: veggen går fra første til siste søylesenter.
 // `endeMm` skyver begge endene utover, for den som vil ta veggen helt inn til
 // ytterveggen.
-export function innerveggBiter(skjot, rader, kappIndex, klaringMm, minBitMm, endeMm) {
+//
+// UTSPARINGENE behandles med NØYAKTIG samme regler som ytterveggene (runde 12):
+// en åpning som tar HELE radhøyden deler raden i to korte element; en som bare
+// skjærer inn i den blir et HAKK i et element som beholder full høyde og full
+// feltlengde. Det er `delRadApninger` og `delOppMedUtsparinger` som avgjør —
+// samme to funksjoner del A bruker, ikke et nytt regelsett.
+export function innerveggBiter(skjot, rader, kappIndex, klaringMm, minBitMm, endeMm, apninger) {
   const ut = [];
   const sk = (skjot || []).map(Number).filter(n => isFinite(n));
   const rd = (rader || []).map(Number).filter(n => n > 0);
@@ -1278,6 +1284,7 @@ export function innerveggBiter(skjot, rader, kappIndex, klaringMm, minBitMm, end
   const kl = Number(klaringMm) || 0;
   const minBit = Number(minBitMm) || 0;
   const e = Number(endeMm) || 0;
+  const apn = (apninger || []).filter(a => a && isFinite(a.fraMm) && isFinite(a.tilMm_));
   const radBunn = [];
   { let b = 0; for (const h of rd) { radBunn.push(b); b += h; } }
   for (let i = 0; i < sk.length - 1; i++) {
@@ -1286,12 +1293,35 @@ export function innerveggBiter(skjot, rader, kappIndex, klaringMm, minBitMm, end
     const full = til - fra;
     if (full < minBit) continue;
     for (let r = 0; r < rd.length; r++) {
-      ut.push({
-        fraMm: Math.round(fra), tilMm_: Math.round(til),
-        lengdeMm: Math.round(full), fullMm: Math.round(full),
-        radIdx: r, rBunnMm: radBunn[r], radHMm: rd[r], hoydeMm: rd[r],
-        tilpassetRad: r === kappIndex, tilpasset: r === kappIndex
-      });
+      const rBunn = radBunn[r], rTopp = rBunn + rd[r];
+      const radApninger = apn
+        .filter(a => Math.min(a.toppMm, rTopp) - Math.max(a.bunnMm, rBunn) > 10);
+      const { hele, notch } = delRadApninger(rBunn, rTopp, radApninger, minBit);
+      const kutt = hele.map(a => [a.fraMm, a.tilMm_]);
+      for (const [bFra, bTil] of delOppMedUtsparinger(fra, til, kutt)) {
+        // hakkene i ELEMENTETS egne mm: x fra venstre ende, y fra bunnen
+        const hull = [];
+        for (const a of notch) {
+          const x0 = Math.max(bFra, a.fraMm) - bFra, x1 = Math.min(bTil, a.tilMm_) - bFra;
+          const y0 = Math.max(rBunn, a.bunnMm) - rBunn, y1 = Math.min(rTopp, a.toppMm) - rBunn;
+          if (x1 - x0 > 10 && y1 - y0 > 10) hull.push({ x0, x1, y0, y1 });
+        }
+        const lengdeMm = Math.round(bTil - bFra);
+        ut.push({
+          fraMm: Math.round(bFra), tilMm_: Math.round(bTil),
+          lengdeMm, fullMm: Math.round(full),
+          radIdx: r, rBunnMm: rBunn, radHMm: rd[r], hoydeMm: rd[r],
+          // radens åpninger følger elementet, så hakkene kan regnes på nytt
+          // etter et drag — samme felt som del A bruker
+          apn: radApninger.map(a => ({ fraMm: a.fraMm, tilMm_: a.tilMm_,
+            bunnMm: a.bunnMm, toppMm: a.toppMm })),
+          hull: hull.length ? hull : undefined,
+          tilpassetRad: r === kappIndex,
+          // Kapp = FAKTISK skåret i LENGDEN. Et hakk gjør det ikke — Moelv
+          // beholder SW-06 3780MM med vindu i.
+          tilpasset: r === kappIndex || lengdeMm < full - SW_TOL_MM
+        });
+      }
     }
   }
   return ut;
@@ -1442,6 +1472,7 @@ function ryddTegning() {
     // første drag, og den blå markeringen ble borte for godt etter et
     // sekund (Emils funn 02.09).
     if (just && o === just.markorer) return;
+    if (innerMark && (o === innerMark.merker || o === innerMark.forh)) return;
     o.traverse(m => {
       if (m.geometry) m.geometry.dispose();
       if (m.material) m.material.dispose();
@@ -1517,7 +1548,7 @@ function lastInnResultat(navn) {
   lagret.materiellIder = [];
   oppsett();                 // migrerer et oppsett lagret av en eldre versjon
   loesAlleJusteringer();
-  byggStabler();
+  byggAlleStabler();
   skrivLagret();
   tegnAlt();
   tegnPanel();
@@ -1560,30 +1591,57 @@ function settSkjul(navn, verdi) {
   if (S.tegnUtseendePanel) S.tegnUtseendePanel();
 }
 
-S.swUtseendeRader = (body) => {
-  if (!body || !lagret) return;
-  const antV = (lagret.vegger || []).length;
-  if (!antV && !lagret.gulv && !(lagret.ringmur || []).length) return;
-  const sk = skjulNaa();
-  const rad = (navn, tekst, ekstra) =>
-    '<div class="qty-row"><div class="n">' + esc(t(tekst)) +
-      (ekstra ? ' <span style="color:var(--muted);font-size:11px">(' + ekstra + ')</span>' : "") +
-    '</div><div class="c"><button data-sw-skjul="' + navn + '" title="' + t("Skjul/vis") +
+// Én rad-tegner for begge blokkene: `sk` er tilstanden, `attr` sier hvilken
+// knapp som skal svare. To kopier ville drevet fra hverandre.
+function swSkjulRad(sk, attr, navn, tekst, ekstra) {
+  return '<div class="qty-row"><div class="n">' + esc(t(tekst)) +
+    (ekstra ? ' <span style="color:var(--muted);font-size:11px">(' + ekstra + ')</span>' : "") +
+    '</div><div class="c"><button ' + attr + '="' + navn + '" title="' + t("Skjul/vis") +
     '" style="padding:3px 8px">' + ikon(sk[navn] ? "skjul" : "vis") + '</button></div></div>';
+}
+
+S.swUtseendeRader = (body) => {
+  if (!body) return;
+  const antV = ((lagret && lagret.vegger) || []).length;
+  const harYtre = !!(lagret && (antV || lagret.gulv || (lagret.ringmur || []).length));
+  const d = lagretInner;
+  const antI = ((d && d.vegger) || []).length;
+  if (!harYtre && !antI) return;
   const boks = document.createElement("div");
-  boks.innerHTML =
-    '<div class="qty-row" style="margin-top:10px"><div class="n" style="font-weight:700">' +
-      t("SW-generator") + '</div><div class="c"></div></div>' +
-    rad("alt", "Alt på bygget") +
-    rad("vegger", "Veggelementer", antV || "") +
-    (lagret.gulv ? rad("gulv", "Gulv og isolasjon") : "") +
-    ((lagret.ringmur || []).length ? rad("ringmur", "Ringmur", (lagret.ringmur || []).length) : "") +
-    rad("merking", "Merking og mål") +
-    '<p style="color:var(--muted);font-size:11px;margin:2px 0 6px">' +
-      t("Bunkene med veggelementer rundt bygget ligger i 📦 Materiell og skjules i sine egne rader over.") + '</p>';
+  let html = "";
+  if (harYtre) {
+    const sk = skjulNaa();
+    html +=
+      '<div class="qty-row" style="margin-top:10px"><div class="n" style="font-weight:700">' +
+        t("SW-generator") + '</div><div class="c"></div></div>' +
+      swSkjulRad(sk, "data-sw-skjul", "alt", "Alt på bygget") +
+      swSkjulRad(sk, "data-sw-skjul", "vegger", "Veggelementer", antV || "") +
+      (lagret.gulv ? swSkjulRad(sk, "data-sw-skjul", "gulv", "Gulv og isolasjon") : "") +
+      ((lagret.ringmur || []).length
+        ? swSkjulRad(sk, "data-sw-skjul", "ringmur", "Ringmur", (lagret.ringmur || []).length) : "") +
+      swSkjulRad(sk, "data-sw-skjul", "merking", "Merking og mål") +
+      '<p style="color:var(--muted);font-size:11px;margin:2px 0 6px">' +
+        t("Bunkene med veggelementer rundt bygget ligger i 📦 Materiell og skjules i sine egne rader over.") + '</p>';
+  }
+  // 🚪 EGEN BLOKK FOR INNERVEGGENE (Emil 08.09). Egen tilstand også: slår han
+  // av ytterveggene for å se inn i bygget, skal innerveggene bli stående.
+  if (antI) {
+    const skI = innerSkjulNaa();
+    html +=
+      '<div class="qty-row" style="margin-top:10px"><div class="n" style="font-weight:700">🚪 ' +
+        t("SW-generator: innervegger") + '</div><div class="c"></div></div>' +
+      swSkjulRad(skI, "data-sw-iskjul", "alt", "Alt på bygget") +
+      swSkjulRad(skI, "data-sw-iskjul", "vegger", "Veggelementer", antI) +
+      ((d.ringmur || []).length
+        ? swSkjulRad(skI, "data-sw-iskjul", "ringmur", "Ringmur", (d.ringmur || []).length) : "") +
+      swSkjulRad(skI, "data-sw-iskjul", "merking", "Merking og mål");
+  }
+  boks.innerHTML = html;
   body.appendChild(boks);
   boks.querySelectorAll("button[data-sw-skjul]").forEach(b =>
-    b.onclick = () => settSkjul(b.dataset.swSkjul, !sk[b.dataset.swSkjul]));
+    b.onclick = () => settSkjul(b.dataset.swSkjul, !skjulNaa()[b.dataset.swSkjul]));
+  boks.querySelectorAll("button[data-sw-iskjul]").forEach(b =>
+    b.onclick = () => settInnerSkjul(b.dataset.swIskjul, !innerSkjulNaa()[b.dataset.swIskjul]));
 };
 
 function boks(farge, opacity) {
@@ -1906,11 +1964,15 @@ function tegnUtspMerking() {
   if (!lagret) return;
   const o0 = lagret.oppsett || STD_OPPSETT;
   if (o0.visUtsp === false) return;
-  const apninger = utspPaFasader();
+  tegnUtspMerkingFor(utspPaFasader(), lagret.fasader || [], lagret.vegger || [],
+    baseYNaa(), o0.tykkelseMm);
+}
+
+// Samme merking for yttervegger og innervegger. Tykkelsen tas fra fasadens
+// EGET oppsett når det finnes (innerveggene har hver sin), ellers fra tallet
+// som sendes inn.
+function tegnUtspMerkingFor(apninger, fasader, vegger, baseY, tykkelseMm) {
   if (!apninger.length) return;
-  const o = o0;
-  const fasader = lagret.fasader || [];
-  const baseY = baseYNaa();
   // Merkingen skal SKJULES BAK OBJEKT, som SW-lappene og målene på veggene
   // (Emil 02.09). Derfor vanlig dybdetest og ingen renderOrder — det var
   // depthTest:false som lot krysset på baksiden skinne gjennom fasaden.
@@ -1920,8 +1982,9 @@ function tegnUtspMerking() {
   for (const a of apninger) {
     const f = fasader[a.fi];
     if (!f) continue;
+    const tMm = ((f.o || {}).tykkelseMm !== undefined) ? f.o.tykkelseMm : tykkelseMm;
     // veggplanet, litt utenfor panelet så streken ikke drukner i det
-    const utD = f.off + tilScene(o.tykkelseMm) / 2 + 0.03 / (S.enhetSkala || 1);
+    const utD = f.off + tilScene(tMm) / 2 + 0.03 / (S.enhetSkala || 1);
     const pkt = (mm, y) => new THREE.Vector3(
       f.px + f.ex * tilScene(mm) + f.nx * utD, y,
       f.pz + f.ez * tilScene(mm) + f.nz * utD);
@@ -1948,7 +2011,7 @@ function tegnUtspMerking() {
     tot.raycast = () => {};
     swGroup.add(tot);
     // KAPPDYBDEN per element som går gjennom området
-    for (const v of lagret.vegger || []) {
+    for (const v of vegger || []) {
       if (v.skjult || v.fi !== a.fi || v.fraMm === undefined) continue;
       const x0 = Math.max(v.fraMm, a.fraMm), x1 = Math.min(v.tilMm, a.tilMm_);
       if (x1 - x0 <= 10) continue;
@@ -2386,7 +2449,7 @@ async function generer() {
   lagret = { oppsett: o, vegger, gulv, ringmur, materiellIder: [],
              fasader: fasadeLagret, okBetong, baseY, utspVis };
   loesAlleJusteringer();
-  byggStabler();
+  byggAlleStabler();
   skrivLagret();
   tegnAlt();
   tegnPanel();
@@ -2498,8 +2561,9 @@ function snappPunkter(v) {
   const ut = (v.snapp || []).slice();     // søylepunktene: 10 mm fra senter + søylekant
   // En ringmurbit snapper mot de ANDRE RINGMURBITENE, et veggelement mot de
   // andre veggelementene — hver liste for seg.
-  const naboer = v.ringmur ? ((lagret && lagret.ringmur) || [])
-                           : ((lagret && lagret.vegger) || []);
+  const b = butikkFor(v);
+  const naboer = v.ringmur ? ((b && b.ringmur) || [])
+                           : ((b && b.vegger) || []);
   for (const w of naboer) {
     if (w.fi !== v.fi || w.id === v.id) continue;
     // ENDENE AV DE ANDRE VEGGELEMENTENE (Emil 02.09) — både der de STÅR nå
@@ -2514,7 +2578,10 @@ function snappPunkter(v) {
 function loesAlleJusteringer() {
   migrerVegger();
   migrerRingmur();
-  if (!lagret || !lagret.vegger) return;
+  // Innerveggene løses UANSETT — også på et bygg som bare har dem. Sto dette
+  // etter den tidlige returen under, ville et drag i en innervegg vært dødt på
+  // en modell uten yttervegger.
+  if (!lagret || !lagret.vegger) { loesInnervegger(); return; }
   const o = lagret.oppsett || STD_OPPSETT;
   const grupper = new Map();
   for (const v of lagret.vegger) {
@@ -2583,6 +2650,7 @@ function loesAlleJusteringer() {
   // ringmurbitene har ingen SW-nummer, ingen leveransestabel og ingen linje i
   // CSV-lista — de skal ikke gjennom noe av det som følger under.
   loesRingmur();
+  loesInnervegger();
 
   const synlige = lagret.vegger.filter(v => !v.skjult);
   const { numre, nokkel } = swNummerering(synlige);
@@ -2597,8 +2665,9 @@ function loesAlleJusteringer() {
 // fasade (radIdx «rm»), samme loesRad, samme minste bit. Biter fra en eldre
 // generering mangler basFraMm og hoppes over — de tegnes som før, men kan
 // ikke dras før neste generering.
-function loesRingmur() {
-  const biter = (lagret && lagret.ringmur) || [];
+function loesRingmur() { loesRingmurBiter((lagret && lagret.ringmur) || []); }
+
+function loesRingmurBiter(biter) {
   if (!biter.length) return;
   const grupper = new Map();
   for (const r of biter) {
@@ -2628,6 +2697,48 @@ function loesRingmur() {
       r.lengde = tilScene(r.lengdeMm);
     }
   }
+}
+
+// 🚪 INNERVEGGENE LØSES OPP ETTER DE SAMME REGLENE. Egen løkke, ikke samme
+// liste: innerveggene har egen lagring og egen nummerserie, og et drag i den
+// ene skal aldri kunne flytte et element i den andre.
+//
+// Ingen taklinje her — en innervegg er flat, så hele skråkapp-delen av
+// `loesAlleJusteringer` faller bort. Ellers er det samme `loesRad`, samme
+// minste bit og samme kapp-regel.
+function loesInnervegger() {
+  const d = lagretInner;
+  if (!d || !(d.vegger || []).length) return;
+  const grupper = new Map();
+  for (const v of d.vegger) {
+    if (v.basFraMm === undefined) continue;
+    const k = v.fi + "|" + v.radIdx;
+    if (!grupper.has(k)) grupper.set(k, []);
+    grupper.get(k).push(v);
+  }
+  for (const liste of grupper.values()) {
+    const res = loesRad(liste.map(v => ({
+      id: v.id,
+      fraMm: v.basFraMm + (v.dFra || 0),
+      tilMm: v.basTilMm + (v.dTil || 0),
+      rev: v.rev || 0
+    })), SW_MIN_BIT_MM);
+    for (const v of liste) {
+      const r = res.get(v.id);
+      if (!r) continue;
+      v.skjult = !!r.skjult;
+      v.fraMm = Math.round(r.fraMm);
+      v.tilMm = Math.round(r.tilMm);
+      v.lengdeMm = Math.max(0, Math.round(r.tilMm - r.fraMm));
+      v.tMid = tilScene((r.fraMm + r.tilMm) / 2);
+      v.x = v.fx + v.ex * v.tMid;
+      v.z = v.fz + v.ez * v.tMid;
+      // Et STREKKET element er ikke kapp, bare et FORKORTET.
+      v.tilpasset = !!v.tilpassetRad || v.lengdeMm < v.fullMm - SW_TOL_MM;
+    }
+  }
+  loesRingmurBiter(d.ringmur || []);
+  nummererInner(d);
 }
 
 // 📦 Leveransestablene i Materiell: én stabel per SW-nummer, satt UTENFOR
@@ -2673,6 +2784,76 @@ function byggStabler() {
   tegnMateriell();
   lagreMateriellLokalt();
   S.qtyCache = null;
+}
+
+// 📦 LEVERANSESTABLENE FOR INNERVEGGENE (Emil 08.09). Egen funksjon og egne
+// navn: to serier som begge starter på SW-01 ville ellers blitt slått sammen i
+// Mengder, og tallene ville vært feil for begge. Stabelen heter derfor
+// «SW-01 innervegg» — samme nummer som på tegninga, med hvilken vegg det er.
+function byggInnerStabler() {
+  const d = lagretInner;
+  fjernInnerMateriell();
+  if (!d || !(d.vegger || []).length) return;
+  const perSw = new Map();
+  for (const v of d.vegger) {
+    if (v.skjult || !v.sw || v.tilpasset) continue;
+    if (!perSw.has(v.sw)) perSw.set(v.sw, { lengdeMm: v.lengdeMm, hoydeMm: v.hoydeMm,
+      antall: 0, fi: v.fi, tSum: 0, tMm: v.tMm });
+    const g = perSw.get(v.sw);
+    g.antall++;
+    g.tSum += v.tMid;
+  }
+  const nyeIder = [];
+  const fasadeRad = new Map();
+  for (const [sw, g] of [...perSw.entries()].sort((a, b) => a[0].localeCompare(b[0], "no"))) {
+    const f = (d.fasader || [])[g.fi] || (d.fasader || [])[0];
+    if (!f) continue;
+    const o = { ...INNER_STD, ...(f.o || {}) };
+    const rad = fasadeRad.get(g.fi) || 0;
+    fasadeRad.set(g.fi, rad + 1);
+    const ut = f.off + tilScene(5000) + rad * tilScene(g.hoydeMm + 1500);
+    const tMid = Math.max(f.t0 + tilScene(g.lengdeMm) / 2,
+      Math.min(f.t1 - tilScene(g.lengdeMm) / 2, g.tSum / g.antall));
+    const pkt = vaskMateriell({
+      id: "SWI-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 7),
+      maltype: "sandwich", navn: sw + " " + t("innervegg"), farge: o.farge,
+      lengde: g.lengdeMm, bredde: g.hoydeMm, tykkelse: g.tMm || o.tykkelseMm,
+      antall: g.antall,
+      x: f.px + f.ex * tMid + f.nx * ut,
+      y: (f.okBetong !== undefined ? f.okBetong : innerBaseY()),
+      z: f.pz + f.ez * tMid + f.nz * ut,
+      rot: f.rot
+    });
+    if (pkt) { nyeIder.push(pkt.id); S.materiell = (S.materiell || []).concat([pkt]); }
+  }
+  d.materiellIder = nyeIder;
+  tegnMateriell();
+  lagreMateriellLokalt();
+  S.qtyCache = null;
+}
+
+// Rydder BARE innerveggenes stabler, og gjør det på ID — ikke på navnet.
+// Del A må lete etter navn i tillegg, fordi gamle versjoner ikke sporet id-ene.
+// Innerveggene har hatt id-sporing fra første runde, og et navnemønster ville
+// dessuten sluttet å treffe så snart noen byttet språk: stabelnavnet er
+// oversatt. Ryddingen skjer FØR `skrivInner` fjerner nøkkelen, så id-ene
+// finnes alltid når de trengs.
+function fjernInnerMateriell() {
+  const ider = new Set((lagretInner && lagretInner.materiellIder) || []);
+  if (!ider.size) return;
+  const foer = (S.materiell || []).length;
+  S.materiell = (S.materiell || []).filter(pkt => !ider.has(pkt.id));
+  if ((S.materiell || []).length === foer) return;
+  tegnMateriell();
+  lagreMateriellLokalt();
+  S.qtyCache = null;
+}
+
+// Begge seriene. Kalles der del A før kalte byggStabler() alene, så antallene
+// i Mengder følger med etter hver generering og hvert drag.
+function byggAlleStabler() {
+  byggStabler();
+  byggInnerStabler();
 }
 
 function fjernGenerertMateriell() {
@@ -2984,16 +3165,44 @@ async function lastNedTegning() {
 // ingenting slettes: alt er avledet av basFraMm/basTilMm + dFra/dTil.
 // Finner et justerbart element — vegg ELLER ringmurbit. Begge har id, basis og
 // forskyvninger, og hele justeringen bryr seg ikke om hvilken av dem det er.
+// HVILKEN LAGRING et element bor i. Ytterveggene ligger i `lagret`,
+// innerveggene i `lagretInner` — og justeringsmodusen skal ikke vite forskjell
+// (Emil 08.09: «juster element funker ikke på innervegger»). Flagget står på
+// elementet selv, satt der det ble bygget.
+function butikkFor(v) {
+  return v && v.inner ? lagretInner : lagret;
+}
+
 function veggMedId(id) {
-  return ((lagret && lagret.vegger) || []).find(v => v.id === id) ||
-         ((lagret && lagret.ringmur) || []).find(r => r.id === id);
+  for (const b of [lagret, lagretInner]) {
+    if (!b) continue;
+    const v = (b.vegger || []).find(w => w.id === id) ||
+              (b.ringmur || []).find(r => r.id === id);
+    if (v) return v;
+  }
+  return null;
 }
 
 // Hvilken liste et element bor i. Ringmurbiter og veggelementer justeres med
-// samme kode (Emil 03.09), men de ligger i hver sin array.
+// samme kode (Emil 03.09), men de ligger i hver sin array — og nå i hver sin
+// lagring også.
 function listeFor(v) {
-  return v && v.ringmur ? (lagret.ringmur = lagret.ringmur || [])
-                        : (lagret.vegger = lagret.vegger || []);
+  const b = butikkFor(v);
+  if (!b) return [];
+  return v && v.ringmur ? (b.ringmur = b.ringmur || [])
+                        : (b.vegger = b.vegger || []);
+}
+
+// Lagrer den butikken elementet hører til. Et drag i en innervegg skal ikke
+// skrive ytterveggene, og omvendt.
+function skrivFor(v) {
+  if (v && v.inner) skrivInner(); else skrivLagret();
+}
+
+// Begge lagringene, når et drag kan ha tatt element fra begge (shift+klikk).
+function skrivBegge() {
+  skrivLagret();
+  if (lagretInner) skrivInner();
 }
 
 // Neste revisjonsnummer i elementets EGEN liste — en ringmurbit skal ikke
@@ -3085,9 +3294,11 @@ function tegnJustBar() {
   $("swJustSplitt").onclick = () => splittValgte();
   $("swJustNull").onclick = () => {
     const foer = justBilde();
-    for (const v of [...((lagret && lagret.vegger) || []), ...((lagret && lagret.ringmur) || [])])
+    for (const v of [...((lagret && lagret.vegger) || []), ...((lagret && lagret.ringmur) || []),
+                     ...((lagretInner && lagretInner.vegger) || []),
+                     ...((lagretInner && lagretInner.ringmur) || [])])
       { v.dFra = 0; v.dTil = 0; v.rev = 0; }
-    loesAlleJusteringer(); byggStabler(); skrivLagret(); tegnAlt(); merkValgte();
+    loesAlleJusteringer(); byggAlleStabler(); skrivBegge(); tegnAlt(); merkValgte();
     postJust("Justeringer nullstilt", foer);
   };
   $("swJustFerdig").onclick = () => avsluttJuster();
@@ -3126,7 +3337,12 @@ function merkValgte() {
 function justBilde() {
   return JSON.parse(JSON.stringify({
     vegger: (lagret && lagret.vegger) || [],
-    ringmur: (lagret && lagret.ringmur) || []
+    ringmur: (lagret && lagret.ringmur) || [],
+    // Innerveggene MÅ med. Uten dem ville et angre av et drag i en innervegg
+    // ikke gjort noe — og et angre av et ytterveggdrag ville dratt
+    // innerveggene tilbake til der de sto før.
+    iVegger: (lagretInner && lagretInner.vegger) || [],
+    iRingmur: (lagretInner && lagretInner.ringmur) || []
   }));
 }
 
@@ -3137,9 +3353,13 @@ function settJustBilde(bilde) {
   const b = Array.isArray(bilde) ? { vegger: bilde, ringmur: lagret.ringmur } : bilde;
   lagret.vegger = JSON.parse(JSON.stringify(b.vegger || []));
   if (b.ringmur) lagret.ringmur = JSON.parse(JSON.stringify(b.ringmur));
+  if (lagretInner && b.iVegger) {
+    lagretInner.vegger = JSON.parse(JSON.stringify(b.iVegger));
+    lagretInner.ringmur = JSON.parse(JSON.stringify(b.iRingmur || []));
+  }
   loesAlleJusteringer();
-  byggStabler();
-  skrivLagret();
+  byggAlleStabler();
+  skrivBegge();
   tegnAlt();
   if (just) { rensValgte(); merkValgte(); tegnJustBar(); }
   tegnPanel();
@@ -3175,14 +3395,19 @@ export function splittKanter(fraMm, tilMm, klaringMm, minBitMm) {
 }
 
 function splittValgte() {
-  if (!just || !lagret) return;
+  if (!just) return;
   const foer = justBilde();
-  const o = lagret.oppsett || STD_OPPSETT;
+  const o = (lagret && lagret.oppsett) || STD_OPPSETT;
   let delt = 0;
   for (const id of [...just.valgt]) {
     const v = veggMedId(id);
     if (!v || v.skjult) continue;
-    const kanter = splittKanter(v.fraMm, v.tilMm, o.klaringMm, SW_MIN_BIT_MM);
+    // Klaringen tas fra den veggen elementet FAKTISK står i: en innervegg kan
+    // ha en annen skjøt enn ytterveggene.
+    const kl = v.inner
+      ? (((lagretInner && (lagretInner.fasader || [])[v.fi]) || {}).o || {}).klaringMm
+      : o.klaringMm;
+    const kanter = splittKanter(v.fraMm, v.tilMm, kl === undefined ? o.klaringMm : kl, SW_MIN_BIT_MM);
     if (!kanter) continue;
     const rev = nesteRev(v);
     const ny = JSON.parse(JSON.stringify(v));
@@ -3199,8 +3424,8 @@ function splittValgte() {
   }
   if (!delt) { alert(t("Elementet er for kort å dele — hver halvdel må bli minst 100 mm.")); return; }
   loesAlleJusteringer();
-  byggStabler();
-  skrivLagret();
+  byggAlleStabler();
+  skrivBegge();
   tegnAlt();
   merkValgte();
   tegnJustBar();
@@ -3208,14 +3433,16 @@ function splittValgte() {
 }
 
 function startJuster() {
-  if (!lagret || !(lagret.vegger || []).length) { alert(t("Generer veggelementene først.")); return; }
+  const antYtre = ((lagret && lagret.vegger) || []).length;
+  const antIndre = ((lagretInner && lagretInner.vegger) || []).length;
+  if (!antYtre && !antIndre) { alert(t("Generer veggelementene først.")); return; }
   // Migrer og tegn på nytt FØR modusen åpnes: en ringmur laget av en eldre
   // versjon mangler id-en plukkingen trenger, og da klikket man rett gjennom
   // muren og traff søyla bak (Emil 03.09). Etter migreringen bærer hver bit
   // id-en, og tegninga må gjøres om for at meshen skal få den.
   loesAlleJusteringer();
-  byggStabler();
-  skrivLagret();
+  byggAlleStabler();
+  skrivBegge();
   tegnAlt();
   const markorer = new THREE.Group();
   swGroup.add(markorer);
@@ -3297,8 +3524,8 @@ window.addEventListener("pointerup", (e) => {
   try { canvas.dispatchEvent(new PointerEvent("pointercancel", { pointerId: e.pointerId })); }
   catch (_) { try { canvas.dispatchEvent(new Event("pointercancel")); } catch (__) {} }
   loesAlleJusteringer();
-  byggStabler();
-  skrivLagret();
+  byggAlleStabler();
+  skrivBegge();
   tegnAlt();
   merkValgte();
   tegnJustBar();
@@ -3344,12 +3571,16 @@ function tegnUtspBar() {
   $("swUtspAvbryt").onclick = () => avsluttUtspMark();
 }
 
-function startUtspMark() {
+// `forInner` = true når markeringen hører til den innerveggen som redigeres.
+// Da havner boksene på SERIEN, ikke i del A-oppsettet: en dør i en innervegg
+// skal ikke kappe ytterveggen bak den.
+function startUtspMark(forInner) {
   if (!S.modelGroup) { alert(t("Åpne en modell først.")); return; }
   const prikker = new THREE.Group();
   swGroup.add(prikker);
-  utspMark = { flater: [], ned: null, prikker };
+  utspMark = { flater: [], ned: null, prikker, inner: !!forInner };
   $("swPanel").classList.remove("open");   // panelet i veien for modellen
+  tegnInnerBar();                          // innerveggbaren viker for denne
   tegnUtspBar();
 }
 
@@ -3359,6 +3590,7 @@ function avsluttUtspMark() {
   swGroup.remove(utspMark.prikker);
   utspMark = null;
   tegnUtspBar();
+  tegnInnerBar();          // står vi i en innervegg, kommer baren tilbake
   tegnPanel();
   apnePanel("swPanel");
 }
@@ -3369,22 +3601,28 @@ function fullforUtspMark() {
   // flater innenfor 4 m hører til samme åpning — da kan alle åpningene
   // markeres i én omgang og Ferdig trykkes til slutt (Emils runde 5)
   const klynger = grupperFlater(utspMark.flater, 4.0 / e);
+  // 🚪 Innerveggens åpninger bor på SERIEN som redigeres; ytterveggenes i
+  // del A-oppsettet. Samme markering, to mottakere.
+  const tilInner = utspMark.inner && innerMark && innerMark.steg === "side";
   const o = oppsett();
-  o.utsparinger = (o.utsparinger || []).filter(x => x && x.min);   // gamle formater ryddes
+  const maal = tilInner
+    ? (innerMark.serie.utsparinger = (innerMark.serie.utsparinger || []).filter(x => x && x.min))
+    : (o.utsparinger = (o.utsparinger || []).filter(x => x && x.min));
   let lagt = 0, feilet = 0;
   for (const kl of klynger) {
     const u = utsparingFraFlater(kl, 0.5 / e);
     if (u.feil) { feilet++; continue; }
     lagt++;
-    o.utsparinger.push({ navn: t("Utsparing {0}", o.utsparinger.length + 1), min: u.min, max: u.max,
-                         flater: u.antFlater, kilde: u.kilde });
+    maal.push({ navn: t("Utsparing {0}", maal.length + 1), min: u.min, max: u.max,
+                flater: u.antFlater, kilde: u.kilde });
   }
   if (!lagt) {
     alert(t("Utsparingen trenger to motstående sider — trykk på innsiden av søylene på hver side av åpningen."));
     return;
   }
-  skrivLagret();
+  if (!tilInner) skrivLagret();
   avsluttUtspMark();
+  if (tilInner) innerForhandsvis();
   if (feilet) alert(t("{0} utsparinger lagt til — {1} område manglet to motstående sider og ble hoppet over.", lagt, feilet));
 }
 
@@ -3726,7 +3964,7 @@ function skrivInner() {
   try {
     if (lagretInner && (lagretInner.serier || []).length)
       localStorage.setItem(innerNokkel(), JSON.stringify(lagretInner));
-    else localStorage.removeItem(innerNokkel());
+    else localStorage.removeItem(innerNokkel());   // siste innervegg slettet
   } catch (_) {}
 }
 
@@ -3737,7 +3975,15 @@ function innerData() {
   lagretInner.oppsett = { ...INNER_STD, ...(lagretInner.oppsett || {}) };
   for (const n of ["serier", "vegger", "ringmur", "fasader"])
     if (!Array.isArray(lagretInner[n])) lagretInner[n] = [];
-  for (const s of lagretInner.serier) s.o = { ...INNER_STD, ...(s.o || {}) };
+  // Skjulingen er en VISNINGStilstand og bor hos innerveggene selv, ikke i
+  // del A: slår Emil av ytterveggene, skal innerveggene stå igjen.
+  if (!lagretInner.skjul || typeof lagretInner.skjul !== "object") lagretInner.skjul = {};
+  if (!Array.isArray(lagretInner.materiellIder)) lagretInner.materiellIder = [];
+  for (const s of lagretInner.serier) {
+    s.o = { ...INNER_STD, ...(s.o || {}) };
+    if (!Array.isArray(s.utsparinger)) s.utsparinger = [];
+  }
+  if (!Array.isArray(lagretInner.utspVis)) lagretInner.utspVis = [];
   return lagretInner;
 }
 
@@ -3762,7 +4008,14 @@ export function byggEnInnervegg(serie, perId, fi, nV, nR) {
   const skjot = samleTetteSoyler(akse.soyler.map(k => tilMm(k.t)), o.minFeltMm);
   const stabelMm = Math.max(100, (Number(o.veggHoydeMm) || 0) - tilMm(ringH));
   const { rader, kappIndex } = radStabel(stabelMm, o.radHoyder, o.kappNederst);
-  const biter = innerveggBiter(skjot, rader, kappIndex, o.klaringMm, SW_MIN_BIT_MM, o.endeMm);
+  // 🚪 UTSPARINGENE. Boksene ligger på serien (én liste per innervegg, ikke
+  // én felles for hele bygget: to innervegger kan stå rygg mot rygg, og en dør
+  // i den ene skal ikke skjære den andre). De projiseres inn på veggaksen med
+  // samme funksjon del A bruker.
+  const apninger = utsparingerPaFasade(
+    { p: akse.p, ex: akse.ex, ez: akse.ez }, baseY, serie.utsparinger);
+  const biter = innerveggBiter(skjot, rader, kappIndex, o.klaringMm, SW_MIN_BIT_MM,
+    o.endeMm, apninger);
   const snappP = [];
   for (const k of akse.soyler) {
     const c = tilMm(k.t), halv = tilMm(k.s.bredde) / 2;
@@ -3781,6 +4034,7 @@ export function byggEnInnervegg(serie, perId, fi, nV, nR) {
       fraMm: b.fraMm, tilMm: b.tilMm_,
       lengdeMm: b.lengdeMm, fullMm: b.fullMm,
       hoydeMm: b.hoydeMm, radHMm: b.radHMm, hVMm: b.hoydeMm, hHMm: b.hoydeMm,
+      apn: b.apn, hull: b.hull,
       tilpassetRad: b.tilpassetRad, tilpasset: b.tilpasset };
   });
   // RINGMUREN UNDER EN INNERVEGG er en fundamentmur fra gulvet og opp, ikke
@@ -3791,16 +4045,28 @@ export function byggEnInnervegg(serie, perId, fi, nV, nR) {
   if (o.ringmur && biter.length) {
     const rmFra = Math.min(...biter.map(b => b.fraMm));
     const rmTil = Math.max(...biter.map(b => b.tilMm_));
-    const bunnMm = -Math.round(tilMm(ringH)), hoydeMm = Math.round(tilMm(ringH));
-    const tMid = tilScene((rmFra + rmTil) / 2);
-    ringmur.push({ ...felles,
-      id: "ir" + nR, ringmur: true, radIdx: "rm", tMid,
-      basFraMm: rmFra, basTilMm: rmTil, dFra: 0, dTil: 0, rev: 0,
-      fraMm: rmFra, tilMm: rmTil, lengdeMm: rmTil - rmFra, fullMm: rmTil - rmFra,
-      bunnMm, hoydeMm,
-      x: fx + akse.ex * tMid, z: fz + akse.ez * tMid,
-      y: baseY + tilScene(bunnMm + hoydeMm / 2),
-      lengde: tilScene(rmTil - rmFra), hoyde: tilScene(hoydeMm), tykkelse: tS });
+    const rmTopp = 0, rmBunn = -Math.round(tilMm(ringH));
+    const rmBit = (bunnMm, hoydeMm, fraMm, tilMm2) => {
+      const tMid = tilScene((fraMm + tilMm2) / 2);
+      ringmur.push({ ...felles,
+        id: "ir" + (nR + ringmur.length), ringmur: true, radIdx: "rm", tMid,
+        basFraMm: Math.round(fraMm), basTilMm: Math.round(tilMm2), dFra: 0, dTil: 0, rev: 0,
+        fraMm: Math.round(fraMm), tilMm: Math.round(tilMm2),
+        lengdeMm: Math.round(tilMm2 - fraMm), fullMm: Math.round(tilMm2 - fraMm),
+        bunnMm: Math.round(bunnMm), hoydeMm: Math.round(hoydeMm),
+        x: fx + akse.ex * tMid, z: fz + akse.ez * tMid,
+        y: baseY + tilScene(bunnMm + hoydeMm / 2),
+        lengde: tilScene(tilMm2 - fraMm), hoyde: tilScene(hoydeMm), tykkelse: tS });
+    };
+    // RINGMUREN BEHANDLES SOM EN RAD (samme regel som del A fikk i runde 6):
+    // den kappes rundt en dør og får en fyllbit under et vindu. Ellers sto
+    // ringmuren igjen midt i døråpningen.
+    const rmApn = apninger
+      .filter(a => Math.min(a.toppMm, rmTopp) - Math.max(a.bunnMm, rmBunn) > 10);
+    for (const [rFra, rTil] of delOppMedUtsparinger(rmFra, rmTil, rmApn.map(a => [a.fraMm, a.tilMm_])))
+      rmBit(rmBunn, rmTopp - rmBunn, rFra, rTil);
+    for (const b of utspFyllBiter(rmBunn, rmTopp, rmFra, rmTil, rmApn, SW_MIN_BIT_MM))
+      rmBit(b.bunnMm, b.hoydeMm, b.fraMm, b.tilMm_);
   }
   const fasade = { px: akse.p.x, pz: akse.p.z, ex: akse.ex, ez: akse.ez, nx, nz,
     t0: akse.soyler[0].t, t1: akse.soyler[akse.soyler.length - 1].t,
@@ -3810,7 +4076,10 @@ export function byggEnInnervegg(serie, perId, fi, nV, nR) {
     // indeks som i serier[] — da ville tegningen hentet farge og tykkelse fra
     // feil vegg.
     inner: true, navn: serie.navn || "", o: { ...o }, baseY, okBetong };
-  return { fasade, vegger, ringmur, baseY, okBetong };
+  const utspVis = apninger.map(a => ({ fi, fraMm: Math.round(a.fraMm),
+    tilMm_: Math.round(a.tilMm_), bunnMm: Math.round(a.bunnMm),
+    toppMm: Math.round(a.toppMm) }));
+  return { fasade, vegger, ringmur, utspVis, baseY, okBetong };
 }
 
 // SW-NUMRENE FOR INNERVEGGENE — samme funksjon som ytterveggene, over en annen
@@ -3837,12 +4106,13 @@ function nummererInner(d) {
 // da tegnes de lagrede tallene, akkurat som del A gjør.
 async function byggAlleInnervegger() {
   const d = innerData();
-  d.vegger = []; d.ringmur = []; d.fasader = [];
+  d.vegger = []; d.ringmur = []; d.fasader = []; d.utspVis = [];
   if (!d.serier.length) return d;
   const alle = await hentSoyler();
   const perId = new Map();
   for (const s of alle) for (const id of s.ider || []) perId.set(id, s);
   const tapte = [];
+  d.utspVis = [];
   for (let i = 0; i < d.serier.length; i++) {
     const serie = d.serier[i];
     const bygd = byggEnInnervegg(serie, perId, d.fasader.length, d.vegger.length, d.ringmur.length);
@@ -3851,6 +4121,7 @@ async function byggAlleInnervegger() {
     d.fasader.push(bygd.fasade);
     d.vegger.push(...bygd.vegger);
     d.ringmur.push(...bygd.ringmur);
+    d.utspVis.push(...bygd.utspVis);
   }
   nummererInner(d);
   if (tapte.length)
@@ -3863,7 +4134,7 @@ async function byggAlleInnervegger() {
 function tegnInnervegger() {
   const d = lagretInner;
   if (!d || !(d.vegger || []).length) return;
-  const sk = (lagret && lagret.skjul) || {};
+  const sk = d.skjul || {};
   if (sk.vegger) return;
   // Hver innervegg har sin egen farge og tykkelse, så elementene tegnes gruppe
   // for gruppe — ett oppsett per serie.
@@ -3872,12 +4143,50 @@ function tegnInnervegger() {
     if (!perFi.has(v.fi)) perFi.set(v.fi, []);
     perFi.get(v.fi).push(v);
   }
+  const redigeres = innerMark && innerMark.steg === "side" ? innerMark.idx : null;
   for (const [fi, liste] of perFi) {
+    if (redigeres !== null && redigeres !== undefined
+        && (d.fasader[fi] || {}).serieIdx === redigeres) continue;
     const o = { ...INNER_STD, ...((d.fasader[fi] || {}).o || {}) };
     tegnVeggElementer(liste, o, !sk.merking);
     if (!sk.ringmur)
       tegnRingmurBiter(d.ringmur.filter(r => r.fi === fi), !sk.merking);
   }
+  if (!sk.merking && ((lagret && lagret.oppsett) || STD_OPPSETT).visUtsp !== false) {
+    try {
+      tegnUtspMerkingFor((d.utspVis || []).filter(a => perFi.has(a.fi)),
+        d.fasader, d.vegger, innerBaseY(), INNER_STD.tykkelseMm);
+    } catch (err) { console.warn("Utsparingsmerkinga for innerveggene:", err); }
+  }
+}
+
+// 👁 Skjulingen av innerveggene. Samme oppskrift som del A (SKJUL_DELER +
+// settSkjul), men over innerveggenes egen lagring — «alt» her betyr alle
+// innerveggene, ikke alt på bygget.
+const INNER_SKJUL_DELER = [
+  { n: "vegger", navn: "Veggelementer" },
+  { n: "ringmur", navn: "Ringmur" },
+  { n: "merking", navn: "Merking og mål" }
+];
+
+function innerSkjulNaa() {
+  const d = lagretInner;
+  if (!d) return {};
+  if (!d.skjul) d.skjul = {};
+  return d.skjul;
+}
+
+function settInnerSkjul(navn, verdi) {
+  const d = lagretInner;
+  if (!d) return;
+  const sk = innerSkjulNaa();
+  if (navn === "alt") for (const del of INNER_SKJUL_DELER) sk[del.n] = verdi;
+  sk[navn] = verdi;
+  if (navn !== "alt" && !verdi) sk.alt = false;
+  if (navn !== "alt") sk.alt = INNER_SKJUL_DELER.every(del => sk[del.n]);
+  skrivInner();
+  tegnAlt();
+  if (S.tegnUtseendePanel) S.tegnUtseendePanel();
 }
 
 // ---------- A: markeringsmodus ----------
@@ -3900,7 +4209,9 @@ function innerBarEl() {
 
 function tegnInnerBar() {
   const el = innerBarEl();
-  if (!innerMark) { el.style.display = "none"; el.innerHTML = ""; return; }
+  // Begge barene står nederst i midten. Står utsparingsmarkeringen på, er den
+  // som eier plassen — ellers ville de ligget oppå hverandre.
+  if (!innerMark || utspMark) { el.style.display = "none"; el.innerHTML = ""; return; }
   el.style.display = "flex";
   const n = innerMark.serie.ider.length;
   if (innerMark.steg === "velg") {
@@ -3951,7 +4262,11 @@ async function startInnerMark(idx) {
   innerMark.soyler = funnet;
   innerMark.perId = new Map();
   for (const sø of innerMark.soyler) for (const id of sø.ider || []) innerMark.perId.set(id, sø);
-  if (eksisterende) { innerForhandsvis(); apnePanel("swPanel"); }
+  if (eksisterende) {
+    tegnAlt();              // den redigerte veggen tas ut av den faste tegninga
+    innerForhandsvis();
+    apnePanel("swPanel");
+  }
   else { $("swPanel").classList.remove("open"); }
   merkInnerSoyler();
   tegnInnerBar();
@@ -3966,6 +4281,10 @@ function avsluttInnerMark() {
   }
   innerMark = null;
   tegnInnerBar();
+  // Tegner opp igjen fra lagringen: avbryter Emil en redigering, skal den
+  // veggen komme tilbake slik den var godkjent — ikke bli borte til neste gang
+  // noe annet tegner.
+  tegnAlt();
   tegnPanel();
   apnePanel("swPanel");
 }
@@ -4051,6 +4370,7 @@ async function innerGodkjenn() {
   d.oppsett = { ...d.oppsett, ...serie.o };
   avsluttInnerMark();
   await byggAlleInnervegger();
+  byggInnerStabler();      // 📦 leveransestablene og Mengder følger med
   skrivInner();
   tegnAlt();
   tegnPanel();
@@ -4063,6 +4383,7 @@ async function slettInnervegg(idx) {
   if (!confirm(t("Slette «{0}»?", s.navn || "?"))) return;
   d.serier.splice(idx, 1);
   await byggAlleInnervegger();
+  byggInnerStabler();
   skrivInner();
   tegnAlt();
   tegnPanel();
@@ -4104,13 +4425,14 @@ window.addEventListener("pointerup", (e) => {
 }, true);
 
 window.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && innerMark) { e.stopPropagation(); avsluttInnerMark(); }
+  if (e.key === "Escape" && innerMark && !utspMark) { e.stopPropagation(); avsluttInnerMark(); }
 }, true);
 
 // ---------- Panelet: 🚪 Innervegger ----------
 export function innerOppsettFelter(serie) {
   const s = serie || {};
   const o = { ...INNER_STD, ...(s.o || {}) };
+  const utsp = (s.utsparinger || []).filter(u => u && u.min && u.max);
   return '<div style="border:1px solid var(--border);border-radius:8px;padding:8px;margin-top:6px">' +
     '<b style="font-size:12px">' + esc(s.navn || "") + '</b>' +
     '<p style="color:var(--muted);font-size:11px;margin:2px 0 6px">' +
@@ -4130,9 +4452,26 @@ export function innerOppsettFelter(serie) {
     felt("swIvRingH", "Ringmurhøyde over gulv (mm)", o.ringHoydeMm) +
     felt("swIvEnde", "Forleng begge ender forbi ytterste søyle (mm)", o.endeMm) +
     felt("swIvKlaring", "Klaring fra søylesenter (mm)", o.klaringMm) +
-    '<p style="color:var(--muted);font-size:11px;margin:2px 0">' +
+    '<p style="color:var(--muted);font-size:11px;margin:2px 0 8px">' +
       t("Vegghøyden måles fra gulvet til topp vegg. Står veggen på ringmur, er ringmuren en del av den høyden — SW-elementene fyller resten.") + '<br>' +
       t("Endene står som standard i første og siste søylesenter. Skal veggen gå helt inn til ytterveggen, skriv hvor mye den skal forlenges.") + '</p>' +
+    // 🚪 Utsparingene hører til DENNE veggen, ikke til bygget: to innervegger
+    // kan stå rygg mot rygg, og en dør i den ene skal ikke skjære den andre.
+    '<h4 style="margin:8px 0 4px;font-size:12px">' + t("Utsparinger i denne veggen") + '</h4>' +
+    '<p style="color:var(--muted);font-size:11px;margin:2px 0 6px">' +
+      t("Trykk «Marker utsparing» og pek på flatene rundt åpningen — innsiden av søylene på hver side, undersiden av bjelken over. Én flate per side.") + '</p>' +
+    '<div class="prop-actions"><button id="swIvNyUtsp">' + ikon("boks") + ' ' +
+      t("Marker utsparing") + '</button></div>' +
+    (!utsp.length
+      ? '<p style="color:var(--muted);font-size:12px">' + t("Ingen utsparinger i denne veggen.") + '</p>'
+      : utsp.map((u, i) =>
+        '<div class="qty-row"><div class="n" style="font-size:12px">' + esc(u.navn || ("#" + (i + 1))) +
+        ' <span style="color:var(--muted)">' +
+        Math.round(tilMm(Math.max(u.max[0] - u.min[0], u.max[2] - u.min[2]))) + "×" +
+        (u.max[1] - u.min[1] > 1e8 ? t("full høyde") : Math.round(tilMm(u.max[1] - u.min[1])) + " mm") +
+        '</span></div>' +
+        '<div class="c"><button data-sw-iv-slett-utsp="' + i + '" title="' + t("Slett") +
+        '" style="padding:3px 8px">' + ikon("slett") + '</button></div></div>').join("")) +
     '</div>';
 }
 
@@ -4171,7 +4510,8 @@ function innerPanelHtml() {
         '<button id="swInnerListe">' + ikon("lastned") + ' ' + t("Innervegg: liste (Excel)") + '</button>' +
         '</div>' +
         '<p style="color:var(--muted);font-size:12px;margin-top:4px">' +
-          t("{0} innveggselementer i egen serie fra SW-01.", d.vegger.filter(v => !v.skjult).length) + '</p>' +
+          t("{0} innveggselementer i egen serie fra SW-01.", d.vegger.filter(v => !v.skjult).length) +
+          " " + t("«✥ Juster elementer» over tar også disse.") + '</p>' +
         '<label>' + t("Tegningsnummer for innerveggene") +
           '<input type="text" id="swIvPdfNr" maxlength="30" value="' + esc(d.oppsett.pdfNr || "SWI-01") + '"></label>'
       : "");
@@ -4213,6 +4553,18 @@ function koblInnerPanel(body) {
     if (!el) continue;
     el.onchange = () => { lesInnerFraPanel(); innerForhandsvis(); tegnPanel(); };
   }
+  if ($("swIvNyUtsp")) $("swIvNyUtsp").onclick = () => {
+    lesInnerFraPanel();
+    startUtspMark(true);
+  };
+  body.querySelectorAll("button[data-sw-iv-slett-utsp]").forEach(b =>
+    b.onclick = () => {
+      if (!innerMark) return;
+      lesInnerFraPanel();
+      (innerMark.serie.utsparinger || []).splice(Number(b.dataset.swIvSlettUtsp), 1);
+      innerForhandsvis();
+      tegnPanel();
+    });
   if ($("swInnerListe")) $("swInnerListe").onclick = lastNedInnerListe;
   if ($("swInnerTegning")) $("swInnerTegning").onclick = lastNedInnerTegning;
 }
@@ -4261,7 +4613,7 @@ async function lastNedInnerTegning() {
       vegger: d.vegger,
       fasader: d.fasader,
       oppsett: o,
-      utsparinger: [],
+      utsparinger: d.utspVis || [],
       ringmurBiter: mod.ringmurTilFasader(d.ringmur, d.fasader, tilMm, innerBaseY()),
       tilMm, tilScene,
       stal: await stalPaFasader(d.fasader, o, innerBaseY()),
