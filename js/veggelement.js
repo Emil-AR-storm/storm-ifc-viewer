@@ -717,32 +717,102 @@ export function randRekke(soyler, latTol, maksAvstand) {
     const a = Math.round(P[i].v / lat), b = Math.round(P[start].v / lat);
     if (a < b || (a === b && P[i].u < P[start].u)) start = i;
   }
-  const rekke = [start], brukt = new Set([start]);
-  let dx = 1, dz = 0;
-  for (let steg = 0; steg < n * 4; steg++) {
-    const cur = P[rekke[rekke.length - 1]];
-    let valgt = -1, vdx = 0, vdz = 0;
-    for (const [ndx, ndz] of [[dz, -dx], [dx, dz], [-dz, dx]]) {
-      let best = -1, bestL = Infinity;
-      for (let i = 0; i < n; i++) {
-        if (brukt.has(i) && !(i === start && rekke.length > 2)) continue;
-        const fram = (P[i].u - cur.u) * ndx + (P[i].v - cur.v) * ndz;
-        const side = Math.abs((P[i].u - cur.u) * ndz - (P[i].v - cur.v) * ndx);
-        if (fram <= 1e-6 || side > lat) continue;
-        if (fram < bestL) { bestL = fram; best = i; }
-      }
-      if (best >= 0) { valgt = best; vdx = ndx; vdz = ndz; break; }
+  const maks = Number(maksAvstand) > 0 ? Number(maksAvstand) : Infinity;
+
+  // Ett aksesteg: nærmeste ubrukte søyle framover langs (ndx, ndz), innenfor
+  // sidetoleransen og steglengden.
+  const akseSteg = (cur, brukt, len, ndx, ndz, maksL) => {
+    let best = -1, bestL = Infinity;
+    for (let i = 0; i < n; i++) {
+      if (brukt.has(i) && !(i === start && len > 2)) continue;
+      const fram = (P[i].u - cur.u) * ndx + (P[i].v - cur.v) * ndz;
+      const side = Math.abs((P[i].u - cur.u) * ndz - (P[i].v - cur.v) * ndx);
+      if (fram <= 1e-6 || side > lat || fram > maksL) continue;
+      if (fram < bestL) { bestL = fram; best = i; }
     }
-    if (valgt < 0) return null;
-    dx = vdx; dz = vdz;
-    if (valgt === start) return rekke.length >= 3 ? rekke : null;
-    rekke.push(valgt); brukt.add(valgt);
-  }
-  return null;
+    return best;
+  };
+  // Kandidatene fra ett punkt, i FORETRUKKET rekkefølge:
+  //   1) aksesteg innenfor maksAvstand — utsiden først, så rett fram, så innover
+  //   2) SKRÅTT steg (Valle Båropplager 08.09): en ekte skrå fasade har ingen
+  //      søyle langs noen akse. De ubrukte søylene innenfor maksAvstand som ikke
+  //      ligger rett bakover, sortert etter hvor lite de svinger mot innsiden
+  //      (utsiden holdes på høyre hånd)
+  //   3) aksesteg uansett lengde — en gavl kan være bredere enn maksAvstand
+  // (dx, dz) er aksen vi sist gikk langs; (hx, hz) den faktiske retningen.
+  const kandidater = (cur, brukt, len, dx, dz, hx, hz) => {
+    const ut = [], sett = new Set();
+    const legg = (i, ndx, ndz, nhx, nhz) => { if (i >= 0 && !sett.has(i)) { sett.add(i); ut.push({ i, dx: ndx, dz: ndz, hx: nhx, hz: nhz }); } };
+    const retninger = [[dz, -dx], [dx, dz], [-dz, dx]];
+    for (const [ndx, ndz] of retninger) legg(akseSteg(cur, brukt, len, ndx, ndz, maks), ndx, ndz, ndx, ndz);
+    const skraa = [];
+    for (let i = 0; i < n; i++) {
+      if (brukt.has(i) && !(i === start && len > 2)) continue;
+      const du = P[i].u - cur.u, dv = P[i].v - cur.v;
+      const L = Math.hypot(du, dv);
+      if (L < 1e-6 || L > maks) continue;
+      const vinkel = Math.atan2(hx * dv - hz * du, hx * du + hz * dv);   // + = venstre = innsiden
+      if (Math.abs(vinkel) > Math.PI * 0.75) continue;
+      skraa.push({ i, vinkel, du: du / L, dv: dv / L });
+    }
+    skraa.sort((a, b) => a.vinkel - b.vinkel);
+    for (const k of skraa.slice(0, 4)) {
+      const ax = Math.abs(k.du) >= Math.abs(k.dv);
+      legg(k.i, ax ? (k.du > 0 ? 1 : -1) : 0, ax ? 0 : (k.dv > 0 ? 1 : -1), k.du, k.dv);
+    }
+    for (const [ndx, ndz] of retninger) legg(akseSteg(cur, brukt, len, ndx, ndz, Infinity), ndx, ndz, ndx, ndz);
+    return ut;
+  };
+  // GYLDIG KONTUR: ingen veggsøyle står UTENFOR den (mer enn `lat` fra randen).
+  // Det er dette som skiller en vandring som fulgte randen fra en som skar
+  // gjennom bygget — og som lar søket spore tilbake og prøve neste kandidat.
+  const gyldig = (rekke) => {
+    const poly = rekke.map(i => P[i]);
+    const m = poly.length;
+    for (let k = 0; k < n; k++) {
+      if (rekke.indexOf(k) >= 0) continue;
+      const q = P[k];
+      let inne = false, naerRand = false;
+      for (let i = 0, j = m - 1; i < m; j = i++) {
+        const a = poly[i], b = poly[j];
+        // avstand til kanten
+        const ex = b.u - a.u, ev = b.v - a.v, L2 = ex * ex + ev * ev;
+        const t = L2 > 0 ? Math.max(0, Math.min(1, ((q.u - a.u) * ex + (q.v - a.v) * ev) / L2)) : 0;
+        if (Math.hypot(q.u - (a.u + ex * t), q.v - (a.v + ev * t)) <= lat) { naerRand = true; break; }
+        if ((a.v > q.v) !== (b.v > q.v) && q.u < (b.u - a.u) * (q.v - a.v) / (b.v - a.v) + a.u) inne = !inne;
+      }
+      if (!naerRand && !inne) return false;
+    }
+    return true;
+  };
+  // Dybde-først med tilbakesporing. Den første lukkede, gyldige konturen
+  // vinner — på et rettvinklet bygg er det nøyaktig den gamle stien, fordi
+  // aksestegene prøves først. Budsjettet stopper et bygg vandringen ikke
+  // forstår; da faller kalleren tilbake på det konvekse hullet som før.
+  let budsjett = 4000;
+  const rekke = [start], brukt = new Set([start]);
+  const dfs = (dx, dz, hx, hz) => {
+    if (--budsjett < 0) return false;
+    const cur = P[rekke[rekke.length - 1]];
+    for (const k of kandidater(cur, brukt, rekke.length, dx, dz, hx, hz)) {
+      if (k.i === start) {
+        if (rekke.length >= 3 && gyldig(rekke)) return true;
+        continue;
+      }
+      rekke.push(k.i); brukt.add(k.i);
+      if (dfs(k.dx, k.dz, k.hx, k.hz)) return true;
+      rekke.pop(); brukt.delete(k.i);
+      if (budsjett < 0) return false;
+    }
+    return false;
+  };
+  return dfs(1, 0, 1, 0) ? rekke : null;
 }
 
 // Fasadene langs randen. Samme form som fasaderFra, men konturen kan ha
 // innvendige hjørner. Returnerer null når vandringen ikke lukker seg.
+// Mer enn så mange grader fra begge aksene i byggets frame = skrå fasade.
+export const RAND_SKRA_GRADER = 12;
 export function fasaderLangsRand(soyler, latTol, maksAvstand) {
   const rekke = randRekke(soyler, latTol, maksAvstand);
   if (!rekke) return null;
@@ -750,22 +820,41 @@ export function fasaderLangsRand(soyler, latTol, maksAvstand) {
   const th = hovedVinkel(soyler, maksAvstand);
   const c = Math.cos(th), sn = Math.sin(th);
   const rot = (x) => ({ u: x.cx * c + x.cz * sn, v: -x.cx * sn + x.cz * c });
-  // Retningen mellom hvert nabopar, rundet til nærmeste akse i byggets frame.
+  // Retningen mellom hvert nabopar, rundet til nærmeste akse i byggets frame —
+  // eller SKRÅ (null) når segmentet står mer enn SKRA_GRADER fra begge aksene.
+  // En skrå fasade (Valle Båropplager) får sin egen retning, fra første til
+  // siste søyle i løpet, i stedet for å bli snappet til en akse den ikke følger.
   const retn = [];
   for (let i = 0; i < n; i++) {
     const a = rot(R[i]), b = rot(R[(i + 1) % n]);
     const du = b.u - a.u, dv = b.v - a.v;
-    retn.push(Math.abs(du) >= Math.abs(dv) ? (du > 0 ? [1, 0] : [-1, 0]) : (dv > 0 ? [0, 1] : [0, -1]));
+    const grader = Math.abs(Math.atan2(Math.min(Math.abs(du), Math.abs(dv)), Math.max(Math.abs(du), Math.abs(dv)))) * 180 / Math.PI;
+    if (grader > RAND_SKRA_GRADER) retn.push(null);
+    else retn.push(Math.abs(du) >= Math.abs(dv) ? (du > 0 ? [1, 0] : [-1, 0]) : (dv > 0 ? [0, 1] : [0, -1]));
   }
-  const lik = (a, b) => a[0] === b[0] && a[1] === b[1];
+  const lik = (a, b) => a && b && a[0] === b[0] && a[1] === b[1];
+  // To skrå segmenter hører til samme løp når det neste punktet ligger innenfor
+  // sidetoleransen fra linja gjennom løpets første og siste punkt.
+  const paaLinje = (punkter, neste) => {
+    const a = punkter[0], b = punkter[punkter.length - 1];
+    const dx = b.cx - a.cx, dz = b.cz - a.cz, L = Math.hypot(dx, dz);
+    if (L < 1e-9) return true;
+    return Math.abs((neste.cx - a.cx) * dz - (neste.cz - a.cz) * dx) / L <= latTol;
+  };
   let start = 0;
-  for (let i = 0; i < n; i++) if (!lik(retn[i], retn[(i - 1 + n) % n])) { start = i; break; }
+  for (let i = 0; i < n; i++) {
+    const f = retn[(i - 1 + n) % n];
+    if (!(lik(retn[i], f) || (retn[i] === null && f === null))) { start = i; break; }
+  }
   const lop = [];
-  let cur = [R[start]], dd = retn[start];
+  let cur = [R[start]];
   for (let k = 0; k < n; k++) {
-    const i = (start + k) % n;
-    cur.push(R[(i + 1) % n]);
-    if (!lik(retn[(i + 1) % n], retn[i])) { lop.push({ punkter: cur, dd: retn[i] }); cur = [R[(i + 1) % n]]; }
+    const i = (start + k) % n, j = (i + 1) % n;
+    cur.push(R[j]);
+    const samme = retn[j] === null && retn[i] === null
+      ? paaLinje(cur, R[(j + 1) % n])
+      : lik(retn[j], retn[i]);
+    if (!samme || k === n - 1) { lop.push({ punkter: cur, dd: retn[i] }); cur = [R[j]]; }
   }
   if (cur.length > 1) lop.push({ punkter: cur, dd: retn[(start - 1 + n) % n] });
   // Utover-normalen finnes ved å prøve begge og se hvilken som peker UT av
@@ -783,7 +872,14 @@ export function fasaderLangsRand(soyler, latTol, maksAvstand) {
   const ut = [];
   for (const { punkter, dd } of lop) {
     if (punkter.length < 2) continue;
-    const ex = dd[0] * c - dd[1] * sn, ez = dd[0] * sn + dd[1] * c;
+    let ex, ez;
+    if (dd) { ex = dd[0] * c - dd[1] * sn; ez = dd[0] * sn + dd[1] * c; }
+    else {
+      // skrå løp: retningen fra første til siste søyle
+      const a = punkter[0], b = punkter[punkter.length - 1];
+      const L = Math.hypot(b.cx - a.cx, b.cz - a.cz) || 1;
+      ex = (b.cx - a.cx) / L; ez = (b.cz - a.cz) / L;
+    }
     let nx = ez, nz = -ex;
     const mx = punkter.reduce((a, x) => a + x.cx, 0) / punkter.length;
     const mz = punkter.reduce((a, x) => a + x.cz, 0) / punkter.length;
@@ -799,6 +895,40 @@ export function fasaderLangsRand(soyler, latTol, maksAvstand) {
     });
   }
   return ut.length >= 3 ? knyttNaboer(ut) : null;
+}
+
+// HJØRNELAPPEN, som rene tall (mm). Hvor langt forbi (eller kort før) sitt
+// søylesenter skal veggen gå i en ende, for å møte NABOVEGGEN slik Moelv-
+// tegningen gjør: i sluttenden løper elementet FORBI hjørnet og dekker naboens
+// endeflate (helt ut til naboens ytterflate); i startenden stopper det FLUKT
+// mot innsiden av forrige vegg. Innvendige hjørner (L-bygg) snus.
+//
+// Regnet som skjæring mellom denne veggens midtplan (offset `off` fra
+// søyleaksen) og naboens flate (offset `offNabo` ± halve tykkelsen). På et rett
+// hjørne blir det nøyaktig det gamle «± offNabo + tykkelse/2» — vaskehallen,
+// Hegdalringen og de andre rører seg ikke. På et SKRÅTT hjørne (Valle) blir det
+// den ekte skjæringen. `nabo` er naboens utover-normal; `f` har ex/ez/nx/nz.
+// Alle mål i scene-enheter inn, mm ut.
+export function hjorneForlengelse(f, nabo, offNabo, off, tykkelseMm, start) {
+  const tS = tilScene(Number(tykkelseMm) || 0);
+  const tMm = Number(tykkelseMm) || 0;
+  // Uten nabo (en fri ende i et manuelt fasadesett): nøyaktig som før —
+  // start trekkes inn med off, slutt løper off forbi.
+  if (!nabo) return (start ? -tilMm(off) : tilMm(off)) + tMm / 2;
+  const d = nabo.x * f.ex + nabo.z * f.ez;          // naboens normal langs denne veggen
+  const nn = nabo.x * f.nx + nabo.z * f.nz;         // … og på tvers av den
+  // d > 0: naboens YTTERflate (sluttende: utvendig hjørne, løp forbi;
+  //        startende: innvendig hjørne, løp forbi).
+  // d < 0: naboens INNERflate (sluttende: innvendig hjørne, stopp kort;
+  //        startende: utvendig hjørne, stopp flukt mot innsiden).
+  const flate = (Number(offNabo) || 0) + (d > 0 ? tS / 2 : -tS / 2);
+  if (Math.abs(d) < 0.2) {
+    // nesten parallelle vegger (en liten knekk): ingen skjæring å snakke om —
+    // gå halve tykkelsen forbi, så det ikke blir et hull i knekken
+    return tMm / 2;
+  }
+  // skjæringen langs veggen, målt fra hjørnesøyla (negativt = bakover)
+  return tilMm((flate - nn * (Number(off) || 0)) / d);
 }
 
 // Hver fasade får naboenes utover-normaler. Hjørnelappen (pinwheel) trenger
@@ -2514,24 +2644,28 @@ async function generer() {
     }
   }
 
-  // Ringmur og vegger per fasade
-  const ringmur = [];
-  const vegger = [];
-  const fasadeInfo = [];   // {off, rot} per fasade — til stabelplasseringen
-  for (let fi = 0; fi < fasader.length; fi++) {
-    const f = fasader[fi];
-    // Veggen (og ringmuren) står FLUKT inntil utsiden av søylene. Utsiden
-    // måles fra de FAKTISKE søyleboksene på fasaden — senteravvik pluss halve
-    // boksen langs normalen — ikke fra en medianbredde. Da ligger elementet
-    // rett på veggen selv når søylene har fotplater eller ulik størrelse
-    // (Emils funn runde 2: veggene sto ikke inntil).
+  // Veggen (og ringmuren) står FLUKT inntil utsiden av søylene. Utsiden
+  // måles fra de FAKTISKE søyleboksene på fasaden — senteravvik pluss halve
+  // boksen langs normalen — ikke fra en medianbredde. Da ligger elementet
+  // rett på veggen selv når søylene har fotplater eller ulik størrelse
+  // (Emils funn runde 2: veggene sto ikke inntil). Regnes for ALLE fasadene
+  // først: hjørnelappen trenger naboens offset (skrå hjørner, Valle 08.09).
+  const offs = fasader.map(f => {
     let ytreFlate = 0;
     for (const k of f.soyler) {
       const lat = (k.s.cx - f.p.x) * f.nx + (k.s.cz - f.p.z) * f.nz;
       const halv = (Math.abs(f.nx) * k.s.bx + Math.abs(f.nz) * k.s.bz) / 2;
       ytreFlate = Math.max(ytreFlate, lat + halv);
     }
-    const off = ytreFlate + tS / 2;
+    return ytreFlate + tS / 2;
+  });
+  // Ringmur og vegger per fasade
+  const ringmur = [];
+  const vegger = [];
+  const fasadeInfo = [];   // {off, rot} per fasade — til stabelplasseringen
+  for (let fi = 0; fi < fasader.length; fi++) {
+    const f = fasader[fi];
+    const off = offs[fi];
     const midt = (tMid, y) => ({
       x: f.p.x + f.ex * tMid + f.nx * off,
       z: f.p.z + f.ez * tMid + f.nz * off,
@@ -2588,10 +2722,12 @@ async function generer() {
     // kortere (−off). Uten dette dyttet hjørnelappen veggen ut i lufta i hvert
     // innvendig hjørne (Emils lagerbygg 04.09). På et rektangel er begge +1,
     // så vaskehallen og alle konvekse bygg får nøyaktig samme mål som før.
-    const sStart = f.forrigeN ? -Math.sign(f.forrigeN.x * f.ex + f.forrigeN.z * f.ez) || 1 : 1;
-    const sSlutt = f.nesteN ? Math.sign(f.nesteN.x * f.ex + f.nesteN.z * f.ez) || 1 : 1;
-    const hjFraMm = tilMm(t0) - sStart * offMm + o.tykkelseMm / 2;   // start: mot naboens innside
-    const hjTilMm = tilMm(t1) + sSlutt * offMm + o.tykkelseMm / 2;   // slutt: forbi, til ytterhjørnet
+    // SKRÅ HJØRNER (Valle 08.09): på et rett hjørne er dette nøyaktig
+    // «± naboens offset + halve tykkelsen»; på et skrått hjørne er det den
+    // faktiske skjæringen mellom denne veggens midtplan og naboens flate.
+    const nabo = (fi + 1) % fasader.length, forrige = (fi + fasader.length - 1) % fasader.length;
+    const hjFraMm = tilMm(t0) + hjorneForlengelse(f, f.forrigeN, offs[forrige], off, o.tykkelseMm, true);
+    const hjTilMm = tilMm(t1) + hjorneForlengelse(f, f.nesteN, offs[nabo], off, o.tykkelseMm, false);
     if (o.ringmur) {
       // RINGMUREN BEHANDLES SOM EN RAD (Emil 02.09): den kappes rundt en
       // utsparing på nøyaktig samme måte som veggelementene, og får en
