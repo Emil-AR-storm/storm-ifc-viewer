@@ -1041,7 +1041,10 @@ async function hentSoyler() {
   const rå = [];
   for (const [id, b] of bokser) {
     if (soyleTypeNavn(id) !== "Column") continue;
-    rå.push({ cx: (b.min.x + b.max.x) / 2, cz: (b.min.z + b.max.z) / 2,
+    // 🚪 ELEMENT-ID-EN FØLGER MED (del B). Innerveggene pekes ut ved å trykke
+    // på søylene i modellen, og da må et trykk kunne slås opp i en søylestabel.
+    // Del A rører ikke feltet.
+    rå.push({ id, cx: (b.min.x + b.max.x) / 2, cz: (b.min.z + b.max.z) / 2,
       mnx: b.min.x, mnz: b.min.z, mxx: b.max.x, mxz: b.max.z,
       minY: b.min.y, maxY: b.max.y,
       bx: b.max.x - b.min.x, bz: b.max.z - b.min.z,
@@ -1058,13 +1061,14 @@ async function hentSoyler() {
   for (const s of rå) {
     const treff = ut.find(u => sammeSoyle(u, s, tol));
     if (treff) {
+      treff.ider.push(s.id);
       treff.minY = Math.min(treff.minY, s.minY);
       treff.maxY = Math.max(treff.maxY, s.maxY);
       treff.mnx = Math.min(treff.mnx, s.mnx); treff.mnz = Math.min(treff.mnz, s.mnz);
       treff.mxx = Math.max(treff.mxx, s.mxx); treff.mxz = Math.max(treff.mxz, s.mxz);
       treff.deler.push({ minY: s.minY, maxY: s.maxY, cx: s.cx, cz: s.cz,
         bx: s.bx, bz: s.bz, bredde: s.bredde });
-    } else ut.push({ ...s, deler: [{ minY: s.minY, maxY: s.maxY, cx: s.cx, cz: s.cz,
+    } else ut.push({ ...s, ider: [s.id], deler: [{ minY: s.minY, maxY: s.maxY, cx: s.cx, cz: s.cz,
       bx: s.bx, bz: s.bz, bredde: s.bredde }] });
   }
   // Har søyla en SØYLEFORLENGER? Forlengeren er et EGET søyleelement som står
@@ -1188,6 +1192,109 @@ export function fasadeSoyler(fasade, alleSoyler, kolTol, okBetong, andel) {
   }
   paa.sort((a, b) => a.t - b.t);
   return paa;
+}
+
+// ═══════════════════ 🚪 INNERVEGGER (del B, Emils plan 08.09) ═══════════════════
+//
+// EN INNERVEGG FINNES IKKE AUTOMATISK — DEN PEKES UT. Del A leter seg fram til
+// ytterveggene av seg selv (randvandring rundt søylene), og det er riktig der:
+// konturen av et bygg er entydig. Inne i bygget er den ikke det. En søylerekke
+// midt i en hall kan være en mesaninvegg, en brannvegg, en bod — eller bare en
+// søylerekke som bærer taket. Ingen regel i geometrien skiller dem, og runde
+// 19–20 viste hva som skjer når vi later som den finnes: hvert bygg får sitt
+// eget unntak.
+//
+// Derfor markerer Emil søylene selv, velger radhøyder/tykkelse/farge/ringmur og
+// vegghøyde, og velger til slutt hvilken SIDE av søylene veggen kommer opp på.
+// Innerveggene får sin EGEN SW-serie som starter på SW-01, sin egen
+// instruksjonstegning og sin egen elementliste. Ytterveggene røres ikke.
+
+// Aksen gjennom de markerte søylene.
+//
+// Retningen tas fra de TO SØYLENE SOM STÅR LENGST FRA HVERANDRE, ikke fra en
+// regresjonslinje gjennom alle: ytterpunktene er de som faktisk definerer
+// veggens lengde, og en rekke der én søyle står 40 mm ute skal gi samme akse
+// som en rett rekke.
+//
+// t = 0 legges på den FØRSTE søyla langs aksen, så alle mål i veggen regnes
+// derfra — samme konvensjon som fasadene i del A.
+export function innerveggAkse(soyler) {
+  const alle = (soyler || []).filter(s => s && isFinite(s.cx) && isFinite(s.cz));
+  if (alle.length < 2) return null;
+  let a = alle[0], b = alle[1], best = -1;
+  for (let i = 0; i < alle.length; i++)
+    for (let j = i + 1; j < alle.length; j++) {
+      const d = Math.hypot(alle[i].cx - alle[j].cx, alle[i].cz - alle[j].cz);
+      if (d > best) { best = d; a = alle[i]; b = alle[j]; }
+    }
+  if (!(best > 1e-9)) return null;
+  let ex = (b.cx - a.cx) / best, ez = (b.cz - a.cz) / best;
+  // Retningen gjøres ENTYDIG. Uten dette ville samme søylerekke gitt speilvendt
+  // tegning avhengig av hvilken søyle brukeren tilfeldigvis trykket på først.
+  if (ex < -1e-9 || (Math.abs(ex) <= 1e-9 && ez < 0)) { ex = -ex; ez = -ez; }
+  const nx = ez, nz = -ex;
+  const t0 = Math.min(...alle.map(s => (s.cx - a.cx) * ex + (s.cz - a.cz) * ez));
+  const p = { x: a.cx + ex * t0, z: a.cz + ez * t0 };
+  const liste = alle.map(s => ({ s, t: (s.cx - p.x) * ex + (s.cz - p.z) * ez }))
+    .sort((u, v) => u.t - v.t);
+  return { p, ex, ez, nx, nz, soyler: liste };
+}
+
+// Hvor langt fra søyleaksen ligger MIDTEN av veggplanet?
+//
+// Samme regning som ytterveggene (runde 2: veggen skal stå FLUKT inntil den
+// faktiske søyleflaten, ikke inntil en medianbredde), men siden er brukerens
+// valg — en innervegg har ingen «utside». `side` er +1 eller −1 og peker langs
+// ±(nx, nz); svaret er avstanden langs DEN siden, alltid positiv.
+export function innerveggOffset(akse, side, tykkelse) {
+  if (!akse || !akse.soyler || !akse.soyler.length) return 0;
+  const sg = Number(side) < 0 ? -1 : 1;
+  const nx = akse.nx * sg, nz = akse.nz * sg;
+  let ytre = 0;
+  for (const k of akse.soyler) {
+    const lat = (k.s.cx - akse.p.x) * nx + (k.s.cz - akse.p.z) * nz;
+    const halv = (Math.abs(nx) * (k.s.bx || 0) + Math.abs(nz) * (k.s.bz || 0)) / 2;
+    ytre = Math.max(ytre, lat + halv);
+  }
+  return ytre + (Number(tykkelse) || 0) / 2;
+}
+
+// Elementene i én innervegg, som rene mm.
+//
+// Rammen er FELT UTENPÅ, RADER INNENFOR — samme rekkefølge som del A, så
+// SW-numrene kommer felt for felt langs veggen og radene nedenfra og opp.
+//
+// ENDENE er den ene forskjellen fra en yttervegg. Ytterveggene løper forbi
+// hjørnet og dekker naboveggens endeflate; en innervegg har ingen nabovegg å
+// møte, og hvor den slutter vet bare den som har tegnet bygget. Standard er
+// derfor det ETTERPRØVBARE valget: veggen går fra første til siste søylesenter.
+// `endeMm` skyver begge endene utover, for den som vil ta veggen helt inn til
+// ytterveggen.
+export function innerveggBiter(skjot, rader, kappIndex, klaringMm, minBitMm, endeMm) {
+  const ut = [];
+  const sk = (skjot || []).map(Number).filter(n => isFinite(n));
+  const rd = (rader || []).map(Number).filter(n => n > 0);
+  if (sk.length < 2 || !rd.length) return ut;
+  const kl = Number(klaringMm) || 0;
+  const minBit = Number(minBitMm) || 0;
+  const e = Number(endeMm) || 0;
+  const radBunn = [];
+  { let b = 0; for (const h of rd) { radBunn.push(b); b += h; } }
+  for (let i = 0; i < sk.length - 1; i++) {
+    const fra = i === 0 ? sk[0] - e : sk[i] + kl;
+    const til = i === sk.length - 2 ? sk[sk.length - 1] + e : sk[i + 1] - kl;
+    const full = til - fra;
+    if (full < minBit) continue;
+    for (let r = 0; r < rd.length; r++) {
+      ut.push({
+        fraMm: Math.round(fra), tilMm_: Math.round(til),
+        lengdeMm: Math.round(full), fullMm: Math.round(full),
+        radIdx: r, rBunnMm: radBunn[r], radHMm: rd[r], hoydeMm: rd[r],
+        tilpassetRad: r === kappIndex, tilpasset: r === kappIndex
+      });
+    }
+  }
+  return ut;
 }
 
 // Utsparingene: boksene brukeren har lagt til fra valgte elementer
@@ -1486,30 +1593,12 @@ function boks(farge, opacity) {
   return m;
 }
 
-// Tegner alt fra de lagrede tallene. Vegger: {x,y,z,rot,lengdeMm,hoydeMm,tMm,sw,tilpasset}
-function tegnAlt() {
-  ryddTegning();
-  if (!lagret) return;
-  const o = lagret.oppsett || STD_OPPSETT;
-  const sk = lagret.skjul || {};
-  if (lagret.gulv && !sk.gulv) {
-    const g = lagret.gulv;
-    const betong = boks("#9aa3ad", 1);
-    betong.scale.set(g.bredde, tilScene(o.betongMm), g.dybde);
-    betong.position.set(g.x, g.topp - tilScene(o.betongMm) / 2, g.z);
-    swGroup.add(betong);
-    if (o.isoMm > 0) {
-      const iso = boks("#e8e4da", 1);
-      iso.scale.set(g.bredde, tilScene(o.isoMm), g.dybde);
-      iso.position.set(g.x, g.topp - tilScene(o.betongMm) - tilScene(o.isoMm) / 2, g.z);
-      swGroup.add(iso);
-    }
-  }
-  // 🧱 RINGMUREN: samme dra-funksjon som veggelementene (Emil 03.09).
-  // Hver bit får swId, så «Juster elementer» plukker den opp uendret, og en
-  // dimensjonslapp i midten slik elementene har.
-  const visRmLapper = (lagret.ringmur || []).length <= 400 && !sk.merking;
-  for (const r of (sk.ringmur ? [] : lagret.ringmur || [])) {
+// 🧱 RINGMURBITENE, tegnet fra tallene. Trukket ut av tegnAlt i runde 21 så
+// innerveggene kan bruke NØYAKTIG samme tegning — en egen kopi ville drevet fra
+// denne første gang noe ble rettet i den ene.
+function tegnRingmurBiter(biter, visMerking) {
+  const visRmLapper = (biter || []).length <= 400 && !!visMerking;
+  for (const r of biter || []) {
     if (r.skjult || (r.lengdeMm !== undefined && !(r.lengdeMm > 0))) continue;
     const m = boks("#8a8f98", 1);
     m.scale.set(r.lengde, r.hoyde, r.tykkelse);
@@ -1529,6 +1618,12 @@ function tegnAlt() {
       swGroup.add(dim);
     }
   }
+}
+
+// 🧱 VEGGELEMENTENE, tegnet fra tallene. Også trukket ut i runde 21: del A
+// sender inn sine vegger og sitt oppsett, del B sine. Ingenting her vet hvilken
+// av dem det er.
+function tegnVeggElementer(vegger, o, visMerking) {
   // Elementene tegnes som EKTE SANDWICHPANELER — samme oppskrift som
   // materiell-modellen Emil pekte på (runde 3): lys isolasjonskjerne synlig i
   // endene, og et tynt blikk med mikroprofil i elementfargen på begge sider.
@@ -1537,9 +1632,9 @@ function tegnAlt() {
   const fargeMat = new THREE.MeshLambertMaterial({ color: farge, side: THREE.DoubleSide });
   const kjerneMat = new THREE.MeshLambertMaterial({ color: "#e8e4da", side: THREE.DoubleSide });
   const mal = MALTYPER.sandwich;
-  const antV = (lagret.vegger || []).length;
-  const visLapper = antV <= SW_MAKS_LAPPER && !sk.merking;
-  if (antV > SW_MAKS_LAPPER && !sk.merking)
+  const antV = (vegger || []).length;
+  const visLapper = antV <= SW_MAKS_LAPPER && !!visMerking;
+  if (antV > SW_MAKS_LAPPER && visMerking)
     console.warn("SW: " + antV + " veggelement er over grensa på " + SW_MAKS_LAPPER
       + " — SW-nummer og mål tegnes ikke i 3D. Lista og PDF-en er uendret.");
   // Ett panelstykke: isolasjonskjerne + ytter- og innerhud med mikroprofil.
@@ -1640,7 +1735,7 @@ function tegnAlt() {
     }
     return inner;
   };
-  for (const v of (sk.vegger ? [] : lagret.vegger || [])) {
+  for (const v of vegger || []) {
     if (v.skjult || !(v.lengdeMm > 0)) continue;   // dratt bort, men ikke slettet
     const el = new THREE.Group();
     // 🚪 HAKK ETTER UTSPARINGER: elementet er ÉTT element i lista med full
@@ -1714,6 +1809,41 @@ function tegnAlt() {
       swGroup.add(dim);
     }
   }
+}
+
+// Tegner alt fra de lagrede tallene. Vegger: {x,y,z,rot,lengdeMm,hoydeMm,tMm,sw,tilpasset}
+function tegnAlt() {
+  ryddTegning();
+  tegnDelA();
+  // 🚪 Innerveggene tegnes ETTER ytterveggene, fra sin EGEN lagring. Egen
+  // try/catch med vilje: en feil i del B skal ikke la bygget stå uten
+  // yttervegger.
+  try { tegnInnervegger(); }
+  catch (err) { console.warn("Innerveggene kunne ikke tegnes:", err); }
+}
+
+function tegnDelA() {
+  if (!lagret) return;
+  const o = lagret.oppsett || STD_OPPSETT;
+  const sk = lagret.skjul || {};
+  if (lagret.gulv && !sk.gulv) {
+    const g = lagret.gulv;
+    const betong = boks("#9aa3ad", 1);
+    betong.scale.set(g.bredde, tilScene(o.betongMm), g.dybde);
+    betong.position.set(g.x, g.topp - tilScene(o.betongMm) / 2, g.z);
+    swGroup.add(betong);
+    if (o.isoMm > 0) {
+      const iso = boks("#e8e4da", 1);
+      iso.scale.set(g.bredde, tilScene(o.isoMm), g.dybde);
+      iso.position.set(g.x, g.topp - tilScene(o.betongMm) - tilScene(o.isoMm) / 2, g.z);
+      swGroup.add(iso);
+    }
+  }
+  // 🧱 RINGMUREN: samme dra-funksjon som veggelementene (Emil 03.09).
+  // Hver bit får swId, så «Juster elementer» plukker den opp uendret, og en
+  // dimensjonslapp i midten slik elementene har.
+  tegnRingmurBiter(sk.ringmur ? [] : lagret.ringmur || [], !sk.merking);
+  if (!sk.vegger) tegnVeggElementer(lagret.vegger || [], o, !sk.merking);
   if (!sk.merking) {
     try { tegnUtspMerking(); }
     catch (err) { console.warn("Utsparingsmerkingen kunne ikke tegnes:", err); }
@@ -1874,7 +2004,12 @@ function tekstDekal(tekst, hoydeMm, maksBredde) {
 
 // Kalles av afterLoad (ifc.js) når en modell er åpnet, og av clearModel når
 // den lukkes — samme kroker som materiell og grupper bruker.
-S.lastSW = () => { lagret = lesLagret(); loesAlleJusteringer(); tegnAlt(); };
+S.lastSW = () => {
+  lagret = lesLagret();
+  lagretInner = lesInner();    // 🚪 leses fra sin egen nøkkel, per fil
+  loesAlleJusteringer();
+  tegnAlt();
+};
 S.ryddSW = () => { if (just) avsluttJuster(); lagret = null; ryddTegning(); };
 
 // ---------- 🏔 Taklinja lest ut av stålet i fasadeplanet ----------
@@ -2669,9 +2804,9 @@ export function pdfFelt(o, iDag) {
 //  · fasade langs Z krysses av linjene med fast z (bokstavaksene)
 // En skrå fasade krysses av begge på skrå, og da er det ingen av dem som gir et
 // ærlig navn — den faller tilbake på A, B, C for seg.
-function akseNavnFor(fi) {
+function akseNavnFor(fi, fasader) {
   const L = S.akseLinjer;
-  const f = ((lagret && lagret.fasader) || [])[fi];
+  const f = (fasader || (lagret && lagret.fasader) || [])[fi];
   if (!L || !f) return () => null;
   const ax = Math.abs(f.ex), az = Math.abs(f.ez);
   // 0,92 ≈ 23° skrå. Mer enn det, og aksene står ikke på tvers av fasaden.
@@ -2702,8 +2837,8 @@ function akseNavnFor(fi) {
 // som ligger bak veggen blir dekket, og bare det frie stålet står igjen.
 const STAL_TYPER = ["Column", "Beam", "Member", "Plate"];
 
-async function stalPaFasader() {
-  const fasader = (lagret && lagret.fasader) || [];
+async function stalPaFasader(fasader, oppsettInn, baseYInn) {
+  fasader = fasader || (lagret && lagret.fasader) || [];
   if (!fasader.length) return [];
   if (!S.glbActive) await sikreMeta(alleElementIder);
   const bokser = allElementBoxes();
@@ -2711,8 +2846,8 @@ async function stalPaFasader() {
   // planet; en takbjelke innover i bygget har senteret sitt langt inne og skal
   // IKKE bli et digert rektangel over hele fasaden.
   const naer = Math.max(0.8 / (S.enhetSkala || 1),
-    tilScene((lagret.oppsett || STD_OPPSETT).tykkelseMm) * 3);
-  const baseY = baseYNaa();
+    tilScene((oppsettInn || (lagret && lagret.oppsett) || STD_OPPSETT).tykkelseMm) * 3);
+  const baseY = baseYInn !== undefined ? baseYInn : baseYNaa();
   const ut = [];
   for (const [id, b] of bokser) {
     if (STAL_TYPER.indexOf(soyleTypeNavn(id)) === -1) continue;
@@ -2816,7 +2951,7 @@ async function lastNedTegning() {
     // i S.akseLinjer én gang og lukker over fasaden.
     const navnere = new Map();
     const navnFor = (fi) => {
-      if (!navnere.has(fi)) navnere.set(fi, akseNavnFor(fi));
+      if (!navnere.has(fi)) navnere.set(fi, akseNavnFor(fi, lagret.fasader));
       return navnere.get(fi);
     };
     await mod.lastNedTegning({
@@ -2827,7 +2962,7 @@ async function lastNedTegning() {
       ringmurBiter: await ringmurPaFasader(mod),
       // scene ↔ mm. Den rene delen skal ikke vite om S.enhetSkala.
       tilMm, tilScene,
-      stal: await stalPaFasader(),
+      stal: await stalPaFasader(lagret.fasader, o, baseYNaa()),
       aksenavn: (fi, mm) => navnFor(fi)(fi, mm),
       felt: pdfFelt(o, mod.idag()),
       hentLogo: () => hentLogo((($("swPdfLogo") || {}).value) || "")
@@ -3417,6 +3552,7 @@ function tegnPanel() {
           ? '<br><span style="color:var(--muted);font-size:11px">' + esc(utspKildeTekst(u)) + "</span>" : "") +
         "</div>" +
         '<div class="c"><button data-sw-slett-utsp="' + i + '" title="' + t("Slett") + '" style="padding:3px 8px">' + ikon("slett") + '</button></div></div>').join("")) +
+    innerPanelHtml() +
     '<h4 style="margin:10px 0 4px">' + t("Til lista") + '</h4>' +
     felt("swProsjekt", "Prosjekt", o.prosjekt, "text") +
     felt("swOppdrag", "Oppdragsnummer", o.oppdragsnr, "text") +
@@ -3497,6 +3633,7 @@ function tegnPanel() {
   $("swNyUtsp").onclick = () => { lesOppsettFraPanel(); startUtspMark(); };
   if ($("swVisUtsp")) $("swVisUtsp").onchange = () => { lesOppsettFraPanel(); tegnAlt(); };
   if ($("swJusterBtn")) $("swJusterBtn").onclick = () => { lesOppsettFraPanel(); startJuster(); };
+  koblInnerPanel(body);
   body.querySelectorAll("button[data-sw-slett-utsp]").forEach(b =>
     b.onclick = () => {
       lesOppsettFraPanel();
@@ -3536,6 +3673,622 @@ async function fyllLogovalgSW() {
     oppsett().pdfLogo = (o && o.dataset.fil) || "";
     skrivLagret();
   };
+}
+
+// ═══════════ 🚪 INNERVEGGER: markering, side, godkjenning, egen serie ═══════════
+//
+// HELE DEL B LIGGER FOR SEG SELV — egen lagringsnøkkel, egen liste, egen
+// tegning. Det er ikke ryddighet for ryddighetens skyld: ytterveggene på de
+// fire regresjonsbyggene skal være BIT FOR BIT uendret etter denne runden, og
+// den eneste måten å vite det er at innerveggene ikke deler en eneste array
+// med dem. Numrene starter derfor på SW-01 igjen av seg selv — de kommer fra
+// swNummerering over en annen liste.
+//
+// Emils flyt (08.09), steg for steg:
+//   A  «Ny innervegg» → marker søylene veggen skal stå på
+//   B  velg radhøyder, vegghøyde, tykkelse, farge og ringmur
+//   C  velg SIDE av søylene — pila i 3D viser hvilken, og forhåndsvisningen
+//      står der veggen faktisk kommer
+//   D  «Godkjenn»
+//   E  egen SW-liste fra SW-01, egen PDF, eget regneark
+
+const INNER_STD = {
+  radHoyder: "", kappNederst: true,
+  veggHoydeMm: 3000,            // Emils valg: vegghøyden skrives inn
+  tykkelseMm: 100, farge: "#eef2f7",
+  ringmur: false, ringHoydeMm: 500,
+  klaringMm: SW_KLARING_MM, minFeltMm: SW_MIN_FELT_MM,
+  // Endene: 0 = veggen går fra første til siste søylesenter. Se innerveggBiter.
+  endeMm: 0
+};
+
+// PROSJEKTDATAENE BOR ETT STED. Prosjektnavn, oppdragsnummer, sted, sign,
+// isolasjon og fargenavnene til lista hentes fra del A-oppsettet — to sett
+// felter for samme prosjekt ville drevet fra hverandre første gang noen retta
+// bare det ene. Innerveggene overstyrer bare det som FAKTISK er deres eget:
+// geometrien, fargen i 3D, og tegningsnummeret.
+function innerOppsettForListe(so) {
+  const a = oppsett();
+  return { ...a, ...so, betongMm: 0, isoMm: 0,
+    pdfNr: (innerData().oppsett.pdfNr || "SWI-01"),
+    pdfTittel: a.pdfTittel || t("SW-Elementer innervegg") };
+}
+
+let lagretInner = null;
+function innerNokkel() { return "storm-ifc-sw-inner::" + S.fileName; }
+
+function lesInner() {
+  try { return JSON.parse(localStorage.getItem(innerNokkel()) || "null"); }
+  catch (_) { return null; }
+}
+
+function skrivInner() {
+  try {
+    if (lagretInner && (lagretInner.serier || []).length)
+      localStorage.setItem(innerNokkel(), JSON.stringify(lagretInner));
+    else localStorage.removeItem(innerNokkel());
+  } catch (_) {}
+}
+
+function innerData() {
+  if (!lagretInner) lagretInner = lesInner() || null;
+  if (!lagretInner || typeof lagretInner !== "object")
+    lagretInner = { oppsett: { ...INNER_STD }, serier: [], vegger: [], ringmur: [], fasader: [] };
+  lagretInner.oppsett = { ...INNER_STD, ...(lagretInner.oppsett || {}) };
+  for (const n of ["serier", "vegger", "ringmur", "fasader"])
+    if (!Array.isArray(lagretInner[n])) lagretInner[n] = [];
+  for (const s of lagretInner.serier) s.o = { ...INNER_STD, ...(s.o || {}) };
+  return lagretInner;
+}
+
+// ---------- Byggingen av én innervegg ----------
+// `perId` er id → søylestabel fra hentSoyler(). Serien lagrer element-IDENE,
+// ikke koordinatene: åpnes modellen på nytt, står søylene der de står, og
+// veggen kan bygges opp igjen fra samme søyler uten at noe er frosset fast.
+export function byggEnInnervegg(serie, perId, fi, nV, nR) {
+  const o = { ...INNER_STD, ...(serie.o || {}) };
+  const soyler = [...new Set((serie.ider || []).map(id => perId.get(id)).filter(Boolean))];
+  const akse = innerveggAkse(soyler);
+  if (!akse) return null;
+  const sg = Number(serie.side) < 0 ? -1 : 1;
+  const nx = akse.nx * sg, nz = akse.nz * sg;
+  const tS = tilScene(o.tykkelseMm);
+  const off = innerveggOffset(akse, sg, tS);
+  const okBetong = Math.min(...akse.soyler.map(k => k.s.minY));
+  const ringH = o.ringmur ? tilScene(o.ringHoydeMm) : 0;
+  const baseY = okBetong + ringH;
+  const rot = Math.atan2(-akse.ez, akse.ex);
+  const fx = akse.p.x + nx * off, fz = akse.p.z + nz * off;
+  const skjot = samleTetteSoyler(akse.soyler.map(k => tilMm(k.t)), o.minFeltMm);
+  const stabelMm = Math.max(100, (Number(o.veggHoydeMm) || 0) - tilMm(ringH));
+  const { rader, kappIndex } = radStabel(stabelMm, o.radHoyder, o.kappNederst);
+  const biter = innerveggBiter(skjot, rader, kappIndex, o.klaringMm, SW_MIN_BIT_MM, o.endeMm);
+  const snappP = [];
+  for (const k of akse.soyler) {
+    const c = tilMm(k.t), halv = tilMm(k.s.bredde) / 2;
+    snappP.push(c - o.klaringMm, c + o.klaringMm, c - halv, c + halv);
+  }
+  const felles = { fi, inner: true, fx, fz, ex: akse.ex, ez: akse.ez, nx, nz, rot,
+    tMm: o.tykkelseMm, snapp: snappP };
+  const vegger = biter.map((b, i) => {
+    const tMid = tilScene((b.fraMm + b.tilMm_) / 2);
+    return { ...felles,
+      id: "iv" + (nV + i), tMid,
+      x: fx + akse.ex * tMid, z: fz + akse.ez * tMid,
+      y: baseY + tilScene(b.rBunnMm + b.hoydeMm / 2),
+      radIdx: b.radIdx, rBunnMm: b.rBunnMm,
+      basFraMm: b.fraMm, basTilMm: b.tilMm_, dFra: 0, dTil: 0, rev: 0,
+      fraMm: b.fraMm, tilMm: b.tilMm_,
+      lengdeMm: b.lengdeMm, fullMm: b.fullMm,
+      hoydeMm: b.hoydeMm, radHMm: b.radHMm, hVMm: b.hoydeMm, hHMm: b.hoydeMm,
+      tilpassetRad: b.tilpassetRad, tilpasset: b.tilpasset };
+  });
+  // RINGMUREN UNDER EN INNERVEGG er en fundamentmur fra gulvet og opp, ikke
+  // ringmuren rundt bygget: gulvplata og isolasjonen hører til del A og skal
+  // ikke lages på nytt inne i bygget. Derfor går den fra OK betong til
+  // «ringHoydeMm» over, og betongMm/isoMm holdes utenfor.
+  const ringmur = [];
+  if (o.ringmur && biter.length) {
+    const rmFra = Math.min(...biter.map(b => b.fraMm));
+    const rmTil = Math.max(...biter.map(b => b.tilMm_));
+    const bunnMm = -Math.round(tilMm(ringH)), hoydeMm = Math.round(tilMm(ringH));
+    const tMid = tilScene((rmFra + rmTil) / 2);
+    ringmur.push({ ...felles,
+      id: "ir" + nR, ringmur: true, radIdx: "rm", tMid,
+      basFraMm: rmFra, basTilMm: rmTil, dFra: 0, dTil: 0, rev: 0,
+      fraMm: rmFra, tilMm: rmTil, lengdeMm: rmTil - rmFra, fullMm: rmTil - rmFra,
+      bunnMm, hoydeMm,
+      x: fx + akse.ex * tMid, z: fz + akse.ez * tMid,
+      y: baseY + tilScene(bunnMm + hoydeMm / 2),
+      lengde: tilScene(rmTil - rmFra), hoyde: tilScene(hoydeMm), tykkelse: tS });
+  }
+  const fasade = { px: akse.p.x, pz: akse.p.z, ex: akse.ex, ez: akse.ez, nx, nz,
+    t0: akse.soyler[0].t, t1: akse.soyler[akse.soyler.length - 1].t,
+    off, rot, skjot: skjot.map(v => Math.round(v)), takLinje: null,
+    // Oppsettet FØLGER FASADEN. `fi` er indeksen i fasadelista, og faller én
+    // serie ut (søylene finnes ikke i denne fila), er den ikke lenger samme
+    // indeks som i serier[] — da ville tegningen hentet farge og tykkelse fra
+    // feil vegg.
+    inner: true, navn: serie.navn || "", o: { ...o }, baseY, okBetong };
+  return { fasade, vegger, ringmur, baseY, okBetong };
+}
+
+// SW-NUMRENE FOR INNERVEGGENE — samme funksjon som ytterveggene, over en annen
+// liste. Derfor starter de på SW-01 uten et eneste spesialtilfelle: nummeret
+// kommer av HVOR I LISTA lengden dukker opp første gang, og innerveggene har
+// sin egen liste.
+export function innerveggNummer(vegger, kappTekst) {
+  const liste = vegger || [];
+  const { numre, nokkel } = swNummerering(liste.filter(v => !v.skjult));
+  for (const v of liste) {
+    if (v.skjult) { v.sw = ""; continue; }
+    if (!v.tilpasset) { v.sw = numre.get(nokkel(v)) || "SW-XX"; continue; }
+    v.sw = kappNavn(numre.get(nokkel({ lengdeMm: v.fullMm, hoydeMm: v.hoydeMm })), kappTekst);
+  }
+  return liste;
+}
+
+function nummererInner(d) {
+  innerveggNummer(d.vegger, (oppsett() || {}).kappTekst || "XX");
+}
+
+// Bygger ALLE innerveggene på nytt fra seriene. Kalles etter godkjenning, etter
+// sletting, og når et oppsett endres — aldri på egen hånd ved åpning av en fil:
+// da tegnes de lagrede tallene, akkurat som del A gjør.
+async function byggAlleInnervegger() {
+  const d = innerData();
+  d.vegger = []; d.ringmur = []; d.fasader = [];
+  if (!d.serier.length) return d;
+  const alle = await hentSoyler();
+  const perId = new Map();
+  for (const s of alle) for (const id of s.ider || []) perId.set(id, s);
+  const tapte = [];
+  for (let i = 0; i < d.serier.length; i++) {
+    const serie = d.serier[i];
+    const bygd = byggEnInnervegg(serie, perId, d.fasader.length, d.vegger.length, d.ringmur.length);
+    if (!bygd) { tapte.push(serie.navn || "?"); continue; }
+    bygd.fasade.serieIdx = i;   // hvilken rad i panelet fasaden hører til
+    d.fasader.push(bygd.fasade);
+    d.vegger.push(...bygd.vegger);
+    d.ringmur.push(...bygd.ringmur);
+  }
+  nummererInner(d);
+  if (tapte.length)
+    console.warn("Innervegg: fant ikke søylene til " + tapte.join(", ") +
+      " — er det samme modellfil?");
+  return d;
+}
+
+// ---------- Tegning ----------
+function tegnInnervegger() {
+  const d = lagretInner;
+  if (!d || !(d.vegger || []).length) return;
+  const sk = (lagret && lagret.skjul) || {};
+  if (sk.vegger) return;
+  // Hver innervegg har sin egen farge og tykkelse, så elementene tegnes gruppe
+  // for gruppe — ett oppsett per serie.
+  const perFi = new Map();
+  for (const v of d.vegger) {
+    if (!perFi.has(v.fi)) perFi.set(v.fi, []);
+    perFi.get(v.fi).push(v);
+  }
+  for (const [fi, liste] of perFi) {
+    const o = { ...INNER_STD, ...((d.fasader[fi] || {}).o || {}) };
+    tegnVeggElementer(liste, o, !sk.merking);
+    if (!sk.ringmur)
+      tegnRingmurBiter(d.ringmur.filter(r => r.fi === fi), !sk.merking);
+  }
+}
+
+// ---------- A: markeringsmodus ----------
+// { steg: "velg" | "side", serie: {ider, side, o, navn}, idx: number|null,
+//   merker: Group, forh: Group, ned: {x,y}|null }
+let innerMark = null;
+
+function innerBarEl() {
+  let el = $("swInnerBar");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "swInnerBar";
+    el.style.cssText = "position:fixed;left:50%;transform:translateX(-50%);bottom:64px;" +
+      "z-index:40;display:none;gap:6px;align-items:center;background:var(--panel);" +
+      "border:1px solid var(--border);border-radius:10px;padding:6px 10px;box-shadow:0 4px 18px rgba(0,0,0,.35)";
+    document.body.appendChild(el);
+  }
+  return el;
+}
+
+function tegnInnerBar() {
+  const el = innerBarEl();
+  if (!innerMark) { el.style.display = "none"; el.innerHTML = ""; return; }
+  el.style.display = "flex";
+  const n = innerMark.serie.ider.length;
+  if (innerMark.steg === "velg") {
+    el.innerHTML =
+      '<span style="font-size:12px;max-width:360px">' +
+      t("Trykk på søylene innerveggen skal stå på — rekka du vil ha veggelementer langs. Trykk en gang til for å fjerne en søyle.") +
+      ' <b>' + t("{0} søyler valgt", n) + '</b></span>' +
+      '<button id="swInnerVidere" class="primary" style="padding:3px 10px">' + t("Videre") + '</button>' +
+      '<button id="swInnerAvbryt" style="padding:3px 10px">' + t("Avbryt") + '</button>';
+    $("swInnerVidere").onclick = innerTilSide;
+  } else {
+    el.innerHTML =
+      '<span style="font-size:12px;max-width:340px">' +
+      t("Pila viser hvilken side av søylene veggen står på. Still oppsettet i panelet, bytt side om du vil, og godkjenn.") +
+      '</span>' +
+      '<button id="swInnerBytt" style="padding:3px 10px">↔ ' + t("Bytt side") + '</button>' +
+      '<button id="swInnerGodkjenn" class="primary" style="padding:3px 10px">✓ ' + t("Godkjenn") + '</button>' +
+      '<button id="swInnerAvbryt" style="padding:3px 10px">' + t("Avbryt") + '</button>';
+    $("swInnerBytt").onclick = () => {
+      innerMark.serie.side = innerMark.serie.side < 0 ? 1 : -1;
+      innerForhandsvis();
+    };
+    $("swInnerGodkjenn").onclick = innerGodkjenn;
+  }
+  $("swInnerAvbryt").onclick = () => avsluttInnerMark();
+}
+
+async function startInnerMark(idx) {
+  if (!S.modelGroup) { alert(t("Åpne en modell først.")); return; }
+  if (utspMark) avsluttUtspMark();
+  if (just) avsluttJuster();
+  const d = innerData();
+  const eksisterende = idx !== null && idx !== undefined ? d.serier[idx] : null;
+  innerMark = {
+    steg: eksisterende ? "side" : "velg",
+    idx: eksisterende ? idx : null,
+    serie: eksisterende
+      ? JSON.parse(JSON.stringify(eksisterende))
+      : { ider: [], side: 1, o: { ...d.oppsett },
+          navn: t("Innervegg {0}", d.serier.length + 1) },
+    merker: new THREE.Group(), forh: new THREE.Group(), ned: null,
+    soyler: [], perId: new Map()
+  };
+  swGroup.add(innerMark.merker, innerMark.forh);
+  const oss = innerMark;
+  const funnet = await hentSoyler();
+  if (innerMark !== oss) return;    // avbrutt mens vi ventet
+  innerMark.soyler = funnet;
+  innerMark.perId = new Map();
+  for (const sø of innerMark.soyler) for (const id of sø.ider || []) innerMark.perId.set(id, sø);
+  if (eksisterende) { innerForhandsvis(); apnePanel("swPanel"); }
+  else { $("swPanel").classList.remove("open"); }
+  merkInnerSoyler();
+  tegnInnerBar();
+  tegnPanel();
+}
+
+function avsluttInnerMark() {
+  if (!innerMark) return;
+  for (const g of [innerMark.merker, innerMark.forh]) {
+    g.traverse(m => { if (m.geometry) m.geometry.dispose(); if (m.material) m.material.dispose(); });
+    swGroup.remove(g);
+  }
+  innerMark = null;
+  tegnInnerBar();
+  tegnPanel();
+  apnePanel("swPanel");
+}
+
+function innerTilSide() {
+  if (!innerMark) return;
+  if (innerMark.serie.ider.length < 2) {
+    alert(t("Marker minst to søyler — de to ytterste bestemmer veggens retning og lengde."));
+    return;
+  }
+  innerMark.steg = "side";
+  innerForhandsvis();
+  tegnInnerBar();
+  tegnPanel();
+  apnePanel("swPanel");
+}
+
+// Blå kasse rundt hver markerte søyle — samme språk som flatemerket i
+// utsparingsmarkeringen, bare rundt hele søyla.
+function merkInnerSoyler() {
+  if (!innerMark) return;
+  const g = innerMark.merker;
+  g.children.slice().forEach(m => {
+    if (m.geometry) m.geometry.dispose();
+    if (m.material) m.material.dispose();
+    g.remove(m);
+  });
+  const bokser = allElementBoxes();
+  for (const id of innerMark.serie.ider) {
+    const b = bokser.get(id);
+    if (!b) continue;
+    const m = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1),
+      new THREE.MeshBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.35,
+        depthWrite: false }));
+    const vokse = 0.02 / (S.enhetSkala || 1);
+    m.scale.set(b.max.x - b.min.x + vokse, b.max.y - b.min.y + vokse, b.max.z - b.min.z + vokse);
+    m.position.set((b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2, (b.min.z + b.max.z) / 2);
+    m.renderOrder = 997;
+    g.add(m);
+  }
+}
+
+// C: forhåndsvisningen — veggen der den faktisk kommer, og PILA som peker på
+// siden. Emil skal se svaret før han godkjenner, ikke etterpå.
+function innerForhandsvis() {
+  if (!innerMark || innerMark.steg !== "side") return;
+  const g = innerMark.forh;
+  g.children.slice().forEach(m => {
+    m.traverse(x => { if (x.geometry) x.geometry.dispose(); if (x.material) x.material.dispose(); });
+    g.remove(m);
+  });
+  const bygd = byggEnInnervegg(innerMark.serie, innerMark.perId, 0, 0, 0);
+  if (!bygd) return;
+  innerMark.bygd = bygd;
+  const o = { ...INNER_STD, ...(innerMark.serie.o || {}) };
+  // Elementene tegnes i EN EGEN gruppe, ikke i swGroup direkte: forhåndsvisningen
+  // skal kunne rives uten å røre resten av tegninga.
+  const foer = swGroup.children.length;
+  tegnVeggElementer(bygd.vegger, o, true);
+  tegnRingmurBiter(bygd.ringmur, false);
+  const nye = swGroup.children.slice(foer);
+  for (const m of nye) { swGroup.remove(m); g.add(m); }
+  // Pila: fra søyleaksen og ut mot den valgte siden, midt på veggen.
+  const f = bygd.fasade;
+  const tMid = (f.t0 + f.t1) / 2;
+  const start = new THREE.Vector3(f.px + f.ex * tMid, bygd.baseY + tilScene(o.veggHoydeMm) * 0.6,
+    f.pz + f.ez * tMid);
+  const lengde = Math.max(f.off * 2.5, tilScene(1500));
+  const pil = new THREE.ArrowHelper(new THREE.Vector3(f.nx, 0, f.nz).normalize(),
+    start, lengde, 0x22c55e, lengde * 0.28, lengde * 0.16);
+  pil.renderOrder = 998;
+  g.add(pil);
+}
+
+async function innerGodkjenn() {
+  if (!innerMark) return;
+  const d = innerData();
+  const serie = JSON.parse(JSON.stringify(innerMark.serie));
+  if (innerMark.idx !== null && innerMark.idx !== undefined) d.serier[innerMark.idx] = serie;
+  else d.serier.push(serie);
+  // Oppsettet den siste veggen fikk blir malen for den neste — Emil skal ikke
+  // skrive samme vegghøyde på nytt for hver vegg i samme bygg.
+  d.oppsett = { ...d.oppsett, ...serie.o };
+  avsluttInnerMark();
+  await byggAlleInnervegger();
+  skrivInner();
+  tegnAlt();
+  tegnPanel();
+}
+
+async function slettInnervegg(idx) {
+  const d = innerData();
+  const s = d.serier[idx];
+  if (!s) return;
+  if (!confirm(t("Slette «{0}»?", s.navn || "?"))) return;
+  d.serier.splice(idx, 1);
+  await byggAlleInnervegger();
+  skrivInner();
+  tegnAlt();
+  tegnPanel();
+}
+
+// Klikkene: samme oppskrift som utsparingsmarkeringen — bare et trykk under
+// 8 px behandles, og bare når det landet på lerretet.
+window.addEventListener("pointerdown", (e) => {
+  if (!innerMark || innerMark.steg !== "velg" || e.button !== 0) return;
+  if (e.target !== canvas) { innerMark.ned = null; return; }
+  innerMark.ned = { x: e.clientX, y: e.clientY };
+}, true);
+
+window.addEventListener("pointerup", (e) => {
+  if (!innerMark || innerMark.steg !== "velg" || e.button !== 0 || !innerMark.ned) return;
+  if (e.target !== canvas) { innerMark.ned = null; return; }
+  const ned = innerMark.ned;
+  innerMark.ned = null;
+  if (Math.hypot(e.clientX - ned.x, e.clientY - ned.y) > 8) return;   // kameradrag
+  e.stopPropagation();
+  try { canvas.dispatchEvent(new PointerEvent("pointercancel", { pointerId: e.pointerId })); }
+  catch (_) { try { canvas.dispatchEvent(new Event("pointercancel")); } catch (__) {} }
+  const hit = pick(e.clientX, e.clientY);
+  const id = hit ? hitID(hit) : null;
+  if (id == null) return;
+  // BARE SØYLER. Trykker Emil på en bjelke eller en plate, sier baren det i
+  // stedet for å ta den med og gi en vegg med gal retning.
+  if (!innerMark.perId.has(id)) {
+    innerMark.feil = t("Det elementet er ikke en søyle (IfcColumn) — innerveggen står på søyler.");
+    tegnInnerBar();
+    return;
+  }
+  innerMark.feil = null;
+  const i = innerMark.serie.ider.indexOf(id);
+  if (i >= 0) innerMark.serie.ider.splice(i, 1);
+  else innerMark.serie.ider.push(id);
+  merkInnerSoyler();
+  tegnInnerBar();
+}, true);
+
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && innerMark) { e.stopPropagation(); avsluttInnerMark(); }
+}, true);
+
+// ---------- Panelet: 🚪 Innervegger ----------
+export function innerOppsettFelter(serie) {
+  const s = serie || {};
+  const o = { ...INNER_STD, ...(s.o || {}) };
+  return '<div style="border:1px solid var(--border);border-radius:8px;padding:8px;margin-top:6px">' +
+    '<b style="font-size:12px">' + esc(s.navn || "") + '</b>' +
+    '<p style="color:var(--muted);font-size:11px;margin:2px 0 6px">' +
+      t("{0} søyler markert. Still oppsettet, velg side med pila i modellen, og trykk Godkjenn i baren nederst.",
+        (s.ider || []).length) + '</p>' +
+    '<label>' + t("Navn") + '<input type="text" id="swIvNavn" maxlength="40" value="' +
+      esc(s.navn || "") + '"></label>' +
+    felt("swIvHoyde", "Vegghøyde over gulv (mm) — topp vegg", o.veggHoydeMm) +
+    '<label>' + t("Radhøyder nedenfra (mm) — tom = automatisk") +
+      '<input type="text" id="swIvRadH" maxlength="200" value="' + esc(o.radHoyder || "") + '"></label>' +
+    '<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="swIvKappNed"' +
+      (o.kappNederst ? " checked" : "") + '> ' + t("Tilpasningsraden nederst") + '</label>' +
+    felt("swIvTykk", "Tykkelse (mm)", o.tykkelseMm) +
+    '<label>' + t("Farge") + '<input type="color" id="swIvFarge" value="' + esc(o.farge) + '"></label>' +
+    '<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="swIvRingmur"' +
+      (o.ringmur ? " checked" : "") + '> ' + t("Med ringmur under innerveggen") + '</label>' +
+    felt("swIvRingH", "Ringmurhøyde over gulv (mm)", o.ringHoydeMm) +
+    felt("swIvEnde", "Forleng begge ender forbi ytterste søyle (mm)", o.endeMm) +
+    felt("swIvKlaring", "Klaring fra søylesenter (mm)", o.klaringMm) +
+    '<p style="color:var(--muted);font-size:11px;margin:2px 0">' +
+      t("Vegghøyden måles fra gulvet til topp vegg. Står veggen på ringmur, er ringmuren en del av den høyden — SW-elementene fyller resten.") + '<br>' +
+      t("Endene står som standard i første og siste søylesenter. Skal veggen gå helt inn til ytterveggen, skriv hvor mye den skal forlenges.") + '</p>' +
+    '</div>';
+}
+
+function innerPanelHtml() {
+  const d = innerData();
+  const redigerer = innerMark && innerMark.steg === "side";
+  // Elementene telles per SERIE, ikke per fasadeindeks: faller én serie ut,
+  // er de to ikke lenger de samme tallene.
+  const antPer = new Map();
+  for (const v of d.vegger) {
+    const si = ((d.fasader[v.fi] || {}).serieIdx);
+    if (si === undefined) continue;
+    antPer.set(si, (antPer.get(si) || 0) + (v.skjult ? 0 : 1));
+  }
+  return '<h4 style="margin:14px 0 4px">🚪 ' + t("Innervegger (egen SW-serie)") + '</h4>' +
+    '<p style="color:var(--muted);font-size:11px;margin:2px 0 6px">' +
+      t("Innerveggene finnes ikke automatisk — du markerer søylene de skal stå på. De får sin egen SW-serie som starter på SW-01, sin egen instruksjonstegning og sitt eget regneark. Ytterveggene over røres ikke.") + '</p>' +
+    (d.serier.length
+      ? d.serier.map((s, i) =>
+        '<div class="qty-row"><div class="n" style="font-size:12px">' + esc(s.navn || ("#" + (i + 1))) +
+          ' <span style="color:var(--muted)">' +
+          t("{0} søyler", (s.ider || []).length) + " · " +
+          t("{0} element", antPer.get(i) || 0) + " · " +
+          (s.o && s.o.veggHoydeMm ? s.o.veggHoydeMm + " mm" : "") + '</span></div>' +
+        '<div class="c">' +
+          '<button data-sw-inner-endre="' + i + '" title="' + t("Endre") + '" style="padding:3px 8px">✥</button> ' +
+          '<button data-sw-inner-slett="' + i + '" title="' + t("Slett") + '" style="padding:3px 8px">' + ikon("slett") + '</button>' +
+        '</div></div>').join("")
+      : '<p style="color:var(--muted);font-size:12px">' + t("Ingen innervegger ennå.") + '</p>') +
+    '<div class="prop-actions"><button id="swInnerNy">' + ikon("boks") + ' ' +
+      t("Ny innervegg") + '</button></div>' +
+    (redigerer ? innerOppsettFelter(innerMark.serie) : "") +
+    (d.vegger.length
+      ? '<div class="prop-actions" style="margin-top:8px;flex-wrap:wrap">' +
+        '<button id="swInnerTegning">' + ikon("tegning") + ' ' + t("Innervegg: tegning (PDF)") + '</button>' +
+        '<button id="swInnerListe">' + ikon("lastned") + ' ' + t("Innervegg: liste (Excel)") + '</button>' +
+        '</div>' +
+        '<p style="color:var(--muted);font-size:12px;margin-top:4px">' +
+          t("{0} innveggselementer i egen serie fra SW-01.", d.vegger.filter(v => !v.skjult).length) + '</p>' +
+        '<label>' + t("Tegningsnummer for innerveggene") +
+          '<input type="text" id="swIvPdfNr" maxlength="30" value="' + esc(d.oppsett.pdfNr || "SWI-01") + '"></label>'
+      : "");
+}
+
+function lesInnerFraPanel() {
+  if (!innerMark || innerMark.steg !== "side") return;
+  const o = innerMark.serie.o = { ...INNER_STD, ...(innerMark.serie.o || {}) };
+  const num = (id, std) => { const n = Number(($(id) || {}).value); return isFinite(n) && n >= 0 ? n : std; };
+  if ($("swIvNavn")) innerMark.serie.navn = ($("swIvNavn").value || "").trim() || innerMark.serie.navn;
+  o.veggHoydeMm = Math.max(200, Math.min(30000, num("swIvHoyde", o.veggHoydeMm)));
+  o.radHoyder = (($("swIvRadH") || {}).value || "").trim();
+  o.kappNederst = !!($("swIvKappNed") || {}).checked;
+  o.tykkelseMm = Math.max(30, Math.min(500, num("swIvTykk", o.tykkelseMm)));
+  o.farge = ($("swIvFarge") || {}).value || o.farge;
+  o.ringmur = !!($("swIvRingmur") || {}).checked;
+  o.ringHoydeMm = Math.max(0, Math.min(3000, num("swIvRingH", o.ringHoydeMm)));
+  o.endeMm = Math.max(0, Math.min(3000, num("swIvEnde", o.endeMm)));
+  o.klaringMm = Math.max(0, Math.min(100, num("swIvKlaring", o.klaringMm)));
+}
+
+// Panelets knapper og felter. Kalles fra tegnPanel().
+function koblInnerPanel(body) {
+  const d = innerData();
+  if ($("swInnerNy")) $("swInnerNy").onclick = () => { lesOppsettFraPanel(); startInnerMark(null); };
+  body.querySelectorAll("button[data-sw-inner-endre]").forEach(b =>
+    b.onclick = () => startInnerMark(Number(b.dataset.swInnerEndre)));
+  body.querySelectorAll("button[data-sw-inner-slett]").forEach(b =>
+    b.onclick = () => slettInnervegg(Number(b.dataset.swInnerSlett)));
+  if ($("swIvPdfNr")) $("swIvPdfNr").onchange = () => {
+    d.oppsett.pdfNr = ($("swIvPdfNr").value || "").trim() || "SWI-01";
+    skrivInner();
+  };
+  // Hvert felt i oppsettet tegner forhåndsvisningen på nytt: Emil ser veggen
+  // endre seg mens han skriver, i stedet for å måtte godkjenne for å se svaret.
+  for (const id of ["swIvHoyde", "swIvRadH", "swIvKappNed", "swIvTykk", "swIvFarge",
+                    "swIvRingmur", "swIvRingH", "swIvEnde", "swIvKlaring", "swIvNavn"]) {
+    const el = $(id);
+    if (!el) continue;
+    el.onchange = () => { lesInnerFraPanel(); innerForhandsvis(); tegnPanel(); };
+  }
+  if ($("swInnerListe")) $("swInnerListe").onclick = lastNedInnerListe;
+  if ($("swInnerTegning")) $("swInnerTegning").onclick = lastNedInnerTegning;
+}
+
+// ---------- E: egen liste og egen tegning ----------
+function lastNedInnerListe() {
+  const d = innerData();
+  const synlige = d.vegger.filter(v => !v.skjult);
+  if (!synlige.length) { alert(t("Lag en innervegg først.")); return; }
+  // Tykkelsen kan være ulik fra vegg til vegg, så den føres PER ELEMENT i
+  // stedet for som ett tall i toppen: to innervegger på 100 og 150 mm skal
+  // ikke slås sammen til én kolonne som er feil for begge.
+  const a = oppsett();
+  const rader = swListeRader(synlige, {
+    prosjekt: a.prosjekt, oppdragsnr: a.oppdragsnr, sted: a.sted, sign: a.sign,
+    dato: new Date().toLocaleDateString("no-NO"),
+    tykkelseMm: [...new Set(synlige.map(v => v.tMm))].join(" / "),
+    isolasjon: a.isolasjon, utvFarge: a.utvFarge, innFarge: a.innFarge
+  });
+  const navn = (S.fileName || "modell").replace(/\.(ifc|glb)$/i, "");
+  lastNedXlsx(navn + " - SW-liste innervegg.xlsx", t("SW-liste innervegg"), rader)
+    .catch(err => {
+      console.warn("Innerveggslista kunne ikke lages:", err);
+      alert(t("Klarte ikke å lage Excel-fila: ") + (err && err.message || err));
+    });
+}
+
+async function lastNedInnerTegning() {
+  const d = innerData();
+  if (!d.vegger.length || !d.fasader.length) { alert(t("Lag en innervegg først.")); return; }
+  const knapp = $("swInnerTegning");
+  if (knapp) knapp.disabled = true;
+  try {
+    const mod = await import("./sw-tegning.js");
+    // Oppsettet tegninga får er innerveggenes eget — men bare ÉN tykkelse og
+    // ett ringmuroppsett kan stå i tittelfeltet. Den første veggens oppsett
+    // brukes, og de andre står med sine egne mål på elementene.
+    const so = { ...INNER_STD, ...((d.fasader[0] || {}).o || {}) };
+    const o = innerOppsettForListe(so);
+    const navnere = new Map();
+    const navnFor = (fi) => {
+      if (!navnere.has(fi)) navnere.set(fi, akseNavnFor(fi, d.fasader));
+      return navnere.get(fi);
+    };
+    await mod.lastNedTegning({
+      vegger: d.vegger,
+      fasader: d.fasader,
+      oppsett: o,
+      utsparinger: [],
+      ringmurBiter: mod.ringmurTilFasader(d.ringmur, d.fasader, tilMm, innerBaseY()),
+      tilMm, tilScene,
+      stal: await stalPaFasader(d.fasader, o, innerBaseY()),
+      aksenavn: (fi, mm) => navnFor(fi)(fi, mm),
+      felt: pdfFelt(o, mod.idag()),
+      // En innervegg har ingen gesims.
+      toppNavn: "Topp vegg",
+      hentLogo: () => hentLogo((($("swPdfLogo") || {}).value) || "")
+    });
+  } catch (err) {
+    console.warn("Innervegg-tegning:", err);
+    alert(t("Klarte ikke å lage tegninga: ") + (err && err.message || err));
+  } finally {
+    const b = $("swInnerTegning");
+    if (b) b.disabled = false;
+  }
+}
+
+// SW-basen for innerveggene. Flere innervegger kan i prinsippet stå på ulik
+// høyde; stålet og ringmuren projiseres mot den FØRSTE veggens base, som er
+// den tegninga er stilt inn etter.
+function innerBaseY() {
+  const d = lagretInner;
+  if (d && (d.fasader || []).length && d.fasader[0].baseY !== undefined) return d.fasader[0].baseY;
+  for (const v of (d && d.vegger) || [])
+    if (v.rBunnMm !== undefined && v.hoydeMm) return v.y - tilScene(v.rBunnMm + v.hoydeMm / 2);
+  return 0;
 }
 
 på("btnSW", "click", () => {
