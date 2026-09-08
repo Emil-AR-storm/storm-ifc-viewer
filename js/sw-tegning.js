@@ -284,15 +284,22 @@ export function naboveggEnder(fasader, fi, veggMm, tykkelseMm, tilMmFn, tilScene
     const g = fasader[j], v = veggMm[j];
     if (!g || !v) continue;
     const cs = [];
-    for (const sMm of [v.fraMm, v.tilMm]) {
+    // Høyden på naboens vegg VED DETTE HJØRNET. Naboen har én høyde i hver
+    // ende (veggPerFasade), og det er enden som faktisk treffer hjørnet som
+    // gjelder — på et saltak er den ene enden av gavlen 6,25 m og mønet 9 m.
+    let toppMm = null;
+    for (const [sMm, tp] of [[v.fraMm, v.toppFra], [v.tilMm, v.toppTil]]) {
       const sc = tilSceneFn(sMm);
+      let traff = false;
       for (const u of [g.off - halv, g.off + halv]) {
         const qx = g.px + g.ex * sc + g.nx * u;
         const qz = g.pz + g.ez * sc + g.nz * u;
         // Ligger hjørnet i DENNE fasadens veggbånd?
         if (Math.abs((qx - f.px) * f.nx + (qz - f.pz) * f.nz - f.off) > t) continue;
         cs.push(tilMmFn((qx - f.px) * f.ex + (qz - f.pz) * f.ez));
+        traff = true;
       }
+      if (traff && Number.isFinite(tp)) toppMm = toppMm === null ? tp : Math.max(toppMm, tp);
     }
     if (cs.length < 2) continue;
     const a2 = Math.round(Math.min(...cs)), b2 = Math.round(Math.max(...cs));
@@ -305,7 +312,7 @@ export function naboveggEnder(fasader, fi, veggMm, tykkelseMm, tilMmFn, tilScene
     const inntil = Math.abs(b2 - egen.fraMm) <= 2 * tykkelseMm ||
                    Math.abs(a2 - egen.tilMm) <= 2 * tykkelseMm;
     if (!utenfor || !inntil) continue;
-    ut.push({ fraMm: a2, tilMm: b2 });
+    ut.push(toppMm === null ? { fraMm: a2, tilMm: b2 } : { fraMm: a2, tilMm: b2, toppMm });
   }
   return ut.sort((p2, q) => p2.fraMm - q.fraMm);
 }
@@ -535,9 +542,21 @@ export function byggTegningsmodell(inn) {
   // denne fasadens.
   const veggPerFasade = fasader.map((_, j) => {
     const e2 = vegger.filter(v => v.fi === j);
-    return e2.length
-      ? { fraMm: Math.min(...e2.map(v => v.fraMm)), tilMm: Math.max(...e2.map(v => v.tilMm)) }
-      : null;
+    if (!e2.length) return null;
+    const a2 = Math.min(...e2.map(v => v.fraMm)), b2 = Math.max(...e2.map(v => v.tilMm));
+    // 🧱 HØYDEN I HVER ENDE. Hjørnestripa på nabofasaden skal være så høy som
+    // NABOEN faktisk er DER, ikke så høy som naboen er på sitt høyeste: på et
+    // saltak er gavlen 9 m ved mønet og 6,25 m i hjørnet, og stripa sto som en
+    // 9 m høy vegg i løse lufta ved siden av langveggen (Emil 08.09).
+    // Sonen er de ytterste 1,5 m av naboveggen — der hjørnet faktisk er.
+    const sone = 1500;
+    const toppI = (fra, til) => {
+      const i2 = e2.filter(v => v.tilMm > fra && v.fraMm < til);
+      const kilde = i2.length ? i2 : e2;
+      return Math.max(...kilde.map(v => v.rBunnMm + v.hoydeMm));
+    };
+    return { fraMm: a2, tilMm: b2,
+             toppFra: toppI(a2, a2 + sone), toppTil: toppI(b2 - sone, b2) };
   });
   // ±0.000 er GULVET. Med ringmur står SW-basen «ringHoydeMm» over gulvet;
   // uten ringmur er SW-basen søylefoten, altså gulvet selv.
@@ -585,7 +604,8 @@ export function byggTegningsmodell(inn) {
     const [vFra, vTil] = spI(veggFraMm, veggTilMm);
     const naboStriper = naboRå.map(b => {
       const [a3, b3] = spI(b.fraMm, b.tilMm);
-      return { fraMm: a3, tilMm: b3 };
+      return b.toppMm === undefined ? { fraMm: a3, tilMm: b3 }
+        : { fraMm: a3, tilMm: b3, toppMm: b.toppMm };
     }).sort((p2, q) => p2.fraMm - q.fraMm);
 
     // Aksenavnene slås opp i ORIGINALE mm — oppslaget går via et verdenspunkt,
@@ -603,7 +623,12 @@ export function byggTegningsmodell(inn) {
       Math.min(b.tilMm_, tilMm) - Math.max(b.fraMm, fraMm) > 20)
       .map(b => {
         const [f2, t2] = spI(Math.max(b.fraMm, fraMm), Math.min(b.tilMm_, tilMm));
-        return { fraMm: f2, tilMm: t2, bunnMm: b.bunnMm, toppMm: b.toppMm };
+        // 🔩 Omrisset følger med når stålbiten har et: en skrå takbjelke skal
+        // tegnes som en skrå stav, ikke som boksen rundt seg. Speilingen snur
+        // bare x — høydene er urørt.
+        const poly = b.poly && b.poly.length >= 3
+          ? b.poly.map(([x, y]) => [spX(x), y]) : null;
+        return { fraMm: f2, tilMm: t2, bunnMm: b.bunnMm, toppMm: b.toppMm, poly };
       });
 
     // Ringmuren: BITENE som faktisk ble laget, ikke ett bånd tvers over.
@@ -1081,6 +1106,18 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad, elFarge) {
     d.rect(bx, by, bw, bh, stil);
   };
 
+  // Er omrisset i praksis et akse-justert rektangel? Da tegnes biten den gamle
+  // veien, med skravur og alt — en rett søyle skal se ut som før.
+  const erRektangel = (poly) => {
+    const xs = poly.map(q => q[0]), ys = poly.map(q => q[1]);
+    const x0 = Math.min(...xs), x1 = Math.max(...xs);
+    const y0 = Math.min(...ys), y1 = Math.max(...ys);
+    const tol = Math.max(2, (x1 - x0 + y1 - y0) * 0.02);
+    return poly.every(([x, y]) =>
+      (Math.abs(x - x0) <= tol || Math.abs(x - x1) <= tol) &&
+      (Math.abs(y - y0) <= tol || Math.abs(y - y1) <= tol));
+  };
+
   // 🏔 SKRÅKAPPET ELEMENT (runde 20). Samme klipping mot åpningene som over,
   // men overkanten følger taket: hver bit blir et trapes, ikke et rektangel.
   // Hele konturen strekes her, ikke bare ytterkantene — skråkappet ER kanten
@@ -1149,6 +1186,18 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad, elFarge) {
     const sy = py(bit.y1), sh = (bit.y1 - bit.y0) / skala * MM;
     if (sw <= 0.2 || sh <= 0.2) continue;
     d.setFillColor(FARGE.stal[0], FARGE.stal[1], FARGE.stal[2]);
+    // 🔩 SKRÅ STÅLBIT: tegnes som sitt eget omriss. Uten dette ble hver
+    // takbjelke på en gavl et rektangel fra raft til møne, og de la seg oppå
+    // hverandre til hele gavltrekanten sto fylt med stål (Emil 08.09).
+    // Skravuren droppes her: på en 100 mm bred, skrå stav er den bare grums,
+    // og et rett rektangel går fortsatt den gamle veien under — flate bygg
+    // ser nøyaktig ut som før.
+    if (b.poly && !erRektangel(b.poly)) {
+      const pkt = b.poly.map(([x, y]) => [px(x), py(Math.max(f.bunnMm, Math.min(f.toppMm, y)))]);
+      d.setLineWidth(STREK.stal);
+      polygon(pkt, "FD");
+      continue;
+    }
     d.setLineWidth(STREK.stal);
     d.rect(sx, sy, sw, sh, "FD");
     // skravuren oppå fyllet, tynn nok til å ikke tette igjen flata
@@ -1178,12 +1227,19 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad, elFarge) {
     // Naboens vegg er stablet av de samme radene som vår egen. Tegnet i ett
     // ble stripa stående som én diger plate på 3600 mm, uten de vannrette
     // strekene som viser topp og bunn av hvert element (Emil 03.09).
+    // Stripa stanses ved NABOENS vegghøyde i hjørnet. Uten det tegnet en gavl
+    // med møne på 9 m en 9 m høy stripe inntil en langvegg som er 6,25 m —
+    // en vegg i løse lufta (Emil 08.09).
+    const nTopp = Number.isFinite(b.toppMm) ? b.toppMm : f.veggToppMm;
     d.setFillColor(EF[0], EF[1], EF[2]);
     if (f.rader.length) {
-      for (const r of f.rader)
-        tegnMedHull({ x0: b.fraMm, x1: b.tilMm, y0: r.bunnMm, y1: r.bunnMm + r.hoydeMm });
+      for (const r of f.rader) {
+        if (r.bunnMm >= nTopp - 1) continue;
+        tegnMedHull({ x0: b.fraMm, x1: b.tilMm, y0: r.bunnMm,
+                      y1: Math.min(r.bunnMm + r.hoydeMm, nTopp) });
+      }
     } else {
-      tegnMedHull({ x0: b.fraMm, x1: b.tilMm, y0: 0, y1: f.veggToppMm });
+      tegnMedHull({ x0: b.fraMm, x1: b.tilMm, y0: 0, y1: nTopp });
     }
   }
 
