@@ -1497,15 +1497,41 @@ export function apningPaVegg(f, u, slark) {
   // Aksen lagres på åpningen når den markeres. Er den ikke lagret (markert av
   // en eldre versjon), leses den av boksen: dybden på tvers er alltid punktenes
   // spredning pluss 2 × 500 mm slark, så den LENGSTE vannrette siden er aksen.
-  const akse = (u.akse === "x" || u.akse === "z") ? u.akse : (halvX >= halvZ ? "x" : "z");
+  const kjentAkse = (u.akse === "x" || u.akse === "z");
+  const akse = kjentAkse ? u.akse : (halvX >= halvZ ? "x" : "z");
+  // 🚪 EN DØR VED HJØRNET (Emil 08.09, bilde av «Utsparing 17/18»): boksen rundt
+  // en dør er NESTEN KVADRATISK i planet — bredden er ~1000 og dybden er
+  // tykkelsen + 2 × slark, også ~1000. Da er det et myntkast hvilken side som
+  // er «den lengste», og en åpning fra før aksen ble lagret kunne havne på
+  // veggen på tvers. Er aksen ukjent OG boksen så godt som kvadratisk, kan
+  // retningen ikke leses av boksen — da avgjør AVSTANDEN (nærmeste vegg
+  // vinner, hos kalleren), ikke en gjetning.
+  const usikker = !kjentAkse && Math.abs(halvX - halvZ) <= (Number(slark) || 0);
   const langs = akse === "x" ? Math.abs(f.ex) : Math.abs(f.ez);
-  if (langs < 0.7) return null;                 // mer enn 45° på tvers
+  if (!usikker && langs < 0.7) return null;     // mer enn 45° på tvers
   const tt = (cx - f.px) * f.ex + (cz - f.pz) * f.ez;
   const t0 = Math.min(f.t0, f.t1), t1 = Math.max(f.t0, f.t1);
   if (tt < t0 - 1 || tt > t1 + 1) return null;
   const avst = Math.abs((cx - f.px) * f.nx + (cz - f.pz) * f.nz);
   const rekkevidde = Math.abs(f.nx) * halvX + Math.abs(f.nz) * halvZ + (Number(slark) || 0);
   return avst > rekkevidde ? null : avst;
+}
+
+// HVEM EIER EN GLOBAL ÅPNING? Den veggen som ligger NÆRMEST — akkurat som
+// del A avgjør det mellom sine fasader. En innervegg som ender i et hjørne av
+// ytterveggen fikk før alle åpninger som traff planet dens, og en dør i
+// ytterveggen tett ved hjørnet dukket opp som «Utsparing 17» i innerveggen
+// også (Emil 08.09). Nå spørres de andre veggene først: ligger én av dem
+// nærmere, er åpningen deres. Svaret er avstanden når `f` eier den, ellers null.
+export function eierUtsparing(f, u, andreVegger, slark) {
+  const a = apningPaVegg(f, u, slark);
+  if (a === null) return null;
+  for (const v of andreVegger || []) {
+    if (!v || v === f) continue;
+    const b = apningPaVegg(v, u, slark);
+    if (b !== null && b < a) return null;
+  }
+  return a;
 }
 
 // Hvor langt fra søyleaksen ligger MIDTEN av veggplanet?
@@ -2333,8 +2359,9 @@ function utspPaFasader() {
   for (const u of liste) {
     let bi = -1, best = Infinity;
     for (let fi = 0; fi < fasader.length; fi++) {
-      // Samme regel som innerveggene bruker — én funksjon, ett svar.
-      const avst = apningPaVegg(fasader[fi], u, APN_SLARK / (S.enhetSkala || 1));
+      // Samme regel som innerveggene bruker — én funksjon, ett svar. En
+      // innervegg som ligger nærmere eier åpningen, og merkingen følger den.
+      const avst = eierUtsparing(fasader[fi], u, (lagretInner && lagretInner.fasader) || [], APN_SLARK / (S.enhetSkala || 1));
       if (avst === null) continue;
       if (avst < best) { best = avst; bi = fi; }
     }
@@ -2631,10 +2658,11 @@ async function generer() {
       // UTSPARINGEN HØRER BARE TIL VEGGEN DEN ER LAGET I (Emil 02.09). Regelen
       // bor i apningPaVegg og er den SAMME for yttervegger og innervegger —
       // to kopier ville før eller siden svart forskjellig.
-      const avst = apningPaVegg(
+      // … og speilvendt: en INNERVEGG som ligger nærmere eier åpningen (08.09)
+      const avst = eierUtsparing(
         { px: f.p.x, pz: f.p.z, ex: f.ex, ez: f.ez, nx: f.nx, nz: f.nz,
           t0: f.soyler[0].t, t1: f.soyler[f.soyler.length - 1].t },
-        u, APN_SLARK / (S.enhetSkala || 1));
+        u, (lagretInner && lagretInner.fasader) || [], APN_SLARK / (S.enhetSkala || 1));
       if (avst === null) continue;
       if (avst < besteAvst) { besteAvst = avst; besteFi = fi; }
     }
@@ -4912,7 +4940,7 @@ function innerData() {
 // `perId` er id → søylestabel fra hentSoyler(). Serien lagrer element-IDENE,
 // ikke koordinatene: åpnes modellen på nytt, står søylene der de står, og
 // veggen kan bygges opp igjen fra samme søyler uten at noe er frosset fast.
-export function byggEnInnervegg(serie, perId, fi, nV, nR, globaleUtsp) {
+export function byggEnInnervegg(serie, perId, fi, nV, nR, globaleUtsp, andreVegger) {
   const o = { ...INNER_STD, ...(serie.o || {}) };
   const soyler = [...new Set((serie.ider || []).map(id => perId.get(id)).filter(Boolean))];
   // ETT HJØRNE = TO BEIN (Emil 08.09). Er søylene på én linje, kommer det ett
@@ -4947,11 +4975,14 @@ export function byggEnInnervegg(serie, perId, fi, nV, nR, globaleUtsp) {
     // dør i ytterveggen aldri kappe en innervegg, og et bein i en L kan ikke
     // kappes av en dør som står i det andre beinet.
     const fLik = { px: akse.p.x, pz: akse.p.z, ex: akse.ex, ez: akse.ez, nx, nz, t0, t1 };
-    const kandidater = [];
-    for (const u of (serie.utsparinger || [])) if (u && u.min && u.max) kandidater.push(u);
+    // Seriens EGNE åpninger er markert på denne veggen og trenger bare å treffe
+    // planet. De GLOBALE må i tillegg ha denne veggen som den nærmeste — ellers
+    // stjeler et bein ved ytterveggens hjørne døra som står i ytterveggen.
+    const egne = (serie.utsparinger || []).filter(u => u && u.min && u.max);
+    const mine = egne.filter(u => apningPaVegg(fLik, u, slark) !== null);
     for (const u of (globaleUtsp || []))
-      if (u && u.min && u.max && kandidater.indexOf(u) === -1) kandidater.push(u);
-    const mine = kandidater.filter(u => apningPaVegg(fLik, u, slark) !== null);
+      if (u && u.min && u.max && egne.indexOf(u) === -1 && eierUtsparing(fLik, u, andreVegger, slark) !== null)
+        mine.push(u);
     const apninger = utsparingerPaFasade(
       { p: akse.p, ex: akse.ex, ez: akse.ez }, baseY, mine);
 
@@ -5082,7 +5113,7 @@ async function byggAlleInnervegger() {
   for (let i = 0; i < d.serier.length; i++) {
     const serie = d.serier[i];
     const bygd = byggEnInnervegg(serie, perId, d.fasader.length, d.vegger.length,
-      d.ringmur.length, globale);
+      d.ringmur.length, globale, (lagret && lagret.fasader) || []);
     if (!bygd) { tapte.push(serie.navn || "?"); continue; }
     for (const f of bygd.fasader) {
       f.serieIdx = i;           // hvilken rad i panelet fasaden hører til
@@ -5331,7 +5362,7 @@ function innerForhandsvis() {
     g.remove(m);
   });
   const globale = (oppsett().utsparinger || []).filter(u => u && u.min && u.max);
-  const bygd = byggEnInnervegg(innerMark.serie, innerMark.perId, 0, 0, 0, globale);
+  const bygd = byggEnInnervegg(innerMark.serie, innerMark.perId, 0, 0, 0, globale, (lagret && lagret.fasader) || []);
   if (!bygd || !bygd.fasader.length) return;
   innerMark.bygd = bygd;
   const o = { ...INNER_STD, ...(innerMark.serie.o || {}) };
