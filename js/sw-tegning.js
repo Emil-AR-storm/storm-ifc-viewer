@@ -498,7 +498,10 @@ export function raderFra(vegger, fi) {
   for (const v of vegger || []) {
     if (v.fi !== fi || v.skjult || v.rBunnMm === undefined) continue;
     const k = v.radIdx;
-    if (!per.has(k)) per.set(k, { bunnMm: v.rBunnMm, hoydeMm: v.hoydeMm });
+    // radHMm er radens fulle høyde. Et SKRÅKAPPET element er lavere enn raden
+    // sin, og målkjeden på siden skal vise raden — ikke den kappede biten som
+    // tilfeldigvis kom først i lista (runde 20).
+    if (!per.has(k)) per.set(k, { bunnMm: v.rBunnMm, hoydeMm: v.radHMm || v.hoydeMm });
   }
   return [...per.values()].sort((a, b) => a.bunnMm - b.bunnMm);
 }
@@ -661,7 +664,13 @@ export function byggTegningsmodell(inn) {
       rader,
       elementer: el.map(v => {
         const [f2, t2] = spI(v.fraMm, v.tilMm);
+        // 🏔 Skråkapp: endehøydene følger elementet, og på en SPEILVENDT
+        // fasade bytter venstre og høyre plass sammen med fra/til. Uten det
+        // ville gavlen hellet feil vei på halvparten av tegningene.
         return { fraMm: f2, tilMm: t2, bunnMm: v.rBunnMm, hoydeMm: v.hoydeMm,
+                 skra: !!v.skra,
+                 hVMm: v.skra ? (sp ? v.hHMm : v.hVMm) : v.hoydeMm,
+                 hHMm: v.skra ? (sp ? v.hVMm : v.hHMm) : v.hoydeMm,
                  sw: v.sw || "", tilpasset: !!v.tilpasset };
       }).sort((a, b) => a.bunnMm - b.bunnMm || a.fraMm - b.fraMm),
       utsparinger: utsp.filter(a => a.fi === fi).map(a => {
@@ -1068,6 +1077,33 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad, elFarge) {
     d.rect(bx, by, bw, bh, stil);
   };
 
+  // 🏔 SKRÅKAPPET ELEMENT (runde 20). Samme klipping mot åpningene som over,
+  // men overkanten følger taket: hver bit blir et trapes, ikke et rektangel.
+  // Hele konturen strekes her, ikke bare ytterkantene — skråkappet ER kanten
+  // man skal se, og et element som er delt av en port skal vise begge bitene.
+  const polygon = (pts, stil) => {
+    if (pts.length < 3) return;
+    const rel = [];
+    for (let i = 1; i < pts.length; i++)
+      rel.push([pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]]);
+    d.lines(rel, pts[0][0], pts[0][1], [1, 1], stil, true);
+  };
+  const tegnSkra = (rekt, hVMm, hHMm, lw) => {
+    const bredde = Math.max(1, rekt.x1 - rekt.x0);
+    const toppVed = (xm) => rekt.y0 + hVMm + (hHMm - hVMm) * (xm - rekt.x0) / bredde;
+    for (const b of trekkFra(rekt, hull)) {
+      const tv = Math.min(rekt.y1, Math.max(b.y0, toppVed(b.x0)));
+      const th = Math.min(rekt.y1, Math.max(b.y0, toppVed(b.x1)));
+      if (tv - b.y0 < 1 && th - b.y0 < 1) continue;
+      if ((b.x1 - b.x0) / skala * MM <= 0.2) continue;
+      const pkt = [[px(b.x0), py(b.y0)], [px(b.x1), py(b.y0)],
+                   [px(b.x1), py(Math.min(th, b.y1))], [px(b.x0), py(Math.min(tv, b.y1))]];
+      polygon(pkt, "F");
+      d.setLineWidth(lw == null ? STREK.tynn : lw);
+      polygon(pkt, "S");
+    }
+  };
+
   // Fyller bitene av ett rektangel og streker BARE sidene som ligger på
   // rektangelets egen ytterkant. Se ytterkanter(): ett element skal ha én
   // kontur, ikke én per bit.
@@ -1150,8 +1186,11 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad, elFarge) {
   // ── elementene, med åpningene TRUKKET FRA. Se trekkFra: et hvitt rektangel
   // oppå ville malt over stålet i porten.
   d.setFillColor(EF[0], EF[1], EF[2]);
-  for (const e of f.elementer)
-    tegnMedHull({ x0: e.fraMm, x1: e.tilMm, y0: e.bunnMm, y1: e.bunnMm + e.hoydeMm });
+  for (const e of f.elementer) {
+    const rekt = { x0: e.fraMm, x1: e.tilMm, y0: e.bunnMm, y1: e.bunnMm + e.hoydeMm };
+    if (e.skra) tegnSkra(rekt, e.hVMm, e.hHMm);
+    else tegnMedHull(rekt);
+  }
 
   // skjøtene mellom to elementer i SAMME rad tegnes tykke, oppå fyllet — men
   // bare på den delen av høyden som ikke er hull
@@ -1160,7 +1199,7 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad, elFarge) {
       Math.abs(o.fraMm - e.tilMm) < 60);
     if (!naboer.length) continue;
     for (const bit of trekkFra({ x0: e.tilMm - 1, x1: e.tilMm + 1,
-        y0: e.bunnMm, y1: e.bunnMm + e.hoydeMm }, hull))
+        y0: e.bunnMm, y1: e.bunnMm + (e.skra ? e.hHMm : e.hoydeMm) }, hull))
       strek(d, px(e.tilMm), py(bit.y1), px(e.tilMm), py(bit.y0), STREK.skjot);
   }
 
@@ -1204,7 +1243,10 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad, elFarge) {
   // nummer i det hele tatt. Nå velges den bredeste resten, samme regel som
   // kappdybden bruker.
   for (const e of f.elementer) {
-    const rekt = { x0: e.fraMm, x1: e.tilMm, y0: e.bunnMm, y1: e.bunnMm + e.hoydeMm };
+    // Lappen skal ligge INNENFOR elementet: på et skråkappet element er det
+    // den LAVESTE enden som bestemmer hvor det er plass.
+    const rekt = { x0: e.fraMm, x1: e.tilMm, y0: e.bunnMm,
+                   y1: e.bunnMm + (e.skra ? Math.min(e.hVMm, e.hHMm) : e.hoydeMm) };
     const rest = trekkFra(rekt, hull).sort((p2, q) => (q.x1 - q.x0) - (p2.x1 - p2.x0))[0];
     if (!rest) continue;                              // helt dekket av åpninga
     const rx = px(rest.x0), rw = (rest.x1 - rest.x0) / skala * MM;
