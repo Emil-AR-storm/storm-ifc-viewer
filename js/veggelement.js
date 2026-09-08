@@ -29,7 +29,8 @@ import * as THREE from "three";
 import { $, S, apnePanel, esc, ikon, på } from "./state.js";
 import { t } from "./i18n.js";
 import { camera, canvas, raycaster, scene } from "./scene.js";
-import { allElementBoxes, forHverTrekant, hitID, lastNedXlsx, pick, sumFormel } from "./elements.js";
+import { allElementBoxes, forHverTrekant, hitID, lastNedXlsxFlere, pick, sumFormel } from "./elements.js";
+import { materiellListe, materiellRader } from "./sw-materiell.js";
 import { alleElementIder } from "./ifc.js";
 import { metaFor, sikreMeta } from "./ifcrpc.js";
 import { MALTYPER, lagreMateriellLokalt, mmTilScene, ribbonPosisjoner, tegnMateriell, trpProfil, vaskMateriell } from "./materiell-vis.js";
@@ -1396,6 +1397,50 @@ export function innerveggOffset(akse, side, tykkelse) {
   return ytre + (Number(tykkelse) || 0) / 2;
 }
 
+// 🧭 FASADER SATT FOR HÅND (Emil 08.09, punkt 6).
+//
+// For stålmodeller UTEN søyleforlengere har randvandringen ingenting å følge,
+// og da peker Emil ut fasadene selv — med SAMME flyt som innerveggene: «Ny
+// fasade» → marker søylene → pila viser siden → Godkjenn. Hjørner håndteres som
+// BEIN, nøyaktig som i runde 23: en L eller U markert i én omgang blir flere
+// fasader i samme sett. Koden er den samme (`soyleKjede`, `innerveggBein`),
+// ikke en kopi — bare siden legges på her, for en fasade har en utside: den
+// siden Emil pekte på.
+//
+// `sett` = [{ ider, side, lukk }], `perId` = søyle-id → søyle (fra hentSoyler).
+// Ut: fasader i del A-form ({ p, ex, ez, nx, nz, soyler:[{s,t}], forrigeN,
+// nesteN }) — det generer() trenger. Et sett med under to kjente søyler hoppes over.
+export function manuelleFasaderFra(sett, perId, knekkGrader) {
+  const ut = [];
+  for (const m of sett || []) {
+    if (!m || !Array.isArray(m.ider)) continue;
+    const soyler = [];
+    const sett2 = new Set();
+    for (const id of m.ider) {
+      const sø = perId && perId.get(id);
+      if (sø && !sett2.has(sø)) { sett2.add(sø); soyler.push(sø); }
+    }
+    if (soyler.length < 2) continue;
+    const sg = Number(m.side) < 0 ? -1 : 1;
+    for (const b of innerveggBein(soyler, knekkGrader, !!m.lukk)) {
+      const f = { ...b, nx: b.nx * sg, nz: b.nz * sg,
+        forrigeN: b.forrigeN ? { x: b.forrigeN.x * sg, z: b.forrigeN.z * sg } : null,
+        nesteN: b.nesteN ? { x: b.nesteN.x * sg, z: b.nesteN.z * sg } : null,
+        manuell: true };
+      f.toppY = Math.max(...f.soyler.map(k => k.s.maxY));
+      f.kolBredde = f.soyler.map(k => k.s.bredde).sort((a, c) => a - c)[Math.floor(f.soyler.length / 2)];
+      ut.push(f);
+    }
+  }
+  return ut;
+}
+// Søylene som inngår i de manuelle fasadene (til OK betong, gulv og toleranser).
+export function soylerIFasader(fasader) {
+  const sett = new Set();
+  for (const f of fasader || []) for (const k of f.soyler || []) sett.add(k.s);
+  return [...sett];
+}
+
 // Elementene i én innervegg, som rene mm.
 //
 // Rammen er FELT UTENPÅ, RADER INNENFOR — samme rekkefølge som del A, så
@@ -1472,6 +1517,66 @@ export function innerveggBiter(skjot, rader, kappIndex, klaringMm, minBitMm, end
 // (oppsett.utsparinger = [{navn, min:[x,y,z], max:[x,y,z]}]), projisert inn
 // på fasaden. Returnerer [{fraMm, tilMm_, bunnMm, toppMm}] relativt til
 // fasadestart/SW-basen.
+// ═══════════════════ 🚪 UTSPARINGSTYPER (Emil 08.09, punkt 1) ═══════════════════
+// Tre typer: Port, Dør, Vindu. Typen styrer PRESIS TO TING (Emils avkryssing):
+//   1. beslag-sidene (Dør/Port: tre sider, ingen i bunnen; Vindu: fire) —
+//      det er dette hatprofil-løpemeteren i Materiell regner med
+//   2. navnet og merkingen: «Port 1», «Dør 2», «Vindu 3» i panelet, i 3D og
+//      på instruksjonstegninga — i stedet for «Utsparing 7»
+// Typen styrer IKKE bunnen av åpningen (en port snappes ikke til gulvet) og
+// IKKE ringmuren (den kappes der åpningen faktisk når ned i muren).
+export const UTSP_TYPER = ["port", "dor", "vindu"];
+const UTSP_TYPE_NAVN = { port: "Port", dor: "Dør", vindu: "Vindu" };
+export function utspTypeNavn(type) { return t(UTSP_TYPE_NAVN[type] || UTSP_TYPE_NAVN.dor); }
+export function nesteUtspType(type) {
+  const i = UTSP_TYPER.indexOf(type);
+  return UTSP_TYPER[(i + 1) % UTSP_TYPER.length];
+}
+// Beslag rundt åpningen: Dør og Port har ingen bunn (3 sider), Vindu har 4.
+export function utspBeslagSider(type) { return type === "vindu" ? 4 : 3; }
+// STARTFORSLAGET for en ny åpning (et forslag, ikke en regel — ett trykk
+// bytter): bunn mer enn 300 mm over OK betong → Vindu. Ellers Port om bredden
+// er ≥ 2500 mm, ellers Dør. Ukjent bunn (ingen OK betong ennå) regnes som gulv.
+export const UTSP_VINDU_BUNN_MM = 300;
+export const UTSP_PORT_BREDDE_MM = 2500;
+export function foreslaUtspType(bunnOverBetongMm, breddeMm) {
+  if (Number.isFinite(bunnOverBetongMm) && bunnOverBetongMm > UTSP_VINDU_BUNN_MM) return "vindu";
+  return (Number(breddeMm) || 0) >= UTSP_PORT_BREDDE_MM ? "port" : "dor";
+}
+// Bredde og bunn av en lagret åpning (scene-koordinater) i mm. Bredden er den
+// lengste vannrette siden — samme tall som står i panelet.
+export function utspBreddeMm(u) { return tilMm(Math.max(u.max[0] - u.min[0], u.max[2] - u.min[2])); }
+export function utspBunnOverMm(u, okBetong) {
+  return Number.isFinite(okBetong) ? tilMm(u.min[1] - okBetong) : NaN;
+}
+// Åpninger fra før typene fantes får en type etter startforslaget, og ALLE
+// får navn på nytt: «Port 1», «Port 2», «Dør 1» … i den rekkefølgen de ligger
+// i lista. Navnet er alltid avledet — det finnes ingen rute å skrive eget navn
+// i, så ingenting går tapt ved å regne det ut igjen. Returnerer lista.
+export function sikreUtspTyper(liste, okBetong) {
+  const teller = {};
+  for (const u of liste || []) {
+    if (!u || !u.min || !u.max) continue;
+    if (!UTSP_TYPER.includes(u.type)) u.type = foreslaUtspType(utspBunnOverMm(u, okBetong), utspBreddeMm(u));
+    teller[u.type] = (teller[u.type] || 0) + 1;
+    u.navn = utspTypeNavn(u.type) + " " + teller[u.type];
+  }
+  return liste;
+}
+// OK betong akkurat nå: fra genereringen når den finnes, ellers bunnen av
+// søylene i modellen (samme regel som genereringen bruker), ellers alt.
+function okBetongNaa() {
+  if (lagret && lagret.okBetong !== undefined) return lagret.okBetong;
+  let minS = Infinity, minA = Infinity;
+  for (const [id, b] of allElementBoxes()) {
+    if (!b) continue;
+    if (b.min.y < minA) minA = b.min.y;
+    if (soyleTypeNavn(id) === "Column" && b.min.y < minS) minS = b.min.y;
+  }
+  const m = minS !== Infinity ? minS : minA;
+  return m === Infinity ? undefined : m;
+}
+
 function utsparingerPaFasade(fasade, baseY, liste) {
   const ut = [];
   for (const u of liste || []) {
@@ -1483,7 +1588,9 @@ function utsparingerPaFasade(fasade, baseY, liste) {
       ts.push((px - fasade.p.x) * fasade.ex + (pz - fasade.p.z) * fasade.ez);
     ut.push({
       fraMm: tilMm(Math.min(...ts)), tilMm_: tilMm(Math.max(...ts)),
-      bunnMm: tilMm(u.min[1] - baseY), toppMm: tilMm(u.max[1] - baseY)
+      bunnMm: tilMm(u.min[1] - baseY), toppMm: tilMm(u.max[1] - baseY),
+      // typen og navnet følger med til merkingen i 3D og på tegninga
+      type: u.type, navn: u.navn
     });
   }
   return ut;
@@ -1499,6 +1606,10 @@ scene.add(swGroup);
 function lagringsNokkel() { return "storm-ifc-sw::" + S.fileName; }
 
 let lagret = null;   // { oppsett, vegger, gulv, ringmur, materiellIder }
+// 🔍 «Finn utsparinger»-modus: { kandidater: [{ k, paa, mesh }], gruppe, ned }.
+// Deklareres her av samme grunn som `just` under.
+let finnMark = null;
+
 // Justeringsmodus. Deklareres her fordi ryddTegning() må kunne se den for å
 // la markeringsgruppa stå (se kommentaren der).
 let just = null;     // { valgt: Set<id>, drar: {…} | null, markorer: Group }
@@ -1541,6 +1652,15 @@ const STD_OPPSETT = {
   visUtsp: true,                // stiplet kryss + mål på utsparingene
   farge: "#dfe5ec", isolasjon: "PIR", utvFarge: "RAL 1015", innFarge: "9010",
   prosjekt: "", oppdragsnr: "", sted: "", sign: "",
+  // 🧾 Materiell-arket: skum-utbytte per boks, i meter loddrett skjøt. Standard
+  // i den forsiktige enden av Emils intervaller (15–20 m på 200 mm, 20–30 m på
+  // 120 mm) — en boks for mye er billigere enn en tur til byen.
+  skumUtbytteTykkM: 15, skumUtbytteTynnM: 20,
+  // 🧭 FASADEVELGEREN (punkt 6): fasader satt for hånd, for stålmodeller uten
+  // søyleforlengere der randvandringen ikke har noe å følge. Hvert sett er
+  // { ider: [søyle-id…], side: ±1, lukk } — samme form som en innerveggserie.
+  // Finnes det ETT sett, brukes BARE de manuelle (automatikken er av).
+  manuelleFasader: [],
   // 📐 «Utfyll PDF»: rutene i Storm-tittelfeltet på instruksjonstegninga.
   // Tomme her betyr «hentes fra Til lista-feltene over» (pdfProsjekt,
   // pdfUndertittel, pdfOppdrag, pdfTegnet) eller «står tom på papiret»
@@ -1601,6 +1721,8 @@ function oppsett() {
   // klaringMm, minFeltMm …); uten fletten blir de undefined og genereringen
   // regner med NaN.
   lagret.oppsett = migrerOppsett(lagret.oppsett, STD_OPPSETT);
+  // 🚪 Åpninger fra før typene fantes får type og nytt navn (punkt 1)
+  if (Array.isArray(lagret.oppsett.utsparinger)) sikreUtspTyper(lagret.oppsett.utsparinger, okBetongNaa());
   return lagret.oppsett;
 }
 
@@ -1614,6 +1736,7 @@ function ryddTegning() {
     // sekund (Emils funn 02.09).
     if (just && o === just.markorer) return;
     if (innerMark && (o === innerMark.merker || o === innerMark.forh)) return;
+    if (finnMark && o === finnMark.gruppe) return;
     o.traverse(m => {
       if (m.geometry) m.geometry.dispose();
       if (m.material) m.material.dispose();
@@ -2091,7 +2214,7 @@ function utspPaFasader() {
     for (const px of [u.min[0], u.max[0]]) for (const pz of [u.min[2], u.max[2]])
       ts.push((px - f.px) * f.ex + (pz - f.pz) * f.ez);
     ut.push({ fi: bi, fraMm: tilMm(Math.min(...ts)), tilMm_: tilMm(Math.max(...ts)),
-              bunnMm: tilMm(u.min[1] - bY), toppMm: tilMm(u.max[1] - bY) });
+              bunnMm: tilMm(u.min[1] - bY), toppMm: tilMm(u.max[1] - bY), type: u.type, navn: u.navn });
   }
   return ut.length ? ut : (lagret.utspVis || []);
 }
@@ -2146,6 +2269,14 @@ function tegnUtspMerkingFor(apninger, fasader, vegger, baseY, tykkelseMm) {
     tot.position.copy(pkt(midtMm, (y0 + y1) / 2));
     tot.raycast = () => {};
     swGroup.add(tot);
+    // 🚪 navnet («Port 1», «Vindu 3») rett over målet (punkt 1)
+    if (a.navn) {
+      const navnLapp = tekstDekal(String(a.navn).toUpperCase(), 260, tilScene(Math.max(bredde * 0.8, 600)));
+      navnLapp.quaternion.copy(tot.quaternion);
+      navnLapp.position.copy(pkt(midtMm, (y0 + y1) / 2 + tilScene(320)));
+      navnLapp.raycast = () => {};
+      swGroup.add(navnLapp);
+    }
     // KAPPDYBDEN per element som går gjennom området
     for (const v of vegger || []) {
       if (v.skjult || v.fi !== a.fi || v.fraMm === undefined) continue;
@@ -2303,15 +2434,31 @@ async function generer() {
     alert(t("Fant bare {0} søyler (IfcColumn) i modellen — trenger minst 3 for å finne fasadene.", alleSoyler.length));
     return;
   }
-  // Bare søylene UNDER SØYLEFORLENGERE er vegg — de bestemmer både fasadene
-  // (konvekst hull) og skjøtene. Rammer uten forlenger står utenfor veggen.
-  const soyler = veggSoyler(alleSoyler, 0.8 / (S.enhetSkala || 1));
+  // 🧭 MANUELT SLÅR AV AUTOMATIKKEN (Emils valg, punkt 6): er én fasade satt
+  // for hånd, brukes BARE de manuelle. Da kan ikke to vegger havne i samme plan.
+  const manuelle = (o.manuelleFasader || []).filter(m => m && (m.ider || []).length >= 2);
+  let soyler, fasader;
+  if (manuelle.length) {
+    const perId = new Map();
+    for (const sø of alleSoyler) for (const id of sø.ider || []) perId.set(id, sø);
+    fasader = manuelleFasaderFra(manuelle, perId, INNER_STD.knekkGrader);
+    soyler = soylerIFasader(fasader);
+    if (!fasader.length || soyler.length < 2) {
+      alert(t("De manuelle fasadene peker på søyler som ikke finnes i denne modellen. Slett dem, eller marker på nytt."));
+      return;
+    }
+  } else {
+    // Bare søylene UNDER SØYLEFORLENGERE er vegg — de bestemmer både fasadene
+    // (konvekst hull) og skjøtene. Rammer uten forlenger står utenfor veggen.
+    soyler = veggSoyler(alleSoyler, 0.8 / (S.enhetSkala || 1));
+    const kolTol0 = Math.max(0.3 / (S.enhetSkala || 1), soyler[0].bredde * 2);
+    // Randvandringen først — den takler innvendige hjørner (L, T, U, tilbygg).
+    // Klarer den ikke å lukke konturen, er bygget ikke rettvinklet, og vi faller
+    // tilbake på det konvekse hullet som før.
+    fasader = fasaderLangsRand(soyler, kolTol0, 15 / (S.enhetSkala || 1))
+      || fasaderFra(soyler, kolTol0);
+  }
   const kolTol = Math.max(0.3 / (S.enhetSkala || 1), soyler[0].bredde * 2);
-  // Randvandringen først — den takler innvendige hjørner (L, T, U, tilbygg).
-  // Klarer den ikke å lukke konturen, er bygget ikke rettvinklet, og vi faller
-  // tilbake på det konvekse hullet som før.
-  const fasader = fasaderLangsRand(soyler, kolTol, 15 / (S.enhetSkala || 1))
-    || fasaderFra(soyler, kolTol);
   if (!fasader.length) { alert(t("Fant ingen fasader å sette veggelementer på.")); return; }
 
   const okBetong = Math.min(...soyler.map(s => s.minY));   // OK betong = bunn av søylene
@@ -2585,7 +2732,7 @@ async function generer() {
   const utspVis = [];
   for (let fi = 0; fi < fasader.length; fi++)
     for (const a of utsparingerPaFasade(fasader[fi], baseY, utspPerFasade.get(fi) || []))
-      utspVis.push({ fi, fraMm: a.fraMm, tilMm_: a.tilMm_, bunnMm: a.bunnMm, toppMm: a.toppMm });
+      utspVis.push({ fi, fraMm: a.fraMm, tilMm_: a.tilMm_, bunnMm: a.bunnMm, toppMm: a.toppMm, type: a.type, navn: a.navn });
 
   lagret = { oppsett: o, vegger, gulv, ringmur, materiellIder: [],
              fasader: fasadeLagret, okBetong, baseY, utspVis };
@@ -2882,12 +3029,55 @@ function loesInnervegger() {
   nummererInner(d);
 }
 
+// Navnet en gammel del A-stabel uten id-sporing kjennes på.
+const GENERERT_SW_NAVN = /^SW-\d{2}$/;
+
+// 📦 BUNKENE BLIR STÅENDE DER DE ER FLYTTET (Emil 08.09, sjekkliste punkt 8).
+// byggStabler() river alle stablene og bygger dem opp igjen på den beregnede
+// plassen — og da forsvant en times flytting i det Emil trykket «Juster
+// elementer». Her tas et øyeblikksbilde av hvor hver stabel står FØR den
+// rives, og stabelen settes tilbake dit når den bygges igjen.
+//
+// NØKKELEN ER STØRRELSEN (lengde × høyde × tykkelse), IKKE SW-nummeret:
+// SW-numrene forskyver seg når bygget endres (SW-03 blir SW-04), og da ville
+// bunken flyttet seg av seg selv. Størrelsen er den fysiske bunken. En stabel
+// hvis størrelse ikke finnes lenger forsvinner; en ny størrelse settes på den
+// beregnede plassen. Gjelder både «Juster elementer», ny generering og når
+// modellen åpnes igjen (stablene ligger da alt i S.materiell fra lagringen).
+export function stabelNokkel(lengde, bredde, tykkelse) {
+  return Math.round(Number(lengde) || 0) + "x" + Math.round(Number(bredde) || 0) + "x" + Math.round(Number(tykkelse) || 0);
+}
+// Leser posisjonene til stablene som er i ferd med å rives: de id-sporede
+// (`ider`) og, for del A, de gamle uten id som bare kjennes på navnet.
+export function lesStabelPosisjoner(liste, ider, navnMonster) {
+  const m = new Map();
+  for (const p of liste || []) {
+    if (!p || p.maltype !== "sandwich") continue;
+    if (!ider.has(p.id) && !(navnMonster && navnMonster.test(p.navn || ""))) continue;
+    const k = stabelNokkel(p.lengde, p.bredde, p.tykkelse);
+    if (!m.has(k)) m.set(k, { x: p.x, y: p.y, z: p.z, rot: p.rot });
+  }
+  return m;
+}
+// Setter en nybygd stabel tilbake der en like stor sto. Én posisjon brukes
+// bare én gang, så to like store stabler ikke havner oppå hverandre.
+export function settStabelTilbake(pkt, posisjoner) {
+  if (!pkt || !posisjoner) return pkt;
+  const k = stabelNokkel(pkt.lengde, pkt.bredde, pkt.tykkelse);
+  const pos = posisjoner.get(k);
+  if (!pos) return pkt;
+  posisjoner.delete(k);
+  pkt.x = pos.x; pkt.y = pos.y; pkt.z = pos.z; pkt.rot = pos.rot;
+  return pkt;
+}
+
 // 📦 Leveransestablene i Materiell: én stabel per SW-nummer, satt UTENFOR
 // fasaden der elementene skal monteres. Bygges opp på nytt etter hver
 // justering, så antallene i Mengder følger med.
 function byggStabler() {
   if (!lagret) return;
   const o = lagret.oppsett || STD_OPPSETT;
+  const forrige = lesStabelPosisjoner(S.materiell, new Set(lagret.materiellIder || []), GENERERT_SW_NAVN);
   fjernGenerertMateriell();
   const fasader = lagret.fasader || [];
   const okBetong = lagret.okBetong || 0;
@@ -2919,6 +3109,7 @@ function byggStabler() {
       z: f.pz + f.ez * tMid + f.nz * ut,
       rot: f.rot
     });
+    settStabelTilbake(pkt, forrige);
     if (pkt) { nyeIder.push(pkt.id); S.materiell = (S.materiell || []).concat([pkt]); }
   }
   lagret.materiellIder = nyeIder;
@@ -2933,6 +3124,7 @@ function byggStabler() {
 // «SW-01 innervegg» — samme nummer som på tegninga, med hvilken vegg det er.
 function byggInnerStabler() {
   const d = lagretInner;
+  const forrige = lesStabelPosisjoner(S.materiell, new Set((d && d.materiellIder) || []), null);
   fjernInnerMateriell();
   if (!d || !(d.vegger || []).length) return;
   const perSw = new Map();
@@ -2965,6 +3157,7 @@ function byggInnerStabler() {
       z: f.pz + f.ez * tMid + f.nz * ut,
       rot: f.rot
     });
+    settStabelTilbake(pkt, forrige);
     if (pkt) { nyeIder.push(pkt.id); S.materiell = (S.materiell || []).concat([pkt]); }
   }
   d.materiellIder = nyeIder;
@@ -3004,7 +3197,7 @@ function fjernGenerertMateriell() {
   // det var derfor 3D-en fløt over av SW-stabler fra gamle kjøringer
   // (avlest rett fra localStorage i nettleseren, 01.09).
   const ider = new Set((lagret && lagret.materiellIder) || []);
-  const generertNavn = /^SW-\d{2}$/;
+  const generertNavn = GENERERT_SW_NAVN;
   const foer = (S.materiell || []).length;
   S.materiell = (S.materiell || []).filter(p =>
     !ider.has(p.id) && !(p.maltype === "sandwich" && generertNavn.test(p.navn || "")));
@@ -3024,6 +3217,79 @@ function fjernAltGenerert() {
 }
 
 // ---------- CSV ----------
+// ═══════════════════ 🧾 MATERIELL-ARKET (Emil 08.09, punkt 5) ═══════════════════
+// Reglene bor i js/sw-materiell.js (rene tall, testet i Node). Her bygges bare
+// INNDATAENE: én vegg per fasade i del A og én per innervegg-bein, med
+// elementene som står synlige, skjøtene, hjørnene og åpningene på veggen.
+
+// Hjørnene finnes fra geometrien: to fasadeender i samme punkt er ett hjørne.
+// Hjørnet TELLES BARE ÉN GANG (ett hjørnebeslag dekker begge fasadene) — den
+// fasaden med lavest indeks eier det. En fri ende teller også én gang.
+// Fasadene: { px, pz, ex, ez, t0, t1 }. Returnerer per fasade
+// { hjorneStart, hjorneSlutt, loddretteKanter }. Ren funksjon, testes i Node.
+export function fasadeHjorner(fasader, tol) {
+  const f = fasader || [];
+  const tl = Number(tol) > 0 ? Number(tol) : 1e-6;
+  const ende = (a, t) => ({ x: a.px + a.ex * t, z: a.pz + a.ez * t });
+  const ender = f.map(a => [ende(a, a.t0), ende(a, a.t1)]);
+  const naer = (p, q) => Math.hypot(p.x - q.x, p.z - q.z) <= tl;
+  return f.map((a, i) => {
+    let kanter = 0;
+    const hj = [false, false];
+    for (let k = 0; k < 2; k++) {
+      const p = ender[i][k];
+      let minIdx = i;
+      for (let j = 0; j < f.length; j++) {
+        if (j === i) continue;
+        if (naer(p, ender[j][0]) || naer(p, ender[j][1])) { hj[k] = true; if (j < minIdx) minIdx = j; }
+      }
+      // fri ende: teller én gang. Hjørne: teller én gang, hos eieren.
+      if (!hj[k] || minIdx === i) kanter++;
+    }
+    return { hjorneStart: hj[0], hjorneSlutt: hj[1], loddretteKanter: kanter };
+  });
+}
+
+// Veggene til Materiell-arket, bygd av det som ligger lagret. `navnFn(f, i)`
+// gir kolonnenavnet.
+function materiellVeggerFra(fasader, vegger, apninger, navnFn, tykkelseFn) {
+  const hj = fasadeHjorner(fasader, tilScene(600));
+  return (fasader || []).map((f, fi) => {
+    const egne = (vegger || []).filter(v => v && v.fi === fi && !v.ringmur);
+    const synlige = egne.filter(v => !v.skjult);
+    const hoydeMm = egne.length ? Math.max(...egne.map(v => (v.rBunnMm || 0) + (v.hoydeMm || 0))) : 0;
+    const skjot = f.skjot && f.skjot.length >= 2 ? f.skjot
+      : [Math.round(tilMm(f.t0)), Math.round(tilMm(f.t1))];
+    const lengdeMm = skjot[skjot.length - 1] - skjot[0];
+    return {
+      navn: navnFn(f, fi), hoydeMm, lengdeMm, tykkelseMm: tykkelseFn(f), skjot,
+      hjorneStart: hj[fi].hjorneStart, hjorneSlutt: hj[fi].hjorneSlutt,
+      loddretteKanter: hj[fi].loddretteKanter,
+      elementer: synlige.map(v => ({ fraMm: v.fraMm, tilMm: v.tilMm, skjult: false })),
+      utsparinger: (apninger || []).filter(a => a && a.fi === fi).map(a => ({
+        type: a.type,
+        breddeMm: Math.max(0, a.tilMm_ - a.fraMm),
+        // «full høyde» (±1e9) klippes til veggen; bunnen under gulvet til gulvet
+        hoydeMm: Math.max(0, Math.min(Math.abs(a.toppMm) > 1e8 ? hoydeMm : a.toppMm, hoydeMm) - Math.max(a.bunnMm, 0))
+      }))
+    };
+  });
+}
+
+function materiellArk() {
+  const o = oppsett();
+  const vegger = [];
+  if (lagret && (lagret.fasader || []).length)
+    vegger.push(...materiellVeggerFra(lagret.fasader, lagret.vegger, utspPaFasader(),
+      (f, fi) => t("Fasade {0}", fi + 1), () => o.tykkelseMm));
+  const d = innerData();
+  if ((d.fasader || []).length)
+    vegger.push(...materiellVeggerFra(d.fasader, d.vegger, d.utspVis || [],
+      (f, fi) => f.navn || t("Innervegg {0}", fi + 1),
+      (f) => ((f.o || {}).tykkelseMm !== undefined ? f.o.tykkelseMm : INNER_STD.tykkelseMm)));
+  return { navn: t("Materiell"), rader: materiellRader(materiellListe(vegger, o), t) };
+}
+
 function lastNedListe() {
   if (!lagret || !(lagret.vegger || []).length) { alert(t("Generer veggelementene først.")); return; }
   const o = lagret.oppsett;
@@ -3037,7 +3303,8 @@ function lastNedListe() {
   // feil i mailen, fordi Excel på nett og Outlook alltid leser «,» som
   // skilletegn. Se lastNedXlsx i elements.js.
   const navn = (S.fileName || "modell").replace(/\.(ifc|glb)$/i, "");
-  lastNedXlsx(navn + " - SW-liste.xlsx", t("SW-liste"), rader)
+  // 🧾 + arket «Materiell» i samme fil (punkt 5)
+  lastNedXlsxFlere(navn + " - SW-liste.xlsx", [{ navn: t("SW-liste"), rader }, materiellArk()])
     .catch(err => {
       console.warn("SW-lista kunne ikke lages:", err);
       alert(t("Klarte ikke å lage Excel-fila: ") + (err && err.message || err));
@@ -3078,6 +3345,8 @@ function lesOppsettFraPanel() {
   o.oppdragsnr = txt("swOppdrag");
   o.sted = txt("swSted");
   o.sign = txt("swSign");
+  if ($("swSkumTykk")) o.skumUtbytteTykkM = Math.max(1, Math.min(100, num("swSkumTykk", o.skumUtbytteTykkM)));
+  if ($("swSkumTynn")) o.skumUtbytteTynnM = Math.max(1, Math.min(100, num("swSkumTynn", o.skumUtbytteTynnM)));
   if ($("swPdfFase")) {
     o.pdfFase = txt("swPdfFase");
     o.pdfTittel = txt("swPdfTittel");
@@ -3196,7 +3465,8 @@ async function stalPaFasader(fasader, oppsettInn, baseYInn) {
     if (best < 0) continue;
     const fraMm = tilMm(bestT[0]), tilMm_ = tilMm(bestT[1]);
     if (tilMm_ - fraMm < 20) continue;
-    ut.push({ fi: best, id, fraMm: Math.round(fraMm), tilMm_: Math.round(tilMm_),
+    ut.push({ fi: best, id, type: soyleTypeNavn(id),
+      fraMm: Math.round(fraMm), tilMm_: Math.round(tilMm_),
       bunnMm: Math.round(tilMm(b.min.y - baseY)),
       toppMm: Math.round(tilMm(b.max.y - baseY)) });
   }
@@ -3239,6 +3509,107 @@ async function stalPaFasader(fasader, oppsettInn, baseYInn) {
       r.poly = hull.map(q => [Math.round(q.x), Math.round(q.z)]);
   }
   return ut;
+}
+
+// ═══════════════════ 🔍 AUTOMATISK UTSPARINGSSØK (Emil 08.09, punkt 4) ═══════════════════
+// En åpning i et stålbygg er ikke en gjetning — den er rommet under en
+// LOSHOLT, mellom to søyler. stalPaFasader() har alt stålet projisert på hvert
+// fasadeplan i mm, og herfra er det rene tall:
+//   over:  en vannrett bjelke i fasadeplanet med underkant mellom
+//          OK betong + 1000 mm og veggtoppen − 200 mm (en losholt)
+//   sider: nærmeste søyle på hver side av bjelken — åpningen går fra
+//          innsiden av den ene til innsiden av den andre
+//   under: gulvet, eller overkanten av en bjelke som ligger lavere mellom de
+//          samme to søylene (det gir et vindu i stedet for en dør)
+// Forkastes: en bjelke over hele fasaden (gesims/ringbjelke), bjelker kortere
+// enn 500 mm, kandidater smalere eller lavere enn 500 mm, og kandidater som
+// overlapper en utsparing som alt finnes. Flyten er FORESLÅ OG GODKJENN —
+// ingenting legges inn uten at Emil har godkjent det.
+export const FINN_MIN_MM = 500;
+export const FINN_LOSHOLT_OVER_OK_MM = 1000;
+export const FINN_UNDER_TOPP_MM = 200;
+export const FINN_SOYLE_TOL_MM = 300;
+// `stal`: [{ fi, type, fraMm, tilMm_, bunnMm, toppMm }] (mm over SW-basen)
+// `fasader`: [{ lengdeMm, toppMm, okBetongMm }] per fi — okBetongMm er OK
+//   betong målt fra SW-basen (0 uten ringmur, −ringhøyde med)
+// `finnes`: [{ fi, fraMm, tilMm_, bunnMm, toppMm }] utsparinger som alt finnes
+export function finnUtsparingKandidater(stal, fasader, finnes) {
+  const ut = [];
+  const overlapper = (a, b) => a.fi === b.fi &&
+    Math.min(a.tilMm_, b.tilMm_) - Math.max(a.fraMm, b.fraMm) > 0 &&
+    Math.min(a.toppMm, b.toppMm) - Math.max(a.bunnMm, b.bunnMm) > 0;
+  (fasader || []).forEach((f, fi) => {
+    if (!f) return;
+    const paa = (stal || []).filter(r => r && r.fi === fi);
+    const soyler = paa.filter(r => r.type === "Column" && (r.toppMm - r.bunnMm) > (r.tilMm_ - r.fraMm));
+    const bjelker = paa.filter(r => r.type !== "Column" && r.type !== "Plate"
+      && (r.tilMm_ - r.fraMm) >= FINN_MIN_MM
+      && (r.tilMm_ - r.fraMm) > (r.toppMm - r.bunnMm)          // ligger, står ikke
+      && (r.tilMm_ - r.fraMm) < 0.9 * (Number(f.lengdeMm) || 0));   // ikke gesims/ringbjelke
+    const okMm = Number(f.okBetongMm) || 0;
+    const gulv = okMm;
+    const topp = Number(f.toppMm) || 0;
+    const kand = [];
+    for (const b of bjelker) {
+      if (b.bunnMm < okMm + FINN_LOSHOLT_OVER_OK_MM || b.bunnMm > topp - FINN_UNDER_TOPP_MM) continue;
+      // sidene: søyla som slutter nærmest bjelkens venstre ende, og den som
+      // begynner nærmest den høyre. Søyla må stå der bjelken er (i høyden).
+      const dekker = (k) => k.bunnMm <= b.bunnMm + FINN_SOYLE_TOL_MM && k.toppMm >= b.bunnMm - FINN_SOYLE_TOL_MM;
+      let v = null, h = null;
+      for (const k of soyler) {
+        if (!dekker(k)) continue;
+        if (k.tilMm_ <= b.fraMm + FINN_SOYLE_TOL_MM && (!v || k.tilMm_ > v.tilMm_)) v = k;
+        if (k.fraMm >= b.tilMm_ - FINN_SOYLE_TOL_MM && (!h || k.fraMm < h.fraMm)) h = k;
+      }
+      if (!v || !h) continue;
+      const fraMm = v.tilMm_, tilMm_ = h.fraMm;
+      if (tilMm_ - fraMm < FINN_MIN_MM) continue;
+      // under: gulvet, eller den høyeste lavere bjelken mellom de samme søylene
+      let bunn = gulv, underBjelke = false;
+      for (const u of bjelker) {
+        if (u === b || u.toppMm >= b.bunnMm || u.toppMm <= gulv) continue;
+        const overlapp = Math.min(u.tilMm_, tilMm_) - Math.max(u.fraMm, fraMm);
+        if (overlapp < 0.5 * (tilMm_ - fraMm)) continue;
+        if (u.toppMm > bunn) { bunn = u.toppMm; underBjelke = true; }
+      }
+      const toppK = b.bunnMm;
+      if (toppK - bunn < FINN_MIN_MM) continue;
+      kand.push({ fi, fraMm: Math.round(fraMm), tilMm_: Math.round(tilMm_),
+        bunnMm: Math.round(bunn), toppMm: Math.round(toppK), underBjelke,
+        type: foreslaUtspType(bunn - okMm, tilMm_ - fraMm) });
+    }
+    // Den høyeste losholten først; en kandidat som overlapper en som alt er
+    // tatt (eller en utsparing som finnes), forkastes.
+    kand.sort((a, b) => b.toppMm - a.toppMm || a.fraMm - b.fraMm);
+    const tatt = (finnes || []).filter(u => u && u.fi === fi).map(u => ({
+      fi, fraMm: u.fraMm, tilMm_: u.tilMm_, bunnMm: u.bunnMm,
+      toppMm: Math.abs(u.toppMm) > 1e8 ? topp : u.toppMm }));
+    for (const k of kand) {
+      if (tatt.some(u => overlapper(u, k))) continue;
+      tatt.push(k);
+      ut.push(k);
+    }
+  });
+  return ut;
+}
+// En kandidat (mm på fasaden) → en lagret utsparing i sceneenheter, samme form
+// som «Marker utsparing» lager: boksen ligger i veggplanet (off) og går
+// tykkelsen + slark ut til hver side, så apningPaVegg finner den igjen.
+export function kandidatTilUtsparing(k, f, baseY, tykkelseMm) {
+  const off = Number(f.off) || 0;
+  const halv = tilScene((Number(tykkelseMm) || 0) / 2 + 300);
+  const xs = [], zs = [];
+  for (const tt of [tilScene(k.fraMm), tilScene(k.tilMm_)])
+    for (const d of [off - halv, off + halv]) {
+      xs.push(f.px + f.ex * tt + f.nx * d);
+      zs.push(f.pz + f.ez * tt + f.nz * d);
+    }
+  return {
+    min: [Math.min(...xs), baseY + tilScene(k.bunnMm), Math.min(...zs)],
+    max: [Math.max(...xs), baseY + tilScene(k.toppMm), Math.max(...zs)],
+    akse: Math.abs(f.ex) >= Math.abs(f.ez) ? "x" : "z",
+    type: k.type, kilde: { topp: "losholt", bunn: k.underBjelke ? "bjelke" : "åpen", sider: "søyler" }
+  };
 }
 
 // ---------- Ringmurbitene projisert på fasadene ----------
@@ -3744,7 +4115,7 @@ function fullforUtspMark() {
   const klynger = grupperFlater(utspMark.flater, 4.0 / e);
   // 🚪 Innerveggens åpninger bor på SERIEN som redigeres; ytterveggenes i
   // del A-oppsettet. Samme markering, to mottakere.
-  const tilInner = utspMark.inner && innerMark && innerMark.steg === "side";
+  const tilInner = utspMark.inner && innerMark && innerMark.steg === "side" && !innerMark.fasade;
   const o = oppsett();
   const maal = tilInner
     ? (innerMark.serie.utsparinger = (innerMark.serie.utsparinger || []).filter(x => x && x.min))
@@ -3754,9 +4125,12 @@ function fullforUtspMark() {
     const u = utsparingFraFlater(kl, 0.5 / e);
     if (u.feil) { feilet++; continue; }
     lagt++;
-    maal.push({ navn: t("Utsparing {0}", maal.length + 1), min: u.min, max: u.max,
-                akse: u.akse, flater: u.antFlater, kilde: u.kilde });
+    maal.push({ min: u.min, max: u.max, akse: u.akse, flater: u.antFlater, kilde: u.kilde });
   }
+  // 🚪 type etter startforslaget og navn «Port 1» / «Dør 2» / «Vindu 3» (punkt 1).
+  // OK betong: innerveggens egen når den er bygget, ellers byggets.
+  sikreUtspTyper(maal, tilInner && innerMark.bygd && innerMark.bygd.okBetong !== undefined
+    ? innerMark.bygd.okBetong : okBetongNaa());
   if (!lagt) {
     alert(t("Utsparingen trenger to motstående sider — trykk på innsiden av søylene på hver side av åpningen."));
     return;
@@ -3811,16 +4185,50 @@ window.addEventListener("pointerup", (e) => {
   // sidene som ikke er markert (Emils regel runde 6)
   const bid = hitID(hit);
   const bb = bid != null ? allElementBoxes().get(bid) : null;
-  utspMark.flater.push({ p: { x: hit.point.x, y: hit.point.y, z: hit.point.z },
-                         n: { x: n.x, y: n.y, z: n.z },
-                         boks: bb ? { min: { x: bb.min.x, y: bb.min.y, z: bb.min.z },
-                                      max: { x: bb.max.x, y: bb.max.y, z: bb.max.z } } : undefined });
+  // ANDRE TRYKK PÅ SAMME FLATE FJERNER MARKERINGEN (Emil 08.09, punkt 2a).
+  // Før ble flata markert to ganger; nå skrus den av, så et feiltrykk angres
+  // med et nytt trykk. «Samme flate» = element-id + hvilken SIDE av elementet.
+  const nokkel = flateNokkel(bid, n);
+  const iSamme = finnSammeFlate(utspMark.flater, nokkel);
+  if (iSamme >= 0) {
+    const [bort] = utspMark.flater.splice(iSamme, 1);
+    if (bort.merke) {
+      utspMark.prikker.remove(bort.merke);
+      if (bort.merke.geometry) bort.merke.geometry.dispose();
+      if (bort.merke.material) bort.merke.material.dispose();
+    }
+    tegnUtspBar();
+    return;
+  }
   // hele SIDEN av elementet farges blå — som når sammenligningen farger
   // elementer, bare for én flate (Emils runde 4). Flaten finnes fra
   // elementets boks: kvadranten som normalen peker ut av.
-  utspMark.prikker.add(byggFlateMerke(hit, n));
+  const merke = byggFlateMerke(hit, n);
+  utspMark.prikker.add(merke);
+  utspMark.flater.push({ p: { x: hit.point.x, y: hit.point.y, z: hit.point.z },
+                         n: { x: n.x, y: n.y, z: n.z },
+                         boks: bb ? { min: { x: bb.min.x, y: bb.min.y, z: bb.min.z },
+                                      max: { x: bb.max.x, y: bb.max.y, z: bb.max.z } } : undefined,
+                         nokkel, merke });
   tegnUtspBar();
 }, true);
+
+// Hvilken side av elementet en flatenormal peker ut av: den dominerende aksen
+// med fortegn — «x+», «y−», «z+». Rene tall, testes i Node.
+export function flateSide(n) {
+  const ax = Math.abs(n.x) >= Math.abs(n.y) && Math.abs(n.x) >= Math.abs(n.z) ? "x"
+    : Math.abs(n.y) >= Math.abs(n.z) ? "y" : "z";
+  return ax + (n[ax] >= 0 ? "+" : "−");
+}
+// Nøkkelen for «samme flate»: element-id + side. Uten element (trykk i lufta
+// eller på noe uten id) finnes ingen nøkkel, og trykket legges alltid til.
+export function flateNokkel(id, n) {
+  return id == null ? null : String(id) + "|" + flateSide(n);
+}
+export function finnSammeFlate(flater, nokkel) {
+  if (!nokkel) return -1;
+  return (flater || []).findIndex(f => f && f.nokkel === nokkel);
+}
 
 // Blå, halvgjennomsiktig plate lagt oppå siden brukeren trykket på.
 function byggFlateMerke(hit, n) {
@@ -3852,6 +4260,166 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && utspMark) { e.stopPropagation(); avsluttUtspMark(); }
 }, true);
 
+// ═══════════════════ 🔍 «FINN UTSPARINGER» — FORESLÅ OG GODKJENN ═══════════════════
+// Kandidatene (finnUtsparingKandidater) tegnes stiplet med mål i 3D, og baren
+// sier «N åpninger funnet». Et trykk på en kandidat slår den av eller på, og
+// «Godkjenn» legger inn dem som står igjen. INGENTING legges inn uten
+// godkjenning (Emils valg).
+// (finnMark er deklarert ved siden av `just`, fordi ryddTegning() må se den)
+
+function finnBarEl() {
+  let el = $("swFinnBar");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "swFinnBar";
+    el.style.cssText = "position:fixed;left:50%;transform:translateX(-50%);bottom:64px;" +
+      "z-index:40;display:none;gap:6px;align-items:center;background:var(--panel);" +
+      "border:1px solid var(--border);border-radius:10px;padding:6px 10px;box-shadow:0 4px 18px rgba(0,0,0,.35)";
+    document.body.appendChild(el);
+  }
+  return el;
+}
+function tegnFinnBar() {
+  const el = finnBarEl();
+  if (!finnMark) { el.style.display = "none"; el.innerHTML = ""; return; }
+  el.style.display = "flex";
+  const n = finnMark.kandidater.length, paa = finnMark.kandidater.filter(c => c.paa).length;
+  el.innerHTML =
+    '<span style="font-size:12px;max-width:380px"><b>' + t("{0} åpninger funnet", n) + '</b> · ' +
+    t("{0} valgt", paa) + '<br>' +
+    t("Trykk på en åpning i modellen for å slå den av eller på. Godkjenn legger inn dem som står igjen.") + '</span>' +
+    '<button id="swFinnGodkjenn" class="primary" style="padding:3px 10px"' + (paa ? "" : " disabled") + '>✓ ' + t("Godkjenn {0}", paa) + '</button>' +
+    '<button id="swFinnAvbryt" style="padding:3px 10px">' + t("Avbryt") + '</button>';
+  $("swFinnGodkjenn").onclick = finnGodkjenn;
+  $("swFinnAvbryt").onclick = () => avsluttFinn();
+}
+
+async function startFinnUtsp() {
+  if (!lagret || !(lagret.fasader || []).length) { alert(t("Generer veggelementene først.")); return; }
+  if (utspMark) avsluttUtspMark();
+  if (innerMark) avsluttInnerMark();
+  if (just) avsluttJuster();
+  if (finnMark) avsluttFinn();
+  const o = oppsett();
+  const baseY = baseYNaa();
+  const stal = await stalPaFasader(lagret.fasader, o, baseY);
+  const fasInfo = lagret.fasader.map((f, fi) => {
+    const egne = (lagret.vegger || []).filter(v => v && v.fi === fi && !v.ringmur);
+    return {
+      lengdeMm: tilMm(Math.abs(f.t1 - f.t0)),
+      toppMm: egne.length ? Math.max(...egne.map(v => (v.rBunnMm || 0) + (v.hoydeMm || 0))) : 0,
+      okBetongMm: tilMm((lagret.okBetong || 0) - baseY)
+    };
+  });
+  const kand = finnUtsparingKandidater(stal, fasInfo, utspPaFasader());
+  if (!kand.length) { alert(t("Fant ingen åpninger under losholter på fasadene.")); return; }
+  finnMark = { kandidater: kand.map(k => ({ k, paa: true, mesh: null })), gruppe: new THREE.Group(), ned: null };
+  swGroup.add(finnMark.gruppe);
+  tegnFinnKandidater();
+  tegnFinnBar();
+}
+
+function avsluttFinn() {
+  if (!finnMark) return;
+  finnMark.gruppe.traverse(m => { if (m.geometry) m.geometry.dispose(); if (m.material) m.material.dispose(); });
+  swGroup.remove(finnMark.gruppe);
+  finnMark = null;
+  tegnFinnBar();
+}
+
+// Stiplet ramme + kryss, en halvgjennomsiktig plate å trykke på (blå = på,
+// grå = av) og en lapp med type og mål — samme språk som utsparingsmerkingen.
+function tegnFinnKandidater() {
+  if (!finnMark) return;
+  const g = finnMark.gruppe;
+  g.children.slice().forEach(m => {
+    m.traverse(x => { if (x.geometry) x.geometry.dispose(); if (x.material) x.material.dispose(); });
+    g.remove(m);
+  });
+  const o = oppsett();
+  const baseY = baseYNaa();
+  finnMark.kandidater.forEach((c, i) => {
+    const k = c.k, f = lagret.fasader[k.fi];
+    if (!f) return;
+    const utD = f.off + tilScene(o.tykkelseMm) / 2 + 0.05 / (S.enhetSkala || 1);
+    const pkt = (mm, y) => new THREE.Vector3(f.px + f.ex * tilScene(mm) + f.nx * utD, y, f.pz + f.ez * tilScene(mm) + f.nz * utD);
+    const y0 = baseY + tilScene(k.bunnMm), y1 = baseY + tilScene(k.toppMm);
+    const h0 = pkt(k.fraMm, y0), h1 = pkt(k.tilMm_, y0), t0 = pkt(k.fraMm, y1), t1 = pkt(k.tilMm_, y1);
+    const linje = new THREE.LineSegments(
+      new THREE.BufferGeometry().setFromPoints([h0, h1, h1, t1, t1, t0, t0, h0, h0, t1, h1, t0]),
+      new THREE.LineDashedMaterial({ color: c.paa ? 0x1d4ed8 : 0x777777,
+        dashSize: 0.12 / (S.enhetSkala || 1), gapSize: 0.08 / (S.enhetSkala || 1) }));
+    linje.computeLineDistances();
+    linje.raycast = () => {};
+    g.add(linje);
+    const nv = new THREE.Vector3(f.nx, 0, f.nz).normalize();
+    const plate = new THREE.Mesh(
+      new THREE.PlaneGeometry(Math.max(tilScene(k.tilMm_ - k.fraMm), 1e-6), Math.max(y1 - y0, 1e-6)),
+      new THREE.MeshBasicMaterial({ color: c.paa ? 0x3b82f6 : 0x888888, transparent: true,
+        opacity: c.paa ? 0.35 : 0.12, side: THREE.DoubleSide, depthWrite: false }));
+    plate.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), nv);
+    plate.position.copy(pkt((k.fraMm + k.tilMm_) / 2, (y0 + y1) / 2));
+    plate.renderOrder = 996;
+    plate.userData.finnIdx = i;
+    g.add(plate);
+    c.mesh = plate;
+    const bredde = Math.round(k.tilMm_ - k.fraMm), hoyde = Math.round(k.toppMm - k.bunnMm);
+    const lapp = tekstDekal((c.paa ? "" : "✕ ") + utspTypeNavn(k.type).toUpperCase() + " " + bredde + "×" + hoyde + " MM", 260,
+      tilScene(Math.max(bredde * 0.8, 600)));
+    lapp.quaternion.copy(plate.quaternion);
+    lapp.position.copy(pkt((k.fraMm + k.tilMm_) / 2, (y0 + y1) / 2)).addScaledVector(nv, 0.02 / (S.enhetSkala || 1));
+    lapp.raycast = () => {};
+    g.add(lapp);
+  });
+}
+
+async function finnGodkjenn() {
+  if (!finnMark) return;
+  const valgte = finnMark.kandidater.filter(c => c.paa);
+  if (!valgte.length) { avsluttFinn(); return; }
+  const o = oppsett();
+  const baseY = baseYNaa();
+  o.utsparinger = (o.utsparinger || []).filter(x => x && x.min);
+  for (const c of valgte) {
+    const f = lagret.fasader[c.k.fi];
+    if (f) o.utsparinger.push(kandidatTilUtsparing(c.k, f, baseY, o.tykkelseMm));
+  }
+  sikreUtspTyper(o.utsparinger, okBetongNaa());
+  skrivLagret();
+  avsluttFinn();
+  await generer();                 // veggene kappes rundt de nye åpningene
+  oppdaterInnerveggerEtterUtsp();  // en åpning kan også stå i en innervegg
+  tegnPanel();
+}
+
+// Trykk på en kandidat slår den av/på — samme fangst som de andre modusene.
+window.addEventListener("pointerdown", (e) => {
+  if (!finnMark || e.button !== 0) return;
+  if (e.target !== canvas) { finnMark.ned = null; return; }
+  finnMark.ned = { x: e.clientX, y: e.clientY };
+}, true);
+window.addEventListener("pointerup", (e) => {
+  if (!finnMark || e.button !== 0 || !finnMark.ned) return;
+  if (e.target !== canvas) { finnMark.ned = null; return; }
+  const ned = finnMark.ned;
+  finnMark.ned = null;
+  if (Math.hypot(e.clientX - ned.x, e.clientY - ned.y) > 8) return;   // kameradrag
+  const nd = new THREE.Vector2((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  raycaster.setFromCamera(nd, camera);
+  const treff = raycaster.intersectObjects(finnMark.kandidater.map(c => c.mesh).filter(Boolean), false);
+  if (!treff.length) return;
+  e.stopPropagation();
+  try { canvas.dispatchEvent(new PointerEvent("pointercancel", { pointerId: e.pointerId })); }
+  catch (_) { try { canvas.dispatchEvent(new Event("pointercancel")); } catch (__) {} }
+  const c = finnMark.kandidater[treff[0].object.userData.finnIdx];
+  if (c) c.paa = !c.paa;
+  tegnFinnKandidater();
+  tegnFinnBar();
+}, true);
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && finnMark) { e.stopPropagation(); avsluttFinn(); }
+}, true);
+
 // Én linje under målene som viser HVOR grensene kom fra. En firkantet åpning
 // har bare to mål (bredde × høyde) uansett hvor mange flater som markeres —
 // denne linja viser at den tredje og fjerde flata faktisk ble brukt, og hva
@@ -3867,7 +4435,50 @@ function utspKildeTekst(u) {
   else if (k.bunn === "ender") biter.push(t("bunn fra søyleendene"));
   else if (k.bunn === "åpen") biter.push(t("bunn: gulvet"));
   if (k.sider === "ender") biter.push(t("side fra bjelkeendene"));
+  // 🔍 funnet av «Finn utsparinger»
+  if (k.topp === "losholt") biter.push(t("funnet under losholt"));
+  if (k.bunn === "bjelke") biter.push(t("bunn fra bjelke"));
   return biter.join(" · ");
+}
+
+// 📋 UTSPARINGSLISTA ER SAMMENFOLDET (Emil 08.09, punkt 2b): de 3 nyeste
+// vises, nyeste øverst, og en pil åpner resten. Ren deling, testes i Node.
+// `i` er plassen i den lagrede lista — den bruker slett- og type-knappene.
+export const UTSP_VIS_NYESTE = 3;
+export function delUtspListe(utsp) {
+  const alle = (utsp || []).map((u, i) => ({ u, i })).reverse();   // nyeste først
+  return { nyeste: alle.slice(0, UTSP_VIS_NYESTE), eldre: alle.slice(UTSP_VIS_NYESTE) };
+}
+
+// ÉN radfunksjon for begge listene (del A og innerveggens egen), så de ikke
+// drifter fra hverandre: samme navn, samme mål, samme knapper.
+function utspRadHtml(u, i, slettAttr, visKilde) {
+  const kilde = visKilde ? utspKildeTekst(u) : "";
+  const typeAttr = slettAttr.replace("slett", "type");
+  return '<div class="qty-row"><div class="n" style="font-size:12px">' + esc(u.navn || ("#" + (i + 1))) +
+    ' <span style="color:var(--muted)">' +
+    Math.round(tilMm(Math.max(u.max[0] - u.min[0], u.max[2] - u.min[2]))) + "×" +
+    (u.max[1] - u.min[1] > 1e8 ? t("full høyde") : Math.round(tilMm(u.max[1] - u.min[1])) + " mm") + "</span>" +
+    (kilde ? '<br><span style="color:var(--muted);font-size:11px">' + esc(kilde) + "</span>" : "") +
+    "</div>" +
+    // 🚪 Type-knappen ved siden av slett: bytter til neste type (Port → Dør →
+    // Vindu → Port), og typen står i klartekst på knappen (punkt 1)
+    '<div class="c" style="display:flex;gap:4px"><button ' + typeAttr + '="' + i + '" title="' + esc(t("Bytt type (Port, Dør, Vindu)")) +
+    '" style="padding:3px 8px;font-size:11px">' + esc(utspTypeNavn(u.type)) + '</button>' +
+    '<button ' + slettAttr + '="' + i + '" title="' + t("Slett") + '" style="padding:3px 8px">' + ikon("slett") + '</button></div></div>';
+}
+function utspListeHtml(utsp, slettAttr, tomTekst, visKilde) {
+  if (!utsp.length) return '<p style="color:var(--muted);font-size:12px">' + esc(tomTekst) + '</p>';
+  const { nyeste, eldre } = delUtspListe(utsp);
+  let html = nyeste.map(r => utspRadHtml(r.u, r.i, slettAttr, visKilde)).join("");
+  if (eldre.length) {
+    // <details> holder tilstanden selv: sammenfoldet er standard, og den
+    // trenger ikke huskes mellom økter (Emils valg).
+    html += '<details class="sw-utsp-eldre"><summary style="cursor:pointer;color:var(--muted);font-size:12px;padding:4px 0">' +
+      esc(t("Vis {0} eldre utsparinger", eldre.length)) + '</summary>' +
+      eldre.map(r => utspRadHtml(r.u, r.i, slettAttr, visKilde)).join("") + '</details>';
+  }
+  return html;
 }
 
 function tegnPanel() {
@@ -3915,33 +4526,31 @@ function tegnPanel() {
     felt("swIsoType", "Isolasjon (til lista)", o.isolasjon, "text") +
     felt("swUtvF", "Utvendig farge (til lista)", o.utvFarge, "text") +
     felt("swInnF", "Innvendig farge (til lista)", o.innFarge, "text") +
+    fasadePanelHtml(o) +
     '<h4 style="margin:10px 0 4px">' + t("Utsparinger (dører, vinduer, porter)") + '</h4>' +
     '<p style="color:var(--muted);font-size:11px;margin:2px 0 6px">' +
       t("Trykk «Marker utsparing», og trykk så på flatene rundt åpningen i modellen: innsiden av søylene på sidene og undersiden av bjelken over. Én flate per side.") + '</p>' +
-    '<div class="prop-actions"><button id="swNyUtsp">' + ikon("boks") + ' ' + t("Marker utsparing") + '</button></div>' +
+    '<div class="prop-actions" style="flex-wrap:wrap"><button id="swNyUtsp">' + ikon("boks") + ' ' + t("Marker utsparing") + '</button>' +
+    (lagret && (lagret.fasader || []).length
+      ? '<button id="swFinnUtsp" title="' + esc(t("Foreslår åpninger under losholter mellom søylene. Ingenting legges inn før du godkjenner.")) + '">🔍 ' + t("Finn utsparinger") + '</button>'
+      : "") + '</div>' +
     '<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="swVisUtsp"' +
       (o.visUtsp === false ? "" : " checked") + '> ' + t("Vis utsparingsmål (stiplet kryss + kappdybde)") + '</label>' +
     (o.visUtsp !== false && utsp.length && !(lagret && (lagret.fasader || []).length)
       ? '<p style="color:var(--muted);font-size:11px;margin:2px 0">' +
         t("Trykk «Generer SW + gulv/ringmur» for å få fram utsparingsmålene — veggene er laget av en eldre versjon.") + '</p>'
       : "") +
-    (!utsp.length
-      ? '<p style="color:var(--muted);font-size:12px">' + t("Ingen utsparinger lagt til ennå.") + '</p>'
-      : utsp.map((u, i) =>
-        '<div class="qty-row"><div class="n" style="font-size:12px">' + esc(u.navn || ("#" + (i + 1))) +
-        ' <span style="color:var(--muted)">' +
-        Math.round(tilMm(Math.max(u.max[0] - u.min[0], u.max[2] - u.min[2]))) + "×" +
-        (u.max[1] - u.min[1] > 1e8 ? t("full høyde") : Math.round(tilMm(u.max[1] - u.min[1])) + " mm") + "</span>" +
-        (utspKildeTekst(u)
-          ? '<br><span style="color:var(--muted);font-size:11px">' + esc(utspKildeTekst(u)) + "</span>" : "") +
-        "</div>" +
-        '<div class="c"><button data-sw-slett-utsp="' + i + '" title="' + t("Slett") + '" style="padding:3px 8px">' + ikon("slett") + '</button></div></div>').join("")) +
+    utspListeHtml(utsp, "data-sw-slett-utsp", t("Ingen utsparinger lagt til ennå."), true) +
     innerPanelHtml() +
     '<h4 style="margin:10px 0 4px">' + t("Til lista") + '</h4>' +
     felt("swProsjekt", "Prosjekt", o.prosjekt, "text") +
     felt("swOppdrag", "Oppdragsnummer", o.oppdragsnr, "text") +
     felt("swSted", "Sted", o.sted, "text") +
     felt("swSign", "Sign.", o.sign, "text") +
+    '<p style="color:var(--muted);font-size:11px;margin:6px 0 2px">' +
+      t("Excel-fila får et eget ark «Materiell»: skruer, beslag, hatprofil og skum — én kolonne per fasade og innervegg, og en total. Bare synlige element teller.") + '</p>' +
+    felt("swSkumTykk", "Skum: meter per boks, element ≥ 160 mm", o.skumUtbytteTykkM) +
+    felt("swSkumTynn", "Skum: meter per boks, element < 160 mm", o.skumUtbytteTynnM) +
     // 📐 Rutene i Storm-tittelfeltet på instruksjonstegninga. Står de tomme,
     // arves de fra Til lista-feltene over — derfor er hjelpeteksten viktigere
     // enn den ser ut: uten den ser tomme felt ut som manglende data.
@@ -4015,6 +4624,7 @@ function tegnPanel() {
   fyllLogovalgSW();
   $("swFjern").onclick = () => { lesOppsettFraPanel(); fjernAltGenerert(); };
   $("swNyUtsp").onclick = () => { lesOppsettFraPanel(); startUtspMark(); };
+  if ($("swFinnUtsp")) $("swFinnUtsp").onclick = () => { lesOppsettFraPanel(); startFinnUtsp(); };
   if ($("swVisUtsp")) $("swVisUtsp").onchange = () => { lesOppsettFraPanel(); tegnAlt(); };
   if ($("swJusterBtn")) $("swJusterBtn").onclick = () => { lesOppsettFraPanel(); startJuster(); };
   koblInnerPanel(body);
@@ -4023,9 +4633,31 @@ function tegnPanel() {
       lesOppsettFraPanel();
       const o2 = oppsett();
       o2.utsparinger.splice(Number(b.dataset.swSlettUtsp), 1);
+      sikreUtspTyper(o2.utsparinger, okBetongNaa());   // numrene rykker opp
       skrivLagret();
       tegnPanel();
       oppdaterInnerveggerEtterUtsp();   // åpningen forsvinner også fra innerveggen
+    });
+  if ($("swFasadeNy")) $("swFasadeNy").onclick = () => { lesOppsettFraPanel(); startInnerMark(null, true); };
+  if ($("swFasadeSlettAlle")) $("swFasadeSlettAlle").onclick = () => { lesOppsettFraPanel(); slettManuellFasade(null); };
+  body.querySelectorAll("button[data-sw-fasade-slett]").forEach(b =>
+    b.onclick = () => { lesOppsettFraPanel(); slettManuellFasade(Number(b.dataset.swFasadeSlett)); });
+  if ($("swFasadeLukk")) $("swFasadeLukk").onchange = () => {
+    if (!innerMark || !innerMark.fasade) return;
+    innerMark.serie.o.lukk = !!$("swFasadeLukk").checked;
+    innerForhandsvis();
+  };
+  body.querySelectorAll("button[data-sw-type-utsp]").forEach(b =>
+    b.onclick = () => {
+      lesOppsettFraPanel();
+      const o2 = oppsett();
+      const u = (o2.utsparinger || [])[Number(b.dataset.swTypeUtsp)];
+      if (!u) return;
+      u.type = nesteUtspType(u.type);
+      sikreUtspTyper(o2.utsparinger, okBetongNaa());
+      skrivLagret();
+      if (lagret && (lagret.fasader || []).length) { lagret.utspVis = utspPaFasader(); tegnAlt(); }
+      tegnPanel();
     });
 }
 
@@ -4154,6 +4786,7 @@ export function byggEnInnervegg(serie, perId, fi, nV, nR, globaleUtsp) {
   const sg = Number(serie.side) < 0 ? -1 : 1;
   const tS = tilScene(o.tykkelseMm);
   const okBetong = Math.min(...soyler.map(s => s.minY));
+  if (Array.isArray(serie.utsparinger)) sikreUtspTyper(serie.utsparinger, okBetong);   // 🚪 punkt 1
   const ringH = o.ringmur ? tilScene(o.ringHoydeMm) : 0;
   const baseY = okBetong + ringH;
   const stabelMm = Math.max(100, (Number(o.veggHoydeMm) || 0) - tilMm(ringH));
@@ -4271,7 +4904,7 @@ export function byggEnInnervegg(serie, perId, fi, nV, nR, globaleUtsp) {
       o: { ...o }, baseY, okBetong });
     for (const a of apninger)
       utspVis.push({ fi: beinFi, fraMm: Math.round(a.fraMm), tilMm_: Math.round(a.tilMm_),
-        bunnMm: Math.round(a.bunnMm), toppMm: Math.round(a.toppMm) });
+        bunnMm: Math.round(a.bunnMm), toppMm: Math.round(a.toppMm), type: a.type, navn: a.navn });
   }
   return { fasader, vegger, ringmur, utspVis, baseY, okBetong };
 }
@@ -4418,7 +5051,9 @@ function tegnInnerBar() {
   if (innerMark.steg === "velg") {
     el.innerHTML =
       '<span style="font-size:12px;max-width:360px">' +
-      t("Trykk på søylene innerveggen skal stå på — rekka du vil ha veggelementer langs. Trykk en gang til for å fjerne en søyle.") +
+      (innerMark.fasade
+        ? t("Trykk på søylene i fasaden — også rundt hjørnet, så blir det flere fasader i ett sett. Trykk en gang til for å fjerne en søyle.")
+        : t("Trykk på søylene innerveggen skal stå på — rekka du vil ha veggelementer langs. Trykk en gang til for å fjerne en søyle.")) +
       ' <b>' + t("{0} søyler valgt", n) + '</b></span>' +
       '<button id="swInnerVidere" class="primary" style="padding:3px 10px">' + t("Videre") + '</button>' +
       '<button id="swInnerAvbryt" style="padding:3px 10px">' + t("Avbryt") + '</button>';
@@ -4426,7 +5061,9 @@ function tegnInnerBar() {
   } else {
     el.innerHTML =
       '<span style="font-size:12px;max-width:340px">' +
-      t("Pila viser hvilken side av søylene veggen står på. Still oppsettet i panelet, bytt side om du vil, og godkjenn.") +
+      (innerMark.fasade
+        ? t("Pila viser hvilken side av søylene fasaden kommer på — utsiden av bygget. Bytt side om den peker inn, og godkjenn.")
+        : t("Pila viser hvilken side av søylene veggen står på. Still oppsettet i panelet, bytt side om du vil, og godkjenn.")) +
       '</span>' +
       '<button id="swInnerBytt" style="padding:3px 10px">↔ ' + t("Bytt side") + '</button>' +
       '<button id="swInnerGodkjenn" class="primary" style="padding:3px 10px">✓ ' + t("Godkjenn") + '</button>' +
@@ -4435,24 +5072,35 @@ function tegnInnerBar() {
       innerMark.serie.side = innerMark.serie.side < 0 ? 1 : -1;
       innerForhandsvis();
     };
-    $("swInnerGodkjenn").onclick = innerGodkjenn;
+    $("swInnerGodkjenn").onclick = () => innerMark.fasade ? fasadeGodkjenn() : innerGodkjenn();
   }
   $("swInnerAvbryt").onclick = () => avsluttInnerMark();
 }
 
-async function startInnerMark(idx) {
+// `forFasade` = true: SAMME markering, men resultatet blir en manuell FASADE i
+// del A (punkt 6) i stedet for en innerveggserie. Forhåndsvisningen bruker
+// del A sitt oppsett (tykkelse, farge, rader, ringmur), så pila og veggen
+// står der de faktisk kommer.
+async function startInnerMark(idx, forFasade) {
   if (!S.modelGroup) { alert(t("Åpne en modell først.")); return; }
   if (utspMark) avsluttUtspMark();
   if (just) avsluttJuster();
   const d = innerData();
-  const eksisterende = idx !== null && idx !== undefined ? d.serier[idx] : null;
+  const eksisterende = !forFasade && idx !== null && idx !== undefined ? d.serier[idx] : null;
+  const oA = oppsett();
   innerMark = {
     steg: eksisterende ? "side" : "velg",
     idx: eksisterende ? idx : null,
+    fasade: !!forFasade,
     serie: eksisterende
       ? JSON.parse(JSON.stringify(eksisterende))
-      : { ider: [], side: 1, o: { ...d.oppsett },
-          navn: t("Innervegg {0}", d.serier.length + 1) },
+      : forFasade
+        ? { ider: [], side: 1, navn: t("Fasade {0}", (oA.manuelleFasader || []).length + 1),
+            o: { ...INNER_STD, tykkelseMm: oA.tykkelseMm, farge: oA.farge, radHoyder: oA.radHoyder,
+                 kappNederst: oA.kappNederst, klaringMm: oA.klaringMm, minFeltMm: oA.minFeltMm,
+                 ringmur: oA.ringmur, ringHoydeMm: oA.ringHoydeMm, lukk: false } }
+        : { ider: [], side: 1, o: { ...d.oppsett },
+            navn: t("Innervegg {0}", d.serier.length + 1) },
     merker: new THREE.Group(), forh: new THREE.Group(), ned: null,
     soyler: [], perId: new Map()
   };
@@ -4495,6 +5143,15 @@ function innerTilSide() {
   if (innerMark.serie.ider.length < 2) {
     alert(t("Marker minst to søyler — de to ytterste bestemmer veggens retning og lengde."));
     return;
+  }
+  if (innerMark.fasade) {
+    // Fasadens høyde er søyletoppen — som del A regner den — ikke et tall
+    // Emil skriver. Forhåndsvisningen skal se ut som resultatet.
+    const valgte = innerMark.serie.ider.map(id => innerMark.perId.get(id)).filter(Boolean);
+    if (valgte.length) {
+      const bunn = Math.min(...valgte.map(sø => sø.minY)), topp = Math.max(...valgte.map(sø => sø.maxY));
+      innerMark.serie.o.veggHoydeMm = Math.max(200, Math.round(tilMm(topp - bunn)));
+    }
   }
   innerMark.steg = "side";
   innerForhandsvis();
@@ -4578,6 +5235,37 @@ async function innerGodkjenn() {
   byggInnerStabler();      // 📦 leveransestablene og Mengder følger med
   skrivInner();
   tegnAlt();
+  tegnPanel();
+}
+
+// 🧭 Godkjenn en manuell fasade: settet lagres i del A-oppsettet, og veggene
+// genereres på nytt — nå BARE på de manuelle fasadene.
+async function fasadeGodkjenn() {
+  if (!innerMark || !innerMark.fasade) return;
+  const o = oppsett();
+  const sett = { ider: innerMark.serie.ider.slice(), side: innerMark.serie.side < 0 ? -1 : 1,
+                 lukk: !!(innerMark.serie.o && innerMark.serie.o.lukk) };
+  if (sett.ider.length < 2) { alert(t("Marker minst to søyler — de to ytterste bestemmer veggens retning og lengde.")); return; }
+  o.manuelleFasader = (o.manuelleFasader || []).concat([sett]);
+  skrivLagret();
+  avsluttInnerMark();
+  await generer();
+  tegnPanel();
+}
+// Slett ett sett, eller alle: er lista tom, er automatikken på igjen.
+async function slettManuellFasade(idx) {
+  const o = oppsett();
+  const liste = o.manuelleFasader || [];
+  if (idx === null || idx === undefined) {
+    if (!liste.length) return;
+    if (!confirm(t("Slette alle manuelle fasader og la automatikken finne fasadene igjen?"))) return;
+    o.manuelleFasader = [];
+  } else {
+    liste.splice(idx, 1);
+    o.manuelleFasader = liste;
+  }
+  skrivLagret();
+  if (lagret && (lagret.vegger || []).length) await generer();
   tegnPanel();
 }
 
@@ -4685,22 +5373,40 @@ export function innerOppsettFelter(serie) {
       t("Åpninger du har markert med den vanlige «Marker utsparing» over kommer også med: en åpning kapper den veggen den faktisk står i.") + '</p>' +
     '<div class="prop-actions"><button id="swIvNyUtsp">' + ikon("boks") + ' ' +
       t("Marker utsparing") + '</button></div>' +
-    (!utsp.length
-      ? '<p style="color:var(--muted);font-size:12px">' + t("Ingen utsparinger i denne veggen.") + '</p>'
-      : utsp.map((u, i) =>
-        '<div class="qty-row"><div class="n" style="font-size:12px">' + esc(u.navn || ("#" + (i + 1))) +
-        ' <span style="color:var(--muted)">' +
-        Math.round(tilMm(Math.max(u.max[0] - u.min[0], u.max[2] - u.min[2]))) + "×" +
-        (u.max[1] - u.min[1] > 1e8 ? t("full høyde") : Math.round(tilMm(u.max[1] - u.min[1])) + " mm") +
-        '</span></div>' +
-        '<div class="c"><button data-sw-iv-slett-utsp="' + i + '" title="' + t("Slett") +
-        '" style="padding:3px 8px">' + ikon("slett") + '</button></div></div>').join("")) +
+    utspListeHtml(utsp, "data-sw-iv-slett-utsp", t("Ingen utsparinger i denne veggen."), false) +
     '</div>';
+}
+
+// 🧭 Fasadevelgeren i panelet (punkt 6): lista over manuelle sett, «Ny
+// fasade», og en tydelig melding om at automatikken er av når settene finnes.
+function fasadePanelHtml(o) {
+  const sett = o.manuelleFasader || [];
+  const redigerer = innerMark && innerMark.fasade && innerMark.steg === "side";
+  return '<h4 style="margin:10px 0 4px">🧭 ' + t("Fasader") + '</h4>' +
+    '<p style="color:var(--muted);font-size:11px;margin:2px 0 6px">' +
+      (sett.length
+        ? '<b>' + t("Automatikken er AV: bare fasadene under brukes.") + '</b> ' +
+          t("Slett alle for å la randvandringen finne fasadene igjen.")
+        : t("Fasadene finnes automatisk (randvandring langs søylene under søyleforlengerne). Har modellen ingen forlengere, sett fasadene for hånd: marker søylene, pek på utsiden, godkjenn.")) + '</p>' +
+    (sett.length
+      ? sett.map((m, i) =>
+        '<div class="qty-row"><div class="n" style="font-size:12px">' + esc(t("Fasade {0}", i + 1)) +
+          ' <span style="color:var(--muted)">' + t("{0} søyler", (m.ider || []).length) +
+          (m.lukk ? " · " + t("lukket") : "") + '</span></div>' +
+        '<div class="c"><button data-sw-fasade-slett="' + i + '" title="' + t("Slett") + '" style="padding:3px 8px">' + ikon("slett") + '</button></div></div>').join("")
+      : "") +
+    '<div class="prop-actions" style="flex-wrap:wrap"><button id="swFasadeNy">' + ikon("boks") + ' ' + t("Ny fasade (manuelt)") + '</button>' +
+    (sett.length ? '<button id="swFasadeSlettAlle">' + ikon("slett") + ' ' + t("Slett alle manuelle fasader") + '</button>' : "") +
+    '</div>' +
+    (redigerer
+      ? '<label style="display:flex;gap:6px;align-items:center;margin-top:4px"><input type="checkbox" id="swFasadeLukk"' +
+        (innerMark.serie.o.lukk ? " checked" : "") + '> ' + t("Lukk rundt bygget (siste fasade tilbake til første søyle)") + '</label>'
+      : "");
 }
 
 function innerPanelHtml() {
   const d = innerData();
-  const redigerer = innerMark && innerMark.steg === "side";
+  const redigerer = innerMark && innerMark.steg === "side" && !innerMark.fasade;
   // Elementene telles per SERIE, ikke per fasadeindeks: faller én serie ut,
   // er de to ikke lenger de samme tallene.
   const antPer = new Map();
@@ -4748,7 +5454,7 @@ function innerPanelHtml() {
 }
 
 function lesInnerFraPanel() {
-  if (!innerMark || innerMark.steg !== "side") return;
+  if (!innerMark || innerMark.steg !== "side" || innerMark.fasade) return;
   const o = innerMark.serie.o = { ...INNER_STD, ...(innerMark.serie.o || {}) };
   const num = (id, std) => { const n = Number(($(id) || {}).value); return isFinite(n) && n >= 0 ? n : std; };
   if ($("swIvNavn")) innerMark.serie.navn = ($("swIvNavn").value || "").trim() || innerMark.serie.navn;
@@ -4797,6 +5503,16 @@ function koblInnerPanel(body) {
       innerForhandsvis();
       tegnPanel();
     });
+  body.querySelectorAll("button[data-sw-iv-type-utsp]").forEach(b =>
+    b.onclick = () => {
+      if (!innerMark) return;
+      lesInnerFraPanel();
+      const u = (innerMark.serie.utsparinger || [])[Number(b.dataset.swIvTypeUtsp)];
+      if (!u) return;
+      u.type = nesteUtspType(u.type);
+      innerForhandsvis();   // byggEnInnervegg gir nytt navn og ny merking
+      tegnPanel();
+    });
   if ($("swInnerListe")) $("swInnerListe").onclick = lastNedInnerListe;
   if ($("swInnerTegning")) $("swInnerTegning").onclick = lastNedInnerTegning;
 }
@@ -4817,7 +5533,7 @@ function lastNedInnerListe() {
     isolasjon: a.isolasjon, utvFarge: a.utvFarge, innFarge: a.innFarge
   });
   const navn = (S.fileName || "modell").replace(/\.(ifc|glb)$/i, "");
-  lastNedXlsx(navn + " - SW-liste innervegg.xlsx", t("SW-liste innervegg"), rader)
+  lastNedXlsxFlere(navn + " - SW-liste innervegg.xlsx", [{ navn: t("SW-liste innervegg"), rader }, materiellArk()])
     .catch(err => {
       console.warn("Innerveggslista kunne ikke lages:", err);
       alert(t("Klarte ikke å lage Excel-fila: ") + (err && err.message || err));

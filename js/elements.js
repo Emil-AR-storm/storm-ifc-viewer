@@ -969,6 +969,11 @@ export async function lastNedXlsx(filnavn, arknavn, rader) {
   const X = await import("./xlsx.js");
   lastNed(filnavn, new Blob([X.lagXlsx(arknavn, rader)], { type: X.XLSX_MIME }));
 }
+// Flere ark i én fil: [{ navn, rader }, …]
+export async function lastNedXlsxFlere(filnavn, arkListe) {
+  const X = await import("./xlsx.js");
+  lastNed(filnavn, new Blob([X.lagXlsxFlere(arkListe)], { type: X.XLSX_MIME }));
+}
 
 function baseName() {
   return (S.fileName || "modell").replace(/\.(ifc|glb)$/i, "");

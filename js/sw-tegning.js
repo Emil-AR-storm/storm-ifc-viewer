@@ -774,7 +774,9 @@ export function byggTegningsmodell(inn) {
           // «full høyde» lagres som ±1e9 — klipp den til veggen, ellers blir
           // rektangelet uendelig høyt og tegninga svart.
           toppMm: Math.abs(a.toppMm) > 1e8 ? veggToppMm : a.toppMm,
-          full: Math.abs(a.toppMm) > 1e8 };
+          full: Math.abs(a.toppMm) > 1e8,
+          // 🚪 «Port 1» / «Vindu 3» — samme navn som i panelet og i 3D
+          navn: a.navn || "", type: a.type || "" };
       })
     });
   }
@@ -1401,6 +1403,11 @@ function tegnFasade(d, f, skala, x, yTopp, medMerknad, merknad, elFarge, toppNav
     const hoyde = a.full ? null : Math.round(a.toppMm - a.bunnMm);
     boksTekst(d, bredde + "×" + (hoyde === null ? "—" : hoyde) + " MM",
       (ax0 + ax1) / 2, (ay0 + ay1) / 2 + 3, SKRIFT.lengde, "midt");
+    // 🚪 navnet rett over målet, som i 3D — bare når det får plass i åpninga
+    if (a.navn && ay1 - ay0 > SKRIFT.lengde * 1.4) {
+      boksTekst(d, String(a.navn).toUpperCase(),
+        (ax0 + ax1) / 2, (ay0 + ay1) / 2 + 3 - SKRIFT.lengde * 1.6, SKRIFT.lengde, "midt");
+    }
   }
 
   // ── merkelappene til slutt, så ingenting legger seg over dem
