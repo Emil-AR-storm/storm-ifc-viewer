@@ -2032,7 +2032,7 @@ S.swUtseendeRader = (body) => {
   if (harYtre) {
     const sk = skjulNaa();
     html +=
-      '<div class="qty-row" style="margin-top:10px"><div class="n" style="font-weight:700">' +
+      '<div class="qty-row" style="margin-top:10px"><div class="n" style="font-weight:700">' + ikon("sw") + ' ' +
         t("SW-generator") + '</div><div class="c"></div></div>' +
       swSkjulRad(sk, "data-sw-skjul", "alt", "Alt på bygget") +
       swSkjulRad(sk, "data-sw-skjul", "vegger", "Veggelementer", antV || "") +
@@ -2041,14 +2041,14 @@ S.swUtseendeRader = (body) => {
         ? swSkjulRad(sk, "data-sw-skjul", "ringmur", "Ringmur", (lagret.ringmur || []).length) : "") +
       swSkjulRad(sk, "data-sw-skjul", "merking", "Merking og mål") +
       '<p style="color:var(--muted);font-size:11px;margin:2px 0 6px">' +
-        t("Bunkene med veggelementer rundt bygget ligger i 📦 Materiell og skjules i sine egne rader over.") + '</p>';
+        t("Bunkene med veggelementer rundt bygget ligger i Materiell og skjules i sine egne rader over.") + '</p>';
   }
   // 🚪 EGEN BLOKK FOR INNERVEGGENE (Emil 08.09). Egen tilstand også: slår han
   // av ytterveggene for å se inn i bygget, skal innerveggene bli stående.
   if (antI) {
     const skI = innerSkjulNaa();
     html +=
-      '<div class="qty-row" style="margin-top:10px"><div class="n" style="font-weight:700">🚪 ' +
+      '<div class="qty-row" style="margin-top:10px"><div class="n" style="font-weight:700">' + ikon("dor") + ' ' +
         t("SW-generator: innervegger") + '</div><div class="c"></div></div>' +
       swSkjulRad(skI, "data-sw-iskjul", "alt", "Alt på bygget") +
       swSkjulRad(skI, "data-sw-iskjul", "vegger", "Veggelementer", antI) +
@@ -5011,7 +5011,7 @@ function tegnPanel() {
       t("Trykk «Marker utsparing», og trykk så på flatene rundt åpningen i modellen: innsiden av søylene på sidene og undersiden av bjelken over. Én flate per side.") + '</p>' +
     '<div class="prop-actions" style="flex-wrap:wrap"><button id="swNyUtsp">' + ikon("boks") + ' ' + t("Marker utsparing") + '</button>' +
     (lagret && (lagret.fasader || []).length
-      ? '<button id="swFinnUtsp" title="' + esc(t("Foreslår åpninger under losholter mellom søylene. Ingenting legges inn før du godkjenner.")) + '">🔍 ' + t("Finn utsparinger") + '</button>'
+      ? '<button id="swFinnUtsp" title="' + esc(t("Foreslår åpninger under losholter mellom søylene. Ingenting legges inn før du godkjenner.")) + '">' + ikon("sok") + ' ' + t("Finn utsparinger") + '</button>'
       : "") + '</div>' +
     '<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="swVisUtsp"' +
       (o.visUtsp === false ? "" : " checked") + '> ' + t("Vis utsparingsmål (stiplet kryss + kappdybde)") + '</label>' +
@@ -5054,16 +5054,16 @@ function tegnPanel() {
       '<select id="swPdfLogo"><option value="">' + esc(t("Innebygd Storm-logo")) + '</option></select></label>' +
     '<p style="color:var(--muted);font-size:11px;margin:2px 0 6px">' +
       (S.akseLinjer
-        ? t("Aksenavnene hentes fra 🔠 Akser.")
-        : t("Aksenavnene blir A, B, C … per fasade. Bygg aksene i 🔠 Akser først hvis du vil ha byggets egne aksenavn på tegninga.")) + '</p>' +
+        ? t("Aksenavnene hentes fra Akser.")
+        : t("Aksenavnene blir A, B, C … per fasade. Bygg aksene i Akser først hvis du vil ha byggets egne aksenavn på tegninga.")) + '</p>' +
     '<div class="prop-actions" data-sw-fast style="margin-top:10px;flex-wrap:wrap">' +
     '<button id="swGenerer" class="primary">' + ikon("boks") + ' ' + t("Generer SW + gulv/ringmur") + '</button>' +
-    '<button id="swJusterBtn">✥ ' + t("Juster elementer") + '</button>' +
+    '<button id="swJusterBtn">' + ikon("juster") + ' ' + t("Juster elementer") + '</button>' +
     '<button id="swTegning">' + ikon("tegning") + ' ' + t("Last ned instruksjonstegning (PDF)") + '</button>' +
     '<button id="swListe">' + ikon("lastned") + ' ' + t("Last ned liste (Excel)") + '</button>' +
     '<button id="swFjern">' + ikon("slett") + ' ' + t("Fjern genererte") + '</button></div>' +
     (antall ? '<p style="color:var(--muted);font-size:12px;margin-top:6px">' +
-      t("{0} veggelementer generert. Stablene ligger i 📦 Materiell og telles i Mengder.", antall) + '</p>' : "") +
+      t("{0} veggelementer generert. Stablene ligger i Materiell og telles i Mengder.", antall) + '</p>' : "") +
     // 💾 Lagrede resultater — helt nederst, som «Lagrede grupper» i Bygginfo.
     '<h4 data-sek="lagrede" style="margin:14px 0 4px">' + t("Lagrede SW-resultater") + '</h4>' +
     '<p style="color:var(--muted);font-size:11px;margin:2px 0 6px">' +
@@ -5865,7 +5865,7 @@ export function innerOppsettFelter(serie) {
 function fasadePanelHtml(o) {
   const sett = o.manuelleFasader || [];
   const redigerer = innerMark && innerMark.fasade && innerMark.steg === "side";
-  return '<h4 data-sek="fasader" style="margin:10px 0 4px">🧭 ' + t("Fasader") + '</h4>' +
+  return '<h4 data-sek="fasader" style="margin:10px 0 4px">' + ikon("fasade") + ' ' + t("Fasader") + '</h4>' +
     '<p style="color:var(--muted);font-size:11px;margin:2px 0 6px">' +
       (sett.length
         ? '<b>' + t("Automatikken er AV: bare fasadene under brukes.") + '</b> ' +
@@ -5904,7 +5904,7 @@ function innerPanelHtml() {
   const beinPer = new Map();
   for (const f of d.fasader)
     if (f.serieIdx !== undefined) beinPer.set(f.serieIdx, (beinPer.get(f.serieIdx) || 0) + 1);
-  return '<h4 data-sek="inner" style="margin:14px 0 4px">🚪 ' + t("Innervegger (egen SW-serie)") + '</h4>' +
+  return '<h4 data-sek="inner" style="margin:14px 0 4px">' + ikon("dor") + ' ' + t("Innervegger (egen SW-serie)") + '</h4>' +
     '<p style="color:var(--muted);font-size:11px;margin:2px 0 6px">' +
       t("Innerveggene finnes ikke automatisk — du markerer søylene de skal stå på. De får sin egen SW-serie som starter på SW-01, sin egen instruksjonstegning og sitt eget regneark. Ytterveggene over røres ikke.") + '</p>' +
     (d.serier.length
@@ -5916,7 +5916,7 @@ function innerPanelHtml() {
           t("{0} element", antPer.get(i) || 0) + " · " +
           (s.o && s.o.veggHoydeMm ? s.o.veggHoydeMm + " mm" : "") + '</span></div>' +
         '<div class="c">' +
-          '<button data-sw-inner-endre="' + i + '" title="' + t("Endre") + '" style="padding:3px 8px">✥</button> ' +
+          '<button data-sw-inner-endre="' + i + '" title="' + t("Endre") + '" style="padding:3px 8px">' + ikon("juster") + '</button> ' +
           '<button data-sw-inner-slett="' + i + '" title="' + t("Slett") + '" style="padding:3px 8px">' + ikon("slett") + '</button>' +
         '</div></div>').join("")
       : '<p style="color:var(--muted);font-size:12px">' + t("Ingen innervegger ennå.") + '</p>') +
@@ -5930,7 +5930,7 @@ function innerPanelHtml() {
         '</div>' +
         '<p style="color:var(--muted);font-size:12px;margin-top:4px">' +
           t("{0} innveggselementer i egen serie fra SW-01.", d.vegger.filter(v => !v.skjult).length) +
-          " " + t("«✥ Juster elementer» over tar også disse.") + '</p>' +
+          " " + t("«Juster elementer» over tar også disse.") + '</p>' +
         '<label>' + t("Tegningsnummer for innerveggene") +
           '<input type="text" id="swIvPdfNr" maxlength="30" value="' + esc(d.oppsett.pdfNr || "SWI-01") + '"></label>'
       : "");
