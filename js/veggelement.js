@@ -4895,6 +4895,71 @@ function utspListeHtml(utsp, slettAttr, tomTekst, visKilde) {
   return html;
 }
 
+// ---------- 📂 Sammenfoldede seksjoner ----------
+// Panelet ble for langt å bla i: ni seksjoner med felt, tekst og lister under
+// hverandre (Emil 08.09: «det tar alt for lang tid å bla gjennom hele
+// verktøyet, det er rotete»). Hver <h4> blir derfor en <details>: bare
+// overskriften står, og et trykk åpner seksjonen. Hvilke som står åpne huskes
+// i localStorage — på tvers av modeller, fordi det er en ARBEIDSMÅTE, ikke
+// noe om bygget: den som jobber med utsparinger vil ha den seksjonen åpen på
+// neste bygg også.
+//
+// HVORFOR ETTERBEHANDLING AV DOM-EN OG IKKE <details> I HTML-STRENGEN: HTML-en
+// bygges av seks funksjoner med rundt sytti felt, og hvert felt slås opp med
+// $("swBetong") osv. Å pakke strengen om ville rørt alt det; å flytte noder
+// etterpå rører ingenting — elementene finnes fortsatt med samme id.
+// Handlingsknappene (Generer, Juster, PDF, Excel, Fjern) er merket
+// data-sw-fast og blir stående utenfor: de skal aldri gjemmes bak en
+// overskrift.
+const SEKSJON_NOKKEL = "storm-sw-seksjoner-apne";
+export const SEKSJON_STANDARD_APEN = [];   // alle lukket til man åpner dem
+
+export function lesApneSeksjoner() {
+  try {
+    const l = JSON.parse(localStorage.getItem(SEKSJON_NOKKEL) || "null");
+    return Array.isArray(l) ? l : SEKSJON_STANDARD_APEN.slice();
+  } catch (_) { return SEKSJON_STANDARD_APEN.slice(); }
+}
+
+export function skrivApneSeksjoner(liste) {
+  try { localStorage.setItem(SEKSJON_NOKKEL, JSON.stringify(liste)); } catch (_) {}
+}
+
+// Ren: hvilken nøkkel en overskrift huskes under. data-sek fremfor teksten,
+// fordi teksten skifter med språket — den som byttet til polsk skulle ikke
+// miste hvilke seksjoner som sto åpne.
+export function seksjonNokkel(h4) {
+  return (h4.getAttribute && h4.getAttribute("data-sek")) || (h4.textContent || "").trim();
+}
+
+export function foldSeksjoner(body) {
+  if (!body || typeof document === "undefined") return;
+  const apne = new Set(lesApneSeksjoner());
+  const barn = Array.from(body.childNodes);
+  let boks = null;
+  for (const n of barn) {
+    if (n.nodeType === 1 && n.tagName === "H4") {
+      const nokkel = seksjonNokkel(n);
+      boks = document.createElement("details");
+      boks.className = "sw-seksjon";
+      boks.setAttribute("data-sek", nokkel);
+      if (apne.has(nokkel)) boks.open = true;
+      const sum = document.createElement("summary");
+      body.insertBefore(boks, n);
+      sum.appendChild(n);
+      boks.appendChild(sum);
+      boks.addEventListener("toggle", () => {
+        const liste = lesApneSeksjoner().filter(k => k !== nokkel);
+        if (boks.open) liste.push(nokkel);
+        skrivApneSeksjoner(liste);
+      });
+      continue;
+    }
+    if (n.nodeType === 1 && n.hasAttribute && n.hasAttribute("data-sw-fast")) { boks = null; continue; }
+    if (boks) boks.appendChild(n);
+  }
+}
+
 function tegnPanel() {
   const body = $("swBody");
   if (!body) return;
@@ -4903,17 +4968,17 @@ function tegnPanel() {
   const lagrede = lesLagrede();
   const utsp = (o.utsparinger || []).filter(u => u && u.min);
   body.innerHTML =
-    '<h4 style="margin:0 0 4px">' + t("Gulv") + '</h4>' +
+    '<h4 data-sek="gulv" style="margin:0 0 4px">' + t("Gulv") + '</h4>' +
     felt("swBetong", "Betong (mm)", o.betongMm) +
     felt("swIso", "Isolasjon (mm)", o.isoMm) +
     felt("swUtstikk", "Utstikk forbi søylene (mm)", o.utstikkMm) +
     '<p style="color:var(--muted);font-size:11px;margin:4px 0">' +
       t("Overkant betong settes automatisk til bunnen av søylene.") + '</p>' +
-    '<h4 style="margin:10px 0 4px">' + t("Ringmur") + '</h4>' +
+    '<h4 data-sek="ringmur" style="margin:10px 0 4px">' + t("Ringmur") + '</h4>' +
     '<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="swRingmur"' +
       (o.ringmur ? " checked" : "") + '> ' + t("Med ringmur rundt stålkonstruksjonen") + '</label>' +
     felt("swRingH", "Høyde over gulv (mm)", o.ringHoydeMm) +
-    '<h4 style="margin:10px 0 4px">' + t("Veggelementer") + '</h4>' +
+    '<h4 data-sek="vegg" style="margin:10px 0 4px">' + t("Veggelementer") + '</h4>' +
     felt("swTykk", "Tykkelse (mm) — samme som ringmuren", o.tykkelseMm) +
     felt("swKlaring", "Klaring fra søylesenter (mm) — 10 gir 20 mm skjøt", o.klaringMm) +
     '<label>' + t("Radhøyder nedenfra (mm) — tom = automatisk") +
@@ -4941,7 +5006,7 @@ function tegnPanel() {
     felt("swUtvF", "Utvendig farge (til lista)", o.utvFarge, "text") +
     felt("swInnF", "Innvendig farge (til lista)", o.innFarge, "text") +
     fasadePanelHtml(o) +
-    '<h4 style="margin:10px 0 4px">' + t("Utsparinger (dører, vinduer, porter)") + '</h4>' +
+    '<h4 data-sek="utsp" style="margin:10px 0 4px">' + t("Utsparinger (dører, vinduer, porter)") + '</h4>' +
     '<p style="color:var(--muted);font-size:11px;margin:2px 0 6px">' +
       t("Trykk «Marker utsparing», og trykk så på flatene rundt åpningen i modellen: innsiden av søylene på sidene og undersiden av bjelken over. Én flate per side.") + '</p>' +
     '<div class="prop-actions" style="flex-wrap:wrap"><button id="swNyUtsp">' + ikon("boks") + ' ' + t("Marker utsparing") + '</button>' +
@@ -4956,7 +5021,7 @@ function tegnPanel() {
       : "") +
     utspListeHtml(utsp, "data-sw-slett-utsp", t("Ingen utsparinger lagt til ennå."), true) +
     innerPanelHtml() +
-    '<h4 style="margin:10px 0 4px">' + t("Til lista") + '</h4>' +
+    '<h4 data-sek="lista" style="margin:10px 0 4px">' + t("Til lista") + '</h4>' +
     felt("swProsjekt", "Prosjekt", o.prosjekt, "text") +
     felt("swOppdrag", "Oppdragsnummer", o.oppdragsnr, "text") +
     felt("swSted", "Sted", o.sted, "text") +
@@ -4968,7 +5033,7 @@ function tegnPanel() {
     // 📐 Rutene i Storm-tittelfeltet på instruksjonstegninga. Står de tomme,
     // arves de fra Til lista-feltene over — derfor er hjelpeteksten viktigere
     // enn den ser ut: uten den ser tomme felt ut som manglende data.
-    '<h4 style="margin:10px 0 4px">' + t("Utfyll PDF") + '</h4>' +
+    '<h4 data-sek="pdf" style="margin:10px 0 4px">' + t("Utfyll PDF") + '</h4>' +
     '<p style="color:var(--muted);font-size:11px;margin:2px 0 6px">' +
       t("Dette fyller Storm-tittelfeltet på instruksjonstegninga. Tomt felt hentes fra «Til lista» over; Kontroll og Godkjent står tomme på papiret hvis du ikke fyller dem.") + '</p>' +
     felt("swPdfNr", "Tegningsnummer (nummeret øker per ark)", o.pdfNr || "SW-01", "text") +
@@ -4991,7 +5056,7 @@ function tegnPanel() {
       (S.akseLinjer
         ? t("Aksenavnene hentes fra 🔠 Akser.")
         : t("Aksenavnene blir A, B, C … per fasade. Bygg aksene i 🔠 Akser først hvis du vil ha byggets egne aksenavn på tegninga.")) + '</p>' +
-    '<div class="prop-actions" style="margin-top:10px;flex-wrap:wrap">' +
+    '<div class="prop-actions" data-sw-fast style="margin-top:10px;flex-wrap:wrap">' +
     '<button id="swGenerer" class="primary">' + ikon("boks") + ' ' + t("Generer SW + gulv/ringmur") + '</button>' +
     '<button id="swJusterBtn">✥ ' + t("Juster elementer") + '</button>' +
     '<button id="swTegning">' + ikon("tegning") + ' ' + t("Last ned instruksjonstegning (PDF)") + '</button>' +
@@ -5000,7 +5065,7 @@ function tegnPanel() {
     (antall ? '<p style="color:var(--muted);font-size:12px;margin-top:6px">' +
       t("{0} veggelementer generert. Stablene ligger i 📦 Materiell og telles i Mengder.", antall) + '</p>' : "") +
     // 💾 Lagrede resultater — helt nederst, som «Lagrede grupper» i Bygginfo.
-    '<h4 style="margin:14px 0 4px">' + t("Lagrede SW-resultater") + '</h4>' +
+    '<h4 data-sek="lagrede" style="margin:14px 0 4px">' + t("Lagrede SW-resultater") + '</h4>' +
     '<p style="color:var(--muted);font-size:11px;margin:2px 0 6px">' +
       t("Gi resultatet et navn og lagre det. Trykk på navnet senere for å laste hele resultatet inn på bygget igjen.") + '</p>' +
     '<div class="prop-actions sw-lagre">' +
@@ -5018,6 +5083,7 @@ function tegnPanel() {
         '<div class="c"><button data-sw-slett-lagret="' + esc(pst.navn) + '" title="' + t("Slett") +
         '" style="padding:3px 8px">' + ikon("slett") + '</button></div></div>').join("")
       : '<p style="color:var(--muted);font-size:12px">' + t("Ingen lagrede resultater ennå.") + '</p>');
+  foldSeksjoner(body);
   $("swGenerer").onclick = async () => {
     lesOppsettFraPanel();
     $("swGenerer").disabled = true;
@@ -5799,7 +5865,7 @@ export function innerOppsettFelter(serie) {
 function fasadePanelHtml(o) {
   const sett = o.manuelleFasader || [];
   const redigerer = innerMark && innerMark.fasade && innerMark.steg === "side";
-  return '<h4 style="margin:10px 0 4px">🧭 ' + t("Fasader") + '</h4>' +
+  return '<h4 data-sek="fasader" style="margin:10px 0 4px">🧭 ' + t("Fasader") + '</h4>' +
     '<p style="color:var(--muted);font-size:11px;margin:2px 0 6px">' +
       (sett.length
         ? '<b>' + t("Automatikken er AV: bare fasadene under brukes.") + '</b> ' +
@@ -5838,7 +5904,7 @@ function innerPanelHtml() {
   const beinPer = new Map();
   for (const f of d.fasader)
     if (f.serieIdx !== undefined) beinPer.set(f.serieIdx, (beinPer.get(f.serieIdx) || 0) + 1);
-  return '<h4 style="margin:14px 0 4px">🚪 ' + t("Innervegger (egen SW-serie)") + '</h4>' +
+  return '<h4 data-sek="inner" style="margin:14px 0 4px">🚪 ' + t("Innervegger (egen SW-serie)") + '</h4>' +
     '<p style="color:var(--muted);font-size:11px;margin:2px 0 6px">' +
       t("Innerveggene finnes ikke automatisk — du markerer søylene de skal stå på. De får sin egen SW-serie som starter på SW-01, sin egen instruksjonstegning og sitt eget regneark. Ytterveggene over røres ikke.") + '</p>' +
     (d.serier.length
