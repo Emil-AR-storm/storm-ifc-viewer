@@ -4678,19 +4678,36 @@ async function startFinnUtsp() {
   if (finnMark) avsluttFinn();
   const o = oppsett();
   const baseY = baseYNaa();
-  const stal = await stalPaFasader(lagret.fasader, o, baseY);
-  const fasInfo = lagret.fasader.map((f, fi) => {
-    const egne = (lagret.vegger || []).filter(v => v && v.fi === fi && !v.ringmur);
+  // 🚪 OGSÅ INNERVEGGENE (Emil 09.09: døra i innerveggen på Arendal manglet).
+  // Ytterveggene først (fi 0…n−1), så innerveggenes bein (fi n…). Hver vegg
+  // husker hvor den kom fra, sitt eget oppsett, sin egen base og sin egen
+  // OK betong — en mesaninvegg står høyere enn gulvet.
+  const d = innerData();
+  const vegger = lagret.fasader.map((f, fi) => ({
+    f, inner: false, fi, o, baseY,
+    okBetongMm: tilMm((lagret.okBetong || 0) - baseY),
+    toppMm: Math.max(0, ...(lagret.vegger || []).filter(v => v && v.fi === fi && !v.ringmur).map(v => (v.rBunnMm || 0) + (v.hoydeMm || 0)))
+  })).concat((d.fasader || []).map((f, fi) => {
+    const fo = { ...INNER_STD, ...(f.o || {}) };
+    const fBase = f.baseY !== undefined ? f.baseY : innerBaseY();
     return {
-      lengdeMm: tilMm(Math.abs(f.t1 - f.t0)),
-      toppMm: egne.length ? Math.max(...egne.map(v => (v.rBunnMm || 0) + (v.hoydeMm || 0))) : 0,
-      okBetongMm: tilMm((lagret.okBetong || 0) - baseY),
-      skjot: f.skjot || []
+      f, inner: true, fi, o: fo, baseY: fBase,
+      okBetongMm: tilMm((f.okBetong !== undefined ? f.okBetong : fBase) - fBase),
+      toppMm: Math.max(0, ...(d.vegger || []).filter(v => v && v.fi === fi && !v.ringmur).map(v => (v.rBunnMm || 0) + (v.hoydeMm || 0)))
     };
-  });
-  const kand = finnUtsparingKandidater(stal, fasInfo, utspPaFasader());
+  }));
+  // stålet projiseres på ALLE veggene i én omgang (nærmeste vegg vinner), med
+  // ytterveggenes base — innerveggenes høyder regnes om til deres egen base
+  const stalAlle = await stalPaFasader(vegger.map(v => v.f), o, baseY);
+  for (const r of stalAlle) {
+    const v = vegger[r.fi];
+    if (v && v.baseY !== baseY) { const dMm = tilMm(baseY - v.baseY); r.bunnMm += dMm; r.toppMm += dMm; }
+  }
+  const finnes = utspPaFasader().concat((d.utspVis || []).map(a => ({ ...a, fi: a.fi + lagret.fasader.length })));
+  const fasInfo = vegger.map(v => ({ lengdeMm: tilMm(Math.abs(v.f.t1 - v.f.t0)), toppMm: v.toppMm, okBetongMm: v.okBetongMm, skjot: v.f.skjot || [] }));
+  const kand = finnUtsparingKandidater(stalAlle, fasInfo, finnes);
   if (!kand.length) { alert(t("Fant ingen åpninger under losholter på fasadene.")); return; }
-  finnMark = { kandidater: kand.map(k => ({ k, paa: true, mesh: null })), gruppe: new THREE.Group(), ned: null };
+  finnMark = { kandidater: kand.map(k => ({ k, paa: true, mesh: null })), vegger, gruppe: new THREE.Group(), ned: null };
   swGroup.add(finnMark.gruppe);
   tegnFinnKandidater();
   tegnFinnBar();
@@ -4713,11 +4730,10 @@ function tegnFinnKandidater() {
     m.traverse(x => { if (x.geometry) x.geometry.dispose(); if (x.material) x.material.dispose(); });
     g.remove(m);
   });
-  const o = oppsett();
-  const baseY = baseYNaa();
   finnMark.kandidater.forEach((c, i) => {
-    const k = c.k, f = lagret.fasader[k.fi];
-    if (!f) return;
+    const v = finnMark.vegger[c.k.fi];
+    if (!v) return;
+    const k = c.k, f = v.f, o = v.o, baseY = v.baseY;
     const utD = f.off + tilScene(o.tykkelseMm) / 2 + 0.05 / (S.enhetSkala || 1);
     const pkt = (mm, y) => new THREE.Vector3(f.px + f.ex * tilScene(mm) + f.nx * utD, y, f.pz + f.ez * tilScene(mm) + f.nz * utD);
     const y0 = baseY + tilScene(k.bunnMm), y1 = baseY + tilScene(k.toppMm);
@@ -4755,17 +4771,38 @@ async function finnGodkjenn() {
   const valgte = finnMark.kandidater.filter(c => c.paa);
   if (!valgte.length) { avsluttFinn(); return; }
   const o = oppsett();
-  const baseY = baseYNaa();
+  const d = innerData();
   o.utsparinger = (o.utsparinger || []).filter(x => x && x.min);
+  let ytre = 0, indre = 0;
   for (const c of valgte) {
-    const f = lagret.fasader[c.k.fi];
-    if (f) o.utsparinger.push(kandidatTilUtsparing(c.k, f, baseY, o.tykkelseMm));
+    const v = finnMark.vegger[c.k.fi];
+    if (!v) continue;
+    if (!v.inner) {
+      o.utsparinger.push(kandidatTilUtsparing(c.k, v.f, v.baseY, v.o.tykkelseMm));
+      ytre++;
+    } else {
+      // 🚪 en åpning i en innervegg hører til DEN veggens serie — som om
+      // Emil hadde markert den med innerveggens egen «Marker utsparing»
+      const serie = d.serier[v.f.serieIdx];
+      if (!serie) continue;
+      serie.utsparinger = (serie.utsparinger || []).filter(x => x && x.min);
+      serie.utsparinger.push(kandidatTilUtsparing(c.k, v.f, v.baseY, v.o.tykkelseMm));
+      indre++;
+    }
   }
   sikreUtspTyper(o.utsparinger, okBetongNaa());
   skrivLagret();
   avsluttFinn();
-  await generer();                 // veggene kappes rundt de nye åpningene
-  oppdaterInnerveggerEtterUtsp();  // en åpning kan også stå i en innervegg
+  if (ytre) {
+    await generer();                 // ytterveggene kappes rundt de nye åpningene
+    oppdaterInnerveggerEtterUtsp();  // en åpning kan også stå i en innervegg
+  }
+  if (indre) {
+    await byggAlleInnervegger();     // innerveggene kappes rundt sine
+    byggInnerStabler();
+    skrivInner();
+    tegnAlt();
+  }
   tegnPanel();
 }
 
