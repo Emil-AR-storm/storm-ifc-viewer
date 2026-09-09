@@ -35,11 +35,15 @@ import { LETT } from "./lett.js";
 
 // hvor: "bygg" = byggeplass-siden, "kontor" = index.html, "begge" = begge
 export const KORT = [
+  // Gruppenavnene her MÅ være de samme som i js/verktoygrupper.js
+  // («Måleverktøy», «Bygg Info», «Visning», «Storm-Byggeplass»). Kortene sa
+  // «Mål» og «Utseende» lenge etter at gruppene ble omdøpt (Emil 08.09) —
+  // test-hjelp.mjs sjekker nå at hvert gruppenavn står i et kort.
   // ---------- Byggeplass ----------
   {
     hvor: "bygg", ikonNavn: "hjul",
     tittel: "Slik ser du deg rundt",
-    tekst: "Dra med én finger for å snu modellen. To fingre flytter den og zoomer. Har du gått deg bort, trykker du Vis alt — da kommer hele bygget tilbake på skjermen."
+    tekst: "Dra med én finger for å snu modellen. To fingre flytter den og zoomer. Har du gått deg bort, trykker du Vis alt — da kommer hele bygget tilbake på skjermen. Navigasjonshjulet gir hver bevegelse sin egen flate å dra i, uten mus."
   },
   {
     hvor: "bygg", ikonNavn: "markering",
@@ -59,12 +63,22 @@ export const KORT = [
   {
     hvor: "bygg", ikonNavn: "materiell",
     tittel: "Fargede stabler viser leveranser",
-    tekst: "De fargede stablene med navnelapp er materiell som skal ligge akkurat der — plater, panel og kassetter. Kommer det en leveranse, ser du her hvor den skal. Lappen sier hva det er og hvor mange."
+    tekst: "De fargede stablene med navnelapp er materiell som skal ligge akkurat der — plater, panel, kassetter og veggelementer. Kommer det en leveranse, ser du her hvor den skal. Lappen sier hva det er og hvor mange."
   },
   {
     hvor: "bygg", ikonNavn: "sok",
     tittel: "Verktøyene ligger i grupper",
-    tekst: "Knappene øverst — Mål, Bygg Info, Utseende og Storm-Byggeplass — bytter hvilke verktøy verktøylinja viser. Er et verktøy borte, ligger det i en annen gruppe."
+    tekst: "Knappene øverst — Måleverktøy, Bygg Info, Visning og Storm-Byggeplass — bytter hvilke verktøy verktøylinja viser. Er et verktøy borte, ligger det i en annen gruppe."
+  },
+  {
+    hvor: "bygg", ikonNavn: "tegning",
+    tittel: "Tegningen ligger på markeringen",
+    tekst: "En markering kan ha en arbeidstegning festet til seg, åpnet på riktig side. Trykk på tegningen på kortet til markeringen, så hentes den fra byggeplass-lenka — uten innlogging."
+  },
+  {
+    hvor: "bygg", ikonNavn: "lastned",
+    tittel: "Tidligere revisjoner",
+    tekst: "Koden åpner alltid nyeste modell. Historikk (i Storm-Byggeplass) viser tidligere revisjoner av samme fil — de arkiveres av seg selv hver gang en endret modell lastes opp — så du kan åpne den du sto med i går."
   },
   {
     hvor: "bygg", ikonNavn: "innstillinger",
@@ -81,12 +95,27 @@ export const KORT = [
   {
     hvor: "kontor", ikonNavn: "sok",
     tittel: "Verktøyene ligger i fire grupper",
-    tekst: "Mål, Bygg Info, Utseende og Storm-Byggeplass øverst bytter hvilke verktøy verktøylinja viser. Hold musepekeren over en knapp, så står det hva den gjør."
+    tekst: "Måleverktøy, Bygg Info, Visning og Storm-Byggeplass øverst bytter hvilke verktøy verktøylinja viser. Hold musepekeren over en knapp, så står det hva den gjør."
   },
   {
     hvor: "kontor", ikonNavn: "markering",
     tittel: "Markeringene er arbeidslista",
-    tekst: "En markering kan få ansvarlig, frist og en oppgave i Planner. Ringen rundt skifter farge etter hvor nær fristen er."
+    tekst: "En markering kan få ansvarlig, frist og en oppgave i Planner. Ringen rundt skifter farge etter hvor nær fristen er. Arbeidstegninger fra SharePoint og sjekklister festes til markeringen, og sjekklista kan lastes ned som PDF."
+  },
+  {
+    hvor: "begge", ikonNavn: "skjul",
+    tittel: "Skjul markeringer du er ferdig med",
+    tekst: "Øyet på hver markering i lista skjuler den i modellen uten å slette noe — den står blass i lista, så du finner den igjen. Knappen øverst i lista skjuler eller viser alle på én gang."
+  },
+  {
+    hvor: "kontor", ikonNavn: "utseende",
+    tittel: "Visning: snitt, etasjer og farger",
+    tekst: "Snitt skjærer bort deler av modellen så du ser innenfor, Etasjer viser én etasje om gangen, Gjennomsiktig lar det bak skinne gjennom, og Farger lar deg fargelegge eller skjule elementtyper. Angre (Ctrl+Z) tar tilbake mål, koter, farger, snitt og skjuling."
+  },
+  {
+    hvor: "kontor", ikonNavn: "sammenlign",
+    tittel: "Sammenlign to revisjoner",
+    tekst: "Åpne den gamle modellen og trykk Sammenlign (i Bygg Info) — da tas et avtrykk. Åpne så den nye, og alt som er nytt, fjernet eller flyttet fargelegges og listes opp."
   },
   {
     hvor: "kontor", ikonNavn: "lastned",
@@ -99,6 +128,26 @@ export const KORT = [
     tekst: "Materiell (i Storm-Byggeplass) legger 3D-objekter av TRP-plater, sandwichpanel og forskalingskassetter inn i modellen. Sett mål, farge, navn og antall — navnet står på en lapp på objektet, og alt følger med ut til byggeplass-lenka."
   },
   {
+    hvor: "kontor", ikonNavn: "boks",
+    tittel: "SW-generator: veggelementer på stålet",
+    tekst: "SW-generator (i Storm-Byggeplass) leser søylene i en stålmodell, finner fasadene og legger sandwich-elementer med gulv og ringmur på dem. Hver seksjon i panelet er lukket — trykk på overskriften for å åpne den. Sett gulv, ringmur og elementmål, og trykk Generer SW + gulv/ringmur. Juster elementer lar deg dra skjøtene etterpå."
+  },
+  {
+    hvor: "kontor", ikonNavn: "boks",
+    tittel: "Utsparinger: dører, vinduer og porter",
+    tekst: "Marker utsparing: trykk på flatene rundt åpningen i modellen — innsiden av søylene på sidene og undersiden av bjelken over. Finn utsparinger foreslår åpninger ut fra stålet; godkjenn dem du vil ha og slett resten. Typen (Port, Dør, Vindu) styrer beslag og navnet på tegninga, og kan byttes i lista."
+  },
+  {
+    hvor: "kontor", ikonNavn: "boks",
+    tittel: "Innervegger og egne fasader",
+    tekst: "Innervegger finnes ikke av seg selv: trykk Ny innervegg, marker søylene veggen skal stå på og pek på siden. De får sin egen SW-serie, tegning og liste. Velger automatikken feil fasader, kan du sette dem for hånd under Fasader på samme måte."
+  },
+  {
+    hvor: "kontor", ikonNavn: "tegning",
+    tittel: "SW-resultatet ut av huset",
+    tekst: "Last ned liste (Excel) gir SW-lista og et Materiell-ark med skruer, beslag, hatprofil og skum per fasade. Last ned instruksjonstegning (PDF) gir A0-tegninga med Storm-tittelfelt fra Utfyll PDF. Lagrede SW-resultater husker hele resultatet med navn, så du kan hente det inn igjen."
+  },
+  {
     hvor: "begge", ikonNavn: "fokus",
     tittel: "Objektgrupper",
     tekst: "Velg elementer med shift-klikk eller shift-dra, åpne Grupper (i Bygg Info) og lagre utvalget med navn. Trykk på en lagret gruppe for å hente den fram: alt annet skjules og kameraet flyr dit. Vis alle henter tilbake resten."
@@ -106,7 +155,7 @@ export const KORT = [
   {
     hvor: "kontor", ikonNavn: "tegning",
     tittel: "Ta arbeidet ut igjen",
-    tekst: "Rapport gir en PDF med bilder og status. BCF-eksport gir en fil som Solibri, Dalux og Revit kan åpne."
+    tekst: "Rapport gir en PDF med bilder og status. BCF-eksport gir en fil som Solibri, Dalux og Revit kan åpne. Del lager en lenke som gjenskaper akkurat denne visningen hos andre."
   },
   {
     hvor: "kontor", ikonNavn: "innstillinger",
