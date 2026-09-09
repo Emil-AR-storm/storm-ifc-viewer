@@ -1420,7 +1420,8 @@ body:not(.har-modell) #btnFit { display: none !important; }
    Avkrysningsboksene har display:flex i en style-attributt og beholder den —
    inline stil slår denne regelen, som er meningen: der SKAL boksen stå ved
    siden av teksten. */
-#swBody > label {
+#swBody > label,
+#swBody .sw-seksjon > label {
   display: block;
   margin: 9px 0;
   font-size: 12px;
@@ -1430,7 +1431,11 @@ body:not(.har-modell) #btnFit { display: none !important; }
 #swBody > label > input[type=text],
 #swBody > label > input[type=number],
 #swBody > label > select,
-#swBody > label > textarea {
+#swBody > label > textarea,
+#swBody .sw-seksjon > label > input[type=text],
+#swBody .sw-seksjon > label > input[type=number],
+#swBody .sw-seksjon > label > select,
+#swBody .sw-seksjon > label > textarea {
   display: block;
   width: 100%;
   box-sizing: border-box;
@@ -1440,12 +1445,39 @@ body:not(.har-modell) #btnFit { display: none !important; }
 }
 /* Fargevelgeren skal IKKE være full bredde — en 100 % bred fargeflate leses
    som en overskrift, ikke som et valg. */
-#swBody > label > input[type=color] {
+#swBody > label > input[type=color],
+#swBody .sw-seksjon > label > input[type=color] {
   display: block;
   margin-top: 3px;
   width: 58px; height: 26px; padding: 0;
 }
-#swBody > label > textarea { resize: vertical; min-height: 44px; }
+#swBody > label > textarea,
+#swBody .sw-seksjon > label > textarea { resize: vertical; min-height: 44px; }
+
+/* 📂 Seksjonene er <details>: bare overskriften står til man trykker på den
+   (Emil 08.09 — panelet var for langt å bla i). Pila står foran overskriften
+   i stedet for nettleserens egen trekant, som ser forskjellig ut i Chrome,
+   Safari og Firefox. Etikettene inni treffes av «.sw-seksjon > label» over —
+   de var «#swBody > label» før seksjonene fikk en ekstra boks rundt seg. */
+#swBody .sw-seksjon > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex; align-items: center; gap: 6px;
+  user-select: none;
+}
+#swBody .sw-seksjon > summary::-webkit-details-marker { display: none; }
+#swBody .sw-seksjon > summary::before {
+  content: "▸";
+  color: var(--muted);
+  font-size: 13px;
+  width: 10px;
+  transition: transform .15s;
+}
+#swBody .sw-seksjon[open] > summary::before { transform: rotate(90deg); }
+#swBody .sw-seksjon > summary > h4 { flex: 1; }
+#swBody .sw-seksjon:not([open]) > summary > h4 { border-bottom-color: transparent; }
+#swBody .sw-seksjon { border-bottom: 1px solid var(--border); }
+#swBody .sw-seksjon[open] { padding-bottom: 6px; }
 
 /* Seksjonsoverskriftene skal kunne skilles fra etikettene. Uten streken hadde
    «Ringmur» og «Høyde over gulv (mm)» samme vekt, og panelet ble én lang
