@@ -351,6 +351,9 @@ function tegnOm(sprite, tekst, farge) {
 }
 
 export function oppdaterLengdeEtiketter() {
+  // 📐 Vis mål har sine egne lapper med metertall i seg. De hører til samme
+  // problem – tall brent inn i en tekstur – og skal tegnes om i samme slengen.
+  if (S.tegnMaalOm) { try { S.tegnMaalOm(); } catch (err) { console.warn(err); } }
   for (const [gruppe, farge, prefiks] of
        [[measureGroup, "#f59e0b", ""], [koteGroup, "#22d3ee", "▲ "]]) {
     gruppe.children.forEach(o => {
