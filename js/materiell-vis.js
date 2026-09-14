@@ -285,10 +285,14 @@ export function materiellMengdeRader() {
 export function leggMateriellIMengder(groups, rows) {
   for (const r of materiellMengdeRader()) {
     if (!groups.has(r.key)) groups.set(r.key,
-      { count: 0, length: 0, vol: 0, area: 0, forskaling: 0, kg: 0, kgGeo: 0,
+      { count: 0, length: 0, vol: 0, area: 0, flate: 0, forskaling: 0, kg: 0, kgGeo: 0,
         utenVekt: 0, umulige: 0, nominelle: 0, type: r.type, material: r.material });
     const g = groups.get(r.key);
-    g.count++; g.length += r.len; g.area += r.area; g.utenVekt++;
+    // 📦 Materiell har parametriske mål, ikke geometri å gruppere i plan.
+    // «Største flate» er da den samme flata som arealet allerede er regnet av,
+    // så de to kolonnene får samme tall – og ingen av dem blir tomme.
+    if (r.flate === undefined) r.flate = r.area;
+    g.count++; g.length += r.len; g.area += r.area; g.flate += r.flate; g.utenVekt++;
     rows.push(r);
   }
 }

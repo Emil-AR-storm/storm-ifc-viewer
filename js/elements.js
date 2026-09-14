@@ -135,6 +135,7 @@ export function val(v) {
 export async function showProperties(expressID) {
   const body = $("propBody");
   const rows = [];
+  let psets = [];        // egenskapssett fra IFC-fila – se psetHtml under
   if (S.glbActive) {
     const p = S.glbProps ? S.glbProps.get(expressID) : null;
     $("propTitle").textContent = (p && p[2]) || t("Element");
@@ -156,7 +157,7 @@ export async function showProperties(expressID) {
       const mMeta = metaFor(expressID);
       if (mMeta && mMeta.material) rows.push([t("Materiale"), mMeta.material]);
       try { maalRader(expressID).forEach(r => rows.push(r)); } catch(_){}
-      p.psets.forEach(([k, v]) => rows.push([k, v]));
+      psets = p.psets || [];
     }
   }
 
@@ -166,7 +167,8 @@ export async function showProperties(expressID) {
       '<button id="paMaal">' + ikon("maal") + ' ' + t("Vis mål") + '</button>' +
     '</div>' +
     rows.map(([k,v]) =>
-    `<div class="prop-row"><div class="k">${esc(String(k))}</div><div class="v">${esc(String(v))}</div></div>`).join("");
+    `<div class="prop-row"><div class="k">${esc(String(k))}</div><div class="v">${esc(String(v))}</div></div>`).join("") +
+    psetHtml(psets);
   $("paHide").onclick = () => hideElement(expressID);   // virker nå også i 🪶 (synkMergedSkjuling)
   // 📐 Vis mål. Vanlig import og ikke import(): en dynamisk import ville falt
   // utenfor lista service workeren forhåndslagrer, og knappen hadde vært død
@@ -181,6 +183,47 @@ export async function showProperties(expressID) {
   apnePanel("propPanel");
 }
 
+
+// ---------- Egenskapssettene (Pset) fra IFC-fila ----------
+//
+// HVA DETTE ER. Alt over denne streken er noe vi selv har regnet ut eller lest
+// rett av elementet. Pset-ene er noe ANNET: egenskapssett den prosjekterende
+// har lagt på elementet i Revit/Tekla og sendt med i IFC-fila. Vi finner ikke
+// på dem, og vi kan ikke rette dem – står det noe rart der, står det rart i
+// modellen. De er verdt å ha: `LoadBearing`, `IsExternal` og `Reference`
+// (armeringsmengde, elementtype, brannkrav) er ofte det eneste stedet den
+// opplysningen finnes.
+//
+// HVORFOR DE NÅ STÅR GRUPPERT.
+// Før sto hvert navn med hele settet foran seg, på hver eneste rad:
+// «Pset_ReinforcementBarPitchOfColumn · Reference». Navnekolonnen kan ikke
+// krympe (den skal stå i flukt nedover), så en så lang tekst presset
+// verdikolonnen ned til ingenting – og verdien brøt til 2–3 bokstaver per
+// linje, nedover i det uendelige. Settnavnet står nå ÉN gang, som overskrift,
+// og radene under bærer bare egenskapsnavnet. Samme opplysning, en brøkdel av
+// bredden. (Bredden er dessuten sikret i css/storm.css, så en lang tekst aldri
+// kan gjøre dette igjen.)
+function psetHtml(psets) {
+  if (!psets || !psets.length) return "";
+  // Rekkefølgen fra IFC-fila beholdes – den er ofte den prosjekterende sin
+  // egen gruppering, og å sortere den alfabetisk ville skjult det.
+  const grupper = new Map();
+  for (const [k, v] of psets) {
+    const i = String(k).indexOf(" · ");
+    const sett = i > 0 ? k.slice(0, i) : "Pset";
+    const navn = i > 0 ? k.slice(i + 3) : String(k);
+    if (!grupper.has(sett)) grupper.set(sett, []);
+    grupper.get(sett).push([navn, v]);
+  }
+  return '<div class="pset-bolk">' +
+    '<div class="pset-tittel">' + esc(t("Egenskaper fra IFC-fila")) + '</div>' +
+    [...grupper].map(([sett, felt]) =>
+      '<div class="pset-navn">' + esc(sett) + '</div>' +
+      felt.map(([k, v]) =>
+        '<div class="prop-row"><div class="k">' + esc(String(k)) + '</div>' +
+        '<div class="v">' + esc(String(v)) + '</div></div>').join("")
+    ).join("") + '</div>';
+}
 
 // ---------- Målradene i egenskapspanelet ----------
 //
@@ -206,9 +249,13 @@ function maalRader(id) {
     const lb = [r.lengde, r.bredde].sort((a, b) => b - a);
     rows.push([t("Mål L×B×T (ca)"),
       [lb[0], lb[1], r.tykkelse].map(fmtDim).join(" × ") + " m"]);
-    rows.push([t("Areal, største flate (ca)"), fmtArea(r.areal)]);
+    // Arealet tas fra mengdeuttaket (q.storsteFlate), ikke fra retteMaal, slik
+    // at panelet og Mengder-tabellen ALLTID viser samme tall for samme element.
+    // retteMaal gjør sin egen gjennomgang for å kunne tegne flata, og to
+    // uavhengige utregninger av samme størrelse ender før eller siden i strid.
+    rows.push([t("Areal, største flate (ca)"), fmtArea(q.storsteFlate)]);
     // 2 % – under det er forskjellen avrunding i geometrien, ikke en ekte forskjell.
-    if (Math.abs(r.areal - q.area) > Math.max(r.areal, q.area) * 0.02)
+    if (Math.abs(q.storsteFlate - q.area) > Math.max(q.storsteFlate, q.area) * 0.02)
       rows.push([t("Areal, fotavtrykk (ca)"), fmtArea(q.area)]);
   } else {
     rows.push([t("Mål L×B×H (ca)"), q.dims.map(fmtDim).join(" × ") + " m"]);
@@ -301,7 +348,10 @@ export function triBidrag(ax, ay, az, bx, by, bz, cx, cy, cz) {
   const ny = uz * vx - ux * vz;
   const nz = ux * vy - uy * vx;
   const area2 = Math.hypot(nx, ny, nz);
-  return { vol6, proj2: Math.abs(ny), area2, ny };
+  // nx/nz følger med fordi plangrupperingen (storsteFlate) trenger hele
+  // normalen, ikke bare hvor flatt trekanten ligger. Regnestykket skal stå ÉTT
+  // sted – ikke gjøres om igjen i den som kaller.
+  return { vol6, proj2: Math.abs(ny), area2, nx, ny, nz };
 }
 
 // Randbidraget fra ÉN trekant: Σ (a−c) × (b−c) over de tre rettede kantene
@@ -440,6 +490,12 @@ export function quantitiesForSet(idSet) {
   const fjern = new Map();   // punktet lengst unna start, og avstanden dit
   const rander = new Map();  // Σ (a−c)×(b−c) over rettede kanter – 0 = lukket (se sluttMengder)
   const area2S = new Map();  // Σ area2 per element – målestokken rand-testen holdes opp mot
+  // Plangruppene, til «største flate». Ett FLATT tall-array per element –
+  // [nx,ny,nz,d,area2, nx,ny,nz,d,area2, …] – og ikke objekter: dette kjøres
+  // over hele modellen (7 000+ elementer i et vanlig bygg), og et objekt per
+  // plan koster fem ganger så mye minne som de fem tallene det bærer.
+  const planAkk = new Map();
+  const dTol = PLAN_AVSTAND_M / toM;      // 5 mm uttrykt i modellenheter
 
   // Boksene hentes FØR gjennomgangen: rand-summen måles fra boksens senter, og
   // da slipper vi at tallene vokser med avstanden til modellens nullpunkt.
@@ -473,6 +529,21 @@ export function quantitiesForSet(idSet) {
     let rv = rander.get(id);
     if (!rv) { rv = [0, 0, 0]; rander.set(id, rv); }
     randBidrag(rv, sentre.get(id) || [0, 0, 0], _qa, _qb, _qc);
+    // Plangruppen trekanten hører til. Se planFlater for hvorfor og hvordan.
+    if (t.area2 > 0) {
+      const inv = 1 / t.area2;
+      const nx = t.nx * inv, ny = t.ny * inv, nz = t.nz * inv;
+      const d = nx * _qa.x + ny * _qa.y + nz * _qa.z;
+      let pa = planAkk.get(id);
+      if (!pa) { pa = []; planAkk.set(id, pa); }
+      let traff = false;
+      for (let k = 0; k < pa.length; k += 5) {
+        if (pa[k] * nx + pa[k+1] * ny + pa[k+2] * nz > PLAN_VINKEL && Math.abs(pa[k+3] - d) < dTol) {
+          pa[k+4] += t.area2; traff = true; break;
+        }
+      }
+      if (!traff && pa.length < PLAN_MAKS * 5) pa.push(nx, ny, nz, d, t.area2);
+    }
     sePunkt(id, _qa.x, _qa.y, _qa.z);
     sePunkt(id, _qb.x, _qb.y, _qb.z);
     sePunkt(id, _qc.x, _qc.y, _qc.z);
@@ -505,7 +576,13 @@ export function quantitiesForSet(idSet) {
     const rand = rv ? Math.hypot(rv[0], rv[1], rv[2]) : undefined;
     const m = sluttMengder(vols.get(id) || 0, projs.get(id) || 0, toM, rand, area2S.get(id) || 0);
     const f = flater.get(id) || { topp: 0, under: 0, side: 0 };
+    const pa = planAkk.get(id);
+    let storst = 0;
+    if (pa) for (let k = 4; k < pa.length; k += 5) if (pa[k] > storst) storst = pa[k];
     out.set(id, {
+      // Største sammenhengende flate (m²) – vegglivet på en vegg, oversida på
+      // et dekke. Se planFlater for hele begrunnelsen.
+      storsteFlate: storst / 2 * m2,
       dims, vol: m.vol, area: m.area, lukket: m.lukket,
       // hele overflata (m²) – summen av de tre retningene under
       overflate: (f.topp + f.under + f.side) / 2 * m2,
@@ -545,6 +622,11 @@ export function quantitiesForSet(idSet) {
 // stram nok til at et saltak ikke smelter sammen med veggen under.
 export const PLAN_VINKEL = 0.9995;        // cos(~1,8°)
 export const PLAN_AVSTAND_M = 0.005;      // 5 mm, målt i meter
+// Taket på antall plan er en sikring mot buede flater: en sylinder gir ett plan
+// per trekant, og «største flate» betyr ingenting på en sylinder uansett. Det
+// SAMME taket brukes i mengdeuttaket og i panelet – ellers kunne de to vist
+// forskjellig areal for samme element, og da er begge tall verdiløse.
+export const PLAN_MAKS = 64;
 
 // Deler ett elements geometri i plan. Returnerer planene sortert på areal,
 // største først. Koordinatene er i MODELLENS enheter; arealet er i m².
@@ -570,11 +652,8 @@ export function planFlater(id) {
     for (const q of planer) {
       if (q.nx * nx + q.ny * ny + q.nz * nz > PLAN_VINKEL && Math.abs(q.d - d) < dTol) { pl = q; break; }
     }
-    // Taket på 400 plan er en sikring mot buede flater (en sylinder gir ett
-    // plan per trekant). Da er «største flate» meningsløst uansett, og vi vil
-    // ikke bruke et sekund på å regne det ut.
     if (!pl) {
-      if (planer.length >= 400) return;
+      if (planer.length >= PLAN_MAKS) return;
       pl = { nx, ny, nz, d, area2: 0, pk: [] };
       planer.push(pl);
     }
@@ -675,7 +754,8 @@ export function retteMaal(id) {
 
 function elementQuantities(id) {
   return quantitiesForSet(new Set([id])).get(id) ||
-    { dims: [0, 0, 0], vol: 0, area: 0, flateTopp: 0, flateUnder: 0, flateSide: 0, len: 0 };
+    { dims: [0, 0, 0], vol: 0, area: 0, storsteFlate: 0, overflate: 0,
+      flateTopp: 0, flateUnder: 0, flateSide: 0, len: 0 };
 }
 
 // Desimaler følger ⚙ Innstillinger. Små volumer får alltid nok desimaler til å
@@ -722,7 +802,8 @@ async function showMultiSummary() {
     }
     const key = (objType || name.replace(/:\d+$/, "") || typeName || "Ukjent") + (material ? " · " + material : "");
     const len = q.len || (q.dims ? q.dims[0] : 0) || 0;
-    const vol = q.vol || 0, area = q.area || 0;
+    // Samme areal som Mengder og egenskapspanelet: største flate.
+    const vol = q.vol || 0, area = q.storsteFlate || 0;
     totVol += vol; totLen += len; totArea += area;
     let g = grupper.get(key);
     if (!g) grupper.set(key, g = { count: 0, len: 0, area: 0, vol: 0, type: typeName });
@@ -767,7 +848,7 @@ async function showMultiSummary() {
     (antElem ? '<div class="prop-actions"><button id="paHideSel">' + ikon("skjul") + ' ' +
       t("Skjul {0} valgte", antElem) + '</button></div>' : "") +
     '<div class="prop-row" style="font-weight:600"><div class="k">' + t("Sum volum") + '</div><div class="v">' + fmtVol(totVol) + '</div></div>' +
-    '<div class="prop-row" style="font-weight:600"><div class="k">' + t("Sum areal (fotavtrykk)") + '</div><div class="v">' + fmtArea(totArea) + '</div></div>' +
+    '<div class="prop-row" style="font-weight:600"><div class="k">' + t("Sum areal (største flate)") + '</div><div class="v">' + fmtArea(totArea) + '</div></div>' +
     '<div class="prop-row"><div class="k">' + t("Sum lengde (lengste mål)") + '</div><div class="v">' + totLen.toFixed(2) + ' m</div></div>' +
     '<div class="prop-row"><div class="k">' + t("Antall") + '</div><div class="v">' + (antElem + antMat) + t(" stk") + '</div></div>' +
     vist.map(([key, g]) =>
@@ -1056,13 +1137,14 @@ function computeQuantities() {
     // samme mål skal ikke havne på samme rad i en vareordre.
     const gkey = key + (material ? " · " + material : "");
     if (!groups.has(gkey)) groups.set(gkey,
-      { count: 0, length: 0, vol: 0, area: 0, forskaling: 0, kg: 0, kgGeo: 0, utenVekt: 0,
+      { count: 0, length: 0, vol: 0, area: 0, flate: 0, forskaling: 0, kg: 0, kgGeo: 0, utenVekt: 0,
         umulige: 0, nominelle: 0, type: typeName, material });
     const g = groups.get(gkey);
     g.count++;
     g.length += len;
     g.vol += q.vol;
     g.area += q.area;
+    g.flate += q.storsteFlate || 0;
     g.forskaling += forskaling;
     g.kg += kg;
     g.kgGeo += kgGeo;
@@ -1072,6 +1154,7 @@ function computeQuantities() {
     rows.push({
       id, key: gkey, name, objType, type: typeName, material,
       L: q.dims[0], B: q.dims[1], H: q.dims[2], len, vol: q.vol, area: q.area,
+      flate: q.storsteFlate || 0,
       forskaling, kg, kgGeo, kjentVekt, umuligVolum, vektKilde,
       profil: prof ? prof.profil : "", nomKgPerM: prof ? prof.kgPerM : 0, avvik
     });
@@ -1179,10 +1262,11 @@ export function qtyForType(cache, type, mat) {
   const groups = new Map();
   rows.forEach(r => {
     if (!groups.has(r.key)) groups.set(r.key,
-      { count: 0, length: 0, vol: 0, area: 0, forskaling: 0, kg: 0, kgGeo: 0, utenVekt: 0,
+      { count: 0, length: 0, vol: 0, area: 0, flate: 0, forskaling: 0, kg: 0, kgGeo: 0, utenVekt: 0,
         umulige: 0, nominelle: 0, type: r.type, material: r.material });
     const g = groups.get(r.key);
     g.count++; g.length += r.len; g.vol += r.vol; g.area += r.area;
+    g.flate += r.flate || 0;
     g.forskaling += r.forskaling || 0; g.kg += r.kg || 0; g.kgGeo += r.kgGeo || 0;
     if (!r.kjentVekt) g.utenVekt++;
     if (r.umuligVolum) g.umulige++;
@@ -1269,13 +1353,17 @@ export function qtyGroupRows(cache) {
   // profiler og vekten kan brukes. Ser du 300, er profilen modellert som en
   // kasse, og hele kolonnen til venstre er søppel. Det er den eneste måten å se
   // forskjell på uten å åpne modellen i noe annet.
+  // Arealkolonnen er STØRSTE FLATE (vegglivet på en vegg, oversida på et
+  // dekke). Fotavtrykket står som egen kolonne HELT TIL SLUTT – på et dekke er
+  // de to like, på en vegg står de langt fra hverandre, og den som bestiller
+  // isolasjon skal slippe å gjette hvilken av dem han ser på.
   const out = [[t("Gruppe"), t("IFC-type"), t("Materiale"), t("Antall"),
-    t("Sum lengde (m)"), t("Sum areal (m2)"), t("Sum volum (m3)"),
+    t("Sum lengde (m)"), t("Sum areal største flate (m2)"), t("Sum volum (m3)"),
     t("Forskaling (m2)"), t("Vekt (kg)"), t("Kg/m"), t("Kilde"), t("Geometri (kg)"), t("Avvik %"),
-    t("Uten vekt (stk)"), t("Umulig volum (stk)")]];
+    t("Uten vekt (stk)"), t("Umulig volum (stk)"), t("Sum fotavtrykk (m2)")]];
   const forste = out.length + 1;        // første datarad, som radnummer i arket
   cache.groups.forEach(([key, g]) => out.push([key, g.type || "", g.material || "", g.count,
-    nb(g.length, csvLenDec()), nb(g.area, csvAreaDec()), nb(g.vol, csvVolDec()),
+    nb(g.length, csvLenDec()), nb(g.flate || 0, csvAreaDec()), nb(g.vol, csvVolDec()),
     nb(g.forskaling, csvAreaDec()), nb(g.kg, csvVektDec()),
     g.length > 0 ? nb(g.kg / g.length, csvVektDec()) : "",
     // Er hele gruppa regnet fra katalog, står det «nominell». Er den blandet,
@@ -1284,7 +1372,7 @@ export function qtyGroupRows(cache) {
     g.nominelle === 0 ? t("geometri") : g.nominelle === g.count ? t("nominell") : g.nominelle + "/" + g.count,
     g.kgGeo > 0 ? nb(g.kgGeo, csvVektDec()) : "",
     (g.nominelle && g.kgGeo > 0 && g.kg > 0) ? nb((g.kgGeo / g.kg - 1) * 100, 1) : "",
-    g.utenVekt || "", g.umulige || ""]));
+    g.utenVekt || "", g.umulige || "", nb(g.area, csvAreaDec())]));
   const tot = cache.groups.reduce((s, [, g]) =>
     [s[0] + g.count, s[1] + g.length, s[2] + g.vol, s[3] + g.area, s[4] + g.forskaling, s[5] + g.kg,
      s[6] + (g.utenVekt || 0), s[7] + (g.umulige || 0), s[8] + (g.kgGeo || 0)],
@@ -1296,24 +1384,26 @@ export function qtyGroupRows(cache) {
   // være TOM. En 0 i «uten vekt» ser ut som en kontrollert kolonne.
   out.push([t("SUM"), "", "", S_(3), S_(4), S_(5),
     S_(6), S_(7), S_(8), "", "",
-    tot[8] > 0 ? S_(11) : "", "", tot[6] ? S_(13) : "", tot[7] ? S_(14) : ""]);
+    tot[8] > 0 ? S_(11) : "", "", tot[6] ? S_(13) : "", tot[7] ? S_(14) : "", S_(15)]);
   return out;
 }
 
 export function qtyElementRows(cache) {
   const out = [["ElementID", t("Gruppe"), t("Navn"), "ObjectType", t("IFC-type"), t("Materiale"),
-    t("Lengde (m)"), t("Bredde (m)"), t("Høyde (m)"), t("Lengste mål (m)"), t("Areal (m2)"), t("Volum (m3)"),
-    t("Forskaling (m2)"), t("Vekt (kg)"), t("Kilde"), t("Profil"), t("Nominell kg/m"), t("Umulig volum")]];
+    t("Lengde (m)"), t("Bredde (m)"), t("Høyde (m)"), t("Lengste mål (m)"),
+    t("Areal største flate (m2)"), t("Volum (m3)"),
+    t("Forskaling (m2)"), t("Vekt (kg)"), t("Kilde"), t("Profil"), t("Nominell kg/m"), t("Umulig volum"),
+    t("Fotavtrykk (m2)")]];
   cache.rows.forEach(r => out.push([r.id, r.key, r.name, r.objType, r.type, r.material || "",
     nb(r.L, csvLenDec()), nb(r.B, csvLenDec()), nb(r.H, csvLenDec()),
-    nb(r.len, csvLenDec()), nb(r.area, csvAreaDec()), nb(r.vol, csvVolDec()),
+    nb(r.len, csvLenDec()), nb(r.flate || 0, csvAreaDec()), nb(r.vol, csvVolDec()),
     nb(r.forskaling || 0, csvAreaDec()),
     // Tom celle, ikke 0, når vekten ikke er kjent. En 0 i et tilbudsark blir
     // summert som om elementet veier ingenting.
     r.kjentVekt ? nb(r.kg, csvVektDec()) : "",
     r.vektKilde ? t(r.vektKilde) : "", r.profil || "",
     r.nomKgPerM ? nb(r.nomKgPerM, csvVektDec()) : "",
-    r.umuligVolum ? t("JA") : ""]));
+    r.umuligVolum ? t("JA") : "", nb(r.area, csvAreaDec())]));
   // Sumrad også her (Emil 03.09), som formler. Bare kolonnene det er MENING i
   // å summere: lengste mål, areal, volum, forskaling og vekt. Lengde/bredde/
   // høyde er mål på hvert element — en sum av dem betyr ingenting.
@@ -1322,7 +1412,7 @@ export function qtyElementRows(cache) {
     // hver rad (den invarianten er testet, og Excel liker den).
     const S_ = (kol) => sumFormel(kol, 2, cache.rows.length + 1);
     out.push([t("SUM"), "", "", "", "", "", "", "", "",
-      S_(9), S_(10), S_(11), S_(12), S_(13), "", "", "", ""]);
+      S_(9), S_(10), S_(11), S_(12), S_(13), "", "", "", "", S_(18)]);
   }
   return out;
 }
@@ -1383,7 +1473,10 @@ function renderQuantities(full) {
   const total = list.reduce((s, [, g]) => s + g.count, 0);
   const totVol = list.reduce((s, [, g]) => s + g.vol, 0);
   const totLen = list.reduce((s, [, g]) => s + g.length, 0);
-  const totArea = list.reduce((s, [, g]) => s + g.area, 0);
+  // Arealet i panelet er STØRSTE FLATE – samme tall som i egenskapspanelet og
+  // i arealkolonnen i regnearket. Fotavtrykket står bare i regnearket, som egen
+  // kolonne; å vise begge her hadde gjort tallrekka uleselig på mobil.
+  const totArea = list.reduce((s, [, g]) => s + (g.flate || 0), 0);
   const totKg = list.reduce((s, [, g]) => s + (g.kg || 0), 0);
   const totForsk = list.reduce((s, [, g]) => s + (g.forskaling || 0), 0);
   const totUtenVekt = list.reduce((s, [, g]) => s + (g.utenVekt || 0), 0);
@@ -1480,7 +1573,7 @@ function renderQuantities(full) {
       '<div class="c">' + tallDeler([
         g.count + t(" stk"),
         g.length.toFixed(dec()) + ' m',
-        fmtArea(g.area),
+        fmtArea(g.flate || 0),
         fmtVol(g.vol),
         // Vekten og kontrolltallet hører sammen og skal aldri skilles av et
         // linjeskift — derfor én del, ikke to.
@@ -1505,7 +1598,7 @@ function renderQuantities(full) {
           : ""
       ]) + '</div></div>').join("") +
     '<p style="color:var(--muted); font-size:11px; margin-top:10px">' +
-    t("Antall desimaler settes i Innstillinger. Velg objekttype og materiale for å få ett ark om gangen – nedlastingen inneholder bare det som står i lista nå (f.eks. Søyler + Betong gir bare betongsøylene). Materialgruppene samler navn som betyr det samme: «B35», «C35/45» og «Concrete» havner alle under Betong. Mangler materiale på et element, står det ikke i IFC-fila. Lengde = lengste mål per element (ca-verdi, summert per gruppe). Areal = fotavtrykk, altså grunnflaten sett rett ovenfra – det målet dekker, plater og fundamenter bestilles etter. Volum er regnet ut av geometrien og gjelder lukkede volumer – hule profiler blir riktige, flater uten tykkelse blir 0.") + '</p>';
+    t("Antall desimaler settes i Innstillinger. Velg objekttype og materiale for å få ett ark om gangen – nedlastingen inneholder bare det som står i lista nå (f.eks. Søyler + Betong gir bare betongsøylene). Materialgruppene samler navn som betyr det samme: «B35», «C35/45» og «Concrete» havner alle under Betong. Mangler materiale på et element, står det ikke i IFC-fila. Lengde = lengste mål per element (ca-verdi, summert per gruppe). Areal = største sammenhengende flate på elementet – vegglivet på en vegg, oversida på et dekke. Det er målet isolasjon, kledning og forskaling bestilles etter, og en døråpning i veggen er trukket fra. Fotavtrykket (grunnflaten sett rett ovenfra) står som egen kolonne sist i regnearket; på et dekke er de to like. Volum er regnet ut av geometrien og gjelder lukkede volumer – hule profiler blir riktige, flater uten tykkelse blir 0.") + '</p>';
 
   const sel = $("qtyType");
   if (sel) sel.onchange = () => { S.qtyType = sel.value; renderQuantities(full); };
