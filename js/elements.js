@@ -10,6 +10,7 @@ import { alleElementIder, lightElementBoxes } from "./ifc.js";
 import { kall, metaFor, sikreMeta } from "./ifcrpc.js";
 import { axesGroup, camera, canvas, controls, grid, koteGroup, markerGroup, measureGroup, omradeGroup, pointer, raycaster, renderer, scene, selGroup } from "./scene.js";
 import { leggMateriellIMengder, materiellGroup, materiellTypeLabel, oppdaterMateriellValgEffekt } from "./materiell-vis.js";
+import { skjulMaal, vekselMaal } from "./maal.js";
 
 const selMat = new THREE.MeshLambertMaterial({ color: 0x3b82f6, emissive: 0x1d4ed8, side: THREE.DoubleSide });
 
@@ -40,6 +41,9 @@ function clearSelectionVisual() {
 // (klikk i tomrommet, skjul/vis, fargelegging og transparent kaller alle hit).
 export function clearSelection() {
   clearSelectionVisual();
+  // 📐 målene hører til ETT valgt element. Forsvinner valget, skal de bort –
+  // ellers blir de stående på et element ingen lenger ser er valgt.
+  skjulMaal();
   S.multiSel.clear();
   // 📦 materiell-flervalget nullstilles i samme slengen — «vanlig klikk
   // nullstiller» skal gjelde hele utvalget, ikke bare IFC-delen av det
@@ -138,12 +142,7 @@ export async function showProperties(expressID) {
     if (p && p[0]) rows.push(["Name", p[0]]);
     if (p && p[1]) rows.push(["ObjectType", p[1]]);
     if (p && p[3]) rows.push([t("Materiale"), p[3]]);
-    try {
-      const q = elementQuantities(expressID);
-      rows.push([t("Mål L×B×H (ca)"), q.dims.map(fmtDim).join(" × ") + " m"]);
-      rows.push([t("Areal, fotavtrykk (ca)"), fmtArea(q.area)]);
-      rows.push([t("Volum (ca)"), fmtVol(q.vol)]);
-    } catch(_){}
+    try { maalRader(expressID).forEach(r => rows.push(r)); } catch(_){}
     rows.push([t("Merk"), t("Lett kopi – åpne original-IFC-en for full egenskapsliste")]);
   } else {
     // IFC-tråden svarer med hele egenskapslista i én runde
@@ -156,22 +155,70 @@ export async function showProperties(expressID) {
       p.felt.forEach(([k, v]) => rows.push([k, v]));
       const mMeta = metaFor(expressID);
       if (mMeta && mMeta.material) rows.push([t("Materiale"), mMeta.material]);
-      try {
-        const q = elementQuantities(expressID);
-        rows.push([t("Mål L×B×H (ca)"), q.dims.map(fmtDim).join(" × ") + " m"]);
-        rows.push([t("Areal, fotavtrykk (ca)"), fmtArea(q.area)]);
-        rows.push([t("Volum (ca)"), fmtVol(q.vol)]);
-      } catch(_){}
+      try { maalRader(expressID).forEach(r => rows.push(r)); } catch(_){}
       p.psets.forEach(([k, v]) => rows.push([k, v]));
     }
   }
 
   body.innerHTML =
-    '<div class="prop-actions"><button id="paHide">' + ikon("skjul") + ' ' + t("Skjul element") + '</button></div>' +
+    '<div class="prop-actions">' +
+      '<button id="paHide">' + ikon("skjul") + ' ' + t("Skjul element") + '</button>' +
+      '<button id="paMaal">' + ikon("maal") + ' ' + t("Vis mål") + '</button>' +
+    '</div>' +
     rows.map(([k,v]) =>
     `<div class="prop-row"><div class="k">${esc(String(k))}</div><div class="v">${esc(String(v))}</div></div>`).join("");
   $("paHide").onclick = () => hideElement(expressID);   // virker nå også i 🪶 (synkMergedSkjuling)
+  // 📐 Vis mål. Vanlig import og ikke import(): en dynamisk import ville falt
+  // utenfor lista service workeren forhåndslagrer, og knappen hadde vært død
+  // uten dekning – nøyaktig der den trengs.
+  const maalKnapp = $("paMaal");
+  const settAv = () => maalKnapp.classList.toggle("active", S.maalFor === expressID);
+  settAv();
+  maalKnapp.onclick = () => {
+    try { vekselMaal(expressID); } catch (err) { console.warn(err); }
+    settAv();
+  };
   apnePanel("propPanel");
+}
+
+
+// ---------- Målradene i egenskapspanelet ----------
+//
+// Rekkefølgen er tenkt: det du bestiller etter kommer først.
+//   1. Mål L×B×T – rettet etter største flate (se retteMaal). Faller tilbake
+//      til den akse-justerte boksen hvis elementet ikke har noen flate å rette
+//      seg etter (buede flater, punktskyer).
+//   2. Areal, største flate – vegglivet på en vegg, oversida på et dekke.
+//   3. Fotavtrykk – BARE når det er noe annet enn største flate. På et dekke er
+//      de to like, og da er én linje nok. På en vegg står de langt fra
+//      hverandre, og da skal begge stå der, slik at ingen tror den ene er den
+//      andre.
+//   4. Volum, og et varsko når elementet er et åpent skall.
+function maalRader(id) {
+  const rows = [];
+  const q = elementQuantities(id);
+  let r = null;
+  try { r = retteMaal(id); } catch (_) {}
+  if (r) {
+    // Største mål først, så raden leses likt uansett hvilken vei rammen rundt
+    // flata tilfeldigvis falt. Tykkelsen står alltid sist – den er den ene av
+    // de tre som betyr noe bestemt.
+    const lb = [r.lengde, r.bredde].sort((a, b) => b - a);
+    rows.push([t("Mål L×B×T (ca)"),
+      [lb[0], lb[1], r.tykkelse].map(fmtDim).join(" × ") + " m"]);
+    rows.push([t("Areal, største flate (ca)"), fmtArea(r.areal)]);
+    // 2 % – under det er forskjellen avrunding i geometrien, ikke en ekte forskjell.
+    if (Math.abs(r.areal - q.area) > Math.max(r.areal, q.area) * 0.02)
+      rows.push([t("Areal, fotavtrykk (ca)"), fmtArea(q.area)]);
+  } else {
+    rows.push([t("Mål L×B×H (ca)"), q.dims.map(fmtDim).join(" × ") + " m"]);
+    rows.push([t("Areal, fotavtrykk (ca)"), fmtArea(q.area)]);
+  }
+  rows.push([t("Overflate i alt (ca)"), fmtArea(q.overflate)]);
+  rows.push([t("Volum (ca)"), fmtVol(q.vol)]);
+  if (q.lukket === false)
+    rows.push([t("Merk"), t("Åpen flate uten tykkelse – volumet er ikke et ekte volum")]);
+  return rows;
 }
 
 // ---------- 🔎 Elementsøk ----------
@@ -257,6 +304,27 @@ export function triBidrag(ax, ay, az, bx, by, bz, cx, cy, cz) {
   return { vol6, proj2: Math.abs(ny), area2, ny };
 }
 
+// Randbidraget fra ÉN trekant: Σ (a−c) × (b−c) over de tre rettede kantene
+// a→b, b→c, c→a. Legges rett inn i akkumulatoren `ut` (tre tall).
+//
+// En indre kant deles av to trekanter og går én gang hver vei; de to bidragene
+// er like store med motsatt fortegn og stryker hverandre. Står summen igjen
+// som noe annet enn null, har elementet en fri kant – det er et åpent skall.
+// Punktet c er vilkårlig (vi bruker boksens senter): for et lukket legeme går
+// summen i null uansett hva c er.
+export function randBidrag(ut, c, a, b, d) {
+  const p = [a, b, d];
+  for (let i = 0; i < 3; i++) {
+    const u = p[i], v = p[(i + 1) % 3];
+    const ux = u.x - c[0], uy = u.y - c[1], uz = u.z - c[2];
+    const vx = v.x - c[0], vy = v.y - c[1], vz = v.z - c[2];
+    ut[0] += uy * vz - uz * vy;
+    ut[1] += uz * vx - ux * vz;
+    ut[2] += ux * vy - uy * vx;
+  }
+  return ut;
+}
+
 // Hvilken vei vender flata? Brukes til forskaling: sidene og undersidene skal
 // forskales, toppen er støpeflate.
 //
@@ -276,12 +344,34 @@ export function flateRetning(area2, ny) {
 
 // Gjør summene om til meter og m²/m³.
 // Et lukket legeme har både over- og underside, og begge kaster samme skygge –
-// derfor deles den projiserte summen på 2 til slutt (Σproj2 / 4). Flater uten
-// tykkelse (0 volum) har bare ÉN side og skal ikke halveres.
-export function sluttMengder(volSum, projSum, toM) {
+// derfor deles den projiserte summen på 2 til slutt (Σproj2 / 4). Et åpent
+// skall (tak, kledning, importerte flater) har bare ÉN side og skal ikke
+// halveres.
+//
+// HVORDAN VI VET OM LEGEMET ER LUKKET (F15).
+// Før sto det `lukket = vol > 1e-9`: en absoluttgrense på volumet. Den er feil
+// på to måter. Et åpent skall har ikke volum 0 – den signerte tetraeder-summen
+// måler kjeglen fra origo ut til flata, og den er stor så snart elementet ikke
+// ligger på origo. Alle åpne skall ble derfor regnet som lukkede, og
+// fotavtrykket kom ut HALVPARTEN av det det skulle være.
+//
+// Nå avgjøres det av randen i stedet, som er det spørsmålet faktisk handler om:
+// `randSum` er Σ (a−c) × (b−c) over alle RETTEDE kanter i elementet. Hver indre
+// kant finnes i begge retninger og stryker seg selv ut, så summen er nøyaktig
+// null for et lukket legeme – uansett hvor det står, og uansett hvilket punkt c
+// vi måler fra. Har elementet en fri kant, blir summen stående igjen.
+// Terskelen er relativ til overflata (begge er kvadrat av lengde), så den
+// betyr det samme i en mm-modell og i en m-modell.
+export const RAND_GRENSE = 1e-4;
+
+export function sluttMengder(volSum, projSum, toM, rand, areal2Sum) {
   const vol = Math.abs(volSum) * toM * toM * toM;
-  const lukket = vol > 1e-9;
-  return { vol, area: projSum / (lukket ? 4 : 2) * toM * toM };
+  // rand/areal2Sum utelatt (gamle kallere og enhetstestene): fall tilbake til
+  // den gamle regelen framfor å gjette.
+  const lukket = (rand === undefined || !areal2Sum)
+    ? vol > 1e-9
+    : rand <= areal2Sum * RAND_GRENSE;
+  return { vol, area: projSum / (lukket ? 4 : 2) * toM * toM, lukket };
 }
 
 // Beregner ytre mål, volum (m³) og fotavtrykk (m²) for et sett elementer i ÉN
@@ -348,6 +438,18 @@ export function quantitiesForSet(idSet) {
   const flater = new Map();  // Σ area2 per retning
   const start = new Map();   // første punkt vi så på elementet
   const fjern = new Map();   // punktet lengst unna start, og avstanden dit
+  const rander = new Map();  // Σ (a−c)×(b−c) over rettede kanter – 0 = lukket (se sluttMengder)
+  const area2S = new Map();  // Σ area2 per element – målestokken rand-testen holdes opp mot
+
+  // Boksene hentes FØR gjennomgangen: rand-summen måles fra boksens senter, og
+  // da slipper vi at tallene vokser med avstanden til modellens nullpunkt.
+  const boxes = allElementBoxes();
+  const _c = new THREE.Vector3();
+  const sentre = new Map();
+  for (const id of idSet) {
+    const b = boxes.get(id);
+    sentre.set(id, b ? b.getCenter(_c).toArray() : [0, 0, 0]);
+  }
 
   const sePunkt = (id, x, y, z) => {
     const s0 = start.get(id);
@@ -366,6 +468,11 @@ export function quantitiesForSet(idSet) {
     let f = flater.get(id);
     if (!f) { f = { topp: 0, under: 0, side: 0 }; flater.set(id, f); }
     f[flateRetning(t.area2, t.ny)] += t.area2;
+    area2S.set(id, (area2S.get(id) || 0) + t.area2);
+    // Randen: Σ (a−c)×(b−c) over de tre rettede kantene. Se sluttMengder.
+    let rv = rander.get(id);
+    if (!rv) { rv = [0, 0, 0]; rander.set(id, rv); }
+    randBidrag(rv, sentre.get(id) || [0, 0, 0], _qa, _qb, _qc);
     sePunkt(id, _qa.x, _qa.y, _qa.z);
     sePunkt(id, _qb.x, _qb.y, _qb.z);
     sePunkt(id, _qc.x, _qc.y, _qc.z);
@@ -387,7 +494,6 @@ export function quantitiesForSet(idSet) {
   };
   forHverTrekant(idSet, seLengde);
 
-  const boxes = allElementBoxes();
   const out = new Map();
   const s = new THREE.Vector3();
   const m2 = toM * toM;
@@ -395,10 +501,14 @@ export function quantitiesForSet(idSet) {
     let dims = [0, 0, 0];
     const b = boxes.get(id);
     if (b) { b.getSize(s); dims = [s.x * toM, s.y * toM, s.z * toM].sort((a, x) => x - a); }
-    const m = sluttMengder(vols.get(id) || 0, projs.get(id) || 0, toM);
+    const rv = rander.get(id);
+    const rand = rv ? Math.hypot(rv[0], rv[1], rv[2]) : undefined;
+    const m = sluttMengder(vols.get(id) || 0, projs.get(id) || 0, toM, rand, area2S.get(id) || 0);
     const f = flater.get(id) || { topp: 0, under: 0, side: 0 };
     out.set(id, {
-      dims, vol: m.vol, area: m.area,
+      dims, vol: m.vol, area: m.area, lukket: m.lukket,
+      // hele overflata (m²) – summen av de tre retningene under
+      overflate: (f.topp + f.under + f.side) / 2 * m2,
       // area2 er 2 × arealet — derfor /2 her, i tillegg til enhetsskalaen
       flateTopp: f.topp / 2 * m2,
       flateUnder: f.under / 2 * m2,
@@ -407,6 +517,160 @@ export function quantitiesForSet(idSet) {
     });
   }
   return out;
+}
+
+// ---------- 📐 Største flate på ett element ----------
+//
+// HVORFOR DETTE MÅLET FINNES.
+// «Areal» i egenskapspanelet var fotavtrykket – grunnflaten sett rett ovenfra.
+// Det er riktig tall for et dekke, en plate eller et fundament, og det er feil
+// tall for en vegg: en betongvegg på 8 × 3 m har et fotavtrykk på 8 × 0,2 m.
+// Skal du bestille isolasjon eller kledning til den veggen, er det vegglivet du
+// trenger, ikke skyggen den kaster.
+//
+// Derfor grupperes trekantene i PLAN: alle trekanter som ligger i samme plan og
+// vender samme vei hører til samme flate. Den flata med størst areal er
+// elementets største flate. For en vegg blir det vegglivet, for et dekke blir
+// det oversida (som er nøyaktig fotavtrykket), for en bjelke blir det steget
+// eller flensen. Ett mål som betyr det samme for alle: «den største
+// sammenhengende flata du kan legge hånda på».
+//
+// Arealet er summen av de ekte trekantene i planet – ikke lengde × bredde. Et
+// veggliv med en døråpning i får derfor arealet MINUS døra, som er det du
+// faktisk skal kle.
+//
+// TOLERANSENE. To trekanter regnes i samme plan når normalene peker innenfor
+// ~1,8° av hverandre OG planene ligger nærmere enn 5 mm fra hverandre. Vinkelen
+// er romslig nok til at avrunding i IFC-fila ikke splitter en flat vegg, og
+// stram nok til at et saltak ikke smelter sammen med veggen under.
+export const PLAN_VINKEL = 0.9995;        // cos(~1,8°)
+export const PLAN_AVSTAND_M = 0.005;      // 5 mm, målt i meter
+
+// Deler ett elements geometri i plan. Returnerer planene sortert på areal,
+// største først. Koordinatene er i MODELLENS enheter; arealet er i m².
+// Brukes av egenskapspanelet og av 📐 Vis mål – ikke av mengdeuttaket, som går
+// gjennom hele modellen og ikke har råd til å ta vare på trekanter.
+export function planFlater(id) {
+  const toM = S.enhetSkala || 1;
+  const dTol = PLAN_AVSTAND_M / toM;      // 5 mm uttrykt i modellenheter
+  const planer = [];
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+
+  forHverTrekant(new Set([id]), (p, i0, i1, i2, mtx) => {
+    a.fromBufferAttribute(p, i0); b.fromBufferAttribute(p, i1); c.fromBufferAttribute(p, i2);
+    if (mtx) { a.applyMatrix4(mtx); b.applyMatrix4(mtx); c.applyMatrix4(mtx); }
+    const ux = b.x - a.x, uy = b.y - a.y, uz = b.z - a.z;
+    const vx = c.x - a.x, vy = c.y - a.y, vz = c.z - a.z;
+    let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    const area2 = Math.hypot(nx, ny, nz);
+    if (!(area2 > 0)) return;             // sammenfalt trekant – ingen flate
+    nx /= area2; ny /= area2; nz /= area2;
+    const d = nx * a.x + ny * a.y + nz * a.z;
+    let pl = null;
+    for (const q of planer) {
+      if (q.nx * nx + q.ny * ny + q.nz * nz > PLAN_VINKEL && Math.abs(q.d - d) < dTol) { pl = q; break; }
+    }
+    // Taket på 400 plan er en sikring mot buede flater (en sylinder gir ett
+    // plan per trekant). Da er «største flate» meningsløst uansett, og vi vil
+    // ikke bruke et sekund på å regne det ut.
+    if (!pl) {
+      if (planer.length >= 400) return;
+      pl = { nx, ny, nz, d, area2: 0, pk: [] };
+      planer.push(pl);
+    }
+    pl.area2 += area2;
+    pl.pk.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
+  });
+
+  planer.sort((x, y) => y.area2 - x.area2);
+  const m2 = toM * toM;
+  planer.forEach(q => q.areal = q.area2 / 2 * m2);
+  return planer;
+}
+
+// Den minste rettvinklede rammen rundt en flate, liggende I flata.
+// Kandidatretningene er flatas egne kanter (avrundet til hele grader, maks 90
+// stykker): for en rektangulær flate treffer én av dem nøyaktig, og for en
+// uregelmessig flate gir den minste av dem den rammen som ligger tettest på.
+// Rammen brukes bare til å TEGNE målene – arealet er alltid trekantsummen.
+export function flateRamme(pl) {
+  const n = new THREE.Vector3(pl.nx, pl.ny, pl.nz);
+  // to akser i planet
+  const hjelp = Math.abs(n.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
+  const e1 = new THREE.Vector3().crossVectors(hjelp, n).normalize();
+  const e2 = new THREE.Vector3().crossVectors(n, e1).normalize();
+  const P = pl.pk;
+  // 2D-punktene i planet
+  const xs = [], ys = [];
+  for (let i = 0; i < P.length; i += 3) {
+    xs.push(P[i] * e1.x + P[i+1] * e1.y + P[i+2] * e1.z);
+    ys.push(P[i] * e2.x + P[i+1] * e2.y + P[i+2] * e2.z);
+  }
+  const vinkler = new Set([0]);
+  for (let i = 0; i + 2 < xs.length && vinkler.size < 90; i += 3) {
+    for (const [j, k] of [[0,1],[1,2],[2,0]]) {
+      const dx = xs[i+k] - xs[i+j], dy = ys[i+k] - ys[i+j];
+      if (dx || dy) vinkler.add(Math.round(Math.atan2(dy, dx) * 180 / Math.PI + 180) % 180);
+    }
+  }
+  let best = null;
+  for (const grad of vinkler) {
+    const r = grad * Math.PI / 180, cs = Math.cos(r), sn = Math.sin(r);
+    let m1 = Infinity, M1 = -Infinity, m2 = Infinity, M2 = -Infinity;
+    for (let i = 0; i < xs.length; i++) {
+      const u = xs[i] * cs + ys[i] * sn, v = -xs[i] * sn + ys[i] * cs;
+      if (u < m1) m1 = u; if (u > M1) M1 = u;
+      if (v < m2) m2 = v; if (v > M2) M2 = v;
+    }
+    const areal = (M1 - m1) * (M2 - m2);
+    if (!best || areal < best.areal) best = { areal, cs, sn, m1, M1, m2, M2 };
+  }
+  if (!best) return null;
+  // aksene rammen faktisk ligger langs, tilbake i 3D
+  const u = e1.clone().multiplyScalar(best.cs).add(e2.clone().multiplyScalar(best.sn));
+  const v = e1.clone().multiplyScalar(-best.sn).add(e2.clone().multiplyScalar(best.cs));
+  // hjørnet (m1, m2) som punkt i rommet: legg på planets avstand langs normalen
+  const hjorne = u.clone().multiplyScalar(best.m1).add(v.clone().multiplyScalar(best.m2))
+    .add(n.clone().multiplyScalar(pl.d));
+  return { u, v, n, hjorne, lengde: best.M1 - best.m1, bredde: best.M2 - best.m2 };
+}
+
+// Målene til ett element rettet etter den største flata: lengde og bredde i
+// flata, og tykkelsen på tvers av den.
+//
+// HVORFOR IKKE BARE BRUKE BOKSEN. «Mål L×B×H» var den akse-justerte boksen.
+// For en vegg som står langs X eller Z er den riktig. For en vegg som står på
+// skrå – og det gjør halvparten av veggene i et virkelig bygg – blir boksen for
+// stor i to retninger samtidig: en 8 m vegg på 45° får en boks på 5,7 × 5,7 m,
+// og da stemmer verken lengden, bredden eller tykkelsen. Måler vi langs flatas
+// egne akser i stedet, står tallene likt uansett hvordan bygget er rotert.
+export function retteMaal(id) {
+  const planer = planFlater(id);
+  if (!planer.length) return null;
+  const pl = planer[0];
+  const r = flateRamme(pl);
+  if (!r) return null;
+  const toM = S.enhetSkala || 1;
+  // tykkelsen: hvor langt elementet strekker seg på tvers av flata
+  let lav = Infinity, hoy = -Infinity;
+  const a = new THREE.Vector3();
+  forHverTrekant(new Set([id]), (p, i0, i1, i2, mtx) => {
+    for (const i of [i0, i1, i2]) {
+      a.fromBufferAttribute(p, i);
+      if (mtx) a.applyMatrix4(mtx);
+      const t = a.x * r.n.x + a.y * r.n.y + a.z * r.n.z;
+      if (t < lav) lav = t;
+      if (t > hoy) hoy = t;
+    }
+  });
+  return {
+    areal: pl.areal,
+    lengde: r.lengde * toM,
+    bredde: r.bredde * toM,
+    tykkelse: (hoy > lav ? hoy - lav : 0) * toM,
+    lav, hoy,            // i modellenheter, langs flatas normal – 📐 tegner tykkelsen mellom dem
+    plan: pl, ramme: r
+  };
 }
 
 function elementQuantities(id) {
