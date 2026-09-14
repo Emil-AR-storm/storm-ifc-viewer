@@ -230,9 +230,24 @@ button.active { background: var(--aktiv-bg); border-color: var(--aktiv-bg); colo
 }
 .panel header button:hover { color: var(--text); }
 .panel .body { overflow-y: auto; padding: 12px 14px; font-size: 13px; }
+/* NAVNEKOLONNEN MÅ KUNNE KRYMPE — men aldri under 110 px.
+   Den sto med flex-shrink: 0 og ingen øvre grense. En lang nøkkel
+   («Pset_ReinforcementBarPitchOfColumn · Reference») tok da nesten hele
+   bredden, verdikolonnen ble presset ned til et par piksler, og verdien brøt
+   til 2–3 bokstaver per linje nedover i det uendelige. Samme feil som
+   .qty-row hadde, og samme kur: en øvre grense, lov til å krympe, og
+   min-width: 0 på verdien slik at den faktisk får bruke plassen sin.
+   overflow-wrap: anywhere trengs fordi et Pset-navn er ett langt ord uten
+   mellomrom — word-break: break-word alene har ingenting å bryte på. */
 .prop-row { display: flex; padding: 5px 0; border-bottom: 1px solid var(--border); gap: 10px; }
-.prop-row .k { color: var(--muted); min-width: 110px; flex-shrink: 0; }
-.prop-row .v { word-break: break-word; }
+.prop-row .k { color: var(--muted); flex: 0 1 auto; min-width: 110px; max-width: 50%; overflow-wrap: anywhere; }
+.prop-row .v { flex: 1 1 auto; min-width: 0; word-break: break-word; overflow-wrap: anywhere; }
+
+/* Egenskapssettene fra IFC-fila. Settnavnet står som overskrift ÉN gang,
+   i stedet for foran hver eneste rad. */
+.pset-bolk { margin-top: 14px; }
+.pset-tittel { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding-bottom: 4px; border-bottom: 1px solid var(--border); }
+.pset-navn { margin-top: 10px; margin-bottom: 2px; font-size: 12px; font-weight: 600; color: var(--accent2); overflow-wrap: anywhere; }
 .prop-actions { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
 
 /* Mengder: navn til venstre, tall til høyre.
