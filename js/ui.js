@@ -1,5 +1,5 @@
 // ⚙ Innstillingsmeny og hurtigtaster.
-import { $, DEFAULT_APPEAR, DEFAULT_KEYS, DEFAULT_SETTINGS, på, S, esc, gjettEnhetSkala, ikon, lukkPaneler, velgEnhetSkala, writePrefs } from "./state.js";
+import { $, DEFAULT_APPEAR, DEFAULT_KEYS, DEFAULT_SETTINGS, på, S, esc, gjettEnhetSkala, ikon, lukkPaneler, panelListe, velgEnhetSkala, writePrefs } from "./state.js";
 import { SPRAK, setLang, t } from "./i18n.js";
 import { LETT } from "./lett.js";
 import { OPPSETT_FELT, OPPSETT_FIL, OPPSETT_STATUS } from "./oppsett.js";
@@ -418,7 +418,25 @@ window.addEventListener("keydown", (e) => {
     if ($("setMenu").classList.contains("open")) { closeSettings(); return; }
     if (S.clipPickFace) { stopFacePick(); showClipBar(); return; }
     if (S.mode) { setMode(S.mode); return; } // slår av gjeldende modus
-    lukkPaneler();   // alle ti – før manglet clipPanel og sharePanel her
+
+    // ESC SKRELLER AV ETT LAG OM GANGEN. Sto det et panel åpent, er det nok å
+    // lukke det. Var det ingen paneler igjen, skrus ETT aktivt visningsverktøy
+    // av — og bare ett, så et bortkommet Esc aldri river bort hele visningen.
+    //
+    // Før stoppet Esc etter lukkingen. Snittet, etasjefilteret og aksene ble
+    // stående på med panelet borte, og for Akser ble tilstanden i tillegg
+    // uryddig: knappen så aktiv ut, aksene sto i modellen, men panelet var
+    // vekk — og neste Esc gjorde ingenting (Emils funn 15.09).
+    //
+    // Knappene trykkes i stedet for at tilstanden settes her: hver knapp eier
+    // sin egen avslutning (snittplanene ryddes, kontrollinja fjernes,
+    // angre-steget skrives). En kopi av den logikken her ville skilt lag med
+    // originalen første gang en av dem endres.
+    const noeVarApent = [...panelListe()].some(el => el.classList.contains("open"));
+    lukkPaneler();
+    if (noeVarApent) return;
+    for (const [pa, knapp] of [[S.clipOn, "btnClip"], [S.storeyOn, "btnStorey"], [S.axesOn, "btnAxes"]])
+      if (pa && $(knapp)) { $(knapp).click(); return; }
     return;
   }
   const key = e.key.length === 1 ? e.key.toUpperCase() : e.key;

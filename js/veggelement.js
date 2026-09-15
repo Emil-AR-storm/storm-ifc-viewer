@@ -26,7 +26,7 @@
 // Regnereglene (radmiks, spennlengder, oppdeling rundt utsparinger, SW-numre)
 // er RENE TALLFUNKSJONER uten three.js — de prøves i _test/test-veggelement.mjs.
 import * as THREE from "three";
-import { $, S, apnePanel, esc, ikon, på } from "./state.js";
+import { $, S, apnePanel, esc, ikon, på, registrerEkstraGruppe } from "./state.js";
 import { t } from "./i18n.js";
 import { camera, canvas, raycaster, scene } from "./scene.js";
 import { allElementBoxes, forHverTrekant, hitID, lastNedXlsxFlere, pick, sumFormel } from "./elements.js";
@@ -1758,6 +1758,7 @@ function utsparingerPaFasade(fasade, baseY, liste) {
 // per modellfil — da kan det tegnes opp igjen uten å regne på nytt.
 export const swGroup = new THREE.Group();
 scene.add(swGroup);
+registrerEkstraGruppe(swGroup);   // så Gjennomsiktig o.l. også treffer SW-elementene
 
 function lagringsNokkel() { return "storm-ifc-sw::" + S.fileName; }
 
@@ -2298,6 +2299,10 @@ function tegnAlt() {
   // yttervegger.
   try { tegnInnervegger(); }
   catch (err) { console.warn("Innerveggene kunne ikke tegnes:", err); }
+  // swGroup er revet og bygget opp igjen — alt er ferske materialer som ikke
+  // vet at Gjennomsiktig står på. Uten dette kom elementer generert MENS ghost
+  // var på ut solide midt i en gjennomsiktig modell.
+  if (S.ghostPaaNytt) S.ghostPaaNytt();
 }
 
 function tegnDelA() {
@@ -2486,6 +2491,10 @@ function tekstDekal(tekst, hoydeMm, maksBredde) {
   const m = new THREE.Mesh(new THREE.PlaneGeometry(Math.max(w, 1e-6), Math.max(h, 1e-6)),
     new THREE.MeshBasicMaterial({ map: tex }));
   m.raycast = () => {};   // lappene er skilt, ikke noe å trykke på
+  // Skiltet skal IKKE bli gjennomsiktig sammen med veggen det sitter på:
+  // du slår på Gjennomsiktig for å se hva som står BAK elementet, og da må
+  // du fortsatt kunne lese hvilket element du ser gjennom.
+  m.userData.ghostFritatt = true;
   return m;
 }
 

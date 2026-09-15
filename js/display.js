@@ -1,6 +1,6 @@
 // Utseende: transparent, skjul/vis og fargelegging per elementtype.
 import * as THREE from "three";
-import { $, DEFAULT_APPEAR, på, S, apnePanel, esc, ikon } from "./state.js";
+import { $, DEFAULT_APPEAR, EKSTRA_GRUPPER, på, S, apnePanel, esc, ikon } from "./state.js";
 import { t } from "./i18n.js";
 import { clearSelection } from "./elements.js";
 import { sikreMeta, typeFor } from "./ifcrpc.js";
@@ -24,6 +24,73 @@ function ghostMat(m) {
   return ghostCache.get(m.userData.origMat);
 }
 
+// ---------- Gjennomsiktig for det VI har lagt i scenen ----------
+// Materiell (kassetter, armering, sandwich, TRP) og SW-elementene bor ikke i
+// S.modelGroup, men i egne grupper (se EKSTRA_GRUPPER i js/state.js). Løkka
+// under gikk bare gjennom modellen, så alt du selv hadde lagt inn ble stående
+// bom fast solid når Gjennomsiktig ble slått på — Emils funn 15.09.
+//
+// HER MUTERES MATERIALET, det byttes ikke. Grunnen er at materiellet allerede
+// har et materialbytte: settValgEffekt() i js/materiell-vis.js skifter mellom
+// matOrig og matSel når du velger et objekt. To systemer som bytter på samme
+// mesh.material ville overskrevet hverandre — den blå markeringen ville visket
+// ut gjennomsiktigheten, eller omvendt. Ved å skru på selve materialet virker
+// begge samtidig, og vi tar med matOrig/matSel fra userData så et objekt som
+// velges MENS ghost står på også blir riktig.
+const GHOST_OPACITY = 0.25;
+
+// Alle materialene et mesh kan komme til å bruke – også de som ligger i
+// bakhånd i userData.
+function materialer(m) {
+  const ut = [];
+  const legg = (x) => { if (!x) return; Array.isArray(x) ? ut.push(...x) : ut.push(x); };
+  legg(m.material); legg(m.userData.matOrig); legg(m.userData.matSel);
+  legg(m.userData.fargeMat); legg(m.userData.origMat);
+  return ut;
+}
+
+// FIRE TING BLIR IKKE GJENNOMSIKTIGE, og hver av dem har sin grunn:
+//   · Sprites og linjer — navnelapper og målelinjer. Du slår på Gjennomsiktig
+//     for å se hva som står BAK noe; da må du fortsatt kunne lese hva det er.
+//   · userData.ghostFritatt — tekstskiltene på SW-elementene (SW-05 ×4), som
+//     er meshes og ikke sprites, og derfor ikke fanges av regelen over.
+//   · Materialer som ALLEREDE er transparente — de blå hjelpemarkeringene i
+//     justeringsmodus og utsparingsmerkingen. De er gjennomsiktige med vilje,
+//     og skal ikke bli enda svakere.
+function ghostMesh(m, on) {
+  if (!m.isMesh || m.isSprite || m.isLine || m.isLineSegments || m.isPoints) return;
+  if (m.userData.ghostFritatt) return;
+  for (const mat of materialer(m)) {
+    if (!mat) continue;
+    if (on) {
+      if (mat.userData.ghostFor) continue;            // alt skrudd på – ikke lagre 0.25 som «original»
+      if (mat.transparent) continue;                  // gjennomsiktig fra før, med vilje
+      mat.userData.ghostFor = { transparent: mat.transparent, opacity: mat.opacity, depthWrite: mat.depthWrite };
+      mat.transparent = true; mat.opacity = GHOST_OPACITY; mat.depthWrite = false;
+      mat.needsUpdate = true;
+    } else if (mat.userData.ghostFor) {
+      const f = mat.userData.ghostFor;
+      mat.transparent = f.transparent; mat.opacity = f.opacity; mat.depthWrite = f.depthWrite;
+      delete mat.userData.ghostFor;
+      mat.needsUpdate = true;
+    }
+  }
+}
+
+function settGhostEkstra(on) {
+  for (const g of EKSTRA_GRUPPER) g.traverse(m => ghostMesh(m, on));
+}
+
+// SW-generatoren river og bygger opp swGroup på nytt ved hver tegnAlt(), og
+// materiellet tegnes på nytt ved hver endring. De nye objektene er ferske
+// instanser med ferske materialer og vet ingenting om at Gjennomsiktig står
+// på. Derfor kalles denne etter hver omtegning — uten den ville elementer
+// generert MENS ghost var på kommet ut solide.
+export function ghostPaaNytt() {
+  if (S.ghostOn) settGhostEkstra(true);
+}
+S.ghostPaaNytt = ghostPaaNytt;
+
 // silent = ikke lagre i brukerens eget oppsett (brukes av delte visningslenker)
 export function setGhost(on, silent) {
   if (!S.modelGroup) return;
@@ -43,6 +110,7 @@ export function setGhost(on, silent) {
     m.material = S.ghostOn ? ghostMat(m)
       : (S.lettFargerPå && m.userData.merged && m.userData.fargeMat ? m.userData.fargeMat : m.userData.origMat);
   });
+  settGhostEkstra(S.ghostOn);
 }
 
 på("btnGhost", "click", () => {
@@ -219,6 +287,7 @@ export function settVisning(a) {
       m.visible = !hiddenIDs.has(m.userData.expressID) && !(g && g.hidden);
     });
   }
+  settGhostEkstra(S.ghostOn);   // materiell og SW-elementer følger med
   S.appear.ghost = S.ghostOn;
   S.appear.typeColorsOn = S.typeColorsOn;
   syncHiddenTypes();
@@ -281,6 +350,7 @@ export function applyTypeColors(silent) {
   $("propPanel").classList.remove("open");
   S.ghostOn = false;
   $("btnGhost").classList.remove("active");
+  settGhostEkstra(false);
   S.typeColorsOn = true;
   for (const [, g] of S.typeInfo) g.meshes.forEach(m => m.material = g.mat);
   if (!silent) {
@@ -299,6 +369,7 @@ export function resetColors() {
   S.typeColorsOn = false;
   S.ghostOn = false;
   $("btnGhost").classList.remove("active");
+  settGhostEkstra(false);
   if (S.modelGroup) {
     clearSelection();
     S.modelGroup.children.forEach(m => { m.material = m.userData.origMat; m.visible = true; });

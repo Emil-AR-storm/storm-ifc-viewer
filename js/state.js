@@ -361,6 +361,21 @@ export function på(id, hendelse, fn, valg) {
   return el;
 }
 
+// ---------- Grupper ved siden av modellen ----------
+// S.modelGroup er BARE IFC-modellen. Alt vi selv legger i scenen bor i egne
+// grupper: materiellGroup (kassetter, armering, sandwich, TRP) i
+// js/materiell-vis.js og swGroup (SW-elementer, betong, isolasjon) i
+// js/veggelement.js. Visningsverktøyene gikk bare gjennom modelGroup, og
+// derfor ble ikke det du hadde lagt til gjennomsiktig (Emils funn 15.09).
+//
+// Gruppene melder seg inn her selv. Da slipper display.js å importere dem —
+// det ville gitt en importring — og et nytt lag i scenen blir med ved å
+// registrere seg, ikke ved at noen husker å utvide en liste et tredje sted.
+export const EKSTRA_GRUPPER = [];
+export function registrerEkstraGruppe(g) {
+  if (g && !EKSTRA_GRUPPER.includes(g)) EKSTRA_GRUPPER.push(g);
+}
+
 // ---------- Panelregister ----------
 // HVILKE PANELER SOM LUKKER HVERANDRE LESES UT AV SIDEN SELV: alt som har
 // class="panel". Lista sto håndskrevet her før, og da gikk det som det måtte
