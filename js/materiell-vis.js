@@ -14,7 +14,7 @@
 // Geometrien bygges som rene tallfunksjoner (trpProfil, ribbonPosisjoner …)
 // uten three.js, så mønsterreglene kan testes i Node uten skjerm.
 import * as THREE from "three";
-import { $, S, esc, ikon } from "./state.js";
+import { $, S, esc, ikon, registrerEkstraGruppe } from "./state.js";
 import { t } from "./i18n.js";
 import { LETT } from "./lett.js";
 import { frameHooks, makeLabel, scene, updateScreenScaled } from "./scene.js";
@@ -300,6 +300,7 @@ export function leggMateriellIMengder(groups, rows) {
 // ---------- three.js-bygging ----------
 export const materiellGroup = new THREE.Group();
 scene.add(materiellGroup);
+registrerEkstraGruppe(materiellGroup);   // så Gjennomsiktig o.l. også treffer materiellet
 
 // Navnelappene skal ha konstant størrelse på skjermen, som kote-lappene.
 frameHooks.push(() => updateScreenScaled(materiellGroup));
@@ -525,6 +526,9 @@ export function tegnMateriell() {
   // og da males effekten direkte her.
   if (S.etterTegnMateriell) S.etterTegnMateriell();
   else oppdaterMateriellValgEffekt();
+  // Objektene er nye instanser med ferske materialer. Sto Gjennomsiktig på,
+  // ville de ellers kommet ut solide midt i en gjennomsiktig modell.
+  if (S.ghostPaaNytt) S.ghostPaaNytt();
 }
 
 export function finnObjekt(id) {
