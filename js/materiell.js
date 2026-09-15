@@ -256,6 +256,12 @@ function settMateriellModus(paa) {
   if (S.oppdaterModeBar) S.oppdaterModeBar();
 }
 
+// Åpner du et annet verktøy, er du ferdig med materiellet: apnePanel() i
+// js/state.js kaller hit via js/modes.js. Uten dette ble kontrollinja
+// «Trykk på et materiell-objekt …» stående nederst mens SW-generatoren var
+// oppe, og klikk i modellen ble fortsatt tolket som materiell-klikk.
+S.avsluttMateriell = () => settMateriellModus(false);
+
 // ---------- Plassering ----------
 function startPlassering(mal) {
   avbrytPlassering();

@@ -362,27 +362,38 @@ export function på(id, hendelse, fn, valg) {
 }
 
 // ---------- Panelregister ----------
-// De ti panelene som skal lukke hverandre. Nye paneler legges KUN til her –
-// da lukkes de riktig overalt (knapper og Esc) uten flere kopier av
-// lukkelogikken. Før lå denne lista håndskrevet 11 steder, og fem av kopiene
-// manglet clipPanel/sharePanel.
-export const PANELER = [
-  "propPanel", "commentPanel", "qtyPanel", "libPanel", "colorPanel",
-  "axesPanel", "searchPanel", "comparePanel", "clipPanel", "sharePanel",
-  "materiellPanel", "grupperPanel"
-];
+// HVILKE PANELER SOM LUKKER HVERANDRE LESES UT AV SIDEN SELV: alt som har
+// class="panel". Lista sto håndskrevet her før, og da gikk det som det måtte
+// gå — swPanel ble aldri lagt inn. SW-generatoren ble stående åpen når et
+// annet verktøy ble åpnet (Materiell la seg oppå, Grupper havnet BAK og så
+// helt død ut), og Esc traff den ikke. Samme feil som da lista lå kopiert
+// elleve steder, bare med én kopi i stedet for elleve.
+//
+// Med siden som fasit er et nytt panel med fra det sekundet det finnes i
+// HTML-en. Ingen å glemme. querySelectorAll kjøres ved hvert kall og ikke én
+// gang ved oppstart, fordi index.html og bygg.html har ulike paneler og fordi
+// et panel i prinsippet kan legges inn etter at modulen er lastet.
+export function panelListe() {
+  return document.querySelectorAll(".panel");
+}
 
 // Lukker alle paneler – eventuelt med ett unntak (panelet som skal stå igjen)
 export function lukkPaneler(unntak) {
-  for (const id of PANELER) {
-    if (id === unntak) continue;
-    const el = document.getElementById(id);
-    if (el) el.classList.remove("open");
+  for (const el of panelListe()) {
+    if (el.id === unntak) continue;
+    el.classList.remove("open");
   }
 }
 
-// Åpner ett panel og lukker resten – felles vei for alle panelknappene
+// Åpner ett panel og lukker resten – felles vei for alle panelknappene.
+//
+// Den avslutter også en KLIKKMODUS som er i gang (markering, materiell): går
+// du videre til et annet verktøy, skal ikke neste klikk i modellen fortsatt
+// tolkes av det forrige. Regelen for hva som er en klikkmodus – og hva som
+// får stå, som mål, kote, snitt, etasjer, gjennomsiktig og farger – ligger i
+// js/modes.js, ikke her. Kroken brukes for å slippe en sirkulær import.
 export function apnePanel(id) {
+  if (S.avsluttKlikkModus) { try { S.avsluttKlikkModus(id); } catch(_) {} }
   lukkPaneler(id);
   const el = document.getElementById(id);
   if (el) el.classList.add("open");

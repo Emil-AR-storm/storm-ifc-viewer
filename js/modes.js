@@ -25,6 +25,31 @@ export function setMode(m) {
 // materiell.js trenger å tegne kontrollinja på nytt uten sirkulær import
 S.oppdaterModeBar = updateModeBar;
 
+// ---------- Ett verktøy om gangen ----------
+// KLIKKMODUS = en modus der et klikk i modellen betyr noe annet enn «vis meg
+// dette elementet»: markering plasserer en markering, materiell plasserer en
+// kasse. Åpner du et annet verktøy, er du ferdig med den — ellers står
+// kontrollinja igjen nederst og neste klikk gjør noe du ikke lenger holder på
+// med. Verdien er panelet som EIER modusen: åpner du det, skal modusen stå.
+//
+// DISSE STÅR MED VILJE IKKE I LISTA:
+//   · Mål og Kote legger bare på en måling. Du skal kunne måle mens du ser på
+//     mengder, og målene blir stående uansett.
+//   · Snitt, etasjefilter, gjennomsiktig og fargelegging er VISNINGER, ikke
+//     moduser. De bestemmer hva du ser på, og skal overleve at du bytter
+//     verktøy — nøyaktig som at du skrur dem av selv når du er ferdig.
+const KLIKKMODUSER = { marker: "commentPanel", materiell: "materiellPanel" };
+
+S.avsluttKlikkModus = (nyttPanel) => {
+  const eier = KLIKKMODUSER[S.mode];
+  if (!eier || eier === nyttPanel) return;
+  // materiell-modusen eies av js/materiell.js og må avsluttes derfra: den
+  // rydder også bort en påbegynt plassering. setMode() alene ville latt en
+  // halvferdig kasse bli hengende i scenen.
+  if (S.mode === "materiell") { if (S.avsluttMateriell) S.avsluttMateriell(); return; }
+  setMode(S.mode);   // setMode på gjeldende modus slår den av
+};
+
 på("btnMarker", "click", () => setMode("marker"));
 
 på("btnMeasure", "click", () => setMode("measure"));
