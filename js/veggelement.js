@@ -1952,7 +1952,8 @@ export function swForByggeplass() {
     const e = swByggeplassElement(v, erRm);
     if (e.l > 0 && e.h > 0) ut.push(e);
   }
-  return { elementer: ut, farge: String(o.farge || "#dfe5ec"),
+  return { elementer: ut, utsparinger: swUtspForByggeplass(),
+    farge: String(o.farge || "#dfe5ec"),
     utvFarge: String(o.utvFarge || ""), isolasjon: String(o.isolasjon || "") };
 }
 
@@ -1968,7 +1969,16 @@ export function swByggeplassElement(v, erRm) {
     // gir et element som ikke tegnes — usynlig for montøren, uten feilmelding.
     l: mmHel(v.lengdeMm),
     h: mmHel(swHoydeMm(v)),
-    t: mmHel(v.tMm)
+    t: mmHel(v.tMm),
+    // Fasadenormalen: hvilken vei panelet VENDER. Uten den kan ikke merkingen
+    // legges flatt på panelflaten ute, og lappene ble stående som svevende
+    // skilt i stedet (Emils bilde 16.09). Samme reserve som tegningen bruker
+    // når feltet mangler på et gammelt element.
+    nx: r4(v.nx !== undefined ? v.nx : Math.sin(v.rot || 0)),
+    nz: r4(v.nz !== undefined ? v.nz : Math.cos(v.rot || 0)),
+    // Dimensjonsteksten kommer FERDIG, ikke satt sammen ute: skråkapp skrives
+    // «5980×1100/460MM 6,1°», og den regelen skal stå ett sted.
+    dim: erRm ? "" : swDimTekst(v)
   };
   // Skråkappet: BEGGE endehøydene følger med, så gavlen ikke blir en kasse med
   // middelhøyde i en vegg som faktisk skråner. `h` står igjen som middelhøyden,
@@ -1983,6 +1993,53 @@ export function swByggeplassElement(v, erRm) {
 // avrundingen blir JSON-fila dobbelt så stor av sifre ingen kan se.
 function r4(n) { return Math.round((Number(n) || 0) * 1000) / 1000; }
 function mmHel(n) { return Math.round(Number(n) || 0); }
+
+// Samme tekst som på kontoret (tegnVeggElementer): lengde × høyde, og for et
+// skråkappet element BEGGE endehøydene pluss vinkelen — de tre målene
+// verkstedet trenger for å skjære panelet.
+function swDimTekst(v) {
+  const hTekst = v.skra ? (v.hVMm + "/" + v.hHMm) : String(mmHel(v.hoydeMm));
+  const vTekst = v.skra
+    ? " " + (v.skraTekst || vinkelTekst(skraVinkel(v.lengdeMm, v.hVMm, v.hHMm))) : "";
+  return mmHel(v.lengdeMm) + "\u00d7" + hTekst + "MM" + vTekst;
+}
+
+// 🚪 UTSPARINGENE UT SOM FERDIGE PUNKTER. Merkingen på kontoret regnes ut av
+// fasadene (retning, tykkelse, avstand ut fra panelet). Å sende fasadene og
+// regne på nytt ute ville vært å skrive den regningen to ganger — og den ene
+// ville drevet fra den andre. Her sendes hjørnene i ferdige koordinater.
+function utspPunkter(apninger, fasader, baseY, tykkelseMm, ut) {
+  for (const a of apninger || []) {
+    const f = (fasader || [])[a.fi];
+    if (!f) continue;
+    if (!isFinite(a.bunnMm) || !isFinite(a.toppMm) || Math.abs(a.toppMm) > 1e8) continue;
+    const tMm = ((f.o || {}).tykkelseMm !== undefined) ? f.o.tykkelseMm : tykkelseMm;
+    // litt utenfor panelet, så streken ikke drukner i det — som på kontoret
+    const utD = f.off + tilScene(tMm) / 2 + 0.03 / (S.enhetSkala || 1);
+    const pkt = (mm, y) => [r4(f.px + f.ex * tilScene(mm) + f.nx * utD), r4(y),
+                            r4(f.pz + f.ez * tilScene(mm) + f.nz * utD)];
+    const y0 = baseY + tilScene(a.bunnMm), y1 = baseY + tilScene(a.toppMm);
+    const midtMm = (a.fraMm + a.tilMm_) / 2, midtY = (y0 + y1) / 2;
+    ut.push({
+      p: [pkt(a.fraMm, y0), pkt(a.tilMm_, y0), pkt(a.tilMm_, y1), pkt(a.fraMm, y1)],
+      m: pkt(midtMm, midtY),
+      mn: pkt(midtMm, midtY + tilScene(320)),
+      n: [r4(f.nx), r4(f.nz)],
+      b: mmHel(a.tilMm_ - a.fraMm),
+      h: mmHel(a.toppMm - a.bunnMm),
+      navn: a.navn ? String(a.navn).toUpperCase().slice(0, 40) : ""
+    });
+  }
+}
+
+export function swUtspForByggeplass() {
+  const ut = [];
+  const o = (lagret && lagret.oppsett) || STD_OPPSETT;
+  if (lagret) utspPunkter(utspPaFasader(), lagret.fasader || [], baseYNaa(), o.tykkelseMm, ut);
+  const d = lagretInner;
+  if (d) utspPunkter(d.utspVis || [], d.fasader || [], innerBaseY(), INNER_STD.tykkelseMm, ut);
+  return ut;
+}
 
 function leggSwIMengder(groups, rows) {
   for (const { v, erRm } of swAlle()) {
