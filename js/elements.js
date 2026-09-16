@@ -1,6 +1,6 @@
 // Valg, egenskaper, søk, mengder og markeringsboks.
 import * as THREE from "three";
-import { $, på, S, apnePanel, dec, esc, ikon, loadingEl, loadingText } from "./state.js";
+import { $, ekstraLagSom, på, S, apnePanel, dec, esc, ikon, loadingEl, loadingText } from "./state.js";
 import { t } from "./i18n.js";
 import { TETTHET } from "./config.js";
 import { kolBokstav, sumFormel } from "./regneark.js";
@@ -51,6 +51,9 @@ export function clearSelection() {
     S.multiSelMat.clear();
     oppdaterMateriellValgEffekt();
   }
+  // 🧱 …og valget i lagene ved siden av modellen (SW-elementene). Uten dette
+  // ble et SW-element stående blått etter at du hadde klikket i tomrommet.
+  for (const l of ekstraLagSom("velg")) l.velg([]);
 }
 
 // Finn expressID fra et raycast-treff (også i sammenslått geometri)
@@ -84,6 +87,20 @@ export function pick(clientX, clientY, ignoreClip) {
     return null;
   }
   return hits.length ? hits[0] : null;
+}
+
+// 🧱 Plukk i lagene ved siden av modellen. pick() over ser BARE S.modelGroup,
+// med vilje — SW-elementene og materiellet bor i egne grupper. Hvert lag svarer
+// selv på hva som ligger under pekeren, og oppgir avstanden, så kallstedet kan
+// avgjøre hvem som lå nærmest kameraet. Et nytt lag blir med her ved å melde
+// inn evnen «plukk», ikke ved at noen husker å utvide denne funksjonen.
+export function pickEkstra(x, y) {
+  let best = null;
+  for (const l of ekstraLagSom("plukk")) {
+    const h = l.plukk(x, y);
+    if (h && (!best || h.avstand < best.avstand)) best = Object.assign({ lag: l }, h);
+  }
+  return best;
 }
 
 export function selectElement(expressID, additive) {
