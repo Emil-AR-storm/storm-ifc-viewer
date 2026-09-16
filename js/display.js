@@ -1,6 +1,6 @@
 // Utseende: transparent, skjul/vis og fargelegging per elementtype.
 import * as THREE from "three";
-import { $, DEFAULT_APPEAR, EKSTRA_GRUPPER, på, S, apnePanel, esc, ikon } from "./state.js";
+import { $, DEFAULT_APPEAR, EKSTRA_GRUPPER, ekstraLagSom, på, S, apnePanel, esc, ikon } from "./state.js";
 import { t } from "./i18n.js";
 import { clearSelection } from "./elements.js";
 import { sikreMeta, typeFor } from "./ifcrpc.js";
@@ -203,7 +203,11 @@ export function oppdaterVisAlle() {
     (S.typeInfo ? [...S.typeInfo.values()].some(g => g.hidden) : false) ||
     // 👁 En skjult MARKERING teller også. Uten dette sto «Vis alle» borte mens
     // tre bobler var skjult, og det fantes ingen ett-klikks vei tilbake.
-    !!(S.markeringNoeSkjult && S.markeringNoeSkjult());
+    !!(S.markeringNoeSkjult && S.markeringNoeSkjult()) ||
+    // 📦 / 🧱 Materiell og SW-elementer har sin egen skjuling i sine egne
+    // paneler. Uten denne linja sto «Vis alle» borte mens halve bygget var
+    // skjult, og den eneste veien tilbake var å finne rada igjen selv.
+    ekstraLagSom("noeSkjult").some(l => l.noeSkjult());
   $("btnShowAll").style.display = noeSkjult ? "" : "none";
 }
 
@@ -229,6 +233,7 @@ på("btnShowAll", "click", () => {
   if ($("colorPanel").classList.contains("open") && S.lightLoaded && S.typeInfoLett) renderColorPanelLett();
   $("btnShowAll").style.display = "none";
   if (S.visAlleMarkeringer) S.visAlleMarkeringer();   // 👁 markeringene med
+  for (const l of ekstraLagSom("visAlt")) l.visAlt();  // 📦 materiell og 🧱 SW med
   if ($("colorPanel").classList.contains("open")) renderColorPanel();
   meldAngre(før, "Vis alle");
 });
@@ -245,7 +250,11 @@ export function visningsAvtrykk() {
     farger: S.typeInfo ? Object.fromEntries([...S.typeInfo].map(([k, g]) => [k, g.color])) : {},
     typeColorsOn: S.typeColorsOn,
     ghostOn: S.ghostOn,
-    bg: "#" + scene.background.getHexString()
+    bg: "#" + scene.background.getHexString(),
+    // Skjulingen i materiell og SW er med i avtrykket, ellers kunne ↩ Angre
+    // ikke gjøre om «Vis alle»: knappen henter fram alt, og uten dette fantes
+    // det ingen vei tilbake til det du hadde skjult.
+    lag: Object.fromEntries(ekstraLagSom("skjulTilstand").map(l => [l.id, l.skjulTilstand()]))
   };
 }
 
@@ -288,6 +297,12 @@ export function settVisning(a) {
     });
   }
   settGhostEkstra(S.ghostOn);   // materiell og SW-elementer følger med
+  // …og skjulingen deres legges tilbake. Bare de lagene avtrykket faktisk har
+  // en tilstand for røres: et avtrykk tatt før laget fantes skal ikke tolkes
+  // som «ingenting var skjult» og tømme skjulingen i et lag det ikke gjelder.
+  if (a.lag) for (const l of ekstraLagSom("settSkjulTilstand")) {
+    if (a.lag[l.id] !== undefined) l.settSkjulTilstand(a.lag[l.id]);
+  }
   S.appear.ghost = S.ghostOn;
   S.appear.typeColorsOn = S.typeColorsOn;
   syncHiddenTypes();

@@ -1758,7 +1758,35 @@ function utsparingerPaFasade(fasade, baseY, liste) {
 // per modellfil — da kan det tegnes opp igjen uten å regne på nytt.
 export const swGroup = new THREE.Group();
 scene.add(swGroup);
-registrerEkstraGruppe(swGroup);   // så Gjennomsiktig o.l. også treffer SW-elementene
+// Laget melder inn hva det kan (se EKSTRA_LAG i js/state.js). SW har to
+// skjulinger på samme form: `lagret.skjul` for det ytre bygget og
+// `lagretInner.skjul` for innerveggene. Begge hentes fram av «Vis alle», og
+// begge tegnes opp igjen i ÉN tegnAlt() — to kall ville tegnet hele bygget om
+// igjen to ganger på ett klikk.
+registrerEkstraGruppe(swGroup, {
+  id: "sw",
+  navn: "SW-elementer",
+  noeSkjult: () => Object.values((lagret && lagret.skjul) || {}).some(Boolean) ||
+    Object.values((lagretInner && lagretInner.skjul) || {}).some(Boolean),
+  visAlt() {
+    if (!this.noeSkjult()) return;
+    if (lagret) { lagret.skjul = {}; skrivLagret(); }
+    if (lagretInner) { lagretInner.skjul = {}; skrivInner(); }
+    tegnAlt();
+    if (S.tegnUtseendePanel) S.tegnUtseendePanel();
+  },
+  skjulTilstand: () => ({
+    ytre: Object.assign({}, (lagret && lagret.skjul) || {}),
+    indre: Object.assign({}, (lagretInner && lagretInner.skjul) || {})
+  }),
+  settSkjulTilstand(v) {
+    const t = v || {};
+    if (lagret) { lagret.skjul = Object.assign({}, t.ytre || {}); skrivLagret(); }
+    if (lagretInner) { lagretInner.skjul = Object.assign({}, t.indre || {}); skrivInner(); }
+    tegnAlt();
+    if (S.tegnUtseendePanel) S.tegnUtseendePanel();
+  }
+});
 
 function lagringsNokkel() { return "storm-ifc-sw::" + S.fileName; }
 
@@ -2010,6 +2038,7 @@ function settSkjul(navn, verdi) {
   skrivLagret();
   tegnAlt();
   if (S.tegnUtseendePanel) S.tegnUtseendePanel();
+  if (S.oppdaterVisAlle) S.oppdaterVisAlle();   // «Vis alle» skal dukke opp
 }
 
 // Én rad-tegner for begge blokkene: `sk` er tilstanden, `attr` sier hvilken
@@ -5513,6 +5542,7 @@ function settInnerSkjul(navn, verdi) {
   skrivInner();
   tegnAlt();
   if (S.tegnUtseendePanel) S.tegnUtseendePanel();
+  if (S.oppdaterVisAlle) S.oppdaterVisAlle();   // «Vis alle» skal dukke opp
 }
 
 // ---------- A: markeringsmodus ----------
