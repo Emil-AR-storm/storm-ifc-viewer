@@ -12,9 +12,9 @@
 // Tegningen er enklere enn på kontoret med vilje: ingen bølgeprofil i blikket.
 // Den er til pynt, og koster rammer på en telefon.
 import * as THREE from "three";
-import { S, registrerEkstraGruppe } from "./state.js";
+import { $, S, apnePanel, esc, ikon, registrerEkstraGruppe } from "./state.js";
 import { t } from "./i18n.js";
-import { scene } from "./scene.js";
+import { camera, canvas, flyTil, raycaster, scene } from "./scene.js";
 
 export const swLettGroup = new THREE.Group();
 scene.add(swLettGroup);
@@ -175,6 +175,7 @@ let tegnede = [];
 
 export function tegnSwLett(data) {
   ryddAlt();
+  lesSkjulte();
   const liste = swLettElementer(data);
   tegnede = liste;
   if (!liste.length) { oppdaterKnapp(); return; }
@@ -187,6 +188,7 @@ export function tegnSwLett(data) {
   };
   const visLapper = liste.length <= MAKS_LAPPER;
   for (const e of liste) {
+    if (skjultId.has(String(e.id))) continue;   // 👁 skjult enkeltvis
     const materiale = hent(e.farge);
     // Er elementet delt av en utsparing, står bitene i en gruppe som roteres
     // og plasseres som ett element — da er biten i elementets egne mm, og
@@ -201,6 +203,7 @@ export function tegnSwLett(data) {
     swLettGroup.add(m);
     if (visLapper && e.sw) merkPanel(e);
   }
+  oppdaterValgEffekt();
   if (visLapper) tegnUtsparinger(data);
   oppdaterKnapp();
   // Nytegnet = ferske materialer som ikke vet at Gjennomsiktig står på.
@@ -274,14 +277,64 @@ function tegnUtsparinger(data) {
   }
 }
 
-// ---------- Skjul/vis hele laget ----------
-// Én bryter, ikke per element: montøren skal kunne ta SW-elementene bort for å
-// se stålet bak, og så få dem tilbake. Å skjule ett og ett er et kontorbehov.
+// ---------- Skjul/vis ----------
+// TO NIVÅER, som på kontoret: hele laget av gangen (raden i 🎨 Utseende), og
+// ETT ELEMENT om gangen. Det siste er ikke et kontorbehov — montøren står foran
+// veggen og vil ta bort DET panelet for å se stålsøyla bak det.
+//
+// Valget lagres per modellfil i nettleseren. På byggeplassen eier Workeren
+// dataene, så dette er en ren visningstilstand på telefonen: den overlever at
+// du låser skjermen og åpner siden igjen, og forsvinner aldri ut til de andre.
 let skjult = false;
+const skjultId = new Set();
+const valgt = new Set();
+
+function skjulNokkel() { return "storm-sw-lett-skjult::" + (S.fileName || ""); }
+
+function lesSkjulte() {
+  skjultId.clear();
+  try {
+    const l = JSON.parse(localStorage.getItem(skjulNokkel()) || "[]");
+    if (Array.isArray(l)) for (const id of l) skjultId.add(String(id));
+  } catch (_) {}
+}
+
+function skrivSkjulte() {
+  try { localStorage.setItem(skjulNokkel(), JSON.stringify([...skjultId])); } catch (_) {}
+}
 
 function oppdaterKnapp() {
   swLettGroup.visible = !skjult;
   if (S.oppdaterVisAlle) S.oppdaterVisAlle();
+}
+
+// Samme blå som elementvalget i modellen, så «valgt» ser likt ut uansett hva
+// du trykte på. Males om etter hver omtegning — meshene er nye objekter da.
+const SEL_FARGE = 0x3b82f6, SEL_EMISSIVE = 0x1d4ed8;
+
+function settValgEffekt(o, paa) {
+  o.traverse(m => {
+    if (!m.isMesh || !m.material || m.userData.ghostFritatt) return;
+    if (paa) {
+      if (!m.userData.matOrig) m.userData.matOrig = m.material;
+      if (!m.userData.matSel) {
+        const sel = m.userData.matOrig.clone();
+        sel.color.set(SEL_FARGE);
+        if (sel.emissive) sel.emissive.set(SEL_EMISSIVE);
+        m.userData.matSel = sel;
+      }
+      m.material = m.userData.matSel;
+    } else if (m.userData.matOrig) {
+      m.material = m.userData.matOrig;
+    }
+  });
+}
+
+function oppdaterValgEffekt() {
+  swLettGroup.children.forEach(o => {
+    if (o.userData.swLettId === undefined) return;
+    settValgEffekt(o, valgt.has(o.userData.swLettId));
+  });
 }
 
 // Laget melder inn hva det kan (se EKSTRA_LAG i js/state.js): Gjennomsiktig,
@@ -290,18 +343,134 @@ function oppdaterKnapp() {
 registrerEkstraGruppe(swLettGroup, {
   id: "sw",
   navn: "SW-elementer",
-  noeSkjult: () => skjult,
-  visAlt() { if (!skjult) return; skjult = false; oppdaterKnapp(); },
-  skjulTilstand: () => ({ skjult }),
-  settSkjulTilstand(v) { skjult = !!(v && v.skjult); oppdaterKnapp(); },
+  noeSkjult: () => skjult || skjultId.size > 0,
+  visAlt() {
+    if (!skjult && !skjultId.size) return;
+    skjult = false;
+    skjultId.clear();
+    skrivSkjulte();
+    tegnPaaNytt();
+  },
+  skjulTilstand: () => ({ skjult, ider: [...skjultId] }),
+  settSkjulTilstand(v) {
+    skjult = !!(v && v.skjult);
+    skjultId.clear();
+    for (const id of ((v && v.ider) || [])) skjultId.add(String(id));
+    skrivSkjulte();
+    tegnPaaNytt();
+  },
   sokRader: () => tegnede.filter(e => e.sw).map(e => {
     const under = [e.k === "i" ? t("Innervegg") : t("Yttervegg"), e.l + "×" + e.h + " mm"].join(" · ");
     return { id: e.id, navn: e.sw, under, s: (e.sw + " " + under).toLowerCase() };
-  })
+  }),
+
+  // ---------- Plukking og skjuling ETT OG ETT ----------
+  // pick() i elements.js ser BARE S.modelGroup. Laget svarer derfor selv på hva
+  // som ligger under fingeren, og oppgir avstanden, så kallstedet kan avgjøre
+  // hvem som lå nærmest: modellen, materiellet eller SW.
+  plukk(cx, cy) {
+    if (!swLettGroup.visible || !swLettGroup.children.length) return null;
+    const r = canvas.getBoundingClientRect();
+    _ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+    raycaster.setFromCamera(_ndc, camera);
+    swLettGroup.updateMatrixWorld(true);
+    const treff = raycaster.intersectObjects(swLettGroup.children, true);
+    for (const h of treff) {
+      // Skiltene er ikke noe å trykke på — de har allerede raycast slått av,
+      // men et dekal uten id ville uansett ikke gitt noe treff å bruke.
+      let o = h.object;
+      while (o && o.userData.swLettId === undefined) o = o.parent;
+      if (o && o.userData.swLettId) return { id: o.userData.swLettId, avstand: h.distance };
+    }
+    return null;
+  },
+  velg(ider) {
+    const nye = new Set((ider || []).map(String));
+    if (nye.size === valgt.size && [...nye].every(id => valgt.has(id))) return;
+    valgt.clear();
+    for (const id of nye) valgt.add(id);
+    oppdaterValgEffekt();
+  },
+  valgte: () => [...valgt],
+  skjul(ider) {
+    let nye = 0;
+    for (const id of (ider || [])) if (!skjultId.has(String(id))) { skjultId.add(String(id)); nye++; }
+    if (!nye) return;
+    for (const id of (ider || [])) valgt.delete(String(id));
+    skrivSkjulte();
+    tegnPaaNytt();
+    if ($("propPanel")) $("propPanel").classList.remove("open");
+  },
+  gaTil(id) {
+    const e = tegnede.find(x => String(x.id) === String(id));
+    if (!e) return;
+    flyTil(new THREE.Vector3(Number(e.x) || 0, Number(e.y) || 0, Number(e.z) || 0),
+           Math.max(mm(e.l), mm(e.h)));
+    this.velg([id]);
+    this.visEgenskaper(id);
+  },
+
+  // Egenskapspanelet for ett SW-element. Montøren skal se hva panelet heter og
+  // hvor stort det er — og kunne ta det bort for å se stålet bak.
+  visEgenskaper(id) {
+    const e = tegnede.find(x => String(x.id) === String(id));
+    if (!e || !$("propTitle")) return;
+    const rad = (k, v) => '<div class="prop-row"><div class="k">' + esc(k) +
+      '</div><div class="v">' + esc(String(v)) + '</div></div>';
+    const erRm = e.k === "r";
+    $("propTitle").textContent = erRm ? t("Ringmur") : (e.sw || t("Veggelement"));
+    $("propBody").innerHTML =
+      '<div class="prop-actions"><button id="paSkjulSwLett">' + ikon("skjul") + ' ' +
+      t("Skjul dette elementet") + '</button></div>' +
+      rad(t("Type"), erRm ? t("Ringmur") : (e.k === "i" ? t("Innervegg") : t("Yttervegg"))) +
+      (e.sw ? rad(t("SW-nummer"), e.sw) : "") +
+      rad(t("Lengde"), e.l + " mm") +
+      rad(t("Høyde"), (e.hv !== undefined ? e.hv + "/" + e.hh : e.h) + " mm") +
+      rad(t("Tykkelse"), e.t + " mm") +
+      '<p style="color:var(--muted); font-size:11px; margin-top:8px">' +
+      t("Skjulte SW-elementer hentes fram igjen med «Vis alle».") + '</p>';
+    $("paSkjulSwLett").onclick = () => this.skjul([id]);
+    apnePanel("propPanel");
+  },
+
+  // 🎨 Utseende: én rad for hele laget. Fargen settes på kontoret, så her er
+  // det bare øyeknappen — og antallet, så montøren ser at noe er skjult
+  // enkeltvis selv om laget står på.
+  utseendeRader(body) {
+    if (!body || !tegnede.length) return;
+    const boks = document.createElement("div");
+    boks.innerHTML =
+      '<div class="qty-row" style="margin-top:10px"><div class="n" style="font-weight:700">' +
+      t("SW-elementer") + '</div><div class="c"></div></div>' +
+      '<div class="qty-row"><div class="n">' + t("Alt på bygget") +
+      ' <span style="color:var(--muted);font-size:11px">(' + tegnede.length + ')</span></div>' +
+      '<div class="c"><button data-sw-lett-skjul="1" title="' + t("Skjul/vis") +
+      '" style="padding:3px 8px">' + ikon(skjult ? "skjul" : "vis") + '</button></div></div>' +
+      (skjultId.size
+        ? '<p style="color:var(--muted);font-size:11px;margin:2px 0 0">' +
+          t("{0} element er skjult enkeltvis. «Vis alle» henter dem fram.", skjultId.size) + '</p>'
+        : "");
+    body.appendChild(boks);
+    boks.querySelectorAll("button[data-sw-lett-skjul]").forEach(b => {
+      b.onclick = () => {
+        skjult = !skjult;
+        oppdaterKnapp();
+        if (S.tegnUtseendePanel) S.tegnUtseendePanel();
+      };
+    });
+  }
 });
+
+const _ndc = new THREE.Vector2();
+
+// Tegner opp igjen fra det som allerede er mottatt — brukes når skjulingen
+// endres. Vi har ikke rådataene lenger, så `tegnede` mates inn på nytt; den
+// har allerede vært gjennom vaskingen, og går uendret gjennom en gang til.
+let sisteData = null;
+function tegnPaaNytt() { tegnSwLett(sisteData); }
 
 // markers.js kaller denne med `sw`-feltet fra <fil>.markeringer.json når
 // modellen er lastet. Gamle filer har ikke feltet — da tegnes ingenting, og
 // det er riktig: byggeplassen skal ikke gjette.
-S.settSwFraLett = (data) => tegnSwLett(data);
-S.ryddSwLett = () => tegnSwLett(null);
+S.settSwFraLett = (data) => { sisteData = data; tegnSwLett(data); };
+S.ryddSwLett = () => { sisteData = null; tegnSwLett(null); };

@@ -614,6 +614,9 @@ export const ORDBOK = {
   // 🧱 Egenskapspanelet for ett SW-element (plukking og skjuling, 16.09)
   "Veggelement": { en: "Wall element", pl: "Element ścienny", lt: "Sienos elementas" },
   "Sandwich": { en: "Sandwich", pl: "Płyta warstwowa", lt: "Daugiasluoksnė plokštė" },
+  // 🧱 SW-elementene i 🎨 Utseende på byggeplassen (16.09)
+  "SW-elementer": { en: "SW elements", pl: "Elementy SW", lt: "SW elementai" },
+  "{0} element er skjult enkeltvis. «Vis alle» henter dem fram.": { en: "{0} element(s) hidden individually. \u201cShow all\u201d brings them back.", pl: "Ukryto pojedynczo: {0}. \u201ePokaż wszystkie\u201d je przywraca.", lt: "Paslėpta po vieną: {0}. \u201eRodyti visus\u201c juos grąžina." },
   // 🏗 Størrelsesdialogen: het «Nytt prosjekt» og ble lest som at et nytt
   // prosjekt skulle opprettes (Emil 16.09). Ingenting opprettes der.
   "Hvor stor er modellen i prosjekt {0}?": { en: "How large is the model in project {0}?", pl: "Jak duży jest model w projekcie {0}?", lt: "Koks modelio dydis projekte {0}?" },

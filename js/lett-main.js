@@ -5,7 +5,7 @@ import * as THREE from "three";
 import { $, S, esc, fmtLen, loadingEl, loadingText, tilM } from "./state.js";
 import { oversettDom, setLang, t } from "./i18n.js";
 import { setClipFromFace } from "./clip.js";
-import { clearSelection, hitID, pick, selectElement, showProperties } from "./elements.js";
+import { clearSelection, hitID, pick, pickEkstra, selectElement, showProperties } from "./elements.js";
 import { afterLoad, ifcReady, loadGlb } from "./ifc.js";
 import { closeMarkerPopup, forberedNyMarkering, openMarkerPopup, pickMarker } from "./markers.js";
 import { snapshotModel } from "./compare.js";
@@ -80,6 +80,18 @@ canvas.addEventListener("pointerup", (e) => {
     closeMarkerPopup();
   }
   const hit = pick(e.clientX, e.clientY);
+  // 🧱 SW-elementene bor i sin egen gruppe, som pick() ikke ser. Ligger et av
+  // dem nærmere kameraet enn modelltreffet, er DET montøren trykte på — og da
+  // kan han ta det bort for å se stålet bak. Samme regel som på kontoret.
+  if (!S.mode && !e.shiftKey) {
+    const ek = pickEkstra(e.clientX, e.clientY);
+    if (ek && (!hit || ek.avstand < hit.distance)) {
+      clearSelection();
+      ek.lag.velg([ek.id]);
+      if (ek.lag.visEgenskaper) ek.lag.visEgenskaper(ek.id);
+      return;
+    }
+  }
   if (!hit) {
     // Shift eies av flervalget (elements.js) — og det kan ha truffet MATERIELL,
     // som pick() med vilje ikke ser. Uten shift-unntaket her ble et shift-klikk

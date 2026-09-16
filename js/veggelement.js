@@ -1856,6 +1856,10 @@ registrerEkstraGruppe(swGroup, {
     apnePanel("propPanel");
   },
 
+  // 🎨 Utseende: radene bor lenger nede (S.swUtseendeRader) fordi de trenger
+  // lagret/lagretInner. Her meldes bare evnen inn.
+  utseendeRader(body) { if (S.swUtseendeRader) S.swUtseendeRader(body); },
+
   // ---------- 📊 Mengder og 🔎 Elementsøk ----------
   mengder: (groups, rows) => leggSwIMengder(groups, rows),
   sokRader: () => swAlle().map(({ v, erRm }) => {

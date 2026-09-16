@@ -541,6 +541,11 @@ export function renderColorPanelLett() {
       if (S.lettFargerPå) malLettFarger();
     });
   // 👁 Markeringene finnes også på byggeplassen — der brukes de mest.
+  // 📦 / 🧱 Radene fra lagene ved siden av modellen (materiell, SW-elementer).
+  // Sto som to navngitte kroker i fullversjonen og INGEN her — derfor hadde
+  // byggeplassen ikke en eneste slik rad. Nå spør begge panelene etter evnen,
+  // og et nytt lag kan ikke bli glemt i det ene.
+  for (const l of ekstraLagSom("utseendeRader")) l.utseendeRader($("colorBody"));
   if (S.markeringUtseendeRader) S.markeringUtseendeRader($("colorBody"));
 }
 
@@ -647,13 +652,12 @@ export function renderColorPanel() {
       meldAngre(før, g.hidden ? "Skjul elementtype" : "Vis elementtype");
     };
   });
-  // 📦 Materiell (leveranser) får egne rader nederst — de tegnes av
-  // materiell-vis.js, som eier objektene (fargen settes per objekt der).
-  if (S.materiellUtseendeRader) S.materiellUtseendeRader($("colorBody"));
-  // 👁 «Markeringer»-gruppa. Egne rader, fordi markeringene ikke er
-  // IFC-elementer og dermed ikke finnes i S.typeInfo.
+  // 📦 / 🧱 Radene fra lagene ved siden av modellen (materiell, SW-elementer).
+  // Sto som to navngitte kroker her og INGEN i lettmodus — derfor hadde
+  // byggeplassen ikke en eneste slik rad. Nå spør begge panelene etter evnen,
+  // og et nytt lag kan ikke bli glemt i det ene.
+  for (const l of ekstraLagSom("utseendeRader")) l.utseendeRader($("colorBody"));
+  // 👁 «Markeringer»-gruppa. Egne rader, fordi markeringene verken er
+  // IFC-elementer eller et lag i scenen.
   if (S.markeringUtseendeRader) S.markeringUtseendeRader($("colorBody"));
-  // 🧱 «SW-generator»-gruppa: alt generatoren har satt på bygget. Bunkene med
-  // veggelementer rundt bygget er materiell og har sine egne rader over.
-  if (S.swUtseendeRader) S.swUtseendeRader($("colorBody"));
 }
