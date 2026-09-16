@@ -613,6 +613,7 @@ export const ORDBOK = {
   "Ringmur": { en: "Ring wall", pl: "Mur fundamentowy", lt: "Pamatinė siena" },
   // 🧱 Egenskapspanelet for ett SW-element (plukking og skjuling, 16.09)
   "Veggelement": { en: "Wall element", pl: "Element ścienny", lt: "Sienos elementas" },
+  "Sandwich": { en: "Sandwich", pl: "Płyta warstwowa", lt: "Daugiasluoksnė plokštė" },
   "Skjul dette elementet": { en: "Hide this element", pl: "Ukryj ten element", lt: "Slėpti šį elementą" },
   "Skjulte SW-elementer hentes fram igjen med «Vis alle».": { en: "Hidden SW elements are brought back with \u201cShow all\u201d.", pl: "Ukryte elementy SW przywraca \u201ePokaż wszystkie\u201d.", lt: "Paslėptus SW elementus grąžina \u201eRodyti visus\u201c." },
   "Innervegg": { en: "Inner wall", pl: "Ściana wewnętrzna", lt: "Vidinė siena" },

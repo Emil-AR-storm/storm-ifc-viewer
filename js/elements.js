@@ -8,8 +8,8 @@ import { profilKgPerM } from "./profiler.js";
 import { hiddenIDs, hideElement, hideElements, typeSkjultLett } from "./display.js";
 import { alleElementIder, lightElementBoxes } from "./ifc.js";
 import { kall, metaFor, sikreMeta } from "./ifcrpc.js";
-import { axesGroup, camera, canvas, controls, grid, koteGroup, markerGroup, measureGroup, omradeGroup, pointer, raycaster, renderer, scene, selGroup } from "./scene.js";
-import { leggMateriellIMengder, materiellGroup, materiellTypeLabel, oppdaterMateriellValgEffekt } from "./materiell-vis.js";
+import { axesGroup, camera, canvas, controls, flyTil, grid, koteGroup, markerGroup, measureGroup, omradeGroup, pointer, raycaster, renderer, scene, selGroup } from "./scene.js";
+import { materiellGroup, materiellTypeLabel, oppdaterMateriellValgEffekt } from "./materiell-vis.js";
 import { skjulMaal, vekselMaal } from "./maal.js";
 
 const selMat = new THREE.MeshLambertMaterial({ color: 0x3b82f6, emissive: 0x1d4ed8, side: THREE.DoubleSide });
@@ -982,12 +982,7 @@ export function zoomToElement(id) {
   const box = elementBoxById(id);
   if (!box) return;
   const c = box.getCenter(new THREE.Vector3());
-  const size = box.getSize(new THREE.Vector3()).length() || S.modelSize * 0.05;
-  controls.target.copy(c);
-  const dir = camera.position.clone().sub(c);
-  if (dir.lengthSq() < 1e-6) dir.set(1, 0.7, 1);
-  dir.normalize().multiplyScalar(Math.max(size * 2.5, S.modelSize * 0.02));
-  camera.position.copy(c).add(dir);
+  flyTil(c, box.getSize(new THREE.Vector3()).length());
   selectElement(id);
   showProperties(id);
 }
@@ -1014,22 +1009,51 @@ function renderSearchUI() {
   renderSearchResults();
 }
 
+// 🧱 Radene fra lagene ved siden av modellen (SW-elementene, materiellet).
+// De bor ikke i S.modelGroup og kom derfor aldri med i søkeindeksen — søkte du
+// «SW-05» fikk du null treff selv om elementet sto rett foran deg. Radene
+// hentes ved hvert tegn og ikke bygges én gang, fordi de er få (titalls, ikke
+// tusenvis) og fordi et element som nettopp ble generert skal være søkbart med
+// en gang. Et nytt lag blir søkbart ved å melde inn evnen «sokRader».
+function ekstraSokRader() {
+  const ut = [];
+  for (const l of ekstraLagSom("sokRader")) {
+    for (const r of (l.sokRader() || [])) ut.push(Object.assign({ lag: l }, r));
+  }
+  return ut;
+}
+
 function renderSearchResults() {
   const el = $("searchList");
   const q = S.lastQuery.trim().toLowerCase();
+  const ekstra = ekstraSokRader();
   if (q.length < 2) {
-    el.innerHTML = '<p style="color:var(--muted); font-size:12px; margin-top:8px">' + t("Skriv minst 2 tegn – søker i navn, merke (Tag), profil og ExpressID. {0} elementer i indeksen.", S.searchIndex.length) + '</p>';
+    el.innerHTML = '<p style="color:var(--muted); font-size:12px; margin-top:8px">' + t("Skriv minst 2 tegn – søker i navn, merke (Tag), profil og ExpressID. {0} elementer i indeksen.", S.searchIndex.length + ekstra.length) + '</p>';
     return;
   }
   const hits = S.searchIndex.filter(e => e.s.includes(q));
-  if (!hits.length) { el.innerHTML = '<p style="color:var(--muted); margin-top:8px">' + t("Ingen treff på «{0}».", esc(S.lastQuery)) + '</p>'; return; }
-  el.innerHTML = hits.slice(0, 50).map(h =>
+  // Lagene legges FØRST: søker du på et SW-nummer er det nesten alltid det du
+  // er ute etter, og listen kappes ved 50.
+  const eHits = ekstra.filter(e => (e.s || "").includes(q));
+  if (!hits.length && !eHits.length) { el.innerHTML = '<p style="color:var(--muted); margin-top:8px">' + t("Ingen treff på «{0}».", esc(S.lastQuery)) + '</p>'; return; }
+  const antall = hits.length + eHits.length;
+  el.innerHTML =
+    eHits.slice(0, 50).map((h, i) =>
+      '<div class="lib-item" data-lag="' + i + '">' +
+      '<div class="n">' + esc(h.navn) + '</div>' +
+      '<div class="m">' + esc(h.under || "") + '</div></div>').join("") +
+    hits.slice(0, Math.max(0, 50 - eHits.length)).map(h =>
     '<div class="lib-item" data-eid="' + h.id + '">' +
     '<div class="n">' + esc(h.name || h.objType || String(h.id)) + '</div>' +
     '<div class="m">' + esc([h.type, h.objType, h.tag && (t("Merk: ") + h.tag)].filter(Boolean).join(" · ")) + '</div></div>').join("") +
-    (hits.length > 50 ? '<p style="color:var(--muted); font-size:11px; margin-top:6px">' + t("Viser 50 av {0} treff – skriv mer for å avgrense.", hits.length) + '</p>' : "");
-  el.querySelectorAll(".lib-item").forEach(d =>
+    (antall > 50 ? '<p style="color:var(--muted); font-size:11px; margin-top:6px">' + t("Viser 50 av {0} treff – skriv mer for å avgrense.", antall) + '</p>' : "");
+  el.querySelectorAll(".lib-item[data-eid]").forEach(d =>
     d.addEventListener("click", () => zoomToElement(Number(d.dataset.eid))));
+  el.querySelectorAll(".lib-item[data-lag]").forEach(d =>
+    d.addEventListener("click", () => {
+      const h = eHits[Number(d.dataset.lag)];
+      if (h && h.lag.gaTil) h.lag.gaTil(h.id);
+    }));
 }
 
 // ---------- Mengder ----------
@@ -1178,7 +1202,10 @@ function computeQuantities() {
   }
   // 📦 Materiell-objektene får egne rader — parametriske tall fra målene
   // brukeren satte, ikke gjettet fra geometri (js/materiell-vis.js).
-  leggMateriellIMengder(groups, rows);
+  // 📦 / 🧱 Radene fra lagene ved siden av modellen. Materiellet sto her som
+  // et navngitt kall; SW-elementene manglet helt, så et halvt bygg kunne være
+  // generert uten å dukke opp i en eneste mengde. Nå spør vi etter evnen.
+  for (const l of ekstraLagSom("mengder")) l.mengder(groups, rows);
   const sortedRows = rows.sort((a, b) => a.key.localeCompare(b.key, "no") || a.id - b.id);
   return {
     groups: [...groups.entries()].sort((a, b) => b[1].count - a[1].count),
