@@ -614,6 +614,11 @@ export const ORDBOK = {
   // 🧱 Egenskapspanelet for ett SW-element (plukking og skjuling, 16.09)
   "Veggelement": { en: "Wall element", pl: "Element ścienny", lt: "Sienos elementas" },
   "Sandwich": { en: "Sandwich", pl: "Płyta warstwowa", lt: "Daugiasluoksnė plokštė" },
+  // 🏗 Størrelsesdialogen: het «Nytt prosjekt» og ble lest som at et nytt
+  // prosjekt skulle opprettes (Emil 16.09). Ingenting opprettes der.
+  "Hvor stor er modellen i prosjekt {0}?": { en: "How large is the model in project {0}?", pl: "Jak duży jest model w projekcie {0}?", lt: "Koks modelio dydis projekte {0}?" },
+  "Dette oppretter ingenting — opplastingen går til prosjektet du skrev inn. Spørsmålet kommer én gang per prosjekt, og svaret lagres på prosjektet.": { en: "This creates nothing \u2014 the upload goes to the project number you entered. The question is asked once per project, and the answer is stored on the project.", pl: "To niczego nie tworzy \u2014 przesyłanie trafia do wpisanego projektu. Pytanie pojawia się raz na projekt, a odpowiedź jest zapisywana przy projekcie.", lt: "Tai nieko nesukuria \u2014 įkėlimas keliauja į jūsų įvestą projektą. Klausimas užduodamas kartą per projektą, o atsakymas išsaugomas projekte." },
+  "Opplastingsnøkkelen ble ikke godtatt. Prøv igjen, så spør den om nøkkelen på nytt.": { en: "The upload key was not accepted. Try again and it will ask for the key anew.", pl: "Klucz przesyłania nie został zaakceptowany. Spróbuj ponownie, a zapyta o klucz na nowo.", lt: "Įkėlimo raktas nepriimtas. Bandykite dar kartą \u2014 rakto bus paprašyta iš naujo." },
   // 📁 Hvor lagrede SW-resultater og grupper havner (SharePoint, 16.09)
   "Lagres i SharePoint — alle med tilgang ser det samme.": { en: "Saved to SharePoint \u2014 everyone with access sees the same.", pl: "Zapisywane w SharePoint \u2014 wszyscy z dostępem widzą to samo.", lt: "Įrašoma į SharePoint \u2014 visi, turintys prieigą, mato tą patį." },
   "Får ikke kontakt med SharePoint. Lagres bare på denne maskinen inntil videre.": { en: "Cannot reach SharePoint. Saved only on this machine for now.", pl: "Brak połączenia z SharePoint. Na razie zapisywane tylko na tym komputerze.", lt: "Nepavyksta pasiekti SharePoint. Kol kas įrašoma tik šiame kompiuteryje." },
