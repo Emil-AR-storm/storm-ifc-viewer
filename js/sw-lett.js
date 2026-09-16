@@ -87,6 +87,9 @@ export function swLettElementer(data) {
   const ut = [];
   for (const e of liste) {
     if (!e || !(Number(e.l) > 0) || !(Number(e.h) > 0)) continue;
+    // Er elementet helt spist av en utsparing, står det ingenting igjen. Da
+    // skal det heller ikke tegnes som en hel kasse.
+    if (Array.isArray(e.b) && !e.b.length) continue;
     ut.push(Object.assign({}, e, {
       farge: e.k === "r" ? FARGER.r : (e.k === "i" ? FARGER.i : grunnfarge),
       trapes: e.hv !== undefined && e.hh !== undefined && Number(e.hv) !== Number(e.hh)
@@ -112,11 +115,44 @@ function byggGeometri(e) {
     form.lineTo(L / 2, hh);
     form.lineTo(-L / 2, hv);
     form.closePath();
+    // 🕳 Hakk i et skråkappet element: hull i selve formen, som på kontoret.
+    // Bitene rundt hakket ville mistet skråkuttet.
+    for (const h of (Array.isArray(e.hull) ? e.hull : [])) {
+      if (!Array.isArray(h) || h.length !== 4) continue;
+      const bane = new THREE.Path();
+      const a0 = -L / 2 + mm(h[0]), a1 = -L / 2 + mm(h[1]);
+      const b0 = mm(h[2]), b1 = mm(h[3]);
+      bane.moveTo(a0, b0); bane.lineTo(a1, b0); bane.lineTo(a1, b1); bane.lineTo(a0, b1);
+      bane.closePath();
+      form.holes.push(bane);
+    }
     const g = new THREE.ExtrudeGeometry(form, { depth: T, bevelEnabled: false });
     g.translate(0, -Math.max(hv, hh) / 2, -T / 2);
     return g;
   }
   return new THREE.BoxGeometry(L, mm(e.h), T);
+}
+
+// 🕳 ETT ELEMENT, FLERE BITER. Et panel som går FORBI en utsparing er ett
+// element i lista (SW-11 4620×1000), men står på bygget som bitene rundt
+// hakket. Uten dette ble kassa tegnet tvers over porten, og montøren fikk
+// beskjed om å montere et panel foran åpningen (Emils bilde 16.09).
+//
+// Bitene kommer FERDIG OPPDELT fra kontoret (rektMinusHull i
+// js/veggelement.js). Her plasseres de bare: `b` er [x0, x1, y0, y1] i
+// elementets egne mm — x fra venstre ende, y fra bunnen.
+function byggBiter(e, materiale) {
+  const L = mm(e.l), H = mm(e.h), T = mm(e.t);
+  const ut = [];
+  for (const b of e.b) {
+    if (!Array.isArray(b) || b.length !== 4) continue;
+    const bw = mm(b[1] - b[0]), bh = mm(b[3] - b[2]);
+    if (!(bw > 0) || !(bh > 0)) continue;
+    const bit = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, T), materiale);
+    bit.position.set(mm((b[0] + b[1]) / 2) - L / 2, mm((b[2] + b[3]) / 2) - H / 2, 0);
+    ut.push(bit);
+  }
+  return ut;
 }
 
 function ryddAlt() {
@@ -151,7 +187,13 @@ export function tegnSwLett(data) {
   };
   const visLapper = liste.length <= MAKS_LAPPER;
   for (const e of liste) {
-    const m = new THREE.Mesh(byggGeometri(e), hent(e.farge));
+    const materiale = hent(e.farge);
+    // Er elementet delt av en utsparing, står bitene i en gruppe som roteres
+    // og plasseres som ett element — da er biten i elementets egne mm, og
+    // plasseringen trenger ikke kunne noe om fasaden.
+    const m = e.b
+      ? (() => { const g = new THREE.Group(); for (const bit of byggBiter(e, materiale)) g.add(bit); return g; })()
+      : new THREE.Mesh(byggGeometri(e), materiale);
     m.position.set(Number(e.x) || 0, Number(e.y) || 0, Number(e.z) || 0);
     m.rotation.y = Number(e.rot) || 0;
     m.userData.swLettId = String(e.id || "");
