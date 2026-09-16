@@ -145,6 +145,7 @@ function oppdater(id, felter, angreTekst) {
   Object.assign(p, felter);
   tegnMateriell();
   meldEndret();
+  if (S.oppdaterVisAlle) S.oppdaterVisAlle();   // skjul/vis her styrer «Vis alle»
   if (angreTekst) {
     const etter = Object.assign({}, p);
     post(angreTekst,
@@ -428,6 +429,14 @@ på("btnMateriell", "click", () => {
 });
 
 // ---------- Panelet ----------
+// Krok: materiell-vis.js (og dermed «Vis alle») må kunne tegne lista på nytt
+// når skjulingen endres utenfra. Kan ikke importeres derfra — materiell.js
+// importerer materiell-vis.js, så det ville blitt en ring.
+S.tegnMateriellPanel = () => {
+  const p = $("materiellPanel");
+  if (p && p.classList.contains("open")) tegnPanel();
+};
+
 function tegnPanel() {
   const body = $("materiellBody");
   if (!body) return;

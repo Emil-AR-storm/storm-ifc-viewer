@@ -372,8 +372,37 @@ export function på(id, hendelse, fn, valg) {
 // det ville gitt en importring — og et nytt lag i scenen blir med ved å
 // registrere seg, ikke ved at noen husker å utvide en liste et tredje sted.
 export const EKSTRA_GRUPPER = [];
-export function registrerEkstraGruppe(g) {
-  if (g && !EKSTRA_GRUPPER.includes(g)) EKSTRA_GRUPPER.push(g);
+
+// ---------- Lagene og hva de KAN ----------
+// Ren liste holdt bare for Gjennomsiktig. De andre verktøyene har samme
+// blindsone — «Vis alle» hentet ikke fram skjult materiell eller SW, Mengder
+// teller dem ikke, Elementsøk finner dem ikke, og Del visning tar dem ikke med.
+// Å hardkode «materiell og SW» i hvert av de fire stedene ville vært den samme
+// feilen en femte gang: neste lag blir glemt fire steder samtidig.
+//
+// Derfor MELDER laget selv inn hva det kan. Et verktøy spør etter evnen, ikke
+// etter navnet: ekstraLagSom("visAlt") gir lagene som kan vise alt sitt igjen.
+// Kan et lag ikke en ting, står det bare ikke i svaret — ingen if-er å glemme.
+//
+// Evnene, slik de er nå:
+//   noeSkjult()            → true hvis noe i laget er skjult akkurat nå
+//   visAlt()               → hent fram alt i laget igjen
+//   skjulTilstand()        → avtrykk av skjulingen (rene verdier, til angre)
+//   settSkjulTilstand(v)   → legg avtrykket tilbake
+// Søk, mengder og deling kommer som egne evner i samme register.
+export const EKSTRA_LAG = [];
+
+export function registrerEkstraGruppe(g, kontrakt) {
+  if (!g) return;
+  if (!EKSTRA_GRUPPER.includes(g)) EKSTRA_GRUPPER.push(g);
+  if (EKSTRA_LAG.some(l => l.gruppe === g)) return;
+  EKSTRA_LAG.push(Object.assign({ id: "", navn: "", gruppe: g }, kontrakt || {}));
+}
+
+// Lagene som melder at de kan `evne`. Alltid en liste — også når den er tom,
+// så kallstedet kan løkke uten å sjekke.
+export function ekstraLagSom(evne) {
+  return EKSTRA_LAG.filter(l => typeof l[evne] === "function");
 }
 
 // ---------- Panelregister ----------

@@ -300,7 +300,41 @@ export function leggMateriellIMengder(groups, rows) {
 // ---------- three.js-bygging ----------
 export const materiellGroup = new THREE.Group();
 scene.add(materiellGroup);
-registrerEkstraGruppe(materiellGroup);   // så Gjennomsiktig o.l. også treffer materiellet
+// Laget melder inn hva det kan (se EKSTRA_LAG i js/state.js). Gjennomsiktig
+// trenger bare gruppa; «Vis alle» trenger å vite om noe er skjult og å kunne
+// hente det fram igjen — materiellet har TO skjulinger: per maltype (🎨
+// Utseende) og per objekt (p.skjult, fra 📦-panelet). Begge må med, ellers
+// står «Vis alle» der og ser ut som den ikke virker.
+registrerEkstraGruppe(materiellGroup, {
+  id: "materiell",
+  navn: "Materiell",
+  noeSkjult: () => skjulteMaltyper.size > 0 ||
+    (S.materiell || []).some(p => p && p.skjult),
+  visAlt() {
+    if (!this.noeSkjult()) return;
+    skjulteMaltyper.clear();
+    for (const p of (S.materiell || [])) if (p) p.skjult = false;
+    tegnMateriell();
+    lagreMateriellLokalt();
+    S.qtyCache = null;
+    if (S.tegnMateriellPanel) S.tegnMateriellPanel();
+  },
+  skjulTilstand: () => ({
+    maltyper: [...skjulteMaltyper],
+    ider: (S.materiell || []).filter(p => p && p.skjult).map(p => p.id)
+  }),
+  settSkjulTilstand(v) {
+    const t = v || {};
+    skjulteMaltyper.clear();
+    for (const k of (t.maltyper || [])) skjulteMaltyper.add(k);
+    const skjulte = new Set(t.ider || []);
+    for (const p of (S.materiell || [])) if (p) p.skjult = skjulte.has(p.id);
+    tegnMateriell();
+    lagreMateriellLokalt();
+    S.qtyCache = null;
+    if (S.tegnMateriellPanel) S.tegnMateriellPanel();
+  }
+});
 
 // Navnelappene skal ha konstant størrelse på skjermen, som kote-lappene.
 frameHooks.push(() => updateScreenScaled(materiellGroup));
@@ -637,6 +671,7 @@ S.materiellUtseendeRader = (body) => {
       else skjulteMaltyper.add(key);
       e.currentTarget.innerHTML = ikon(skjulteMaltyper.has(key) ? "skjul" : "vis");
       tegnMateriell();
+      if (S.oppdaterVisAlle) S.oppdaterVisAlle();   // «Vis alle» skal dukke opp
     };
   });
 };
