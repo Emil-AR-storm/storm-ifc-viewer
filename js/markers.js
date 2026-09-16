@@ -203,6 +203,9 @@ async function lastLettMarkeringer() {
       // 🎯 Objektgruppene reiser i samme fil (grupper-feltet).
       if (S.settGrupperFraLett)
         S.settGrupperFraLett(d && !Array.isArray(d) ? d.grupper : null);
+      // 🏗 SW-elementene: montøren ser hvor hvert panel skal stå
+      if (S.settSwFraLett)
+        S.settSwFraLett(d && !Array.isArray(d) ? d.sw : null);
     }
   } catch (e) {
     feil = (e && e.tidsavbrudd)
