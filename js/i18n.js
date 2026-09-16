@@ -614,6 +614,10 @@ export const ORDBOK = {
   // 🧱 Egenskapspanelet for ett SW-element (plukking og skjuling, 16.09)
   "Veggelement": { en: "Wall element", pl: "Element ścienny", lt: "Sienos elementas" },
   "Sandwich": { en: "Sandwich", pl: "Płyta warstwowa", lt: "Daugiasluoksnė plokštė" },
+  // 📁 Hvor lagrede SW-resultater og grupper havner (SharePoint, 16.09)
+  "Lagres i SharePoint — alle med tilgang ser det samme.": { en: "Saved to SharePoint \u2014 everyone with access sees the same.", pl: "Zapisywane w SharePoint \u2014 wszyscy z dostępem widzą to samo.", lt: "Įrašoma į SharePoint \u2014 visi, turintys prieigą, mato tą patį." },
+  "Får ikke kontakt med SharePoint. Lagres bare på denne maskinen inntil videre.": { en: "Cannot reach SharePoint. Saved only on this machine for now.", pl: "Brak połączenia z SharePoint. Na razie zapisywane tylko na tym komputerze.", lt: "Nepavyksta pasiekti SharePoint. Kol kas įrašoma tik šiame kompiuteryje." },
+  "Lagres bare på denne maskinen. Logg inn i Biblioteket for å dele med de andre.": { en: "Saved only on this machine. Sign in to the Library to share with the others.", pl: "Zapisywane tylko na tym komputerze. Zaloguj się do Biblioteki, aby udostępnić innym.", lt: "Įrašoma tik šiame kompiuteryje. Prisijunkite prie Bibliotekos, kad pasidalintumėte su kitais." },
   "Skjul dette elementet": { en: "Hide this element", pl: "Ukryj ten element", lt: "Slėpti šį elementą" },
   "Skjulte SW-elementer hentes fram igjen med «Vis alle».": { en: "Hidden SW elements are brought back with \u201cShow all\u201d.", pl: "Ukryte elementy SW przywraca \u201ePokaż wszystkie\u201d.", lt: "Paslėptus SW elementus grąžina \u201eRodyti visus\u201c." },
   "Innervegg": { en: "Inner wall", pl: "Ściana wewnętrzna", lt: "Vidinė siena" },

@@ -39,6 +39,9 @@ import { MALTYPER, lagreMateriellLokalt, mmTilScene, ribbonPosisjoner, settValgE
 // første gang noen la til en fil bare i den ene.
 import { hentLogo, hentLogoer } from "./tegninger.js";
 import { ryddLogonavn } from "./rapport.js";
+// 📁 Lagrede SW-resultater ligger i SharePoint, ikke bare i denne nettleseren.
+// Se js/sp-lager.js for hvorfor, og for flettingen.
+import { flettPaaNavn, spLes, spPaalogget, spSkriv } from "./sp-lager.js";
 
 // ---------- Konstanter (Emils regler) ----------
 // SKJØTEN ER 20 mm (Moelv/Lørenskog, bekreftet av Emil 02.09): hvert element
@@ -2123,17 +2126,59 @@ function ryddTegning() {
 // som når en fil åpnes på nytt. Lagringen er per modellfil, som resten av
 // SW-dataene.
 function lagredeNokkel() { return "storm-ifc-sw-lagrede::" + S.fileName; }
+const SW_SP_MAPPE = "SW-resultater";
+function swSpFil() { return S.fileName + ".sw.json"; }
 
-function lesLagrede() {
+// Status til panelet: sier rett ut om det du lagrer havner hos kollegaene
+// eller bare på denne maskinen. Uten den linja er «lagret» et løfte brukeren
+// ikke kan kontrollere.
+let swSpStatus = "av";   // "av" | "ok" | "feil"
+
+// RÅ liste, gravsteiner og alt. Brukes av lagring og fletting.
+function lesLagredeRaa() {
   try {
     const l = JSON.parse(localStorage.getItem(lagredeNokkel()) || "[]");
     return Array.isArray(l) ? l : [];
   } catch (_) { return []; }
 }
 
+// Det panelet skal vise: uten gravsteiner, nyeste først.
+function lesLagrede() {
+  return lesLagredeRaa().filter(p => p && !p.slettet)
+    .sort((a, b) => String(b.endret || b.dato || "").localeCompare(String(a.endret || a.dato || "")));
+}
+
 function skrivLagrede(liste) {
   try { localStorage.setItem(lagredeNokkel(), JSON.stringify(liste)); return true; }
   catch (_) { return false; }   // full localStorage — sier fra i stedet for å svelge det
+}
+
+// Lokalt FØRST, så SharePoint. Rekkefølgen er ikke tilfeldig: har du ikke
+// dekning, skal arbeidet likevel være lagret når du lukker fanen.
+function lagreBeggeSteder(liste) {
+  if (!skrivLagrede(liste)) return false;
+  if (!spPaalogget()) { swSpStatus = "av"; return true; }
+  spSkriv(SW_SP_MAPPE, swSpFil(), liste).then(res => {
+    swSpStatus = res.ok ? "ok" : "feil";
+    if (res.ok && res.liste) skrivLagrede(res.liste);   // kollegaenes poster kom med
+    tegnPanel();
+  });
+  return true;
+}
+
+// Hentes når en modell åpnes. Fasiten ligger i SharePoint, men en post du
+// lagret uten dekning skal ikke spises av en eldre utgave — derfor flettes det
+// på nyeste, ikke på «skya vinner».
+async function hentLagredeFraSp() {
+  if (!spPaalogget()) { swSpStatus = "av"; return; }
+  const forFil = S.fileName;
+  const res = await spLes(SW_SP_MAPPE, swSpFil());
+  if (S.fileName !== forFil) return;          // brukeren byttet modell underveis
+  swSpStatus = (res.status === "ok" || res.status === "tom") ? "ok" : "feil";
+  if (res.status === "ok" || res.status === "tom") {
+    skrivLagrede(flettPaaNavn(lesLagredeRaa(), res.liste));
+  }
+  tegnPanel();
 }
 
 // Øyeblikksbildet. Materiell-id-ene tas MED VILJE ikke med: de peker på
@@ -2160,18 +2205,32 @@ function lagreResultat(navn) {
   if (!lagret || !(lagret.vegger || []).length) {
     alert(t("Generer veggelementene først.")); return;
   }
-  const liste = lesLagrede();
+  const liste = lesLagredeRaa();
   const fra_for = liste.findIndex(p => p.navn === rent);
-  if (fra_for >= 0 && !confirm(t("«{0}» finnes allerede. Skal den skrives over?", rent))) return;
-  const post = { navn: rent, dato: new Date().toISOString().slice(0, 10),
+  // En gravstein er ikke «finnes allerede» — den er et slettet navn som blir
+  // ledig igjen. Spør vi om overskriving der, spør vi om noe som ikke er der.
+  if (fra_for >= 0 && !liste[fra_for].slettet
+      && !confirm(t("«{0}» finnes allerede. Skal den skrives over?", rent))) return;
+  const naa = new Date();
+  const post = { navn: rent, dato: naa.toISOString().slice(0, 10),
+    endret: naa.toISOString(), av: swMittNavn(),
     antall: (lagret.vegger || []).filter(v => !v.skjult).length,
     data: swOyeblikksbilde() };
   if (fra_for >= 0) liste[fra_for] = post; else liste.push(post);
-  if (!skrivLagrede(liste)) {
+  if (!lagreBeggeSteder(liste)) {
     alert(t("Klarte ikke å lagre — nettleserens lagring er full. Slett et gammelt resultat og prøv igjen."));
     return;
   }
   tegnPanel();
+}
+
+// Hvem som lagret, så kollegaen ser hvem resultatet kommer fra. Tom streng
+// uten innlogging — da er det uansett bare din egen maskin som ser posten.
+function swMittNavn() {
+  try {
+    const acc = S.msalApp && S.msalApp.getActiveAccount();
+    return (acc && (acc.name || acc.username)) || "";
+  } catch (_) { return ""; }
 }
 
 function lastInnResultat(navn) {
@@ -2189,9 +2248,20 @@ function lastInnResultat(navn) {
   if (S.tegnUtseendePanel) S.tegnUtseendePanel();
 }
 
+// Sletting setter en GRAVSTEIN (se js/sp-lager.js). Fjernet vi posten helt,
+// ville den kommet tilbake ved neste fletting fra SharePoint — den ligger jo
+// der, og flettingen kan ikke se forskjell på «slettet» og «ikke hentet ennå».
+function swLagringsTekst() {
+  if (swSpStatus === "ok") return t("Lagres i SharePoint — alle med tilgang ser det samme.");
+  if (swSpStatus === "feil") return t("Får ikke kontakt med SharePoint. Lagres bare på denne maskinen inntil videre.");
+  return t("Lagres bare på denne maskinen. Logg inn i Biblioteket for å dele med de andre.");
+}
+
 function slettResultat(navn) {
   if (!confirm(t("Slette «{0}»?", navn))) return;
-  skrivLagrede(lesLagrede().filter(p => p.navn !== navn));
+  const liste = lesLagredeRaa().map(p => p.navn === navn
+    ? { navn: p.navn, slettet: true, endret: new Date().toISOString() } : p);
+  lagreBeggeSteder(liste);
   tegnPanel();
 }
 
@@ -2723,6 +2793,9 @@ S.lastSW = () => {
   lesSkjulteIder();            // 👁 må leses FØR tegnAlt, ellers blinker de fram
   loesAlleJusteringer();
   tegnAlt();
+  // Lagrede resultater hentes fra SharePoint i bakgrunnen. Ikke ventet på:
+  // modellen skal stå på skjermen med en gang, også uten dekning.
+  hentLagredeFraSp();
   // 🚪 ÉN GANGS OPPRYDDING (runde 24): innervegger bygget med den gamle,
   // romslige åpningsregelen kan ha fått en utsparing fra en vegg PÅ TVERS.
   // De bygges på nytt én gang per fil; merket hindrer at det gjentas.
@@ -5295,6 +5368,10 @@ function tegnPanel() {
     '<h4 data-sek="lagrede" style="margin:14px 0 4px">' + t("Lagrede SW-resultater") + '</h4>' +
     '<p style="color:var(--muted);font-size:11px;margin:2px 0 6px">' +
       t("Gi resultatet et navn og lagre det. Trykk på navnet senere for å laste hele resultatet inn på bygget igjen.") + '</p>' +
+    // Hvor det lagres, sagt rett ut. «Lagret» uten dette er et løfte brukeren
+    // ikke kan kontrollere — og forskjellen på «alle ser det» og «bare denne
+    // maskinen» er hele poenget med at det ligger i SharePoint.
+    '<p style="color:var(--muted);font-size:11px;margin:0 0 6px">' + esc(swLagringsTekst()) + '</p>' +
     '<div class="prop-actions sw-lagre">' +
       '<input type="text" id="swLagreNavn" maxlength="60" placeholder="' +
       esc(t("Navn på resultatet")) + '">' +
@@ -5305,7 +5382,7 @@ function tegnPanel() {
           '<button class="sw-last" data-sw-last="' + esc(pst.navn) + '">' +
           esc(pst.navn) + '</button>' +
           ' <span style="color:var(--muted);font-size:11px">' +
-          esc([pst.dato, pst.antall ? t("{0} element", pst.antall) : ""].filter(Boolean).join(" · ")) +
+          esc([pst.dato, pst.antall ? t("{0} element", pst.antall) : "", pst.av || ""].filter(Boolean).join(" · ")) +
           '</span></div>' +
         '<div class="c"><button data-sw-slett-lagret="' + esc(pst.navn) + '" title="' + t("Slett") +
         '" style="padding:3px 8px">' + ikon("slett") + '</button></div></div>').join("")

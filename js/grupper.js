@@ -19,6 +19,9 @@ import { camera, controls } from "./scene.js";
 import { allElementBoxes } from "./elements.js";
 import { hiddenIDs, hideElements, showElements } from "./display.js";
 import { mmTilScene } from "./materiell-vis.js";
+// 📁 Lagrede grupper ligger i SharePoint, ikke bare i denne nettleseren.
+// Se js/sp-lager.js for hvorfor, og for flettingen.
+import { flettPaaId, spLes, spPaalogget, spSkriv } from "./sp-lager.js";
 
 const LETT = document.documentElement.dataset.lett === "1";
 export const GRUPPE_MAKS_ELEMENTER = 5000;
@@ -29,25 +32,99 @@ export function vaskGruppe(g) {
   if (!g.id || typeof g.id !== "string") return null;
   const navn = String(g.navn || "").slice(0, 80).trim();
   if (!navn) return null;
+  // Synkfeltene: `endret` avgjør hvem som vinner ved fletting, `av` viser hvem
+  // som lagret. Begge er tekst og vaskes som tekst — de kommer fra en fil i
+  // SharePoint, og en fil kan inneholde hva som helst.
+  const endret = String(g.endret || "").slice(0, 40);
+  const av = String(g.av || "").slice(0, 60);
+  // 🪦 En GRAVSTEIN har ingen elementer, og skal likevel slippe gjennom: uten
+  // den kommer en slettet gruppe tilbake ved neste fletting fra SharePoint.
+  // Se js/sp-lager.js. Den filtreres bort overalt der grupper VISES.
+  if (g.slettet === true) return { id: g.id.slice(0, 40), navn, slettet: true, endret };
+  // > 0, ikke bare «et tall»: Number(null) og Number("") er 0, og 0 er en
+  // gyldig ExpressID å slå opp. En gruppe med en null i lista fikk derfor med
+  // seg element 0 — et element brukeren aldri hadde valgt. ExpressID-er
+  // begynner på 1, så terskelen koster ingenting ekte.
   const ids = Array.isArray(g.ids)
-    ? g.ids.map(Number).filter(Number.isFinite).slice(0, GRUPPE_MAKS_ELEMENTER)
+    ? g.ids.map(Number).filter(n => Number.isFinite(n) && n > 0).slice(0, GRUPPE_MAKS_ELEMENTER)
     : [];
   if (!ids.length) return null;
-  return { id: g.id.slice(0, 40), navn, ids };
+  return { id: g.id.slice(0, 40), navn, ids, endret, av };
 }
 
 export function vaskGruppeListe(liste) {
   return (Array.isArray(liste) ? liste : []).map(vaskGruppe).filter(Boolean);
 }
 
-export function grupperForEksport() { return vaskGruppeListe(S.grupper); }
+// Det byggeplassen skal ha: bare ekte grupper, og bare feltene den bruker.
+// Gravsteiner og synkfelt hører hjemme i lagringen, ikke i Workerens JSON.
+export function grupperForEksport() {
+  return vaskGruppeListe(S.grupper)
+    .filter(g => !g.slettet)
+    .map(g => ({ id: g.id, navn: g.navn, ids: g.ids }));
+}
+
+// Det som skal LAGRES: alt, gravsteiner og synkfelt inkludert.
+export function grupperForLagring() { return vaskGruppeListe(S.grupper); }
+
+// Det panelet skal VISE.
+function synligeGrupper() { return vaskGruppeListe(S.grupper).filter(g => !g.slettet); }
 
 // ---------- Lagring (kontor) ----------
 function lagringsNokkel() { return "storm-ifc-grupper::" + S.fileName; }
 
+const GR_SP_MAPPE = "Grupper";
+function grSpFil() { return S.fileName + ".grupper.json"; }
+
+// "av" | "ok" | "feil" — vises i panelet, så brukeren vet om gruppa havner
+// hos kollegaene eller bare på denne maskinen.
+let grSpStatus = "av";
+
 function lagreLokalt() {
   if (LETT) return;   // på byggeplassen eies dataene av Workeren
-  try { localStorage.setItem(lagringsNokkel(), JSON.stringify(grupperForEksport())); } catch (_) {}
+  try { localStorage.setItem(lagringsNokkel(), JSON.stringify(grupperForLagring())); } catch (_) {}
+}
+
+// Lokalt FØRST, så SharePoint: har du ikke dekning, skal gruppa likevel være
+// lagret når du lukker fanen.
+function lagreBeggeSteder() {
+  lagreLokalt();
+  if (LETT) return;
+  if (!spPaalogget()) { grSpStatus = "av"; return; }
+  spSkriv(GR_SP_MAPPE, grSpFil(), grupperForLagring(), (g) => String(g && g.id || "")).then(res => {
+    grSpStatus = res.ok ? "ok" : "feil";
+    if (res.ok && res.liste) { S.grupper = vaskGruppeListe(res.liste); lagreLokalt(); }
+    if (erApen()) tegnPanel();
+  });
+}
+
+// Hentes når en modell åpnes. Nyeste `endret` vinner — ikke «skya vinner», for
+// da ville en gruppe du lagret uten dekning blitt spist av en eldre utgave.
+async function hentGrupperFraSp() {
+  if (LETT || !spPaalogget()) { grSpStatus = "av"; return; }
+  const forFil = S.fileName;
+  const res = await spLes(GR_SP_MAPPE, grSpFil());
+  if (S.fileName !== forFil) return;      // brukeren byttet modell underveis
+  grSpStatus = (res.status === "ok" || res.status === "tom") ? "ok" : "feil";
+  if (grSpStatus === "ok") {
+    S.grupper = vaskGruppeListe(flettPaaId(grupperForLagring(), vaskGruppeListe(res.liste)));
+    lagreLokalt();
+  }
+  if (erApen()) tegnPanel();
+}
+
+// Hvem som lagret, så kollegaen ser hvor gruppa kommer fra.
+function mittNavn() {
+  try {
+    const acc = S.msalApp && S.msalApp.getActiveAccount();
+    return (acc && (acc.name || acc.username)) || "";
+  } catch (_) { return ""; }
+}
+
+function grLagringsTekst() {
+  if (grSpStatus === "ok") return t("Lagres i SharePoint — alle med tilgang ser det samme.");
+  if (grSpStatus === "feil") return t("Får ikke kontakt med SharePoint. Lagres bare på denne maskinen inntil videre.");
+  return t("Lagres bare på denne maskinen. Logg inn i Biblioteket for å dele med de andre.");
 }
 
 function lesLokalt() {
@@ -62,6 +139,7 @@ S.lastGrupper = () => {
   if (LETT) return;
   S.grupper = lesLokalt();
   if (erApen()) tegnPanel();
+  hentGrupperFraSp();   // i bakgrunnen — modellen skal stå på skjermen straks
 };
 
 S.settGrupperFraLett = (liste) => {
@@ -136,8 +214,10 @@ function nyId() {
 }
 
 function leggTil(g, medAngre) {
-  S.grupper = (S.grupper || []).concat([g]);
-  lagreLokalt();
+  // Samme id på nytt er en OPPDATERING, ikke en kopi: angre-av-en-sletting
+  // legger gruppa tilbake, og da skal gravsteinen byttes ut, ikke få selskap.
+  S.grupper = (S.grupper || []).filter(x => x.id !== g.id).concat([g]);
+  lagreBeggeSteder();
   tegnPanel();
   if (medAngre && S.pushAngre) S.pushAngre({
     tekst: "Gruppe lagret",
@@ -146,11 +226,14 @@ function leggTil(g, medAngre) {
   });
 }
 
+// Sletting setter en GRAVSTEIN (se js/sp-lager.js): fjernet vi gruppa helt,
+// ville den kommet tilbake ved neste fletting fra SharePoint.
 function fjern(id, medAngre) {
   const g = (S.grupper || []).find(x => x.id === id);
   if (!g) return;
-  S.grupper = S.grupper.filter(x => x.id !== id);
-  lagreLokalt();
+  S.grupper = (S.grupper || []).map(x => x.id === id
+    ? { id: x.id, navn: x.navn, slettet: true, endret: new Date().toISOString() } : x);
+  lagreBeggeSteder();
   tegnPanel();
   if (medAngre && S.pushAngre) S.pushAngre({
     tekst: "Gruppe slettet",
@@ -176,9 +259,12 @@ function tegnPanel() {
       '<div class="prop-actions"><button id="grLagre" class="primary"' + (valgte.length ? "" : " disabled") + ">" +
       ikon("lagre") + " " + t("Lagre valgte som gruppe") + (valgte.length ? " (" + valgte.length + ")" : "") + "</button></div>" +
       (valgte.length ? "" :
-        '<p style="color:var(--muted);font-size:12px">' + t("Velg elementer først: shift-klikk eller shift-dra i modellen.") + "</p>");
+        '<p style="color:var(--muted);font-size:12px">' + t("Velg elementer først: shift-klikk eller shift-dra i modellen.") + "</p>") +
+      // Hvor det lagres, sagt rett ut — forskjellen på «alle ser det» og «bare
+      // denne maskinen» er hele poenget med at det ligger i SharePoint.
+      '<p style="color:var(--muted);font-size:11px;margin:2px 0 0">' + esc(grLagringsTekst()) + '</p>';
   }
-  const liste = vaskGruppeListe(S.grupper);
+  const liste = synligeGrupper();
   html += '<h4 style="margin:12px 0 4px">' + t("Lagrede grupper") +
     ' <span style="color:var(--muted);font-size:11px">(' + liste.length + ')</span></h4>';
   if (!liste.length) {
@@ -188,7 +274,8 @@ function tegnPanel() {
     html += liste.map(g =>
       '<div class="qty-row"><div class="n" data-gr-vis="' + esc(g.id) + '" style="cursor:pointer">' +
       ikon("fokus") + " " + esc(g.navn) +
-      ' <span style="color:var(--muted);font-size:11px">' + g.ids.length + t(" stk") + "</span></div>" +
+      ' <span style="color:var(--muted);font-size:11px">' + g.ids.length + t(" stk") +
+      (g.av ? " · " + esc(g.av) : "") + "</span></div>" +
       '<div class="c">' + (LETT ? "" :
       '<button data-gr-slett="' + esc(g.id) + '" title="' + t("Slett") + '" style="padding:3px 8px">' + ikon("slett") + "</button>") +
       "</div></div>").join("") +
@@ -202,11 +289,12 @@ function tegnPanel() {
     if (!navn) { alert(t("Gi gruppen et navn først.")); return; }
     const ids = valgteIder();
     if (!ids.length) return;
-    leggTil({ id: nyId(), navn: navn.slice(0, 80), ids }, true);
+    leggTil({ id: nyId(), navn: navn.slice(0, 80), ids,
+      endret: new Date().toISOString(), av: mittNavn() }, true);
   };
   body.querySelectorAll("[data-gr-vis]").forEach(d =>
     d.onclick = () => {
-      const g = vaskGruppeListe(S.grupper).find(x => x.id === d.dataset.grVis);
+      const g = synligeGrupper().find(x => x.id === d.dataset.grVis);
       if (g) aktiverGruppe(g);
     });
   body.querySelectorAll("button[data-gr-slett]").forEach(b =>
