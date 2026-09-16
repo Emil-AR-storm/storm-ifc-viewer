@@ -33,7 +33,7 @@ import { allElementBoxes, forHverTrekant, hitID, lastNedXlsxFlere, pick, sumForm
 import { materiellListe, materiellRader } from "./sw-materiell.js";
 import { alleElementIder } from "./ifc.js";
 import { metaFor, sikreMeta } from "./ifcrpc.js";
-import { MALTYPER, lagreMateriellLokalt, mmTilScene, ribbonPosisjoner, tegnMateriell, trpProfil, vaskMateriell } from "./materiell-vis.js";
+import { MALTYPER, lagreMateriellLokalt, mmTilScene, ribbonPosisjoner, settValgEffekt, tegnMateriell, trpProfil, vaskMateriell } from "./materiell-vis.js";
 // 🖼 Logoene i tittelfeltet kommer fra SAMME SharePoint-mappe som rapportens,
 // gjennom samme to funksjoner. To lister med logoer ville drevet fra hverandre
 // første gang noen la til en fil bare i den ene.
@@ -1766,31 +1766,130 @@ scene.add(swGroup);
 registrerEkstraGruppe(swGroup, {
   id: "sw",
   navn: "SW-elementer",
-  noeSkjult: () => Object.values((lagret && lagret.skjul) || {}).some(Boolean) ||
+  noeSkjult: () => swSkjultId.size > 0 ||
+    Object.values((lagret && lagret.skjul) || {}).some(Boolean) ||
     Object.values((lagretInner && lagretInner.skjul) || {}).some(Boolean),
   visAlt() {
     if (!this.noeSkjult()) return;
-    if (lagret) { lagret.skjul = {}; skrivLagret(); }
-    if (lagretInner) { lagretInner.skjul = {}; skrivInner(); }
+    swSkjultId.clear();
+    if (lagret) { lagret.skjul = {}; }
+    if (lagretInner) { lagretInner.skjul = {}; }
+    skrivSkjulteIder();
+    if (lagret) skrivLagret();
+    if (lagretInner) skrivInner();
     tegnAlt();
     if (S.tegnUtseendePanel) S.tegnUtseendePanel();
   },
   skjulTilstand: () => ({
     ytre: Object.assign({}, (lagret && lagret.skjul) || {}),
-    indre: Object.assign({}, (lagretInner && lagretInner.skjul) || {})
+    indre: Object.assign({}, (lagretInner && lagretInner.skjul) || {}),
+    ider: [...swSkjultId]
   }),
   settSkjulTilstand(v) {
     const t = v || {};
-    if (lagret) { lagret.skjul = Object.assign({}, t.ytre || {}); skrivLagret(); }
-    if (lagretInner) { lagretInner.skjul = Object.assign({}, t.indre || {}); skrivInner(); }
+    if (lagret) { lagret.skjul = Object.assign({}, t.ytre || {}); }
+    if (lagretInner) { lagretInner.skjul = Object.assign({}, t.indre || {}); }
+    swSkjultId.clear();
+    for (const id of (t.ider || [])) swSkjultId.add(id);
+    skrivSkjulteIder();
+    if (lagret) skrivLagret();
+    if (lagretInner) skrivInner();
     tegnAlt();
     if (S.tegnUtseendePanel) S.tegnUtseendePanel();
+  },
+
+  // ---------- Plukking, valg og skjuling ett og ett ----------
+  // pick() i elements.js ser BARE S.modelGroup, med vilje. Derfor svarer laget
+  // selv på «hva ligger under pekeren her» — og gir avstanden, så kallstedet
+  // kan avgjøre hvem som lå nærmest kameraet: modellen, materiellet eller SW.
+  plukk(cx, cy) {
+    if (!swGroup.children.length) return null;
+    const tr = pekVegg(cx, cy);
+    if (!tr) return null;
+    return { id: tr.v.id, navn: tr.v.sw || "", avstand: camera.position.distanceTo(tr.punkt) };
+  },
+  velg(ider) {
+    const nye = new Set(ider || []);
+    // Ingen endring? Ikke mal om. oppdaterSwValgEffekt går gjennom hele
+    // swGroup, og clearSelection() kalles ved hver eneste visningsendring.
+    if (nye.size === swValgt.size && [...nye].every(id => swValgt.has(id))) return;
+    swValgt.clear();
+    for (const id of nye) swValgt.add(id);
+    oppdaterSwValgEffekt();
+  },
+  valgte: () => [...swValgt],
+  skjul(ider) {
+    let nye = 0;
+    for (const id of (ider || [])) if (!swSkjultId.has(id)) { swSkjultId.add(id); nye++; }
+    if (!nye) return;
+    for (const id of (ider || [])) swValgt.delete(id);
+    skrivSkjulteIder();
+    tegnAlt();
+    $("propPanel").classList.remove("open");
+    if (S.oppdaterVisAlle) S.oppdaterVisAlle();
+  },
+
+  // Egenskapspanelet for ett SW-element. Bor her og ikke i elements.js fordi
+  // det er SW-tallene som skal stå der — og fordi «Skjul dette elementet» må
+  // treffe dette lagets skjuling, ikke modellens hiddenIDs.
+  visEgenskaper(id) {
+    const v = veggMedId(id);
+    if (!v) return;
+    const rad = (k, val) => '<div class="prop-row"><div class="k">' + esc(k) +
+      '</div><div class="v">' + esc(String(val)) + '</div></div>';
+    const erRm = !!v.ringmur;
+    $("propTitle").textContent = erRm ? t("Ringmur") : (v.sw || t("Veggelement"));
+    $("propBody").innerHTML =
+      '<div class="prop-actions"><button id="paSkjulSw">' + ikon("skjul") + ' ' +
+      t("Skjul dette elementet") + '</button></div>' +
+      rad(t("Type"), erRm ? t("Ringmur") : (v.inner ? t("Innervegg") : t("Yttervegg"))) +
+      (v.sw ? rad(t("SW-nummer"), v.sw) : "") +
+      rad(t("Lengde"), (v.lengdeMm || 0) + " mm") +
+      rad(t("Høyde"), v.skra ? (v.hVMm + "/" + v.hHMm + " mm") : ((v.hoydeMm || 0) + " mm")) +
+      rad(t("Tykkelse"), (v.tMm || 0) + " mm") +
+      '<p style="color:var(--muted); font-size:11px; margin-top:8px">' +
+      t("Skjulte SW-elementer hentes fram igjen med «Vis alle».") + '</p>';
+    $("paSkjulSw").onclick = () => this.skjul([id]);
+    apnePanel("propPanel");
   }
 });
 
 function lagringsNokkel() { return "storm-ifc-sw::" + S.fileName; }
 
 let lagret = null;   // { oppsett, vegger, gulv, ringmur, materiellIder }
+
+// ---------- 👁 Skjult ETT OG ETT, og 🔵 valgt ----------
+// Rad-skjulingen i 🎨 Utseende tar hele grupper: «alle veggelementer», «all
+// ringmur». Det Emil trengte 16.09 var det motsatte — å ta bort ETT panel for
+// å se stålsøyla bak det. Den veien fantes ikke: SW-elementene var ikke
+// plukkbare i det hele tatt utenfor justeringsmodus.
+//
+// Id-ene lagres per fil sammen med resten av SW-dataene. Innerveggene har
+// id-er som starter med «i» (iv3, ir7) og ytterveggene «v»/«r», så settet kan
+// deles mellom de to lagringene uten å slå opp hvert element.
+const swSkjultId = new Set();
+const swValgt = new Set();
+
+function lesSkjulteIder() {
+  swSkjultId.clear();
+  swValgt.clear();
+  for (const b of [lagret, lagretInner])
+    for (const id of ((b && b.skjulteIder) || [])) swSkjultId.add(id);
+}
+
+function skrivSkjulteIder() {
+  const ytre = [], indre = [];
+  for (const id of swSkjultId) (String(id).startsWith("i") ? indre : ytre).push(id);
+  if (lagret) { lagret.skjulteIder = ytre; skrivLagret(); }
+  if (lagretInner) { lagretInner.skjulteIder = indre; skrivInner(); }
+}
+
+// Samme blå som elementvalget i modellen — «valgt» skal se likt ut uansett hva
+// du trykte på. Males om etter hver tegnAlt(), for da er meshene nye objekter
+// med nye materialer som ikke vet at noe var valgt.
+function oppdaterSwValgEffekt() {
+  swGroup.children.forEach(o => settValgEffekt(o, swValgt.has(o.userData.swId)));
+}
 // 🔍 «Finn utsparinger»-modus: { kandidater: [{ k, paa, mesh }], gruppe, ned }.
 // Deklareres her av samme grunn som `just` under.
 let finnMark = null;
@@ -2108,6 +2207,7 @@ function tegnRingmurBiter(biter, visMerking) {
   const visRmLapper = (biter || []).length <= 400 && !!visMerking;
   for (const r of biter || []) {
     if (r.skjult || (r.lengdeMm !== undefined && !(r.lengdeMm > 0))) continue;
+    if (swSkjultId.has(r.id)) continue;           // 👁 skjult enkeltvis
     const m = boks("#8a8f98", 1);
     m.scale.set(r.lengde, r.hoyde, r.tykkelse);
     m.position.set(r.x, r.y, r.z);
@@ -2245,6 +2345,7 @@ function tegnVeggElementer(vegger, o, visMerking) {
   };
   for (const v of vegger || []) {
     if (v.skjult || !(v.lengdeMm > 0)) continue;   // dratt bort, men ikke slettet
+    if (swSkjultId.has(v.id)) continue;           // 👁 skjult enkeltvis
     const el = new THREE.Group();
     // 🚪 HAKK ETTER UTSPARINGER: elementet er ÉTT element i lista med full
     // høyde og full feltlengde (Moelv SW-11 4620MM med vindu i), men tegnes
@@ -2332,6 +2433,7 @@ function tegnAlt() {
   // vet at Gjennomsiktig står på. Uten dette kom elementer generert MENS ghost
   // var på ut solide midt i en gjennomsiktig modell.
   if (S.ghostPaaNytt) S.ghostPaaNytt();
+  oppdaterSwValgEffekt();
 }
 
 function tegnDelA() {
@@ -2532,6 +2634,7 @@ function tekstDekal(tekst, hoydeMm, maksBredde) {
 S.lastSW = () => {
   lagret = lesLagret();
   lagretInner = lesInner();    // 🚪 leses fra sin egen nøkkel, per fil
+  lesSkjulteIder();            // 👁 må leses FØR tegnAlt, ellers blinker de fram
   loesAlleJusteringer();
   tegnAlt();
   // 🚪 ÉN GANGS OPPRYDDING (runde 24): innervegger bygget med den gamle,

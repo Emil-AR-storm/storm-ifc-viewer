@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { $, S, fmtLen, loadingEl, loadingText, tilM } from "./state.js";
 import { oversettDom, setLang, t } from "./i18n.js";
 import { setClipFromFace } from "./clip.js";
-import { clearSelection, hitID, pick, selectElement, showProperties } from "./elements.js";
+import { clearSelection, hitID, pick, pickEkstra, selectElement, showProperties } from "./elements.js";
 import { afterLoad, ifcReady, loadModel } from "./ifc.js";
 import { closeMarkerPopup, forberedNyMarkering, openMarkerPopup, pickMarker } from "./markers.js";
 import { addMeasure, koteValue, rettPunkt, snapPoint } from "./measure.js";
@@ -78,6 +78,20 @@ canvas.addEventListener("pointerup", (e) => {
     closeMarkerPopup();
   }
   const hit = pick(e.clientX, e.clientY);
+  // 🧱 SW-elementene bor i sin egen gruppe, som pick() ikke ser. Ligger et av
+  // dem nærmere kameraet enn modelltreffet, er DET du trykte på — samme regel
+  // som for materiellet i shift-klikket. Uten dette kunne ikke et SW-element
+  // velges i det hele tatt, og da fantes det heller ingen vei til å skjule ett
+  // av dem for å se stålsøyla bak (Emils funn 16.09).
+  if (!S.mode && !e.shiftKey) {
+    const ek = pickEkstra(e.clientX, e.clientY);
+    if (ek && (!hit || ek.avstand < hit.distance)) {
+      clearSelection();
+      ek.lag.velg([ek.id]);
+      if (ek.lag.visEgenskaper) ek.lag.visEgenskaper(ek.id);
+      return;
+    }
+  }
   if (!hit) {
     // Shift eies av flervalget (elements.js) — og det kan ha truffet MATERIELL,
     // som pick() med vilje ikke ser. Uten shift-unntaket her ble et shift-klikk
