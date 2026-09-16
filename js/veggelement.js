@@ -28,7 +28,7 @@
 import * as THREE from "three";
 import { $, S, apnePanel, esc, ikon, på, registrerEkstraGruppe } from "./state.js";
 import { t } from "./i18n.js";
-import { camera, canvas, raycaster, scene } from "./scene.js";
+import { camera, canvas, flyTil, raycaster, scene } from "./scene.js";
 import { allElementBoxes, forHverTrekant, hitID, lastNedXlsxFlere, pick, sumFormel } from "./elements.js";
 import { materiellListe, materiellRader } from "./sw-materiell.js";
 import { alleElementIder } from "./ifc.js";
@@ -1851,8 +1851,94 @@ registrerEkstraGruppe(swGroup, {
       t("Skjulte SW-elementer hentes fram igjen med «Vis alle».") + '</p>';
     $("paSkjulSw").onclick = () => this.skjul([id]);
     apnePanel("propPanel");
+  },
+
+  // ---------- 📊 Mengder og 🔎 Elementsøk ----------
+  mengder: (groups, rows) => leggSwIMengder(groups, rows),
+  sokRader: () => swAlle().map(({ v, erRm }) => {
+    const navn = erRm ? t("Ringmur") : (v.sw || t("Veggelement"));
+    const maal = (v.lengdeMm || 0) + "×" + swHoydeMm(v) + " mm";
+    const under = [v.inner ? t("Innervegg") : t("Yttervegg"), maal].join(" · ");
+    return { id: v.id, navn, under, s: (navn + " " + under + " " + v.id).toLowerCase() };
+  }),
+  gaTil(id) {
+    const v = veggMedId(id);
+    if (!v) return;
+    flyTil(new THREE.Vector3(v.x, v.y, v.z),
+           Math.max(tilScene(v.lengdeMm || 0), tilScene(swHoydeMm(v))));
+    this.velg([id]);
+    this.visEgenskaper(id);
   }
 });
+
+// ---------- Mengder og søk: de genererte elementene som rader ----------
+// HVORFOR DE MÅ VÆRE MED. SW-elementene er ikke i IFC-fila — de er generert
+// her. Mengder gikk bare gjennom S.modelGroup, så et bygg som var fullt
+// generert kunne vise null sandwich og null ringmur i uttaket. Den feilen ser
+// ikke gal ut: tallene STÅR der, de er bare for lave.
+//
+// `v.skjult` betyr «dratt bort, ikke slettet» og teller derfor ikke. Skjult
+// med øyeknappen eller 🎨-rada er en VISNINGStilstand og teller fortsatt —
+// mengden er bestilt uansett om du ser den på skjermen akkurat nå.
+function swAlle() {
+  const ut = [];
+  for (const b of [lagret, lagretInner]) {
+    if (!b) continue;
+    for (const v of (b.vegger || []))
+      if (!v.skjult && v.lengdeMm > 0) ut.push({ v, erRm: false });
+    for (const r of (b.ringmur || []))
+      if (!r.skjult && (r.lengdeMm === undefined || r.lengdeMm > 0)) ut.push({ v: r, erRm: true });
+  }
+  return ut;
+}
+
+// Skråkappede elementer har to endehøyder. Gjennomsnittet er den riktige
+// mengden: arealet av en trapes er middelhøyden ganger lengden.
+function swHoydeMm(v) {
+  if (v.skra && v.hVMm !== undefined && v.hHMm !== undefined) return Math.round((v.hVMm + v.hHMm) / 2);
+  return v.hoydeMm || 0;
+}
+
+// REN TALLFUNKSJON, uten three.js og uten lagringen — prøves i
+// _test/test-veggelement.mjs. Tekstene kommer inn som `tekst` (t-funksjonen)
+// av samme grunn som i sw-materiell.js: da kan regelen prøves uten ordboken.
+export function swMengdeRad(v, erRm, tekst) {
+  const tt = tekst || ((x) => x);
+  const L = (v.lengdeMm || 0) / 1000;
+  const H = swHoydeMm(v) / 1000;
+  const T = (v.tMm || 0) / 1000;
+  const material = erRm ? tt("Betong") : tt("Sandwich");
+  const navn = erRm ? tt("Ringmur") : (v.sw || tt("Veggelement"));
+  const key = navn + " · " + (v.inner ? tt("Innervegg") : tt("Yttervegg"));
+  // Areal = VEGGLIVET, samme mål som Mengder ellers kaller «største flate»:
+  // det er etter det isolasjon, kledning og forskaling bestilles.
+  const area = L * H;
+  // Forskaling bare på betongen, og bare sidene — toppen er støpeflate.
+  // Samme regel som hovedløkka i js/elements.js: stål forskales ikke, og en
+  // forskalingsmengde på et sandwichpanel ville sett ut som noe å prise.
+  const forskaling = erRm ? 2 * L * H : 0;
+  return {
+    key: key + " · " + material, name: navn, objType: key,
+    type: "SW", material,
+    L, B: H, H: T, len: Math.max(L, H, T),
+    vol: L * H * T, area, flate: area, forskaling,
+    kg: 0, kgGeo: 0, kjentVekt: false, umuligVolum: false,
+    vektKilde: "", profil: "", nomKgPerM: 0, avvik: null
+  };
+}
+
+function leggSwIMengder(groups, rows) {
+  for (const { v, erRm } of swAlle()) {
+    const r = swMengdeRad(v, erRm, t);
+    if (!groups.has(r.key)) groups.set(r.key,
+      { count: 0, length: 0, vol: 0, area: 0, flate: 0, forskaling: 0, kg: 0, kgGeo: 0,
+        utenVekt: 0, umulige: 0, nominelle: 0, type: r.type, material: r.material });
+    const g = groups.get(r.key);
+    g.count++; g.length += r.len; g.area += r.area; g.flate += r.flate;
+    g.vol += r.vol; g.forskaling += r.forskaling; g.utenVekt++;
+    rows.push(r);
+  }
+}
 
 function lagringsNokkel() { return "storm-ifc-sw::" + S.fileName; }
 

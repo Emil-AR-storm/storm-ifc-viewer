@@ -199,6 +199,23 @@ camera.position.set(15, 12, 15);
 
 export const controls = new SimpleControls(camera, canvas);
 
+// ---------- Flytt kameraet til noe ----------
+// Samme flyging som 🔎 Elementsøk har brukt hele tiden (zoomToElement i
+// js/elements.js): behold retningen du så fra, legg deg i passe avstand.
+// Bor her fordi SW-elementene og materiellet nå også er søkbare, og tre
+// kopier av de fem linjene ville drevet fra hverandre første gang avstanden
+// ble justert i den ene.
+const _flyDir = new THREE.Vector3();
+export function flyTil(senter, storrelse) {
+  controls.target.copy(senter);
+  _flyDir.copy(camera.position).sub(senter);
+  if (_flyDir.lengthSq() < 1e-6) _flyDir.set(1, 0.7, 1);
+  const s = storrelse || S.modelSize * 0.05;
+  _flyDir.normalize().multiplyScalar(Math.max(s * 2.5, S.modelSize * 0.02));
+  camera.position.copy(senter).add(_flyDir);
+  controls.update();
+}
+
 scene.add(new THREE.AmbientLight(0xffffff, 0.85));
 
 const dir = new THREE.DirectionalLight(0xffffff, 1.4);

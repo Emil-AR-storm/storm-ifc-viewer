@@ -78,6 +78,18 @@ function transaksjon(db, modus, fn) {
 // Alt som skal ligge lagret over tid vaskes før det legges inn. En post med
 // feil felt er verre enn ingen post: køen prøver den om og om igjen, feiler
 // hver gang, og blokkerer resten.
+// KLOKKA ER IKKE FIN NOK. To bilder tatt i samme millisekund fikk samme
+// `opprettet`, og da avgjorde IndexedDB rekkefølgen — ikke montøren. Det så
+// ut som flaks i testen (den feilet én gang av mange), men det er den samme
+// feilen ute: to vedlegg lagt i køen i samme øyeblikk kunne komme fram i feil
+// rekkefølge. Telleren gjør tidspunktet strengt økende innenfor økta.
+let sisteTid = 0;
+function nyTid() {
+  const n = Math.max(Date.now(), sisteTid + 1);
+  sisteTid = n;
+  return n;
+}
+
 export function vaskPost(p) {
   if (!p || typeof p !== "object") return null;
   const navn = String(p.navn || "").trim();
@@ -91,7 +103,7 @@ export function vaskPost(p) {
     av: String(p.av || "").slice(0, 60),
     markering: p.markering == null ? "" : String(p.markering),
     bytes,
-    opprettet: Number(p.opprettet) || Date.now(),
+    opprettet: Number(p.opprettet) || nyTid(),
     forsok: Number(p.forsok) || 0
   };
 }
@@ -126,7 +138,11 @@ export async function koAlle() {
     const alle = await transaksjon(db, "readonly", (s) => s.getAll());
     // Eldst først: rekkefølgen montøren tok bildene i er den rekkefølgen
     // prosjektlederen skal se dem i.
-    return (alle || []).sort((a, b) => (a.opprettet || 0) - (b.opprettet || 0));
+    // Id-en som reserveutslag: en post lagret av en eldre utgave kan ha
+    // samme `opprettet` som en annen, og da skal rekkefølgen i det minste
+    // være den samme hver gang lista leses.
+    return (alle || []).sort((a, b) =>
+      (a.opprettet || 0) - (b.opprettet || 0) || String(a.id).localeCompare(String(b.id)));
   } catch (_) { return []; } finally { db.close(); }
 }
 

@@ -17,7 +17,7 @@ import * as THREE from "three";
 import { $, S, esc, ikon, registrerEkstraGruppe } from "./state.js";
 import { t } from "./i18n.js";
 import { LETT } from "./lett.js";
-import { frameHooks, makeLabel, scene, updateScreenScaled } from "./scene.js";
+import { flyTil, frameHooks, makeLabel, scene, updateScreenScaled } from "./scene.js";
 
 // ---------- Objektmalene ----------
 // Alle mål i MILLIMETER i lagret form; regnes om til sceneenheter ved bygging.
@@ -333,6 +333,32 @@ registrerEkstraGruppe(materiellGroup, {
     lagreMateriellLokalt();
     S.qtyCache = null;
     if (S.tegnMateriellPanel) S.tegnMateriellPanel();
+  },
+
+  // 📊 Mengder: radene sto før som et navngitt kall i elements.js. Samme
+  // funksjon, bare meldt inn som en evne.
+  mengder: (groups, rows) => leggMateriellIMengder(groups, rows),
+
+  // 🔎 Elementsøk. Objektene har ingen ExpressID og lå derfor utenfor
+  // søkeindeksen — søkte du på navnet du selv ga en leveranse, fikk du null
+  // treff. Skjulte objekter er med: de skal kunne finnes igjen.
+  sokRader: () => vaskMateriellListe(S.materiell).map(p => {
+    const label = t(MALTYPER[p.maltype].label);
+    const under = [label, p.lengde + "×" + p.bredde + " mm",
+      p.antall > 1 ? p.antall + t(" stk") : ""].filter(Boolean).join(" · ");
+    return {
+      id: p.id, navn: p.navn || label, under,
+      s: ((p.navn || "") + " " + label + " " + p.id).toLowerCase()
+    };
+  }),
+  gaTil(id) {
+    const o = materiellGroup.children.find(x => x.userData.materiellId === id);
+    if (!o) return;
+    const boks = new THREE.Box3().setFromObject(o);
+    flyTil(boks.getCenter(new THREE.Vector3()),
+           boks.getSize(new THREE.Vector3()).length());
+    S.materiellValgtId = id;
+    oppdaterMateriellValgEffekt();
   }
 });
 
