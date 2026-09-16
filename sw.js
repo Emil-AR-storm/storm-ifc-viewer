@@ -36,7 +36,7 @@
 
 // ---- GENERERT BLOKK START (verktoy/lag-sw-liste.mjs) ----
 // IKKE REDIGER FOR HÅND. Kjør: node "verktoy/lag-sw-liste.mjs"
-const SW_VERSJON = "d8849a6951dd";
+const SW_VERSJON = "da38ad61e128";
 const SKALL = [
   "/bygg.html",
   "/css/storm.css",
@@ -101,6 +101,12 @@ const SKALL = [
   "/vendor/three-0.160.0/addons/lines/LineMaterial.js",
   "/vendor/three-0.160.0/addons/lines/LineSegments2.js"
 ];
+// Språkfilene: hentes med import() ved behov, IKKE en del av SKALL.
+const SPRAKFILER = {
+  en: "/js/sprak/en.js",
+  lt: "/js/sprak/lt.js",
+  pl: "/js/sprak/pl.js"
+};
 // ---- GENERERT BLOKK SLUTT ----
 
 // Skallet: koden vår. Byttes ved hver versjon.
@@ -134,8 +140,35 @@ self.addEventListener("install", (e) => {
     // vi forhåndslagret en fem minutter gammel kopi av vår egen kode (proxyen
     // setter max-age=300) og låst den inne for hele versjonen.
     await c.addAll(SKALL.map(u => new Request(u, { cache: "reload" })));
+
+    // SPRÅKET TELEFONEN STÅR I — og bare det. De tre ordbøkene er ~105 kB hver,
+    // og montøren som leser norsk skal ikke betale for polsk og litauisk han
+    // aldri åpner. Norsk koster ingenting: den norske teksten ER nøkkelen i
+    // js/i18n.js, så det finnes ingen norsk ordbok å laste.
+    //
+    // navigator.language, ikke det valgte språket i appen: service workeren
+    // installeres FØR noen har valgt noe. Velger montøren et annet språk
+    // senere, lagres den fila når den hentes (se fetch-håndtereren), og
+    // ⚙ Innstillinger sier fra at det må gjøres mens han har dekning.
+    //
+    // UTENFOR addAll, med vilje: addAll er alt-eller-ingenting. En ordbok som
+    // ikke lar seg hente skal ikke ta ned hele installasjonen — da mister
+    // montøren offline-modellen for å spare en oversettelse han får på norsk.
+    const sprakUrl = SPRAKFILER[telefonensSprak()];
+    if (sprakUrl) {
+      try { await c.add(new Request(sprakUrl, { cache: "reload" })); }
+      // Logges, ikke svelges: teksten står på norsk og montøren merker
+      // ingenting, men vi skal kunne se hvorfor i konsollen.
+      catch (e) { console.warn("Fikk ikke forhåndslagret ordboka " + sprakUrl, e); }
+    }
   })());
 });
+
+// Tobokstavskoden telefonen er satt opp med: "pl-PL" og "pl" gir begge "pl".
+function telefonensSprak() {
+  const l = (self.navigator && self.navigator.language) || "no";
+  return String(l).slice(0, 2).toLowerCase();
+}
 
 // ---------- Aktivering ----------
 self.addEventListener("activate", (e) => {
@@ -172,6 +205,11 @@ self.addEventListener("fetch", (e) => {
 
   if (SKALL.indexOf(p) !== -1) { e.respondWith(fraSkall(req, p)); return; }
 
+  // Ordbøkene. Ikke i SKALL – bare én av dem er forhåndslagret – men den
+  // montøren faktisk velger skal bli liggende, så språkbyttet holder seg
+  // neste gang han er uten dekning.
+  if (erSprakfil(p)) { e.respondWith(sprakfil(req, p)); return; }
+
   // Modellen. Bare nyeste i rota — IKKE /modell/<p>/rev/2/… : å forhåndslagre
   // gamle revisjoner er titalls MB for en funksjon ingen bruker på stillaset.
   if (/^\/modell\/\d{5}\/[^/]+\.glb$/.test(p)) { e.respondWith(modell(req)); return; }
@@ -184,6 +222,7 @@ self.addEventListener("fetch", (e) => {
   //   /bilde/, /tegning/                             — ubegrenset volum
   //   /modell/<p>/rev/…                              — gamle revisjoner
   //   /helse, /ny-kode, /åpne                        — ingen verdi cachet
+//   js/sprak/<de andre språkene>                   — lagres først ved bruk
 });
 
 // Navigasjon svares ALLTID fra den cachede bygg.html, ikke fra et oppslag på
@@ -206,6 +245,24 @@ async function fraSkall(req, p) {
   // Havner vi her, mangler fila i cachen — installasjonen var ufullstendig
   // eller nettleseren har ryddet. Hent fra nett og la det være.
   return fetch(req);
+}
+
+function erSprakfil(p) {
+  for (const k in SPRAKFILER) if (SPRAKFILER[k] === p) return true;
+  return false;
+}
+
+// Cache først, ellers nett — og det som hentes fra nettet BLIR LIGGENDE.
+// Det er forskjellen fra fraSkall(): skallet er forhåndslagret i sin helhet,
+// så en bom der er en feil. Her er bom det normale, én gang per språk.
+// Cachen er versjonsnavngitt, så en rettet oversettelse rydder seg selv bort.
+async function sprakfil(req, p) {
+  const c = await caches.open(SKALL_CACHE);
+  const cachet = await c.match(p);
+  if (cachet) return cachet;
+  const svar = await fetch(req);
+  if (svar && svar.ok) await c.put(p, svar.clone());
+  return svar;
 }
 
 // Modellen. Adressen har ?v=<opplastingstid> og er merket immutable, så en
