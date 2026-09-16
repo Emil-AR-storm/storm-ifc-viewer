@@ -351,6 +351,10 @@ registrerEkstraGruppe(materiellGroup, {
       s: ((p.navn || "") + " " + label + " " + p.id).toLowerCase()
     };
   }),
+  // 🎨 Utseende: radene bor lenger nede i fila (S.materiellUtseendeRader) fordi
+  // de trenger skjulteMaltyper. Her meldes bare evnen inn, så BEGGE utgavene av
+  // fargepanelet får radene — kontoret og byggeplassen.
+  utseendeRader(body) { if (S.materiellUtseendeRader) S.materiellUtseendeRader(body); },
   gaTil(id) {
     const o = materiellGroup.children.find(x => x.userData.materiellId === id);
     if (!o) return;
