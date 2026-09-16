@@ -1930,6 +1930,60 @@ export function swMengdeRad(v, erRm, tekst) {
   };
 }
 
+// ---------- 🏗 Ut til byggeplassen (monteringsinstruks) ----------
+// MONTØREN SKAL SE HVOR HVERT PANEL GÅR, ikke kunne generere dem på nytt.
+// Derfor sendes en FERDIG BESKRIVELSE — posisjon, vinkel, mål, SW-nummer — og
+// ikke fasadene og regnereglene. To grunner, og begge er harde:
+//
+//  · bygg.html laster ikke js/veggelement.js, og skal ikke gjøre det. Fila er
+//    på 300 kB og ville doblet det service workeren forhåndslagrer for en
+//    telefon på en byggeplass uten dekning.
+//  · genererte vi på nytt ute, kunne resultatet bli et ANNET enn det Emil så
+//    på kontoret — én rettelse i regelen, og montøren monterer etter en vegg
+//    ingen har godkjent. Beskrivelsen kan ikke drive fra det som ble bestilt.
+//
+// Tegningen ute blir enklere enn her: kasser med riktig mål og plassering,
+// med SW-nummeret på. Bølgeprofilen i blikket er til pynt på kontoret og
+// koster rammer på en telefon.
+export function swForByggeplass() {
+  const o = (lagret && lagret.oppsett) || STD_OPPSETT;
+  const ut = [];
+  for (const { v, erRm } of swAlle()) {
+    const e = swByggeplassElement(v, erRm);
+    if (e.l > 0 && e.h > 0) ut.push(e);
+  }
+  return { elementer: ut, farge: String(o.farge || "#dfe5ec"),
+    utvFarge: String(o.utvFarge || ""), isolasjon: String(o.isolasjon || "") };
+}
+
+// REN TALLFUNKSJON — ett element om gangen, uten lagringen. Prøves i
+// _test/test-veggelement.mjs.
+export function swByggeplassElement(v, erRm) {
+  const e = {
+    id: String(v.id || ""),
+    sw: erRm ? "" : String(v.sw || ""),
+    k: erRm ? "r" : (v.inner ? "i" : "y"),
+    x: r4(v.x), y: r4(v.y), z: r4(v.z), rot: r4(v.rot),
+    // mmHel og ikke Math.round: Math.round("nei") er NaN, og en NaN i et mål
+    // gir et element som ikke tegnes — usynlig for montøren, uten feilmelding.
+    l: mmHel(v.lengdeMm),
+    h: mmHel(swHoydeMm(v)),
+    t: mmHel(v.tMm)
+  };
+  // Skråkappet: BEGGE endehøydene følger med, så gavlen ikke blir en kasse med
+  // middelhøyde i en vegg som faktisk skråner. `h` står igjen som middelhøyden,
+  // så en gammel leser uten trapes-tegning fortsatt får noe som ligner.
+  if (v.skra && v.hVMm !== undefined && v.hHMm !== undefined) {
+    e.hv = mmHel(v.hVMm); e.hh = mmHel(v.hHMm);
+  }
+  return e;
+}
+
+// Tre desimaler holder i sceneenheter: under en tidels millimeter. Uten
+// avrundingen blir JSON-fila dobbelt så stor av sifre ingen kan se.
+function r4(n) { return Math.round((Number(n) || 0) * 1000) / 1000; }
+function mmHel(n) { return Math.round(Number(n) || 0); }
+
 function leggSwIMengder(groups, rows) {
   for (const { v, erRm } of swAlle()) {
     const r = swMengdeRad(v, erRm, t);

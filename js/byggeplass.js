@@ -11,6 +11,9 @@ import { tegningNavn } from "./tegninger.js";
 import { GRAPH, authHeaders, spTokenSilent } from "./sharepoint.js";
 import { materiellForEksport } from "./materiell-vis.js";
 import { grupperForEksport } from "./grupper.js";
+// 🏗 SW-elementene ut som MONTERINGSINSTRUKS — en ferdig beskrivelse, ikke
+// generatoren. Se swForByggeplass i js/veggelement.js for hvorfor.
+import { swForByggeplass } from "./veggelement.js";
 import { FRISTER, TJENESTER } from "./config.js";
 
 // Adressen til Workeren står i config.js, og kan overstyres av oppsett.json i
@@ -176,7 +179,10 @@ if (btn) btn.addEventListener("click", async () => {
         // 📦 materiell-objektene følger med ut, vasket. Gamle lesere ser bort
         // fra feltet; nye tegner leveransene der de skal ligge.
         materiell: materiellForEksport(),
-        grupper: grupperForEksport()
+        grupper: grupperForEksport(),
+        // 🏗 SW-oppsettet: hvor hvert veggelement skal stå, med SW-nummeret.
+        // Gamle lesere ser bort fra feltet; bygg.html tegner det (js/sw-lett.js).
+        sw: swForByggeplass()
       })
     });
 
