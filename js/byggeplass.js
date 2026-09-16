@@ -77,9 +77,17 @@ if (btn) btn.addEventListener("click", async () => {
   try {
     const mr = await fetch(TJENESTER.worker + "/modus/" + prosjekt, { headers: { "x-token": token } });
     if (mr.ok) modus = ((await mr.json()).modus === "stor") ? "stor" : "normal";
+    // 403 er FEIL NØKKEL, ikke «størrelsen er ikke valgt». Sa vi ikke fra her,
+    // fikk du størrelsesdialogen, valgte, og opplastingen feilet først et
+    // halvt minutt senere med en melding om noe helt annet (Emil 16.09).
+    else if (mr.status === 403) {
+      settNøkkel(TOKEN_KEY, "");
+      alert(t("Opplastingsnøkkelen ble ikke godtatt. Prøv igjen, så spør den om nøkkelen på nytt."));
+      return;
+    }
   } catch (_) {}
   if (!modus) {
-    modus = await spørModus();
+    modus = await spørModus(prosjekt);
     if (!modus) return;
     await lagreModus(prosjekt, token, modus);
   }
@@ -232,15 +240,22 @@ async function lagreModus(prosjekt, token, modus) {
 }
 
 // Dialogen med de to boksene — vises én gang per prosjekt.
-function spørModus() {
+//
+// OVERSKRIFTEN SA «Nytt prosjekt», OG DET VAR FEIL. Dialogen kommer hver gang
+// prosjektet ikke har en modus.json — og det har ingen av prosjektene som ble
+// laget FØR størrelsesvalget fantes. Emil leste den som «du er i ferd med å
+// opprette et nytt prosjekt», avbrøt, og lette etter feilen i modellnavnet
+// (16.09). Ingenting opprettes her: opplastingen går til prosjektnummeret du
+// allerede har skrevet, uansett hva du svarer.
+function spørModus(prosjekt) {
   return new Promise((res) => {
     const el = document.createElement("div");
     el.id = "bpModus";
     el.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:60;display:flex;align-items:center;justify-content:center";
     el.innerHTML =
       '<div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px;max-width:540px;width:92%">' +
-      '<h3 style="margin:0 0 6px">' + t("Nytt prosjekt — velg størrelse") + "</h3>" +
-      '<p style="color:var(--muted);font-size:12px;margin:0 0 12px">' + t("Valget lagres på prosjektet og gjelder alle senere opplastinger.") + "</p>" +
+      '<h3 style="margin:0 0 6px">' + t("Hvor stor er modellen i prosjekt {0}?", esc(String(prosjekt || ""))) + "</h3>" +
+      '<p style="color:var(--muted);font-size:12px;margin:0 0 12px">' + t("Dette oppretter ingenting — opplastingen går til prosjektet du skrev inn. Spørsmålet kommer én gang per prosjekt, og svaret lagres på prosjektet.") + "</p>" +
       '<div style="display:flex;gap:10px">' +
       '<button id="bpNormal" style="flex:1;padding:14px 10px;border-radius:10px;text-align:left"><b>' + t("Normalt prosjekt") + "</b><br>" +
       '<span style="font-size:11px;color:var(--muted)">' + t("Som i dag — vanlig detaljnivå i byggeplass-kopien.") + "</span></button>" +
