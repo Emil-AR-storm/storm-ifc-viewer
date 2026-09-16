@@ -163,6 +163,11 @@ function renderSettings() {
     '<div class="set-row"><span class="n">' + t("Språk") + '</span>' +
     '<select id="stLang">' + SPRAK.map(([k, navn]) =>
       '<option value="' + k + '"' + (S.lang === k ? " selected" : "") + '>' + navn + '</option>').join("") + '</select></div>' +
+    // Bare språket telefonen står i forhåndslagres av service workeren. Bytter
+    // montøren til polsk nede i kjelleren, finnes ikke den ordboka på telefonen
+    // og teksten blir stående på norsk. Derfor står det her og ikke i en
+    // hjelpefil ingen leser.
+    '<p class="set-hjelp">' + t("Bytt språk før du drar et sted uten dekning. Språket telefonen står i lagres ved installasjon; de andre hentes første gang du velger dem.") + '</p>' +
     '<div class="set-row"><span class="n">' + t("Måleenhet") + '</span>' +
     '<select id="stUnit"><option value="m"' + (S.settings.unit === "m" ? " selected" : "") + '>' + t("Meter (m)") + '</option>' +
     '<option value="mm"' + (S.settings.unit === "mm" ? " selected" : "") + '>' + t("Millimeter (mm)") + '</option></select></div>' +
@@ -267,8 +272,11 @@ function renderSettings() {
 
   $("setBody").innerHTML = html;
 
-  $("stLang").onchange = (e) => {
-    setLang(e.target.value);
+  $("stLang").onchange = async (e) => {
+    // await: ordboka for det nye språket hentes fra js/sprak/ og er ikke på
+    // plass med en gang. Tegnes menyen før den er det, står den på norsk til
+    // neste gang den åpnes.
+    await setLang(e.target.value);
     const sv = $("sprakVelg");
     if (sv) sv.value = S.lang;   // hold startskjerm-velgeren i takt
     renderSettings();

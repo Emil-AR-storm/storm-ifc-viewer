@@ -3,7 +3,7 @@
 // Innlogging startes aldri – se LETT-flagget i lett.js og gaten i sharepoint.js.
 import * as THREE from "three";
 import { $, S, esc, fmtLen, loadingEl, loadingText, tilM } from "./state.js";
-import { oversettDom, setLang, t } from "./i18n.js";
+import { lastSprak, oversettDom, setLang, t } from "./i18n.js";
 import { setClipFromFace } from "./clip.js";
 import { clearSelection, hitID, pick, pickEkstra, selectElement, showProperties } from "./elements.js";
 import { afterLoad, ifcReady, loadGlb } from "./ifc.js";
@@ -46,6 +46,12 @@ if (jsCheck) jsCheck.style.display = "none";
 // ---------- Språk ----------
 // Lagret valg legges på HTML-en med en gang, og velgeren på startskjermen
 // holdes i takt med den i ⚙ Innstillinger (begge kaller setLang).
+//
+// Ordboka for andre språk enn norsk ligger i en egen fil (js/sprak/) og hentes
+// med import(). Derfor ventingen her: uten den rekker oversettDom() å kjøre
+// med tom ordbok, og siden blir stående på norsk for en som har valgt polsk.
+// Er språket norsk, løser lastSprak() seg med en gang og ingenting hentes.
+await lastSprak(S.lang);
 oversettDom();
 const sprakVelg = $("sprakVelg");
 if (sprakVelg) {
