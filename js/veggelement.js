@@ -1986,6 +1986,26 @@ export function swByggeplassElement(v, erRm) {
   if (v.skra && v.hVMm !== undefined && v.hHMm !== undefined) {
     e.hv = mmHel(v.hVMm); e.hh = mmHel(v.hHMm);
   }
+  // 🕳 HAKKENE. Et element som går FORBI en utsparing er ett element i lista
+  // (SW-11 4620×1000), men skal tegnes som bitene som står igjen rundt hakket.
+  // Ute ble det tegnet som en hel kasse tvers over porten (Emils bilde 16.09).
+  //
+  // OPPDELINGEN GJØRES HER, ikke ute: rektMinusHull er guillotine-regelen som
+  // bestemmer hvilke biter som blir igjen, og den skal finnes ett sted. Ute
+  // tegnes bitene som de er.
+  const hull = Array.isArray(v.hull) ? v.hull.filter(h => h && h.x1 - h.x0 > 10 && h.y1 - h.y0 > 10) : [];
+  if (hull.length) {
+    if (e.hv !== undefined) {
+      // Skråkappet MED hakk: bitene ville mistet skråkuttet. Hullene sendes rå,
+      // og tegnes ute som hull i trapesen — samme måte som på kontoret.
+      e.hull = hull.map(h => [mmHel(h.x0), mmHel(h.x1), mmHel(h.y0), mmHel(h.y1)]);
+    } else {
+      const biter = rektMinusHull(e.l, e.h, hull, 20);
+      // Blir det ingenting igjen, er hele elementet spist av utsparingen.
+      // Da skal det ikke tegnes som en hel kasse — det skal ikke tegnes.
+      e.b = biter.map(b => [mmHel(b.x0), mmHel(b.x1), mmHel(b.y0), mmHel(b.y1)]);
+    }
+  }
   return e;
 }
 
