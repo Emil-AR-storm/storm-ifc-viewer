@@ -7,9 +7,15 @@
 export const S = {};
 
 // ---------- Standardverdier for innstillinger ----------
+// W, L og U er valgt fordi bokstavene finnes i ordene (SW, materieLl,
+// grUpper) og fordi R, B og C holdes ledige til Rapport, Byggeplass og
+// Sammenlign, som ennå ikke har hurtigtast. Endrer noen en tast i menyen,
+// blir den lagret – linja her er bare utgangspunktet, og nye handlinger
+// fylles på fra den ved innlesing (se Object.assign lenger nede).
 export const DEFAULT_KEYS = {
   marker: "P", measure: "M", kote: "K", axes: "A", clip: "S",
-  storey: "E", search: "F", ghost: "T", qty: "D", fit: "G", settings: "I"
+  storey: "E", search: "F", ghost: "T", qty: "D", fit: "G", settings: "I",
+  sw: "W", materiell: "L", grupper: "U"
 };
 
 export const DEFAULT_SETTINGS = {

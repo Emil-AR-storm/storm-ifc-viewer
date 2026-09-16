@@ -33,6 +33,12 @@ const ACTIONS = {
   ghost:    { label: "Gjennomsiktig",run: () => $("btnGhost").click() },
   qty:      { label: "Mengder",    run: () => $("btnQty").click() },
   fit:      { label: "Vis alt",    run: () => $("btnFit").click() },
+  // De tre nederste finnes ikke på begge sidene: bygg.html har ingen
+  // SW-knapp, og index.html og bygg.html deler denne fila. Derfor ?. – en
+  // tast som ikke har noe å trykke på skal gjøre ingenting, ikke kaste.
+  sw:       { label: "SW-generator", run: () => $("btnSW")?.click() },
+  materiell:{ label: "Materiell",  run: () => $("btnMateriell")?.click() },
+  grupper:  { label: "Grupper",    run: () => $("btnGrupper")?.click() },
   settings: { label: "Innstillinger", run: () => openSettings() }
 };
 
