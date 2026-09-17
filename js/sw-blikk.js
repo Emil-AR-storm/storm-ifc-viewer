@@ -378,8 +378,15 @@ export function hjorneYtre(fA, fB, halvS) {
 //   klaringMm,             // 10 mm — fra søylesenter til elementende
 //   kantStart, kantSlutt,  // { eier, type } fra fasadeKanter
 //   elementer: [{ fraMm, tilMm, rBunnMm, hoydeMm, hVMm, hHMm, skjult }],
-//   utsparinger: [{ type, breddeMm, hoydeMm }]
+//   utsparinger: [{ type, breddeMm, hoydeMm }],
+//   flater                 // 1 for en fasade, 2 for en innervegg
 // }
+//
+// FLATER: en fasade har én utside. En INNERVEGG står inne i bygget og er
+// eksponert på begge sider (Emil 17.09), så hatprofilen over skjøten og
+// beslaget rundt utsparingen kommer i to eksemplarer. Kappene over og under
+// veggen og rundt en fri ende griper uansett om begge flatene — de telles én
+// gang.
 export function veggBlikk(vegg, oppsett) {
   const v = vegg || {}, o = oppsett || {};
   const tol = Number(o.blikkTolMm) > 0 ? Number(o.blikkTolMm) : BLIKK_TOL_MM;
@@ -388,6 +395,7 @@ export function veggBlikk(vegg, oppsett) {
   if (!el.length) return tomVegg(v.navn);
 
   const linje = (v.linje && v.linje.length >= 2) ? v.linje : null;
+  const flater = Math.max(1, Math.round(n(v.flater)) || 1);
   // Topp- og bunnbeslaget løper FORBI skjøten: de 20 mm luftrom mellom to
   // element (10 mm klaring i hver ende) er ikke et brudd i beslaget, bare i
   // elementrekka. Uten dette ble et beslag på 12 m talt som 5,99 + 5,99.
@@ -438,22 +446,22 @@ export function veggBlikk(vegg, oppsett) {
   for (let i = 1; i < skjot.length - 1; i++) {
     if (dekket > 0 && (skjot[i] - t0 <= dekket || t1 - skjot[i] <= dekket)) continue;
     const deler = skjotIntervaller(el, skjot[i], v.klaringMm, tol);
-    const h = sumLengde(deler) / 1000;
+    const h = sumLengde(deler) / 1000 * flater;
     if (h <= 0) continue;
     skjotLm += h;
-    stykker.push({ type: "skjot", tMm: Number(skjot[i]), deler, lm: rund(h) });
+    stykker.push({ type: "skjot", tMm: Number(skjot[i]), deler, flater, lm: rund(h) });
   }
   // 5. rundt utsparingene
   let utspLm = 0;
   const vBunn = n(v.bunnMm);
   for (const u of v.utsparinger || []) {
     if (!u) continue;
-    const m = utsparingLm(u.type, u.breddeMm, u.hoydeMm, u.bunnMm, vBunn, tol);
+    const m = utsparingLm(u.type, u.breddeMm, u.hoydeMm, u.bunnMm, vBunn, tol) * flater;
     if (m <= 0) continue;
     utspLm += m;
     // fraMm/tilMm/bunnMm/toppMm følger med når kalleren har dem (utspPaFasader),
     // så 3D-en kan tegne rammen på riktig sted. Lengden er uavhengig av dem.
-    stykker.push({ type: "utsparing", utspType: u.type,
+    stykker.push({ type: "utsparing", utspType: u.type, flater,
       sider: utsparingSider(u.type, u.bunnMm, vBunn, tol),
       fraMm: u.fraMm, tilMm: u.tilMm_ !== undefined ? u.tilMm_ : u.tilMm,
       // bunnen klippes til veggfeltet for TEGNINGEN; sidene er avgjort over
@@ -501,6 +509,24 @@ export function blikkListe(vegger, oppsett, ender) {
     stykker: []
   };
   return { kolonner, total, hjorner: hjorner ? hjorneStykker(hjorner, liste, o.blikkTolMm) : [] };
+}
+
+// Flere lister (ytterveggene og innerveggene) lagt sammen til ÉN total.
+// Skruene og stengene regnes av GRAND-totalen, ikke som summen av de to —
+// færre påbegynte lengder, og det er denne Emil bestiller på.
+export function slaSammenTotaler(lister, oppsett) {
+  const o = oppsett || {};
+  const f = (k) => (lister || []).reduce((a, l) => a + ((l && l.total && l.total[k]) || 0), 0);
+  const beslagLm = f("beslagLm"), hatprofilLm = f("hatprofilLm");
+  return {
+    navn: "Totalt",
+    toppLm: rund(f("toppLm")), bunnLm: rund(f("bunnLm")), kantLm: rund(f("kantLm")),
+    skjotLm: rund(f("skjotLm")), utsparingLm: rund(f("utsparingLm")),
+    beslagLm: rund(beslagLm), hatprofilLm: rund(hatprofilLm),
+    skruerBeslag: skruerForLm(beslagLm), skruerHatprofil: skruerForLm(hatprofilLm),
+    stenger: stenger(beslagLm + hatprofilLm, o.stangLengdeM),
+    stykker: []
+  };
 }
 
 // Radene i arket «Blikk». `T` er oversetteren (t fra i18n.js).
