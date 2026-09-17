@@ -868,11 +868,16 @@ export function materiellVeggerFra(fasader, vegger, apninger, navnFn, tykkelseFn
     const lengdeMm = skjot[skjot.length - 1] - skjot[0];
     return {
       navn: navnFn(f, fi), hoydeMm, lengdeMm, tykkelseMm: tykkelseFn(f), skjot,
+      // veggfeltets underkant, til regelen om den fjerde siden
+      bunnMm: 0,
       hjorneStart: hj[fi].hjorneStart, hjorneSlutt: hj[fi].hjorneSlutt,
       loddretteKanter: hj[fi].loddretteKanter,
       elementer: synlige.map(v => ({ fraMm: v.fraMm, tilMm: v.tilMm, skjult: false })),
       utsparinger: (apninger || []).filter(a => a && a.fi === fi).map(a => ({
         type: a.type,
+        // bunnen sendes RÅ (kan være under veggfeltet, som en glassfasade
+        // fra gulvet): beslagSider trenger å se det
+        bunnMm: a.bunnMm,
         breddeMm: Math.max(0, a.tilMm_ - a.fraMm),
         // «full høyde» (±1e9) klippes til veggen; bunnen under gulvet til gulvet
         hoydeMm: Math.max(0, Math.min(Math.abs(a.toppMm) > 1e8 ? hoydeMm : a.toppMm, hoydeMm) - Math.max(a.bunnMm, 0))
