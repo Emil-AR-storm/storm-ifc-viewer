@@ -23,6 +23,9 @@ import { STAL_TYPER } from "./stal.js";
 import { avsluttJuster } from "./juster.js";
 import { lagretInner, lesInner, settLagretInner } from "./panel.js";
 import { innerSkjulNaa, oppdaterInnerveggerEtterUtsp, settInnerSkjul, tegnInnervegger } from "./innervegg.js";
+// Ringen er trygg: tegnBlikk() kalles når tegnDelA KJØRER, ikke mens modulen
+// lastes (se regelen øverst i js/veggelement.js).
+import { tegnBlikk } from "./blikk.js";
 
 // ---------- 👁 «SW-generator» i 🎨 Utseende ----------
 // Emil 03.09: alt SW-generatoren har satt PÅ BYGGET skal kunne skjules —
@@ -33,7 +36,8 @@ export const SKJUL_DELER = [
   { n: "vegger", navn: "Veggelementer" },
   { n: "gulv", navn: "Gulv og isolasjon" },
   { n: "ringmur", navn: "Ringmur" },
-  { n: "merking", navn: "Merking og mål" }
+  { n: "merking", navn: "Merking og mål" },
+  { n: "blikk", navn: "Blikk" }
 ];
 
 export function skjulNaa() {
@@ -377,6 +381,11 @@ export function tegnDelA() {
     try { tegnUtspMerking(); }
     catch (err) { console.warn("Utsparingsmerkingen kunne ikke tegnes:", err); }
   }
+  // 🩹 Blikket regnes om og tegnes hver gang veggene tegnes (Emils valg A2):
+  // lista skal aldri vise gårsdagens vegg. Egen try/catch med vilje — en feil
+  // i blikket skal ikke la bygget stå uten veggelement.
+  try { tegnBlikk(); }
+  catch (err) { console.warn("Blikket kunne ikke tegnes:", err); }
 }
 
 // ---------- 📐 Utsparingsmerking: stiplet kryss + mål ----------
