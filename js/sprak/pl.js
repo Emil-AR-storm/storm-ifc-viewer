@@ -1375,5 +1375,6 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Hatprofil høyde (mm)": "Wysokość profilu kapeluszowego (mm)",
   "Utsparingsbeslag bein (mm)": "Ramię obróbki otworu (mm)",
   "Ben på veggflaten (mm)": "Ramię na licu ściany (mm)",
-  "Retur på innsiden (mm)": "Zawinięcie od wewnątrz (mm)"
+  "Retur på innsiden (mm)": "Zawinięcie od wewnątrz (mm)",
+  "{0} innervegger (begge sider)": "{0} ścian wewnętrznych (obie strony)"
 };

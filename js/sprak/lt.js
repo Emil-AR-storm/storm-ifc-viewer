@@ -1375,5 +1375,6 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Hatprofil høyde (mm)": "Skrybėlinio profilio aukštis (mm)",
   "Utsparingsbeslag bein (mm)": "Angos apdailos petys (mm)",
   "Ben på veggflaten (mm)": "Petys ant sienos paviršiaus (mm)",
-  "Retur på innsiden (mm)": "Atvartas iš vidaus (mm)"
+  "Retur på innsiden (mm)": "Atvartas iš vidaus (mm)",
+  "{0} innervegger (begge sider)": "{0} vidinės sienos (abi pusės)"
 };
