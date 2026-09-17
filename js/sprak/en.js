@@ -1361,5 +1361,6 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Profilmål": "Profile dimensions",
   "Profilbredde (mm)": "Profile width (mm)",
   "Profiltykkelse (mm)": "Profile thickness (mm)",
-  "Stanglengde (m)": "Bar length (m)"
+  "Stanglengde (m)": "Bar length (m)",
+  "Glassfasade": "Glass facade"
 };
