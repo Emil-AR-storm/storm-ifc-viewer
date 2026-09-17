@@ -85,13 +85,16 @@ export function blikkNaa() {
   const vegger = blikkVegger(lagret, apninger);
   const ender = fasadeEnder(lagret.fasader);
   // eierskapet regnes av geometrien, ikke av flagget over
-  const hj = bygningsHjorner(ender, tilScene(600) * 1000 > 0 ? 600 : 600);
+  // 600 mm i SCENE-enheter — fasadenes endepunkter ligger i scene, ikke mm.
+  // Samme toleranse som fasadeHjorner() bruker i generer.js.
+  const hjTol = tilScene(600);
+  const hj = bygningsHjorner(ender, hjTol);
   const rettet = vegger.map((v, i) => ({
     ...v,
     kantStart: { ...v.kantStart, eier: hj.some(h => h.eier === i && h.kanter.some(k => k.fasade === i && k.ende === "start")) },
     kantSlutt: { ...v.kantSlutt, eier: hj.some(h => h.eier === i && h.kanter.some(k => k.fasade === i && k.ende === "slutt")) }
   }));
-  return { ...blikkListe(rettet, { ...blikkOppsett(), hjorneTolMm: 600 }, ender), vegger: rettet };
+  return { ...blikkListe(rettet, { ...blikkOppsett(), hjorneTolMm: hjTol }, ender), vegger: rettet };
 }
 
 // ───────────────────────── tegningen ─────────────────────────
@@ -228,9 +231,13 @@ export function blikkPanelHtml() {
   const b = blikkOppsett();
   if (!data) return "<p class='hint'>" + esc(t("Generer veggelementene først.")) + "</p>";
   const { total, kolonner } = data;
+  // To desimaler i panelet: «40,332 lm» er falsk presisjon på et tall som
+  // bestilles i hele stenger. Arket beholder de eksakte verdiene.
+  const vis = (x) => (typeof x === "number" && !Number.isInteger(x))
+    ? x.toFixed(2).replace(".", ",") : String(x);
   const rad = (navn, felt, enhet) =>
     "<tr><td>" + esc(t(navn)) + "</td><td style='text-align:right'>" +
-    esc(String(total[felt])) + (enhet ? " " + esc(enhet) : "") + "</td></tr>";
+    esc(vis(total[felt])) + (enhet ? " " + esc(enhet) : "") + "</td></tr>";
   return "" +
     "<p class='hint'>" + esc(t("Blikket regnes av de synlige veggelementene — det du ser her er det som bestilles.")) + "</p>" +
     "<table class='swtab'><tbody>" +
