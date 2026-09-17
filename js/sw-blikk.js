@@ -221,6 +221,7 @@ export function skjotHoyde(elementer, sMm, klaringMm, tolMm) {
 // `bunnMm` og `veggBunnMm` måles begge fra SW-basen. Er bunnen ukjent
 // (undefined), beholdes den gamle oppførselen, så gamle kall ikke endrer svar.
 export function utsparingSider(type, bunnMm, veggBunnMm, tolMm) {
+  // port, dør og glassfasade står alle på betongen: aldri en fjerde side
   if (type !== "vindu") return 3;
   if (bunnMm === undefined || bunnMm === null) return 4;
   const tol = tallEr(tolMm) ? Number(tolMm) : BLIKK_TOL_MM;
