@@ -11,7 +11,7 @@
 import { $, apnePanel, esc, på } from "../state.js";
 import { t } from "../i18n.js";
 import * as THREE from "three";
-import { blikkListe, utsparingSider, BLIKK_RADER } from "../sw-blikk.js";
+import { blikkListe, hjorneYtre, utsparingSider, BLIKK_RADER } from "../sw-blikk.js";
 import { tilMm, tilScene } from "./regler.js";
 import { lagret, oppsett, swGroup, skrivLagret } from "./tilstand.js";
 import { baseYNaa, skjulNaa, tegnAlt, utspPaFasader } from "./tegning.js";
@@ -111,7 +111,9 @@ export function blikkNaa() {
   // Samme toleranse som fasadeHjorner() bruker i generer.js. Eierskapet av
   // hvert hjørne avgjøres inne i blikkListe (medHjorner), ikke her: ett sted.
   const hjTol = tilScene(600);
-  return { ...blikkListe(vegger, { ...blikkOppsett(), hjorneTolMm: hjTol }, ender), vegger };
+  // hjorneDekkerMm: en skjøt som ligger under L-beslaget er allerede dekket
+  const bo = blikkOppsett();
+  return { ...blikkListe(vegger, { ...bo, hjorneTolMm: hjTol, hjorneDekkerMm: bo.hjorneBenMm }, ender), vegger };
 }
 
 // ───────────────────────── tegningen ─────────────────────────
@@ -192,19 +194,10 @@ export function tvsnEnde(halv, ret) {
 }
 // Ett bein av hjørnebeslaget: en flat strimmel som ligger på veggflaten og
 // løper innover langs fasaden fra hjørnet. To slike, ett per fasade, gir L-en.
-export function tvsnHjorneBein(halv, ben) {
-  return [[halv, 0], [halv, ben]];
-}
-// Hatprofil over skjøten: flens — opp — hatt — ned — flens.
-export function tvsnHat(halv, topp, flens, hoyde) {
-  const h2 = topp / 2;
-  return [[halv, -(h2 + flens)], [halv, -h2], [halv + hoyde, -h2],
-          [halv + hoyde, h2], [halv, h2], [halv, h2 + flens]];
-}
-// Beslaget langs en utsparingskant: dekker den kappede enden av elementet
-// (hele veggtykkelsen) og brettes ut på veggflaten, bort fra åpningen.
-export function tvsnUtsparing(halv, ben) {
-  return [[-halv, 0], [halv, 0], [halv, ben]];
+// Beinet settes ut fra det VIRKELIGE ytterhjørnet (se hjorneYtre), så u måles
+// fra ytterflaten og ikke fra veggens midtplan.
+export function tvsnHjorneBein(klaring, ben) {
+  return [[klaring, 0], [klaring, ben]];
 }
 
 // Veggtoppen ved fasade-mm t, lest av taklinja når den finnes.
@@ -293,27 +286,36 @@ export function tegnBlikk() {
   });
 
   // 📐 HJØRNENE: ETT L-beslag per hjørne, uansett hvem som bærer løpemeteren
-  // i lista (Emil 17.09). Beinet på hver fasade løper INNOVER fra hjørnet, og
-  // de to møtes i selve hjørnet — det er L-en.
+  // i lista (Emil 17.09). Beina settes ut fra det VIRKELIGE ytterhjørnet —
+  // skjæringen mellom de to ytterflatene — og løper innover langs hver sin
+  // fasade. Da lukker L-en seg om hjørnet selv om pinwheel-regelen lar den
+  // ene veggen løpe forbi den andre.
+  const halvS = tilScene((o.tykkelseMm || 100) / 2);
+  const klaring = b.blikkTykkMm;
   for (const h of data.hjorner || []) {
     for (const k of h.kanter) {
       const f = fasader[k.fasade];
       const vegg = data.vegger[k.fasade];
       if (!f || !vegg) continue;
+      const nabo = h.kanter.find(a => a.fasade !== k.fasade);
+      const fB = nabo ? fasader[nabo.fasade] : null;
       const nrm = V3(f.nx, 0, f.nz);
       const langs = V3(f.ex, 0, f.ez);
       const start = k.ende === "start";
-      const tEnde = start ? vegg.t0Mm : vegg.t1Mm;
-      // innover langs fasaden: framover fra starten, bakover fra slutten
       const inn = start ? langs : langs.clone().negate();
-      const ben = h.type === "hjorne" ? b.hjorneBenMm : b.endeRetMm;
-      tegn(punktPaa(f, tEnde, h.bunnMm, baseY), punktPaa(f, tEnde, h.toppMm, baseY),
-        inn, nrm, tvsnHjorneBein(halv, ben));
-      // En FRI ende får i tillegg en kappe over selve endeflaten — der er
-      // isolasjonen eksponert på tvers, ikke bare i hjørnet.
-      if (h.type !== "hjorne")
-        tegn(punktPaa(f, tEnde, h.bunnMm, baseY), punktPaa(f, tEnde, h.toppMm, baseY),
-          inn.clone().negate(), nrm, tvsnEnde(halv, b.endeRetMm));
+      const yt = hjorneYtre(f, fB, halvS);
+      if (yt) {
+        // ekte hjørne: beinet starter i ytterhjørnet og løper innover
+        const p = (yMm) => V3(yt.x, baseY + tilScene(yMm), yt.z);
+        tegn(p(h.bunnMm), p(h.toppMm), inn, nrm, tvsnHjorneBein(klaring, b.hjorneBenMm));
+      } else {
+        // FRI ENDE (eller parallelle fasader): kappe over selve endeflaten,
+        // pluss en retur inn på veggen. Her er isolasjonen eksponert på tvers.
+        const tEnde = start ? vegg.t0Mm : vegg.t1Mm;
+        const p = (yMm) => punktPaa(f, tEnde, yMm, baseY);
+        tegn(p(h.bunnMm), p(h.toppMm), inn.clone().negate(), nrm,
+          tvsnEnde(halv, b.endeRetMm));
+      }
     }
   }
 }
