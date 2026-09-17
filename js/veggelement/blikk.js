@@ -11,9 +11,7 @@
 import { $, apnePanel, esc, på } from "../state.js";
 import { t } from "../i18n.js";
 import * as THREE from "three";
-import {
-  blikkListe, bygningsHjorner, hjorneStykker, medHjorner, utsparingSider, BLIKK_RADER
-} from "../sw-blikk.js";
+import { blikkListe, utsparingSider, BLIKK_RADER } from "../sw-blikk.js";
 import { tilMm, tilScene } from "./regler.js";
 import { lagret, oppsett, swGroup, skrivLagret } from "./tilstand.js";
 import { baseYNaa, skjulNaa, tegnAlt, utspPaFasader } from "./tegning.js";
@@ -65,8 +63,10 @@ export function blikkVegger(lag, apninger) {
       elementer: egne.map(v => ({ fraMm: v.fraMm, tilMm: v.tilMm, rBunnMm: v.rBunnMm || 0,
         hoydeMm: v.hoydeMm, hVMm: v.hVMm, hHMm: v.hHMm })),
       utsparinger: (apninger || []).filter(a => a && a.fi === fi).map(a => ({
+        // bunnen sendes RÅ (kan være under veggfeltet): sw-blikk trenger å se
+        // at åpningen går ned til gulvet for å droppe den fjerde siden.
         type: a.type, fraMm: a.fraMm, tilMm_: a.tilMm_,
-        bunnMm: Math.max(a.bunnMm, 0),
+        bunnMm: a.bunnMm,
         toppMm: Math.abs(a.toppMm) > 1e8 ? toppMm : Math.min(a.toppMm, toppMm),
         breddeMm: Math.max(0, a.tilMm_ - a.fraMm),
         hoydeMm: Math.max(0, Math.min(Math.abs(a.toppMm) > 1e8 ? toppMm : a.toppMm, toppMm)
@@ -86,15 +86,10 @@ export function blikkNaa() {
   const ender = fasadeEnder(lagret.fasader);
   // eierskapet regnes av geometrien, ikke av flagget over
   // 600 mm i SCENE-enheter — fasadenes endepunkter ligger i scene, ikke mm.
-  // Samme toleranse som fasadeHjorner() bruker i generer.js.
+  // Samme toleranse som fasadeHjorner() bruker i generer.js. Eierskapet av
+  // hvert hjørne avgjøres inne i blikkListe (medHjorner), ikke her: ett sted.
   const hjTol = tilScene(600);
-  const hj = bygningsHjorner(ender, hjTol);
-  const rettet = vegger.map((v, i) => ({
-    ...v,
-    kantStart: { ...v.kantStart, eier: hj.some(h => h.eier === i && h.kanter.some(k => k.fasade === i && k.ende === "start")) },
-    kantSlutt: { ...v.kantSlutt, eier: hj.some(h => h.eier === i && h.kanter.some(k => k.fasade === i && k.ende === "slutt")) }
-  }));
-  return { ...blikkListe(rettet, { ...blikkOppsett(), hjorneTolMm: hjTol }, ender), vegger: rettet };
+  return { ...blikkListe(vegger, { ...blikkOppsett(), hjorneTolMm: hjTol }, ender), vegger };
 }
 
 // ───────────────────────── tegningen ─────────────────────────
