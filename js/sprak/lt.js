@@ -1361,5 +1361,6 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Profilmål": "Profilio matmenys",
   "Profilbredde (mm)": "Profilio plotis (mm)",
   "Profiltykkelse (mm)": "Profilio storis (mm)",
-  "Stanglengde (m)": "Strypo ilgis (m)"
+  "Stanglengde (m)": "Strypo ilgis (m)",
+  "Glassfasade": "Stiklo fasadas"
 };

@@ -1361,5 +1361,6 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Profilmål": "Wymiary profilu",
   "Profilbredde (mm)": "Szerokość profilu (mm)",
   "Profiltykkelse (mm)": "Grubość profilu (mm)",
-  "Stanglengde (m)": "Długość sztangi (m)"
+  "Stanglengde (m)": "Długość sztangi (m)",
+  "Glassfasade": "Fasada szklana"
 };
