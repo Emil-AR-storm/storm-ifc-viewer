@@ -31,12 +31,25 @@ export const SKUM_UTBYTTE_TYKK_M = 15;   // element ≥ 160 mm (Emil: 15–20 m 
 export const SKUM_UTBYTTE_TYNN_M = 20;   // element < 160 mm (Emil: 20–30 m på 120)
 
 // Beslag rundt åpningen: Dør og Port har ingen bunn (3 sider), Vindu har 4.
-export function beslagSider(type) { return type === "vindu" ? 4 : 3; }
+//
+// 🔎 GEITHUS 20653, 17.09: den fjerde siden ER kanten på veggen UNDER vinduet.
+// «Vindu 1» der er en GLASSFASADE som går helt ned til gulvet — ingen vegg
+// under, ingen eksponert isolasjon, og 6,0 lm hatprofil for mye. Derfor
+// avgjør geometrien og ikke navnet, nøyaktig som i js/sw-blikk.js: den fjerde
+// siden kommer bare når åpningens bunn ligger OVER veggfeltets bunn.
+//
+// `bunnMm` og `veggBunnMm` måles fra SW-basen. Er bunnen ukjent, står den
+// gamle oppførselen — gamle kall gir samme svar som før.
+export function beslagSider(type, bunnMm, veggBunnMm) {
+  if (type !== "vindu") return 3;
+  if (bunnMm === undefined || bunnMm === null) return 4;
+  return (Number(bunnMm) || 0) > (Number(veggBunnMm) || 0) + 5 ? 4 : 3;
+}
 
 // Hatprofil rundt én åpning, i meter.
-export function hatprofilM(type, breddeMm, hoydeMm) {
+export function hatprofilM(type, breddeMm, hoydeMm, bunnMm, veggBunnMm) {
   const b = Math.max(0, Number(breddeMm) || 0) / 1000, h = Math.max(0, Number(hoydeMm) || 0) / 1000;
-  return beslagSider(type) === 4 ? 2 * (b + h) : 2 * h + b;
+  return beslagSider(type, bunnMm, veggBunnMm) === 4 ? 2 * (b + h) : 2 * h + b;
 }
 
 // 8 skruer per påbegynt 2,5 m beslag/hatprofil.
@@ -101,7 +114,8 @@ export function veggMateriell(vegg, oppsett) {
   const kanter = Math.max(0, Math.min(2, Number(v.loddretteKanter) || 0));
   const beslagLm = 2 * lengdeM + kanter * hoydeM;
   let hatprofilLm = 0;
-  for (const u of v.utsparinger || []) if (u) hatprofilLm += hatprofilM(u.type, u.breddeMm, u.hoydeMm);
+  for (const u of v.utsparinger || []) if (u)
+    hatprofilLm += hatprofilM(u.type, u.breddeMm, u.hoydeMm, u.bunnMm, v.bunnMm);
   const innvSkjoter = Math.max(0, ((v.skjot || []).length || 0) - 2);
   const skjotM = innvSkjoter * hoydeM;
   const utbytte = skumUtbytteM(v.tykkelseMm, oppsett);
