@@ -1373,5 +1373,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Hatprofil bredde (mm)": "Hat profile width (mm)",
   "Hatprofil flens (mm)": "Hat profile flange (mm)",
   "Hatprofil høyde (mm)": "Hat profile height (mm)",
-  "Utsparingsbeslag bein (mm)": "Opening flashing leg (mm)"
+  "Utsparingsbeslag bein (mm)": "Opening flashing leg (mm)",
+  "Ben på veggflaten (mm)": "Leg on the wall face (mm)",
+  "Retur på innsiden (mm)": "Return on the inside (mm)"
 };
