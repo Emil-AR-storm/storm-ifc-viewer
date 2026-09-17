@@ -40,6 +40,7 @@
 //   juster.js     juster ender, splitt, marker utsparing, finn utsparinger
 //   panel.js      seksjonene, oppsettfeltene og logovalget
 //   innervegg.js  innerveggene, fra bygging til eget panel
+//   blikk.js      blikket rundt elementene — eget verktøy, reglene i sw-blikk.js
 //
 // HVORFOR «export *» OG IKKE EN HÅNDSKREVET LISTE: delene eksporterer alt de
 // har på toppnivå, fordi de peker på hverandre. En håndskrevet liste her måtte
@@ -59,3 +60,4 @@ export * from "./veggelement/stal.js";
 export * from "./veggelement/juster.js";
 export * from "./veggelement/panel.js";
 export * from "./veggelement/innervegg.js";
+export * from "./veggelement/blikk.js";
