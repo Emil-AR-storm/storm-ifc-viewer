@@ -16,13 +16,35 @@ import { tilMm, tilScene } from "./regler.js";
 import { lagret, oppsett, swGroup, skrivLagret } from "./tilstand.js";
 import { baseYNaa, skjulNaa, tegnAlt, utspPaFasader } from "./tegning.js";
 
-// Fargene er Emils: gult beslag, blå hatprofil over skjøtene.
-export const BLIKK_FARGE = { topp: "#f2c200", bunn: "#f2c200", hjorne: "#f2c200",
-  ende: "#f2c200", utsparing: "#f2c200", skjot: "#1f78d1" };
-// Profilmålene er PLASSHOLDERE til Emil måler opp de ekte (bilde 3, 17.09).
-// De står som settbare felt nettopp fordi de skal byttes uten at noe annet
-// røres.
-export const STD_BLIKK = { blikkBreddeMm: 100, blikkTykkMm: 12, stangLengdeM: 2.5 };
+// Blikket har ÉN farge, som settes selv — akkurat som veggelementene
+// (Emil 17.09). De gule og blå strekene i den første runden var bare en
+// illustrasjon av HVOR blikket skulle ligge.
+// 📐 PROFILENE. Blikket er BRETTET PLATE, ikke en strek: et toppbeslag er en
+// kappe som legger seg over veggtoppen og brettes ned et stykke på hver side,
+// et hjørnebeslag er en L rundt hjørnet, og hatprofilen over skjøten er en
+// hatt som ligger på veggflaten. Emil 17.09, med bilde av et ekte bygg:
+// «de gule og blå strekene var kun for å illustrere HVOR blikket skal, ikke
+// hvordan det skal se ut».
+//
+// Alle målene er PLASSHOLDERE til de ekte er målt opp — derfor står de som
+// settbare felt, så de kan byttes uten at noe annet røres.
+export const STD_BLIKK = {
+  blikkFarge: "#9aa3ad",     // settes selv, som veggelementene
+  blikkTykkMm: 1.5,          // platetykkelsen
+  toppNedUteMm: 80,          // toppbeslaget brettes ned på utsiden
+  toppNedInneMm: 40,         //            og et kortere stykke på innsiden
+  bunnOppUteMm: 80,          // bunnbeslaget brettes opp på utsiden
+  bunnOppInneMm: 40,
+  hjorneBenMm: 100,          // hvert bein på L-beslaget i hjørnet
+  endeRetMm: 60,             // endebeslagets retur inn på veggflaten
+  hatToppMm: 60,             // hatprofilen over skjøten: bredden på hatten
+  hatFlensMm: 30,            //            flensen som ligger på veggen
+  hatHoydeMm: 20,            //            hvor høyt hatten står ut
+  utspBenMm: 60,             // beslaget rundt utsparingen, på veggflaten
+  stangLengdeM: 2.5
+};
+// Gamle oppsett hadde blikkBreddeMm og blikkTykkMm 12 — de er ikke lenger i
+// bruk, og standardverdiene over fyller hullene av seg selv.
 
 export function blikkOppsett() {
   const o = (lagret && lagret.blikkOppsett) || {};
@@ -93,34 +115,96 @@ export function blikkNaa() {
 }
 
 // ───────────────────────── tegningen ─────────────────────────
+//
+// Hvert blikkstykke er BRETTET PLATE. Tverrsnittet oppgis som en polylinje i
+// mm, i planet PÅ TVERS av strekningen:
+//
+//     u = utover fra veggens MIDTPLAN (positiv ut av bygget)
+//     v = på tvers av løpsretningen i det planet (retningen `up` bestemmer)
+//
+// Hver rette strekning i polylinja blir én brett — én tynn boks. Et
+// toppbeslag er tre bretter, et hjørnebein ett, en hatprofil fem.
 
 const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
-
-// Ett stykke blikk mellom to punkter, med `nrm` som utover-retning. Boksen
-// står med bredden PÅ TVERS av streken, i veggplanet, og tykkelsen utover.
-export function strek(p1, p2, breddeM, tykkM, nrm, farge) {
-  const d = new THREE.Vector3().subVectors(p2, p1);
-  const len = d.length();
-  if (!(len > 1e-6)) return null;
-  const dir = d.clone().normalize();
-  const n = nrm.clone().normalize();
-  const up = new THREE.Vector3().crossVectors(n, dir).normalize();
-  if (!isFinite(up.x) || up.lengthSq() < 1e-9) return null;
-  const m = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1),
-    new THREE.MeshLambertMaterial({ color: farge, side: THREE.DoubleSide }));
-  m.scale.set(len, breddeM, tykkM);
-  m.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(dir, up, n));
-  m.position.copy(p1).add(p2).multiplyScalar(0.5);
-  return m;
+const matBuffer = new Map();
+function blikkMat(farge) {
+  if (!matBuffer.has(farge))
+    matBuffer.set(farge, new THREE.MeshLambertMaterial({ color: farge, side: THREE.DoubleSide }));
+  return matBuffer.get(farge);
 }
 
-// Punktet på veggens YTTERFLATE ved fasade-mm `tMm` og høyde `yMm` over
-// SW-basen. `ut` dytter blikket litt utenpå elementet så det ikke z-fighter.
-export function punktPaa(f, tMm, yMm, baseY, utS) {
+// Punktet på veggens MIDTPLAN ved fasade-mm `tMm` og høyde `yMm` over
+// SW-basen. Tverrsnittet plasserer seg selv utover derfra.
+export function punktPaa(f, tMm, yMm, baseY) {
   const tS = tilScene(tMm);
-  return V3(f.px + f.nx * f.off + f.ex * tS + f.nx * utS,
+  return V3(f.px + f.nx * f.off + f.ex * tS,
             baseY + tilScene(yMm),
-            f.pz + f.nz * f.off + f.ez * tS + f.nz * utS);
+            f.pz + f.nz * f.off + f.ez * tS);
+}
+
+// Ett brettet profil langs strekningen p1 → p2.
+export function profilStrek(p1, p2, upV, nrmV, tverrsnitt, tykkM, farge, leggFn) {
+  const d = new THREE.Vector3().subVectors(p2, p1);
+  const len = d.length();
+  if (!(len > 1e-6)) return 0;
+  const dir = d.clone().normalize();
+  const up = upV.clone().normalize();
+  const n = nrmV.clone().normalize();
+  const mid = p1.clone().add(p2).multiplyScalar(0.5);
+  let antall = 0;
+  for (let i = 1; i < (tverrsnitt || []).length; i++) {
+    const [u0, v0] = tverrsnitt[i - 1], [u1, v1] = tverrsnitt[i];
+    const du = tilScene(u1 - u0), dv = tilScene(v1 - v0);
+    const segLen = Math.hypot(du, dv);
+    if (!(segLen > 1e-9)) continue;
+    // brettets egen retning i tverrsnittsplanet, uttrykt i verden
+    const segDir = n.clone().multiplyScalar(du / segLen)
+      .add(up.clone().multiplyScalar(dv / segLen)).normalize();
+    const zAks = new THREE.Vector3().crossVectors(dir, segDir).normalize();
+    if (!isFinite(zAks.x) || zAks.lengthSq() < 1e-9) continue;
+    const m = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), blikkMat(farge));
+    m.scale.set(len, segLen, tykkM);
+    m.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(dir, segDir, zAks));
+    m.position.copy(mid)
+      .add(n.clone().multiplyScalar(tilScene((u0 + u1) / 2)))
+      .add(up.clone().multiplyScalar(tilScene((v0 + v1) / 2)));
+    leggFn(m);
+    antall++;
+  }
+  return antall;
+}
+
+// ── tverrsnittene, alle i mm fra veggens midtplan ──
+// `halv` er halve veggtykkelsen pluss en liten klaring, så platen ligger
+// UTENPÅ elementet og ikke inni det.
+
+// Kappe over veggtoppen: ned på innsiden, over toppen, ned på utsiden.
+export function tvsnTopp(halv, nedInne, nedUte) {
+  return [[-halv, -nedInne], [-halv, 0], [halv, 0], [halv, -nedUte]];
+}
+// Kappe under veggbunnen: speilvendt.
+export function tvsnBunn(halv, oppInne, oppUte) {
+  return [[-halv, oppInne], [-halv, 0], [halv, 0], [halv, oppUte]];
+}
+// Kappe over en fri endeflate: retur inn på begge veggflater.
+export function tvsnEnde(halv, ret) {
+  return [[-halv, -ret], [-halv, 0], [halv, 0], [halv, -ret]];
+}
+// Ett bein av hjørnebeslaget: en flat strimmel som ligger på veggflaten og
+// løper innover langs fasaden fra hjørnet. To slike, ett per fasade, gir L-en.
+export function tvsnHjorneBein(halv, ben) {
+  return [[halv, 0], [halv, ben]];
+}
+// Hatprofil over skjøten: flens — opp — hatt — ned — flens.
+export function tvsnHat(halv, topp, flens, hoyde) {
+  const h2 = topp / 2;
+  return [[halv, -(h2 + flens)], [halv, -h2], [halv + hoyde, -h2],
+          [halv + hoyde, h2], [halv, h2], [halv, h2 + flens]];
+}
+// Beslaget langs en utsparingskant: dekker den kappede enden av elementet
+// (hele veggtykkelsen) og brettes ut på veggflaten, bort fra åpningen.
+export function tvsnUtsparing(halv, ben) {
+  return [[-halv, 0], [halv, 0], [halv, ben]];
 }
 
 // Veggtoppen ved fasade-mm t, lest av taklinja når den finnes.
@@ -135,6 +219,8 @@ function toppY(f, tMm, toppMm) {
   }
   return L[L.length - 1][1];
 }
+
+const OPP = () => V3(0, 1, 0);
 
 // 👁 Knappen vises først når det finnes genererte veggelement (Emils valg A1).
 // Bare «none» settes inline — tomt igjen, så gruppeskjulingen i
@@ -159,67 +245,96 @@ export function tegnBlikk() {
   const o = lagret.oppsett || oppsett();
   const b = blikkOppsett();
   const baseY = baseYNaa();
-  const breddeM = tilScene(b.blikkBreddeMm), tykkM = tilScene(b.blikkTykkMm);
-  const utS = tilScene(o.tykkelseMm) / 2 + tykkM / 2;
+  const tykkM = tilScene(b.blikkTykkMm);
+  const farge = b.blikkFarge || STD_BLIKK.blikkFarge;
+  // halve veggtykkelsen + platetykkelsen: profilet ligger utenpå elementet
+  const halv = (o.tykkelseMm || 100) / 2 + b.blikkTykkMm;
   const fasader = lagret.fasader || [];
+  const legg = (m) => { m.userData.blikk = true; swGroup.add(m); };
+  const tegn = (p1, p2, up, n, tvsn) => profilStrek(p1, p2, up, n, tvsn, tykkM, farge, legg);
 
   data.kolonner.forEach((kol, fi) => {
     const f = fasader[fi];
     if (!f) return;
     const vegg = data.vegger[fi];
     const nrm = V3(f.nx, 0, f.nz);
-    const P = (tMm, yMm) => punktPaa(f, tMm, yMm, baseY, utS);
+    const langs = V3(f.ex, 0, f.ez);      // fasadens egen retning
+    const P = (tMm, yMm) => punktPaa(f, tMm, yMm, baseY);
     for (const s of kol.stykker) {
       if (s.type === "hjorne" || s.type === "ende") continue;   // tegnes per hjørne
       if (s.type === "topp") {
-        // følger taklinja: ett stykke per rett strekning, så gavlen får knekk
+        // følger taklinja: ett profil per rett strekning, så gavlen får knekk
         const xs = [s.fraMm];
         for (const [x] of f.takLinje || []) if (x > s.fraMm + 1 && x < s.tilMm - 1) xs.push(x);
         xs.push(s.tilMm);
         for (let i = 1; i < xs.length; i++)
-          legg(strek(P(xs[i - 1], toppY(f, xs[i - 1], vegg.toppMm)),
-                     P(xs[i], toppY(f, xs[i], vegg.toppMm)), breddeM, tykkM, nrm, BLIKK_FARGE.topp));
+          tegn(P(xs[i - 1], toppY(f, xs[i - 1], vegg.toppMm)), P(xs[i], toppY(f, xs[i], vegg.toppMm)),
+            OPP(), nrm, tvsnTopp(halv, b.toppNedInneMm, b.toppNedUteMm));
       } else if (s.type === "bunn") {
-        legg(strek(P(s.fraMm, 0), P(s.tilMm, 0), breddeM, tykkM, nrm, BLIKK_FARGE.bunn));
+        tegn(P(s.fraMm, 0), P(s.tilMm, 0), OPP(), nrm,
+          tvsnBunn(halv, b.bunnOppInneMm, b.bunnOppUteMm));
       } else if (s.type === "skjot") {
         for (const [y0, y1] of s.deler || [])
-          legg(strek(P(s.tMm, y0), P(s.tMm, y1), breddeM, tykkM, nrm, BLIKK_FARGE.skjot));
+          tegn(P(s.tMm, y0), P(s.tMm, y1), langs, nrm,
+            tvsnHat(halv, b.hatToppMm, b.hatFlensMm, b.hatHoydeMm));
       } else if (s.type === "utsparing" && s.fraMm !== undefined) {
         const { fraMm: a, tilMm: c, bunnMm: y0, toppMm: y1 } = s;
-        legg(strek(P(a, y1), P(c, y1), breddeM, tykkM, nrm, BLIKK_FARGE.utsparing));  // topp
-        legg(strek(P(a, y0), P(a, y1), breddeM, tykkM, nrm, BLIKK_FARGE.utsparing));  // venstre
-        legg(strek(P(c, y0), P(c, y1), breddeM, tykkM, nrm, BLIKK_FARGE.utsparing));  // høyre
-        // Dør og port har ingen bunn (3 sider) — vinduet har fire.
-        if (utsparingSider(s.utspType) === 4)
-          legg(strek(P(a, y0), P(c, y0), breddeM, tykkM, nrm, BLIKK_FARGE.utsparing));
+        const ben = b.utspBenMm;
+        // OVER åpningen: `up` peker OPP, bort fra åpningen
+        tegn(P(a, y1), P(c, y1), OPP(), nrm, tvsnUtsparing(halv, ben));
+        // SIDENE: `up` peker bort fra åpningen, altså hver sin vei
+        tegn(P(a, y0), P(a, y1), langs.clone().negate(), nrm, tvsnUtsparing(halv, ben));
+        tegn(P(c, y0), P(c, y1), langs, nrm, tvsnUtsparing(halv, ben));
+        // UNDER: bare når det er vegg under (vindu med fire sider)
+        if (s.sider === 4)
+          tegn(P(a, y0), P(c, y0), V3(0, -1, 0), nrm, tvsnUtsparing(halv, ben));
       }
     }
   });
 
   // 📐 HJØRNENE: ETT L-beslag per hjørne, uansett hvem som bærer løpemeteren
-  // i lista (Emil 17.09). På et rektangel blir det alltid fire — det var
-  // nettopp dette som måtte rettes fra sjekklista 08.09.
+  // i lista (Emil 17.09). Beinet på hver fasade løper INNOVER fra hjørnet, og
+  // de to møtes i selve hjørnet — det er L-en.
   for (const h of data.hjorner || []) {
     for (const k of h.kanter) {
       const f = fasader[k.fasade];
-      if (!f) return;
       const vegg = data.vegger[k.fasade];
-      if (!vegg) continue;
+      if (!f || !vegg) continue;
       const nrm = V3(f.nx, 0, f.nz);
-      const tEnde = k.ende === "start" ? vegg.t0Mm : vegg.t1Mm;
-      // beinet legges INNOVER langs fasaden fra hjørnet, en halv profilbredde,
-      // så de to beina møtes i hjørnet i stedet for å krysse hverandre
-      const inn = k.ende === "start" ? b.blikkBreddeMm / 2 : -b.blikkBreddeMm / 2;
-      const P = (yMm) => punktPaa(f, tEnde + inn, yMm, baseY, utS);
-      legg(strek(P(h.bunnMm), P(h.toppMm), breddeM, tykkM, nrm,
-        BLIKK_FARGE[h.type === "hjorne" ? "hjorne" : "ende"]));
+      const langs = V3(f.ex, 0, f.ez);
+      const start = k.ende === "start";
+      const tEnde = start ? vegg.t0Mm : vegg.t1Mm;
+      // innover langs fasaden: framover fra starten, bakover fra slutten
+      const inn = start ? langs : langs.clone().negate();
+      const ben = h.type === "hjorne" ? b.hjorneBenMm : b.endeRetMm;
+      tegn(punktPaa(f, tEnde, h.bunnMm, baseY), punktPaa(f, tEnde, h.toppMm, baseY),
+        inn, nrm, tvsnHjorneBein(halv, ben));
+      // En FRI ende får i tillegg en kappe over selve endeflaten — der er
+      // isolasjonen eksponert på tvers, ikke bare i hjørnet.
+      if (h.type !== "hjorne")
+        tegn(punktPaa(f, tEnde, h.bunnMm, baseY), punktPaa(f, tEnde, h.toppMm, baseY),
+          inn.clone().negate(), nrm, tvsnEnde(halv, b.endeRetMm));
     }
   }
-
-  function legg(m) { if (m) { m.userData.blikk = true; swGroup.add(m); } }
 }
 
 // ───────────────────────── panelet ─────────────────────────
+
+// Feltene som kan stilles. `felt` er nøkkelen i blikkOppsett().
+export const BLIKK_FELT = [
+  ["blikkTykkMm", "Platetykkelse (mm)"],
+  ["toppNedUteMm", "Toppbeslag ned utside (mm)"],
+  ["toppNedInneMm", "Toppbeslag ned innside (mm)"],
+  ["bunnOppUteMm", "Bunnbeslag opp utside (mm)"],
+  ["bunnOppInneMm", "Bunnbeslag opp innside (mm)"],
+  ["hjorneBenMm", "Hjørnebeslag bein (mm)"],
+  ["endeRetMm", "Endebeslag retur (mm)"],
+  ["hatToppMm", "Hatprofil bredde (mm)"],
+  ["hatFlensMm", "Hatprofil flens (mm)"],
+  ["hatHoydeMm", "Hatprofil høyde (mm)"],
+  ["utspBenMm", "Utsparingsbeslag bein (mm)"],
+  ["stangLengdeM", "Stanglengde (m)"]
+];
 
 export function blikkPanelHtml() {
   const data = blikkNaa();
@@ -249,14 +364,12 @@ export function blikkPanelHtml() {
     "</tbody></table>" +
     "<p class='hint'>" + esc(t("{0} hjørner · {1} fasader", (data.hjorner || []).length, kolonner.length)) + "</p>" +
     "<h4 data-sek='blikkmal'>" + esc(t("Profilmål")) + "</h4>" +
-    felt3("blikkBredde", "Profilbredde (mm)", b.blikkBreddeMm) +
-    felt3("blikkTykk", "Profiltykkelse (mm)", b.blikkTykkMm) +
-    felt3("blikkStang", "Stanglengde (m)", b.stangLengdeM);
-}
-
-function felt3(id, tekst, verdi) {
-  return "<label class='swfelt'><span>" + esc(t(tekst)) + "</span>" +
-    "<input id='" + id + "' type='number' step='any' value='" + esc(String(verdi)) + "'></label>";
+    "<label>" + esc(t("Farge")) + "<input type='color' id='blikkFarge' value='" +
+      esc(b.blikkFarge || STD_BLIKK.blikkFarge) + "'></label>" +
+    BLIKK_FELT.map(([id, tekst]) =>
+      "<label class='swfelt'><span>" + esc(t(tekst)) + "</span>" +
+      "<input id='f_" + id + "' type='number' step='any' min='0' value='" +
+      esc(String(b[id])) + "'></label>").join("");
 }
 
 export function tegnBlikkPanel() {
@@ -264,16 +377,19 @@ export function tegnBlikkPanel() {
   if (!body) return;
   body.innerHTML = blikkPanelHtml();
   const les = () => {
-    settBlikkOppsett({
-      blikkBreddeMm: Number($("blikkBredde").value) || STD_BLIKK.blikkBreddeMm,
-      blikkTykkMm: Number($("blikkTykk").value) || STD_BLIKK.blikkTykkMm,
-      stangLengdeM: Number($("blikkStang").value) || STD_BLIKK.stangLengdeM
-    });
+    const ny = { blikkFarge: ($("blikkFarge") || {}).value || STD_BLIKK.blikkFarge };
+    for (const [id] of BLIKK_FELT) {
+      const e = $("f_" + id);
+      const v = e ? Number(e.value) : NaN;
+      ny[id] = Number.isFinite(v) && v >= 0 ? v : STD_BLIKK[id];
+    }
+    settBlikkOppsett(ny);
     tegnAlt();
-    tegnBlikkPanel();
   };
-  for (const id of ["blikkBredde", "blikkTykk", "blikkStang"]) {
-    const e = $(id);
+  const f = $("blikkFarge");
+  if (f) f.onchange = les;
+  for (const [id] of BLIKK_FELT) {
+    const e = $("f_" + id);
     if (e) e.onchange = les;
   }
 }
