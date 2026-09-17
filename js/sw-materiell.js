@@ -41,6 +41,7 @@ export const SKUM_UTBYTTE_TYNN_M = 20;   // element < 160 mm (Emil: 20–30 m p�
 // `bunnMm` og `veggBunnMm` måles fra SW-basen. Er bunnen ukjent, står den
 // gamle oppførselen — gamle kall gir samme svar som før.
 export function beslagSider(type, bunnMm, veggBunnMm) {
+  // port, dør og glassfasade står alle på betongen: aldri en fjerde side
   if (type !== "vindu") return 3;
   if (bunnMm === undefined || bunnMm === null) return 4;
   return (Number(bunnMm) || 0) > (Number(veggBunnMm) || 0) + 5 ? 4 : 3;
