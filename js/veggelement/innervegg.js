@@ -802,7 +802,7 @@ export async function lastNedInnerTegning() {
   const knapp = $("swInnerTegning");
   if (knapp) knapp.disabled = true;
   try {
-    const mod = await import("./sw-tegning.js");
+    const mod = await import("../sw-tegning.js");
     // Oppsettet tegninga får er innerveggenes eget — men bare ÉN tykkelse og
     // ett ringmuroppsett kan stå i tittelfeltet. Den første veggens oppsett
     // brukes, og de andre står med sine egne mål på elementene.

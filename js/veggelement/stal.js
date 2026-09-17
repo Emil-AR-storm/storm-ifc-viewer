@@ -510,7 +510,7 @@ export async function lastNedTegning() {
   const knapp = $("swTegning");
   if (knapp) knapp.disabled = true;
   try {
-    const mod = await import("./sw-tegning.js");
+    const mod = await import("../sw-tegning.js");
     // Ett navneoppslag per FASADE, ikke per punkt: akseNavnFor gjør oppslaget
     // i S.akseLinjer én gang og lukker over fasaden.
     const navnere = new Map();
