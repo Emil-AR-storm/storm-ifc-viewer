@@ -1362,5 +1362,16 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Profilbredde (mm)": "Szerokość profilu (mm)",
   "Profiltykkelse (mm)": "Grubość profilu (mm)",
   "Stanglengde (m)": "Długość sztangi (m)",
-  "Glassfasade": "Fasada szklana"
+  "Glassfasade": "Fasada szklana",
+  "Platetykkelse (mm)": "Grubość blachy (mm)",
+  "Toppbeslag ned utside (mm)": "Obróbka górna, okap zewn. (mm)",
+  "Toppbeslag ned innside (mm)": "Obróbka górna, okap wewn. (mm)",
+  "Bunnbeslag opp utside (mm)": "Obróbka dolna, wywinięcie zewn. (mm)",
+  "Bunnbeslag opp innside (mm)": "Obróbka dolna, wywinięcie wewn. (mm)",
+  "Hjørnebeslag bein (mm)": "Ramię obróbki narożnej (mm)",
+  "Endebeslag retur (mm)": "Zawinięcie obróbki końcowej (mm)",
+  "Hatprofil bredde (mm)": "Szerokość profilu kapeluszowego (mm)",
+  "Hatprofil flens (mm)": "Kołnierz profilu kapeluszowego (mm)",
+  "Hatprofil høyde (mm)": "Wysokość profilu kapeluszowego (mm)",
+  "Utsparingsbeslag bein (mm)": "Ramię obróbki otworu (mm)"
 };
