@@ -200,6 +200,18 @@ export function tvsnHjorneBein(klaring, ben) {
   return [[klaring, 0], [klaring, ben]];
 }
 
+// Hatprofil over skjøten: flens — opp — hatt — ned — flens.
+export function tvsnHat(halv, topp, flens, hoyde) {
+  const h2 = topp / 2;
+  return [[halv, -(h2 + flens)], [halv, -h2], [halv + hoyde, -h2],
+          [halv + hoyde, h2], [halv, h2], [halv, h2 + flens]];
+}
+// Beslaget langs en utsparingskant: dekker den kappede enden av elementet
+// (hele veggtykkelsen) og brettes ut på veggflaten, bort fra åpningen.
+export function tvsnUtsparing(halv, ben) {
+  return [[-halv, 0], [halv, 0], [halv, ben]];
+}
+
 // Veggtoppen ved fasade-mm t, lest av taklinja når den finnes.
 function toppY(f, tMm, toppMm) {
   const L = f.takLinje;
