@@ -203,12 +203,32 @@ export function skjotHoyde(elementer, sMm, klaringMm, tolMm) {
   return sumLengde(skjotIntervaller(elementer, sMm, klaringMm, tolMm));
 }
 
-// HATPROFIL RUNDT EN UTSPARING. Uendret regel fra sw-materiell.js, med vilje:
-// Dør og Port har ingen bunn (3 sider), Vindu har 4. Regelen står nå bare her.
-export function utsparingSider(type) { return type === "vindu" ? 4 : 3; }
-export function utsparingLm(type, breddeMm, hoydeMm) {
+// HATPROFIL RUNDT EN UTSPARING.
+//
+// Regelen var: Dør og Port har ingen bunn (3 sider), Vindu har 4. Den holder
+// så lenge et vindu har vegg under seg — og det er grunnen til at det er fire
+// sider: den fjerde er kanten på veggen UNDER vinduet.
+//
+// 🔎 GEITHUS 20653, 17.09: «Vindu 1» er 6 000 × 3 050 og går HELT NED TIL
+// GULVET — en glassfront, ikke et vindu i en vegg. Det er ingen vegg under
+// den, altså ingen eksponert isolasjon å dekke, men typen ga likevel fire
+// sider og 6,0 lm hatprofil for mye.
+//
+// Derfor avgjør GEOMETRIEN og ikke navnet: den fjerde siden kommer bare når
+// åpningens bunn ligger over veggfeltets bunn. Det er Emils eget prinsipp —
+// blikk skal dekke der isolasjonen er eksponert, ikke noe annet sted.
+//
+// `bunnMm` og `veggBunnMm` måles begge fra SW-basen. Er bunnen ukjent
+// (undefined), beholdes den gamle oppførselen, så gamle kall ikke endrer svar.
+export function utsparingSider(type, bunnMm, veggBunnMm, tolMm) {
+  if (type !== "vindu") return 3;
+  if (bunnMm === undefined || bunnMm === null) return 4;
+  const tol = tallEr(tolMm) ? Number(tolMm) : BLIKK_TOL_MM;
+  return n(bunnMm) > n(veggBunnMm) + tol ? 4 : 3;
+}
+export function utsparingLm(type, breddeMm, hoydeMm, bunnMm, veggBunnMm, tolMm) {
   const b = Math.max(0, n(breddeMm)) / 1000, h = Math.max(0, n(hoydeMm)) / 1000;
-  return utsparingSider(type) === 4 ? 2 * (b + h) : 2 * h + b;
+  return utsparingSider(type, bunnMm, veggBunnMm, tolMm) === 4 ? 2 * (b + h) : 2 * h + b;
 }
 
 // ───────────────────────── skruer og stenger ─────────────────────────
@@ -312,8 +332,12 @@ export function medHjorner(vegger, hjorner, tolMm) {
     const ny = { ...v };
     for (const [felt, ende] of [["kantStart", "start"], ["kantSlutt", "slutt"]]) {
       const h = stk.find(s => s.kanter.some(k => k.fasade === i && k.ende === ende));
+      // EIERSKAPET AVGJØRES HER, ikke av den som bygger vegglista. Hjørnet
+      // skal telles ÉN gang, og lot vi kalleren sette `eier` selv, ble
+      // fasaden på den andre siden talt en gang til — 28,8 lm der fasiten
+      // sier 14,4. Fanget av Geithus-testen 17.09.
       if (h && ny[felt]) ny[felt] = { ...ny[felt], hoydeMm: h.hoydeMm,
-        bunnMm: h.bunnMm, toppMm: h.toppMm, type: h.type };
+        bunnMm: h.bunnMm, toppMm: h.toppMm, type: h.type, eier: h.eier === i };
     }
     return ny;
   });
@@ -390,16 +414,19 @@ export function veggBlikk(vegg, oppsett) {
   }
   // 5. rundt utsparingene
   let utspLm = 0;
+  const vBunn = n(v.bunnMm);
   for (const u of v.utsparinger || []) {
     if (!u) continue;
-    const m = utsparingLm(u.type, u.breddeMm, u.hoydeMm);
+    const m = utsparingLm(u.type, u.breddeMm, u.hoydeMm, u.bunnMm, vBunn, tol);
     if (m <= 0) continue;
     utspLm += m;
     // fraMm/tilMm/bunnMm/toppMm følger med når kalleren har dem (utspPaFasader),
     // så 3D-en kan tegne rammen på riktig sted. Lengden er uavhengig av dem.
-    stykker.push({ type: "utsparing", utspType: u.type, sider: utsparingSider(u.type),
+    stykker.push({ type: "utsparing", utspType: u.type,
+      sider: utsparingSider(u.type, u.bunnMm, vBunn, tol),
       fraMm: u.fraMm, tilMm: u.tilMm_ !== undefined ? u.tilMm_ : u.tilMm,
-      bunnMm: u.bunnMm, toppMm: u.toppMm, lm: rund(m) });
+      // bunnen klippes til veggfeltet for TEGNINGEN; sidene er avgjort over
+      bunnMm: Math.max(n(u.bunnMm), vBunn), toppMm: u.toppMm, lm: rund(m) });
   }
 
   const beslagLm = toppLm + bunnLm + kantLm;
