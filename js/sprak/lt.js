@@ -1362,5 +1362,16 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Profilbredde (mm)": "Profilio plotis (mm)",
   "Profiltykkelse (mm)": "Profilio storis (mm)",
   "Stanglengde (m)": "Strypo ilgis (m)",
-  "Glassfasade": "Stiklo fasadas"
+  "Glassfasade": "Stiklo fasadas",
+  "Platetykkelse (mm)": "Skardos storis (mm)",
+  "Toppbeslag ned utside (mm)": "Viršutinė apdaila, išorinis kritimas (mm)",
+  "Toppbeslag ned innside (mm)": "Viršutinė apdaila, vidinis kritimas (mm)",
+  "Bunnbeslag opp utside (mm)": "Apatinė apdaila, išorinis pakilimas (mm)",
+  "Bunnbeslag opp innside (mm)": "Apatinė apdaila, vidinis pakilimas (mm)",
+  "Hjørnebeslag bein (mm)": "Kampinės apdailos petys (mm)",
+  "Endebeslag retur (mm)": "Galinės apdailos atvartas (mm)",
+  "Hatprofil bredde (mm)": "Skrybėlinio profilio plotis (mm)",
+  "Hatprofil flens (mm)": "Skrybėlinio profilio flanšas (mm)",
+  "Hatprofil høyde (mm)": "Skrybėlinio profilio aukštis (mm)",
+  "Utsparingsbeslag bein (mm)": "Angos apdailos petys (mm)"
 };

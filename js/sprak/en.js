@@ -1362,5 +1362,16 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Profilbredde (mm)": "Profile width (mm)",
   "Profiltykkelse (mm)": "Profile thickness (mm)",
   "Stanglengde (m)": "Bar length (m)",
-  "Glassfasade": "Glass facade"
+  "Glassfasade": "Glass facade",
+  "Platetykkelse (mm)": "Sheet thickness (mm)",
+  "Toppbeslag ned utside (mm)": "Top flashing, outside drop (mm)",
+  "Toppbeslag ned innside (mm)": "Top flashing, inside drop (mm)",
+  "Bunnbeslag opp utside (mm)": "Bottom flashing, outside rise (mm)",
+  "Bunnbeslag opp innside (mm)": "Bottom flashing, inside rise (mm)",
+  "Hjørnebeslag bein (mm)": "Corner flashing leg (mm)",
+  "Endebeslag retur (mm)": "End flashing return (mm)",
+  "Hatprofil bredde (mm)": "Hat profile width (mm)",
+  "Hatprofil flens (mm)": "Hat profile flange (mm)",
+  "Hatprofil høyde (mm)": "Hat profile height (mm)",
+  "Utsparingsbeslag bein (mm)": "Opening flashing leg (mm)"
 };
