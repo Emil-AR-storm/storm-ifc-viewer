@@ -1373,5 +1373,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Hatprofil bredde (mm)": "Szerokość profilu kapeluszowego (mm)",
   "Hatprofil flens (mm)": "Kołnierz profilu kapeluszowego (mm)",
   "Hatprofil høyde (mm)": "Wysokość profilu kapeluszowego (mm)",
-  "Utsparingsbeslag bein (mm)": "Ramię obróbki otworu (mm)"
+  "Utsparingsbeslag bein (mm)": "Ramię obróbki otworu (mm)",
+  "Ben på veggflaten (mm)": "Ramię na licu ściany (mm)",
+  "Retur på innsiden (mm)": "Zawinięcie od wewnątrz (mm)"
 };
