@@ -161,11 +161,16 @@ export function toppIntervaller(elementer, linje, toppMm, tolMm, sammenTolMm) {
 // EN ENDE (hjørne eller fri ende): den dekte høyden i enden. Elementene som
 // står i enden bestemmer den — går porten helt ut i hjørnet, er det mindre
 // kant å dekke.
+// Elementene som STÅR I enden — de som dekker fasade-mm `t`, ikke bare de som
+// slutter nøyaktig der. HJØRNELAPPEN (runde 6/23) forlenger endeelementene
+// forbi fasadens akse: `hjFraMm = tilMm(t0) + hjorneForlengelse(…)`, typisk
+// 150–250 mm. Lette vi bare etter en elementende innenfor 5 mm av t0, fant vi
+// ingenting på et virkelig bygg, og hjørnebeslaget ble 0 lm på hele modellen.
+// Prøvebygget mitt hadde elementene nøyaktig på 0 og 12 000 og skjulte feilen.
 export function kantIntervaller(elementer, tMm, tolMm) {
   const tol = tallEr(tolMm) ? Number(tolMm) : BLIKK_TOL_MM;
   const t = Number(tMm);
-  const ved = synlige(elementer).filter(e =>
-    Math.abs(n(e.fraMm) - t) <= tol || Math.abs(n(e.tilMm) - t) <= tol);
+  const ved = synlige(elementer).filter(e => n(e.fraMm) <= t + tol && n(e.tilMm) >= t - tol);
   return slaSammen(ved.map(e => [elBunn(e), elToppVed(e, t)]), tol);
 }
 export function kantHoyde(elementer, tMm, tolMm) {
