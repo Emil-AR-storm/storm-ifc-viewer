@@ -1375,5 +1375,6 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Hatprofil høyde (mm)": "Hat profile height (mm)",
   "Utsparingsbeslag bein (mm)": "Opening flashing leg (mm)",
   "Ben på veggflaten (mm)": "Leg on the wall face (mm)",
-  "Retur på innsiden (mm)": "Return on the inside (mm)"
+  "Retur på innsiden (mm)": "Return on the inside (mm)",
+  "{0} innervegger (begge sider)": "{0} inner walls (both faces)"
 };
