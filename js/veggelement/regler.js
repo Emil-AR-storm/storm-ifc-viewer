@@ -1659,14 +1659,24 @@ export function innerveggBiter(skjot, rader, kappIndex, klaringMm, minBitMm, end
 //      på instruksjonstegninga — i stedet for «Utsparing 7»
 // Typen styrer IKKE bunnen av åpningen (en port snappes ikke til gulvet) og
 // IKKE ringmuren (den kappes der åpningen faktisk når ned i muren).
-export const UTSP_TYPER = ["port", "dor", "vindu"];
-export const UTSP_TYPE_NAVN = { port: "Port", dor: "Dør", vindu: "Vindu" };
+// 🪟 GLASSFASADE kom som fjerde type 17.09 (Geithus 20653): en glassflate som
+// står PÅ BETONGEN og går til topps, ikke et vindu med vegg under. Den ble
+// tidligere ført som «Vindu», og da het en 6 × 3 m glassfront «Vindu 1» på
+// tegninga — misvisende for den som skal bygge. Den er et RENT VALG: det
+// finnes ingen måte å se forskjell på en glassfront og en port i stålet, så
+// foreslaUtspType foreslår den aldri. Du trykker deg til den.
+export const UTSP_TYPER = ["port", "dor", "vindu", "glass"];
+export const UTSP_TYPE_NAVN = { port: "Port", dor: "Dør", vindu: "Vindu", glass: "Glassfasade" };
 export function utspTypeNavn(type) { return t(UTSP_TYPE_NAVN[type] || UTSP_TYPE_NAVN.dor); }
 export function nesteUtspType(type) {
   const i = UTSP_TYPER.indexOf(type);
   return UTSP_TYPER[(i + 1) % UTSP_TYPER.length];
 }
-// Beslag rundt åpningen: Dør og Port har ingen bunn (3 sider), Vindu har 4.
+// Beslag rundt åpningen: bare Vindu har fire sider. Den fjerde er kanten på
+// veggen UNDER åpningen — og under en port, en dør eller en glassfasade er
+// det ingen vegg. Den endelige avgjørelsen tas av geometrien i
+// js/sw-blikk.js (et «vindu» som står på gulvet får også tre), men for en
+// glassfasade er svaret gitt av typen alene.
 export function utspBeslagSider(type) { return type === "vindu" ? 4 : 3; }
 // STARTFORSLAGET for en ny åpning (et forslag, ikke en regel — ett trykk
 // bytter): bunn mer enn 300 mm over OK betong → Vindu. Ellers Port om bredden
