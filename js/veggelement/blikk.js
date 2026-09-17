@@ -28,23 +28,24 @@ import { baseYNaa, skjulNaa, tegnAlt, utspPaFasader } from "./tegning.js";
 //
 // Alle målene er PLASSHOLDERE til de ekte er målt opp — derfor står de som
 // settbare felt, så de kan byttes uten at noe annet røres.
+// 🔎 EMIL 17.09: «hjørne-L-beslaget er for kort i sidene — det skal ha samme
+// lengde som blikket som går rundt fasaden, som i dette tilfellet er 200 mm».
+// Derfor er det ÉN verdi for alt blikket som ligger på veggflaten:
+// toppbeslagets nedbrett, bunnbeslagets oppbrett, hjørnebeina, endebeslaget
+// og beslaget rundt utsparingene. Setter du `benUteMm`, følger alle fem.
+// Det var fem tall som kunne komme i utakt; nå er det ett.
 export const STD_BLIKK = {
   blikkFarge: "#9aa3ad",     // settes selv, som veggelementene
   blikkTykkMm: 1.5,          // platetykkelsen
-  toppNedUteMm: 80,          // toppbeslaget brettes ned på utsiden
-  toppNedInneMm: 40,         //            og et kortere stykke på innsiden
-  bunnOppUteMm: 80,          // bunnbeslaget brettes opp på utsiden
-  bunnOppInneMm: 40,
-  hjorneBenMm: 100,          // hvert bein på L-beslaget i hjørnet
-  endeRetMm: 60,             // endebeslagets retur inn på veggflaten
+  benUteMm: 200,             // blikkets ben PÅ VEGGFLATEN — gjelder alle fem
+  benInneMm: 40,             // returen inn på innsiden av kappene
   hatToppMm: 60,             // hatprofilen over skjøten: bredden på hatten
   hatFlensMm: 30,            //            flensen som ligger på veggen
   hatHoydeMm: 20,            //            hvor høyt hatten står ut
-  utspBenMm: 60,             // beslaget rundt utsparingen, på veggflaten
   stangLengdeM: 2.5
 };
-// Gamle oppsett hadde blikkBreddeMm og blikkTykkMm 12 — de er ikke lenger i
-// bruk, og standardverdiene over fyller hullene av seg selv.
+// Gamle oppsett hadde blikkBreddeMm, toppNedUteMm, hjorneBenMm og flere —
+// de er ikke lenger i bruk, og standardverdiene over fyller hullene selv.
 
 export function blikkOppsett() {
   const o = (lagret && lagret.blikkOppsett) || {};
@@ -113,7 +114,7 @@ export function blikkNaa() {
   const hjTol = tilScene(600);
   // hjorneDekkerMm: en skjøt som ligger under L-beslaget er allerede dekket
   const bo = blikkOppsett();
-  return { ...blikkListe(vegger, { ...bo, hjorneTolMm: hjTol, hjorneDekkerMm: bo.hjorneBenMm }, ender), vegger };
+  return { ...blikkListe(vegger, { ...bo, hjorneTolMm: hjTol, hjorneDekkerMm: bo.benUteMm }, ender), vegger };
 }
 
 // ───────────────────────── tegningen ─────────────────────────
@@ -274,17 +275,17 @@ export function tegnBlikk() {
         xs.push(s.tilMm);
         for (let i = 1; i < xs.length; i++)
           tegn(P(xs[i - 1], toppY(f, xs[i - 1], vegg.toppMm)), P(xs[i], toppY(f, xs[i], vegg.toppMm)),
-            OPP(), nrm, tvsnTopp(halv, b.toppNedInneMm, b.toppNedUteMm));
+            OPP(), nrm, tvsnTopp(halv, b.benInneMm, b.benUteMm));
       } else if (s.type === "bunn") {
         tegn(P(s.fraMm, 0), P(s.tilMm, 0), OPP(), nrm,
-          tvsnBunn(halv, b.bunnOppInneMm, b.bunnOppUteMm));
+          tvsnBunn(halv, b.benInneMm, b.benUteMm));
       } else if (s.type === "skjot") {
         for (const [y0, y1] of s.deler || [])
           tegn(P(s.tMm, y0), P(s.tMm, y1), langs, nrm,
             tvsnHat(halv, b.hatToppMm, b.hatFlensMm, b.hatHoydeMm));
       } else if (s.type === "utsparing" && s.fraMm !== undefined) {
         const { fraMm: a, tilMm: c, bunnMm: y0, toppMm: y1 } = s;
-        const ben = b.utspBenMm;
+        const ben = b.benUteMm;
         // OVER åpningen: `up` peker OPP, bort fra åpningen
         tegn(P(a, y1), P(c, y1), OPP(), nrm, tvsnUtsparing(halv, ben));
         // SIDENE: `up` peker bort fra åpningen, altså hver sin vei
@@ -319,14 +320,14 @@ export function tegnBlikk() {
       if (yt) {
         // ekte hjørne: beinet starter i ytterhjørnet og løper innover
         const p = (yMm) => V3(yt.x, baseY + tilScene(yMm), yt.z);
-        tegn(p(h.bunnMm), p(h.toppMm), inn, nrm, tvsnHjorneBein(klaring, b.hjorneBenMm));
+        tegn(p(h.bunnMm), p(h.toppMm), inn, nrm, tvsnHjorneBein(klaring, b.benUteMm));
       } else {
         // FRI ENDE (eller parallelle fasader): kappe over selve endeflaten,
         // pluss en retur inn på veggen. Her er isolasjonen eksponert på tvers.
         const tEnde = start ? vegg.t0Mm : vegg.t1Mm;
         const p = (yMm) => punktPaa(f, tEnde, yMm, baseY);
         tegn(p(h.bunnMm), p(h.toppMm), inn.clone().negate(), nrm,
-          tvsnEnde(halv, b.endeRetMm));
+          tvsnEnde(halv, b.benUteMm));
       }
     }
   }
@@ -337,16 +338,11 @@ export function tegnBlikk() {
 // Feltene som kan stilles. `felt` er nøkkelen i blikkOppsett().
 export const BLIKK_FELT = [
   ["blikkTykkMm", "Platetykkelse (mm)"],
-  ["toppNedUteMm", "Toppbeslag ned utside (mm)"],
-  ["toppNedInneMm", "Toppbeslag ned innside (mm)"],
-  ["bunnOppUteMm", "Bunnbeslag opp utside (mm)"],
-  ["bunnOppInneMm", "Bunnbeslag opp innside (mm)"],
-  ["hjorneBenMm", "Hjørnebeslag bein (mm)"],
-  ["endeRetMm", "Endebeslag retur (mm)"],
+  ["benUteMm", "Ben på veggflaten (mm)"],
+  ["benInneMm", "Retur på innsiden (mm)"],
   ["hatToppMm", "Hatprofil bredde (mm)"],
   ["hatFlensMm", "Hatprofil flens (mm)"],
   ["hatHoydeMm", "Hatprofil høyde (mm)"],
-  ["utspBenMm", "Utsparingsbeslag bein (mm)"],
   ["stangLengdeM", "Stanglengde (m)"]
 ];
 
