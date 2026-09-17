@@ -344,6 +344,40 @@ export function medHjorner(vegger, hjorner, tolMm) {
   });
 }
 
+// 📐 YTTERHJØRNET: punktet der DENNE fasadens ytterflate møter naboens.
+//
+// 🔎 EMILS FUNN 17.09: beinene ble satt på fasadens egen akseende (t0/t1), og
+// med pinwheel-hjørnet (runde 6) ligger den ene fasadens ende en veggtykkelse
+// inne på naboen. Da møttes ikke beinene, det ble ingen L, og strimmelen som
+// sto igjen så ut som en skjøt «som følger innerveggens skjøtepunkt».
+// Løsningen er å regne skjæringen mellom de to ytterflatene og sette begge
+// beina DER — da lukker L-en seg om hjørnet uansett hvilken vegg som løper
+// forbi hvilken.
+//
+// `halvS` er halve veggtykkelsen i scene-enheter. Returnerer {x, z}, eller
+// null når fasadene er parallelle (da finnes ikke noe hjørne).
+export function hjorneYtre(fA, fB, halvS) {
+  if (!fA || !fB) return null;
+  const ax = fA.px + fA.nx * (fA.off + halvS), az = fA.pz + fA.nz * (fA.off + halvS);
+  const bx = fB.px + fB.nx * (fB.off + halvS), bz = fB.pz + fB.nz * (fB.off + halvS);
+  const nevner = fA.ex * fB.nx + fA.ez * fB.nz;
+  if (Math.abs(nevner) < 1e-6) return null;
+  const s = ((bx - ax) * fB.nx + (bz - az) * fB.nz) / nevner;
+  if (!Number.isFinite(s)) return null;
+  return { x: ax + fA.ex * s, z: az + fA.ez * s };
+}
+// Hatprofil over skjøten: flens — opp — hatt — ned — flens.
+export function tvsnHat(halv, topp, flens, hoyde) {
+  const h2 = topp / 2;
+  return [[halv, -(h2 + flens)], [halv, -h2], [halv + hoyde, -h2],
+          [halv + hoyde, h2], [halv, h2], [halv, h2 + flens]];
+}
+// Beslaget langs en utsparingskant: dekker den kappede enden av elementet
+// (hele veggtykkelsen) og brettes ut på veggflaten, bort fra åpningen.
+export function tvsnUtsparing(halv, ben) {
+  return [[-halv, 0], [halv, 0], [halv, ben]];
+}
+
 // ───────────────────────── én vegg ─────────────────────────
 
 // vegg = {
@@ -404,9 +438,17 @@ export function veggBlikk(vegg, oppsett) {
       deler, lm: rund(h) });
   }
   // 4. de loddrette skjøtene — bare de INNVENDIGE
+  //
+  // 🔎 EMIL 17.09: «skjøtene på hjørnet skal ikke være der en gang, fordi
+  // L-beslaget dekker til alt». En skjøt som ligger under hjørnebeslaget er
+  // allerede dekket, og skal verken tegnes eller bestilles. `hjorneDekkerMm`
+  // er beinlengden på L-en; 0 slår regelen av.
   let skjotLm = 0;
   const skjot = v.skjot || [];
+  const dekket = Math.max(0, n(o.hjorneDekkerMm));
+  const t0 = skjot.length ? skjot[0] : 0, t1 = skjot.length ? skjot[skjot.length - 1] : 0;
   for (let i = 1; i < skjot.length - 1; i++) {
+    if (dekket > 0 && (skjot[i] - t0 <= dekket || t1 - skjot[i] <= dekket)) continue;
     const deler = skjotIntervaller(el, skjot[i], v.klaringMm, tol);
     const h = sumLengde(deler) / 1000;
     if (h <= 0) continue;
