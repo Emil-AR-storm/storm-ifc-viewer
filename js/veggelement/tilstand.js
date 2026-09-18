@@ -626,7 +626,11 @@ export function swOyeblikksbilde() {
     fasader: lagret.fasader || [],
     okBetong: lagret.okBetong || 0,
     baseY: lagret.baseY,
-    skjul: lagret.skjul || {}
+    skjul: lagret.skjul || {},
+    // 🩹 Blikket hører til bygget: bryteren og håndjusteringene lagres med
+    // SW-resultatet, så et lastet resultat kommer tilbake med sitt eget blikk
+    // og ikke med det forrige byggets.
+    blikk: lagret.blikk || { pa: false, just: {}, ekstra: [], nesteNr: 1 }
   }));
   return b;
 }
