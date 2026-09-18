@@ -19,12 +19,12 @@ import { $, esc, ikon, S } from "../state.js";
 import { t } from "../i18n.js";
 import * as THREE from "three";
 import { MALTYPER, trpProfil } from "../materiell-vis.js";
-import { TAK_RADER, TAK_STD, platerPaFlate, takFlater, takRamme, takRektangel,
-         tilUV, fraUV, trpListe, takTotaler } from "../sw-tak.js";
-import { soyleTypeNavn, tilMm, tilScene } from "./regler.js";
+import { TAK_RADER, TAK_STD, fallRetningFraBjelker, platerPaFlate, takFlater, takRamme,
+         takRektangel, tilUV, fraUV, trpListe, takTotaler } from "../sw-tak.js";
+import { soyleTypeNavn, takLinje, tilMm, tilScene } from "./regler.js";
 import { allElementBoxes } from "../elements.js";
 import { lagret, skrivLagret, swGroup } from "./tilstand.js";
-import { baseYNaa, skjulNaa, tegnAlt } from "./tegning.js";
+import { TAK_BOTTE_MM, TAK_TOL_MM, baseYNaa, skjulNaa, tegnAlt } from "./tegning.js";
 import { STAL_TYPER } from "./stal.js";
 
 // ───────────────────── oppsettet ─────────────────────
@@ -74,38 +74,89 @@ export function takTilstand() {
 }
 export function takPa() { return !!(lagret && takTilstand().pa); }
 
-// ───────────────────── de øverste bjelkene ─────────────────────
+// ───────────────────── de øverste BJELKENE ─────────────────────
 //
-// Hvilke bjelker BÆRER taket? De som ligger øverst. Vi tar boksene til alt
-// stålet, finner den høyeste overkanten, og beholder alt som når opp i
-// nærheten av den — «nærheten» er takets egen høydevariasjon pluss en margin,
-// for på et saltak ligger raftbjelken 2,4 m under mønebjelken og hører like
-// fullt til taket.
+// 🔎 EMILS FUNN 18.09 (bilde 1): «TRP-plate legger seg på toppen av
+// søyleforlengere i stedet for bjelker».
 //
-// Returnerer punktene i (u, v), i MM, klare for takRektangel.
-export function takPunkter(ramme, variasjonMm) {
+// Første utgave tok ALT stål — `STAL_TYPER` er ["Column","Beam","Member",
+// "Plate"] — og beholdt det som nådde opp mot toppen. En søyleforlenger når
+// nøyaktig like høyt som bjelken den bærer, så den kom med, og takflata ble
+// strukket ut til forlengernes ytterkant i stedet for til bjelkene.
+//
+// Taket bæres av BJELKER. Søyler bærer bjelkene, og en søyle er aldri en
+// takflate. Derfor er søylene ute her — det er ikke en filtrering «for
+// sikkerhets skyld», det er hva et tak ER.
+export const TAK_BJELKE_TYPER = ["Beam", "Member"];
+
+// Boksene til bjelkene som ligger øverst, i verdenskoordinater.
+export function takBjelker() {
   const bokser = allElementBoxes();
   if (!bokser || !bokser.size) return [];
+  const bjelker = [];
   let toppY = -Infinity;
-  const stal = [];
   for (const [id, b] of bokser) {
-    if (STAL_TYPER.indexOf(soyleTypeNavn(id)) === -1) continue;
-    stal.push(b);
+    if (TAK_BJELKE_TYPER.indexOf(soyleTypeNavn(id)) === -1) continue;
+    bjelker.push(b);
     if (b.max.y > toppY) toppY = b.max.y;
   }
-  if (!stal.length) return [];
-  // Marginen: takets egen variasjon + 1 m. På et flatt tak blir det 1 m, og da
-  // er det bare takbjelkene som kommer med; på et saltak følger hele fallet med.
-  const margin = tilScene(Math.max(0, Number(variasjonMm) || 0)) + 1 / (S.enhetSkala || 1);
+  if (!bjelker.length) return [];
+  // Marginen måles mot den høyeste BJELKEN, ikke mot det høyeste stålet: på et
+  // saltak ligger raftbjelken langt under mønet og hører like fullt til taket,
+  // mens en bjelke nede i en mesanin ikke gjør det. Takets egen høyde er det
+  // eneste målet vi har på hvor langt ned «taket» rekker, og det er nettopp
+  // fallet fra møne til raft.
+  const hoyder = bjelker.map(b => b.max.y);
+  const spenn = toppY - Math.min(...hoyder);
+  const margin = Math.min(spenn, 6 / (S.enhetSkala || 1)) + 0.5 / (S.enhetSkala || 1);
+  return bjelker.filter(b => b.max.y >= toppY - margin);
+}
+
+// Bjelkeboksene i den formen sw-tak.js sin fallRetningFraBjelker vil ha dem:
+// rene tall i mm, ingen THREE-objekter.
+export function bjelkeBokserMm(bjelker) {
+  return (bjelker || []).map(b => ({
+    minX: tilMm(b.min.x), maxX: tilMm(b.max.x),
+    minY: tilMm(b.min.y), maxY: tilMm(b.max.y),
+    minZ: tilMm(b.min.z), maxZ: tilMm(b.max.z)
+  }));
+}
+
+// Hjørnene av bjelkene i (u, v), i MM — det takRektangel strekkes rundt.
+export function takPunkter(ramme, bjelker) {
   const ut = [];
-  for (const b of stal) {
-    if (b.max.y < toppY - margin) continue;
+  for (const b of bjelker || [])
     for (const px of [b.min.x, b.max.x]) for (const pz of [b.min.z, b.max.z]) {
       const [u, v] = tilUV(ramme, px, pz);
       ut.push([tilMm(u), tilMm(v)]);
     }
-  }
   return ut;
+}
+
+// 🏔 PROFILET LEST AV BJELKENES OVERKANT.
+//
+// Når rammen kommer fra bjelkene, kan profilet IKKE lenger være gavlfasadens
+// taklinje: den er målt langs fasadens egen akse, og bjelkeaksen trenger ikke
+// være den samme. Overkanten leses derfor av bjelkene selv, bøttet langs u —
+// samme framgangsmåte som taklinjerFraModell bruker mot fasadene.
+//
+// `takLinje` gjør resten: øvre hylle, støy under toleransen kastet, og flatt
+// tak lagt vannrett. Den er skrevet, testet og i bruk fra runde 20 — å skrive
+// en ny her ville vært samme regel to steder.
+export function takProfilFraBjelker(ramme, bjelker, baseY) {
+  const botte = tilScene(TAK_BOTTE_MM) || 0.1;
+  const per = new Map();
+  for (const b of bjelker || []) {
+    // begge endene av bjelken, med sin egen overkant
+    for (const px of [b.min.x, b.max.x]) for (const pz of [b.min.z, b.max.z]) {
+      const [u] = tilUV(ramme, px, pz);
+      const k = Math.round(u / botte);
+      const e = per.get(k);
+      if (!e || b.max.y > e[1]) per.set(k, [u, b.max.y]);
+    }
+  }
+  const punkter = [...per.values()].map(([u, y]) => [tilMm(u), tilMm(y - baseY)]);
+  return takLinje(punkter, TAK_TOL_MM);
 }
 
 // Alt taket trenger, regnet ferdig. Null når det ikke går an.
@@ -117,18 +168,27 @@ export function takData() {
   takGrunn = "";
   if (!lagret || !(lagret.fasader || []).length) { takGrunn = "ingen-fasader"; return null; }
   const o = takOppsett();
-  const ramme = takRamme(lagret.fasader, o.fallFasade, o);
+  const bjelker = takBjelker();
+  if (!bjelker.length) { takGrunn = stalFinnes() ? "ingen-bjelker" : "ingen-meta"; return null; }
+  // 🏗 FALLET LESES AV BJELKENE (Emils tips 18.09). Sperra bærer platene og
+  // ligger allerede i fallet — leser vi retningen av den, kan takflata per
+  // definisjon ikke havne på tvers av det som bærer den.
+  const fall = fallRetningFraBjelker(bjelkeBokserMm(bjelker), o.minHellingProsent);
+  const ramme = takRamme(lagret.fasader, o.fallFasade, o, fall);
   if (!ramme) { takGrunn = "ingen-ramme"; return null; }
-  const punkter = takPunkter(ramme, ramme.variasjon);
-  if (!punkter.length) { takGrunn = stalFinnes() ? "ingen-toppbjelker" : "ingen-meta"; return null; }
+  const punkter = takPunkter(ramme, bjelker);
+  if (!punkter.length) { takGrunn = "ingen-bjelker"; return null; }
   const rekt = takRektangel(punkter, o.utstikkGesimsMm, o.utstikkGavlMm);
   if (!rekt) { takGrunn = "ingen-rektangel"; return null; }
-  // Et flatt tak har ingen taklinje å lese høyden av — da brukes stålets
-  // overkant, som er nøyaktig der platene skal ligge.
   const baseY = baseYNaa();
+  // Profilet leses av bjelkene når rammen gjør det — ellers ville høyden vært
+  // målt langs en annen akse enn flata.
+  const profil = ramme.fraStal
+    ? takProfilFraBjelker(ramme, bjelker, baseY)
+    : ramme.profil;
   const flattHoyde = flattToppMm(baseY);
-  const flater = takFlater(rekt, ramme.profil, { ...o, flattHoydeMm: flattHoyde });
-  return { ramme, rekt, flater, baseY, o,
+  const flater = takFlater(rekt, profil, { ...o, flattHoydeMm: flattHoyde });
+  return { ramme, rekt, flater, baseY, o, bjelker: bjelker.length, profil,
     liste: trpListe(flater, o), totaler: takTotaler(flater),
     medPlater: flater.map(f => platerPaFlate(f, o)).filter(Boolean) };
 }
@@ -283,16 +343,18 @@ export function takPanelHtml() {
   if (!data) {
     const grunn = takGrunn === "ingen-meta"
       ? t("Stålet er ikke lest inn ennå. Trykk «Generer tak» — den henter det først.")
-      : takGrunn === "ingen-toppbjelker"
+      : takGrunn === "ingen-bjelker"
         ? t("Fant stål, men ingen bjelker øverst å bygge takflata av.")
         : t("Fant ikke stål å bygge takflata av. Taket bygges av de øverste bjelkene.");
     topp = "<p class='hint'>" + esc(grunn) + "</p>";
   } else {
     const L = data.liste, T2 = data.totaler, r = data.ramme;
     topp =
-      "<p class='hint'>" + esc(r.flatt
-        ? t("Taket er flatt. Fallretningen settes nedenfor, og fallprosenten bestemmer hvor mye det heller.")
-        : t("Fallet leses av gavlfasaden — {0} mm fra raft til møne.", vis(r.variasjon))) + "</p>" +
+      "<p class='hint'>" + esc(r.fraStal
+        ? t("Fallet leses av {0} takbjelker — de ligger allerede i fallet.", r.bjelker)
+        : r.flatt
+          ? t("Taket er flatt. Fallretningen settes nedenfor, og fallprosenten bestemmer hvor mye det heller.")
+          : t("Fallet leses av gavlfasaden — {0} mm fra raft til møne.", vis(r.variasjon))) + "</p>" +
       "<table class='swtab'><tbody>" +
       rad("Takflater", T2.flater, "") +
       rad("Takareal", T2.arealM2, "m²") +
