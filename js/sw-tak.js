@@ -43,7 +43,11 @@ export const TAK_STD = {
   skrueAvstandMm: 450,     // 40–50 cm mellom skruene i skjøten (prosedyren, steg 5)
   flattFallProsent: 0,     // fall på et ellers flatt tak
   minHellingProsent: 0.5,  // en bjelke under dette «ligger ikke i fallet»
-  fallFasade: null         // hvilken fasade fallet går NED MOT; null = finn selv
+  retningTolGrader: 5,     // to bjelker «peker samme vei» innenfor dette
+  planTolMm: 300,          // … og ligger i samme plan innenfor dette
+  minFlateBjelker: 2,      // færre enn dette er et stag, ikke et takfall
+  valmTolMm: 50,           // to plan innenfor dette er «like høye» i en valm
+  fallFasade: "auto"       // "auto" = platene følger bjelkene; ellers fasadenummer
 };
 
 // ───────────────────── 1. hvilken vei faller taket? ─────────────────────
@@ -442,11 +446,19 @@ export function platerPaFlate(flate, o) {
   const hele = Math.floor(bredde / pb);
   const rest = Math.round(bredde - hele * pb);
   const nedFall = platerNedFall(fall, opp);
+  // hver plate med sin egen strekning langs u, fra den LAVE enden og oppover
+  const ov2 = Math.max(0, n(opp.endeOverlappMm));
+  let s2 = 0;
+  const medU = nedFall.map(p => {
+    const uFra = n(flate.u0) + s2, uTil = uFra + p.lengdeMm;
+    s2 += p.lengdeMm - ov2;
+    return { ...p, uFra: rund(uFra), uTil: rund(uTil) };
+  });
   const rader = [];
   for (let i = 0; i < hele; i++)
-    rader.push({ vFra: rund(flate.v0 + i * pb), breddeMm: pb, kappetBredde: false, plater: nedFall });
+    rader.push({ vFra: rund(flate.v0 + i * pb), breddeMm: pb, kappetBredde: false, plater: medU });
   if (rest > 20)
-    rader.push({ vFra: rund(flate.v0 + hele * pb), breddeMm: rest, kappetBredde: true, plater: nedFall });
+    rader.push({ vFra: rund(flate.v0 + hele * pb), breddeMm: rest, kappetBredde: true, plater: medU });
   // skjøter: én endeskjøt mindre enn antall plater, per rad
   const endeskjoter = rader.length * Math.max(0, nedFall.length - 1);
   // sideskjøter: én mellom hvert par naborader
@@ -467,7 +479,7 @@ export function platerPaFlate(flate, o) {
 // antall. Det er slik en bestilling ser ut.
 export function trpListe(flater, o) {
   const opp = { ...TAK_STD, ...(o || {}) };
-  const medPlater = (flater || []).map(f => platerPaFlate(f, opp)).filter(Boolean);
+  const medPlater = platerPaTaket(flater, opp);
   const perType = new Map();
   let arealM2 = 0, antall = 0, skjotLm = 0;
   for (const f of medPlater) {
@@ -502,3 +514,248 @@ export const TAK_RADER = [
   ["Skjøt (lm)", "skjotLm"],
   ["Skrue skjøt (stk)", "skruer"]
 ];
+
+// ═══════ 🏗 TAKFLATER BYGGET AV BJELKENE (Emil 18.09, «Automatisk») ═══════
+//
+// Emils ord: «alle problem med fall løser seg hvis vi greier å få TRP til å
+// legge seg på toppen av bjelke, så la oss fokusere på å få den funksjonen
+// til å funke.»
+//
+// ── HVORFOR HELE MODELLEN OVER MÅTTE FÅ ET ALTERNATIV ────────────────────
+// Modellen med ÉN fallretning u og et profil h(u) strukket langs mønet klarer
+// saltak, pulttak og flatt tak. Den klarer IKKE et valmtak: der faller taket i
+// FIRE retninger, og et profil langs én akse kan ikke beskrive det uansett hvor
+// godt retningen gjettes. Emils testbygg er nettopp et slikt tak — «bygget vi
+// tester mot nå har fall 2 veier istedenfor 1» — og resultatet var én stor
+// skjev flate som stakk langt utenfor bygget.
+//
+// Her er regelen snudd: vi gjetter ingen retning i det hele tatt. Hver BJELKE
+// bærer sin egen retning og sitt eget fall, og bjelker som ligger parallelt og
+// i samme plan ER ett takfall. Da faller alt ut av seg selv:
+//
+//     pulttak  → 1 gruppe      saltak  → 2 grupper
+//     valmtak  → 4 grupper     pult+valm, tilbygg, ulike fall → like mange
+//
+// Ingen taktype er kodet inn noe sted. Det er nettopp poenget.
+
+// Bjelkas overkant som en linje i rommet, fra LAV til HØY ende.
+// `punkter` er bjelkas hjørner/toppunkter: [[x, y, z], …] i mm.
+export function bjelkeLinje(punkter) {
+  const P = (punkter || []).filter(p => p && p.length >= 3);
+  if (P.length < 2) return null;
+  const xs = P.map(p => n(p[0])), zs = P.map(p => n(p[2]));
+  const dx = Math.max(...xs) - Math.min(...xs);
+  const dz = Math.max(...zs) - Math.min(...zs);
+  if (Math.max(dx, dz) < 1) return null;
+  // langs den dominerende vannrette aksen
+  const langsX = dx >= dz;
+  const t = (p) => langsX ? n(p[0]) : n(p[2]);
+  const tMin = Math.min(...P.map(t)), tMax = Math.max(...P.map(t));
+  const spenn = tMax - tMin;
+  if (!(spenn > 1)) return null;
+  // overkanten i hver ende: det HØYESTE punktet i den ytterste tidelen
+  const kant = Math.max(spenn * 0.1, 1);
+  const ende = (naer) => {
+    const nre = P.filter(p => naer ? t(p) <= tMin + kant : t(p) >= tMax - kant);
+    const br = nre.length ? nre : P;
+    let best = br[0];
+    for (const p of br) if (n(p[1]) > n(best[1])) best = p;
+    return { x: n(best[0]), y: n(best[1]), z: n(best[2]) };
+  };
+  const a = ende(true), b = ende(false);
+  // fra LAV til HØY, så retningen alltid peker oppover fallet
+  const [lav, hoy] = a.y <= b.y ? [a, b] : [b, a];
+  const lx = hoy.x - lav.x, ly = hoy.y - lav.y, lz = hoy.z - lav.z;
+  const lengde = Math.hypot(lx, ly, lz);
+  if (!(lengde > 1)) return null;
+  const vannrett = Math.hypot(lx, lz);
+  return {
+    lav, hoy, lengdeMm: lengde,
+    ux: lx / lengde, uy: ly / lengde, uz: lz / lengde,     // opp fallet, i rommet
+    helling: vannrett > 0 ? ly / vannrett : 0
+  };
+}
+
+// To bjelker hører til SAMME takflate når de peker samme vei i rommet OG
+// ligger i samme plan. Retningen alene er ikke nok: to parallelle takfall på
+// hver sin side av et tilbygg peker likt, men er to flater.
+export function sammeTakflate(a, b, o) {
+  const opp = { ...TAK_STD, ...(o || {}) };
+  const vinkelTol = Math.cos((n(opp.retningTolGrader) || 5) * Math.PI / 180);
+  const planTol = n(opp.planTolMm) || 300;
+  const prikk = a.ux * b.ux + a.uy * b.uy + a.uz * b.uz;
+  if (prikk < vinkelTol) return false;
+  // planet: normalen er u × (vannrett vinkelrett på u)
+  const nrm = flateNormal(a);
+  if (!nrm) return false;
+  const d = (b.lav.x - a.lav.x) * nrm.x + (b.lav.y - a.lav.y) * nrm.y + (b.lav.z - a.lav.z) * nrm.z;
+  const d2 = (b.hoy.x - a.lav.x) * nrm.x + (b.hoy.y - a.lav.y) * nrm.y + (b.hoy.z - a.lav.z) * nrm.z;
+  return Math.abs(d) <= planTol && Math.abs(d2) <= planTol;
+}
+
+// Normalen til takflata en bjelke ligger i: u × v, der v er den VANNRETTE
+// retningen på tvers av bjelka. v er alltid vannrett fordi takflata er et plan
+// som faller i én retning — på tvers av fallet er den vannrett.
+export function flateNormal(a) {
+  const v = tverretning(a);
+  if (!v) return null;
+  // n = u × v
+  const nx = a.uy * v.z - a.uz * v.y;
+  const ny = a.uz * v.x - a.ux * v.z;
+  const nz = a.ux * v.y - a.uy * v.x;
+  const L = Math.hypot(nx, ny, nz);
+  return L > 1e-9 ? { x: nx / L, y: ny / L, z: nz / L } : null;
+}
+
+// Vannrett enhetsvektor på tvers av bjelka.
+export function tverretning(a) {
+  const L = Math.hypot(a.ux, a.uz);
+  if (!(L > 1e-9)) return null;          // loddrett «bjelke» — ikke en takflate
+  return { x: -a.uz / L, y: 0, z: a.ux / L };
+}
+
+// Bjelkene gruppert i takflater. Bjelker uten fall (åser) holdes utenfor:
+// de bærer platene på tvers og sier ingenting om retningen.
+export function grupperBjelker(linjer, o) {
+  const opp = { ...TAK_STD, ...(o || {}) };
+  const grense = n(opp.minHellingProsent) / 100;
+  const med = (linjer || []).filter(a => a && Math.abs(a.helling) >= grense);
+  const grupper = [];
+  for (const a of med) {
+    const g = grupper.find(x => sammeTakflate(x.bjelker[0], a, opp));
+    if (g) g.bjelker.push(a);
+    else grupper.push({ bjelker: [a] });
+  }
+  // en «gruppe» med én kort bjelke er et avstivningsstag, ikke et takfall
+  const minst = n(opp.minFlateBjelker) || 1;
+  return grupper.filter(g => g.bjelker.length >= minst);
+}
+
+// Takflata fra én gruppe: en lokal ramme i flatens eget plan.
+//
+//   U — opp fallet, i rommet (bjelkas egen retning)
+//   V — vannrett på tvers
+//
+// Alt måles fra `origo`, som er gruppas laveste/ytterste hjørne. Da er
+// (u, v) rene mm i planet, og platene kan legges rett på.
+export function flateFraGruppe(gruppe, o) {
+  const opp = { ...TAK_STD, ...(o || {}) };
+  const B = (gruppe && gruppe.bjelker) || [];
+  if (!B.length) return null;
+  // felles retning: lengdeveid snitt
+  let sx = 0, sy = 0, sz = 0;
+  for (const a of B) { sx += a.ux * a.lengdeMm; sy += a.uy * a.lengdeMm; sz += a.uz * a.lengdeMm; }
+  const L = Math.hypot(sx, sy, sz);
+  if (!(L > 1e-9)) return null;
+  const U = { x: sx / L, y: sy / L, z: sz / L };
+  const V = tverretning({ ux: U.x, uy: U.y, uz: U.z });
+  if (!V) return null;
+  const p0 = B[0].lav;
+  const uv = (p) => [
+    (p.x - p0.x) * U.x + (p.y - p0.y) * U.y + (p.z - p0.z) * U.z,
+    (p.x - p0.x) * V.x + (p.z - p0.z) * V.z
+  ];
+  const pkt = [];
+  for (const a of B) { pkt.push(uv(a.lav)); pkt.push(uv(a.hoy)); }
+  const us = pkt.map(p => p[0]), vs = pkt.map(p => p[1]);
+  const ug = n(opp.utstikkGesimsMm), vg = n(opp.utstikkGavlMm);
+  const u0 = Math.min(...us) - ug, u1 = Math.max(...us) + ug;
+  const v0 = Math.min(...vs) - vg, v1 = Math.max(...vs) + vg;
+  const lengdeMm = u1 - u0, breddeMm = v1 - v0;
+  return {
+    U, V, origo: p0, bjelker: B.length,
+    u0, u1, v0, v1, lengdeMm: rund(lengdeMm), breddeMm: rund(breddeMm),
+    fallGrader: rund(Math.asin(Math.max(-1, Math.min(1, U.y))) * 180 / Math.PI),
+    arealM2: rund(lengdeMm * breddeMm / 1e6)
+  };
+}
+
+// Hele taket: bjelkelinjene inn, ferdige takflater ut.
+export function takflaterFraBjelker(linjer, o) {
+  return grupperBjelker(linjer, o).map(g => flateFraGruppe(g, o)).filter(Boolean)
+    .sort((a, b) => b.arealM2 - a.arealM2);
+}
+
+// ═══════ 🔺 VALMENE: HVILKEN FLATE EIER PUNKTET? ═══════
+//
+// 🔎 FUNNET VED Å TEGNE OPP ET VALMTAK OG SE PÅ DET (18.09).
+//
+// Hver takflate strekkes til et REKTANGEL rundt sine egne sperrer. På et
+// saltak er det riktig — flatene møtes i mønet og overlapper ikke. På et
+// VALMTAK overlapper de fire rektanglene hverandre i alle fire valmer, og
+// arealet ble 717 m² der det skulle vært rundt 430. Det er ikke en
+// skjønnhetsfeil: det er dobbel bestilling.
+//
+// Den ekte takflata er den LAVESTE av planene over hvert punkt. Tenk på et
+// valmtak fra siden: hvert plan stiger fra sin egen gesims, og der to plan
+// krysser hverandre går valmen — utenfor den ligger planet OVER taket og
+// finnes ikke.
+//
+// En plate beholdes derfor når dens EGET plan er det laveste under midten av
+// plata. Det gir en trappekant langs valmen, og det er nøyaktig slik det
+// bygges: plata legges hel og kappes på plassen. For BESTILLINGEN er det også
+// riktig — en halvkappet plate koster en hel plate.
+
+// Høyden plan `flate` gir over punktet (x, z) i verden.
+export function planHoydeVed(flate, x, z) {
+  if (!flate || !flate.U || !flate.origo) return null;
+  const U = flate.U, o = flate.origo;
+  const dx = n(x) - n(o.x), dz = n(z) - n(o.z);
+  const hh = U.x * U.x + U.z * U.z;            // U sin vannrette lengde i annen
+  if (!(hh > 1e-12)) return null;              // loddrett plan
+  const u = (dx * U.x + dz * U.z) / hh;
+  return n(o.y) + U.y * u;
+}
+
+// Punktet i verden for (u, v) på en flate.
+export function punktPaFlate(flate, u, v) {
+  const U = flate.U, V = flate.V, o = flate.origo;
+  return { x: o.x + U.x * u + V.x * v, y: o.y + U.y * u + V.y * v, z: o.z + U.z * u + V.z * v };
+}
+
+// Eier flate nr. `fi` punktet (x, z)? Ja når ingen annen flate ligger lavere.
+export function flateEier(flater, fi, x, z, tolMm) {
+  const F = flater || [];
+  const tol = tallEr(tolMm) ? Number(tolMm) : 50;
+  const egen = planHoydeVed(F[fi], x, z);
+  if (egen === null) return true;
+  for (let i = 0; i < F.length; i++) {
+    if (i === fi) continue;
+    const h = planHoydeVed(F[i], x, z);
+    if (h === null) continue;
+    if (h < egen - tol) return false;          // et annet plan ligger lavere
+    // to plan nøyaktig like høye (to like takfall som møtes): den FØRSTE
+    // eier, ellers tar begge plata og arealet dobles
+    if (Math.abs(h - egen) <= tol && i < fi) return false;
+  }
+  return true;
+}
+
+// Hele taket med platene trimmet mot valmene. ÉN funksjon, brukt av både lista
+// og tegningen — da kan de to per definisjon ikke komme i utakt.
+export function platerPaTaket(flater, o) {
+  const opp = { ...TAK_STD, ...(o || {}) };
+  const F = (flater || []).filter(Boolean);
+  const med = F.map(f => platerPaFlate(f, opp)).filter(Boolean);
+  return med.map((f, fi) => {
+    const rader = f.rader.map(r => ({
+      ...r,
+      plater: (r.plater || []).filter(p => {
+        if (!f.U) return true;                 // den gamle modellen har ingen valmer
+        const um = (n(p.uFra) + n(p.uTil)) / 2;
+        const vm = n(r.vFra) + n(r.breddeMm) / 2;
+        const pt = punktPaFlate(f, um, vm);
+        return flateEier(F, fi, pt.x, pt.z, opp.valmTolMm);
+      })
+    })).filter(r => r.plater.length);
+    const antall = rader.reduce((a, r) => a + r.plater.length, 0);
+    const pb = Math.max(50, n(opp.trpBreddeMm));
+    const endeskjoter = rader.reduce((a, r) => a + Math.max(0, r.plater.length - 1), 0);
+    const sideskjoter = Math.max(0, rader.length - 1);
+    // arealet regnes av platene som STÅR IGJEN, ikke av rektangelet
+    const arealM2 = rund(rader.reduce((a, r) =>
+      a + r.plater.reduce((b, p) => b + (n(p.uTil) - n(p.uFra)) * n(r.breddeMm), 0), 0) / 1e6);
+    return { ...f, rader, antallPlater: antall, endeskjoter, sideskjoter, arealM2,
+      skjotLm: rund((sideskjoter * n(f.lengdeMm) + endeskjoter * pb) / 1000) };
+  }).filter(f => f.antallPlater > 0);
+}
