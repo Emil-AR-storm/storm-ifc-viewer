@@ -16,7 +16,7 @@ import { S, esc, ikon } from "../state.js";
 import { t } from "../i18n.js";
 import { allElementBoxes, forHverTrekant } from "../elements.js";
 import { MALTYPER, mmTilScene, ribbonPosisjoner, trpProfil } from "../materiell-vis.js";
-import { APN_REGEL, APN_SLARK, SW_MAKS_LAPPER, eierUtsparing, profilUtsnitt, rektMinusHull, ribbonSkraPos, skraVinkel, soyleTypeNavn, tilMm, tilScene, vinkelTekst } from "./regler.js";
+import { APN_REGEL, APN_SLARK, SW_MAKS_LAPPER, eierUtsparing, profilUtsnitt, rektMinusHull, skraBiter, ribbonSkraPos, skraVinkel, soyleTypeNavn, tilMm, tilScene, vinkelTekst } from "./regler.js";
 import { STD_OPPSETT, hentLagredeFraSp, just, lagret, lesLagret, lesSkjulteIder, oppdaterSwValgEffekt, ryddTegning, settLagret, skrivLagret, swGroup, swSkjultId } from "./tilstand.js";
 import { loesAlleJusteringer } from "./generer.js";
 import { STAL_TYPER } from "./stal.js";
@@ -211,34 +211,36 @@ export function tegnVeggElementer(vegger, o, visMerking) {
     const hMaks = Math.max(...toppPMm.map(q => q[1]));
     const y0 = -mmTilScene(hMaks) / 2;
     const inn = mmTilScene(2);                       // kjernen trekkes 2 mm inn
-    // Kjernen: elementets faktiske form — bunnkant, høyre kant, overkanten
-    // baklengs — med hakkene som hull i formen.
-    const form = new THREE.Shape();
-    form.moveTo(-L / 2 + inn, y0 + inn);
-    form.lineTo(L / 2 - inn, y0 + inn);
-    for (let i = toppPMm.length - 1; i >= 0; i--) {
-      const [x, y] = toppPMm[i];
-      // Overkanten kan gå helt ned til null der elementet ender i en spiss mot
-      // raftet. Trakk vi da 2 mm av som overalt ellers, havnet toppunktet UNDER
-      // bunnkanten, formen ble selvskjærende, og panelet vrengte seg i 3D
-      // (Emil 08.09, da han dro et element ut mot kanten). Overkanten holdes
-      // derfor alltid minst et hårstrå over bunnen.
-      form.lineTo(-L / 2 + mmTilScene(x) + (i === toppPMm.length - 1 ? -inn : (i === 0 ? inn : 0)),
-                  Math.max(y0 + inn * 2, y0 + mmTilScene(y) - inn));
-    }
-    form.closePath();
-    for (const h of (hull || [])) {
-      const bane = new THREE.Path();
-      const a0 = -L / 2 + mmTilScene(h.x0), a1 = -L / 2 + mmTilScene(h.x1);
-      const b0 = y0 + mmTilScene(h.y0), b1 = y0 + mmTilScene(h.y1);
-      bane.moveTo(a0, b0); bane.lineTo(a1, b0); bane.lineTo(a1, b1); bane.lineTo(a0, b1);
-      bane.closePath();
-      form.holes.push(bane);
-    }
     const dyp = Math.max(T - mmTilScene(8), mmTilScene(10));
-    const kjerneGeo = new THREE.ExtrudeGeometry(form, { depth: dyp, bevelEnabled: false });
-    kjerneGeo.translate(0, 0, -dyp / 2);
-    inner.add(new THREE.Mesh(kjerneGeo, kjerneMat));
+    // 🏔🚪 KJERNEN, BIT FOR BIT (Emil 18.09, bilde 2). Før ble hele elementet
+    // ekstrudert som ÉN form med hakkene som `holes`, og et hakk som stakk ut
+    // over skråkanten kunne three.js ikke triangulere: hullet ble ikke tatt
+    // bort, men til overlappende trekanter, og elementet sto uskåret. Nå deler
+    // skraBiter elementet i biter som hver er en hel form uten hull — samme
+    // framgangsmåte som rektMinusHull har for det flate elementet.
+    const biter = skraBiter(lengdeMm, toppPMm, hull, 20);
+    for (const bit of (biter.length ? biter : [{ x0: 0, x1: lengdeMm, y0: 0, topp: toppPMm }])) {
+      const a = -L / 2 + mmTilScene(bit.x0) + inn;
+      const b = -L / 2 + mmTilScene(bit.x1) - inn;
+      const bunn = y0 + mmTilScene(bit.y0) + inn;
+      if (!(b - a > 0) ) continue;
+      const form = new THREE.Shape();
+      form.moveTo(a, bunn);
+      form.lineTo(b, bunn);
+      // Overkanten baklengs. Den kan gå helt ned mot bunnkanten der elementet
+      // ender i en spiss mot raftet; trakk vi 2 mm av også der, ble formen
+      // selvskjærende og panelet vrengte seg (Emil 08.09). Overkanten holdes
+      // derfor alltid et hårstrå over bunnen.
+      const T2 = bit.topp || [];
+      for (let i = T2.length - 1; i >= 0; i--) {
+        const x = Math.min(b, Math.max(a, -L / 2 + mmTilScene(T2[i][0])));
+        form.lineTo(x, Math.max(bunn + inn, y0 + mmTilScene(T2[i][1]) - inn));
+      }
+      form.closePath();
+      const kjerneGeo = new THREE.ExtrudeGeometry(form, { depth: dyp, bevelEnabled: false });
+      kjerneGeo.translate(0, 0, -dyp / 2);
+      inner.add(new THREE.Mesh(kjerneGeo, kjerneMat));
+    }
     // Blikket: samme mikroprofil som på et rett panel, klippet mot overkanten.
     const profS = trpProfil(radHMm || hMaks, mal.deling, mal.profilHoyde)
       .map(([x, y]) => [mmTilScene(x), mmTilScene(y)]);

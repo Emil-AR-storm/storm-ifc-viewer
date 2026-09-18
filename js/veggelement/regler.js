@@ -221,6 +221,95 @@ export function delRadApninger(rBunn, rTopp, apninger, tolMm) {
   return { hele, notch };
 }
 
+// 🏔🚪 DET SKRÅKAPPEDE ELEMENTET MINUS HAKKENE — Emils funn 18.09 (bilde 2):
+// «veggelement som blir utskjært til saltak blir ikke skjært av utsparring».
+//
+// Årsaken var ikke regnestykket, men TEGNEMÅTEN. Et skrått element ble tegnet
+// som ÉN ExtrudeGeometry med hakket som `holes`, og et hull som stikker UT
+// OVER skråkanten kan ikke trianguleres av three.js. Målt på forsidens areal
+// ga et trapes på 1,20 m² med et hull som stakk over kanten arealet 1,32 m² —
+// STØRRE enn hele elementet. Hullet ble altså ikke tatt bort, det ble til
+// overlappende trekanter, og på skjermen sto elementet uskåret.
+//
+// Derfor deles elementet i BITER i stedet, som det flate elementet alltid har
+// gjort (rektMinusHull), bare med skråkanten tatt med:
+//
+//   1. x deles ved elementets ender, taklinjas knekk og hvert hakks kanter
+//   2. i hver x-stripe er hakkene hele stripa bred, så det som står igjen er
+//      rene høydebånd
+//   3. hvert bånd får overkanten min(båndets topp, overkanten) — så en bit
+//      aldri stikker over taket, og hullet aldri utenfor formen
+//
+// Alt i ELEMENTETS egne mm: x fra venstre ende, y over bunnkanten. Svaret er
+// { x0, x1, y0, topp } der `topp` er overkanten som polylinje.
+export function skraBiter(lengdeMm, toppPMm, hull, minMm) {
+  const L = Number(lengdeMm) || 0;
+  const min = Number(minMm) > 0 ? Number(minMm) : 20;
+  const P = (toppPMm || []).filter(q => Array.isArray(q) && q.length >= 2);
+  if (!(L > 0) || P.length < 2) return [];
+  // overkanten lest av ved x
+  const y = (x) => {
+    if (x <= P[0][0]) return P[0][1];
+    if (x >= P[P.length - 1][0]) return P[P.length - 1][1];
+    for (let i = 1; i < P.length; i++) if (x <= P[i][0]) {
+      const [x0, y0] = P[i - 1], [x1, y1] = P[i];
+      return x1 === x0 ? Math.max(y0, y1) : y0 + (y1 - y0) * (x - x0) / (x1 - x0);
+    }
+    return P[P.length - 1][1];
+  };
+  const H = (hull || []).filter(h => h && h.x1 - h.x0 > 0.5 && h.y1 - h.y0 > 0.5);
+  const xs = [0, L];
+  const se = (x) => { if (x > 0.5 && x < L - 0.5) xs.push(x); };
+  for (const q of P) se(q[0]);
+  for (const h of H) { se(h.x0); se(h.x1); }
+  xs.sort((a, b) => a - b);
+  const ut = [];
+  for (let i = 1; i < xs.length; i++) {
+    const xa = xs[i - 1], xb = xs[i];
+    if (xb - xa < 0.5) continue;
+    const xm = (xa + xb) / 2;
+    // Innenfor stripa er overkanten RETT (stripa er delt ved hvert knekk), og
+    // hvert hakk dekker hele stripa i x. Da er det som står igjen høydebånd.
+    const hT = Math.max(y(xa), y(xb));
+    const sper = H.filter(h => h.x0 <= xm && h.x1 >= xm)
+      .map(h => [h.y0, h.y1]).sort((a, b) => a[0] - b[0]);
+    const frie = [];
+    let p = 0;
+    for (const [a, b] of sper) { if (a - p > 0.5) frie.push([p, a]); p = Math.max(p, b); }
+    if (hT - p > 0.5) frie.push([p, hT]);
+    for (const [ya, yb] of frie) {
+      if (yb - ya < min) continue;
+      // Båndets overkant er min(båndets tak, elementets overkant): et bånd
+      // under skråkanten er flatt, båndet øverst følger taket, og et bånd som
+      // taket skjærer gjennom knekker der de møtes.
+      const tak = (x) => Math.min(yb, y(x));
+      const pkt = [xa];
+      const dA = y(xa) - yb, dB = y(xb) - yb;
+      if (dA * dB < 0) pkt.push(xa + (xb - xa) * dA / (dA - dB));   // krysningen
+      pkt.push(xb);
+      // Der overkanten faller under båndets bunn finnes ikke biten. `tak` er
+      // monoton i stripa, så det er alltid ÉN ende som må trimmes.
+      let a = xa, b = xb;
+      const kA = tak(xa) - ya, kB = tak(xb) - ya;
+      if (kA < min && kB < min) continue;
+      if (kA < min) a = xa + (xb - xa) * (min - kA) / (kB - kA);
+      if (kB < min) b = xa + (xb - xa) * (kA - min) / (kA - kB);
+      if (b - a < min) continue;
+      const topp = [];
+      for (const x of pkt) {
+        const cx = Math.min(b, Math.max(a, x));
+        const ny = [rundMm(cx), rundMm(Math.max(ya + min, tak(cx)))];
+        if (!topp.length || Math.abs(topp[topp.length - 1][0] - ny[0]) > 0.5) topp.push(ny);
+      }
+      if (topp.length < 2) continue;
+      ut.push({ x0: rundMm(a), x1: rundMm(b), y0: rundMm(ya), topp });
+    }
+  }
+  return ut;
+}
+
+function rundMm(v) { return Math.round((Number(v) || 0) * 1000) / 1000; }
+
 // Rektangelet minus hullene, som delrektangler — til 3D-tegningen. Elementet
 // er ÉTT element i lista (SW-11 4620×1000), men tegnes som de bitene som står
 // igjen rundt hakket. Guillotine-oppdeling: hvert hull kløyver bitene det
