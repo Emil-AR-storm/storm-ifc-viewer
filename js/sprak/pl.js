@@ -1373,6 +1373,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Hatprofil bredde (mm)": "Szerokość profilu kapeluszowego (mm)",
   "Hatprofil flens (mm)": "Kołnierz profilu kapeluszowego (mm)",
   "Hatprofil høyde (mm)": "Wysokość profilu kapeluszowego (mm)",
+  "Fallet leses av {0} takbjelker — de ligger allerede i fallet.": "Spadek odczytywany jest z {0} belek dachowych — one już leżą w spadku.",
   "Stålet er ikke lest inn ennå. Trykk «Generer tak» — den henter det først.": "Stal nie została jeszcze wczytana. Naciśnij „Generuj dach” — najpierw ją pobierze.",
   "Fant stål, men ingen bjelker øverst å bygge takflata av.": "Znaleziono stal, ale brak belek u góry, z których można zbudować połać dachu.",
   "Klarte ikke å hente stålet: ": "Nie udało się pobrać stali: ",

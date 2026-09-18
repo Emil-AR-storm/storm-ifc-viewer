@@ -1373,6 +1373,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Hatprofil bredde (mm)": "Hat profile width (mm)",
   "Hatprofil flens (mm)": "Hat profile flange (mm)",
   "Hatprofil høyde (mm)": "Hat profile height (mm)",
+  "Fallet leses av {0} takbjelker — de ligger allerede i fallet.": "The fall is read from {0} roof beams — they already sit at the pitch.",
   "Stålet er ikke lest inn ennå. Trykk «Generer tak» — den henter det først.": "The steel has not been read in yet. Press “Generate roof” — it fetches it first.",
   "Fant stål, men ingen bjelker øverst å bygge takflata av.": "Found steel, but no beams at the top to build the roof surface from.",
   "Klarte ikke å hente stålet: ": "Could not fetch the steel: ",
