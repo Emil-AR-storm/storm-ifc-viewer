@@ -1373,6 +1373,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Hatprofil bredde (mm)": "Skrybėlinio profilio plotis (mm)",
   "Hatprofil flens (mm)": "Skrybėlinio profilio flanšas (mm)",
   "Hatprofil høyde (mm)": "Skrybėlinio profilio aukštis (mm)",
+  "Lokk over topp og bunn (mm)": "Dangteľio užlaida viršuje ir apačioje (mm)",
   "Utsparingsbeslag bein (mm)": "Angos apdailos petys (mm)",
   "Ben på veggflaten (mm)": "Petys ant sienos paviršiaus (mm)",
   "Retur på innsiden (mm)": "Atvartas iš vidaus (mm)",
