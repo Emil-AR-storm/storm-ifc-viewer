@@ -1435,6 +1435,14 @@ body:not(.har-modell) #btnFit { display: none !important; }
    Avkrysningsboksene har display:flex i en style-attributt og beholder den —
    inline stil slår denne regelen, som er meningen: der SKAL boksen stå ved
    siden av teksten. */
+/* 🩹🏔 «Blikk & Tak» har NØYAKTIG samme problem, og skal ha samme kur.
+   Panelet ble bygget etter mønsteret fra SW-panelet, men CSS-regelen under
+   het bare #swBody — så feltene i Blikk og Tak fløt om hverandre: «Utstikk
+   gesims (mm)» og verdien til feltet FØR sto på samme linje (Emil 18.09,
+   skjermbilde av Takoppsett). Ingenting var galt med tallene; panelet var
+   uleselig, nøyaktig som SW-panelet var 03.09. */
+#blikkBody > label,
+#blikkBody label.swfelt,
 #swBody > label,
 #swBody .sw-seksjon > label {
   display: block;
@@ -1443,6 +1451,11 @@ body:not(.har-modell) #btnFit { display: none !important; }
   color: var(--muted);
   line-height: 1.35;
 }
+#blikkBody > label > input[type=text],
+#blikkBody > label > input[type=number],
+#blikkBody > label > select,
+#blikkBody label.swfelt > input,
+#blikkBody label.swfelt > select,
 #swBody > label > input[type=text],
 #swBody > label > input[type=number],
 #swBody > label > select,
@@ -1460,6 +1473,7 @@ body:not(.har-modell) #btnFit { display: none !important; }
 }
 /* Fargevelgeren skal IKKE være full bredde — en 100 % bred fargeflate leses
    som en overskrift, ikke som et valg. */
+#blikkBody > label > input[type=color],
 #swBody > label > input[type=color],
 #swBody .sw-seksjon > label > input[type=color] {
   display: block;
