@@ -76,7 +76,14 @@ export function takRamme(fasader, valgtFi, o) {
   const g = gavlFasade(F, (o || {}).flattTolMm);
   // Emils valg slår automatikken: velger han en fasade selv, er det den
   // fasadens retning fallet følger.
-  const eksplisitt = tallEr(valgtFi) && F[Number(valgtFi)];
+  //
+  // 🔎 `null` ER IKKE ET VALG. Første utgave testet med `tallEr(valgtFi)`, og
+  // `Number(null)` er 0 — som er et endelig tall. Standardverdien `null`
+  // («finn selv») ble derfor lest som «Emil har valgt fasade 0», automatikken
+  // ble aldri brukt, og nedtrekkslista viste «Fasade 1» som om han hadde
+  // valgt den. Tomt felt, null og undefined må alle bety det samme her.
+  const satt = valgtFi !== null && valgtFi !== undefined && valgtFi !== "";
+  const eksplisitt = satt && tallEr(valgtFi) && F[Number(valgtFi)];
   const fi = eksplisitt ? Number(valgtFi) : (g.fi >= 0 ? g.fi : 0);
   const f = F[fi];
   if (!f) return null;
