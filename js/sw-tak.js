@@ -713,7 +713,43 @@ export function punktPaFlate(flate, u, v) {
   return { x: o.x + U.x * u + V.x * v, y: o.y + U.y * u + V.y * v, z: o.z + U.z * u + V.z * v };
 }
 
-// Eier flate nr. `fi` punktet (x, z)? Ja når ingen annen flate ligger lavere.
+// (u, v) for et verdenspunkt på en flates plan.
+export function uvPaFlate(flate, x, z) {
+  if (!flate || !flate.U || !flate.origo) return null;
+  const U = flate.U, V = flate.V, o = flate.origo;
+  const dx = n(x) - n(o.x), dz = n(z) - n(o.z);
+  const hh = U.x * U.x + U.z * U.z;
+  if (!(hh > 1e-12)) return null;
+  return [(dx * U.x + dz * U.z) / hh, dx * V.x + dz * V.z];
+}
+
+// Ligger punktet innenfor flatas EGEN utstrekning i planet?
+export function innenforFlate(flate, x, z, slark) {
+  const uv = uvPaFlate(flate, x, z);
+  if (!uv) return false;
+  const s = n(slark);
+  return uv[0] >= n(flate.u0) - s && uv[0] <= n(flate.u1) + s &&
+         uv[1] >= n(flate.v0) - s && uv[1] <= n(flate.v1) + s;
+}
+
+// Eier flate nr. `fi` punktet (x, z)?
+//
+// 🔎 EMILS FUNN 18.09: «når jeg trykker generer med fallretning automatisk så
+// kommer det ingenting opp» — på Geithus vaskehall, hans eget testbygg.
+//
+// Første utgave sa: «den LAVESTE flata eier punktet». Det er riktig for et
+// valmtak, der rektanglene tråkker inn på hverandre, og et plan som ligger
+// over taket ikke finnes.
+//
+// Men Geithus har takfall som heller INN MOT MIDTEN — høyt i begge gavlender,
+// renne i midten. Da ligger hvert plan, forlenget forbi sin egen flate, LAVERE
+// enn naboen over naboens område. Begge flatene slo hverandre ut, hver eneste
+// plate ble filtrert bort, og panelet viste ingenting.
+//
+// Feilen var ikke regelen, men at den ble brukt OVERALT. To flater kan bare
+// krangle om et punkt der de FAKTISK overlapper hverandre i planet. Utenfor
+// naboens egen utstrekning sier naboens plan ingenting — det er en matematisk
+// forlengelse av noe som ikke er der.
 export function flateEier(flater, fi, x, z, tolMm) {
   const F = flater || [];
   const tol = tallEr(tolMm) ? Number(tolMm) : 50;
@@ -721,6 +757,8 @@ export function flateEier(flater, fi, x, z, tolMm) {
   if (egen === null) return true;
   for (let i = 0; i < F.length; i++) {
     if (i === fi) continue;
+    // 🔑 bare flater som VIRKELIG dekker punktet er med i sammenligningen
+    if (!innenforFlate(F[i], x, z, tol)) continue;
     const h = planHoydeVed(F[i], x, z);
     if (h === null) continue;
     if (h < egen - tol) return false;          // et annet plan ligger lavere
