@@ -61,3 +61,4 @@ export * from "./veggelement/juster.js";
 export * from "./veggelement/panel.js";
 export * from "./veggelement/innervegg.js";
 export * from "./veggelement/blikk.js";
+export * from "./veggelement/blikk-just.js";

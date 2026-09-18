@@ -539,6 +539,188 @@ export function slaSammenTotaler(lister, oppsett) {
   };
 }
 
+// ═════════════════ 🔧 HÅNDJUSTERING AV BLIKKET (runde 2b) ═════════════════
+//
+// Emil valgte fire operasjoner: slå av og på en strekning, dra enden kortere
+// eller lengre, legge til en strekning, og egen ben-lengde per stykke.
+//
+// PRINSIPPET er SW-generatorens, ord for ord: justeringen lagres ikke som et
+// FASIT-blikk, men som et TILLEGG oppå det regnede. Veggene kan genereres på
+// nytt uten at justeringene ryker — nøyaktig som `dFra`/`dTil` på et
+// veggelement overlever en ny generering. Alternativet, å fryse blikket til
+// tall, ville gitt Emil et Excel-ark som viser gårsdagens vegg, og det er hele
+// grunnen til at dette verktøyet finnes.
+//
+// Prisen er at hvert stykke må ha en id som holder seg mellom to genereringer.
+// Den lages av HVA stykket er og HVOR det sitter, avrundet til 10 mm:
+//
+//     ytter:0:topp:0        y-settet, fasade 0, toppbeslaget som starter i 0
+//     inner:1:skjot:6000    inner-settet, bein 1, skjøten ved 6000 mm
+//
+// Flytter Emil veggen mer enn 10 mm, får stykket en ny id og justeringen
+// følger ikke med. Det er ærlig: en justering av et beslag som ikke lenger
+// ligger der, er ikke en justering det går an å ta vare på.
+
+// Avrundingen som id-en bygger på. 10 mm — finere enn det er ikke veggene.
+function idPos(v) { return Math.round(n(v) / 10) * 10; }
+
+// Id-en til ett stykke. `sett` er "ytter" eller "inner", `fi` kolonnenummeret.
+export function blikkStykkeId(sett, fi, s) {
+  if (!s) return "";
+  if (s.id) return s.id;                       // et lagt-til stykke bærer sin egen
+  const hvor = s.type === "topp" || s.type === "bunn" || s.type === "utsparing"
+    ? idPos(s.fraMm) : idPos(s.tMm);
+  const type = s.type === "utsparing" ? "utsp" : s.type;
+  return String(sett) + ":" + Number(fi) + ":" + type + ":" + hvor;
+}
+
+// Alle stykkene i en kolonne får sin id. Kjøres av justerListe, men er egen
+// funksjon fordi 3D-en trenger de samme id-ene for å vite hva som ble trykket.
+export function merkStykker(liste, sett) {
+  for (let fi = 0; fi < ((liste && liste.kolonner) || []).length; fi++)
+    for (const s of liste.kolonner[fi].stykker || [])
+      if (!s.id) s.id = blikkStykkeId(sett, fi, s);
+  return liste;
+}
+
+// Høyden på en loddrett strekning etter at endene er dratt. `deler` er
+// [[y0, y1], …]; dFra flytter den LAVESTE underkanten, dTil den HØYESTE
+// overkanten. Delene imellom står — de er hull etter en port, ikke noe Emil
+// dro i.
+function draDeler(deler, dFra, dTil) {
+  const D = (deler || []).map(d => [n(d[0]), n(d[1])]).sort((a, b) => a[0] - b[0]);
+  if (!D.length) return D;
+  D[0][0] -= n(dFra);
+  D[D.length - 1][1] += n(dTil);
+  return D.filter(d => d[1] - d[0] > 0);
+}
+
+// Ett stykke med justeringen lagt på. Returnerer null når stykket er slått av
+// eller dratt til ingenting. `vegg` er den samme inndataen kolonnen ble regnet
+// av — den trengs for taklinja, så et toppbeslag som dras lenger ut på en gavl
+// får den SKRÅ lengden og ikke den vannrette.
+export function justerStykke(s, ju, vegg, oppsett) {
+  if (!s) return null;
+  const j = ju || {};
+  if (j.av) return null;
+  const o = oppsett || {};
+  const tol = Number(o.blikkTolMm) > 0 ? Number(o.blikkTolMm) : BLIKK_TOL_MM;
+  const v = vegg || {};
+  const dFra = n(j.dFra), dTil = n(j.dTil);
+  const ut = { ...s };
+  if (tallEr(j.benMm)) ut.benMm = Number(j.benMm);
+  if (s.type === "topp" || s.type === "bunn") {
+    ut.fraMm = n(s.fraMm) - dFra;
+    ut.tilMm = n(s.tilMm) + dTil;
+    if (ut.tilMm - ut.fraMm <= 0) return null;
+    const linje = (v.linje && v.linje.length >= 2) ? v.linje : null;
+    ut.lm = rund(s.type === "topp"
+      ? toppLengde(linje, v.toppMm, ut.fraMm, ut.tilMm) / 1000
+      : (ut.tilMm - ut.fraMm) / 1000);
+  } else if (s.type === "skjot" || s.type === "hjorne" || s.type === "ende") {
+    ut.deler = draDeler(s.deler, dFra, dTil);
+    if (!ut.deler.length) return null;
+    const flater = s.type === "skjot" ? Math.max(1, n(s.flater) || 1) : 1;
+    ut.lm = rund(sumLengde(ut.deler) / 1000 * flater);
+    ut.bunnMm = ut.deler[0][0];
+    ut.toppMm = ut.deler[ut.deler.length - 1][1];
+  } else if (s.type === "utsparing" && tallEr(s.fraMm) && tallEr(s.tilMm)) {
+    // Et utsparingsbeslag kan bare dras når kalleren ga oss åpningens mål.
+    // Uten dem (materiell-lista sender bare bredde og høyde) står stykket som
+    // det er — å regne på tall vi ikke har er verre enn å la være.
+    ut.fraMm = n(s.fraMm) - dFra;
+    ut.tilMm = n(s.tilMm) + dTil;
+    const bredde = ut.tilMm - ut.fraMm;
+    if (bredde <= 0) return null;
+    const flater = Math.max(1, n(s.flater) || 1);
+    ut.lm = rund(utsparingLm(s.utspType, bredde, n(s.toppMm) - n(s.bunnMm),
+      s.bunnMm, n(v.bunnMm), tol) * flater);
+  }
+  return n(ut.lm) > 0 ? ut : null;
+}
+
+// Kolonnens tall regnet PÅ NYTT av stykkene. Etter en justering er stykkene
+// fasit — summene skal leses av dem, ikke stå igjen fra forrige runde.
+export function summerKolonne(kol, oppsett) {
+  const o = oppsett || {};
+  const S2 = (kol && kol.stykker) || [];
+  const sum = (test) => S2.filter(test).reduce((a, s) => a + n(s.lm), 0);
+  const toppLm = sum(s => s.type === "topp");
+  const bunnLm = sum(s => s.type === "bunn");
+  const kantLm = sum(s => s.type === "hjorne" || s.type === "ende");
+  const skjotLm = sum(s => s.type === "skjot");
+  const utspLm = sum(s => s.type === "utsparing");
+  const beslagLm = toppLm + bunnLm + kantLm, hatprofilLm = skjotLm + utspLm;
+  return {
+    ...kol,
+    toppLm: rund(toppLm), bunnLm: rund(bunnLm), kantLm: rund(kantLm),
+    skjotLm: rund(skjotLm), utsparingLm: rund(utspLm),
+    beslagLm: rund(beslagLm), hatprofilLm: rund(hatprofilLm),
+    skruerBeslag: skruerForLm(beslagLm), skruerHatprofil: skruerForLm(hatprofilLm),
+    stenger: stenger(beslagLm + hatprofilLm, o.stangLengdeM)
+  };
+}
+
+// Hele lista med justeringene lagt på, og totalen regnet på nytt.
+//
+//   just   { "<id>": { av, dFra, dTil, benMm } }
+//   ekstra [ { id, fi, type, fraMm, tilMm, bunnMm, toppMm, benMm } ]
+//
+// Et lagt-til stykke er et VANLIG stykke med sin egen id — det går gjennom
+// samme justering, samme summering og samme tegning som de regnede. Ellers
+// ville «legg til» vært et annet slags blikk enn resten, og det finnes ikke
+// på en byggeplass.
+export function justerListe(liste, vegger, sett, just, ekstra, oppsett) {
+  if (!liste) return liste;
+  const o = oppsett || {};
+  const J = just || {};
+  merkStykker(liste, sett);
+  const kolonner = (liste.kolonner || []).map((kol, fi) => {
+    const v = (vegger || [])[fi] || {};
+    const stykker = [];
+    for (const s of kol.stykker || []) {
+      const ny = justerStykke(s, J[s.id], v, o);
+      if (ny) stykker.push(ny);
+    }
+    for (const e of ekstra || []) {
+      if (Number(e.fi) !== fi) continue;
+      const ny = justerStykke(nyttStykke(e), J[e.id], v, o);
+      if (ny) stykker.push(ny);
+    }
+    return summerKolonne({ ...kol, stykker }, o);
+  });
+  const sum = (k) => kolonner.reduce((a, c) => a + n(c[k]), 0);
+  const beslagLm = sum("beslagLm"), hatprofilLm = sum("hatprofilLm");
+  const hjorner = (liste.hjorner || []).map(h => ({
+    ...h,
+    kanter: (h.kanter || []).filter(k => !(J[blikkStykkeId(sett, k.fasade, {
+      type: k.type || "hjorne", tMm: k.tMm })] || {}).av)
+  }));
+  return {
+    kolonner, hjorner,
+    total: {
+      navn: "Totalt",
+      toppLm: rund(sum("toppLm")), bunnLm: rund(sum("bunnLm")), kantLm: rund(sum("kantLm")),
+      skjotLm: rund(sum("skjotLm")), utsparingLm: rund(sum("utsparingLm")),
+      beslagLm: rund(beslagLm), hatprofilLm: rund(hatprofilLm),
+      skruerBeslag: skruerForLm(beslagLm), skruerHatprofil: skruerForLm(hatprofilLm),
+      stenger: stenger(beslagLm + hatprofilLm, o.stangLengdeM),
+      stykker: []
+    }
+  };
+}
+
+// Et lagt-til stykke bygget om til formen resten av koden kjenner.
+export function nyttStykke(e) {
+  const o = e || {};
+  const type = o.type === "bunn" || o.type === "skjot" || o.type === "ende" ? o.type : "topp";
+  if (type === "skjot" || type === "ende")
+    return { type, id: o.id, tMm: n(o.tMm), lagtTil: true, flater: 1,
+      deler: [[n(o.bunnMm), n(o.toppMm)]], lm: rund((n(o.toppMm) - n(o.bunnMm)) / 1000) };
+  return { type, id: o.id, lagtTil: true, fraMm: n(o.fraMm), tilMm: n(o.tilMm),
+    lm: rund((n(o.tilMm) - n(o.fraMm)) / 1000) };
+}
+
 // Radene i arket «Blikk». `T` er oversetteren (t fra i18n.js).
 export const BLIKK_RADER = [
   ["Toppbeslag (lm)", "toppLm"],
