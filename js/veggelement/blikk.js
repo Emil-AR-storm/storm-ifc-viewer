@@ -48,13 +48,29 @@ export const STD_BLIKK = {
 // Gamle oppsett hadde blikkBreddeMm, toppNedUteMm, hjorneBenMm og flere —
 // de er ikke lenger i bruk, og standardverdiene over fyller hullene selv.
 
-export function blikkOppsett() {
+// 🔧 TO SETT MED MÅL: ett for fasadene og ett for innerveggene (Emil 18.09).
+// «Fasadeelement og innerveggelement har ofte forskjellige dimensjoner, som
+// vil si at de også trenger forskjellige dimensjoner på blikk.» Samme skille
+// som SW-generatoren allerede har mellom del A og innerveggene.
+export const BLIKK_SETT = ["ytter", "inner"];
+export const BLIKK_SETT_NAVN = { ytter: "Fasader", inner: "Innervegger" };
+const settNokkel = (sett) => (sett === "inner" ? "inner" : "ytter");
+// Har lagringen de to nøklene, er den ny. Ellers er det ETT flatt oppsett
+// fra før 18.09 — det gjelder da for begge sett, så ingenting hopper.
+function erDelt(o) { return !!o && (o.ytter !== undefined || o.inner !== undefined); }
+
+export function blikkOppsett(sett) {
   const o = (lagret && lagret.blikkOppsett) || {};
-  return { ...STD_BLIKK, ...o };
+  const gammelt = erDelt(o) ? {} : o;
+  return { ...STD_BLIKK, ...gammelt, ...(erDelt(o) ? (o[settNokkel(sett)] || {}) : {}) };
 }
-export function settBlikkOppsett(ny) {
+export function settBlikkOppsett(sett, ny) {
   if (!lagret) return;
-  lagret.blikkOppsett = { ...blikkOppsett(), ...ny };
+  const o = lagret.blikkOppsett || {};
+  const base = erDelt(o) ? o
+    : { ytter: { ...o }, inner: { ...o } };   // migrering: det flate blir begge
+  const k = settNokkel(sett);
+  lagret.blikkOppsett = { ...base, [k]: { ...blikkOppsett(k), ...ny } };
   skrivLagret();
 }
 
@@ -111,17 +127,18 @@ export function blikkVegger(fasader, vegger, apninger, oStd, flater) {
 // Returnerer { deler: [{ erInner, fasader, vegger, liste, baseY }], total },
 // eller null når det ikke finnes noe å regne på.
 export function blikkDeler() {
-  const bo = blikkOppsett();
-  // 600 mm i SCENE-enheter — fasadenes endepunkter ligger i scene, ikke mm.
-  // Samme toleranse som fasadeHjorner() bruker i generer.js. Eierskapet av
-  // hvert hjørne avgjøres inne i blikkListe (medHjorner), ikke her: ett sted.
-  // hjorneDekkerMm: en skjøt som ligger under L-beslaget er allerede dekket.
-  const o = { ...bo, hjorneTolMm: tilScene(600), hjorneDekkerMm: bo.benUteMm };
   const deler = [];
   const legg = (fasader, vegger, apninger, oStd, flater, erInner, baseY) => {
     if (!(fasader || []).length) return;
+    // 600 mm i SCENE-enheter — fasadenes endepunkter ligger i scene, ikke mm.
+    // Samme toleranse som fasadeHjorner() bruker i generer.js. Eierskapet av
+    // hvert hjørne avgjøres inne i blikkListe (medHjorner), ikke her.
+    // hjorneDekkerMm: en skjøt under L-beslaget er allerede dekket — og den
+    // leses fra SETTETS eget ben, siden de to settene kan ha ulike mål.
+    const b = blikkOppsett(erInner ? "inner" : "ytter");
+    const o = { ...b, hjorneTolMm: tilScene(600), hjorneDekkerMm: b.benUteMm };
     const inn = blikkVegger(fasader, vegger, apninger, oStd, flater);
-    deler.push({ erInner, fasader, vegger: inn, baseY, oStd,
+    deler.push({ erInner, fasader, vegger: inn, baseY, oStd, b,
       liste: blikkListe(inn, o, fasadeEnder(fasader)) });
   };
   const oA = (lagret && lagret.oppsett) || oppsett();
@@ -134,7 +151,9 @@ export function blikkDeler() {
   if (d && (d.fasader || []).length)
     legg(d.fasader, d.vegger, d.utspVis || [], oA, 2, true, d.baseY);
   if (!deler.length) return null;
-  return { deler, total: slaSammenTotaler(deler.map(x => x.liste), o) };
+  // Stengene regnes av grand-totalen med FASADENES stanglengde — det er én
+  // bestilling, og de to settene deler leverandør.
+  return { deler, total: slaSammenTotaler(deler.map(x => x.liste), blikkOppsett("ytter")) };
 }
 
 // Alle kolonnene fra begge sett, i én liste — til panelet og til arket.
@@ -176,8 +195,17 @@ export function profilStrek(p1, p2, upV, nrmV, tverrsnitt, tykkM, farge, leggFn)
   const len = d.length();
   if (!(len > 1e-6)) return 0;
   const dir = d.clone().normalize();
-  const up = upV.clone().normalize();
   const n = nrmV.clone().normalize();
+  // 🔎 EMILS FUNN 18.09 (bilde 2–3): blikket la seg feil på saltak. På en gavl
+  // løper toppbeslaget LANGS skråningen, og (0,1,0) er da ikke vinkelrett på
+  // løpsretningen. Basisen ble skjev, og kappen la seg på tvers av veggtoppen
+  // i stedet for oppå den. `up` trekkes derfor fra sin egen komponent langs
+  // løpet — da er den vinkelrett uansett helning, og på en vannrett vegg er
+  // den nøyaktig som før.
+  const up = upV.clone().normalize();
+  up.addScaledVector(dir, -up.dot(dir));
+  if (up.lengthSq() < 1e-12) return 0;   // up peker langs løpet: ingen retning
+  up.normalize();
   const mid = p1.clone().add(p2).multiplyScalar(0.5);
   let antall = 0;
   for (let i = 1; i < (tverrsnitt || []).length; i++) {
@@ -279,14 +307,15 @@ export function tegnBlikk() {
   const data = blikkDeler();
   if (!data) return;
   if ($("blikkPanel")?.classList.contains("open")) tegnBlikkPanel();
-  const b = blikkOppsett();
-  const tykkM = tilScene(b.blikkTykkMm);
-  const farge = b.blikkFarge || STD_BLIKK.blikkFarge;
-  const klaring = b.blikkTykkMm;
   const legg = (m) => { m.userData.blikk = true; swGroup.add(m); };
-  const tegn = (p1, p2, up, n, tvsn) => profilStrek(p1, p2, up, n, tvsn, tykkM, farge, legg);
 
   for (const del of data.deler) {
+    // 🔧 Hvert sett har sine egne mål og sin egen farge (Emil 18.09).
+    const b = del.b || blikkOppsett(del.erInner ? "inner" : "ytter");
+    const tykkM = tilScene(b.blikkTykkMm);
+    const farge = b.blikkFarge || STD_BLIKK.blikkFarge;
+    const klaring = b.blikkTykkMm;
+    const tegn = (p1, p2, up, n, tvsn) => profilStrek(p1, p2, up, n, tvsn, tykkM, farge, legg);
     const fasader = del.fasader || [];
     // Innerveggene har sin egen base og sin egen tykkelse per bein.
     const baseYFor = (f) => (f.baseY !== undefined ? f.baseY : del.baseY) || 0;
@@ -354,19 +383,33 @@ export function tegnBlikk() {
         const halvS = tilScene((vegg.tykkelseMm || 100) / 2);
         const nabo = h.kanter.find(a => a.fasade !== k.fasade);
         const fB = nabo ? fasader[nabo.fasade] : null;
+        const veggB = nabo ? del.vegger[nabo.fasade] : null;
+        const halvBS = veggB ? tilScene((veggB.tykkelseMm || 100) / 2) : halvS;
         const nrm = V3(f.nx, 0, f.nz);
         const langs = V3(f.ex, 0, f.ez);
         const start = k.ende === "start";
         const inn = start ? langs : langs.clone().negate();
-        const yt = hjorneYtre(f, fB, halvS);
+        const tEnde = start ? vegg.t0Mm : vegg.t1Mm;
+        const yt = hjorneYtre(f, fB, halvS, halvBS);
         if (yt) {
           // ekte hjørne: beinet starter i ytterhjørnet og løper innover
           const p = (yMm) => V3(yt.x, baseY + tilScene(yMm), yt.z);
           tegn(p(h.bunnMm), p(h.toppMm), inn, nrm, tvsnHjorneBein(klaring, b.benUteMm));
+        } else if (fB) {
+          // 🔎 NABOEN ER PARALLELL. Da er dette ikke noe hjørne — det er en
+          // SKJØT i en rett vegg, to bein uten knekk (Emils bilde 1, 18.09:
+          // «mye lengre den andre veien» var endekappen tegnet midt på en
+          // rett vegg). Hatprofil, ikke kappe. Bare ÉN av de to beina tegner
+          // den, ellers står to hatter i samme skjøt.
+          if (h.eier !== k.fasade) continue;
+          const p = (yMm) => punktPaa(f, tEnde, yMm, baseY);
+          const flater = (vegg.flater === 2) ? [nrm, nrm.clone().negate()] : [nrm];
+          for (const n of flater)
+            tegn(p(h.bunnMm), p(h.toppMm), langs, n,
+              tvsnHat(halv, b.hatToppMm, b.hatFlensMm, b.hatHoydeMm));
         } else {
-          // FRI ENDE (eller parallelle fasader): kappe over selve endeflaten,
-          // pluss en retur inn på veggen. Her er isolasjonen eksponert på tvers.
-          const tEnde = start ? vegg.t0Mm : vegg.t1Mm;
+          // FRI ENDE: kappe over selve endeflaten, pluss en retur inn på
+          // veggen. Her er isolasjonen eksponert på tvers.
           const p = (yMm) => punktPaa(f, tEnde, yMm, baseY);
           tegn(p(h.bunnMm), p(h.toppMm), inn.clone().negate(), nrm, tvsnEnde(halv, b.benUteMm));
         }
@@ -390,7 +433,6 @@ export const BLIKK_FELT = [
 
 export function blikkPanelHtml() {
   const data = blikkDeler();
-  const b = blikkOppsett();
   if (!data) return "<p class='hint'>" + esc(t("Generer veggelementene først.")) + "</p>";
   const total = data.total, kolonner = blikkKolonner(data);
   const hjorner = data.deler.reduce((a, d) => a + (d.liste.hjorner || []).length, 0);
@@ -403,6 +445,19 @@ export function blikkPanelHtml() {
   const rad = (navn, felt, enhet) =>
     "<tr><td>" + esc(t(navn)) + "</td><td style='text-align:right'>" +
     esc(vis(total[felt])) + (enhet ? " " + esc(enhet) : "") + "</td></tr>";
+  // 🔧 ETT MÅLSETT PER VEGGTYPE (Emil 18.09). Seksjonene har egne id-er med
+  // settet som prefiks, så de to blokkene aldri kan skrive over hverandre.
+  const malBlokk = (sett) => {
+    const b = blikkOppsett(sett);
+    return "<h4 data-sek='blikkmal-" + sett + "'>" +
+      esc(t("Profilmål") + " — " + t(BLIKK_SETT_NAVN[sett])) + "</h4>" +
+      "<label>" + esc(t("Farge")) + "<input type='color' id='blikkFarge_" + sett +
+        "' value='" + esc(b.blikkFarge || STD_BLIKK.blikkFarge) + "'></label>" +
+      BLIKK_FELT.map(([id, tekst]) =>
+        "<label class='swfelt'><span>" + esc(t(tekst)) + "</span>" +
+        "<input id='f_" + sett + "_" + id + "' type='number' step='any' min='0' value='" +
+        esc(String(b[id])) + "'></label>").join("");
+  };
   return "" +
     "<p class='hint'>" + esc(t("Blikket regnes av de synlige veggelementene — det du ser her er det som bestilles.")) + "</p>" +
     "<table class='swtab'><tbody>" +
@@ -419,34 +474,33 @@ export function blikkPanelHtml() {
     "</tbody></table>" +
     "<p class='hint'>" + esc(t("{0} hjørner · {1} fasader", hjorner, kolonner.length - innerVegger)) +
       (innerVegger ? " · " + esc(t("{0} innervegger (begge sider)", innerVegger)) : "") + "</p>" +
-    "<h4 data-sek='blikkmal'>" + esc(t("Profilmål")) + "</h4>" +
-    "<label>" + esc(t("Farge")) + "<input type='color' id='blikkFarge' value='" +
-      esc(b.blikkFarge || STD_BLIKK.blikkFarge) + "'></label>" +
-    BLIKK_FELT.map(([id, tekst]) =>
-      "<label class='swfelt'><span>" + esc(t(tekst)) + "</span>" +
-      "<input id='f_" + id + "' type='number' step='any' min='0' value='" +
-      esc(String(b[id])) + "'></label>").join("");
+    malBlokk("ytter") +
+    (innerVegger ? malBlokk("inner") : "");
 }
 
 export function tegnBlikkPanel() {
   const body = $("blikkBody");
   if (!body) return;
   body.innerHTML = blikkPanelHtml();
-  const les = () => {
-    const ny = { blikkFarge: ($("blikkFarge") || {}).value || STD_BLIKK.blikkFarge };
+  const les = (sett) => () => {
+    const f = $("blikkFarge_" + sett);
+    const ny = { blikkFarge: (f && f.value) || STD_BLIKK.blikkFarge };
     for (const [id] of BLIKK_FELT) {
-      const e = $("f_" + id);
+      const e = $("f_" + sett + "_" + id);
       const v = e ? Number(e.value) : NaN;
       ny[id] = Number.isFinite(v) && v >= 0 ? v : STD_BLIKK[id];
     }
-    settBlikkOppsett(ny);
+    settBlikkOppsett(sett, ny);
     tegnAlt();
   };
-  const f = $("blikkFarge");
-  if (f) f.onchange = les;
-  for (const [id] of BLIKK_FELT) {
-    const e = $("f_" + id);
-    if (e) e.onchange = les;
+  for (const sett of BLIKK_SETT) {
+    const h = les(sett);
+    const f = $("blikkFarge_" + sett);
+    if (f) f.onchange = h;
+    for (const [id] of BLIKK_FELT) {
+      const e = $("f_" + sett + "_" + id);
+      if (e) e.onchange = h;
+    }
   }
 }
 
