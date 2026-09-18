@@ -1376,5 +1376,6 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Utsparingsbeslag bein (mm)": "Ramię obróbki otworu (mm)",
   "Ben på veggflaten (mm)": "Ramię na licu ściany (mm)",
   "Retur på innsiden (mm)": "Zawinięcie od wewnątrz (mm)",
-  "{0} innervegger (begge sider)": "{0} ścian wewnętrznych (obie strony)"
+  "{0} innervegger (begge sider)": "{0} ścian wewnętrznych (obie strony)",
+  "Innervegger": "Ściany wewnętrzne"
 };
