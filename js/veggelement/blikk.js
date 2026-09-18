@@ -8,10 +8,14 @@
 // Verktøyet er EGET, ikke en seksjon i SW-panelet, og knappen vises først når
 // det finnes genererte veggelement (Emils valg A1). Blikket regnes om av seg
 // selv hver gang veggene tegnes (A2), så lista aldri viser gårsdagens vegg.
-import { $, apnePanel, esc, på } from "../state.js";
+import { $, apnePanel, esc, ikon, på, S } from "../state.js";
+import { lastNedXlsxFlere } from "../elements.js";
 import { t } from "../i18n.js";
 import * as THREE from "three";
-import { blikkListe, hjorneYtre, slaSammenTotaler, utsparingSider, BLIKK_RADER } from "../sw-blikk.js";
+import { blikkListe, hjorneYtre, justerListe, slaSammenTotaler, utsparingSider, BLIKK_RADER } from "../sw-blikk.js";
+import { avsluttBlikkJuster, blikkJust, blikkLagringsTekst, blikkPa, blikkTilstand, fjernBlikk,
+         genererBlikk, husBlikkMesh, lagreBlikkResultat, lastInnBlikkResultat, lesBlikkLagrede,
+         nullstillBlikkMesh, slettBlikkResultat, startBlikkJuster } from "./blikk-just.js";
 import { tilMm, tilScene } from "./regler.js";
 import { lagret, oppsett, swGroup, skrivLagret } from "./tilstand.js";
 import { innerData } from "./panel.js";
@@ -139,8 +143,14 @@ export function blikkDeler() {
     const b = blikkOppsett(erInner ? "inner" : "ytter");
     const o = { ...b, hjorneTolMm: tilScene(600), hjorneDekkerMm: b.benUteMm };
     const inn = blikkVegger(fasader, vegger, apninger, oStd, flater);
-    deler.push({ erInner, fasader, vegger: inn, baseY, oStd, b,
-      liste: blikkListe(inn, o, fasadeEnder(fasader)) });
+    // 🔧 HÅNDJUSTERINGENE legges på TIL SLUTT, oppå det regnede (runde 2b).
+    // Rekkefølgen er hele poenget: blikket regnes alltid av dagens vegger, og
+    // justeringene er et tillegg som overlever en ny generering.
+    const sett = erInner ? "inner" : "ytter";
+    const bt = blikkTilstand();
+    const liste = justerListe(blikkListe(inn, o, fasadeEnder(fasader)), inn, sett,
+      bt.just, (bt.ekstra || []).filter(x => x && x.sett === sett), o);
+    deler.push({ erInner, sett, fasader, vegger: inn, baseY, oStd, b, liste });
   };
   const oA = (lagret && lagret.oppsett) || oppsett();
   if (lagret && (lagret.fasader || []).length)
@@ -304,6 +314,14 @@ function toppY(f, tMm, toppMm) {
 }
 
 const OPP = () => V3(0, 1, 0);
+const n0 = (x) => Number(x) || 0;
+
+// Ben-lengden for ett stykke: stykkets egen hvis Emil har satt en, ellers
+// settets. Hjørner og ender tegnes utenfor stykke-sløyfa og må slå opp selv.
+function benFor(id, standard) {
+  const j = (lagret && lagret.blikk && lagret.blikk.just && lagret.blikk.just[id]) || {};
+  return Number.isFinite(Number(j.benMm)) && Number(j.benMm) > 0 ? Number(j.benMm) : standard;
+}
 
 // 👁 Knappen vises først når det finnes genererte veggelement (Emils valg A1).
 // Bare «none» settes inline — tomt igjen, så gruppeskjulingen i
@@ -320,12 +338,24 @@ export function oppdaterBlikkKnapp() {
 // Alt blikket tegnet opp i swGroup. Kalles fra tegnDelA() etter veggene.
 export function tegnBlikk() {
   oppdaterBlikkKnapp();
+  nullstillBlikkMesh();
   const sk = skjulNaa();
   if (sk.blikk) return;
+  // 🔌 «Generer blikk» er bryteren (runde 2b). Er den av, tegnes ingenting —
+  // men reglene står klare, så neste trykk gir blikket med én gang.
+  if (!blikkPa()) return;
   const data = blikkDeler();
   if (!data) return;
   if ($("blikkPanel")?.classList.contains("open")) tegnBlikkPanel();
-  const legg = (m) => { m.userData.blikk = true; swGroup.add(m); };
+  // `naa` peker på stykket som tegnes akkurat nå, så hver brett-boks kan få
+  // stykkets id med seg. Uten den treffer et trykk i «Juster blikk» en
+  // tilfeldig boks i stedet for beslaget.
+  let naa = null;
+  const legg = (m) => {
+    m.userData.blikk = true;
+    if (naa) { m.userData.blikkId = naa.id; m.userData.blikkSett = naa.sett; husBlikkMesh(naa.id, m, naa); }
+    swGroup.add(m);
+  };
 
   for (const del of data.deler) {
     // 🔧 Hvert sett har sine egne mål og sin egen farge (Emil 18.09).
@@ -350,8 +380,18 @@ export function tegnBlikk() {
       const bak = nrm.clone().negate();
       const langs = V3(f.ex, 0, f.ez);
       const P = (tMm, yMm) => punktPaa(f, tMm, yMm, baseY);
+      // fasadens origo i verden — «Juster blikk» regner seg tilbake hit
+      const fx = f.px + f.nx * f.off, fz = f.pz + f.nz * f.off;
+      const grunn = { sett: del.sett, fi, fasade: kol.navn, baseY,
+        fx, fz, ex: f.ex, ez: f.ez, nx: f.nx, nz: f.nz };
       for (const s of kol.stykker) {
         if (s.type === "hjorne" || s.type === "ende") continue;   // tegnes per hjørne
+        naa = { ...grunn, id: s.id, type: s.type,
+          loddrett: s.type === "skjot",
+          fraMm: s.type === "skjot" ? n0(s.bunnMm) : n0(s.fraMm),
+          tilMm: s.type === "skjot" ? n0(s.toppMm) : n0(s.tilMm) };
+        // 🔧 EGEN BEN-LENGDE: stykket kan overstyre settets ben (Emil 17.09).
+        const ben = Number.isFinite(Number(s.benMm)) ? Number(s.benMm) : b.benUteMm;
         // Blikkflatene. Etter Emils regel 18.09 har både fasader og
         // innervegger ÉN flate — `nrm`, siden som peker bort fra søylen. Får
         // en vegg en gang to flater, står regelen klar her.
@@ -369,19 +409,22 @@ export function tegnBlikk() {
             const a2 = xs[k - 1] - (k > 1 ? mitre : 0);
             const c2 = xs[k] + (k < xs.length - 1 ? mitre : 0);
             tegn(P(a2, toppY(f, a2, vegg.toppMm)), P(c2, toppY(f, c2, vegg.toppMm)),
-              OPP(), nrm, tvsnTopp(halv, b.benInneMm, b.benUteMm, b.lokkOverMm));
+              OPP(), nrm, tvsnTopp(halv, b.benInneMm, ben, b.lokkOverMm));
           }
         } else if (s.type === "bunn") {
           tegn(P(s.fraMm, 0), P(s.tilMm, 0), OPP(), nrm,
-            tvsnBunn(halv, b.benInneMm, b.benUteMm, b.lokkOverMm));
+            tvsnBunn(halv, b.benInneMm, ben, b.lokkOverMm));
         } else if (s.type === "skjot") {
           for (const n of flater)
             for (const [y0, y1] of s.deler || [])
               tegn(P(s.tMm, y0), P(s.tMm, y1), langs, n,
                 tvsnHat(halv, b.hatToppMm, b.hatFlensMm, b.hatHoydeMm));
+        } else if (s.type === "ende" && s.lagtTil) {
+          // ➕ En strekning Emil la til selv: en kappe over en fri kant.
+          for (const [y0, y1] of s.deler || [])
+            tegn(P(s.tMm, y0), P(s.tMm, y1), langs, nrm, tvsnEnde(halv, ben));
         } else if (s.type === "utsparing" && s.fraMm !== undefined) {
           const { fraMm: a, tilMm: c, bunnMm: y0, toppMm: y1 } = s;
-          const ben = b.benUteMm;
           flater.forEach((n, iF) => {
             // Den kappede enden av elementet dekkes ÉN gang — profilet spenner
             // hele veggtykkelsen. Den andre flaten får bare beinet.
@@ -406,6 +449,12 @@ export function tegnBlikk() {
         const vegg = del.vegger[k.fasade];
         if (!f || !vegg) continue;
         const baseY = baseYFor(f);
+        naa = { sett: del.sett, fi: k.fasade, fasade: (del.liste.kolonner[k.fasade] || {}).navn,
+          baseY, fx: f.px + f.nx * f.off, fz: f.pz + f.nz * f.off,
+          ex: f.ex, ez: f.ez, nx: f.nx, nz: f.nz, loddrett: true,
+          type: k.type || "hjorne", fraMm: n0(h.bunnMm), tilMm: n0(h.toppMm),
+          id: (del.sett) + ":" + k.fasade + ":" + (k.type || "hjorne") + ":" +
+              Math.round(n0(k.tMm !== undefined ? k.tMm : (k.ende === "start" ? vegg.t0Mm : vegg.t1Mm)) / 10) * 10 };
         const halv = (vegg.tykkelseMm || 100) / 2 + b.blikkTykkMm;
         const halvS = tilScene((vegg.tykkelseMm || 100) / 2);
         const nabo = h.kanter.find(a => a.fasade !== k.fasade);
@@ -421,7 +470,7 @@ export function tegnBlikk() {
         if (yt) {
           // ekte hjørne: beinet starter i ytterhjørnet og løper innover
           const p = (yMm) => V3(yt.x, baseY + tilScene(yMm), yt.z);
-          tegn(p(h.bunnMm), p(h.toppMm), inn, nrm, tvsnHjorneBein(klaring, b.benUteMm));
+          tegn(p(h.bunnMm), p(h.toppMm), inn, nrm, tvsnHjorneBein(klaring, benFor(naa.id, b.benUteMm)));
         } else if (fB) {
           // 🔎 NABOEN ER PARALLELL. Da er dette ikke noe hjørne — det er en
           // SKJØT i en rett vegg, to bein uten knekk (Emils bilde 1, 18.09:
@@ -438,7 +487,7 @@ export function tegnBlikk() {
           // FRI ENDE: kappe over selve endeflaten, pluss en retur inn på
           // veggen. Her er isolasjonen eksponert på tvers.
           const p = (yMm) => punktPaa(f, tEnde, yMm, baseY);
-          tegn(p(h.bunnMm), p(h.toppMm), inn.clone().negate(), nrm, tvsnEnde(halv, b.benUteMm));
+          tegn(p(h.bunnMm), p(h.toppMm), inn.clone().negate(), nrm, tvsnEnde(halv, benFor(naa.id, b.benUteMm)));
         }
       }
     }
@@ -458,6 +507,50 @@ export const BLIKK_FELT = [
   ["lokkOverMm", "Lokk over topp og bunn (mm)"],
   ["stangLengdeM", "Stanglengde (m)"]
 ];
+
+// Knapperada og lagrede resultater — SAMME oppsett som SW-generator (Emil
+// 18.09). Rekkefølgen er SW-panelets, ikke en ny: Generer · Juster · Tegning ·
+// Excel · Fjern, og lagrede resultater nederst.
+function blikkHandlingerHtml() {
+  const bt = blikkTilstand();
+  const lagrede = lesBlikkLagrede();
+  const antJust = Object.keys(bt.just || {}).length + (bt.ekstra || []).length;
+  return "" +
+    "<div class='prop-actions' style='margin-top:10px;flex-wrap:wrap'>" +
+    "<button id='blikkGenerer' class='primary'>" + ikon("boks") + " " + esc(t("Generer blikk")) + "</button>" +
+    "<button id='blikkJusterBtn'" + (bt.pa ? "" : " disabled") + ">" + ikon("juster") + " " + esc(t("Juster blikk")) + "</button>" +
+    // 📐 Instruksjonstegninga for blikket bygges i runde 5 — Emil sa selv at
+    // PDF-en kan komme senere. Knappen står her, avslått og med grunnen på
+    // plass, slik at panelet er ferdig og det ikke er tvil om hva som mangler.
+    "<button id='blikkTegning' disabled title='" +
+      esc(t("Instruksjonstegninga for blikket bygges i en senere runde.")) + "'>" +
+      ikon("tegning") + " " + esc(t("Last ned instruksjonstegning (PDF)")) + "</button>" +
+    "<button id='blikkListe'" + (bt.pa ? "" : " disabled") + ">" + ikon("lastned") + " " + esc(t("Last ned liste (Excel)")) + "</button>" +
+    "<button id='blikkFjern'" + (bt.pa ? "" : " disabled") + ">" + ikon("slett") + " " + esc(t("Fjern genererte")) + "</button>" +
+    "</div>" +
+    (bt.pa
+      ? "<p class='hint'>" + esc(antJust
+          ? t("Blikket er generert og følger veggene. {0} håndjusteringer ligger på.", antJust)
+          : t("Blikket er generert og følger veggene av seg selv.")) + "</p>"
+      : "<p class='hint'>" + esc(t("Trykk «Generer blikk» for å legge blikket på bygget.")) + "</p>") +
+    "<h4 data-sek='blikklagrede' style='margin:14px 0 4px'>" + esc(t("Lagrede blikkresultater")) + "</h4>" +
+    "<p class='hint'>" + esc(t("Gi oppsettet et navn og lagre det. Trykk på navnet senere for å legge samme profilmål og håndjusteringer på bygget igjen.")) + "</p>" +
+    "<p class='hint'>" + esc(blikkLagringsTekst()) + "</p>" +
+    "<div class='prop-actions sw-lagre'>" +
+      "<input type='text' id='blikkLagreNavn' maxlength='60' placeholder='" +
+      esc(t("Navn på resultatet")) + "'>" +
+      "<button id='blikkLagreBtn'>" + ikon("lagre") + " " + esc(t("Lagre")) + "</button></div>" +
+    (lagrede.length
+      ? lagrede.map(pst =>
+        "<div class='qty-row'><div class='n' style='font-size:12px'>" +
+          "<button class='sw-last' data-blikk-last='" + esc(pst.navn) + "'>" + esc(pst.navn) + "</button>" +
+          " <span style='color:var(--muted);font-size:11px'>" +
+          esc([pst.dato, pst.antall ? t("{0} justeringer", pst.antall) : "", pst.av || ""].filter(Boolean).join(" · ")) +
+          "</span></div>" +
+        "<div class='c'><button data-blikk-slett='" + esc(pst.navn) + "' title='" + esc(t("Slett")) +
+        "' style='padding:3px 8px'>" + ikon("slett") + "</button></div></div>").join("")
+      : "<p class='hint'>" + esc(t("Ingen lagrede resultater ennå.")) + "</p>");
+}
 
 export function blikkPanelHtml() {
   const data = blikkDeler();
@@ -501,15 +594,17 @@ export function blikkPanelHtml() {
     rad("Blikk", "stenger", "stenger") +
     "</tbody></table>" +
     "<p class='hint'>" + esc(t("{0} hjørner · {1} fasader", hjorner, kolonner.length - innerVegger)) +
-      (innerVegger ? " · " + esc(t("{0} innervegger (begge sider)", innerVegger)) : "") + "</p>" +
+      (innerVegger ? " · " + esc(t("{0} innervegger (én side)", innerVegger)) : "") + "</p>" +
     malBlokk("ytter") +
-    (innerVegger ? malBlokk("inner") : "");
+    (innerVegger ? malBlokk("inner") : "") +
+    blikkHandlingerHtml();
 }
 
 export function tegnBlikkPanel() {
   const body = $("blikkBody");
   if (!body) return;
   body.innerHTML = blikkPanelHtml();
+  koblBlikkHandlinger(body);
   const les = (sett) => () => {
     const f = $("blikkFarge_" + sett);
     const ny = { blikkFarge: (f && f.value) || STD_BLIKK.blikkFarge };
@@ -530,6 +625,41 @@ export function tegnBlikkPanel() {
       if (e) e.onchange = h;
     }
   }
+}
+
+// Knapperada og lagrede resultater kobles opp. Egen funksjon, ikke inne i
+// tegnBlikkPanel: panelet tegnes fra flere steder, og knappene må virke uansett
+// hvem som tegnet det.
+export function koblBlikkHandlinger(body) {
+  const paa_nytt = () => tegnBlikkPanel();
+  if ($("blikkGenerer")) $("blikkGenerer").onclick = () => { if (genererBlikk()) tegnBlikkPanel(); };
+  if ($("blikkJusterBtn")) $("blikkJusterBtn").onclick = () => startBlikkJuster(paa_nytt);
+  if ($("blikkListe")) $("blikkListe").onclick = lastNedBlikkListe;
+  if ($("blikkFjern")) $("blikkFjern").onclick = () => { if (fjernBlikk()) tegnBlikkPanel(); };
+  if ($("blikkLagreBtn")) $("blikkLagreBtn").onclick = () =>
+    lagreBlikkResultat(($("blikkLagreNavn") || {}).value,
+      { ytter: blikkOppsett("ytter"), inner: blikkOppsett("inner") }, paa_nytt);
+  (body || document).querySelectorAll("button[data-blikk-last]").forEach(b =>
+    b.onclick = () => lastInnBlikkResultat(b.dataset.blikkLast, (o) => {
+      for (const sett of BLIKK_SETT) if (o && o[sett]) settBlikkOppsett(sett, o[sett]);
+    }, paa_nytt));
+  (body || document).querySelectorAll("button[data-blikk-slett]").forEach(b =>
+    b.onclick = () => slettBlikkResultat(b.dataset.blikkSlett, paa_nytt));
+}
+
+// 📊 «Last ned liste (Excel)» fra Blikk-panelet: EN fil med blikkarket alene.
+// Blikket er et eget verktøy med egen bestilling — den som bestiller beslag
+// skal ikke måtte lete gjennom SW-lista. Arket er det SAMME som ligger i
+// SW-fila, så de to kan aldri komme i utakt.
+export function lastNedBlikkListe() {
+  if (!blikkPa()) { alert(t("Trykk «Generer blikk» først.")); return; }
+  const ark = blikkArk();
+  if (!ark) { alert(t("Generer veggelementene først.")); return; }
+  const navn = (S.fileName || "modell").replace(/\.(ifc|glb)$/i, "");
+  lastNedXlsxFlere(navn + " - Blikkliste.xlsx", [ark]).catch(err => {
+    console.warn("Blikklista kunne ikke lages:", err);
+    alert(t("Klarte ikke å lage Excel-fila: ") + (err && err.message || err));
+  });
 }
 
 // Arket «Blikk» til Excel-fila. Samme form som Materiell-arket.

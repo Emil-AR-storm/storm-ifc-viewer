@@ -339,8 +339,15 @@ export async function generer() {
     for (const a of utsparingerPaFasade(fasader[fi], baseY, utspPerFasade.get(fi) || []))
       utspVis.push({ fi, fraMm: a.fraMm, tilMm_: a.tilMm_, bunnMm: a.bunnMm, toppMm: a.toppMm, type: a.type, navn: a.navn });
 
+  // 🩹 BLIKKET følger med over en ny generering (runde 2b). Både bryteren og
+  // håndjusteringene: genererer Emil veggene på nytt etter å ha justert
+  // blikket, skal blikket komme tilbake justert — som `dFra`/`dTil` gjør på et
+  // veggelement. Er det ikke generert ennå, står det av, og «Generer blikk» er
+  // en knapp som faktisk gjør noe.
+  const blikkFoer = (lagret && lagret.blikk) || null;
   settLagret({ oppsett: o, vegger, gulv, ringmur, materiellIder: [],
-               fasader: fasadeLagret, okBetong, baseY, utspVis });
+               fasader: fasadeLagret, okBetong, baseY, utspVis,
+               blikk: blikkFoer || { pa: false, just: {}, ekstra: [], nesteNr: 1 } });
   loesAlleJusteringer();
   byggAlleStabler();
   skrivLagret();
@@ -815,7 +822,8 @@ export function fjernGenerertMateriell() {
 export function fjernAltGenerert() {
   fjernGenerertMateriell();
   const o = oppsett();
-  settLagret({ oppsett: o, vegger: [], gulv: null, ringmur: null, materiellIder: [] });
+  settLagret({ oppsett: o, vegger: [], gulv: null, ringmur: null, materiellIder: [],
+               blikk: { pa: false, just: {}, ekstra: [], nesteNr: 1 } });
   skrivLagret();
   tegnAlt();
   tegnPanel();
