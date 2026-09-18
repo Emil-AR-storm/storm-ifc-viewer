@@ -16,6 +16,7 @@ import { t } from "../i18n.js";
 import { lastNedXlsxFlere } from "../elements.js";
 import { materiellListe, materiellRader } from "../sw-materiell.js";
 import { blikkArk } from "./blikk.js";
+import { takArk } from "./tak.js";
 import { lagreMateriellLokalt, tegnMateriell, vaskMateriell } from "../materiell-vis.js";
 import { APN_SLARK, SW_MIN_BIT_MM, SW_SPENNANDEL, SW_TOL_MM, SW_VEGGANDEL, delOppMedUtsparinger, delRadApninger, eierUtsparing, fasadeSoyler, fasaderFra, fasaderLangsRand, flatTak, hentSoyler, hjorneForlengelse, kappNavn, konveksHull, loesRad, manuelleFasaderFra, radStabel, samleTetteSoyler, soylerIFasader, spennSoyler, swListeRader, swNummerering, takLinje, takSpenn, takTopp, tilMm, tilScene, toppErSkra, toppVinkel, utspFyllBiter, utsparingerPaFasade, veggSoyler, vinkelTekst } from "./regler.js";
 import { STD_OPPSETT, lagret, oppsett, settLagret, skrivLagret } from "./tilstand.js";
@@ -924,7 +925,7 @@ export function lastNedListe() {
   // 🧾 + arket «Materiell» i samme fil (punkt 5)
   // 🩹 + arket «Blikk», regnet av de SYNLIGE elementene (runde 1, 17.09).
   lastNedXlsxFlere(navn + " - SW-liste.xlsx",
-    [{ navn: t("SW-liste"), rader }, materiellArk(), blikkArk()].filter(Boolean))
+    [{ navn: t("SW-liste"), rader }, materiellArk(), blikkArk(), takArk()].filter(Boolean))
     .catch(err => {
       console.warn("SW-lista kunne ikke lages:", err);
       alert(t("Klarte ikke å lage Excel-fila: ") + (err && err.message || err));
