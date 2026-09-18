@@ -19,10 +19,11 @@ import { $, esc, ikon, S } from "../state.js";
 import { t } from "../i18n.js";
 import * as THREE from "three";
 import { MALTYPER, trpProfil } from "../materiell-vis.js";
-import { TAK_RADER, TAK_STD, fallRetningFraBjelker, platerPaFlate, takFlater, takRamme,
-         takRektangel, tilUV, fraUV, trpListe, takTotaler } from "../sw-tak.js";
+import { TAK_RADER, TAK_STD, bjelkeLinje, fallRetningFraBjelker, platerPaFlate, takFlater,
+         takRamme, takRektangel, takflaterFraBjelker, platerPaTaket, tilUV, fraUV, trpListe,
+         takTotaler } from "../sw-tak.js";
 import { soyleTypeNavn, takLinje, tilMm, tilScene } from "./regler.js";
-import { allElementBoxes } from "../elements.js";
+import { allElementBoxes, forHverTrekant } from "../elements.js";
 import { lagret, skrivLagret, swGroup } from "./tilstand.js";
 import { TAK_BOTTE_MM, TAK_TOL_MM, baseYNaa, skjulNaa, tegnAlt } from "./tegning.js";
 import { STAL_TYPER } from "./stal.js";
@@ -97,7 +98,7 @@ export function takBjelker() {
   let toppY = -Infinity;
   for (const [id, b] of bokser) {
     if (TAK_BJELKE_TYPER.indexOf(soyleTypeNavn(id)) === -1) continue;
-    bjelker.push(b);
+    bjelker.push({ id, b });
     if (b.max.y > toppY) toppY = b.max.y;
   }
   if (!bjelker.length) return [];
@@ -106,16 +107,16 @@ export function takBjelker() {
   // mens en bjelke nede i en mesanin ikke gjør det. Takets egen høyde er det
   // eneste målet vi har på hvor langt ned «taket» rekker, og det er nettopp
   // fallet fra møne til raft.
-  const hoyder = bjelker.map(b => b.max.y);
+  const hoyder = bjelker.map(b => b.b.max.y);
   const spenn = toppY - Math.min(...hoyder);
   const margin = Math.min(spenn, 6 / (S.enhetSkala || 1)) + 0.5 / (S.enhetSkala || 1);
-  return bjelker.filter(b => b.max.y >= toppY - margin);
+  return bjelker.filter(x => x.b.max.y >= toppY - margin);
 }
 
 // Bjelkeboksene i den formen sw-tak.js sin fallRetningFraBjelker vil ha dem:
 // rene tall i mm, ingen THREE-objekter.
 export function bjelkeBokserMm(bjelker) {
-  return (bjelker || []).map(b => ({
+  return (bjelker || []).map(({ b }) => ({
     minX: tilMm(b.min.x), maxX: tilMm(b.max.x),
     minY: tilMm(b.min.y), maxY: tilMm(b.max.y),
     minZ: tilMm(b.min.z), maxZ: tilMm(b.max.z)
@@ -125,11 +126,40 @@ export function bjelkeBokserMm(bjelker) {
 // Hjørnene av bjelkene i (u, v), i MM — det takRektangel strekkes rundt.
 export function takPunkter(ramme, bjelker) {
   const ut = [];
-  for (const b of bjelker || [])
+  for (const { b } of bjelker || [])
     for (const px of [b.min.x, b.max.x]) for (const pz of [b.min.z, b.max.z]) {
       const [u, v] = tilUV(ramme, px, pz);
       ut.push([tilMm(u), tilMm(v)]);
     }
+  return ut;
+}
+
+// 🏗 BJELKENES OVERKANT SOM LINJER I ROMMET — grunnlaget for «Automatisk».
+//
+// Boksen til en bjelke sier hvor den strekker seg, men IKKE hvilken ende som
+// er høy: en boks har min og maks i hver akse uten å koble dem. På et valmtak
+// er det nettopp koblingen som er hele svaret. Derfor leses de ekte
+// trekantpunktene, slik taklinjerFraModell gjør mot fasadene.
+export function takBjelkeLinjer(bjelker, idPerBoks) {
+  const ider = new Set(idPerBoks || []);
+  if (!ider.size) return [];
+  const per = new Map();
+  const v = new THREE.Vector3();
+  forHverTrekant(ider, (pos, i0, i1, i2, mtx, id) => {
+    let liste = per.get(id);
+    if (!liste) { liste = []; per.set(id, liste); }
+    if (liste.length > 600) return;          // nok til å finne endene
+    for (const i of [i0, i1, i2]) {
+      v.fromBufferAttribute(pos, i);
+      if (mtx) v.applyMatrix4(mtx);
+      liste.push([tilMm(v.x), tilMm(v.y), tilMm(v.z)]);
+    }
+  });
+  const ut = [];
+  for (const punkter of per.values()) {
+    const l = bjelkeLinje(punkter);
+    if (l) ut.push(l);
+  }
   return ut;
 }
 
@@ -146,7 +176,7 @@ export function takPunkter(ramme, bjelker) {
 export function takProfilFraBjelker(ramme, bjelker, baseY) {
   const botte = tilScene(TAK_BOTTE_MM) || 0.1;
   const per = new Map();
-  for (const b of bjelker || []) {
+  for (const { b } of bjelker || []) {
     // begge endene av bjelken, med sin egen overkant
     for (const px of [b.min.x, b.max.x]) for (const pz of [b.min.z, b.max.z]) {
       const [u] = tilUV(ramme, px, pz);
@@ -173,6 +203,21 @@ export function takData() {
   // 🏗 FALLET LESES AV BJELKENE (Emils tips 18.09). Sperra bærer platene og
   // ligger allerede i fallet — leser vi retningen av den, kan takflata per
   // definisjon ikke havne på tvers av det som bærer den.
+  // 🏗 «AUTOMATISK» (Emil 18.09): platene legger seg langs bjelkene, og hvert
+  // sett parallelle bjelker i samme plan blir ETT takfall. Et valmtak gir fire
+  // flater av seg selv — ingen taktype er kodet inn noe sted.
+  if (o.fallFasade === "auto" || o.fallFasade === undefined || o.fallFasade === null) {
+    const linjer = takBjelkeLinjer(bjelker, bjelker.map(x => x.id));
+    const flater = takflaterFraBjelker(linjer, o);
+    if (flater.length) {
+      return { auto: true, flater, baseY: baseYNaa(), o, bjelker: bjelker.length,
+        ramme: { fraStal: true, auto: true, bjelker: linjer.length, flater: flater.length },
+        liste: trpListe(flater, o), totaler: takTotaler(flater),
+        medPlater: platerPaTaket(flater, o) };
+    }
+    takGrunn = "ingen-fall";
+    return null;
+  }
   const fall = fallRetningFraBjelker(bjelkeBokserMm(bjelker), o.minHellingProsent);
   const ramme = takRamme(lagret.fasader, o.fallFasade, o, fall);
   if (!ramme) { takGrunn = "ingen-ramme"; return null; }
@@ -190,7 +235,7 @@ export function takData() {
   const flater = takFlater(rekt, profil, { ...o, flattHoydeMm: flattHoyde });
   return { ramme, rekt, flater, baseY, o, bjelker: bjelker.length, profil,
     liste: trpListe(flater, o), totaler: takTotaler(flater),
-    medPlater: flater.map(f => platerPaFlate(f, o)).filter(Boolean) };
+    medPlater: platerPaTaket(flater, o) };
 }
 
 // 🔎 EMILS FUNN 18.09: «Fant ikke stål å bygge takflata av» på et bygg som
@@ -243,13 +288,28 @@ function takMat(farge) {
 }
 
 // Ett punkt på takflata: (u, v) i mm → verden.
-function P(data, uMm, vMm, hMm) {
+//
+// I «Automatisk» har HVER FLATE sin egen ramme — U opp fallet i rommet, V
+// vannrett på tvers, alt målt fra flatas eget origo. Da ligger platene i
+// flatas plan uansett hvilken vei den faller, og et valmtak blir riktig uten
+// at noen retning er gjettet.
+function P(data, uMm, vMm, hMm, flate) {
+  if (data.auto && flate && flate.U) {
+    const o = flate.origo, U = flate.U, V = flate.V;
+    const h = tilScene(Number(hMm) || 0);
+    return new THREE.Vector3(
+      tilScene(o.x + U.x * uMm + V.x * vMm),
+      tilScene(o.y + U.y * uMm + V.y * vMm) + h,
+      tilScene(o.z + U.z * uMm + V.z * vMm));
+  }
   const p = fraUV(data.ramme, tilScene(uMm), tilScene(vMm));
   return new THREE.Vector3(p.x, data.baseY + tilScene(hMm), p.z);
 }
 
 // Høyden på en flate ved u — rett interpolasjon, flata er et plan.
+// I «Automatisk» ligger høyden i U-vektoren selv, så her er den 0.
 function hVed(flate, uMm) {
+  if (flate && flate.U) return 0;
   const d = flate.u1 - flate.u0;
   if (!(Math.abs(d) > 1e-6)) return flate.h0;
   const k = (Number(uMm) - flate.u0) / d;
@@ -265,7 +325,7 @@ export function tegnPlate(data, flate, vFra, breddeMm, uFra, uTil, farge, legg, 
   const prof = trpProfil(breddeMm, mal.deling, mal.profilHoyde);
   const pos = [];
   const pkt = (v, h, uu) => {
-    const p = P(data, uu, vFra + v, hVed(flate, uu) + h);
+    const p = P(data, uu, vFra + v, hVed(flate, uu) + h, flate);
     pos.push(p.x, p.y, p.z);
   };
   // to trekanter per segment av profilen, strukket fra uFra til uTil
@@ -345,12 +405,16 @@ export function takPanelHtml() {
       ? t("Stålet er ikke lest inn ennå. Trykk «Generer tak» — den henter det først.")
       : takGrunn === "ingen-bjelker"
         ? t("Fant stål, men ingen bjelker øverst å bygge takflata av.")
+      : takGrunn === "ingen-fall"
+        ? t("Ingen av takbjelkene ligger med fall. Velg fallretning selv nedenfor.")
         : t("Fant ikke stål å bygge takflata av. Taket bygges av de øverste bjelkene.");
     topp = "<p class='hint'>" + esc(grunn) + "</p>";
   } else {
     const L = data.liste, T2 = data.totaler, r = data.ramme;
     topp =
-      "<p class='hint'>" + esc(r.fraStal
+      "<p class='hint'>" + esc(r.auto
+        ? t("Platene følger bjelkene: {0} takflater av {1} bjelker. Ingen retning er gjettet.", r.flater, r.bjelker)
+        : r.fraStal
         ? t("Fallet leses av {0} takbjelker — de ligger allerede i fallet.", r.bjelker)
         : r.flatt
           ? t("Taket er flatt. Fallretningen settes nedenfor, og fallprosenten bestemmer hvor mye det heller.")
@@ -376,7 +440,8 @@ export function takPanelHtml() {
   }
 
   // fallretning: hvilken fasade fallet løper langs
-  const valgt = o.fallFasade !== null && o.fallFasade !== undefined && o.fallFasade !== "";
+  const auto = o.fallFasade === "auto" || o.fallFasade === null || o.fallFasade === undefined;
+  const valgt = !auto && o.fallFasade !== "";
   const fasadeValg = (lagret.fasader || []).map((f, i) =>
     "<option value='" + i + "'" + (valgt && Number(o.fallFasade) === i ? " selected" : "") + ">" +
     esc(f.navn || t("Fasade {0}", i + 1)) + "</option>").join("");
@@ -386,8 +451,12 @@ export function takPanelHtml() {
     "<label>" + esc(t("Farge")) + "<input type='color' id='takFarge' value='" +
       esc(o.farge || "#8fa3b8") + "'></label>" +
     "<label class='swfelt'><span>" + esc(t("Fallretning")) + "</span>" +
-      "<select id='takFallFasade'><option value=''>" + esc(t("Finn selv (gavlfasaden)")) +
-      "</option>" + fasadeValg + "</select></label>" +
+      "<select id='takFallFasade'>" +
+      "<option value='auto'" + (auto ? " selected" : "") + ">" +
+        esc(t("Automatisk — platene følger bjelkene")) + "</option>" +
+      "<option value=''" + (!auto && o.fallFasade === "" ? " selected" : "") + ">" +
+        esc(t("Finn selv (gavlfasaden)")) + "</option>" +
+      fasadeValg + "</select></label>" +
     // 📐 Platelengdene: SAMME system som radhøydene i SW-generatoren (Emil
     // 18.09), bare at stabelen legges HENOVER taket i stedet for oppover.
     "<label>" + esc(t("Platelengder fra gesimsen og opp (mm) — tom = automatisk")) +
@@ -423,7 +492,9 @@ export function koblTakPanel(paaNytt) {
     const pl = $("takPlatelengder");
     if (pl) ny.platelengder = pl.value;
     const ff = $("takFallFasade");
-    ny.fallFasade = ff && ff.value !== "" ? Number(ff.value) : null;
+    ny.fallFasade = !ff ? "auto"
+      : ff.value === "auto" ? "auto"
+      : ff.value === "" ? "" : Number(ff.value);
     settTakOppsett(ny);
     tegnAlt();
     if (paaNytt) paaNytt();
