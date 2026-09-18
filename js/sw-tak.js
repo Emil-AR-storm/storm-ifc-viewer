@@ -42,6 +42,7 @@ export const TAK_STD = {
   maksLengdeMm: 12000,     // transportgrense — deler fallet når stabelen er tom
   skrueAvstandMm: 450,     // 40–50 cm mellom skruene i skjøten (prosedyren, steg 5)
   flattFallProsent: 0,     // fall på et ellers flatt tak
+  minHellingProsent: 0.5,  // en bjelke under dette «ligger ikke i fallet»
   fallFasade: null         // hvilken fasade fallet går NED MOT; null = finn selv
 };
 
@@ -68,9 +69,89 @@ export function gavlFasade(fasader, tolMm) {
                        : { fi: -1, variasjon: rund(bestVar), flatt: true };
 }
 
+// ═══════ 🏗 FALLRETNINGEN LESES AV BJELKENE (Emils tips 18.09) ═══════
+//
+// Emils ord: «fallretning blir riktig automatisk så lenge TRP-plater følger
+// bjelker, siden de ligger allerede med fall».
+//
+// Det er en bedre regel enn å lese gavlfasadens taklinje, og den er bedre av
+// to grunner:
+//
+//  1. SPERRA ER FASITEN. Den bærer platene og ligger allerede i takfallet.
+//     Leser vi retningen av den, kan takflata per definisjon ikke havne på
+//     tvers av det som bærer den.
+//  2. FLATT TAK LØSER SEG SELV. Et «flatt» tak har nesten alltid et lite fall,
+//     og det ligger i bjelkene. Gavlfasadens taklinje ser flat ut innenfor
+//     toleransen, og da måtte Emil velge retning for hånd. Bjelkene vet det.
+//
+// Hver bjelke oppgis som sin BOKS. En bjelke som ligger med fall stiger fra
+// den ene enden til den andre, så boksens høyde er fallet og den lengste
+// vannrette aksen er retningen.
+export function bjelkeAkse(boks) {
+  const b = boks || {};
+  const dx = n(b.maxX) - n(b.minX), dz = n(b.maxZ) - n(b.minZ);
+  const dy = n(b.maxY) - n(b.minY);
+  // 🔎 BOKSENS DIAGONAL ER IKKE BJELKAS AKSE.
+  //
+  // En bjelke på 12 000 × 200 mm som løper langs x har en boks på 12 000 ×
+  // 200. Diagonalen til den boksen peker 0,95° ved siden av x — og 0,95° over
+  // et tak på 40 m er 0,7 m feil i den andre enden. Platene ville lagt seg
+  // merkbart på skrå av gesimsen.
+  //
+  // Når den ene vannrette siden er mye kortere enn den andre, ER bjelka langs
+  // den lange: en boks på 12 m × 0,2 m kan ikke være noe annet. Først når
+  // sidene nærmer seg hverandre — en bjelke som står på skrå i planet — sier
+  // diagonalen noe, og da brukes den.
+  const lang = Math.max(Math.abs(dx), Math.abs(dz));
+  const kort = Math.min(Math.abs(dx), Math.abs(dz));
+  let ux, uz, lengde;
+  if (lang > 0 && kort / lang <= 0.25) {
+    lengde = lang;
+    if (Math.abs(dx) >= Math.abs(dz)) { ux = dx < 0 ? -1 : 1; uz = 0; }
+    else { ux = 0; uz = dz < 0 ? -1 : 1; }
+  } else {
+    lengde = Math.hypot(dx, dz);
+    if (!(lengde > 1)) return null;
+    ux = dx / lengde; uz = dz / lengde;
+  }
+  if (!(lengde > 1)) return null;
+  return { ux, uz, lengdeMm: lengde, fallMm: dy, helling: dy / lengde };
+}
+
+// Den rådende fallretningen blant bjelkene som faktisk heller.
+//
+// Retningen er en AKSE, ikke en pil: en sperre opp mot mønet og en ned igjen
+// på den andre siden peker motsatt vei, men ligger i samme akse. Uten å
+// normalisere fortegnet ville de to sidene av et saltak nullet hverandre ut,
+// og svaret blitt tilfeldig. Derfor vendes hver akse til å peke mot +x (eller
+// mot +z når den står på tvers), og bjelkene veies etter lengde — en 12 m
+// sperre skal bety mer enn et 1 m avstivningsstag.
+export function fallRetningFraBjelker(bokser, minHellingProsent) {
+  const grense = tallEr(minHellingProsent) ? Number(minHellingProsent) / 100 : 0.005;
+  let sx = 0, sz = 0, vekt = 0, antall = 0, maksHelling = 0;
+  for (const b of bokser || []) {
+    const a = bjelkeAkse(b);
+    if (!a || a.helling < grense) continue;
+    // fortegnet normaliseres, ellers kansellerer de to takfallene hverandre
+    const snu = (Math.abs(a.ux) > 1e-9 ? a.ux : a.uz) < 0 ? -1 : 1;
+    sx += a.ux * snu * a.lengdeMm;
+    sz += a.uz * snu * a.lengdeMm;
+    vekt += a.lengdeMm;
+    antall++;
+    maksHelling = Math.max(maksHelling, a.helling);
+  }
+  if (!antall || !(vekt > 0)) return null;
+  const len = Math.hypot(sx, sz);
+  if (!(len > 1e-9)) return null;
+  return { ux: sx / len, uz: sz / len, antall,
+           helling: rund(maksHelling), gjennomsnitt: rund(vekt / antall) };
+}
+
 // Rammen (u, v) i verdenskoordinater. `u` peker langs gavlfasaden — altså ned
 // fallet — og `v` står vinkelrett på den, langs mønet.
-export function takRamme(fasader, valgtFi, o) {
+// `bjelkeFall` er svaret fra fallRetningFraBjelker — sendes det inn, er det
+// BJELKENE som bestemmer retningen, og fasadene brukes bare som reserve.
+export function takRamme(fasader, valgtFi, o, bjelkeFall) {
   const F = fasader || [];
   if (!F.length) return null;
   const g = gavlFasade(F, (o || {}).flattTolMm);
@@ -87,11 +168,18 @@ export function takRamme(fasader, valgtFi, o) {
   const fi = eksplisitt ? Number(valgtFi) : (g.fi >= 0 ? g.fi : 0);
   const f = F[fi];
   if (!f) return null;
+  // 🏗 BJELKENE FØRST. Fant vi en fallretning i stålet, er DEN rammen — med
+  // mindre Emil har pekt ut en fasade selv. Fasaderetningen står igjen som
+  // reserve for modeller uten bjelker vi kjenner igjen.
+  const fraStal = !eksplisitt && bjelkeFall && bjelkeFall.antall > 0;
+  const ux = fraStal ? bjelkeFall.ux : n(f.ex);
+  const uz = fraStal ? bjelkeFall.uz : n(f.ez);
   return {
-    fi, flatt: g.flatt, variasjon: g.variasjon,
+    fi, flatt: g.flatt && !fraStal, variasjon: g.variasjon,
+    fraStal: !!fraStal, bjelker: fraStal ? bjelkeFall.antall : 0,
     px: n(f.px), pz: n(f.pz),
-    ux: n(f.ex), uz: n(f.ez),      // ned fallet
-    vx: n(f.nx), vz: n(f.nz),      // langs mønet (fasadens normal)
+    ux, uz,                        // ned fallet
+    vx: -uz, vz: ux,               // langs mønet, vinkelrett på fallet
     profil: (f.takLinje && f.takLinje.length >= 2) ? f.takLinje.map(q => [n(q[0]), n(q[1])]) : null
   };
 }

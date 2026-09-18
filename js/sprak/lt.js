@@ -1373,6 +1373,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Hatprofil bredde (mm)": "Skrybėlinio profilio plotis (mm)",
   "Hatprofil flens (mm)": "Skrybėlinio profilio flanšas (mm)",
   "Hatprofil høyde (mm)": "Skrybėlinio profilio aukštis (mm)",
+  "Fallet leses av {0} takbjelker — de ligger allerede i fallet.": "Nuolydis nuskaitomas iš {0} stogo sijų — jos jau guli nuolydyje.",
   "Stålet er ikke lest inn ennå. Trykk «Generer tak» — den henter det først.": "Plienas dar nenuskaitytas. Paspauskite „Generuoti stogą“ — jis pirmiausia jį paims.",
   "Fant stål, men ingen bjelker øverst å bygge takflata av.": "Rastas plienas, bet nėra viršutinių sijų stogo plokštumai sudaryti.",
   "Klarte ikke å hente stålet: ": "Nepavyko gauti plieno: ",
