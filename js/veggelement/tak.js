@@ -23,7 +23,7 @@ import { TAK_RADER, TAK_STD, platerPaFlate, takFlater, takRamme, takRektangel,
          tilUV, fraUV, trpListe, takTotaler } from "../sw-tak.js";
 import { soyleTypeNavn, tilMm, tilScene } from "./regler.js";
 import { allElementBoxes } from "../elements.js";
-import { lagret, oppsett, skrivLagret, swGroup } from "./tilstand.js";
+import { lagret, skrivLagret, swGroup } from "./tilstand.js";
 import { baseYNaa, skjulNaa, tegnAlt } from "./tegning.js";
 import { STAL_TYPER } from "./stal.js";
 
@@ -39,16 +39,28 @@ export const TAK_FELT = [
   ["flattFallProsent", "Fall på flatt tak (%)"]
 ];
 
+// 🔎 EMILS FUNN 18.09: «jeg får ikke lov å justere noe på de forskjellige
+// punktene, det går tilbake til tallet som er satt fra før hver gang.»
+//
+// Årsaken var at oppsettet lå INNE i `oppsett()`. Den funksjonen kjører
+// migreringen og bygger et NYTT objekt hver gang den kalles:
+//
+//     lagret.oppsett = migrerOppsett(lagret.oppsett, STD_OPPSETT);
+//
+// `settTakOppsett` gjorde `const o = oppsett()` og skrev så `o.tak = …`. Men
+// mellom de to linjene kalte den `takOppsett()`, som kaller `oppsett()` ENDA
+// en gang — og da pekte `lagret.oppsett` på et nyere objekt. Verdien ble
+// skrevet til et objekt som allerede var kastet, og feltet sprettet tilbake.
+//
+// Blikket har aldri hatt problemet fordi det lagrer på `lagret.blikkOppsett`
+// direkte. Taket gjør nå det samme: ett sted, ingen migrering å bli forbikjørt av.
 export function takOppsett() {
-  const o = oppsett();
-  if (!o.tak || typeof o.tak !== "object") o.tak = { ...TAK_STD };
-  for (const k of Object.keys(TAK_STD))
-    if (o.tak[k] === undefined) o.tak[k] = TAK_STD[k];
-  return o.tak;
+  const o = (lagret && lagret.takOppsett) || {};
+  return { ...TAK_STD, ...o };
 }
 export function settTakOppsett(ny) {
-  const o = oppsett();
-  o.tak = { ...takOppsett(), ...(ny || {}) };
+  if (!lagret) return;
+  lagret.takOppsett = { ...takOppsett(), ...(ny || {}) };
   skrivLagret();
 }
 
@@ -97,15 +109,20 @@ export function takPunkter(ramme, variasjonMm) {
 }
 
 // Alt taket trenger, regnet ferdig. Null når det ikke går an.
+// Hvorfor takflata ikke kunne bygges — i klartekst til panelet. Et tomt svar
+// uten grunn er det samme som ingen hjelp.
+export let takGrunn = "";
+
 export function takData() {
-  if (!lagret || !(lagret.fasader || []).length) return null;
+  takGrunn = "";
+  if (!lagret || !(lagret.fasader || []).length) { takGrunn = "ingen-fasader"; return null; }
   const o = takOppsett();
   const ramme = takRamme(lagret.fasader, o.fallFasade, o);
-  if (!ramme) return null;
+  if (!ramme) { takGrunn = "ingen-ramme"; return null; }
   const punkter = takPunkter(ramme, ramme.variasjon);
-  if (!punkter.length) return null;
+  if (!punkter.length) { takGrunn = stalFinnes() ? "ingen-toppbjelker" : "ingen-meta"; return null; }
   const rekt = takRektangel(punkter, o.utstikkGesimsMm, o.utstikkGavlMm);
-  if (!rekt) return null;
+  if (!rekt) { takGrunn = "ingen-rektangel"; return null; }
   // Et flatt tak har ingen taklinje å lese høyden av — da brukes stålets
   // overkant, som er nøyaktig der platene skal ligge.
   const baseY = baseYNaa();
@@ -114,6 +131,30 @@ export function takData() {
   return { ramme, rekt, flater, baseY, o,
     liste: trpListe(flater, o), totaler: takTotaler(flater),
     medPlater: flater.map(f => platerPaFlate(f, o)).filter(Boolean) };
+}
+
+// 🔎 EMILS FUNN 18.09: «Fant ikke stål å bygge takflata av» på et bygg som
+// tydelig HAR stål.
+//
+// `soyleTypeNavn(id)` leser typenavnet av IFC-metadataene, og de hentes
+// ASYNKRONT fra IFC-tråden. `stalPaFasader` venter på dem:
+//
+//     if (!S.glbActive) await sikreMeta(alleElementIder);
+//
+// `takPunkter` gjorde ikke det. Laster man siden på nytt og henter
+// SW-resultatet fra lagringen — uten å generere veggene om igjen — er
+// metadataene aldri hentet i den sideinnlastingen. Da svarer `soyleTypeNavn`
+// tom streng for HVERT element, ingen er «Beam», og taket finner ikke noe stål.
+//
+// «Generer tak» venter derfor på metadataene før den leter. Denne funksjonen
+// svarer på om de er der, så panelet kan si hva som mangler i stedet for å
+// påstå at bygget er uten stål.
+export function stalFinnes() {
+  const bokser = allElementBoxes();
+  if (!bokser || !bokser.size) return false;
+  for (const [id] of bokser)
+    if (STAL_TYPER.indexOf(soyleTypeNavn(id)) !== -1) return true;
+  return false;
 }
 
 // Stålets overkant i mm over SW-basen — høyden et flatt tak legges på.
@@ -240,7 +281,12 @@ export function takPanelHtml() {
 
   let topp = "";
   if (!data) {
-    topp = "<p class='hint'>" + esc(t("Fant ikke stål å bygge takflata av. Taket bygges av de øverste bjelkene.")) + "</p>";
+    const grunn = takGrunn === "ingen-meta"
+      ? t("Stålet er ikke lest inn ennå. Trykk «Generer tak» — den henter det først.")
+      : takGrunn === "ingen-toppbjelker"
+        ? t("Fant stål, men ingen bjelker øverst å bygge takflata av.")
+        : t("Fant ikke stål å bygge takflata av. Taket bygges av de øverste bjelkene.");
+    topp = "<p class='hint'>" + esc(grunn) + "</p>";
   } else {
     const L = data.liste, T2 = data.totaler, r = data.ramme;
     topp =
@@ -268,8 +314,9 @@ export function takPanelHtml() {
   }
 
   // fallretning: hvilken fasade fallet løper langs
+  const valgt = o.fallFasade !== null && o.fallFasade !== undefined && o.fallFasade !== "";
   const fasadeValg = (lagret.fasader || []).map((f, i) =>
-    "<option value='" + i + "'" + (Number(o.fallFasade) === i ? " selected" : "") + ">" +
+    "<option value='" + i + "'" + (valgt && Number(o.fallFasade) === i ? " selected" : "") + ">" +
     esc(f.navn || t("Fasade {0}", i + 1)) + "</option>").join("");
 
   return topp +
@@ -322,12 +369,30 @@ export function koblTakPanel(paaNytt) {
   for (const id of ["takFarge", "takPlatelengder", "takFallFasade"])
     if ($(id)) $(id).onchange = les;
   for (const [id] of TAK_FELT) if ($("tf_" + id)) $("tf_" + id).onchange = les;
-  if ($("takGenerer")) $("takGenerer").onclick = () => {
+  if ($("takGenerer")) $("takGenerer").onclick = async () => {
     if (!lagret || !(lagret.vegger || []).length) { alert(t("Generer veggelementene først.")); return; }
-    takTilstand().pa = true;
-    skrivLagret();
-    tegnAlt();
-    if (paaNytt) paaNytt();
+    const b = $("takGenerer");
+    if (b) b.disabled = true;
+    try {
+      // 🔑 METADATAENE FØRST. Uten dem er hvert typenavn tomt, og taket finner
+      // ikke et eneste stål — se stalFinnes(). Dette er den ENESTE grunnen
+      // til at knappen er asynkron.
+      if (!S.glbActive) {
+        const { sikreMeta } = await import("../ifcrpc.js");
+        const { alleElementIder } = await import("../ifc.js");
+        await sikreMeta(alleElementIder);
+      }
+      takTilstand().pa = true;
+      skrivLagret();
+      tegnAlt();
+    } catch (err) {
+      console.warn("Taket kunne ikke genereres:", err);
+      alert(t("Klarte ikke å hente stålet: ") + (err && err.message || err));
+    } finally {
+      const b2 = $("takGenerer");
+      if (b2) b2.disabled = false;
+      if (paaNytt) paaNytt();
+    }
   };
   if ($("takFjern")) $("takFjern").onclick = () => {
     takTilstand().pa = false;
