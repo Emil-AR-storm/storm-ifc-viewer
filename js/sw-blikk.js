@@ -354,12 +354,22 @@ export function medHjorner(vegger, hjorner, tolMm) {
 // beina DER — da lukker L-en seg om hjørnet uansett hvilken vegg som løper
 // forbi hvilken.
 //
-// `halvS` er halve veggtykkelsen i scene-enheter. Returnerer {x, z}, eller
-// null når fasadene er parallelle (da finnes ikke noe hjørne).
-export function hjorneYtre(fA, fB, halvS) {
+// `halvA` og `halvB` er HVER SIN halve veggtykkelse i scene-enheter.
+//
+// 🔎 EMILS FUNN 18.09: hjørnet ble «200 mm den ene veien og mye lengre den
+// andre». Begge ytterflatene ble regnet med SAMME tykkelse, og der en fasade
+// på 200 mm møter en innervegg på 100 mm havnet naboens flate feil — beinet
+// startet et stykke ute i lufta eller inne i veggen. Fasade- og
+// innerveggelement har ofte ulike dimensjoner, så tykkelsen må leses per vegg.
+//
+// Returnerer {x, z}, eller null når fasadene er parallelle (da finnes ikke
+// noe hjørne — se kalleren: to bein uten knekk er en SKJØT, ikke et hjørne).
+export function hjorneYtre(fA, fB, halvA, halvB) {
   if (!fA || !fB) return null;
-  const ax = fA.px + fA.nx * (fA.off + halvS), az = fA.pz + fA.nz * (fA.off + halvS);
-  const bx = fB.px + fB.nx * (fB.off + halvS), bz = fB.pz + fB.nz * (fB.off + halvS);
+  const hA = Number(halvA) || 0;
+  const hB = Number.isFinite(Number(halvB)) ? Number(halvB) : hA;
+  const ax = fA.px + fA.nx * (fA.off + hA), az = fA.pz + fA.nz * (fA.off + hA);
+  const bx = fB.px + fB.nx * (fB.off + hB), bz = fB.pz + fB.nz * (fB.off + hB);
   const nevner = fA.ex * fB.nx + fA.ez * fB.nz;
   if (Math.abs(nevner) < 1e-6) return null;
   const s = ((bx - ax) * fB.nx + (bz - az) * fB.nz) / nevner;
