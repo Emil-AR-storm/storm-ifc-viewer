@@ -43,6 +43,7 @@ export const STD_BLIKK = {
   hatToppMm: 60,             // hatprofilen over skjøten: bredden på hatten
   hatFlensMm: 30,            //            flensen som ligger på veggen
   hatHoydeMm: 20,            //            hvor høyt hatten står ut
+  lokkOverMm: 10,            // hvor langt kappen stikker OVER veggtoppen
   stangLengdeM: 2.5
 };
 // Gamle oppsett hadde blikkBreddeMm, toppNedUteMm, hjorneBenMm og flere —
@@ -144,12 +145,19 @@ export function blikkDeler() {
   const oA = (lagret && lagret.oppsett) || oppsett();
   if (lagret && (lagret.fasader || []).length)
     legg(lagret.fasader, lagret.vegger, utspPaFasader(), oA, 1, false, baseYNaa());
-  // 🚪 INNERVEGGENE: to flater, og sin egen base. Egen try/catch — del B kan
+  // 🚪 INNERVEGGENE: ÉN flate, og sin egen base. Egen try/catch — del B kan
   // mangle eller være tom uten at ytterveggenes blikk skal ryke med.
+  //
+  // 🔎 EMILS REGEL 18.09: «det skal kun blikk på en side av innervegg og det er
+  // siden som er lengst vekke fra søylen» — du får ikke festet blikk mellom en
+  // søyle og et veggelement. Innerveggens fasadenormal er akse.nx·side, altså
+  // den veien veggen er forskjøvet BORT fra søyleaksen, så flaten blikket skal
+  // på er nøyaktig `nrm` — den samme som på en fasade. Derfor er `flater` nå 1,
+  // og tegningen trenger ingen ny retning: baksiden faller bare bort.
   let d = null;
   try { d = innerData(); } catch (err) { console.warn("Innerveggenes blikk:", err); }
   if (d && (d.fasader || []).length)
-    legg(d.fasader, d.vegger, d.utspVis || [], oA, 2, true, d.baseY);
+    legg(d.fasader, d.vegger, d.utspVis || [], oA, 1, true, d.baseY);
   if (!deler.length) return null;
   // Stengene regnes av grand-totalen med FASADENES stanglengde — det er én
   // bestilling, og de to settene deler leverandør.
@@ -235,12 +243,22 @@ export function profilStrek(p1, p2, upV, nrmV, tverrsnitt, tykkM, farge, leggFn)
 // UTENPÅ elementet og ikke inni det.
 
 // Kappe over veggtoppen: ned på innsiden, over toppen, ned på utsiden.
-export function tvsnTopp(halv, nedInne, nedUte) {
-  return [[-halv, -nedInne], [-halv, 0], [halv, 0], [halv, -nedUte]];
+//
+// 🔎 EMILS FUNN 18.09 (bilde 1): kappen lå MIDT I veggtoppen, ikke oppå den.
+// Platen er en tynn boks sentrert på tverrsnittslinja, så med linja i v = 0
+// havnet halve platen inne i elementet, og på et saltak — der elementets
+// overkant og kappen ligger i samme skråplan — kunne man se rett gjennom fra
+// visse vinkler. Toppflaten løftes derfor `over` mm, mens beina fortsatt
+// måles fra veggtoppen og ned: kappen er BRETTET OVER kanten, som i virkeligheten.
+export function tvsnTopp(halv, nedInne, nedUte, over) {
+  const o = Number(over) || 0;
+  return [[-halv, -nedInne], [-halv, o], [halv, o], [halv, -nedUte]];
 }
-// Kappe under veggbunnen: speilvendt.
-export function tvsnBunn(halv, oppInne, oppUte) {
-  return [[-halv, oppInne], [-halv, 0], [halv, 0], [halv, oppUte]];
+// Kappe under veggbunnen: speilvendt — lokket stikker tilsvarende NED under
+// veggbunnen, inn mot ringmuren.
+export function tvsnBunn(halv, oppInne, oppUte, over) {
+  const o = Number(over) || 0;
+  return [[-halv, oppInne], [-halv, -o], [halv, -o], [halv, oppUte]];
 }
 // Kappe over en fri endeflate: retur inn på begge veggflater.
 export function tvsnEnde(halv, ret) {
@@ -334,19 +352,28 @@ export function tegnBlikk() {
       const P = (tMm, yMm) => punktPaa(f, tMm, yMm, baseY);
       for (const s of kol.stykker) {
         if (s.type === "hjorne" || s.type === "ende") continue;   // tegnes per hjørne
-        // 🚪 To flater på en innervegg: hatprofilen og utsparingsbeslaget
-        // kommer på begge sider. Kappene griper uansett om begge flater.
+        // Blikkflatene. Etter Emils regel 18.09 har både fasader og
+        // innervegger ÉN flate — `nrm`, siden som peker bort fra søylen. Får
+        // en vegg en gang to flater, står regelen klar her.
         const flater = s.flater === 2 ? [nrm, bak] : [nrm];
         if (s.type === "topp") {
           // følger taklinja: ett profil per rett strekning, så gavlen får knekk
           const xs = [s.fraMm];
           for (const [x] of f.takLinje || []) if (x > s.fraMm + 1 && x < s.tilMm - 1) xs.push(x);
           xs.push(s.tilMm);
-          for (let k = 1; k < xs.length; k++)
-            tegn(P(xs[k - 1], toppY(f, xs[k - 1], vegg.toppMm)), P(xs[k], toppY(f, xs[k], vegg.toppMm)),
-              OPP(), nrm, tvsnTopp(halv, b.benInneMm, b.benUteMm));
+          // 🏔 I ET KNEKK (mønet, raftet) møtes to skrå lokk i vinkel, og uten
+          // overlapp står det en kile åpen mellom dem — den andre halvparten av
+          // Emils hull 18.09. Hvert lokk føres derfor `over` mm forbi knekket.
+          const mitre = Math.max(2, Number(b.lokkOverMm) || 0);
+          for (let k = 1; k < xs.length; k++) {
+            const a2 = xs[k - 1] - (k > 1 ? mitre : 0);
+            const c2 = xs[k] + (k < xs.length - 1 ? mitre : 0);
+            tegn(P(a2, toppY(f, a2, vegg.toppMm)), P(c2, toppY(f, c2, vegg.toppMm)),
+              OPP(), nrm, tvsnTopp(halv, b.benInneMm, b.benUteMm, b.lokkOverMm));
+          }
         } else if (s.type === "bunn") {
-          tegn(P(s.fraMm, 0), P(s.tilMm, 0), OPP(), nrm, tvsnBunn(halv, b.benInneMm, b.benUteMm));
+          tegn(P(s.fraMm, 0), P(s.tilMm, 0), OPP(), nrm,
+            tvsnBunn(halv, b.benInneMm, b.benUteMm, b.lokkOverMm));
         } else if (s.type === "skjot") {
           for (const n of flater)
             for (const [y0, y1] of s.deler || [])
@@ -428,6 +455,7 @@ export const BLIKK_FELT = [
   ["hatToppMm", "Hatprofil bredde (mm)"],
   ["hatFlensMm", "Hatprofil flens (mm)"],
   ["hatHoydeMm", "Hatprofil høyde (mm)"],
+  ["lokkOverMm", "Lokk over topp og bunn (mm)"],
   ["stangLengdeM", "Stanglengde (m)"]
 ];
 
