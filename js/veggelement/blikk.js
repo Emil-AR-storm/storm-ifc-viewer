@@ -19,6 +19,7 @@ import { avsluttBlikkJuster, blikkJust, blikkLagringsTekst, blikkPa, blikkTilsta
 import { tilMm, tilScene } from "./regler.js";
 import { lagret, oppsett, swGroup, skrivLagret } from "./tilstand.js";
 import { innerData } from "./panel.js";
+import { koblTakPanel, takPanelHtml } from "./tak.js";
 import { baseYNaa, skjulNaa, tegnAlt, utspPaFasader } from "./tegning.js";
 
 // Blikket har ÉN farge, som settes selv — akkurat som veggelementene
@@ -597,7 +598,11 @@ export function blikkPanelHtml() {
       (innerVegger ? " · " + esc(t("{0} innervegger (én side)", innerVegger)) : "") + "</p>" +
     malBlokk("ytter") +
     (innerVegger ? malBlokk("inner") : "") +
-    blikkHandlingerHtml();
+    blikkHandlingerHtml() +
+    // 🏔 TAK-SEKSJONEN. «Blikk & Tak» er ÉTT verktøy med to seksjoner i samme
+    // panel (vedtatt spesifikasjon §1) — ikke to knapper.
+    "<h4 data-sek='tak' style='margin:18px 0 4px'>" + esc(t("Tak")) + "</h4>" +
+    takPanelHtml();
 }
 
 export function tegnBlikkPanel() {
@@ -605,6 +610,7 @@ export function tegnBlikkPanel() {
   if (!body) return;
   body.innerHTML = blikkPanelHtml();
   koblBlikkHandlinger(body);
+  koblTakPanel(() => tegnBlikkPanel());
   const les = (sett) => () => {
     const f = $("blikkFarge_" + sett);
     const ny = { blikkFarge: (f && f.value) || STD_BLIKK.blikkFarge };

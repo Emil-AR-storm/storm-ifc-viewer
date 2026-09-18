@@ -26,6 +26,7 @@ import { innerSkjulNaa, oppdaterInnerveggerEtterUtsp, settInnerSkjul, tegnInnerv
 // Ringen er trygg: tegnBlikk() kalles når tegnDelA KJØRER, ikke mens modulen
 // lastes (se regelen øverst i js/veggelement.js).
 import { tegnBlikk } from "./blikk.js";
+import { tegnTak } from "./tak.js";
 
 // ---------- 👁 «SW-generator» i 🎨 Utseende ----------
 // Emil 03.09: alt SW-generatoren har satt PÅ BYGGET skal kunne skjules —
@@ -37,7 +38,8 @@ export const SKJUL_DELER = [
   { n: "gulv", navn: "Gulv og isolasjon" },
   { n: "ringmur", navn: "Ringmur" },
   { n: "merking", navn: "Merking og mål" },
-  { n: "blikk", navn: "Blikk" }
+  { n: "blikk", navn: "Blikk" },
+  { n: "tak", navn: "Tak" }
 ];
 
 export function skjulNaa() {
@@ -388,6 +390,8 @@ export function tegnDelA() {
   // i blikket skal ikke la bygget stå uten veggelement.
   try { tegnBlikk(); }
   catch (err) { console.warn("Blikket kunne ikke tegnes:", err); }
+  try { tegnTak(); }
+  catch (err) { console.warn("Taket kunne ikke tegnes:", err); }
 }
 
 // ---------- 📐 Utsparingsmerking: stiplet kryss + mål ----------
