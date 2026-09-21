@@ -20,8 +20,9 @@ import { t } from "../i18n.js";
 import * as THREE from "three";
 import { MALTYPER, trpProfil } from "../materiell-vis.js";
 import { TAK_RADER, TAK_STD, bjelkeLinje, fallRetningFraBjelker, justerPlater, plateId,
-         platerPaFlate, takFlater, takRamme, takRektangel, takflaterFraBjelker,
-         platerPaTaket, tilUV, fraUV, trpListe, takTotaler } from "../sw-tak.js";
+         platerPaFlate, roterFlater, skjotBjelker, takFlater, takRamme, takRektangel,
+         takflaterFraBjelker, platerPaTaket, tilUV, fraUV, trpListe, takTotaler,
+         indreAser } from "../sw-tak.js";
 import { husTakMesh, nullstillTakMesh, startTakJuster, takJust } from "./tak-just.js";
 import { soyleTypeNavn, takLinje, tilMm, tilScene } from "./regler.js";
 import { allElementBoxes, forHverTrekant } from "../elements.js";
@@ -41,6 +42,7 @@ export const TAK_FELT = [
   ["maksLengdeMm", "Maks platelengde (mm)"],
   ["skrueAvstandMm", "Skrueavstand i skjøt (mm)"],
   ["plateOverMm", "Platene over bjelka (mm)"],
+  ["skjotPlanTolMm", "Hvor nær flata en ås må ligge (mm)"],
   ["flattFallProsent", "Fall på flatt tak (%)"]
 ];
 
@@ -265,8 +267,15 @@ function takDataFraStal(bjelker, o) {
   // flater av seg selv — ingen taktype er kodet inn noe sted.
   if (o.fallFasade === "auto" || o.fallFasade === undefined || o.fallFasade === null) {
     const linjer = takBjelkeLinjer(bjelker, bjelker.map(x => x.id));
-    const flater = takflaterFraBjelker(linjer, o);
+    let flater = takflaterFraBjelker(linjer, o);
     if (!flater.length) { takGrunn = "ingen-fall"; return null; }
+    // 🔄 «Roter takflata 90°» (Emil 21.09, bilde 4). Rotasjonen skjer FØR
+    // åsene finnes: etter en rotasjon er det andre bjelker som ligger på
+    // tvers, og dermed andre steder en skjøt kan hvile.
+    if (o.rotert) flater = roterFlater(flater);
+    // 🔩 Hver flate bærer sine egne åser — de bjelkene som ligger i flata og
+    // går på tvers av fallet. Uten dem er det ingenting å skru en skjøt i.
+    flater = flater.map(f => ({ ...f, skjotU: skjotBjelker(f, linjer, o) }));
     settTakSnapshot({ auto: true, flater, bjelker: bjelker.length, linjer: linjer.length });
     return autoData(flater, o,
       { fraStal: true, auto: true, bjelker: linjer.length, flater: flater.length },
@@ -586,6 +595,10 @@ export function takPanelHtml() {
         : r.flatt
           ? t("Taket er flatt. Fallretningen settes nedenfor, og fallprosenten bestemmer hvor mye det heller.")
           : t("Fallet leses av gavlfasaden — {0} mm fra raft til møne.", vis(r.variasjon))) + "</p>" +
+      // 🔩 HVOR SKJØTENE KAN LIGGE, sagt rett ut. Emil 21.09: «det er masse
+      // små plater som skjøtes midt i lufta.» Det skal han se FØR han taster
+      // lengder, ikke oppdage etterpå i 3D.
+      aseTekst(data) +
       "<h4 data-sek='takmengder'>" + esc(t("Takmengder")) + "</h4>" +
       "<table class='swtab'><tbody>" +
       rad("Takflater", T2.flater, "") +
@@ -635,6 +648,14 @@ export function takPanelHtml() {
       "<label class='swfelt'><span>" + esc(t(tekst)) + "</span>" +
       "<input id='tf_" + id + "' type='number' step='any' min='0' value='" +
       esc(String(o[id])) + "'></label>").join("") +
+    // 🔄 Emil 21.09, bilde 4: «vi legger inn en enkel roter-knapp som endrer
+    // retningen taket legger seg i.»
+    "<label class='swfelt'><span>" + esc(t("Skjøt bare på ås")) + "</span>" +
+      "<input type='checkbox' id='takSnapSkjot'" + (o.snapSkjot === false ? "" : " checked") +
+      "></label>" +
+    "<div class='prop-actions' data-sw-fast style='margin-top:10px;flex-wrap:wrap'>" +
+    "<button id='takRoter'" + (pa ? "" : " disabled") + ">" + ikon("juster") + " " +
+      esc(t("Roter takflata 90°")) + (o.rotert ? " ✓" : "") + "</button></div>" +
     "<div class='prop-actions' data-sw-fast style='margin-top:10px;flex-wrap:wrap'>" +
     "<button id='takGenerer' class='primary'>" + ikon("boks") + " " + esc(t("Generer tak")) + "</button>" +
     "<button id='takJusterBtn'" + (pa ? "" : " disabled") + ">" + ikon("juster") + " " +
@@ -645,6 +666,40 @@ export function takPanelHtml() {
       esc(t("Fjern genererte")) + "</button></div>" +
     (pa ? "<p class='hint'>" + esc(t("Taket er generert og følger stålet av seg selv.")) + "</p>"
         : "<p class='hint'>" + esc(t("Trykk «Generer tak» for å legge takflata på bygget.")) + "</p>");
+}
+
+// Åsene, i klartekst: hvor stabelen kan skjøtes, og hva som skjer når det
+// ikke finnes en eneste ås å skjøte på.
+function aseTekst(data) {
+  const F = (data && data.flater) || [];
+  if (!F.length || !F[0].U) return "";
+  // 🔄 ETTER EN ROTASJON LIGGER PLATENE PÅ TVERS AV VANNVEIEN.
+  //
+  // Emil ba om knappen, og han skal ha den. Men en endeskjøt på en plate som
+  // ligger vannrett har vann stående i overlappen, og det er en lekkasje —
+  // ikke en smakssak. Derfor står det rødt i panelet så lenge rotasjonen er
+  // på og den nye fallretningen er flat. Sagt høyt, ikke sperret.
+  const flatt = F.every(f => Math.abs(Number(f.fallGrader) || 0) < 0.3);
+  const advarsel = (data.o && data.o.rotert && flatt)
+    ? "<p class='hint' style='color:var(--warn,#c05a5a)'>" + esc(t(
+        "Takflata er rotert 90°. Platene ligger nå PÅ TVERS av fallet, og en endeskjøt får vann stående i overlappen. Roter tilbake hvis platene skal følge vannveien.")) + "</p>"
+    : "";
+  return advarsel + aseLinje(F, data);
+}
+
+function aseLinje(F, data) {
+  // samme funksjon som snappingen bruker — panelet kan ikke liste en ås
+  // snappingen ser bort fra
+  const per = F.map(f => indreAser(f, data.o).map(Math.round));
+  const noen = per.some(l => l.length);
+  const av = data.o && data.o.snapSkjot === false;
+  if (!noen)
+    return "<p class='hint' style='color:var(--warn,#c05a5a)'>" + esc(t(
+      "Ingen åser på tvers inne i fallet ({0} mm). Da er det ingenting å skru en endeskjøt i, og fallet må dekkes av ÉN plate. Roter takflata hvis platene skal ligge den andre veien.",
+      Math.round(F[0].lengdeMm))) + "</p>";
+  return "<p class='hint'>" + esc(av
+    ? t("Åser på tvers, målt opp fallet: {0} mm. Snapping er slått AV — skjøtene ligger der du sier.", per[0].join(", "))
+    : t("Åser på tvers, målt opp fallet: {0} mm. Skjøtene flyttes til nærmeste ås.", per[0].join(", "))) + "</p>";
 }
 
 // Seksjonen kobles opp av tegnBlikkPanel() — «Blikk & Tak» er ÉTT verktøy med
@@ -661,6 +716,9 @@ export function koblTakPanel(paaNytt) {
     if (f) ny.farge = f.value;
     const pl = $("takPlatelengder");
     if (pl) ny.platelengder = pl.value;
+    const sn = $("takSnapSkjot");
+    if (sn) ny.snapSkjot = !!sn.checked;
+    ny.rotert = !!takOppsett().rotert;     // knappen eier den, ikke feltene
     const ff = $("takFallFasade");
     ny.fallFasade = !ff ? "auto"
       : ff.value === "auto" ? "auto"
@@ -669,8 +727,14 @@ export function koblTakPanel(paaNytt) {
     tegnAlt();
     if (paaNytt) paaNytt();
   };
-  for (const id of ["takFarge", "takPlatelengder", "takFallFasade"])
+  for (const id of ["takFarge", "takPlatelengder", "takFallFasade", "takSnapSkjot"])
     if ($(id)) $(id).onchange = les;
+  if ($("takRoter")) $("takRoter").onclick = () => {
+    settTakOppsett({ rotert: !takOppsett().rotert });
+    tegnAlt();
+    byggTakStabler();
+    if (paaNytt) paaNytt();
+  };
   for (const [id] of TAK_FELT) if ($("tf_" + id)) $("tf_" + id).onchange = les;
   if ($("takGenerer")) $("takGenerer").onclick = async () => {
     if (!lagret || !(lagret.vegger || []).length) { alert(t("Generer veggelementene først.")); return; }

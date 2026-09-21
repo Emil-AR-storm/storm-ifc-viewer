@@ -75,9 +75,21 @@ export function foldSeksjoner(body) {
       body.insertBefore(boks, n);
       sum.appendChild(n);
       boks.appendChild(sum);
-      boks.addEventListener("toggle", () => {
+      // 🔎 EMILS FUNN 21.09 (feilmeldinga oppe til høyre): «Cannot read
+      // properties of null (reading 'open')» hver gang en seksjon ble trykket.
+      //
+      // `boks` er ÉN `let` erklært utenfor løkka, og lukkingen under fanger
+      // VARIABELEN, ikke elementet. Første `data-sw-fast` setter boks = null —
+      // og etter det leste hver eneste toggle-lytter `null.open`. Feilen har
+      // ligget her siden runde 29, men SW-panelet fanger den i sin egen
+      // try/catch; i Blikk & Tak kom den rett opp i skjermbildet.
+      //
+      // `denne` er en `const` INNE i løkka: hver seksjon får sitt eget
+      // element, og de kan ikke lenger overskrive hverandre.
+      const denne = boks;
+      denne.addEventListener("toggle", () => {
         const liste = lesApneSeksjoner().filter(k => k !== nokkel);
-        if (boks.open) liste.push(nokkel);
+        if (denne.open) liste.push(nokkel);
         skrivApneSeksjoner(liste);
       });
       continue;
