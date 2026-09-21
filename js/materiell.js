@@ -25,7 +25,7 @@ import { camera, canvas, grid, raycaster } from "./scene.js";
 import { pick } from "./elements.js";
 import { GRAPH, SP, authHeaders, graphGet, spTokenSilent } from "./sharepoint.js";
 import {
-  ARM_DIM, ARM_TYPER, MALTYPER, byggMateriellObjekt, finnObjekt,
+  ARM_DIM, ARM_TYPER, BESLAG_TYPER, MALTYPER, byggMateriellObjekt, finnObjekt,
   lagreMateriellLokalt, materiellForEksport, materiellGroup,
   materiellTypeLabel, oppdaterMateriellValgEffekt, tegnMateriell, vaskMateriell
 } from "./materiell-vis.js";
@@ -504,11 +504,32 @@ function tegnSkjema(mal, redigerId) {
         ARM_DIM.map(dm => '<option value="' + dm + '"' + (dm === valgtDim ? " selected" : "") + ">Ø" + dm + "</option>").join("") +
         "</select></label>";
     }
+    // 🔩 Beslag (Emil 21.09): formen først, så målene. Etikettene skifter med
+    // formen — «Bredde» betyr ikke det samme på en L som på en hatt, og et
+    // felt som heter noe annet enn det måler er en feilkilde på bestillingen.
+    if (typ === "beslag") {
+      const valgt = BESLAG_TYPER[std.beslagType] ? std.beslagType : "l";
+      ut += '<label>' + t("Beslagform") + '<select id="matBeslagType">' +
+        Object.keys(BESLAG_TYPER).map(k => '<option value="' + k + '"' +
+          (k === valgt ? " selected" : "") + ">" + esc(t(BESLAG_TYPER[k].label)) +
+          "</option>").join("") + "</select></label>";
+    }
     if (!M.fast) {
       ut += '<label>' + t("Lengde (mm)") + '<input type="number" id="matL" min="100" max="30000" step="50" value="' + (std.lengde || M.standard.lengde) + '"></label>' +
         '<label>' + t("Bredde (mm)") + '<input type="number" id="matB" min="100" max="30000" step="50" value="' + (std.bredde || M.standard.bredde) + '"></label>';
       if (typ === "sandwich")
         ut += '<label>' + t("Tykkelse (mm)") + '<input type="number" id="matT" min="30" max="500" step="10" value="' + (std.tykkelse || M.tykkelse) + '"></label>';
+      if (typ === "beslag") {
+        const form = BESLAG_TYPER[std.beslagType] ? std.beslagType : "l";
+        ut += '<label>' + t(form === "hat" ? "Hatthøyde (mm)" : "Høyde på det stående benet (mm)") +
+          '<input type="number" id="matT" min="10" max="1000" step="5" value="' +
+          (std.tykkelse || M.tykkelse) + '"></label>';
+        if (form === "hat")
+          ut += '<label>' + t("Flens (mm)") + '<input type="number" id="matFlens" min="5" max="500" step="5" value="' +
+            (std.flens || M.standard.flens) + '"></label>';
+        ut += '<p style="color:var(--muted);font-size:11px;margin:2px 0">' +
+          esc(t("«Lengde» er stanglengden og «Bredde» hovedmålet på tvers: L — benet som ligger på veggflaten, U — bunnen, hatt — toppen.")) + "</p>";
+      }
     } else {
       ut += '<p style="color:var(--muted);font-size:12px;margin:4px 0">' + t("Fast mål: {0} × {1} mm", M.bredde, M.lengde) + "</p>";
     }
@@ -528,11 +549,19 @@ function tegnSkjema(mal, redigerId) {
     '<button id="matLagre">' + t("Lagre i bibliotek") + "</button>" +
     '<button id="matAvbryt">' + t("Avbryt") + "</button></div>";
 
-  $("matType").onchange = () => {
-    const typ = $("matType").value;
+  const byggFelter = (typ, bytteFarge) => {
     $("matFelter").innerHTML = felter(typ);
-    $("matFarge").value = MALTYPER[typ].standard.farge;
+    if (bytteFarge) $("matFarge").value = MALTYPER[typ].standard.farge;
+    // Hattens flensfelt finnes bare for hatten — feltene må derfor bygges på
+    // nytt når formen byttes, ikke bare når maltypen gjør det.
+    if ($("matBeslagType")) $("matBeslagType").onchange = () => {
+      m.beslagType = $("matBeslagType").value;
+      m.maltype = typ;
+      byggFelter(typ, false);
+    };
   };
+  $("matType").onchange = () => byggFelter($("matType").value, true);
+  byggFelter(type, false);
   const lesSkjema = () => vaskMateriell({
     id: nyId(),
     maltype: $("matType").value,
@@ -543,6 +572,8 @@ function tegnSkjema(mal, redigerId) {
     tykkelse: $("matT") ? $("matT").value : 0,
     armType: $("matArmType") ? $("matArmType").value : undefined,
     diameter: $("matDiameter") ? $("matDiameter").value : undefined,
+    beslagType: $("matBeslagType") ? $("matBeslagType").value : undefined,
+    flens: $("matFlens") ? $("matFlens").value : undefined,
     antall: $("matAntall").value
   });
   $("matPlasser").onclick = () => {
@@ -553,7 +584,8 @@ function tegnSkjema(mal, redigerId) {
       oppdater(redigerId, {
         maltype: p.maltype, navn: p.navn, farge: p.farge,
         lengde: p.lengde, bredde: p.bredde, tykkelse: p.tykkelse, antall: p.antall,
-        armType: p.armType, diameter: p.diameter
+        armType: p.armType, diameter: p.diameter,
+        beslagType: p.beslagType, flens: p.flens
       }, "Materiell endret");
       tegnPanel();
       velg(redigerId);
