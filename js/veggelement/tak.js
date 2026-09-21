@@ -567,6 +567,15 @@ export function takPanelHtml() {
   const data = takData();
   const o = takOppsett();
   const pa = takPa();
+  // 🔎 EMILS FUNN 21.09 («takplater er helt feil»): åtte håndjusteringer fra
+  // en tidligere prøverunde lå igjen og ble lagt oppå hver eneste gang. Uten
+  // justeringene: 14 plater à 5521. Med dem: 8466, 3746, 3581, 3291, 2961,
+  // 2786, 2346, 1996 — og ingenting i panelet sa at de fantes.
+  //
+  // Blikket har sagt fra om dette siden runde 2b. Taket gjorde det ikke, og
+  // det er hele grunnen til at feilen så ut som en regnefeil.
+  const tt0 = takTilstand();
+  const antJust = Object.keys(tt0.just || {}).length + (tt0.ekstra || []).length;
   const vis = (x) => (typeof x === "number" && !Number.isInteger(x))
     ? x.toFixed(2).replace(".", ",") : String(x);
   const rad = (navn, verdi, enhet) =>
@@ -660,11 +669,15 @@ export function takPanelHtml() {
     "<button id='takGenerer' class='primary'>" + ikon("boks") + " " + esc(t("Generer tak")) + "</button>" +
     "<button id='takJusterBtn'" + (pa ? "" : " disabled") + ">" + ikon("juster") + " " +
       esc(t("Juster TRP")) + "</button>" +
+    "<button id='takNullstillJust'" + (antJust ? "" : " disabled") + ">" + ikon("nullstill") + " " +
+      esc(t("Nullstill justeringer ({0})", antJust)) + "</button>" +
     "<button id='takListe'" + (pa ? "" : " disabled") + ">" + ikon("lastned") + " " +
       esc(t("Last ned liste (Excel)")) + "</button>" +
     "<button id='takFjern'" + (pa ? "" : " disabled") + ">" + ikon("slett") + " " +
       esc(t("Fjern genererte")) + "</button></div>" +
-    (pa ? "<p class='hint'>" + esc(t("Taket er generert og følger stålet av seg selv.")) + "</p>"
+    (pa ? "<p class='hint'>" + esc(antJust
+            ? t("Taket er generert og følger stålet. {0} håndjusteringer ligger OPPÅ det regnede — de er grunnen hvis platelengdene ikke er de du taster.", antJust)
+            : t("Taket er generert og følger stålet av seg selv.")) + "</p>"
         : "<p class='hint'>" + esc(t("Trykk «Generer tak» for å legge takflata på bygget.")) + "</p>");
 }
 
@@ -774,6 +787,21 @@ export function koblTakPanel(paaNytt) {
     if (paaNytt) paaNytt();
   };
   if ($("takJusterBtn")) $("takJusterBtn").onclick = () => startTakJuster(paaNytt);
+  // Justeringene alene — taket blir stående. Å måtte fjerne hele taket for å
+  // bli kvitt åtte drag er ikke et valg noen skal måtte ta.
+  if ($("takNullstillJust")) $("takNullstillJust").onclick = () => {
+    const tt = takTilstand();
+    const ant = Object.keys(tt.just || {}).length + (tt.ekstra || []).length;
+    if (!ant) return;
+    if (!confirm(t("Nullstille de {0} håndjusteringene? Taket blir stående.", ant))) return;
+    tt.just = {};
+    tt.ekstra = [];
+    tt.nesteNr = 1;
+    skrivLagret();
+    tegnAlt();
+    byggTakStabler();
+    if (paaNytt) paaNytt();
+  };
   if ($("takListe")) $("takListe").onclick = lastNedTakListe;
 }
 
