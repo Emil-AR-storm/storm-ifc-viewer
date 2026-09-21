@@ -994,6 +994,20 @@ export function plateId(fi, rad, plate) {
 //
 //   just   { "<id>": { av, dFra, dTil, breddeMm } }
 //   ekstra [ { id, fi, vFra, breddeMm, uFra, uTil } ]
+// 🔎 EMILS FUNN 21.09 («takplater er helt feil»): en dratt plate ble 8466 mm
+// på et fall på 5521 — den stakk 2945 mm ut i lufta forbi gesimsen.
+//
+// `dFra`/`dTil` var ubundne: draget la seg rett på u-verdiene uten å spørre
+// om flata rakk så langt. Takflata har allerede utstikket sitt innebygget
+// (utstikkGesimsMm / utstikkGavlMm ligger i u0 og u1), så u0…u1 ER hvor det
+// finnes tak. Et drag utenfor er ikke en lengre plate, det er en plate som
+// henger utenfor bygget.
+function paaFlata(f, uFra, uTil) {
+  const a = n(f && f.u0), b = n(f && f.u1);
+  if (!(b > a)) return [uFra, uTil];
+  return [Math.max(a, Math.min(b, uFra)), Math.min(b, Math.max(a, uTil))];
+}
+
 export function justerPlater(medPlater, just, ekstra, o) {
   const opp = { ...TAK_STD, ...(o || {}) };
   const J = just || {};
@@ -1008,7 +1022,7 @@ export function justerPlater(medPlater, just, ekstra, o) {
         // bred hele veien, så en «halv bredde» midt i en rad finnes ikke
         if (tallEr(j.breddeMm) && Number(j.breddeMm) > 20) bredde = Number(j.breddeMm);
         if (j.av) continue;
-        const uFra = n(p.uFra) - n(j.dFra), uTil = n(p.uTil) + n(j.dTil);
+        const [uFra, uTil] = paaFlata(f, n(p.uFra) - n(j.dFra), n(p.uTil) + n(j.dTil));
         if (uTil - uFra <= 20) continue;
         plater.push({ ...p, id, uFra: rund(uFra), uTil: rund(uTil),
           lengdeMm: rund(uTil - uFra) });
@@ -1021,7 +1035,7 @@ export function justerPlater(medPlater, just, ekstra, o) {
       if (Number(e.fi) !== fi) continue;
       const j = J[e.id] || {};
       if (j.av) continue;
-      const uFra = n(e.uFra) - n(j.dFra), uTil = n(e.uTil) + n(j.dTil);
+      const [uFra, uTil] = paaFlata(f, n(e.uFra) - n(j.dFra), n(e.uTil) + n(j.dTil));
       if (uTil - uFra <= 20) continue;
       rader.push({ vFra: n(e.vFra), breddeMm: n(e.breddeMm) || n(opp.trpBreddeMm),
         kappetBredde: false, lagtTil: true,
