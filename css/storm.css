@@ -1443,6 +1443,7 @@ body:not(.har-modell) #btnFit { display: none !important; }
    uleselig, nøyaktig som SW-panelet var 03.09. */
 #blikkBody > label,
 #blikkBody label.swfelt,
+#blikkBody .sw-seksjon > label,
 #swBody > label,
 #swBody .sw-seksjon > label {
   display: block;
@@ -1460,6 +1461,9 @@ body:not(.har-modell) #btnFit { display: none !important; }
 #swBody > label > input[type=number],
 #swBody > label > select,
 #swBody > label > textarea,
+#blikkBody .sw-seksjon > label > input[type=text],
+#blikkBody .sw-seksjon > label > input[type=number],
+#blikkBody .sw-seksjon > label > select,
 #swBody .sw-seksjon > label > input[type=text],
 #swBody .sw-seksjon > label > input[type=number],
 #swBody .sw-seksjon > label > select,
@@ -1474,6 +1478,7 @@ body:not(.har-modell) #btnFit { display: none !important; }
 /* Fargevelgeren skal IKKE være full bredde — en 100 % bred fargeflate leses
    som en overskrift, ikke som et valg. */
 #blikkBody > label > input[type=color],
+#blikkBody .sw-seksjon > label > input[type=color],
 #swBody > label > input[type=color],
 #swBody .sw-seksjon > label > input[type=color] {
   display: block;
@@ -1488,30 +1493,53 @@ body:not(.har-modell) #btnFit { display: none !important; }
    i stedet for nettleserens egen trekant, som ser forskjellig ut i Chrome,
    Safari og Firefox. Etikettene inni treffes av «.sw-seksjon > label» over —
    de var «#swBody > label» før seksjonene fikk en ekstra boks rundt seg. */
-#swBody .sw-seksjon > summary {
+/* 🩹 Emil 21.09: «gi Blikk og tak-verktøyet samme dropdown-menyformat som
+   SW-generator». Seksjonene er nå de SAMME <details>-boksene — foldSeksjoner()
+   er én funksjon brukt to steder, ikke to utgaver som kan gli fra hverandre.
+   Bare selektorene måtte utvides; alt annet var likt fra før. */
+#swBody .sw-seksjon > summary,
+#blikkBody .sw-seksjon > summary {
   cursor: pointer;
   list-style: none;
   display: flex; align-items: center; gap: 6px;
   user-select: none;
 }
-#swBody .sw-seksjon > summary::-webkit-details-marker { display: none; }
-#swBody .sw-seksjon > summary::before {
+#swBody .sw-seksjon > summary::-webkit-details-marker,
+#blikkBody .sw-seksjon > summary::-webkit-details-marker { display: none; }
+#swBody .sw-seksjon > summary::before,
+#blikkBody .sw-seksjon > summary::before {
   content: "▸";
   color: var(--muted);
   font-size: 13px;
   width: 10px;
   transition: transform .15s;
 }
-#swBody .sw-seksjon[open] > summary::before { transform: rotate(90deg); }
-#swBody .sw-seksjon > summary > h4 { flex: 1; }
-#swBody .sw-seksjon:not([open]) > summary > h4 { border-bottom-color: transparent; }
-#swBody .sw-seksjon { border-bottom: 1px solid var(--border); }
-#swBody .sw-seksjon[open] { padding-bottom: 6px; }
+#swBody .sw-seksjon[open] > summary::before,
+#blikkBody .sw-seksjon[open] > summary::before { transform: rotate(90deg); }
+#swBody .sw-seksjon > summary > h4,
+#blikkBody .sw-seksjon > summary > h4 { flex: 1; }
+#swBody .sw-seksjon:not([open]) > summary > h4,
+#blikkBody .sw-seksjon:not([open]) > summary > h4 { border-bottom-color: transparent; }
+#swBody .sw-seksjon,
+#blikkBody .sw-seksjon { border-bottom: 1px solid var(--border); }
+#swBody .sw-seksjon[open],
+#blikkBody .sw-seksjon[open] { padding-bottom: 6px; }
+
+/* Skillet mellom Blikk og Tak i samme panel: et <h3> som ALDRI foldes
+   (data-sw-fast), slik at de to halvdelene er til å se fra hverandre. */
+#blikkBody .sw-skille {
+  margin: 18px 0 6px;
+  font-size: 13px;
+  letter-spacing: .02em;
+  border-top: 2px solid var(--border);
+  padding-top: 10px;
+}
 
 /* Seksjonsoverskriftene skal kunne skilles fra etikettene. Uten streken hadde
    «Ringmur» og «Høyde over gulv (mm)» samme vekt, og panelet ble én lang
    liste uten inndeling. */
-#swBody h4 {
+#swBody h4,
+#blikkBody h4 {
   font-size: 13px;
   color: var(--text);
   border-bottom: 1px solid var(--border);
