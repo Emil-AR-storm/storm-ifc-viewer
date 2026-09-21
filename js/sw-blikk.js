@@ -245,6 +245,53 @@ export function stenger(lm, stangLengdeM) {
   return m <= 0 ? 0 : Math.ceil(m / L - 1e-9);
 }
 
+// ───────────────── 🔩 BESLAGENE SOM VARER Å BESTILLE ─────────────────
+//
+// Emil 21.09: «TRP-plate og blikk skal komme opp som materiellbunker rundt
+// bygget, på samme måte som SW-generatoren gjør — og da må vi legge inn blikk
+// som et materiell i Materiell-verktøyet. Der skal vi ha 3 typer: L-beslag,
+// U-beslag og hatprofil.»
+//
+// En bunke er en VARE, og varen bestemmes av TVERRSNITTET — ikke av hvor på
+// bygget stykket sitter. Grupperingen under følger derfor formen som faktisk
+// brekkes i js/veggelement/blikk.js, stykke for stykke:
+//
+//   topp      tvsnTopp        kappe med retur på BEGGE sider  → U
+//   bunn      tvsnBunn        samme, speilvendt               → U
+//   ende      tvsnEnde        samme over en fri endeflate     → U
+//   hjorne    tvsnHjorneBein  to ben som møtes i hjørnet      → L
+//   utsparing tvsnUtsparing   dekker enden + ett ben ut       → L
+//   skjot     tvsnHat         flens – opp – hatt – ned – flens → hatt
+//
+// ⚠ MERK: dette er IKKE den samme inndelingen som radene i Excel-arket.
+// «Hatprofil utsparing» ligger i hatprofilsummen der, men utsparingsbeslaget
+// er tegnet som en L. Arket er uendret — det er bestillingsformen som er ny.
+// Er det L-en eller radnavnet som er feil, er det én linje her som skal om.
+export const BESLAG_FORM = {
+  topp: "u", bunn: "u", ende: "u",
+  hjorne: "l", utsparing: "l",
+  skjot: "hat"
+};
+export const BESLAG_FORM_NAVN = { l: "L-beslag", u: "U-beslag", hat: "Hatprofil" };
+export const BESLAG_FORM_REKKE = ["u", "l", "hat"];
+
+// Løpemeter og stenger per beslagform, av de FERDIG JUSTERTE stykkene.
+// Ren tallfunksjon: kolonnene inn, en liste varer ut.
+export function beslagBunker(kolonner, oppsett) {
+  const o = oppsett || {};
+  const lm = { l: 0, u: 0, hat: 0 };
+  for (const k of kolonner || [])
+    for (const st of (k && k.stykker) || []) {
+      const form = BESLAG_FORM[st && st.type];
+      if (!form) continue;
+      lm[form] += n(st.lm);
+    }
+  return BESLAG_FORM_REKKE
+    .map(form => ({ form, navn: BESLAG_FORM_NAVN[form], lm: rund(lm[form]),
+      stenger: stenger(lm[form], o.stangLengdeM) }))
+    .filter(b => b.stenger > 0);
+}
+
 // ───────────────────────── hjørnene ─────────────────────────
 
 // Hvilken ende av hvilken fasade som EIER kantbeslaget. Samme telling som

@@ -40,6 +40,7 @@
 //   juster.js     juster ender, splitt, marker utsparing, finn utsparinger
 //   panel.js      seksjonene, oppsettfeltene og logovalget
 //   innervegg.js  innerveggene, fra bygging til eget panel
+//   bunker.js     hvor materiellbunkene står, og at de husker en flytting
 //   blikk.js      blikket rundt elementene — eget verktøy, reglene i sw-blikk.js
 //
 // HVORFOR «export *» OG IKKE EN HÅNDSKREVET LISTE: delene eksporterer alt de
@@ -53,6 +54,7 @@
 // det bare registreringer av lyttere der, er ringen ufarlig.
 // ---------------------------------------------------------------------------
 export * from "./veggelement/regler.js";
+export * from "./veggelement/bunker.js";
 export * from "./veggelement/tilstand.js";
 export * from "./veggelement/tegning.js";
 export * from "./veggelement/generer.js";

@@ -47,6 +47,25 @@ export const MALTYPER = {
     stabling: 5,                // mm klaring per lag i bunten (+ tykkelsen)
     standard: { lengde: 6000, bredde: 2150, farge: "#8a6d3b" }
   },
+  // 🔩 BESLAG (Emil 21.09): «legg inn blikk som et materiell i Materiell-
+  // verktøyet — der skal vi ha 3 typer: L-beslag, U-beslag og hatprofil.»
+  //
+  // ÉN maltype med tre underkategorier, ikke tre maltyper. Det er samme grep
+  // som armeringen fikk: de tre deler lengde, tykkelse, farge og stabling, og
+  // skiller seg bare i tverrsnittet. Tre maltyper ville betydd tre nesten
+  // like blokker i byggEnhet, vaskMateriell og skjemaet — og da glir de fra
+  // hverandre første gang én av dem endres.
+  //
+  // Målene: `lengde` er stanglengden, `bredde` hovedmålet på tvers (L: benet
+  // på veggflaten, U: bunnen, hatt: toppen), `tykkelse` profilhøyden (L og U:
+  // det andre benet, hatt: hatthøyden) og `flens` hattens flenser.
+  beslag: {
+    label: "Beslag / blikk",
+    fast: false,
+    tykkelse: 100,               // profilhøyden, settes fritt
+    stabling: 20,                // mm per beslag i bunten — de ligger i hverandre
+    standard: { lengde: 2000, bredde: 200, tykkelse: 100, flens: 25, farge: "#b9c4cf" }
+  },
   kassett: {
     label: "Kassett forskaling",
     fast: true,                  // fast mål: 600 mm × 3000 mm
@@ -72,6 +91,15 @@ export const ARM_TYPER = {
 };
 export const ARM_DIM = [6, 8, 10, 12, 16, 20, 25, 32];
 
+// De tre beslagformene Emil bestiller. Nøklene er de SAMME som sw-blikk.js
+// grupperer stykkene sine i (BESLAG_FORM), så en bunke og et blikkstykke
+// aldri kan hete forskjellige ting.
+export const BESLAG_TYPER = {
+  l:   { label: "L-beslag" },
+  u:   { label: "U-beslag" },
+  hat: { label: "Hatprofil" }
+};
+
 // Visningsnavnet for et materiell-objekt uten eget navn: maltypen — og for
 // armering også underkategorien og Ø-en, så «Stang Ø12» og «Stang Ø25» aldri
 // leses som samme vare (hele poenget med navnelappene).
@@ -80,6 +108,8 @@ export function materiellTypeLabel(p) {
     const at = ARM_TYPER[p.armType] || ARM_TYPER.nett;
     return t(at.label) + " Ø" + p.diameter;
   }
+  if (p.maltype === "beslag")
+    return t((BESLAG_TYPER[p.beslagType] || BESLAG_TYPER.l).label);
   return t(MALTYPER[p.maltype].label);
 }
 
@@ -113,7 +143,11 @@ export function vaskMateriell(p) {
     lengde: mal.fast ? mal.lengde : tall(p.lengde, 100, 30000, mal.standard.lengde),
     bredde: mal.fast ? mal.bredde : tall(p.bredde, 100, 30000, mal.standard.bredde),
     tykkelse: mal.fast ? mal.tykkelse
-      : (p.maltype === "sandwich" ? tall(p.tykkelse, 30, 500, mal.tykkelse) : mal.tykkelse),
+      : (p.maltype === "sandwich" ? tall(p.tykkelse, 30, 500, mal.tykkelse)
+      // Beslagets profilhøyde er et ekte mål brukeren setter, ikke en fast
+      // maltype-egenskap: et toppbeslag på 100 mm og et på 300 er samme vare
+      // i ulik høyde.
+      : (p.maltype === "beslag" ? tall(p.tykkelse, 10, 1000, mal.tykkelse) : mal.tykkelse)),
     antall: Math.round(tall(p.antall, 1, MATERIELL_MAKS_ANTALL, 1)),
     x: Number(p.x) || 0, y: Number(p.y) || 0, z: Number(p.z) || 0,
     rot: Number(p.rot) || 0,
@@ -121,6 +155,10 @@ export function vaskMateriell(p) {
     // Feltet følger med i eksporten, så byggeplassen viser det samme som deg.
     skjult: p.skjult === true
   };
+  if (p.maltype === "beslag") {
+    ut.beslagType = BESLAG_TYPER[p.beslagType] ? p.beslagType : "l";
+    ut.flens = tall(p.flens, 5, 500, mal.standard.flens);
+  }
   if (p.maltype === "armering") {
     ut.armType = ARM_TYPER[p.armType] ? p.armType : "nett";
     ut.diameter = ARM_DIM.includes(Number(p.diameter)) ? Number(p.diameter) : 12;
@@ -161,6 +199,34 @@ export function trpProfil(breddeMm, delingMm, hoydeMm) {
              [x0 + 0.60 * T, hoydeMm], [x0 + 0.70 * T, 0], [x0 + T, 0]);
   }
   return pkt;
+}
+
+// 🔩 Beslagets tverrsnitt som polylinje: [x, y]-punkter i mm, sentrert om
+// x = 0 slik ribbonMesh forventer profiler. Formene er de samme som
+// js/veggelement/blikk.js brekker på bygget (tvsnHjorneBein, tvsnTopp,
+// tvsnHat) — her ligger de bare flatt som en vare i en bunke.
+//
+//   L   ett ben opp, ett ut            U   bunn med ben på begge sider
+//   hat flens — opp — hatt — ned — flens
+//
+// Ren tallfunksjon, ingen three.js: testes i Node som trpProfil.
+export function beslagProfil(beslagType, breddeMm, hoydeMm, flensMm) {
+  const b = Math.max(1, Number(breddeMm) || 0);
+  const h = Math.max(1, Number(hoydeMm) || 0);
+  const f = Math.max(0, Number(flensMm) || 0);
+  // Punktene går fra x = 0 og OPPOVER, aldri sentrert: ribbonPosisjoner
+  // sentrerer selv om `bredde/2`, og den leser bredden av SISTE punkt. Et
+  // ferdig sentrert profil ville blitt forskjøvet en gang til — samme
+  // kontrakt som trpProfil holder.
+  if (beslagType === "u") {
+    // bunnen ligger på underlaget, bena står opp
+    return [[0, h], [0, 0], [b, 0], [b, h]];
+  }
+  if (beslagType === "hat") {
+    return [[0, 0], [f, 0], [f, h], [f + b, h], [f + b, 0], [f + b + f, 0]];
+  }
+  // L: det liggende benet er bredden, det stående er høyden
+  return [[0, 0], [b, 0], [b, h]];
 }
 
 // 🩻 Armeringens geometri som rene SEGMENTER: [[x1,y1,z1],[x2,y2,z2]] i mm.
@@ -435,6 +501,11 @@ function byggEnhet(p) {
     bunn.scale.y = -1;   // profilen bøyer NED på undersiden
     bunn.position.y = mmTilScene(mal.profilHoyde);
     g.add(topp, bunn);
+  } else if (p.maltype === "beslag") {
+    // Tynnplate: ribbonen ER beslaget. Ingen bokser å gi det tykkelse med —
+    // 1 mm stål tegnet som en boks blir usynlig uansett, og en flate leses
+    // riktig fra alle kanter fordi materialet er DoubleSide.
+    g.add(ribbonMesh(beslagProfil(p.beslagType, p.bredde, p.tykkelse, p.flens), p.lengde, p.farge));
   } else if (p.maltype === "armering") {
     // hver stang er en lav-poly sylinder (8 sider) langs sitt segment
     for (const [a, b] of armeringSegmenter(p.armType, p.lengde, p.bredde, p.diameter))
@@ -484,7 +555,7 @@ export function lagTykkelseMm(maltype, tykkelseMm) {
 //   rad oppå (16 stenger = 10 nederst + 6 oppå) → en bunt, ikke et tårn.
 // · Kassett og sandwichpanel: 10 i høyden, så NY BUNKE ved siden av.
 // · Øvrig armering (nett, bøyler, vinkler): 20 i høyden, så ny bunke ved siden.
-export const STABEL_PER_BUNKE = { kassett: 10, sandwich: 10, armering: 20 };
+export const STABEL_PER_BUNKE = { kassett: 10, sandwich: 10, armering: 20, beslag: 20 };
 export const STANG_PER_RAD = 10;
 export const BUNKE_KLARING = 50;   // mm luft mellom to bunker
 
@@ -509,6 +580,11 @@ export function stabelOffset(p, i) {
 export function bunkeDybdeMm(p) {
   if (p.maltype === "armering" && (p.armType === "ubojle" || p.armType === "ukrok"))
     return p.lengde;
+  // Hatprofilen er bredere enn `bredde`: flensene stikker ut på begge sider.
+  // Uten dette ville to hattebunker stått inni hverandre, nøyaktig som
+  // endekrok-bunkene gjorde 21.08.
+  if (p.maltype === "beslag" && p.beslagType === "hat")
+    return (Number(p.bredde) || 0) + 2 * (Number(p.flens) || 0);
   return p.bredde;
 }
 
