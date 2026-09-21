@@ -42,6 +42,12 @@ export const TAK_STD = {
   maksLengdeMm: 12000,     // transportgrense — deler fallet når stabelen er tom
   skrueAvstandMm: 450,     // 40–50 cm mellom skruene i skjøten (prosedyren, steg 5)
   flattFallProsent: 0,     // fall på et ellers flatt tak
+  // 🔩 Skjøtene hviler på en ås (Emil 21.09). PÅ som standard: en skjøt i
+  // løse lufta er ikke et valg noen tar med vilje.
+  snapSkjot: true,
+  skjotPlanTolMm: 60,
+  // 🔄 «Roter takflata 90°» (Emil 21.09, bilde 4)
+  rotert: false,
   minHellingProsent: 0.5,  // en bjelke under dette «ligger ikke i fallet»
   retningTolGrader: 5,     // to bjelker «peker samme vei» innenfor dette
   planTolMm: 300,          // … og ligger i samme plan innenfor dette
@@ -429,6 +435,83 @@ export function platerNedFall(fallengdeMm, o) {
   return ut;
 }
 
+// ═══════ 🔩 SKJØTENE FLYTTES NED PÅ ÅSENE (Emil 21.09) ═══════
+//
+// «takplatene skal skjøtes på hver toppbjelke, men det er masse små plater
+// som henger i løse lufta.»
+//
+// Stabelen Emil taster er et ØNSKE om hvor skjøtene skal ligge. Her flyttes
+// hver av dem til nærmeste ås, og lengdene leses av der skjøtene faktisk
+// havnet. Det er åsene som bestemmer — de er det eneste som kan skrus i.
+//
+// Åsen ligger UNDER overlappen, så den nederste plata slutter `ov/2` over
+// åsen og den øverste starter `ov/2` under den. Da dekker platene fallet
+// nøyaktig, og skruene i skjøten treffer stål.
+//
+//   · `skjot` er avstandene opp fallet, målt fra den LAVE enden.
+//   · To skjøter kan ikke havne på samme ås — da hadde en plate fått lengde 0.
+//   · Finnes det INGEN ås inne i fallet, kan det ikke skjøtes i det hele tatt.
+//     Da blir det én plate, og panelet sier fra. Å late som noe annet er å
+//     sende en montør opp med plater han ikke får festet.
+// Åsene som FAKTISK kan bære en skjøt på denne flata: målt opp fallet fra den
+// lave enden, og uten dem som ligger så nær en kant at plata ville blitt en
+// strimmel. Panelet og snappingen leser den SAMME funksjonen — ellers kunne
+// panelet listet en ås som snappingen så bort fra.
+export function indreAser(flate, o) {
+  const opp = { ...TAK_STD, ...(o || {}) };
+  if (!flate || !Array.isArray(flate.skjotU)) return [];
+  const L = n(flate.lengdeMm);
+  const kant = Math.max(MIN_PLATE_MM, Math.max(0, n(opp.endeOverlappMm)));
+  return [...new Set(flate.skjotU.map(u => rund(n(u) - n(flate.u0))))]
+    .filter(u => u > kant && u < L - kant).sort((a, b) => a - b);
+}
+
+export function snapSkjoterTilAser(plater, fallengdeMm, skjot, o) {
+  const opp = { ...TAK_STD, ...(o || {}) };
+  const L = n(fallengdeMm);
+  const ov = Math.max(0, n(opp.endeOverlappMm));
+  const P = (plater || []).filter(Boolean);
+  if (!(L > 0) || P.length <= 1) return P;
+  const kant = Math.max(MIN_PLATE_MM, ov);
+  const indre = [...new Set((skjot || []).map(x => rund(n(x))))]
+    .filter(u => u > kant && u < L - kant).sort((a, b) => a - b);
+  if (!indre.length)
+    return [{ lengdeMm: Math.round(L), kappet: true, ingenAas: true }];
+
+  // hvor stabelen VILLE lagt skjøtene, målt fra den lave enden
+  const onsket = [];
+  let s = 0;
+  for (let i = 0; i < P.length - 1; i++) { s += n(P[i].lengdeMm) - (i ? ov : 0); onsket.push(s); }
+
+  // nærmeste ledige ås til hver — nærmeste ønske først, så den som treffer
+  // best får velge før de andre
+  const rest = indre.slice();
+  const valgt = [];
+  for (const u of onsket.slice().sort((a, b) =>
+      minAvstand(a, indre) - minAvstand(b, indre))) {
+    if (!rest.length) break;
+    let beste = 0;
+    for (let i = 1; i < rest.length; i++)
+      if (Math.abs(rest[i] - u) < Math.abs(rest[beste] - u)) beste = i;
+    valgt.push(rest.splice(beste, 1)[0]);
+  }
+  valgt.sort((a, b) => a - b);
+
+  const ut = [];
+  let forrige = 0;
+  for (let i = 0; i <= valgt.length; i++) {
+    const topp = i < valgt.length ? valgt[i] + ov / 2 : L;
+    const lengde = topp - forrige;
+    if (lengde > 20) ut.push({ lengdeMm: Math.round(lengde), kappet: true, paaAas: i < valgt.length });
+    forrige = (i < valgt.length ? valgt[i] - ov / 2 : L);
+  }
+  for (const p of ut) if (p.lengdeMm < MIN_PLATE_MM) p.kort = true;
+  return ut.length ? ut : P;
+}
+function minAvstand(u, liste) {
+  return liste.reduce((a, k) => Math.min(a, Math.abs(k - u)), Infinity);
+}
+
 // Kortere enn dette er ikke en plate, det er en strimmel.
 export const MIN_PLATE_MM = 500;
 
@@ -446,7 +529,12 @@ export function platerPaFlate(flate, o) {
   if (!(bredde > 0) || !(fall > 0)) return null;
   const hele = Math.floor(bredde / pb);
   const rest = Math.round(bredde - hele * pb);
-  const nedFall = platerNedFall(fall, opp);
+  let nedFall = platerNedFall(fall, opp);
+  // 🔩 Skjøtene ned på åsene (Emil 21.09). Flata bærer sine egne åser i
+  // `skjotU` — absolutte u-verdier — og her måles de fra den LAVE enden, som
+  // er u0: det er der platestabelen starter.
+  if (opp.snapSkjot !== false && Array.isArray(flate.skjotU))
+    nedFall = snapSkjoterTilAser(nedFall, fall, indreAser(flate, opp), opp);
   // hver plate med sin egen strekning langs u, fra den LAVE enden og oppover
   const ov2 = Math.max(0, n(opp.endeOverlappMm));
   let s2 = 0;
@@ -682,6 +770,75 @@ export function flateFraGruppe(gruppe, o) {
   };
 }
 
+// ═══════ 🔄 ROTER TAKFLATA 90° (Emil 21.09) ═══════
+//
+// Emils bilde 4: et bygg på 25 000 × 30 000 der takflata kom ut lagt den ene
+// veien, mens den skulle ligget den andre. «Platene kan bare legge seg 2
+// veier», sa han, «vi legger inn en enkel roter-knapp».
+//
+// Rotasjonen er nettopp så enkel som han sa: U og V bytter plass, og med dem
+// utstrekningen. Ingen nye tall regnes — det er SAMME flate, sett den andre
+// veien. Normalen står i ro, for den peker fortsatt opp.
+//
+// ⚠ Etter en rotasjon er det V som bærer fallet, ikke U. Alt som leser høyden
+// av flata må derfor tåle det — se uvVannrett over, som er skrevet om til å
+// løse begge tilfellene i stedet for å anta at V er vannrett.
+export function roterFlate(f) {
+  if (!f || !f.U || !f.V) return f;
+  return {
+    ...f,
+    U: f.V, V: f.U,
+    u0: f.v0, u1: f.v1, v0: f.u0, v1: f.u1,
+    lengdeMm: f.breddeMm, breddeMm: f.lengdeMm,
+    fallGrader: rund(Math.asin(Math.max(-1, Math.min(1, n(f.V.y)))) * 180 / Math.PI),
+    rotert: !f.rotert,
+    // skjøtlinjene hører til den GAMLE retningen og gjelder ikke lenger
+    skjotU: undefined
+  };
+}
+export function roterFlater(flater) { return (flater || []).map(roterFlate); }
+
+// ═══════ 🔩 HVOR EN ENDESKJØT KAN LIGGE (Emil 21.09) ═══════
+//
+// Emils ord: «vi har en feil her siden takplatene skal skjøtes på hver
+// toppbjelke, men det er masse små plater som henger i løse lufta.»
+//
+// Han har rett, og det er ikke en skjønnhetsfeil: en endeskjøt uten noe under
+// seg har ingenting å skrus i. Skjøten må hvile på en bjelke som går PÅ TVERS
+// av fallet — enås. Sperrene løper samme vei som platene og kan ikke bære en
+// skjøt.
+//
+// Tre krav, og alle tre må være oppfylt:
+//   1. Retningen er på tvers av U (innenfor `retningTolGrader` fra 90°).
+//   2. Bjelken ligger I FLATA, ikke under den. Toleransen er EGEN og MYE
+//      strammere enn `planTolMm`: på Geithus ligger avstivningen 299–301 mm
+//      under taket, og med 300 mm slark hadde den blitt lest som en ås.
+//   3. Den strekker seg faktisk inn under platene i v-retningen.
+export const SKJOT_PLAN_TOL_MM = 60;
+
+export function skjotBjelker(flate, linjer, o) {
+  const opp = { ...TAK_STD, ...(o || {}) };
+  if (!flate || !flate.U || !flate.V || !flate.origo) return [];
+  const U = flate.U, V = flate.V, oo = flate.origo, N = flate.N || { x: 0, y: 1, z: 0 };
+  const tol = Math.sin(Math.max(0, n(opp.retningTolGrader)) * Math.PI / 180);
+  const planTol = n(opp.skjotPlanTolMm) > 0 ? n(opp.skjotPlanTolMm) : SKJOT_PLAN_TOL_MM;
+  const langs = (p, A) => (p.x - oo.x) * A.x + (p.y - oo.y) * A.y + (p.z - oo.z) * A.z;
+  const ut = [];
+  for (const l of linjer || []) {
+    if (!l || !l.lav || !l.hoy) continue;
+    if (Math.abs(l.ux * U.x + l.uy * U.y + l.uz * U.z) > tol) continue;   // 1
+    if (Math.abs(langs(l.lav, N)) > planTol || Math.abs(langs(l.hoy, N)) > planTol) continue;  // 2
+    const v1 = langs(l.lav, V), v2 = langs(l.hoy, V);                     // 3
+    if (Math.max(v1, v2) < n(flate.v0) || Math.min(v1, v2) > n(flate.v1)) continue;
+    ut.push(rund((langs(l.lav, U) + langs(l.hoy, U)) / 2));
+  }
+  // to åser i praktisk talt samme linje er ÉN skjøtlinje
+  ut.sort((a, b) => a - b);
+  const samlet = [];
+  for (const u of ut) if (!samlet.length || u - samlet[samlet.length - 1] > planTol) samlet.push(u);
+  return samlet;
+}
+
 // Hele taket: bjelkelinjene inn, ferdige takflater ut.
 export function takflaterFraBjelker(linjer, o) {
   return grupperBjelker(linjer, o).map(g => flateFraGruppe(g, o)).filter(Boolean)
@@ -709,14 +866,30 @@ export function takflaterFraBjelker(linjer, o) {
 // riktig — en halvkappet plate koster en hel plate.
 
 // Høyden plan `flate` gir over punktet (x, z) i verden.
-export function planHoydeVed(flate, x, z) {
-  if (!flate || !flate.U || !flate.origo) return null;
-  const U = flate.U, o = flate.origo;
+// 🔄 GENERELL SIDEN 21.09. Den gamle utgaven regnet bare langs U og antok at
+// V var VANNRETT (V.y = 0) — det stemmer så lenge V kommer fra tverretning().
+// Etter «Roter takflata 90°» bytter U og V plass, og da er det V som bærer
+// fallet. Da ga den gamle formelen konstant høyde, og valmtrimmingen
+// (flateEier) hadde tatt feil på hvert eneste punkt.
+//
+// Her løses i stedet de to ukjente rett ut av det vannrette planet:
+//     (dx, dz) = u · (U.x, U.z) + v · (V.x, V.z)
+// Determinanten er null bare når U og V peker samme vei vannrett — altså
+// ingen flate. Svaret er NØYAKTIG det samme som før når V er vannrett; det er
+// samme regnestykke, bare uten antagelsen.
+export function uvVannrett(flate, x, z) {
+  if (!flate || !flate.U || !flate.V || !flate.origo) return null;
+  const U = flate.U, V = flate.V, o = flate.origo;
   const dx = n(x) - n(o.x), dz = n(z) - n(o.z);
-  const hh = U.x * U.x + U.z * U.z;            // U sin vannrette lengde i annen
-  if (!(hh > 1e-12)) return null;              // loddrett plan
-  const u = (dx * U.x + dz * U.z) / hh;
-  return n(o.y) + U.y * u;
+  const det = U.x * V.z - U.z * V.x;
+  if (!(Math.abs(det) > 1e-12)) return null;
+  return [(dx * V.z - dz * V.x) / det, (U.x * dz - U.z * dx) / det];
+}
+
+export function planHoydeVed(flate, x, z) {
+  const uv = uvVannrett(flate, x, z);
+  if (!uv) return null;
+  return n(flate.origo.y) + flate.U.y * uv[0] + flate.V.y * uv[1];
 }
 
 // Punktet i verden for (u, v) på en flate.
@@ -727,12 +900,7 @@ export function punktPaFlate(flate, u, v) {
 
 // (u, v) for et verdenspunkt på en flates plan.
 export function uvPaFlate(flate, x, z) {
-  if (!flate || !flate.U || !flate.origo) return null;
-  const U = flate.U, V = flate.V, o = flate.origo;
-  const dx = n(x) - n(o.x), dz = n(z) - n(o.z);
-  const hh = U.x * U.x + U.z * U.z;
-  if (!(hh > 1e-12)) return null;
-  return [(dx * U.x + dz * U.z) / hh, dx * V.x + dz * V.z];
+  return uvVannrett(flate, x, z);
 }
 
 // Ligger punktet innenfor flatas EGEN utstrekning i planet?
