@@ -28,6 +28,8 @@ import { allElementBoxes, forHverTrekant } from "../elements.js";
 import { lagret, skrivLagret, swGroup } from "./tilstand.js";
 import { TAK_BOTTE_MM, TAK_TOL_MM, baseYNaa, skjulNaa, tegnAlt } from "./tegning.js";
 import { STAL_TYPER } from "./stal.js";
+import { bunkePlass, lesStabelPosisjonerAlle, settStabelTilbakeAlle } from "./bunker.js";
+import { lagreMateriellLokalt, tegnMateriell, vaskMateriell } from "../materiell-vis.js";
 
 // ───────────────────── oppsettet ─────────────────────
 
@@ -69,7 +71,7 @@ export function settTakOppsett(ny) {
 
 // På/av, samme bryter-modell som blikket fikk i runde 2b: «Generer tak» slår
 // det på og gir det et hjem, og så følger taket stålet av seg selv.
-export const TAK_STD_TILSTAND = { pa: false, just: {}, ekstra: [], nesteNr: 1 };
+export const TAK_STD_TILSTAND = { pa: false, just: {}, ekstra: [], nesteNr: 1, snap: null, materiellIder: [] };
 export function takTilstand() {
   if (!lagret) return { ...TAK_STD_TILSTAND };
   if (!lagret.tak || typeof lagret.tak !== "object") lagret.tak = { ...TAK_STD_TILSTAND };
@@ -77,9 +79,44 @@ export function takTilstand() {
   if (!t2.just || typeof t2.just !== "object") t2.just = {};
   if (!Array.isArray(t2.ekstra)) t2.ekstra = [];
   if (!(Number(t2.nesteNr) > 0)) t2.nesteNr = 1;
+  if (t2.snap && typeof t2.snap !== "object") t2.snap = null;
+  if (!Array.isArray(t2.materiellIder)) t2.materiellIder = [];
   return t2;
 }
 export function takPa() { return !!(lagret && takTilstand().pa); }
+
+// ───────────────────── det lagrede taket ─────────────────────
+//
+// 🔎 EMILS FUNN 21.09: «jeg må generere takelement/TRP-plater om igjen hver
+// gang jeg åpner modellen — den er der ikke fra før av, på samme måte som
+// veggelement og blikk.»
+//
+// Veggene og blikket overlever en ny sideinnlasting fordi de leser LAGREDE
+// TALL: `lagret.fasader` og `lagret.vegger` er rene data, og å tegne dem
+// krever ikke modellen i det hele tatt. Taket gjorde det motsatte — det regnet
+// seg fram til takflatene av stålet HVER gang, og stålets typenavn kommer fra
+// IFC-metadataene, som hentes asynkront. Rett etter en innlasting svarer
+// `soyleTypeNavn` tom streng for alt, ingen er «Beam», og taket var borte.
+// Det var derfor «Generer tak» alltid måtte trykkes på nytt: knappen er det
+// eneste stedet som venter på metadataene (`await sikreMeta`).
+//
+// Takflatene lagres derfor sammen med resten av SW-resultatet. De er rene
+// tall — U, V, N, origo, u0..v1 — uten et eneste THREE-objekt, og de står i
+// verdenskoordinater i mm, så samme modellfil gir samme tall. «Generer tak»
+// er fortsatt det ENESTE som regner dem ut; her leses de bare tilbake så
+// lenge stålet ikke er lest inn.
+export function takSnapshot() {
+  if (!lagret) return null;
+  const s = takTilstand().snap;
+  return (s && typeof s === "object" && Array.isArray(s.flater) && s.flater.length) ? s : null;
+}
+export function settTakSnapshot(s) {
+  if (!lagret) return;
+  const t2 = takTilstand();
+  if (JSON.stringify(t2.snap || null) === JSON.stringify(s || null)) return;
+  t2.snap = s || null;
+  skrivLagret();
+}
 
 // ───────────────────── de øverste BJELKENE ─────────────────────
 //
@@ -205,7 +242,21 @@ export function takData() {
   if (!lagret || !(lagret.fasader || []).length) { takGrunn = "ingen-fasader"; return null; }
   const o = takOppsett();
   const bjelker = takBjelker();
-  if (!bjelker.length) { takGrunn = stalFinnes() ? "ingen-bjelker" : "ingen-meta"; return null; }
+  if (bjelker.length) {
+    const d = takDataFraStal(bjelker, o);
+    if (d) return d;
+  }
+  // 🔑 Stålet er ikke lest inn ennå (eller ga ingen flater). Da tegnes det
+  // LAGREDE taket — se settTakSnapshot over. Dette er grunnen til at taket nå
+  // står der når modellen åpnes, uten at «Generer tak» må trykkes på nytt.
+  const s = takSnapshot();
+  if (s) { takGrunn = ""; return takDataFraLagret(s, o); }
+  if (!bjelker.length) takGrunn = stalFinnes() ? "ingen-bjelker" : "ingen-meta";
+  return null;
+}
+
+// Taket regnet av dagens stål. Null når det ikke går an — takGrunn sier hvorfor.
+function takDataFraStal(bjelker, o) {
   // 🏗 FALLET LESES AV BJELKENE (Emils tips 18.09). Sperra bærer platene og
   // ligger allerede i fallet — leser vi retningen av den, kan takflata per
   // definisjon ikke havne på tvers av det som bærer den.
@@ -215,19 +266,11 @@ export function takData() {
   if (o.fallFasade === "auto" || o.fallFasade === undefined || o.fallFasade === null) {
     const linjer = takBjelkeLinjer(bjelker, bjelker.map(x => x.id));
     const flater = takflaterFraBjelker(linjer, o);
-    if (flater.length) {
-      // 🔧 HÅNDJUSTERINGENE legges på TIL SLUTT, oppå det regnede — samme
-      // rekkefølge som blikket. Taket regnes alltid av dagens stål, og
-      // justeringene er et tillegg som overlever at det leses på nytt.
-      const tt = takTilstand();
-      const medPlater = justerPlater(platerPaTaket(flater, o), tt.just, tt.ekstra, o);
-      return { auto: true, flater, baseY: baseYNaa(), o, bjelker: bjelker.length,
-        ramme: { fraStal: true, auto: true, bjelker: linjer.length, flater: flater.length },
-        liste: trpListe(flater, o, medPlater), totaler: takTotaler(flater),
-        medPlater };
-    }
-    takGrunn = "ingen-fall";
-    return null;
+    if (!flater.length) { takGrunn = "ingen-fall"; return null; }
+    settTakSnapshot({ auto: true, flater, bjelker: bjelker.length, linjer: linjer.length });
+    return autoData(flater, o,
+      { fraStal: true, auto: true, bjelker: linjer.length, flater: flater.length },
+      bjelker.length);
   }
   const fall = fallRetningFraBjelker(bjelkeBokserMm(bjelker), o.minHellingProsent);
   const ramme = takRamme(lagret.fasader, o.fallFasade, o, fall);
@@ -244,9 +287,37 @@ export function takData() {
     : ramme.profil;
   const flattHoyde = flattToppMm(baseY);
   const flater = takFlater(rekt, profil, { ...o, flattHoydeMm: flattHoyde });
+  settTakSnapshot({ auto: false, flater, ramme, rekt, profil, bjelker: bjelker.length });
   return { ramme, rekt, flater, baseY, o, bjelker: bjelker.length, profil,
     liste: trpListe(flater, o), totaler: takTotaler(flater),
     medPlater: platerPaTaket(flater, o) };
+}
+
+// 🔧 HÅNDJUSTERINGENE legges på TIL SLUTT, oppå det regnede — samme
+// rekkefølge som blikket. Flatene er fasit, og justeringene er et tillegg
+// som overlever at de leses på nytt.
+function autoData(flater, o, ramme, antBjelker) {
+  const tt = takTilstand();
+  const medPlater = justerPlater(platerPaTaket(flater, o), tt.just, tt.ekstra, o);
+  return { auto: true, flater, baseY: baseYNaa(), o, bjelker: antBjelker, ramme,
+    liste: trpListe(flater, o, medPlater), totaler: takTotaler(flater), medPlater };
+}
+
+// Taket tegnet av det som ligger lagret. Ingen tilgang til stål eller
+// IFC-metadata i det hele tatt — det er nettopp poenget.
+function takDataFraLagret(s, o) {
+  if (s.auto) {
+    const d = autoData(s.flater, o,
+      { fraStal: true, auto: true, bjelker: s.linjer || 0, flater: s.flater.length },
+      s.bjelker || 0);
+    d.fraLagret = true;
+    d.ramme.fraLagret = true;
+    return d;
+  }
+  return { ramme: { ...(s.ramme || {}), fraLagret: true }, rekt: s.rekt,
+    flater: s.flater, baseY: baseYNaa(), o, bjelker: s.bjelker || 0, profil: s.profil,
+    liste: trpListe(s.flater, o), totaler: takTotaler(s.flater),
+    medPlater: platerPaTaket(s.flater, o), fraLagret: true };
 }
 
 // 🔎 EMILS FUNN 18.09: «Fant ikke stål å bygge takflata av» på et bygg som
@@ -423,6 +494,60 @@ export function tegnTak() {
 }
 
 
+// ───────────────── 📦 TRP-BUNKENE RUNDT BYGGET ─────────────────
+//
+// Emil 21.09: «vi må legge til at TRP-plate og blikk kommer opp som
+// materiellbunker rundt bygget, på samme måte som SW-generatoren gjør.»
+//
+// Én bunke per PLATESTØRRELSE, ikke per takflate: to flater som begge bruker
+// TRP 6000 skal bestilles som én haug med 6000-plater. Det er nøyaktig samme
+// gruppering som lista i Excel bruker (trpListe → plater), så bunken og
+// bestillingen kan ikke komme i utakt.
+export function byggTakStabler() {
+  if (!lagret) return;
+  const tt = takTilstand();
+  const forrige = lesStabelPosisjonerAlle(S.materiell, new Set(tt.materiellIder || []));
+  fjernTakMateriell();
+  if (!takPa()) return;
+  const data = takData();
+  if (!data || !data.liste || !(data.liste.plater || []).length) return;
+  const f = (lagret.fasader || [])[0];
+  if (!f) return;
+  const okBetong = lagret.okBetong || 0;
+  const nyeIder = [];
+  let i = 0;
+  for (const pl of data.liste.plater) {
+    const pkt = vaskMateriell({
+      id: "TRP-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 7),
+      maltype: "trp", navn: pl.navn, farge: data.o.farge || "#8fa3b8",
+      lengde: pl.lengdeMm, bredde: pl.breddeMm, antall: pl.antall,
+      ...bunkePlass(f, okBetong, 1, i++, pl.lengdeMm, 2000)
+    });
+    settStabelTilbakeAlle(pkt, forrige);
+    if (pkt) { nyeIder.push(pkt.id); S.materiell = (S.materiell || []).concat([pkt]); }
+  }
+  takTilstand().materiellIder = nyeIder;
+  skrivLagret();
+  tegnMateriell();
+  lagreMateriellLokalt();
+  S.qtyCache = null;
+}
+
+// Rydder BARE takets egne bunker, og gjør det på ID — aldri på navnet. En
+// TRP-bunke Emil har lagt inn selv i Materiell heter gjerne «TRP 6000» den
+// også, og den skal ikke forsvinne fordi taket ble generert på nytt.
+export function fjernTakMateriell() {
+  const ider = new Set((lagret && lagret.tak && lagret.tak.materiellIder) || []);
+  if (!ider.size) return;
+  const foer = (S.materiell || []).length;
+  S.materiell = (S.materiell || []).filter(p => !ider.has(p.id));
+  if (lagret && lagret.tak) lagret.tak.materiellIder = [];
+  if ((S.materiell || []).length === foer) return;
+  tegnMateriell();
+  lagreMateriellLokalt();
+  S.qtyCache = null;
+}
+
 // ───────────────────── panelet ─────────────────────
 //
 // Samme oppsett som «Blikk» fikk i runde 2b, som igjen er SW-generatorens.
@@ -451,7 +576,9 @@ export function takPanelHtml() {
     topp = "<p class='hint'>" + esc(grunn) + "</p>";
   } else {
     const L = data.liste, T2 = data.totaler, r = data.ramme;
-    topp =
+    topp = (data.fraLagret
+      ? "<p class='hint'>" + esc(t("Taket er tegnet av det lagrede resultatet — stålet er ikke lest inn i denne økta. Trykk «Generer tak» hvis modellen er endret.")) + "</p>"
+      : "") +
       "<p class='hint'>" + esc(r.auto
         ? t("Platene følger bjelkene: {0} takflater av {1} bjelker. Ingen retning er gjettet.", r.flater, r.bjelker)
         : r.fraStal
@@ -459,6 +586,7 @@ export function takPanelHtml() {
         : r.flatt
           ? t("Taket er flatt. Fallretningen settes nedenfor, og fallprosenten bestemmer hvor mye det heller.")
           : t("Fallet leses av gavlfasaden — {0} mm fra raft til møne.", vis(r.variasjon))) + "</p>" +
+      "<h4 data-sek='takmengder'>" + esc(t("Takmengder")) + "</h4>" +
       "<table class='swtab'><tbody>" +
       rad("Takflater", T2.flater, "") +
       rad("Takareal", T2.arealM2, "m²") +
@@ -507,7 +635,7 @@ export function takPanelHtml() {
       "<label class='swfelt'><span>" + esc(t(tekst)) + "</span>" +
       "<input id='tf_" + id + "' type='number' step='any' min='0' value='" +
       esc(String(o[id])) + "'></label>").join("") +
-    "<div class='prop-actions' style='margin-top:10px;flex-wrap:wrap'>" +
+    "<div class='prop-actions' data-sw-fast style='margin-top:10px;flex-wrap:wrap'>" +
     "<button id='takGenerer' class='primary'>" + ikon("boks") + " " + esc(t("Generer tak")) + "</button>" +
     "<button id='takJusterBtn'" + (pa ? "" : " disabled") + ">" + ikon("juster") + " " +
       esc(t("Juster TRP")) + "</button>" +
@@ -575,7 +703,8 @@ export function koblTakPanel(paaNytt) {
     if (antJust && !confirm(t("Fjerne taket? De {0} håndjusteringene forsvinner også.", antJust)))
       return;
     if (takJust) { /* juster-modus står åpen */ }
-    lagret.tak = { pa: false, just: {}, ekstra: [], nesteNr: 1 };
+    fjernTakMateriell();
+    lagret.tak = { pa: false, just: {}, ekstra: [], nesteNr: 1, snap: null, materiellIder: [] };
     skrivLagret();
     tegnAlt();
     if (paaNytt) paaNytt();
