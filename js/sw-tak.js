@@ -47,6 +47,7 @@ export const TAK_STD = {
   planTolMm: 300,          // … og ligger i samme plan innenfor dette
   minFlateBjelker: 2,      // færre enn dette er et stag, ikke et takfall
   valmTolMm: 50,           // to plan innenfor dette er «like høye» i en valm
+  plateOverMm: 10,         // hvor langt platene løftes OPP FRA bjelkas overkant
   fallFasade: "auto"       // "auto" = platene følger bjelkene; ellers fasadenummer
 };
 
@@ -477,9 +478,11 @@ export function platerPaFlate(flate, o) {
 // C16: platene skal ha «lengde + navn, trenger ikke nummerering». Navnet er
 // derfor lengden selv — «TRP 6000» — og like plater slås sammen til én rad med
 // antall. Det er slik en bestilling ser ut.
-export function trpListe(flater, o) {
+export function trpListe(flater, o, medPlaterInn) {
   const opp = { ...TAK_STD, ...(o || {}) };
-  const medPlater = platerPaTaket(flater, opp);
+  // Er platene allerede regnet (og håndjustert), brukes DE — lista og
+  // tegningen skal aldri regne hver sin gang.
+  const medPlater = medPlaterInn || platerPaTaket(flater, opp);
   const perType = new Map();
   let arealM2 = 0, antall = 0, skjotLm = 0;
   for (const f of medPlater) {
@@ -596,15 +599,23 @@ export function sammeTakflate(a, b, o) {
 // Normalen til takflata en bjelke ligger i: u × v, der v er den VANNRETTE
 // retningen på tvers av bjelka. v er alltid vannrett fordi takflata er et plan
 // som faller i én retning — på tvers av fallet er den vannrett.
+//
+// 🔎 NORMALEN PEKER ALLTID OPP. Kryssproduktet gir like gjerne den ene som
+// den andre veien, avhengig av hvilken vei `v` tilfeldigvis kom ut — og en
+// test 21.09 fanget nettopp at den pekte NED på det ene takfallet i Geithus.
+// Et tak har en overside; en normal som peker ned ville dyttet TRP-platene
+// inn i bjelka i stedet for opp på den, altså det motsatte av det Emil ba om.
 export function flateNormal(a) {
   const v = tverretning(a);
   if (!v) return null;
-  // n = u × v
-  const nx = a.uy * v.z - a.uz * v.y;
-  const ny = a.uz * v.x - a.ux * v.z;
-  const nz = a.ux * v.y - a.uy * v.x;
+  let nx = a.uy * v.z - a.uz * v.y;
+  let ny = a.uz * v.x - a.ux * v.z;
+  let nz = a.ux * v.y - a.uy * v.x;
   const L = Math.hypot(nx, ny, nz);
-  return L > 1e-9 ? { x: nx / L, y: ny / L, z: nz / L } : null;
+  if (!(L > 1e-9)) return null;
+  nx /= L; ny /= L; nz /= L;
+  if (ny < 0) { nx = -nx; ny = -ny; nz = -nz; }   // et tak har en overside
+  return { x: nx, y: ny, z: nz };
 }
 
 // Vannrett enhetsvektor på tvers av bjelka.
@@ -662,8 +673,9 @@ export function flateFraGruppe(gruppe, o) {
   const u0 = Math.min(...us) - ug, u1 = Math.max(...us) + ug;
   const v0 = Math.min(...vs) - vg, v1 = Math.max(...vs) + vg;
   const lengdeMm = u1 - u0, breddeMm = v1 - v0;
+  const N = flateNormal({ ux: U.x, uy: U.y, uz: U.z });
   return {
-    U, V, origo: p0, bjelker: B.length,
+    U, V, N, origo: p0, bjelker: B.length,
     u0, u1, v0, v1, lengdeMm: rund(lengdeMm), breddeMm: rund(breddeMm),
     fallGrader: rund(Math.asin(Math.max(-1, Math.min(1, U.y))) * 180 / Math.PI),
     arealM2: rund(lengdeMm * breddeMm / 1e6)
@@ -786,14 +798,101 @@ export function platerPaTaket(flater, o) {
         return flateEier(F, fi, pt.x, pt.z, opp.valmTolMm);
       })
     })).filter(r => r.plater.length);
-    const antall = rader.reduce((a, r) => a + r.plater.length, 0);
-    const pb = Math.max(50, n(opp.trpBreddeMm));
-    const endeskjoter = rader.reduce((a, r) => a + Math.max(0, r.plater.length - 1), 0);
-    const sideskjoter = Math.max(0, rader.length - 1);
-    // arealet regnes av platene som STÅR IGJEN, ikke av rektangelet
-    const arealM2 = rund(rader.reduce((a, r) =>
-      a + r.plater.reduce((b, p) => b + (n(p.uTil) - n(p.uFra)) * n(r.breddeMm), 0), 0) / 1e6);
-    return { ...f, rader, antallPlater: antall, endeskjoter, sideskjoter, arealM2,
-      skjotLm: rund((sideskjoter * n(f.lengdeMm) + endeskjoter * pb) / 1000) };
+    // Summene regnes av summerFlate — samme funksjon som håndjusteringen
+    // bruker, så de to kan ikke komme i utakt.
+    return summerFlate({ ...f, rader }, opp);
   }).filter(f => f.antallPlater > 0);
+}
+
+// ═══════ 🔧 HÅNDJUSTERING AV TRP-PLATENE (Emil 21.09) ═══════
+//
+// Samme prinsipp som blikket fikk i runde 2b: justeringen lagres ikke som et
+// fasit-tak, men som et TILLEGG oppå det regnede. Stålet kan leses på nytt
+// uten at justeringene ryker.
+//
+// Id-en lages av HVA plata er og HVOR den sitter, avrundet til 10 mm:
+//
+//     t:0:1030:0        takflate 0, raden som starter i v = 1030, plate ved u = 0
+//
+// Flytter en bjelke seg mer enn 10 mm, får plata en ny id og justeringen
+// følger ikke med. Det er ærlig: en justering av en plate som ikke lenger
+// ligger der, er ikke en justering det går an å ta vare på.
+export function plateId(fi, rad, plate) {
+  return "t:" + Number(fi) + ":" + Math.round(n(rad && rad.vFra) / 10) * 10 +
+         ":" + Math.round(n(plate && plate.uFra) / 10) * 10;
+}
+
+// Platene med justeringene lagt på.
+//
+//   just   { "<id>": { av, dFra, dTil, breddeMm } }
+//   ekstra [ { id, fi, vFra, breddeMm, uFra, uTil } ]
+export function justerPlater(medPlater, just, ekstra, o) {
+  const opp = { ...TAK_STD, ...(o || {}) };
+  const J = just || {};
+  return (medPlater || []).map((f, fi) => {
+    const rader = (f.rader || []).map(r => {
+      const plater = [];
+      let bredde = n(r.breddeMm);
+      for (const p of r.plater || []) {
+        const id = p.id || plateId(fi, r, p);
+        const j = J[id] || {};
+        // egen bredde gjelder RADEN plata ligger i — en TRP-plate er like
+        // bred hele veien, så en «halv bredde» midt i en rad finnes ikke
+        if (tallEr(j.breddeMm) && Number(j.breddeMm) > 20) bredde = Number(j.breddeMm);
+        if (j.av) continue;
+        const uFra = n(p.uFra) - n(j.dFra), uTil = n(p.uTil) + n(j.dTil);
+        if (uTil - uFra <= 20) continue;
+        plater.push({ ...p, id, uFra: rund(uFra), uTil: rund(uTil),
+          lengdeMm: rund(uTil - uFra) });
+      }
+      return { ...r, breddeMm: rund(bredde), kappetBredde: r.kappetBredde ||
+        bredde !== n(r.breddeMm), plater };
+    }).filter(r => r.plater.length);
+    // lagt til for hånd
+    for (const e of ekstra || []) {
+      if (Number(e.fi) !== fi) continue;
+      const j = J[e.id] || {};
+      if (j.av) continue;
+      const uFra = n(e.uFra) - n(j.dFra), uTil = n(e.uTil) + n(j.dTil);
+      if (uTil - uFra <= 20) continue;
+      rader.push({ vFra: n(e.vFra), breddeMm: n(e.breddeMm) || n(opp.trpBreddeMm),
+        kappetBredde: false, lagtTil: true,
+        plater: [{ id: e.id, lagtTil: true, uFra: rund(uFra), uTil: rund(uTil),
+          lengdeMm: rund(uTil - uFra) }] });
+    }
+    rader.sort((a, b) => n(a.vFra) - n(b.vFra));
+    return summerFlate({ ...f, rader }, opp);
+  }).filter(f => f.antallPlater > 0);
+}
+
+// Tallene på en flate regnet PÅ NYTT av radene. Etter en justering er platene
+// fasit — summene skal leses av dem, ikke stå igjen fra forrige runde.
+// Samme regnestykke som platerPaTaket bruker, ett sted.
+export function summerFlate(f, o) {
+  const opp = { ...TAK_STD, ...(o || {}) };
+  const rader = f.rader || [];
+  const antall = rader.reduce((a, r) => a + r.plater.length, 0);
+  let sideskjoter = 0, sideLm = 0;
+  for (let i = 1; i < rader.length; i++) {
+    const a = rader[i - 1], b = rader[i];
+    if (Math.abs((n(a.vFra) + n(a.breddeMm)) - n(b.vFra)) > 5) continue;
+    const ua0 = Math.min(...a.plater.map(p => n(p.uFra)));
+    const ua1 = Math.max(...a.plater.map(p => n(p.uTil)));
+    const ub0 = Math.min(...b.plater.map(p => n(p.uFra)));
+    const ub1 = Math.max(...b.plater.map(p => n(p.uTil)));
+    const fra = Math.max(ua0, ub0), til = Math.min(ua1, ub1);
+    if (til - fra <= 0) continue;
+    sideskjoter++;
+    sideLm += (til - fra) / 1000;
+  }
+  let endeskjoter = 0, endeLm = 0;
+  for (const r of rader) {
+    const k = Math.max(0, r.plater.length - 1);
+    endeskjoter += k;
+    endeLm += k * n(r.breddeMm) / 1000;
+  }
+  const arealM2 = rund(rader.reduce((a, r) =>
+    a + r.plater.reduce((b, p) => b + (n(p.uTil) - n(p.uFra)) * n(r.breddeMm), 0), 0) / 1e6);
+  return { ...f, rader, antallPlater: antall, endeskjoter, sideskjoter, arealM2,
+    skjotLm: rund(sideLm + endeLm) };
 }
