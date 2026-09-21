@@ -19,9 +19,10 @@ import { $, esc, ikon, S } from "../state.js";
 import { t } from "../i18n.js";
 import * as THREE from "three";
 import { MALTYPER, trpProfil } from "../materiell-vis.js";
-import { TAK_RADER, TAK_STD, bjelkeLinje, fallRetningFraBjelker, platerPaFlate, takFlater,
-         takRamme, takRektangel, takflaterFraBjelker, platerPaTaket, tilUV, fraUV, trpListe,
-         takTotaler } from "../sw-tak.js";
+import { TAK_RADER, TAK_STD, bjelkeLinje, fallRetningFraBjelker, justerPlater, plateId,
+         platerPaFlate, takFlater, takRamme, takRektangel, takflaterFraBjelker,
+         platerPaTaket, tilUV, fraUV, trpListe, takTotaler } from "../sw-tak.js";
+import { husTakMesh, nullstillTakMesh, startTakJuster, takJust } from "./tak-just.js";
 import { soyleTypeNavn, takLinje, tilMm, tilScene } from "./regler.js";
 import { allElementBoxes, forHverTrekant } from "../elements.js";
 import { lagret, skrivLagret, swGroup } from "./tilstand.js";
@@ -37,6 +38,7 @@ export const TAK_FELT = [
   ["endeOverlappMm", "Overlapp endeskjøt (mm)"],
   ["maksLengdeMm", "Maks platelengde (mm)"],
   ["skrueAvstandMm", "Skrueavstand i skjøt (mm)"],
+  ["plateOverMm", "Platene over bjelka (mm)"],
   ["flattFallProsent", "Fall på flatt tak (%)"]
 ];
 
@@ -67,11 +69,15 @@ export function settTakOppsett(ny) {
 
 // På/av, samme bryter-modell som blikket fikk i runde 2b: «Generer tak» slår
 // det på og gir det et hjem, og så følger taket stålet av seg selv.
-export const TAK_STD_TILSTAND = { pa: false };
+export const TAK_STD_TILSTAND = { pa: false, just: {}, ekstra: [], nesteNr: 1 };
 export function takTilstand() {
   if (!lagret) return { ...TAK_STD_TILSTAND };
   if (!lagret.tak || typeof lagret.tak !== "object") lagret.tak = { ...TAK_STD_TILSTAND };
-  return lagret.tak;
+  const t2 = lagret.tak;
+  if (!t2.just || typeof t2.just !== "object") t2.just = {};
+  if (!Array.isArray(t2.ekstra)) t2.ekstra = [];
+  if (!(Number(t2.nesteNr) > 0)) t2.nesteNr = 1;
+  return t2;
 }
 export function takPa() { return !!(lagret && takTilstand().pa); }
 
@@ -210,10 +216,15 @@ export function takData() {
     const linjer = takBjelkeLinjer(bjelker, bjelker.map(x => x.id));
     const flater = takflaterFraBjelker(linjer, o);
     if (flater.length) {
+      // 🔧 HÅNDJUSTERINGENE legges på TIL SLUTT, oppå det regnede — samme
+      // rekkefølge som blikket. Taket regnes alltid av dagens stål, og
+      // justeringene er et tillegg som overlever at det leses på nytt.
+      const tt = takTilstand();
+      const medPlater = justerPlater(platerPaTaket(flater, o), tt.just, tt.ekstra, o);
       return { auto: true, flater, baseY: baseYNaa(), o, bjelker: bjelker.length,
         ramme: { fraStal: true, auto: true, bjelker: linjer.length, flater: flater.length },
-        liste: trpListe(flater, o), totaler: takTotaler(flater),
-        medPlater: platerPaTaket(flater, o) };
+        liste: trpListe(flater, o, medPlater), totaler: takTotaler(flater),
+        medPlater };
     }
     takGrunn = "ingen-fall";
     return null;
@@ -297,10 +308,25 @@ function P(data, uMm, vMm, hMm, flate) {
   if (data.auto && flate && flate.U) {
     const o = flate.origo, U = flate.U, V = flate.V;
     const h = tilScene(Number(hMm) || 0);
+    // 🔎 EMILS FUNN 21.09: «TRP-plater legger seg oppå bjelke og ikke inne i
+    // toppen av bjelken — samme problemet som blikk hadde tidligere med at det
+    // blir hakkete og kommer hull.»
+    //
+    // Flatas origo ER bjelkas overkant (bjelkeLinje tar det høyeste punktet i
+    // hver ende), så platas underside lå nøyaktig i samme plan som bjelkas
+    // toppflate. To flater i samme plan gir z-fighting: nettleseren vet ikke
+    // hvilken som er foran, og du ser gjennom taket i flekker. Nøyaktig samme
+    // sak som blikkets lokk hadde 18.09.
+    //
+    // Platene løftes derfor `plateOverMm` langs flatas NORMAL — ikke rett opp,
+    // for da ville løftet blitt mindre jo brattere taket er.
+    const N = flate.N;
+    const ov = tilScene(Number(data.o && data.o.plateOverMm) || 0);
+    const nx = N ? N.x * ov : 0, ny = N ? N.y * ov : ov, nz = N ? N.z * ov : 0;
     return new THREE.Vector3(
-      tilScene(o.x + U.x * uMm + V.x * vMm),
-      tilScene(o.y + U.y * uMm + V.y * vMm) + h,
-      tilScene(o.z + U.z * uMm + V.z * vMm));
+      tilScene(o.x + U.x * uMm + V.x * vMm) + nx,
+      tilScene(o.y + U.y * uMm + V.y * vMm) + ny + h,
+      tilScene(o.z + U.z * uMm + V.z * vMm) + nz);
   }
   const p = fraUV(data.ramme, tilScene(uMm), tilScene(vMm));
   return new THREE.Vector3(p.x, data.baseY + tilScene(hMm), p.z);
@@ -351,7 +377,13 @@ export function tegnTak() {
   if (!takPa()) return;
   const data = takData();
   if (!data) return;
-  const legg = (m) => { m.userData.tak = true; swGroup.add(m); };
+  nullstillTakMesh();
+  let naa = null;
+  const legg = (m) => {
+    m.userData.tak = true;
+    if (naa) { m.userData.trpId = naa.id; husTakMesh(naa.id, m, naa); }
+    swGroup.add(m);
+  };
   const farge = data.o.farge || "#8fa3b8";
   const ov = Number(data.o.endeOverlappMm) || 0;
 
@@ -371,12 +403,20 @@ export function tegnTak() {
       let sPlan = 0;                      // hvor langt opp fallet vi har kommet
       for (let pi = 0; pi < rad.plater.length; pi++) {
         const p = rad.plater[pi];
-        const fra = sPlan, til = sPlan + p.lengdeMm;
-        tegnPlate(data, f, rad.vFra, rad.breddeMm,
-          uLav + retning * fra * skala, uLav + retning * til * skala,
-          p.kort ? "#c05a5a" : farge, legg,
-          { flate: fi, vFra: rad.vFra, lengdeMm: p.lengdeMm, kort: !!p.kort });
-        sPlan = til - ov;                 // neste plate skjøtes inn på denne
+        // 🔧 Etter en justering er platas EGEN u-strekning fasit — vi kan
+        // ikke lenger legge dem etter hverandre fra bunnen av.
+        const harU = Number.isFinite(Number(p.uFra)) && Number.isFinite(Number(p.uTil));
+        const ua = harU ? Number(p.uFra) : uLav + retning * sPlan * skala;
+        const ub = harU ? Number(p.uTil) : uLav + retning * (sPlan + p.lengdeMm) * skala;
+        naa = { id: p.id || plateId(fi, rad, p), flate: fi, vFra: rad.vFra,
+          breddeMm: rad.breddeMm, uFra: ua, uTil: ub, lengdeMm: p.lengdeMm,
+          lagtTil: !!p.lagtTil,
+          // rammen følger med, så «Juster TRP» kan regne seg tilbake til u
+          U: f.U, V: f.V, N: f.N, origo: f.origo };
+        tegnPlate(data, f, rad.vFra, rad.breddeMm, ua, ub,
+          p.kort ? "#c05a5a" : (p.lagtTil ? "#7fae7f" : farge), legg, naa);
+        naa = null;
+        sPlan = sPlan + p.lengdeMm - ov;
       }
     }
   }
@@ -469,6 +509,8 @@ export function takPanelHtml() {
       esc(String(o[id])) + "'></label>").join("") +
     "<div class='prop-actions' style='margin-top:10px;flex-wrap:wrap'>" +
     "<button id='takGenerer' class='primary'>" + ikon("boks") + " " + esc(t("Generer tak")) + "</button>" +
+    "<button id='takJusterBtn'" + (pa ? "" : " disabled") + ">" + ikon("juster") + " " +
+      esc(t("Juster TRP")) + "</button>" +
     "<button id='takListe'" + (pa ? "" : " disabled") + ">" + ikon("lastned") + " " +
       esc(t("Last ned liste (Excel)")) + "</button>" +
     "<button id='takFjern'" + (pa ? "" : " disabled") + ">" + ikon("slett") + " " +
@@ -528,11 +570,17 @@ export function koblTakPanel(paaNytt) {
     }
   };
   if ($("takFjern")) $("takFjern").onclick = () => {
-    takTilstand().pa = false;
+    const tt = takTilstand();
+    const antJust = Object.keys(tt.just || {}).length + (tt.ekstra || []).length;
+    if (antJust && !confirm(t("Fjerne taket? De {0} håndjusteringene forsvinner også.", antJust)))
+      return;
+    if (takJust) { /* juster-modus står åpen */ }
+    lagret.tak = { pa: false, just: {}, ekstra: [], nesteNr: 1 };
     skrivLagret();
     tegnAlt();
     if (paaNytt) paaNytt();
   };
+  if ($("takJusterBtn")) $("takJusterBtn").onclick = () => startTakJuster(paaNytt);
   if ($("takListe")) $("takListe").onclick = lastNedTakListe;
 }
 
