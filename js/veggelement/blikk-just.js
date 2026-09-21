@@ -33,7 +33,7 @@ import { tegnAlt } from "./tegning.js";
 
 // ───────────────────── på/av og hjemmet for justeringene ─────────────────────
 
-export const BLIKK_STD_TILSTAND = { pa: false, just: {}, ekstra: [], nesteNr: 1 };
+export const BLIKK_STD_TILSTAND = { pa: false, just: {}, ekstra: [], nesteNr: 1, materiellIder: [] };
 
 // Hjemmet. Lages ved første bruk, og migrerer en eldre lagring som ikke har
 // det i det hele tatt — der var blikket alltid på, så `pa` settes til true når
@@ -48,6 +48,7 @@ export function blikkTilstand() {
   if (!b.just || typeof b.just !== "object") b.just = {};
   if (!Array.isArray(b.ekstra)) b.ekstra = [];
   if (!(Number(b.nesteNr) > 0)) b.nesteNr = 1;
+  if (!Array.isArray(b.materiellIder)) b.materiellIder = [];
   return b;
 }
 

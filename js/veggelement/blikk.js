@@ -12,15 +12,17 @@ import { $, apnePanel, esc, ikon, på, S } from "../state.js";
 import { lastNedXlsxFlere } from "../elements.js";
 import { t } from "../i18n.js";
 import * as THREE from "three";
-import { blikkListe, hjorneYtre, justerListe, slaSammenTotaler, utsparingSider, BLIKK_RADER } from "../sw-blikk.js";
+import { beslagBunker, blikkListe, hjorneYtre, justerListe, slaSammenTotaler, utsparingSider, BLIKK_RADER } from "../sw-blikk.js";
 import { avsluttBlikkJuster, blikkJust, blikkLagringsTekst, blikkPa, blikkTilstand, fjernBlikk,
          genererBlikk, husBlikkMesh, lagreBlikkResultat, lastInnBlikkResultat, lesBlikkLagrede,
          nullstillBlikkMesh, slettBlikkResultat, startBlikkJuster } from "./blikk-just.js";
 import { tilMm, tilScene } from "./regler.js";
 import { lagret, oppsett, swGroup, skrivLagret } from "./tilstand.js";
-import { innerData } from "./panel.js";
-import { koblTakPanel, takPanelHtml } from "./tak.js";
+import { foldSeksjoner, innerData } from "./panel.js";
+import { byggTakStabler, koblTakPanel, takPanelHtml } from "./tak.js";
 import { baseYNaa, skjulNaa, tegnAlt, utspPaFasader } from "./tegning.js";
+import { bunkePlass, lesStabelPosisjonerAlle, settStabelTilbakeAlle } from "./bunker.js";
+import { lagreMateriellLokalt, tegnMateriell, vaskMateriell } from "../materiell-vis.js";
 
 // Blikket har ÉN farge, som settes selv — akkurat som veggelementene
 // (Emil 17.09). De gule og blå strekene i den første runden var bare en
@@ -495,6 +497,84 @@ export function tegnBlikk() {
   }
 }
 
+// ───────────────── 📦 BESLAGBUNKENE RUNDT BYGGET ─────────────────
+//
+// Emil 21.09, samme ønske som for TRP: blikket skal ligge som bunker på
+// bakken, ikke bare som et tall i et ark. Bunkene er de tre VARENE
+// (L-beslag, U-beslag, hatprofil) — se beslagBunker i sw-blikk.js for hvorfor
+// stykkene grupperes etter tverrsnitt og ikke etter hvor de sitter.
+//
+// Målene på bunken er ytterveggenes profilmål: det er de som bestilles. Har
+// innerveggene andre mål, står de likevel i samme bunke — en bestilling på to
+// ulike L-beslag ville krevd at Emil først sa at de SKAL være ulike varer, og
+// det har han ikke sagt.
+export function beslagBunkeMal(form, b, veggTykkMm) {
+  if (form === "hat")
+    return { bredde: b.hatToppMm, tykkelse: b.hatHoydeMm, flens: b.hatFlensMm };
+  if (form === "u")
+    // U-beslaget er kappa over vegg-enden: bunnen er veggtykkelsen, bena er
+    // returen ned på hver side.
+    return { bredde: veggTykkMm, tykkelse: b.benUteMm, flens: 0 };
+  // L: begge ben like lange som blikket rundt fasaden (Emil 17.09).
+  return { bredde: b.benUteMm, tykkelse: b.benUteMm, flens: 0 };
+}
+
+export function byggBlikkStabler() {
+  if (!lagret) return;
+  const bt = blikkTilstand();
+  const forrige = lesStabelPosisjonerAlle(S.materiell, new Set(bt.materiellIder || []));
+  fjernBlikkMateriell();
+  if (!blikkPa()) return;
+  const data = blikkDeler();
+  if (!data) return;
+  const b = blikkOppsett("ytter");
+  const bunker = beslagBunker(blikkKolonner(data), b);
+  if (!bunker.length) return;
+  const f = (lagret.fasader || [])[0];
+  if (!f) return;
+  const oA = (lagret.oppsett) || oppsett();
+  const veggTykk = Number(oA.tykkelseMm) || 120;
+  const stangMm = (Number(b.stangLengdeM) > 0 ? Number(b.stangLengdeM) : 2) * 1000;
+  const okBetong = lagret.okBetong || 0;
+  const nyeIder = [];
+  let i = 0;
+  for (const bu of bunker) {
+    const mal = beslagBunkeMal(bu.form, b, veggTykk);
+    const pkt = vaskMateriell({
+      id: "BLK-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 7),
+      maltype: "beslag", beslagType: bu.form,
+      navn: t(bu.navn) + " — " + bu.lm.toFixed(1).replace(".", ",") + " lm",
+      farge: b.blikkFarge || STD_BLIKK.blikkFarge,
+      lengde: stangMm, bredde: mal.bredde, tykkelse: mal.tykkelse, flens: mal.flens,
+      antall: bu.stenger,
+      // −1: blikkbunkene legges forbi den ANDRE enden av fasaden enn
+      // TRP-bunkene, så de to aldri kan stå i hverandre.
+      ...bunkePlass(f, okBetong, -1, i++, stangMm, 2000)
+    });
+    settStabelTilbakeAlle(pkt, forrige);
+    if (pkt) { nyeIder.push(pkt.id); S.materiell = (S.materiell || []).concat([pkt]); }
+  }
+  blikkTilstand().materiellIder = nyeIder;
+  skrivLagret();
+  tegnMateriell();
+  lagreMateriellLokalt();
+  S.qtyCache = null;
+}
+
+// Rydder BARE blikkets egne bunker, på ID — et beslag Emil selv har lagt inn
+// i Materiell skal aldri forsvinne fordi blikket ble generert på nytt.
+export function fjernBlikkMateriell() {
+  const ider = new Set((lagret && lagret.blikk && lagret.blikk.materiellIder) || []);
+  if (!ider.size) return;
+  const foer = (S.materiell || []).length;
+  S.materiell = (S.materiell || []).filter(p => !ider.has(p.id));
+  if (lagret && lagret.blikk) lagret.blikk.materiellIder = [];
+  if ((S.materiell || []).length === foer) return;
+  tegnMateriell();
+  lagreMateriellLokalt();
+  S.qtyCache = null;
+}
+
 // ───────────────────────── panelet ─────────────────────────
 
 // Feltene som kan stilles. `felt` er nøkkelen i blikkOppsett().
@@ -517,7 +597,7 @@ function blikkHandlingerHtml() {
   const lagrede = lesBlikkLagrede();
   const antJust = Object.keys(bt.just || {}).length + (bt.ekstra || []).length;
   return "" +
-    "<div class='prop-actions' style='margin-top:10px;flex-wrap:wrap'>" +
+    "<div class='prop-actions' data-sw-fast style='margin-top:10px;flex-wrap:wrap'>" +
     "<button id='blikkGenerer' class='primary'>" + ikon("boks") + " " + esc(t("Generer blikk")) + "</button>" +
     "<button id='blikkJusterBtn'" + (bt.pa ? "" : " disabled") + ">" + ikon("juster") + " " + esc(t("Juster blikk")) + "</button>" +
     // 📐 Instruksjonstegninga for blikket bygges i runde 5 — Emil sa selv at
@@ -581,7 +661,8 @@ export function blikkPanelHtml() {
         esc(String(b[id])) + "'></label>").join("");
   };
   return "" +
-    "<p class='hint'>" + esc(t("Blikket regnes av de synlige veggelementene — det du ser her er det som bestilles.")) + "</p>" +
+    "<p class='hint' data-sw-fast>" + esc(t("Blikket regnes av de synlige veggelementene — det du ser her er det som bestilles.")) + "</p>" +
+    "<h4 data-sek='blikkmengder'>" + esc(t("Blikkmengder")) + "</h4>" +
     "<table class='swtab'><tbody>" +
     rad("Toppbeslag", "toppLm", "lm") +
     rad("Bunnbeslag", "bunnLm", "lm") +
@@ -601,7 +682,12 @@ export function blikkPanelHtml() {
     blikkHandlingerHtml() +
     // 🏔 TAK-SEKSJONEN. «Blikk & Tak» er ÉTT verktøy med to seksjoner i samme
     // panel (vedtatt spesifikasjon §1) — ikke to knapper.
-    "<h4 data-sek='tak' style='margin:18px 0 4px'>" + esc(t("Tak")) + "</h4>" +
+    // 🩹 Emil 21.09: «gi Blikk og tak-verktøyet samme dropdown-menyformat som
+    // SW-generator». Seksjonene foldes nå av den SAMME foldSeksjoner() som
+    // SW-panelet bruker. «Tak» er derfor et <h3> og ikke et <h4>: et h4 ville
+    // startet en seksjon som takets EGNE overskrifter straks avsluttet, og
+    // skillet mellom de to halvdelene ville forsvunnet.
+    "<h3 class='sw-skille' data-sw-fast>" + esc(t("Tak")) + "</h3>" +
     takPanelHtml();
 }
 
@@ -609,8 +695,15 @@ export function tegnBlikkPanel() {
   const body = $("blikkBody");
   if (!body) return;
   body.innerHTML = blikkPanelHtml();
+  // Foldingen skjer FØR knappene kobles opp, men det spiller ingen rolle:
+  // foldSeksjoner FLYTTER noder, den lager ingen nye, så $("blikkGenerer")
+  // finner samme element etterpå. Nøyaktig samme rekkefølge som tegnPanel().
+  foldSeksjoner(body);
   koblBlikkHandlinger(body);
-  koblTakPanel(() => tegnBlikkPanel());
+  // 📦 Bunkene bygges på nytt hver gang panelet tegnes om etter en handling —
+  // samme sted SW-generatoren kaller byggAlleStabler(). Da følger antallene i
+  // Mengder med etter en justering, og ikke bare etter en ny generering.
+  koblTakPanel(() => { byggTakStabler(); tegnBlikkPanel(); });
   const les = (sett) => () => {
     const f = $("blikkFarge_" + sett);
     const ny = { blikkFarge: (f && f.value) || STD_BLIKK.blikkFarge };
@@ -637,11 +730,24 @@ export function tegnBlikkPanel() {
 // tegnBlikkPanel: panelet tegnes fra flere steder, og knappene må virke uansett
 // hvem som tegnet det.
 export function koblBlikkHandlinger(body) {
-  const paa_nytt = () => tegnBlikkPanel();
-  if ($("blikkGenerer")) $("blikkGenerer").onclick = () => { if (genererBlikk()) tegnBlikkPanel(); };
+  const paa_nytt = () => { byggBlikkStabler(); tegnBlikkPanel(); };
+  if ($("blikkGenerer")) $("blikkGenerer").onclick = () => {
+    if (!genererBlikk()) return;
+    byggBlikkStabler();
+    tegnBlikkPanel();
+  };
   if ($("blikkJusterBtn")) $("blikkJusterBtn").onclick = () => startBlikkJuster(paa_nytt);
   if ($("blikkListe")) $("blikkListe").onclick = lastNedBlikkListe;
-  if ($("blikkFjern")) $("blikkFjern").onclick = () => { if (fjernBlikk()) tegnBlikkPanel(); };
+  if ($("blikkFjern")) $("blikkFjern").onclick = () => {
+    // Bunkene ryddes FØR tilstanden nullstilles: id-ene bor der.
+    const ider = ((lagret && lagret.blikk && lagret.blikk.materiellIder) || []).slice();
+    if (!fjernBlikk()) return;
+    if (ider.length) {
+      S.materiell = (S.materiell || []).filter(p => ider.indexOf(p.id) === -1);
+      tegnMateriell(); lagreMateriellLokalt(); S.qtyCache = null;
+    }
+    tegnBlikkPanel();
+  };
   if ($("blikkLagreBtn")) $("blikkLagreBtn").onclick = () =>
     lagreBlikkResultat(($("blikkLagreNavn") || {}).value,
       { ytter: blikkOppsett("ytter"), inner: blikkOppsett("inner") }, paa_nytt);

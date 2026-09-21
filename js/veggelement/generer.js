@@ -18,6 +18,7 @@ import { materiellListe, materiellRader } from "../sw-materiell.js";
 import { blikkArk } from "./blikk.js";
 import { takArk } from "./tak.js";
 import { lagreMateriellLokalt, tegnMateriell, vaskMateriell } from "../materiell-vis.js";
+import { stabelNokkel as stabelNokkel_ } from "./bunker.js";
 import { APN_SLARK, SW_MIN_BIT_MM, SW_SPENNANDEL, SW_TOL_MM, SW_VEGGANDEL, delOppMedUtsparinger, delRadApninger, eierUtsparing, fasadeSoyler, fasaderFra, fasaderLangsRand, flatTak, hentSoyler, hjorneForlengelse, kappNavn, konveksHull, loesRad, manuelleFasaderFra, radStabel, samleTetteSoyler, soylerIFasader, spennSoyler, swListeRader, swNummerering, takLinje, takSpenn, takTopp, tilMm, tilScene, toppErSkra, toppVinkel, utspFyllBiter, utsparingerPaFasade, veggSoyler, vinkelTekst } from "./regler.js";
 import { STD_OPPSETT, lagret, oppsett, settLagret, skrivLagret } from "./tilstand.js";
 import { TAK_TOL_MM, baseYNaa, taklinjerFraModell, tegnAlt, utspPaFasader } from "./tegning.js";
@@ -657,9 +658,9 @@ export const GENERERT_SW_NAVN = /^SW-\d{2}$/;
 // hvis størrelse ikke finnes lenger forsvinner; en ny størrelse settes på den
 // beregnede plassen. Gjelder både «Juster elementer», ny generering og når
 // modellen åpnes igjen (stablene ligger da alt i S.materiell fra lagringen).
-export function stabelNokkel(lengde, bredde, tykkelse) {
-  return Math.round(Number(lengde) || 0) + "x" + Math.round(Number(bredde) || 0) + "x" + Math.round(Number(tykkelse) || 0);
-}
+// Selve nøkkelen bor i bunker.js — den er et blad i modulgrafen, og både
+// SW-stablene her og tak-/blikkbunkene må bruke NØYAKTIG samme nøkkel.
+export { stabelNokkel } from "./bunker.js";
 // Leser posisjonene til stablene som er i ferd med å rives: de id-sporede
 // (`ider`) og, for del A, de gamle uten id som bare kjennes på navnet.
 export function lesStabelPosisjoner(liste, ider, navnMonster) {
@@ -667,7 +668,7 @@ export function lesStabelPosisjoner(liste, ider, navnMonster) {
   for (const p of liste || []) {
     if (!p || p.maltype !== "sandwich") continue;
     if (!ider.has(p.id) && !(navnMonster && navnMonster.test(p.navn || ""))) continue;
-    const k = stabelNokkel(p.lengde, p.bredde, p.tykkelse);
+    const k = stabelNokkel_(p.lengde, p.bredde, p.tykkelse);
     if (!m.has(k)) m.set(k, { x: p.x, y: p.y, z: p.z, rot: p.rot });
   }
   return m;
@@ -676,7 +677,7 @@ export function lesStabelPosisjoner(liste, ider, navnMonster) {
 // bare én gang, så to like store stabler ikke havner oppå hverandre.
 export function settStabelTilbake(pkt, posisjoner) {
   if (!pkt || !posisjoner) return pkt;
-  const k = stabelNokkel(pkt.lengde, pkt.bredde, pkt.tykkelse);
+  const k = stabelNokkel_(pkt.lengde, pkt.bredde, pkt.tykkelse);
   const pos = posisjoner.get(k);
   if (!pos) return pkt;
   posisjoner.delete(k);
