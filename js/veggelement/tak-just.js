@@ -19,6 +19,7 @@ import { camera, canvas, raycaster } from "../scene.js";
 import { tilMm, tilScene } from "./regler.js";
 import { lagret, skrivLagret, swGroup } from "./tilstand.js";
 import { tegnAlt } from "./tegning.js";
+import { snapKandidater, snapVerdi } from "../sw-tak.js";
 
 export let takJust = null;   // { valgt: Set<id>, drar, markorer, legger } når aktiv
 export function settTakJust(v) { takJust = v; }
@@ -183,6 +184,23 @@ export function pekTak(cx, cy) {
   return treff ? { id: treff.object.userData.trpId, punkt: treff.point } : null;
 }
 
+const n = (x) => Number(x) || 0;
+const tallEr = (x) => Number.isFinite(Number(x));
+
+// Takoppsettet uten å dra inn tak.js (som importerer denne fila).
+function takOppsettNaa() {
+  const o = (lagret && lagret.takOppsett) || {};
+  return { endeOverlappMm: tallEr(o.endeOverlappMm) ? Number(o.endeOverlappMm) : 150,
+           snapDragTolMm: tallEr(o.snapDragTolMm) ? Number(o.snapDragTolMm) : 200 };
+}
+
+// Åsene på flata, i ABSOLUTT u — de ligger lagret sammen med flata.
+function aserAbsFor(fi) {
+  const F = (lagret && lagret.tak && lagret.tak.snap && lagret.tak.snap.flater) || [];
+  const f = F[fi];
+  return (f && Array.isArray(f.skjotU)) ? f.skjotU : [];
+}
+
 // Posisjonen langs platas eget løp (u), i mm.
 export function takLopMm(id, punkt) {
   const d = takMeshPerId.get(id);
@@ -234,7 +252,11 @@ window.addEventListener("pointerdown", (e) => {
     const j = b.just[id] || {};
     base.set(id, { dFra: Number(j.dFra) || 0, dTil: Number(j.dTil) || 0 });
   }
-  takJust.drar = { id: treff.id, ende: startMm < midt ? "fra" : "til", startMm, base };
+  const ende = startMm < midt ? "fra" : "til";
+  takJust.drar = { id: treff.id, ende, startMm, base,
+    // 🧲 kanten slik den står NÅ — snappingen regnes mot denne, ikke mot
+    // museposisjonen, så et snap ikke flytter seg videre for hvert musepiksel
+    kantStart: ende === "fra" ? d.info.uFra : d.info.uTil };
   e.stopPropagation();
   merkTakValgte(); tegnTakJustBar(takJust.tegnPanel);
 }, true);
@@ -244,9 +266,26 @@ window.addEventListener("pointermove", (e) => {
   const d = takJust.drar;
   const naMm = takLopMm(d.id, pekPlan(e.clientX, e.clientY, d.id));
   if (naMm === null) return;
-  const delta = Math.round((naMm - d.startMm) / 5) * 5;
+  let delta = Math.round((naMm - d.startMm) / 5) * 5;
   const b = tilstand();
   if (!b) return;
+  // 🧲 SNAPPING (Emil 22.09). Bare når ÉN plate er valgt: drar du flere
+  // samtidig har de hver sin kant, og et snap på den ene ville flyttet de
+  // andre til et sted ingen har pekt på.
+  if (takJust.valgt.size === 1 && tallEr(d.kantStart)) {
+    const meg = takMeshPerId.get(d.id);
+    const fi = meg && meg.info ? meg.info.flate : null;
+    const kanter = [];
+    for (const [id2, d2] of takMeshPerId) {
+      if (id2 === d.id || !d2.info || d2.info.flate !== fi) continue;
+      kanter.push(d2.info.uFra, d2.info.uTil);
+    }
+    const o = takOppsettNaa();
+    const kand = snapKandidater(d.ende, aserAbsFor(fi), kanter, o.endeOverlappMm);
+    const raa = n(d.kantStart) + delta;
+    const snappet = snapVerdi(raa, kand, o.snapDragTolMm);
+    delta = Math.round(snappet - n(d.kantStart));
+  }
   for (const id of takJust.valgt) {
     const basis = d.base.get(id);
     if (!basis) continue;

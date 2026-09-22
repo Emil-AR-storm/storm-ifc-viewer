@@ -22,12 +22,12 @@ import { MALTYPER, trpProfil } from "../materiell-vis.js";
 import { TAK_RADER, TAK_STD, bjelkeLinje, fallRetningFraBjelker, justerPlater, plateId,
          platerPaFlate, roterFlater, skjotBjelker, takFlater, takRamme, takRektangel,
          takflaterFraBjelker, platerPaTaket, tilUV, fraUV, trpListe, takTotaler,
-         indreAser } from "../sw-tak.js";
+         indreAser, plateNokkel } from "../sw-tak.js";
 import { husTakMesh, nullstillTakMesh, startTakJuster, takJust } from "./tak-just.js";
 import { soyleTypeNavn, takLinje, tilMm, tilScene } from "./regler.js";
 import { allElementBoxes, forHverTrekant } from "../elements.js";
 import { lagret, skrivLagret, swGroup } from "./tilstand.js";
-import { TAK_BOTTE_MM, TAK_TOL_MM, baseYNaa, skjulNaa, tegnAlt } from "./tegning.js";
+import { TAK_BOTTE_MM, TAK_TOL_MM, baseYNaa, skjulNaa, tegnAlt, tekstDekal } from "./tegning.js";
 import { STAL_TYPER } from "./stal.js";
 import { bunkePlass, lesStabelPosisjonerAlle, settStabelTilbakeAlle } from "./bunker.js";
 import { lagreMateriellLokalt, tegnMateriell, vaskMateriell } from "../materiell-vis.js";
@@ -451,12 +451,55 @@ export function tegnPlate(data, flate, vFra, breddeMm, uFra, uTil, farge, legg, 
   return m;
 }
 
+// 🏷 MERKINGEN PÅ EN TRP-PLATE (Emil 22.09): «samme merking som veggelement
+// — dimensjon i senter og nummer/navn oppe i hjørnet.»
+//
+// Dekalene legges FLATT PÅ TAKET, i flatas eget plan, akkurat som
+// veggmerkingen ligger på elementflaten. Ikke svevende skjermlapper: de fløt
+// over alt og ble uleselige (Emils runde 4 og 5 på veggene). Aksene er
+// flatas egne — V på tvers, U opp fallet, N ut av taket — så teksten står
+// rett vei uansett hvilken retning taket faller.
+function merkPlate(data, flate, naa, kode, legg) {
+  if (!flate || !flate.U || !flate.V || !flate.N) return;
+  const U = flate.U, V = flate.V, N = flate.N;
+  const lengde = Math.abs(Number(naa.uTil) - Number(naa.uFra));
+  const bredde = Number(naa.breddeMm) || 0;
+  if (!(lengde > 0) || !(bredde > 0)) return;
+  const kvat = new THREE.Quaternion().setFromRotationMatrix(
+    new THREE.Matrix4().makeBasis(
+      new THREE.Vector3(V.x, V.y, V.z),
+      new THREE.Vector3(U.x, U.y, U.z),
+      new THREE.Vector3(N.x, N.y, N.z)));
+  const uMid = (Number(naa.uFra) + Number(naa.uTil)) / 2;
+  const sett = (m, uMm, vMm) => {
+    const p = P(data, uMm, vMm, 0, flate);
+    // litt over platas overside, ellers kjemper teksten med bølgeblikket
+    const løft = tilScene(6);
+    m.position.set(p.x + N.x * løft, p.y + N.y * løft, p.z + N.z * løft);
+    m.quaternion.copy(kvat);
+    m.renderOrder = 3;
+    legg(m);
+  };
+  const maks = tilScene(Math.min(lengde, bredde));
+  // dimensjonen i senter — samme form som veggene: «4853×5521MM»
+  sett(tekstDekal(Math.round(lengde) + "×" + Math.round(bredde) + "MM", 150, maks * 0.7),
+    uMid, Number(naa.vFra) + bredde / 2);
+  // koden oppe i hjørnet, mot den høye enden
+  if (kode)
+    sett(tekstDekal(kode, 220, maks * 0.45),
+      uMid + (Number(naa.uTil) - uMid) * 0.62, Number(naa.vFra) + bredde * 0.22);
+}
+
 export function tegnTak() {
   const sk = skjulNaa();
   if (sk.tak) return;
   if (!takPa()) return;
   const data = takData();
   if (!data) return;
+  // kode per størrelse — den SAMME lista bunkene på bakken bygges av
+  const koder = new Map();
+  for (const pl of (data.liste && data.liste.plater) || [])
+    koder.set(plateNokkel(pl.lengdeMm, pl.breddeMm), pl.kode);
   nullstillTakMesh();
   let naa = null;
   const legg = (m) => {
@@ -495,6 +538,8 @@ export function tegnTak() {
           U: f.U, V: f.V, N: f.N, origo: f.origo };
         tegnPlate(data, f, rad.vFra, rad.breddeMm, ua, ub,
           p.kort ? "#c05a5a" : (p.lagtTil ? "#7fae7f" : farge), legg, naa);
+        if (!sk.merking && data.auto)
+          merkPlate(data, f, naa, koder.get(plateNokkel(p.lengdeMm, rad.breddeMm)), legg);
         naa = null;
         sPlan = sPlan + p.lengdeMm - ov;
       }
