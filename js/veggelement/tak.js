@@ -22,6 +22,7 @@ import { MALTYPER, trpProfil } from "../materiell-vis.js";
 import { TAK_RADER, TAK_STD, bjelkeLinje, fallRetningFraBjelker, justerPlater, plateId,
          platerPaFlate, roterFlater, skjotBjelker, takFlater, takRamme, takRektangel,
          takflaterFraBjelker, platerPaTaket, tilUV, fraUV, trpListe, takTotaler,
+         ensrettFlater, deltRadrutenett,
          indreAser, plateNokkel } from "../sw-tak.js";
 import { husTakMesh, nullstillTakMesh, startTakJuster, takJust,
          lagreTakResultat, lastInnTakResultat, lesTakLagrede, slettTakResultat,
@@ -279,6 +280,10 @@ function takDataFraStal(bjelker, o) {
     // 🔩 Hver flate bærer sine egne åser — de bjelkene som ligger i flata og
     // går på tvers av fallet. Uten dem er det ingenting å skru en skjøt i.
     flater = flater.map(f => ({ ...f, skjotU: skjotBjelker(f, linjer, o) }));
+    // 🔁 SIST: begge takhalvdelene legges samme vei, og to halvdeler som deler
+    // et møne deler også radrutenettet. MÅ stå etter rotasjonen og etter at
+    // åsene er funnet — se kommentaren over takflaterFraBjelker i js/sw-tak.js.
+    flater = deltRadrutenett(ensrettFlater(flater), o);
     settTakSnapshot({ auto: true, flater, bjelker: bjelker.length, linjer: linjer.length });
     return autoData(flater, o,
       { fraStal: true, auto: true, bjelker: linjer.length, flater: flater.length },
