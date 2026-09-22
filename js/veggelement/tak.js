@@ -701,6 +701,18 @@ export function takPanelHtml() {
             "{0} plater blir kortere enn 500 mm. Platelengdene går ikke opp med overlappen — juster stabelen.",
             L.korte)) + "</p>"
         : "") +
+      // 🔎 EMILS FUNN 22.09: strimlene langs kanten er borte — men de er
+      // ikke bortforklart. Står det igjen en rest smalere enn én bølge, sier
+      // panelet hvor mye, så Emil selv kan avgjøre om den skal dekkes.
+      (() => {
+        const rester = (data.medPlater || [])
+          .map(f => Math.round(Number(f.restMm) || 0)).filter(x => x > 0);
+        return rester.length
+          ? "<p class='hint'>" + esc(t(
+              "Ytterste kant står udekket med {0} mm. Resten er smalere enn én bølge og kan ikke lappes over naboplata — det meste av den er utstikket på flata.",
+              rester.join(" / "))) + "</p>"
+          : "";
+      })() +
       "<h4 data-sek='takplater'>" + esc(t("Platene")) + "</h4>" +
       "<table class='swtab'><tbody>" +
       L.plater.map(p => "<tr><td>" + esc(p.navn) + "</td><td style='text-align:right'>" +
