@@ -22,7 +22,7 @@ import { MALTYPER, trpProfil } from "../materiell-vis.js";
 import { TAK_RADER, TAK_STD, bjelkeLinje, fallRetningFraBjelker, justerPlater, plateId,
          platerPaFlate, roterFlater, skjotBjelker, takFlater, takRamme, takRektangel,
          takflaterFraBjelker, platerPaTaket, tilUV, fraUV, trpListe, takTotaler,
-         ensrettFlater, deltRadrutenett,
+         ensrettFlater, deltRadrutenett, vinkelTekstTak,
          indreAser, plateNokkel } from "../sw-tak.js";
 import { husTakMesh, nullstillTakMesh, startTakJuster, takJust,
          lagreTakResultat, lastInnTakResultat, lesTakLagrede, slettTakResultat,
@@ -442,11 +442,24 @@ export function tegnPlate(data, flate, vFra, breddeMm, uFra, uTil, farge, legg, 
     const p = P(data, uu, vFra + v, hVed(flate, uu) + h, flate);
     pos.push(p.x, p.y, p.z);
   };
+  // ✂ SKRÅKAPP MOT EN SKRÅ TOPPBJELKE (Emil 22.09). Enden er ikke lenger én
+  // u-verdi: den løper fra uTilA ved v = 0 til uTilB ved v = bredden. Da følger
+  // bølgene skråkanten helt ut, uten trappetrinn — samme grep som skråkappede
+  // veggelementer fikk 08.09.
+  const B = Math.max(1, Number(breddeMm) || 1);
+  const skra = meta && meta.skra;
+  const enden = (v) => skra
+    ? Number(meta.uTilA) + (Number(meta.uTilB) - Number(meta.uTilA)) * (v / B)
+    : uTil;
+  const starten = (v) => skra
+    ? Number(meta.uFraA) + (Number(meta.uFraB) - Number(meta.uFraA)) * (v / B)
+    : uFra;
   // to trekanter per segment av profilen, strukket fra uFra til uTil
   for (let i = 1; i < prof.length; i++) {
     const [v0, h0] = prof[i - 1], [v1, h1] = prof[i];
-    pkt(v0, h0, uFra); pkt(v1, h1, uFra); pkt(v1, h1, uTil);
-    pkt(v0, h0, uFra); pkt(v1, h1, uTil); pkt(v0, h0, uTil);
+    const a0 = starten(v0), a1 = starten(v1), b0 = enden(v0), b1 = enden(v1);
+    pkt(v0, h0, a0); pkt(v1, h1, a1); pkt(v1, h1, b1);
+    pkt(v0, h0, a0); pkt(v1, h1, b1); pkt(v0, h0, b0);
   }
   if (!pos.length) return null;
   const geo = new THREE.BufferGeometry();
@@ -520,8 +533,13 @@ function merkPlate(data, flate, naa, kode, legg) {
     legg(m);
   };
   const maks = tilScene(Math.min(lengde, bredde));
-  // dimensjonen i senter — samme form som veggene: «4853×5521MM»
-  sett(tekstDekal(Math.round(lengde) + "×" + Math.round(bredde) + "MM", 150, maks * 0.7),
+  // dimensjonen i senter — samme form som veggene: «4853×5521MM», og på et
+  // skråkapp med BEGGE endemålene og vinkelen: «6150/5400×6000MM 27,6°»
+  const lTekst = naa.skra
+    ? Math.round(Number(naa.lengdeVMm)) + "/" + Math.round(Number(naa.lengdeHMm))
+    : String(Math.round(lengde));
+  const vTekst = naa.skra ? " " + vinkelTekstTak(naa.vinkel) : "";
+  sett(tekstDekal(lTekst + "×" + Math.round(bredde) + "MM" + vTekst, 150, maks * 0.7),
     uMid, Number(naa.vFra) + bredde / 2);
   // koden oppe i hjørnet, mot den høye enden
   if (kode)
@@ -538,7 +556,7 @@ export function tegnTak() {
   // kode per størrelse — den SAMME lista bunkene på bakken bygges av
   const koder = new Map();
   for (const pl of (data.liste && data.liste.plater) || [])
-    koder.set(plateNokkel(pl.lengdeMm, pl.breddeMm), pl.kode);
+    koder.set(pl.navn, pl.kode);
   nullstillTakMesh();
   let naa = null;
   const legg = (m) => {
@@ -573,12 +591,16 @@ export function tegnTak() {
         naa = { id: p.id || plateId(fi, rad, p), flate: fi, vFra: rad.vFra,
           breddeMm: rad.breddeMm, uFra: ua, uTil: ub, lengdeMm: p.lengdeMm,
           lagtTil: !!p.lagtTil,
+          // ✂ skråkappet følger med til tegningen og til merkingen
+          skra: !!p.skra, lengdeVMm: p.lengdeVMm, lengdeHMm: p.lengdeHMm,
+          uFraA: p.uFraA, uFraB: p.uFraB, uTilA: p.uTilA, uTilB: p.uTilB,
+          vinkel: p.vinkel,
           // rammen følger med, så «Juster TRP» kan regne seg tilbake til u
           U: f.U, V: f.V, N: f.N, origo: f.origo };
         tegnPlate(data, f, rad.vFra, rad.breddeMm, ua, ub,
           p.kort ? "#c05a5a" : (p.lagtTil ? "#7fae7f" : farge), legg, naa);
         if (!sk.merking && data.auto)
-          merkPlate(data, f, naa, koder.get(plateNokkel(p.lengdeMm, rad.breddeMm)), legg);
+          merkPlate(data, f, naa, koder.get(plateNokkel(p.lengdeMm, rad.breddeMm, p)), legg);
         naa = null;
         sPlan = sPlan + p.lengdeMm - ov;
       }
