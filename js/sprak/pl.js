@@ -1401,7 +1401,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Hatprofil bredde (mm)": "Szerokość profilu kapeluszowego (mm)",
   "Hatprofil flens (mm)": "Kołnierz profilu kapeluszowego (mm)",
   "Hatprofil høyde (mm)": "Wysokość profilu kapeluszowego (mm)",
-  "Trykk på en takplate og dra i enden. Shift+klikk for å ta flere.": "Kliknij płytę dachową i przeciągnij jej koniec. Shift+klik, aby wybrać kilka.",
+  "Trykk på en takplate. Dra i den blå pila for lengden eller den oransje for bredden — eller ta tak i enden som før. Shift+klikk for å ta flere.": "Kliknij płytę dachową. Przeciągnij niebieską strzałkę, aby zmienić długość, lub pomarańczową, aby zmienić szerokość — albo złap koniec jak dotychczas. Shift+klik, aby wybrać kilka.",
   "Takflate {0} · {1} mm": "Połać {0} · {1} mm",
   "Legg til plate": "Dodaj płytę",
   "Nullstille alle håndjusteringene av takplatene?": "Wyzerować wszystkie ręczne korekty płyt dachowych?",

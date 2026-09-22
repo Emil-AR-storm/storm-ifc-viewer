@@ -1401,7 +1401,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Hatprofil bredde (mm)": "Hat profile width (mm)",
   "Hatprofil flens (mm)": "Hat profile flange (mm)",
   "Hatprofil høyde (mm)": "Hat profile height (mm)",
-  "Trykk på en takplate og dra i enden. Shift+klikk for å ta flere.": "Click a roof sheet and drag its end. Shift+click to take several.",
+  "Trykk på en takplate. Dra i den blå pila for lengden eller den oransje for bredden — eller ta tak i enden som før. Shift+klikk for å ta flere.": "Click a roof sheet. Drag the blue arrow for length or the orange one for width — or grab the end as before. Shift+click to take several.",
   "Takflate {0} · {1} mm": "Roof surface {0} · {1} mm",
   "Legg til plate": "Add a sheet",
   "Nullstille alle håndjusteringene av takplatene?": "Reset all manual adjustments of the roof sheets?",
