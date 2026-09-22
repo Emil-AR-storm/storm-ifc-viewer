@@ -704,15 +704,20 @@ function aseLinje(F, data) {
   // samme funksjon som snappingen bruker — panelet kan ikke liste en ås
   // snappingen ser bort fra
   const per = F.map(f => indreAser(f, data.o).map(Math.round));
-  const noen = per.some(l => l.length);
+  const med = per.filter(l => l.length).length;
   const av = data.o && data.o.snapSkjot === false;
-  if (!noen)
+  // 🔎 Emil 21.09: modellen har oftest ingen åser i takplanet. Da STÅR
+  // platelengdene hans — men han skal vite at ingen har kontrollert at
+  // skjøtene treffer stål.
+  if (!med)
     return "<p class='hint' style='color:var(--warn,#c05a5a)'>" + esc(t(
-      "Ingen åser på tvers inne i fallet ({0} mm). Da er det ingenting å skru en endeskjøt i, og fallet må dekkes av ÉN plate. Roter takflata hvis platene skal ligge den andre veien.",
-      Math.round(F[0].lengdeMm))) + "</p>";
+      "Ingen åser på tvers er modellert i takplanet. Platelengdene dine står som du skriver dem, men skjøtene er IKKE kontrollert mot stål — sjekk mot arbeidstegning, eller roter takflata hvis platene skal ligge den andre veien.")) + "</p>";
+  const forste = per.find(l => l.length) || [];
   return "<p class='hint'>" + esc(av
-    ? t("Åser på tvers, målt opp fallet: {0} mm. Snapping er slått AV — skjøtene ligger der du sier.", per[0].join(", "))
-    : t("Åser på tvers, målt opp fallet: {0} mm. Skjøtene flyttes til nærmeste ås.", per[0].join(", "))) + "</p>";
+    ? t("Åser på tvers, målt opp fallet: {0} mm ({1} av {2} takflater har åser). Snapping er slått AV — skjøtene ligger der du sier.",
+        forste.join(", "), med, F.length)
+    : t("Åser på tvers, målt opp fallet: {0} mm ({1} av {2} takflater har åser). Skjøtene flyttes til nærmeste ås.",
+        forste.join(", "), med, F.length)) + "</p>";
 }
 
 // Seksjonen kobles opp av tegnBlikkPanel() — «Blikk & Tak» er ÉTT verktøy med
