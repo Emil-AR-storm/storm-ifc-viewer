@@ -454,6 +454,11 @@ export function tegnPlate(data, flate, vFra, breddeMm, uFra, uTil, farge, legg, 
   return m;
 }
 
+// Luft mellom bølgetoppen og merketeksten. Nok til at teksten står klart oppe
+// på profilen, lite nok til at den ikke svever synlig over taket sett fra
+// siden.
+export const MERKE_KLARING_MM = 10;
+
 // 🏷 MERKINGEN PÅ EN TRP-PLATE (Emil 22.09): «samme merking som veggelement
 // — dimensjon i senter og nummer/navn oppe i hjørnet.»
 //
@@ -491,10 +496,19 @@ function merkPlate(data, flate, naa, kode, legg) {
   const kvat = new THREE.Quaternion().setFromRotationMatrix(
     new THREE.Matrix4().makeBasis(aX, aY, aZ));
   const uMid = (Number(naa.uFra) + Number(naa.uTil)) / 2;
+  // 🔎 EMILS FUNN 22.09 (bilde 2): «merketeksten drukner i bølgene.»
+  //
+  // P() med h = 0 gir BUNNEN av bølgedalen — bølgetoppene står profilHoyde
+  // høyere. Løftet var et fast tall på 6 mm, altså godt nede i dalen, og
+  // teksten lå og blinket mellom bølgetoppene.
+  //
+  // Nå leses løftet av profilen selv. Da følger merkingen med hvis
+  // profilhøyden endres — et fast tall måtte vært rettet to steder, og det
+  // ene ville blitt glemt.
+  const løftMm = (Number(MALTYPER.trp.profilHoyde) || 0) + MERKE_KLARING_MM;
   const sett = (m, uMm, vMm) => {
     const p = P(data, uMm, vMm, 0, flate);
-    // litt over platas overside, ellers kjemper teksten med bølgeblikket
-    const løft = tilScene(6);
+    const løft = tilScene(løftMm);
     m.position.set(p.x + aZ.x * løft, p.y + aZ.y * løft, p.z + aZ.z * løft);
     m.quaternion.copy(kvat);
     m.renderOrder = 3;
