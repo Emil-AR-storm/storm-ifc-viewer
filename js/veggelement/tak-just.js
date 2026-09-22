@@ -71,7 +71,7 @@ export function tegnTakJustBar(paaNytt) {
   const info = d && d.info;
   el.innerHTML =
     '<span style="font-size:12px;max-width:360px">' +
-    esc(t("Trykk på en takplate og dra i enden. Shift+klikk for å ta flere.")) +
+    esc(t("Trykk på en takplate. Dra i den blå pila for lengden eller den oransje for bredden — eller ta tak i enden som før. Shift+klikk for å ta flere.")) +
     ' <b>' + esc(t("{0} valgt", n)) + '</b>' +
     (info ? ' <span style="color:var(--muted)">' +
       esc(t("Takflate {0} · {1} mm", (info.flate || 0) + 1, Math.round(info.lengdeMm || 0))) +
@@ -174,6 +174,86 @@ export function merkTakValgte() {
       g.add(k);
     }
   }
+  // ↕ PILENE (Emil 22.09): «når man markerer en TRP-plate skal det vises en
+  // pil som peker i bredden og en som peker i lengden oppå den blå
+  // markeringen — du trykker på pilen og drar for å velge retningen.»
+  //
+  // Pilene står på plata du valgte SIST. Er flere valgt, gjelder draget alle
+  // — som før — men pilene skal vise ÉN plate, ellers står det en skog av dem.
+  const sist = [...takJust.valgt][takJust.valgt.size - 1];
+  const dSist = sist ? takMeshPerId.get(sist) : null;
+  if (dSist && dSist.info && dSist.info.U) {
+    for (const m of lagPiler(dSist.info, sist)) g.add(m);
+  }
+}
+
+// ↕ ÉN PIL: et skaft og et hode, lagt i takflatas eget plan og løftet over
+// bølgene slik merketeksten er. Pilen er IKKE gjennomsiktig for musa — den er
+// håndtaket, og må kunne treffes.
+const PIL_FARGE = { lengde: 0x2563eb, bredde: 0xf59e0b };
+
+export function pilMal(info, akse) {
+  const bredde = n2(info.breddeMm);
+  const lengde = Math.abs(n2(info.uTil) - n2(info.uFra));
+  const langs = akse === "bredde" ? bredde : lengde;
+  // Pila tar en tredel av plata LANGS SIN EGEN AKSE — ikke av det korteste
+  // målet. En 6 000 × 1 030 plate skal ha en lang lengdepil og en kort
+  // breddepil; det er nettopp forskjellen som viser hvilken vei du drar.
+  // Gulv på 200 mm så en liten plate fortsatt har et håndtak, tak på 2 500 mm
+  // så pila ikke slører hele taket på en lang plate.
+  const pilMm = Math.max(200, Math.min(langs * 0.33, 2500));
+  return { pilMm, uMid: (n2(info.uFra) + n2(info.uTil)) / 2, vMid: n2(info.vFra) + bredde / 2 };
+}
+
+function lagPiler(info, id) {
+  const ut = [];
+  for (const akse of ["lengde", "bredde"]) {
+    const aks = akse === "bredde" ? info.V : info.U;
+    if (!aks) continue;
+    const { pilMm, uMid, vMid } = pilMal(info, akse);
+    const N = info.N || { x: 0, y: 1, z: 0 };
+    // samme løft som merketeksten: over bølgetoppen, ikke nede i dalen
+    const loft = 60;
+    const pkt = (t) => new THREE.Vector3(
+      tilScene(info.origo.x + info.U.x * (uMid + (akse === "bredde" ? 0 : t)) +
+        info.V.x * (vMid + (akse === "bredde" ? t : 0)) + N.x * loft),
+      tilScene(info.origo.y + info.U.y * (uMid + (akse === "bredde" ? 0 : t)) +
+        info.V.y * (vMid + (akse === "bredde" ? t : 0)) + N.y * loft),
+      tilScene(info.origo.z + info.U.z * (uMid + (akse === "bredde" ? 0 : t)) +
+        info.V.z * (vMid + (akse === "bredde" ? t : 0)) + N.z * loft));
+    const a = pkt(0), b = pkt(pilMm);
+    const retning = b.clone().sub(a);
+    const L = retning.length();
+    if (!(L > 0)) continue;
+    const kvat = new THREE.Quaternion().setFromUnitVectors(
+      new THREE.Vector3(0, 1, 0), retning.clone().normalize());
+    const mat = new THREE.MeshBasicMaterial({ color: PIL_FARGE[akse],
+      depthTest: false, depthWrite: false });
+    const r = tilScene(Math.max(25, pilMm * 0.035));
+    const skaft = new THREE.Mesh(new THREE.CylinderGeometry(r, r, L * 0.72, 10), mat);
+    skaft.position.copy(a.clone().lerp(b, 0.36));
+    skaft.quaternion.copy(kvat);
+    const hode = new THREE.Mesh(new THREE.ConeGeometry(r * 2.6, L * 0.28, 14), mat);
+    hode.position.copy(a.clone().lerp(b, 0.86));
+    hode.quaternion.copy(kvat);
+    for (const m of [skaft, hode]) {
+      m.renderOrder = 1000;
+      m.userData.takPil = { akse, id };
+      ut.push(m);
+    }
+  }
+  return ut;
+}
+
+// Hvilken pil ligger under musa?
+export function pekPil(cx, cy) {
+  if (!takJust || !canvas || !camera || !raycaster) return null;
+  const r = canvas.getBoundingClientRect();
+  raycaster.setFromCamera(new THREE.Vector2(
+    ((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1), camera);
+  const treff = raycaster.intersectObjects(takJust.markorer.children, true)
+    .find(h => h.object && h.object.userData && h.object.userData.takPil);
+  return treff ? { ...treff.object.userData.takPil, punkt: treff.point } : null;
 }
 
 export function startTakJuster(paaNytt) {
@@ -342,8 +422,46 @@ export function takLopMm(id, punkt) {
   return (dx * U.x + dz * U.z) / hh;
 }
 
+// Posisjonen på TVERS av plata (v), i mm — samme regnestykke som takLopMm,
+// bare langs den andre aksen. Brukes når du drar i breddepila.
+export function takTverrMm(id, punkt) {
+  const d = takMeshPerId.get(id);
+  if (!d || !d.info || !punkt || !d.info.V) return null;
+  const i = d.info, o = i.origo, V = i.V;
+  const hh = V.x * V.x + V.z * V.z;
+  if (!(hh > 1e-12)) return null;
+  const dx = tilMm(punkt.x) - o.x, dz = tilMm(punkt.z) - o.z;
+  return (dx * V.x + dz * V.z) / hh;
+}
+
 window.addEventListener("pointerdown", (e) => {
   if (!takJust || e.button !== 0 || e.target !== canvas) return;
+  // ↕ PILA FØRST. Treffer du en pil, er det DEN som bestemmer retningen —
+  // ikke hvilken halvdel av plata du tilfeldigvis traff.
+  const pil = pekPil(e.clientX, e.clientY);
+  if (pil) {
+    const b0 = tilstand();
+    const d0 = takMeshPerId.get(pil.id);
+    if (b0 && d0 && d0.info) {
+      if (!takJust.valgt.has(pil.id)) { takJust.valgt.clear(); takJust.valgt.add(pil.id); }
+      const base = new Map();
+      for (const id of takJust.valgt) {
+        const j = b0.just[id] || {};
+        base.set(id, { dFra: Number(j.dFra) || 0, dTil: Number(j.dTil) || 0,
+          breddeMm: Number(j.breddeMm) || Number(d0.info.breddeMm) || 0 });
+      }
+      const startMm = pil.akse === "bredde"
+        ? takTverrMm(pil.id, pekPlan(e.clientX, e.clientY, pil.id))
+        : takLopMm(pil.id, pekPlan(e.clientX, e.clientY, pil.id));
+      if (startMm !== null) {
+        takJust.drar = { id: pil.id, akse: pil.akse, ende: "til", startMm, base,
+          kantStart: pil.akse === "bredde" ? null : Number(d0.info.uTil) };
+        e.stopPropagation();
+        merkTakValgte(); tegnTakJustBar(takJust.tegnPanel);
+        return;
+      }
+    }
+  }
   const treff = pekTak(e.clientX, e.clientY);
   if (!treff) { takJust.drar = null; return; }
   const b = tilstand();
@@ -377,6 +495,27 @@ window.addEventListener("pointerdown", (e) => {
 window.addEventListener("pointermove", (e) => {
   if (!takJust || !takJust.drar) return;
   const d = takJust.drar;
+  // ↕ BREDDEPILA: her endres RADENS bredde, ikke lengden. Det er samme tall
+  // som «Bredde (mm)»-feltet i verktøylinja skriver, så de to kan ikke komme i
+  // utakt — og en TRP-plate er like bred hele veien, derfor raden og ikke plata.
+  if (d.akse === "bredde") {
+    const b2 = tilstand();
+    const naV = takTverrMm(d.id, pekPlan(e.clientX, e.clientY, d.id));
+    if (!b2 || naV === null) return;
+    const delta = Math.round((naV - d.startMm) / 5) * 5;
+    for (const id of takJust.valgt) {
+      const basis = d.base.get(id);
+      if (!basis) continue;
+      const ny = Math.max(50, Math.round(basis.breddeMm + delta));
+      const j = b2.just[id] || (b2.just[id] = {});
+      j.breddeMm = ny;
+    }
+    skrivLagret();
+    tegnAlt();
+    merkTakValgte();
+    e.stopPropagation();
+    return;
+  }
   const naMm = takLopMm(d.id, pekPlan(e.clientX, e.clientY, d.id));
   if (naMm === null) return;
   let delta = Math.round((naMm - d.startMm) / 5) * 5;
