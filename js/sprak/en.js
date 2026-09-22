@@ -21,6 +21,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "TRP takplate": "TRP roof sheet",
   "Sandwichpanel": "Sandwich panel",
   "Kassett forskaling": "Formwork panel",
+  "Maks avstand mellom sperrer (mm)": "Max distance between rafters (mm)",
   "Bratteste tak (grader)": "Steepest roof (degrees)",
   "Lagrede takresultater": "Saved roof results",
   "Gi oppsettet et navn og lagre det. Trykk på navnet senere for å legge samme platelengder og håndjusteringer på bygget igjen.": "Give the setup a name and save it. Click the name later to put the same sheet lengths and manual adjustments back on the building.",

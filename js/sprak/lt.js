@@ -21,6 +21,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "TRP takplate": "TRP stogo lakštas",
   "Sandwichpanel": "Daugiasluoksnė plokštė",
   "Kassett forskaling": "Klojinių skydas",
+  "Maks avstand mellom sperrer (mm)": "Maks. atstumas tarp gegnių (mm)",
   "Bratteste tak (grader)": "Stačiausias stogas (laipsniais)",
   "Lagrede takresultater": "I\u0161saugoti stogo rezultatai",
   "Gi oppsettet et navn og lagre det. Trykk på navnet senere for å legge samme platelengder og håndjusteringer på bygget igjen.": "Suteikite nustatymui pavadinim\u0105 ir i\u0161saugokite. V\u0117liau spustel\u0117j\u0119 pavadinim\u0105 grąžinsite tuos pačius lak\u0161t\u0173 ilgius ir koregavimus.",

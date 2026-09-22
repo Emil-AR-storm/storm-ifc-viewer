@@ -61,6 +61,20 @@ export const TAK_STD = {
   // ER: et tak heller så lite at vann renner av det, ikke 45°. Settbart,
   // fordi et bratt tak finnes — men 43° er en skråstiver, ikke et tak.
   maksFallGrader: 35,
+  // 📏 SPERRENE MÅ STÅ TÆTT NOK TIL Å BÆRE ET TAK (Emils funn 22.09).
+  //
+  // Målt på Valle: én av de fire «takflatene» var bygget av NØYAKTIG TO bjelker
+  // som sto 22 850 mm fra hverandre, med fall 32° og med bunnen fem meter
+  // under resten av taket. Det er et par skråstivere i fagverket — ikke et tak.
+  // Den ble likevel til en takflate på 207 m² som svevde ut i lufta ved siden
+  // av bygget, full av TRP-plater.
+  //
+  // maksFallGrader (35°) fanget den ikke, for 32° er innenfor. minFlateBjelker
+  // (2) fanget den ikke heller. Det som SKILLER er avstanden: på de tre ekte
+  // flatene på Valle står sperrene 5 188–8 029 mm fra hverandre. Ingen sperrer
+  // står 23 meter fra hverandre og bærer et tak — og står de likevel så, er
+  // det ingenting som bærer platene mellom dem.
+  maksSperreAvstandMm: 12000,
   retningTolGrader: 5,     // to bjelker «peker samme vei» innenfor dette
   planTolMm: 300,          // … og ligger i samme plan innenfor dette
   minFlateBjelker: 2,      // færre enn dette er et stag, ikke et takfall
@@ -945,6 +959,16 @@ export function flateFraGruppe(gruppe, o) {
   }
   kantLav.sort((a, b) => a[0] - b[0]);
   kantHoy.sort((a, b) => a[0] - b[0]);
+  // 📏 Står to nabosperrer lenger fra hverandre enn dette, er det ikke et
+  // takfall — se maksSperreAvstandMm. Settbart, for et bygg kan ha åser med
+  // stor avstand; men da bærer de ikke TRP-en, og det skal ikke gjettes.
+  const maksAvst = n(opp.maksSperreAvstandMm);
+  if (maksAvst > 0 && kantHoy.length > 1) {
+    let verst = 0;
+    for (let i = 1; i < kantHoy.length; i++)
+      verst = Math.max(verst, n(kantHoy[i][0]) - n(kantHoy[i - 1][0]));
+    if (verst > maksAvst) return null;
+  }
   const lengdeMm = u1 - u0, breddeMm = v1 - v0;
   const N = flateNormal({ ux: U.x, uy: U.y, uz: U.z });
   // 🔻 For bratt til å være et tak — se maksFallGrader.
