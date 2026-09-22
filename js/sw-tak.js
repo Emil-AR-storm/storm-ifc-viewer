@@ -475,8 +475,26 @@ export function snapSkjoterTilAser(plater, fallengdeMm, skjot, o) {
   const kant = Math.max(MIN_PLATE_MM, ov);
   const indre = [...new Set((skjot || []).map(x => rund(n(x))))]
     .filter(u => u > kant && u < L - kant).sort((a, b) => a - b);
-  if (!indre.length)
-    return [{ lengdeMm: Math.round(L), kappet: true, ingenAas: true }];
+
+  // 🔎 EMILS FUNN 21.09, ANDRE RUNDE: «når jeg justerer på platelengder skjer
+  // det ingenting med taket — gjør denne funksjonen noe lenger?»
+  //
+  // Nei, den gjorde ikke det, og det var min feil. Første utgave svarte ÉN
+  // PLATE over hele fallet så snart modellen ikke hadde en eneste ås. Da ble
+  // stabelen han taster kastet uten et ord, og feltet var dødt på hvert bygg
+  // uten åser i takplanet — det vil si alle han har prøvd.
+  //
+  // Verre: den ene plata tok ikke hensyn til `maksLengdeMm`. På Sundland ga
+  // det TRP 12153 og TRP 12147 mot en transportgrense på 12 000. Plater ingen
+  // kan kjøre ut på bil, regnet fram av en regel som skulle gjøre taket
+  // riktigere.
+  //
+  // At modellen ikke HAR åser betyr ikke at taket mangler dem — det betyr at
+  // de ikke er modellert. Å overstyre Emils tall på grunn av data som ikke
+  // finnes er å gjette. Stabelen hans står derfor som den er, hver plate
+  // merkes `ingenAas`, og panelet sier fra at skjøtene ikke er kontrollert
+  // mot stål.
+  if (!indre.length) return P.map(p => ({ ...p, ingenAas: true }));
 
   // hvor stabelen VILLE lagt skjøtene, målt fra den lave enden
   const onsket = [];
