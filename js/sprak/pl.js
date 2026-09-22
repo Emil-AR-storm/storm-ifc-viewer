@@ -1418,6 +1418,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Fant ikke stål å bygge takflata av. Taket bygges av de øverste bjelkene.": "Nie znaleziono stali do zbudowania połaci dachu. Dach budowany jest z najwyższych belek.",
   "Taket er flatt. Fallretningen settes nedenfor, og fallprosenten bestemmer hvor mye det heller.": "Dach jest płaski. Kierunek spadku ustawiasz poniżej, a procent spadku decyduje o nachyleniu.",
   "Fallet leses av gavlfasaden — {0} mm fra raft til møne.": "Spadek odczytywany jest z elewacji szczytowej — {0} mm od okapu do kalenicy.",
+  "Ytterste kant står udekket med {0} mm. Resten er smalere enn én bølge og kan ikke lappes over naboplata — det meste av den er utstikket på flata.": "Skrajna krawędź pozostaje nieprzykryta na {0} mm. Reszta jest węższa niż jedna fala i nie da się jej zakładkować na sąsiednią płytę — większość z niej to wysunięcie połaci.",
   "{0} plater blir kortere enn 500 mm. Platelengdene går ikke opp med overlappen — juster stabelen.": "{0} płyt wychodzi krótszych niż 500 mm. Długości płyt nie zgadzają się z zakładem — popraw zestaw.",
   "Platene": "Płyty",
   "stk": "szt.",

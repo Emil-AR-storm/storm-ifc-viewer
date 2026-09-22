@@ -1418,6 +1418,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Fant ikke stål å bygge takflata av. Taket bygges av de øverste bjelkene.": "No steel found to build the roof surface from. The roof is built from the topmost beams.",
   "Taket er flatt. Fallretningen settes nedenfor, og fallprosenten bestemmer hvor mye det heller.": "The roof is flat. Set the fall direction below; the fall percentage decides how much it slopes.",
   "Fallet leses av gavlfasaden — {0} mm fra raft til møne.": "The fall is read from the gable facade — {0} mm from eaves to ridge.",
+  "Ytterste kant står udekket med {0} mm. Resten er smalere enn én bølge og kan ikke lappes over naboplata — det meste av den er utstikket på flata.": "The outermost edge is left uncovered by {0} mm. The remainder is narrower than one corrugation and cannot be lapped onto the neighbouring sheet — most of it is the overhang on the surface.",
   "{0} plater blir kortere enn 500 mm. Platelengdene går ikke opp med overlappen — juster stabelen.": "{0} sheets come out shorter than 500 mm. The sheet lengths do not add up with the overlap — adjust the stack.",
   "Platene": "The sheets",
   "stk": "pcs",
