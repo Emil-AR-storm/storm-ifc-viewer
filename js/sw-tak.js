@@ -49,6 +49,18 @@ export const TAK_STD = {
   // 🔄 «Roter takflata 90°» (Emil 21.09, bilde 4)
   rotert: false,
   minHellingProsent: 0.5,  // en bjelke under dette «ligger ikke i fallet»
+  // 🔎 EMILS FUNN 22.09 (bilde 4–6): «taket legger seg på kryss og tvers på
+  // skråstiverne i fagverket i stedet for på toppen av bjelken.»
+  //
+  // Målt på hans egen lagring for Sundland: 25 «takflater» kom ut. De to
+  // ekte hadde fall 1,4° og 10 bjelker hver. De 23 andre hadde fall 43–46°
+  // og nøyaktig 2 bjelker — fagverkets skråstivere, som er parallelle to og
+  // to og ligger i samme plan, og derfor så ut som et takfall.
+  //
+  // Regelen er ikke en filtrering «for sikkerhets skyld», det er hva et tak
+  // ER: et tak heller så lite at vann renner av det, ikke 45°. Settbart,
+  // fordi et bratt tak finnes — men 43° er en skråstiver, ikke et tak.
+  maksFallGrader: 35,
   retningTolGrader: 5,     // to bjelker «peker samme vei» innenfor dette
   planTolMm: 300,          // … og ligger i samme plan innenfor dette
   minFlateBjelker: 2,      // færre enn dette er et stag, ikke et takfall
@@ -831,6 +843,10 @@ export function flateFraGruppe(gruppe, o) {
   const v0 = Math.min(...vs) - vg, v1 = Math.max(...vs) + vg;
   const lengdeMm = u1 - u0, breddeMm = v1 - v0;
   const N = flateNormal({ ux: U.x, uy: U.y, uz: U.z });
+  // 🔻 For bratt til å være et tak — se maksFallGrader.
+  const fall = Math.abs(Math.asin(Math.max(-1, Math.min(1, U.y))) * 180 / Math.PI);
+  const maksFall = n(opp.maksFallGrader) > 0 ? n(opp.maksFallGrader) : 35;
+  if (fall > maksFall) return null;
   return {
     U, V, N, origo: p0, bjelker: B.length,
     u0, u1, v0, v1, lengdeMm: rund(lengdeMm), breddeMm: rund(breddeMm),
