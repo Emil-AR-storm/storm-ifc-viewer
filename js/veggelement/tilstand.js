@@ -24,6 +24,8 @@ import { byggAlleStabler, fjernGenerertMateriell, loesAlleJusteringer } from "./
 import { pekVegg, veggMedId } from "./juster.js";
 import { INNER_STD, lagretInner, skrivInner, tegnPanel } from "./panel.js";
 import { innerBaseY, innerMark } from "./innervegg.js";
+import { blikkJust } from "./blikk-just.js";
+import { takJust } from "./tak-just.js";
 
 // per modellfil — da kan det tegnes opp igjen uten å regne på nytt.
 export const swGroup = new THREE.Group();
@@ -533,15 +535,29 @@ export function oppsett() {
 
 
 // ---------- Tegning ----------
+// 🧲 EIES AV ET VERKTØY, IKKE AV TEGNINGEN.
+//
+// Markørgruppene til justeringsverktøyene bor i swGroup, men de er ikke
+// tegningens. Uten dette unntaket rev tegnAlt() markørene ut ved første drag,
+// og den blå markeringen ble borte for godt etter et sekund (Emils funn 02.09
+// på veggene — og nøyaktig det samme 22.09 i «Juster TRP»).
+//
+// REGELEN STÅR SOM ÉN FUNKSJON MED VILJE. Da den var fem løse if-er inne i
+// ryddTegning, ble to nye verktøy («Juster blikk» og «Juster TRP») bygget uten
+// at noen husket å legge til sin linje — og feilen fra 02.09 kom tilbake.
+// Her kan den også prøves direkte i en test; swGroup selv er 3D og kan ikke.
+export function eiesAvVerktoy(o) {
+  if (just && o === just.markorer) return true;
+  if (takJust && o === takJust.markorer) return true;
+  if (blikkJust && o === blikkJust.markorer) return true;
+  if (innerMark && (o === innerMark.merker || o === innerMark.forh)) return true;
+  if (finnMark && o === finnMark.gruppe) return true;
+  return false;
+}
+
 export function ryddTegning() {
   swGroup.children.slice().forEach(o => {
-    // Markeringsgruppa i justeringsmodus eies av justeringen, ikke av
-    // tegningen. Uten dette unntaket rev tegnAlt() den ut av swGroup ved
-    // første drag, og den blå markeringen ble borte for godt etter et
-    // sekund (Emils funn 02.09).
-    if (just && o === just.markorer) return;
-    if (innerMark && (o === innerMark.merker || o === innerMark.forh)) return;
-    if (finnMark && o === finnMark.gruppe) return;
+    if (eiesAvVerktoy(o)) return;
     o.traverse(m => {
       if (m.geometry) m.geometry.dispose();
       if (m.material) m.material.dispose();
