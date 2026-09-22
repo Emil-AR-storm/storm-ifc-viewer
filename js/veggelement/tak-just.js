@@ -20,8 +20,9 @@ import { tilMm, tilScene } from "./regler.js";
 import { lagret, skrivLagret, swGroup } from "./tilstand.js";
 import { tegnAlt } from "./tegning.js";
 import { snapKandidater, snapVerdi } from "../sw-tak.js";
+import { flettPaaNavn, spLes, spPaalogget, spSkriv } from "../sp-lager.js";
 
-export let takJust = null;   // { valgt: Set<id>, drar, markorer, legger } når aktiv
+export let takJust = null;   // { valgt: Set<id>, drar, markorer } når aktiv
 export function settTakJust(v) { takJust = v; }
 
 // Alle platene i 3D, slått opp på id. Tegningen fyller denne.
@@ -75,22 +76,47 @@ export function tegnTakJustBar(paaNytt) {
     (info ? ' <span style="color:var(--muted)">' +
       esc(t("Takflate {0} · {1} mm", (info.flate || 0) + 1, Math.round(info.lengdeMm || 0))) +
       '</span>' : "") + '</span>' +
-    '<button id="tjAv" style="padding:3px 10px"' + (n ? "" : " disabled") + '>' +
-      (avSlatt === n && n ? "👁 " + esc(t("Slå på")) : "🚫 " + esc(t("Slå av"))) + '</button>' +
+    // 🔄 EMIL 22.09: «vi fjerner Legg til plate og Slå av, og legger til en
+    // Del i to som klipper en TRP-plate i to på midten — samme måte som den
+    // vi bruker til veggelement i SW-generatoren.»
+    '<button id="tjDel" style="padding:3px 10px"' + (n ? "" : " disabled") + '>✂ ' +
+      esc(t("Del i to")) + '</button>' +
     '<label style="font-size:12px;display:flex;gap:4px;align-items:center">' + esc(t("Bredde (mm)")) +
       '<input id="tjBredde" type="number" step="10" min="0" style="width:82px;padding:2px 4px"' +
       (n ? "" : " disabled") + ' value="' + esc(String(breddeNaa(forste))) + '"></label>' +
-    '<button id="tjLegg" style="padding:3px 10px"' + (takJust.legger ? ' class="primary"' : "") + '>' +
-      '➕ ' + esc(t("Legg til plate")) + '</button>' +
     '<button id="tjNull" style="padding:3px 10px">' + esc(t("Nullstill")) + '</button>' +
     '<button id="tjFerdig" class="primary" style="padding:3px 10px">' + esc(t("Ferdig")) + '</button>';
-  $("tjAv").onclick = () => {
-    const pa = avSlatt === n && n;
-    for (const id of takJust.valgt) {
+  // ✂ DEL I TO. Plata klippes på midten, og de to halvdelene skjøtes med
+  // overlappen slik resten av taket gjør: den ØVRE lapper over den nedre,
+  // fordi vannet renner nedover. Til sammen dekker de nøyaktig det samme som
+  // den hele plata gjorde — ingen millimeter blir borte i klippet.
+  //
+  // Mekanikken er `ekstra`-lista, som allerede finnes: de to halvdelene er
+  // vanlige plater med egen id, og går gjennom samme justering, summering og
+  // tegning som de regnede. Originalen slås av. «Slå av» er borte som KNAPP,
+  // men flagget lever videre her — det er det som gjør klippet mulig.
+  if ($("tjDel")) $("tjDel").onclick = () => {
+    const ov = Math.max(0, n2(takOppsettNaa().endeOverlappMm));
+    const nye = [];
+    for (const id of [...takJust.valgt]) {
+      const d2 = takMeshPerId.get(id);
+      const i = d2 && d2.info;
+      if (!i || !tallEr(i.uFra) || !tallEr(i.uTil)) continue;
+      const a2 = Math.min(n2(i.uFra), n2(i.uTil)), b2 = Math.max(n2(i.uFra), n2(i.uTil));
+      const midt = (a2 + b2) / 2;
+      if (b2 - a2 < 400) continue;          // for kort til å klippe i to
       const j = b.just[id] || (b.just[id] = {});
-      if (pa) delete j.av; else j.av = true;
-      if (!Object.keys(j).length) delete b.just[id];
+      j.av = true;
+      for (const [uFra, uTil] of [[a2, midt], [Math.max(a2, midt - ov), b2]]) {
+        const nyId = "t:" + i.flate + ":delt:" + (b.nesteNr++);
+        b.ekstra.push({ id: nyId, fi: i.flate, vFra: Math.round(i.vFra),
+          breddeMm: Math.round(i.breddeMm), uFra: Math.round(uFra), uTil: Math.round(uTil) });
+        nye.push(nyId);
+      }
     }
+    if (!nye.length) return;
+    takJust.valgt.clear();
+    for (const id of nye) takJust.valgt.add(id);
     lagreOgTegn(paaNytt);
   };
   $("tjBredde").onchange = () => {
@@ -101,10 +127,6 @@ export function tegnTakJustBar(paaNytt) {
       if (!Object.keys(j).length) delete b.just[id];
     }
     lagreOgTegn(paaNytt);
-  };
-  $("tjLegg").onclick = () => {
-    takJust.legger = takJust.legger ? null : true;
-    tegnTakJustBar(paaNytt);
   };
   $("tjNull").onclick = () => {
     if (!confirm(t("Nullstille alle håndjusteringene av takplatene?"))) return;
@@ -159,7 +181,7 @@ export function startTakJuster(paaNytt) {
   tegnAlt();                       // meshene må bære id-ene før vi plukker
   const markorer = new THREE.Group();
   swGroup.add(markorer);
-  settTakJust({ valgt: new Set(), drar: null, markorer, legger: null, tegnPanel: paaNytt });
+  settTakJust({ valgt: new Set(), drar: null, markorer, tegnPanel: paaNytt });
   $("blikkPanel")?.classList.remove("open");
   tegnTakJustBar(paaNytt);
 }
@@ -184,7 +206,7 @@ export function pekTak(cx, cy) {
   return treff ? { id: treff.object.userData.trpId, punkt: treff.point } : null;
 }
 
-const n = (x) => Number(x) || 0;
+const n2 = (x) => Number(x) || 0;
 const tallEr = (x) => Number.isFinite(Number(x));
 
 // Takoppsettet uten å dra inn tak.js (som importerer denne fila).
@@ -199,6 +221,114 @@ function aserAbsFor(fi) {
   const F = (lagret && lagret.tak && lagret.tak.snap && lagret.tak.snap.flater) || [];
   const f = F[fi];
   return (f && Array.isArray(f.skjotU)) ? f.skjotU : [];
+}
+
+// ───────────────── 💾 LAGREDE TAKRESULTATER (Emil 22.09) ─────────────────
+//
+// Samme oppskrift som blikkets lagrede resultater: lokalt først, SharePoint
+// etterpå. Det som lagres er OPPSETTET og JUSTERINGENE — ikke platelengdene.
+// Lastes resultatet inn på et bygg som er endret siden, regnes platene på
+// nytt av dagens stål, og det er nettopp poenget med at taket følger stålet.
+export function takLagredeNokkel() { return "storm-ifc-tak-lagrede::" + S.fileName; }
+export const TAK_SP_MAPPE = "Tak-resultater";
+export function takSpFil() { return S.fileName + ".tak.json"; }
+export let takSpStatus = "av";
+
+export function lesTakLagredeRaa() {
+  try {
+    const l = JSON.parse(localStorage.getItem(takLagredeNokkel()) || "[]");
+    return Array.isArray(l) ? l : [];
+  } catch (_) { return []; }
+}
+export function lesTakLagrede() {
+  return lesTakLagredeRaa().filter(p => p && !p.slettet)
+    .sort((a, b) => String(b.endret || b.dato || "").localeCompare(String(a.endret || a.dato || "")));
+}
+export function skrivTakLagrede(liste) {
+  try { localStorage.setItem(takLagredeNokkel(), JSON.stringify(liste)); return true; }
+  catch (_) { return false; }
+}
+export function lagreTakBeggeSteder(liste, etterpa) {
+  if (!skrivTakLagrede(liste)) return false;
+  if (!spPaalogget()) { takSpStatus = "av"; return true; }
+  spSkriv(TAK_SP_MAPPE, takSpFil(), liste).then(res => {
+    takSpStatus = res.ok ? "ok" : "feil";
+    if (res.ok && res.liste) skrivTakLagrede(res.liste);
+    if (etterpa) etterpa();
+  });
+  return true;
+}
+export async function hentTakLagredeFraSp(etterpa) {
+  if (!spPaalogget()) { takSpStatus = "av"; return; }
+  const forFil = S.fileName;
+  const res = await spLes(TAK_SP_MAPPE, takSpFil());
+  if (S.fileName !== forFil) return;
+  takSpStatus = (res.status === "ok" || res.status === "tom") ? "ok" : "feil";
+  if (res.status === "ok" || res.status === "tom")
+    skrivTakLagrede(flettPaaNavn(lesTakLagredeRaa(), res.liste));
+  if (etterpa) etterpa();
+}
+export function takLagringsTekst() {
+  if (takSpStatus === "ok") return t("Lagres i SharePoint — alle med tilgang ser det samme.");
+  if (takSpStatus === "feil") return t("Får ikke kontakt med SharePoint. Lagres bare på denne maskinen inntil videre.");
+  return t("Lagres bare på denne maskinen. Logg inn i Biblioteket for å dele med de andre.");
+}
+function mittNavn() {
+  try {
+    const acc = S.msalApp && S.msalApp.getActiveAccount();
+    return (acc && (acc.name || acc.username)) || "";
+  } catch (_) { return ""; }
+}
+
+export function lagreTakResultat(navn, etterpa) {
+  const rent = String(navn || "").trim().slice(0, 60);
+  if (!rent) { alert(t("Gi resultatet et navn før du lagrer det.")); return; }
+  const b = tilstand();
+  if (!b || !b.pa) { alert(t("Trykk «Generer tak» først.")); return; }
+  const liste = lesTakLagredeRaa();
+  const fraFor = liste.findIndex(p => p.navn === rent);
+  if (fraFor >= 0 && !liste[fraFor].slettet
+      && !confirm(t("«{0}» finnes allerede. Skal den skrives over?", rent))) return;
+  const naa = new Date();
+  const post = { navn: rent, dato: naa.toISOString().slice(0, 10),
+    endret: naa.toISOString(), av: mittNavn(),
+    antall: Object.keys(b.just || {}).length + (b.ekstra || []).length,
+    data: JSON.parse(JSON.stringify({
+      oppsett: (lagret && lagret.takOppsett) || {},
+      tak: { pa: true, just: b.just, ekstra: b.ekstra, nesteNr: b.nesteNr } })) };
+  if (fraFor >= 0) liste[fraFor] = post; else liste.push(post);
+  if (!lagreTakBeggeSteder(liste, etterpa)) {
+    alert(t("Klarte ikke å lagre — nettleserens lagring er full. Slett et gammelt resultat og prøv igjen."));
+    return;
+  }
+  if (etterpa) etterpa();
+}
+
+export function lastInnTakResultat(navn, etterpa) {
+  const post = lesTakLagrede().find(p => p.navn === navn);
+  if (!post || !post.data || !lagret) return;
+  const d = JSON.parse(JSON.stringify(post.data));
+  if (d.oppsett) lagret.takOppsett = { ...(lagret.takOppsett || {}), ...d.oppsett };
+  const naa = tilstand() || {};
+  // 🔑 Øyeblikksbildet av takflatene (`snap`) hører til MODELLEN, ikke til
+  // det lagrede oppsettet — derfor beholdes dagens. Ellers ville et resultat
+  // lagret på ett bygg dratt med seg det andre byggets takflater.
+  lagret.tak = { pa: true, just: {}, ekstra: [], nesteNr: 1,
+    snap: naa.snap || null, materiellIder: naa.materiellIder || [],
+    ...(d.tak || {}), snapBehold: undefined };
+  lagret.tak.snap = naa.snap || null;
+  lagret.tak.materiellIder = naa.materiellIder || [];
+  skrivLagret();
+  tegnAlt();
+  if (etterpa) etterpa();
+}
+
+export function slettTakResultat(navn, etterpa) {
+  if (!confirm(t("Slette «{0}»?", navn))) return;
+  const liste = lesTakLagredeRaa().map(p => p.navn === navn
+    ? { navn: p.navn, slettet: true, endret: new Date().toISOString() } : p);
+  lagreTakBeggeSteder(liste, etterpa);
+  if (etterpa) etterpa();
 }
 
 // Posisjonen langs platas eget løp (u), i mm.
@@ -218,23 +348,6 @@ window.addEventListener("pointerdown", (e) => {
   if (!treff) { takJust.drar = null; return; }
   const b = tilstand();
   if (!b) return;
-  // ➕ LEGG TIL: ett trykk på en plate gir en ny plate ved siden av den
-  if (takJust.legger) {
-    const d = takMeshPerId.get(treff.id);
-    if (d && d.info) {
-      const i = d.info;
-      const nr = b.nesteNr++;
-      const id = "t:" + i.flate + ":lagt:" + nr;
-      b.ekstra.push({ id, fi: i.flate, vFra: Math.round(i.vFra + i.breddeMm),
-        breddeMm: Math.round(i.breddeMm), uFra: Math.round(i.uFra), uTil: Math.round(i.uTil) });
-      takJust.legger = null;
-      takJust.valgt.clear();
-      takJust.valgt.add(id);
-      lagreOgTegn(takJust.tegnPanel);
-    }
-    e.stopPropagation();
-    return;
-  }
   if (e.shiftKey) {
     if (takJust.valgt.has(treff.id)) takJust.valgt.delete(treff.id);
     else takJust.valgt.add(treff.id);
@@ -282,9 +395,9 @@ window.addEventListener("pointermove", (e) => {
     }
     const o = takOppsettNaa();
     const kand = snapKandidater(d.ende, aserAbsFor(fi), kanter, o.endeOverlappMm);
-    const raa = n(d.kantStart) + delta;
+    const raa = n2(d.kantStart) + delta;
     const snappet = snapVerdi(raa, kand, o.snapDragTolMm);
-    delta = Math.round(snappet - n(d.kantStart));
+    delta = Math.round(snappet - n2(d.kantStart));
   }
   for (const id of takJust.valgt) {
     const basis = d.base.get(id);

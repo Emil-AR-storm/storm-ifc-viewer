@@ -23,7 +23,9 @@ import { TAK_RADER, TAK_STD, bjelkeLinje, fallRetningFraBjelker, justerPlater, p
          platerPaFlate, roterFlater, skjotBjelker, takFlater, takRamme, takRektangel,
          takflaterFraBjelker, platerPaTaket, tilUV, fraUV, trpListe, takTotaler,
          indreAser, plateNokkel } from "../sw-tak.js";
-import { husTakMesh, nullstillTakMesh, startTakJuster, takJust } from "./tak-just.js";
+import { husTakMesh, nullstillTakMesh, startTakJuster, takJust,
+         lagreTakResultat, lastInnTakResultat, lesTakLagrede, slettTakResultat,
+         takLagringsTekst } from "./tak-just.js";
 import { soyleTypeNavn, takLinje, tilMm, tilScene } from "./regler.js";
 import { allElementBoxes, forHverTrekant } from "../elements.js";
 import { lagret, skrivLagret, swGroup } from "./tilstand.js";
@@ -43,6 +45,7 @@ export const TAK_FELT = [
   ["skrueAvstandMm", "Skrueavstand i skjøt (mm)"],
   ["plateOverMm", "Platene over bjelka (mm)"],
   ["skjotPlanTolMm", "Hvor nær flata en ås må ligge (mm)"],
+  ["maksFallGrader", "Bratteste tak (grader)"],
   ["flattFallProsent", "Fall på flatt tak (%)"]
 ];
 
@@ -465,17 +468,34 @@ function merkPlate(data, flate, naa, kode, legg) {
   const lengde = Math.abs(Number(naa.uTil) - Number(naa.uFra));
   const bredde = Number(naa.breddeMm) || 0;
   if (!(lengde > 0) || !(bredde > 0)) return;
+  // 🔎 EMILS FUNN 22.09 (bilde 1–3): «skriften står vertikalt GJENNOM
+  // TRP-plata i stedet for oppå flaten.»
+  //
+  // Basisen var (V, U, N) rett fra flata. Etter «Roter takflata 90°» bytter
+  // U og V plass — og å bytte to akser SNUR HÅNDSVINGEN. Matrisen fikk
+  // determinant −1, altså en speiling, og `setFromRotationMatrix` er ikke
+  // definert for speilinger: den ga en tilfeldig rotasjon, og dekalen stilte
+  // seg på høykant tvers gjennom plata.
+  //
+  // Nå regnes den tredje aksen ut av de to andre i stedet for å antas.
+  // Kryssproduktet er høyrehendt per definisjon, så en speiling kan ikke
+  // oppstå. Peker resultatet ned i taket, snus X — da står teksten fortsatt
+  // oppover fallet, men vi ser den fra oversiden.
+  const aX = new THREE.Vector3(V.x, V.y, V.z).normalize();
+  const aY = new THREE.Vector3(U.x, U.y, U.z).normalize();
+  const aZ = new THREE.Vector3().crossVectors(aX, aY).normalize();
+  if (aZ.dot(new THREE.Vector3(N.x, N.y, N.z)) < 0) {
+    aX.negate();
+    aZ.crossVectors(aX, aY).normalize();
+  }
   const kvat = new THREE.Quaternion().setFromRotationMatrix(
-    new THREE.Matrix4().makeBasis(
-      new THREE.Vector3(V.x, V.y, V.z),
-      new THREE.Vector3(U.x, U.y, U.z),
-      new THREE.Vector3(N.x, N.y, N.z)));
+    new THREE.Matrix4().makeBasis(aX, aY, aZ));
   const uMid = (Number(naa.uFra) + Number(naa.uTil)) / 2;
   const sett = (m, uMm, vMm) => {
     const p = P(data, uMm, vMm, 0, flate);
     // litt over platas overside, ellers kjemper teksten med bølgeblikket
     const løft = tilScene(6);
-    m.position.set(p.x + N.x * løft, p.y + N.y * løft, p.z + N.z * løft);
+    m.position.set(p.x + aZ.x * løft, p.y + aZ.y * løft, p.z + aZ.z * løft);
     m.quaternion.copy(kvat);
     m.renderOrder = 3;
     legg(m);
@@ -720,10 +740,33 @@ export function takPanelHtml() {
       esc(t("Last ned liste (Excel)")) + "</button>" +
     "<button id='takFjern'" + (pa ? "" : " disabled") + ">" + ikon("slett") + " " +
       esc(t("Fjern genererte")) + "</button></div>" +
+    takLagredeHtml() +
     (pa ? "<p class='hint'>" + esc(antJust
             ? t("Taket er generert og følger stålet. {0} håndjusteringer ligger OPPÅ det regnede — de er grunnen hvis platelengdene ikke er de du taster.", antJust)
             : t("Taket er generert og følger stålet av seg selv.")) + "</p>"
         : "<p class='hint'>" + esc(t("Trykk «Generer tak» for å legge takflata på bygget.")) + "</p>");
+}
+
+// 💾 Lagrede takresultater — samme seksjon som blikket har (Emil 22.09).
+function takLagredeHtml() {
+  const lagrede = lesTakLagrede();
+  return "<h4 data-sek='taklagrede' style='margin:14px 0 4px'>" + esc(t("Lagrede takresultater")) + "</h4>" +
+    "<p class='hint'>" + esc(t("Gi oppsettet et navn og lagre det. Trykk på navnet senere for å legge samme platelengder og håndjusteringer på bygget igjen.")) + "</p>" +
+    "<p class='hint'>" + esc(takLagringsTekst()) + "</p>" +
+    "<div class='prop-actions sw-lagre'>" +
+      "<input type='text' id='takLagreNavn' maxlength='60' placeholder='" +
+      esc(t("Navn på resultatet")) + "'>" +
+      "<button id='takLagreBtn'>" + ikon("lagre") + " " + esc(t("Lagre")) + "</button></div>" +
+    (lagrede.length
+      ? lagrede.map(pst =>
+        "<div class='qty-row'><div class='n' style='font-size:12px'>" +
+          "<button class='sw-last' data-tak-last='" + esc(pst.navn) + "'>" + esc(pst.navn) + "</button>" +
+          " <span style='color:var(--muted);font-size:11px'>" +
+          esc([pst.dato, pst.antall ? t("{0} justeringer", pst.antall) : "", pst.av || ""].filter(Boolean).join(" · ")) +
+          "</span></div>" +
+        "<div class='c'><button data-tak-slett='" + esc(pst.navn) + "' title='" + esc(t("Slett")) +
+        "' style='padding:3px 8px'>" + ikon("slett") + "</button></div></div>").join("")
+      : "<p class='hint'>" + esc(t("Ingen lagrede resultater ennå.")) + "</p>");
 }
 
 // Åsene, i klartekst: hvor stabelen kan skjøtes, og hva som skjer når det
@@ -853,6 +896,12 @@ export function koblTakPanel(paaNytt) {
     if (paaNytt) paaNytt();
   };
   if ($("takListe")) $("takListe").onclick = lastNedTakListe;
+  if ($("takLagreBtn")) $("takLagreBtn").onclick = () =>
+    lagreTakResultat(($("takLagreNavn") || {}).value, paaNytt);
+  (document).querySelectorAll("button[data-tak-last]").forEach(b2 =>
+    b2.onclick = () => lastInnTakResultat(b2.dataset.takLast, paaNytt));
+  (document).querySelectorAll("button[data-tak-slett]").forEach(b2 =>
+    b2.onclick = () => slettTakResultat(b2.dataset.takSlett, paaNytt));
 }
 
 // 📊 Arket «Tak». Samme form som «Blikk» og «Materiell».
