@@ -1418,6 +1418,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Fant ikke stål å bygge takflata av. Taket bygges av de øverste bjelkene.": "Nerasta plieno stogo plokštumai sudaryti. Stogas formuojamas iš viršutinių sijų.",
   "Taket er flatt. Fallretningen settes nedenfor, og fallprosenten bestemmer hvor mye det heller.": "Stogas plokščias. Nuolydžio kryptis nustatoma žemiau, o nuolydžio procentas lemia pasvirimą.",
   "Fallet leses av gavlfasaden — {0} mm fra raft til møne.": "Nuolydis nuskaitomas iš skydinio fasado — {0} mm nuo karnizo iki kraigo.",
+  "Ytterste kant står udekket med {0} mm. Resten er smalere enn én bølge og kan ikke lappes over naboplata — det meste av den er utstikket på flata.": "Išorinis kraštas lieka nepadengtas {0} mm. Likutis siauresnis nei viena banga ir negali būti uždėtas ant gretimo lakšto — didesnė jo dalis yra plokštumos iškiša.",
   "{0} plater blir kortere enn 500 mm. Platelengdene går ikke opp med overlappen — juster stabelen.": "{0} lakštai trumpesni nei 500 mm. Lakštų ilgiai nesutampa su užlaida — pakoreguokite rinkinį.",
   "Platene": "Lakštai",
   "stk": "vnt.",

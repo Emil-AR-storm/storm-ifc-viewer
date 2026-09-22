@@ -443,7 +443,21 @@ export function platerNedFall(fallengdeMm, o) {
   const over = dekket - L;
   if (over > 0) {
     const ny = dekning[0] - over;
-    if (ny > 20) dekning[0] = Math.round(ny);
+    // 🔎 EMILS FUNN 22.09 (bilde 2–5): «det kommer veldig smale TRP-plater
+    // på enden selv om det allerede ligger en full lengde som går helt ut.»
+    //
+    // På Sundland: fall 54 115,7 mm og stabelen «6000». Ti plater dekker
+    // 60 000, og resten — 115,7 mm — ble stående igjen som den nederste
+    // «plata». Den ble merket `kort`, men den ble også tegnet og bestilt.
+    // 115 mm er ikke en plate, det er en strimmel ingen monterer.
+    //
+    // Nå slås en rest under MIN_PLATE_MM sammen med plata OVER seg i stedet.
+    // Da blir den nederste plata 6 116 i stedet for 6 000 + 116, dekningen er
+    // nøyaktig den samme, og kappet ligger fortsatt ved gesimsen — der Emil
+    // valgte at det skulle ligge 18.09.
+    if (ny >= MIN_PLATE_MM) dekning[0] = Math.round(ny);
+    else if (dekning.length > 1) { dekning.shift(); dekning[0] = Math.round(dekning[0] + ny); }
+    else if (ny > 20) dekning[0] = Math.round(ny);
     else dekning.shift();
   }
   if (!dekning.length) return [];
@@ -578,7 +592,21 @@ export function platerPaFlate(flate, o) {
   const pb = Math.max(50, n(opp.trpBreddeMm));
   if (!(bredde > 0) || !(fall > 0)) return null;
   const hele = Math.floor(bredde / pb);
-  const rest = Math.round(bredde - hele * pb);
+  let rest = Math.round(bredde - hele * pb);
+  // 🔎 EMILS FUNN 22.09: en 147 mm strimmel langs kanten, ved siden av en
+  // plate som allerede når helt ut.
+  //
+  // SIDEOVERLAPPEN ER ÉN BØLGE (prosedyren, steg 2). En strimmel smalere enn
+  // én bølge kan derfor ikke legges: det finnes ingen bølge å lappe den over
+  // naboen med. På Sundland var resten 147 og 153 mm mot en bølge på 206 —
+  // og 100 av dem er utstikket (50 mm i hver ende) som er lagt på flata, altså
+  // ikke tak i det hele tatt.
+  //
+  // Resten blir derfor ikke en egen plate. Den står igjen som `restMm` slik at
+  // panelet kan si hvor mye kanten mangler — skjult blir den ikke.
+  const minRest = Math.max(20, n(opp.trpBolgeMm));
+  const restUtenfor = rest > 0 && rest <= minRest ? rest : 0;
+  if (restUtenfor) rest = 0;
   let nedFall = platerNedFall(fall, opp);
   // 🔩 Skjøtene ned på åsene (Emil 21.09) — men BARE når Emil ikke har tastet
   // lengdene selv.
@@ -603,17 +631,42 @@ export function platerPaFlate(flate, o) {
     s2 += dek;
     return { ...p, uFra: rund(bunn), uTil: rund(topp) };
   });
+  // 🏔 RADENE LEGGES FRA DEN HØYE ENDEN (Emils funn 22.09, bilde 1):
+  // «bølgene på takplatene på begge sider av mønet er ikke flush med
+  // hverandre.»
+  //
+  // Radene startet i v0, altså ved gesimsen, og den kappede strimmelen havnet
+  // ØVERST — rett i mønet, der de to takhalvdelene møtes og alt sees. De to
+  // sidene fikk hver sin strimmelbredde (147 og 153), og bølgene møttes derfor
+  // aldri.
+  //
+  // Nå legges radene fra MØNET og nedover. Begge sider starter med en hel
+  // plate i samme linje, bølgene står i takt over mønet, og kappet havner ved
+  // gesimsen — samme valg som Emil tok for lengderetningen 18.09.
+  //
+  // Bare når V faktisk bærer fallet (etter «Roter takflata 90°»). Står V
+  // vannrett, er det ingen høy ende å legge fra, og radene ligger som før.
+  const vHoy = n(flate.V && flate.V.y);
+  const fraMonet = vHoy > 1e-6;
   const rader = [];
-  for (let i = 0; i < hele; i++)
-    rader.push({ vFra: rund(flate.v0 + i * pb), breddeMm: pb, kappetBredde: false, plater: medU });
-  if (rest > 20)
-    rader.push({ vFra: rund(flate.v0 + hele * pb), breddeMm: rest, kappetBredde: true, plater: medU });
+  if (fraMonet) {
+    for (let i = 0; i < hele; i++)
+      rader.push({ vFra: rund(n(flate.v1) - (i + 1) * pb), breddeMm: pb, kappetBredde: false, plater: medU });
+    if (rest > 20)
+      rader.push({ vFra: rund(flate.v0), breddeMm: rest, kappetBredde: true, plater: medU });
+  } else {
+    for (let i = 0; i < hele; i++)
+      rader.push({ vFra: rund(flate.v0 + i * pb), breddeMm: pb, kappetBredde: false, plater: medU });
+    if (rest > 20)
+      rader.push({ vFra: rund(flate.v0 + hele * pb), breddeMm: rest, kappetBredde: true, plater: medU });
+  }
+  rader.sort((a, b) => a.vFra - b.vFra);
   // skjøter: én endeskjøt mindre enn antall plater, per rad
   const endeskjoter = rader.length * Math.max(0, nedFall.length - 1);
   // sideskjøter: én mellom hvert par naborader
   const sideskjoter = Math.max(0, rader.length - 1);
   return {
-    ...flate, rader,
+    ...flate, rader, restMm: restUtenfor,
     antallPlater: rader.reduce((a, r) => a + r.plater.length, 0),
     endeskjoter, sideskjoter,
     // skjøtlengde i lm: sideskjøtene løper ned fallet, endeskjøtene langs mønet
@@ -924,9 +977,78 @@ export function skjotBjelker(flate, linjer, o) {
   return samlet;
 }
 
+// ═══════ 🏔 MØNET: TO TAKHALVDELER SOM FAKTISK MØTES ═══════
+//
+// 🔎 EMILS FUNN 22.09 (bilde 1): «bølgene på TRP-platene på begge sidene av
+// taket er ikke flush med hverandre.»
+//
+// Målt på hans egen lagring for Sundland: den ene takhalvdelen rakk til
+// z = 12 071, den andre til z = 11 901. De to flatene OVERLAPPET hverandre med
+// 170 mm i mønet — begge la plater i det samme feltet, i hver sin bølgetakt.
+//
+// 100 av de 170 er `utstikkGesimsMm`: flateFraGruppe legger utstikket på BEGGE
+// ender av fallet. Nede ved gesimsen er det riktig. Oppe i mønet er det ikke
+// et utstikk i det hele tatt — der møter taket det andre taket. De siste
+// 70 mm er modellen selv: sperrene er tegnet med endene sine litt forbi
+// hverandre i mønet.
+//
+// Her klippes derfor den HØYE enden av hver flate til der de to planene
+// KRYSSER hverandre — den ekte mønelinja. Da møtes halvdelene i én linje, og
+// når radene i tillegg legges fra mønet (se platerPaFlate), står bølgene i
+// takt over mønet.
+//
+// Bare flater som faller MOT hverandre klippes: U-ene må peke motsatt vei
+// (innenfor `retningTolGrader`), og krysset må ligge nær den høye enden som
+// er der fra før. En valm har hipp på skrå av U og røres ikke — den trimmes
+// som før av flateEier, plate for plate.
+export function klippMoner(flater, o) {
+  const opp = { ...TAK_STD, ...(o || {}) };
+  const F = (flater || []).filter(Boolean);
+  if (F.length < 2) return F;
+  const ug = Math.max(0, n(opp.utstikkGesimsMm));
+  const slark = Math.max(10, n(opp.valmTolMm));
+  const naer = 2 * ug + slark;
+  const motsatt = -Math.cos(Math.max(0, n(opp.retningTolGrader)) * Math.PI / 180);
+  return F.map((f, fi) => {
+    if (!f.U || !f.V || !f.origo) return f;
+    const opp2 = n(f.U.y) >= 0;                     // høy ende er u1 når U peker opp
+    const uH = opp2 ? n(f.u1) : n(f.u0);
+    const vm = (n(f.v0) + n(f.v1)) / 2;
+    let beste = null;
+    for (let gi = 0; gi < F.length; gi++) {
+      if (gi === fi) continue;
+      const g = F[gi];
+      if (!g.U || !g.origo) continue;
+      if (f.U.x * g.U.x + f.U.y * g.U.y + f.U.z * g.U.z > motsatt) continue;
+      // høydene langs linja v = vm er begge rette i u — to prøver holder
+      const h = (u) => {
+        const pt = punktPaFlate(f, u, vm);
+        const hg = planHoydeVed(g, pt.x, pt.z);
+        return hg === null ? null : [pt.y, hg];
+      };
+      const a = h(uH), b = h(uH - 1000);
+      if (!a || !b) continue;
+      const d1 = a[0] - a[1], d0 = b[0] - b[1];
+      if (!(Math.abs(d1 - d0) > 1e-9)) continue;    // planene er parallelle
+      const uK = uH - 1000 + 1000 * (0 - d0) / (d1 - d0);
+      // krysset må ligge ved den høye enden, ikke midt inne på taket
+      const inn = opp2 ? uH - uK : uK - uH;
+      if (!(inn > -slark && inn < naer)) continue;
+      if (beste === null || Math.abs(uK - uH) < Math.abs(beste - uH)) beste = uK;
+    }
+    if (beste === null) return f;
+    const u0 = opp2 ? n(f.u0) : rund(beste);
+    const u1 = opp2 ? rund(beste) : n(f.u1);
+    const lengdeMm = rund(u1 - u0);
+    if (!(lengdeMm > 0)) return f;
+    return { ...f, u0, u1, lengdeMm, moneKlipp: rund(Math.abs(beste - uH)),
+      arealM2: rund(lengdeMm * n(f.breddeMm) / 1e6) };
+  });
+}
+
 // Hele taket: bjelkelinjene inn, ferdige takflater ut.
 export function takflaterFraBjelker(linjer, o) {
-  return grupperBjelker(linjer, o).map(g => flateFraGruppe(g, o)).filter(Boolean)
+  return klippMoner(grupperBjelker(linjer, o).map(g => flateFraGruppe(g, o)).filter(Boolean), o)
     .sort((a, b) => b.arealM2 - a.arealM2);
 }
 
