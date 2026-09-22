@@ -21,6 +21,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "TRP takplate": "Blacha trapezowa TRP",
   "Sandwichpanel": "Płyta warstwowa",
   "Kassett forskaling": "Płyta szalunkowa",
+  "Maks avstand mellom sperrer (mm)": "Maks. odstęp między krokwiami (mm)",
   "Bratteste tak (grader)": "Najbardziej stromy dach (stopnie)",
   "Lagrede takresultater": "Zapisane wyniki dachu",
   "Gi oppsettet et navn og lagre det. Trykk på navnet senere for å legge samme platelengder og håndjusteringer på bygget igjen.": "Nadaj ustawieniu nazw\u0119 i zapisz je. Kliknij nazw\u0119 p\u00f3\u017aniej, aby ponownie na\u0142o\u017cy\u0107 te same d\u0142ugo\u015bci blach i korekty.",
