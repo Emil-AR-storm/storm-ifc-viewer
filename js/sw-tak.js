@@ -720,8 +720,11 @@ export function trpListe(flater, o, medPlaterInn) {
       // ikke havne i samme bunke hvis den ene raden tilfeldigvis var merket
       // kappet. Nå står begge målene alltid, slik Emil selv skriver dem
       // («4853 x 5552»), og like plater er per definisjon samme vare.
-      const navn = plateNokkel(p.lengdeMm, r.breddeMm);
-      const e = perType.get(navn) || { navn, lengdeMm: p.lengdeMm, breddeMm: r.breddeMm, antall: 0 };
+      const navn = plateNokkel(p.lengdeMm, r.breddeMm, p);
+      const e = perType.get(navn) || { navn, lengdeMm: p.lengdeMm, breddeMm: r.breddeMm,
+        antall: 0, skra: !!p.skra,
+        lengdeVMm: p.lengdeVMm, lengdeHMm: p.lengdeHMm,
+        vinkel: p.skra ? vinkelTekstTak(p.vinkel) : "" };
       e.antall++;
       perType.set(navn, e);
       antall++;
@@ -749,8 +752,14 @@ export function trpListe(flater, o, medPlaterInn) {
 
 // Nøkkelen en plate slås opp under — samme streng som navnet i lista, slik at
 // merkingen i 3D og bunken på bakken aldri kan bli to forskjellige varer.
-export function plateNokkel(lengdeMm, breddeMm) {
-  return "TRP " + Math.round(n(lengdeMm)) + " × " + Math.round(n(breddeMm));
+export function plateNokkel(lengdeMm, breddeMm, plate) {
+  // ✂ Et skråkappet plate er ikke samme vare som et rett. Begge endemålene
+  // står i navnet, i den rekkefølgen de ligger på taket — to speilvendte kapp
+  // er heller ikke samme vare. Samme regel som veggelementene har (regler.js).
+  const L = plate && plate.skra
+    ? Math.round(n(plate.lengdeVMm)) + "/" + Math.round(n(plate.lengdeHMm))
+    : String(Math.round(n(lengdeMm)));
+  return "TRP " + L + " × " + Math.round(n(breddeMm));
 }
 
 // Radene i arket «Tak».
@@ -916,6 +925,26 @@ export function flateFraGruppe(gruppe, o) {
   const ug = n(opp.utstikkGesimsMm), vg = n(opp.utstikkGavlMm);
   const u0 = Math.min(...us) - ug, u1 = Math.max(...us) + ug;
   const v0 = Math.min(...vs) - vg, v1 = Math.max(...vs) + vg;
+  // 📐 KANTLINJENE: hvor langt taket FAKTISK rekker ved hver v.
+  //
+  // 🔎 EMILS FUNN 22.09 (bilde 3–5, bygg med skrå vegg): «vi må legge inn at
+  // TRP-plater også stopper på enden av skrå toppbjelker.»
+  //
+  // Rektangelet u0…u1 er det MINSTE som rommer alle sperrene. Står sperrene
+  // like lange, er rektangelet taket. Trappes de ned mot en skrå vegg, er det
+  // ikke det — og platene ble lagt ut i luft.
+  //
+  // Hver sperre gir étt punkt på hver kant: [v, u]. Kantene er altså taket sin
+  // egen omriss, ikke en antagelse om at det er firkantet.
+  const kantLav = [], kantHoy = [];
+  for (const a of B) {
+    const L = uv(a.lav), H = uv(a.hoy);
+    const vm = rund((L[1] + H[1]) / 2);
+    kantLav.push([vm, rund(Math.min(L[0], H[0]) - ug)]);
+    kantHoy.push([vm, rund(Math.max(L[0], H[0]) + ug)]);
+  }
+  kantLav.sort((a, b) => a[0] - b[0]);
+  kantHoy.sort((a, b) => a[0] - b[0]);
   const lengdeMm = u1 - u0, breddeMm = v1 - v0;
   const N = flateNormal({ ux: U.x, uy: U.y, uz: U.z });
   // 🔻 For bratt til å være et tak — se maksFallGrader.
@@ -923,7 +952,7 @@ export function flateFraGruppe(gruppe, o) {
   const maksFall = n(opp.maksFallGrader) > 0 ? n(opp.maksFallGrader) : 35;
   if (fall > maksFall) return null;
   return {
-    U, V, N, origo: p0, bjelker: B.length,
+    U, V, N, origo: p0, bjelker: B.length, kantLav, kantHoy,
     u0, u1, v0, v1, lengdeMm: rund(lengdeMm), breddeMm: rund(breddeMm),
     fallGrader: rund(Math.asin(Math.max(-1, Math.min(1, U.y))) * 180 / Math.PI),
     arealM2: rund(lengdeMm * breddeMm / 1e6)
@@ -955,7 +984,9 @@ export function roterFlate(f) {
     // skjøtlinjene hører til den GAMLE retningen og gjelder ikke lenger — og det
     // gjør radrutenettet også. Etter en rotasjon legges radene fra mønet, og da
     // møtes de to halvdelene uten et delt anker.
-    skjotU: undefined, radAnker: undefined
+    skjotU: undefined, radAnker: undefined,
+    // kantlinjene er målt langs U og gjelder ikke når U og V bytter plass
+    kantLav: undefined, kantHoy: undefined
   };
 }
 export function roterFlater(flater) { return (flater || []).map(roterFlate); }
@@ -999,6 +1030,37 @@ export function skjotBjelker(flate, linjer, o) {
   const samlet = [];
   for (const u of ut) if (!samlet.length || u - samlet[samlet.length - 1] > planTol) samlet.push(u);
   return samlet;
+}
+
+// Hvor langt rekker taket ved v? Rett interpolasjon mellom sperrene, klamret
+// utenfor den ytterste. Kanten er en polylinje [[v, u], …] sortert på v.
+export function kantU(kant, v) {
+  const K = Array.isArray(kant) ? kant : null;
+  if (!K || !K.length) return null;
+  const x = n(v);
+  if (K.length === 1 || x <= n(K[0][0])) return n(K[0][1]);
+  const siste = K[K.length - 1];
+  if (x >= n(siste[0])) return n(siste[1]);
+  for (let i = 1; i < K.length; i++) {
+    const a = K[i - 1], b = K[i];
+    if (x > n(b[0])) continue;
+    const d = n(b[0]) - n(a[0]);
+    return d > 1e-9 ? n(a[1]) + (n(b[1]) - n(a[1])) * (x - n(a[0])) / d : n(b[1]);
+  }
+  return n(siste[1]);
+}
+
+// Vinkelen på et skråkapp, i grader med én desimal. Samme formel som
+// skraVinkel() i js/veggelement/regler.js bruker på veggelementene — den er
+// skrevet opp igjen her fordi sw-tak.js ikke importerer noe.
+export function kappVinkel(breddeMm, aMm, bMm) {
+  const L = Math.abs(n(breddeMm));
+  if (!L) return 0;
+  return Math.round(Math.atan2(Math.abs(n(bMm) - n(aMm)), L) * 1800 / Math.PI) / 10;
+}
+
+export function vinkelTekstTak(grader) {
+  return (n(grader)).toFixed(1).replace(".", ",") + "\u00b0";
 }
 
 // ═══════ 🏔 MØNET: TO TAKHALVDELER SOM FAKTISK MØTES ═══════
@@ -1065,7 +1127,14 @@ export function klippMoner(flater, o) {
     const u1 = opp2 ? rund(beste) : n(f.u1);
     const lengdeMm = rund(u1 - u0);
     if (!(lengdeMm > 0)) return f;
+    // kantlinja i den enden følger med inn til mønet — ellers ville platene
+    // fortsatt blitt kappet mot den gamle, for lange kanten
+    const klipp = (kant, tak) => Array.isArray(kant)
+      ? kant.map(([v, u]) => [v, tak ? Math.min(n(u), rund(beste)) : Math.max(n(u), rund(beste))])
+      : kant;
     return { ...f, u0, u1, lengdeMm, moneKlipp: rund(Math.abs(beste - uH)),
+      kantHoy: opp2 ? klipp(f.kantHoy, true) : f.kantHoy,
+      kantLav: opp2 ? f.kantLav : klipp(f.kantLav, false),
       arealM2: rund(lengdeMm * n(f.breddeMm) / 1e6) };
   });
 }
@@ -1097,9 +1166,13 @@ export function ensrettFlater(flater) {
     if (Math.abs(n(f.V.y)) > 1e-6) return f;          // V bærer fallet — la den stå
     const kanonisk = Math.abs(n(f.V.x)) > 1e-6 ? n(f.V.x) > 0 : n(f.V.z) >= 0;
     if (kanonisk) return f;
+    const snu = (kant) => Array.isArray(kant)
+      ? kant.map(([v, u]) => [rund(-n(v)), n(u)]).sort((a, b) => a[0] - b[0])
+      : kant;
     return { ...f, speilet: true,
       V: { x: -n(f.V.x), y: -n(f.V.y), z: -n(f.V.z) },
-      v0: rund(-n(f.v1)), v1: rund(-n(f.v0)) };
+      v0: rund(-n(f.v1)), v1: rund(-n(f.v0)),
+      kantLav: snu(f.kantLav), kantHoy: snu(f.kantHoy) };
   });
 }
 
@@ -1260,6 +1333,62 @@ export function flateEier(flater, fi, x, z, tolMm) {
   return true;
 }
 
+// ═════ ✂ PLATENE KAPPES MOT SKRÅ TOPPBJELKER (Emil 22.09) ═════
+//
+// «vi må legge inn at TRP-plater også stopper på enden av skrå toppbjelker, og
+// da er det viktig at det også vises gradene på kappet.»
+//
+// Valmtrimmingen under kaster HELE plater som ligger utenfor. Det er riktig
+// der to takflater krysser hverandre. Men en skrå vegg gir ingen kryssende
+// flate — den gir en takflate som er kortere i den ene enden enn i den andre,
+// og da skal plata KAPPES, ikke kastes.
+//
+// Kappet leses av kantlinjene (se flateFraGruppe): hvor langt sperrene rekker
+// ved hver v. En plate som ligger med den ene kanten på 6 150 og den andre på
+// 5 400 får begge målene OG vinkelen — nøyaktig de tre tallene verkstedet
+// trenger, og nøyaktig slik veggelementene har gjort det siden 08.09
+// («5980×1100/460MM 6,1°»).
+export function kappMotKant(f, o) {
+  const opp = { ...TAK_STD, ...(o || {}) };
+  if (!f || (!Array.isArray(f.kantLav) && !Array.isArray(f.kantHoy))) return f;
+  const tol = 5;
+  const rader = (f.rader || []).map(r => {
+    const vA = n(r.vFra), vB = vA + n(r.breddeMm);
+    const hA = kantU(f.kantHoy, vA), hB = kantU(f.kantHoy, vB);
+    const lA = kantU(f.kantLav, vA), lB = kantU(f.kantLav, vB);
+    const plater = [];
+    for (const p of r.plater || []) {
+      // 1 mm slark: kantlinja er lest av bjelkeendene og platelengdene er
+      // avrundet til hele mm. Uten slarken hadde et helt rett tak fått
+      // platene knabbet 0,1 mm — en «kapping» ingen har bedt om.
+      const klipp = (u, k, ned) => k === null ? n(u)
+        : (ned ? (n(u) - k > 1 ? k : n(u)) : (k - n(u) > 1 ? k : n(u)));
+      const tA = klipp(p.uTil, hA, true), tB = klipp(p.uTil, hB, true);
+      const fA = klipp(p.uFra, lA, false), fB = klipp(p.uFra, lB, false);
+      const a = tA - fA, b = tB - fB;
+      // ingen av kantene har tak her — da er det ikke en plate
+      if (!(a > 20) && !(b > 20)) continue;
+      const ny = { ...p, uFra: rund(Math.min(fA, fB)), uTil: rund(Math.max(tA, tB)) };
+      ny.lengdeMm = Math.round(Math.max(a, b));
+      if (Math.abs(a - b) > tol) {
+        ny.skra = true;
+        ny.lengdeVMm = Math.round(Math.max(0, a));
+        ny.lengdeHMm = Math.round(Math.max(0, b));
+        ny.uFraA = rund(fA); ny.uFraB = rund(fB);
+        ny.uTilA = rund(tA); ny.uTilB = rund(tB);
+        ny.vinkel = kappVinkel(n(r.breddeMm), a, b);
+      } else {
+        delete ny.skra; delete ny.lengdeVMm; delete ny.lengdeHMm;
+        delete ny.uFraA; delete ny.uFraB; delete ny.uTilA; delete ny.uTilB;
+        delete ny.vinkel;
+      }
+      plater.push(ny);
+    }
+    return { ...r, plater };
+  }).filter(r => r.plater.length);
+  return { ...f, rader };
+}
+
 // Hele taket med platene trimmet mot valmene. ÉN funksjon, brukt av både lista
 // og tegningen — da kan de to per definisjon ikke komme i utakt.
 export function platerPaTaket(flater, o) {
@@ -1279,7 +1408,7 @@ export function platerPaTaket(flater, o) {
     })).filter(r => r.plater.length);
     // Summene regnes av summerFlate — samme funksjon som håndjusteringen
     // bruker, så de to kan ikke komme i utakt.
-    return summerFlate({ ...f, rader }, opp);
+    return summerFlate(kappMotKant({ ...f, rader }, opp), opp);
   }).filter(f => f.antallPlater > 0);
 }
 
@@ -1372,7 +1501,15 @@ export function justerPlater(medPlater, just, ekstra, o) {
         if (j.av) continue;
         const [uFra, uTil] = paaFlata(f, n(p.uFra) - n(j.dFra), n(p.uTil) + n(j.dTil));
         if (uTil - uFra <= 20) continue;
-        plater.push({ ...p, id, uFra: rund(uFra), uTil: rund(uTil),
+        // ✂ Har Emil dratt i plata, er HANS lengde fasit — da er det ikke lenger
+        // kantlinja som bestemmer, og skråkappet følger ikke med.
+        const dratt = tallEr(j.dFra) || tallEr(j.dTil);
+        const rest = dratt
+          ? { ...p, skra: undefined, lengdeVMm: undefined, lengdeHMm: undefined,
+              uFraA: undefined, uFraB: undefined, uTilA: undefined, uTilB: undefined,
+              vinkel: undefined }
+          : p;
+        plater.push({ ...rest, id, uFra: rund(uFra), uTil: rund(uTil),
           lengdeMm: rund(uTil - uFra) });
       }
       return { ...r, breddeMm: rund(bredde), kappetBredde: r.kappetBredde ||
@@ -1421,8 +1558,12 @@ export function summerFlate(f, o) {
     endeskjoter += k;
     endeLm += k * n(r.breddeMm) / 1000;
   }
+  // ✂ Et skråkappet plate er et TRAPES: arealet regnes av middellengden, ikke
+  // av den lengste kanten. Ellers bestilles det for mye på hvert skråtak.
   const arealM2 = rund(rader.reduce((a, r) =>
-    a + r.plater.reduce((b, p) => b + (n(p.uTil) - n(p.uFra)) * n(r.breddeMm), 0), 0) / 1e6);
+    a + r.plater.reduce((b, p) => b + (p.skra
+      ? (n(p.lengdeVMm) + n(p.lengdeHMm)) / 2
+      : n(p.uTil) - n(p.uFra)) * n(r.breddeMm), 0), 0) / 1e6);
   return { ...f, rader, antallPlater: antall, endeskjoter, sideskjoter, arealM2,
     skjotLm: rund(sideLm + endeLm) };
 }
