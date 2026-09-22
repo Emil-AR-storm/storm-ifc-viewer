@@ -49,32 +49,9 @@ export const TAK_STD = {
   // 🔄 «Roter takflata 90°» (Emil 21.09, bilde 4)
   rotert: false,
   minHellingProsent: 0.5,  // en bjelke under dette «ligger ikke i fallet»
-  // 🔎 EMILS FUNN 22.09 (bilde 4–6): «taket legger seg på kryss og tvers på
-  // skråstiverne i fagverket i stedet for på toppen av bjelken.»
-  //
-  // Målt på hans egen lagring for Sundland: 25 «takflater» kom ut. De to
-  // ekte hadde fall 1,4° og 10 bjelker hver. De 23 andre hadde fall 43–46°
-  // og nøyaktig 2 bjelker — fagverkets skråstivere, som er parallelle to og
-  // to og ligger i samme plan, og derfor så ut som et takfall.
-  //
-  // Regelen er ikke en filtrering «for sikkerhets skyld», det er hva et tak
-  // ER: et tak heller så lite at vann renner av det, ikke 45°. Settbart,
-  // fordi et bratt tak finnes — men 43° er en skråstiver, ikke et tak.
-  maksFallGrader: 35,
-  // 📏 SPERRENE MÅ STÅ TÆTT NOK TIL Å BÆRE ET TAK (Emils funn 22.09).
-  //
-  // Målt på Valle: én av de fire «takflatene» var bygget av NØYAKTIG TO bjelker
-  // som sto 22 850 mm fra hverandre, med fall 32° og med bunnen fem meter
-  // under resten av taket. Det er et par skråstivere i fagverket — ikke et tak.
-  // Den ble likevel til en takflate på 207 m² som svevde ut i lufta ved siden
-  // av bygget, full av TRP-plater.
-  //
-  // maksFallGrader (35°) fanget den ikke, for 32° er innenfor. minFlateBjelker
-  // (2) fanget den ikke heller. Det som SKILLER er avstanden: på de tre ekte
-  // flatene på Valle står sperrene 5 188–8 029 mm fra hverandre. Ingen sperrer
-  // står 23 meter fra hverandre og bærer et tak — og står de likevel så, er
-  // det ingenting som bærer platene mellom dem.
-  maksSperreAvstandMm: 12000,
+  // ⬆ HVILKE BJELKER SOM ER TAK avgjøres av toppBjelker() — regel 1. Her
+  // står ingen vinkelgrense og ingen avstandsgrense lenger; begge var
+  // gjetninger på noe bjelkene selv vet.
   retningTolGrader: 5,     // to bjelker «peker samme vei» innenfor dette
   planTolMm: 300,          // … og ligger i samme plan innenfor dette
   minFlateBjelker: 2,      // færre enn dette er et stag, ikke et takfall
@@ -842,8 +819,128 @@ export function bjelkeLinje(punkter) {
   return {
     lav, hoy, lengdeMm: lengde,
     ux: lx / lengde, uy: ly / lengde, uz: lz / lengde,     // opp fallet, i rommet
-    helling: vannrett > 0 ? ly / vannrett : 0
+    helling: vannrett > 0 ? ly / vannrett : 0,
+    // 👣 FOTAVTRYKKET I PLAN. Råpunktene er der allerede — takBjelkeLinjer()
+    // samler opptil 600 per bjelke — men bare senterlinja har vært brukt.
+    // Fotavtrykket er det regel 3 trenger: den UTVENDIGE FLATEN til bjelken,
+    // ikke midten av den. Og det er det regel 1 trenger for å spørre om noe
+    // ligger OVER bjelken i samme punkt.
+    fot: planHull(P)
   };
+}
+
+// Konveks innhylling i plan, (x, z). Egen utgave her fordi sw-tak.js ikke
+// importerer noe — samme Andrew-monotone som konveksHull() i regler.js.
+export function planHull(punkter) {
+  const p = (punkter || []).map(q => ({ x: n(q[0]), z: n(q[2]) }))
+    .sort((a, b) => a.x - b.x || a.z - b.z);
+  if (p.length < 3) return p;
+  const kryss = (o, a, b) => (a.x - o.x) * (b.z - o.z) - (a.z - o.z) * (b.x - o.x);
+  const bygg = (liste) => {
+    const ut = [];
+    for (const q of liste) {
+      while (ut.length >= 2 && kryss(ut[ut.length - 2], ut[ut.length - 1], q) <= 0) ut.pop();
+      ut.push(q);
+    }
+    return ut;
+  };
+  const nedre = bygg(p), ovre = bygg([...p].reverse());
+  nedre.pop(); ovre.pop();
+  const hull = nedre.concat(ovre);
+  return hull.length >= 3 ? hull : p;
+}
+
+// Ligger punktet inne i et plan-polygon? Strålekasting, samme som
+// randvandringen i regler.js bruker.
+export function iPlanPolygon(poly, x, z) {
+  const P = poly || [];
+  if (P.length < 3) return false;
+  let inne = false;
+  for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
+    const a = P[i], b = P[j];
+    if ((n(a.z) > n(z)) !== (n(b.z) > n(z)) &&
+        n(x) < (n(b.x) - n(a.x)) * (n(z) - n(a.z)) / (n(b.z) - n(a.z)) + n(a.x)) inne = !inne;
+  }
+  return inne;
+}
+
+// Overkanten av en bjelke rett over plan-punktet (x, z). `lav` og `hoy` er
+// allerede de HØYESTE punktene i hver ende, så en rett interpolasjon mellom
+// dem ER overflaten.
+export function bjelkeToppY(b, x, z) {
+  if (!b || !b.lav || !b.hoy) return null;
+  const dx = n(b.hoy.x) - n(b.lav.x), dz = n(b.hoy.z) - n(b.lav.z);
+  const L2 = dx * dx + dz * dz;
+  if (!(L2 > 1e-9)) return n(b.hoy.y);
+  let t = ((n(x) - n(b.lav.x)) * dx + (n(z) - n(b.lav.z)) * dz) / L2;
+  t = Math.max(0, Math.min(1, t));
+  return n(b.lav.y) + (n(b.hoy.y) - n(b.lav.y)) * t;
+}
+
+// ═══════ ⬆ REGEL 1: DE HØYESTE BJELKENE ═══════
+//
+// «TRP-platene skal legge seg på toppflaten av de HØYESTE bjelkene på bygget»
+// (Emil 22.09). Det er ikke et høydebånd over hele bygget — på et saltak ligger
+// mønet metervis over gesimsen, og begge er tak. Det er et LOKALT spørsmål:
+// ligger det noe over denne bjelken, i dens egne punkter?
+//
+// En skråstiver i et fagverk går fra undergurt til overgurt og har overgurten
+// rett over seg hele veien — derfor faller den ut, uansett hvor bratt den er.
+// Det er dette som gjør at `maksFallGrader` kan fjernes: grensa kastet ekte
+// saltak for å bli kvitt skråstivere, og det var feil medisin.
+//
+// Terskelen er 3/4 av lengden. En ås som ligger OPPÅ en sperre dekker bare
+// krysningspunktet — noen få prosent — og sperra overlever. En skråstiver er
+// dekket hele veien.
+// Tyngdepunktet i et plan-polygon — her bare snittet av hjørnene, som holder
+// for et bjelkefotavtrykk (et rektangel).
+export function fotSenter(poly) {
+  const P = poly || [];
+  if (!P.length) return null;
+  let x = 0, z = 0;
+  for (const q of P) { x += n(q.x); z += n(q.z); }
+  return { x: x / P.length, z: z / P.length };
+}
+
+export const DEKKET_ANDEL = 0.75;
+export const DEKKET_SLARK_MM = 50;
+
+export function toppBjelker(linjer) {
+  const L = (linjer || []).filter(Boolean);
+  if (L.length < 2) return L;
+  const N = 13;
+  return L.filter(a => {
+    if (!a.fot || a.fot.length < 3 || !a.lav || !a.hoy) return true;
+    // 🔎 PRØVEPUNKTENE MÅ LIGGE MIDT I BJELKEN, IKKE PÅ KANTEN AV DEN.
+    // `lav` og `hoy` er de HØYESTE hjørnepunktene, og de ligger på kanten av
+    // profilen. På Geithus lå bjelke 10 sin senterlinje nøyaktig på z = 0, som
+    // er kanten av åsen over den — strålekastingen svarte «utenfor» i hvert
+    // eneste punkt, og en bjelke 1 550 mm under taket ble lest som toppbjelke.
+    // Derfor forskyves prøvelinja ut til fotavtrykkets eget senter.
+    const midt = fotSenter(a.fot);
+    const ax = n(a.hoy.x) - n(a.lav.x), az = n(a.hoy.z) - n(a.lav.z);
+    const L2 = ax * ax + az * az;
+    let dx = 0, dz = 0;
+    if (L2 > 1e-9 && midt) {
+      const tc = ((midt.x - n(a.lav.x)) * ax + (midt.z - n(a.lav.z)) * az) / L2;
+      dx = midt.x - (n(a.lav.x) + ax * tc);
+      dz = midt.z - (n(a.lav.z) + az * tc);
+    }
+    let dekket = 0;
+    for (let i = 0; i < N; i++) {
+      const t = (i + 0.5) / N;
+      const x = n(a.lav.x) + (n(a.hoy.x) - n(a.lav.x)) * t + dx;
+      const z = n(a.lav.z) + (n(a.hoy.z) - n(a.lav.z)) * t + dz;
+      const y = n(a.lav.y) + (n(a.hoy.y) - n(a.lav.y)) * t;
+      for (const b of L) {
+        if (b === a || !b.fot || b.fot.length < 3) continue;
+        if (!iPlanPolygon(b.fot, x, z)) continue;
+        const by = bjelkeToppY(b, x, z);
+        if (by !== null && by > y + DEKKET_SLARK_MM) { dekket++; break; }
+      }
+    }
+    return dekket / N < DEKKET_ANDEL;
+  });
 }
 
 // To bjelker hører til SAMME takflate når de peker samme vei i rommet OG
@@ -959,22 +1056,12 @@ export function flateFraGruppe(gruppe, o) {
   }
   kantLav.sort((a, b) => a[0] - b[0]);
   kantHoy.sort((a, b) => a[0] - b[0]);
-  // 📏 Står to nabosperrer lenger fra hverandre enn dette, er det ikke et
-  // takfall — se maksSperreAvstandMm. Settbart, for et bygg kan ha åser med
-  // stor avstand; men da bærer de ikke TRP-en, og det skal ikke gjettes.
-  const maksAvst = n(opp.maksSperreAvstandMm);
-  if (maksAvst > 0 && kantHoy.length > 1) {
-    let verst = 0;
-    for (let i = 1; i < kantHoy.length; i++)
-      verst = Math.max(verst, n(kantHoy[i][0]) - n(kantHoy[i - 1][0]));
-    if (verst > maksAvst) return null;
-  }
   const lengdeMm = u1 - u0, breddeMm = v1 - v0;
   const N = flateNormal({ ux: U.x, uy: U.y, uz: U.z });
-  // 🔻 For bratt til å være et tak — se maksFallGrader.
-  const fall = Math.abs(Math.asin(Math.max(-1, Math.min(1, U.y))) * 180 / Math.PI);
-  const maksFall = n(opp.maksFallGrader) > 0 ? n(opp.maksFallGrader) : 35;
-  if (fall > maksFall) return null;
+  // ⚠ INGEN VINKELGRENSE LENGER. Den kastet ekte saltak for å bli kvitt
+  // fagverkets skråstivere — feil medisin. Regel 1 (toppBjelker) tar
+  // skråstiverne fordi overgurten ligger rett over dem, og da er fallet
+  // irrelevant. Emil 22.09.
   return {
     U, V, N, origo: p0, bjelker: B.length, kantLav, kantHoy,
     u0, u1, v0, v1, lengdeMm: rund(lengdeMm), breddeMm: rund(breddeMm),
@@ -1292,7 +1379,9 @@ export function deltRadrutenett(flater, o) {
 // U og V, og en V som er snudd her ville blitt en snudd FALLRETNING der. Se
 // js/veggelement/tak.js, som kaller dem i riktig rekkefølge.
 export function takflaterFraBjelker(linjer, o) {
-  return klippMoner(grupperBjelker(linjer, o).map(g => flateFraGruppe(g, o)).filter(Boolean), o)
+  // ⬆ REGEL 1 FØRST: bare de bjelkene som ingenting ligger over.
+  const topp = toppBjelker(linjer);
+  return klippMoner(grupperBjelker(topp, o).map(g => flateFraGruppe(g, o)).filter(Boolean), o)
     .sort((a, b) => b.arealM2 - a.arealM2);
 }
 
