@@ -591,8 +591,27 @@ export function platerPaFlate(flate, o) {
   const bredde = n(flate.breddeMm), fall = n(flate.lengdeMm);
   const pb = Math.max(50, n(opp.trpBreddeMm));
   if (!(bredde > 0) || !(fall > 0)) return null;
-  const hele = Math.floor(bredde / pb);
-  let rest = Math.round(bredde - hele * pb);
+  // 🧱 HVOR RADEN FØRSTE BEGYNNER. Uten et delt anker er det flatas egen v0.
+  // Med anker (to takhalvdeler som deler et møne, se deltRadrutenett) legges
+  // radene på det FELLES rutenettet, slik at bølgene møtes over mønet. Det som
+  // blir liggende utenfor rutenettet i den første enden blir en rest der, på
+  // nøyaktig samme sted på begge sider.
+  const minRest = Math.max(20, n(opp.trpBolgeMm));
+  const anker = tallEr(flate.radAnker) ? n(flate.radAnker) : null;
+  let start = n(flate.v0), restFoer = 0;
+  if (anker !== null && Math.abs(n(flate.V && flate.V.y)) <= 1e-6) {
+    // Rutenettet får begynne inntil én bølge UTENFOR flata. De to V-aksene er
+    // ikke helt parallelle (sperrene er modellert slik), så rutenettet treffer
+    // kanten et par cm feil i den ene enden. Å skyve en hel periode for de to
+    // centimeterne ville gitt en 5 967 mm strimmel — verre enn et utstikk som
+    // uansett er der.
+    start = anker + Math.ceil((n(flate.v0) - anker - minRest) / pb) * pb;
+    restFoer = Math.round(start - n(flate.v0));
+    if (restFoer < 0) restFoer = 0;
+  }
+  const nyttig = bredde - restFoer;
+  const hele = Math.max(0, Math.floor(nyttig / pb));
+  let rest = Math.round(nyttig - hele * pb);
   // 🔎 EMILS FUNN 22.09: en 147 mm strimmel langs kanten, ved siden av en
   // plate som allerede når helt ut.
   //
@@ -604,9 +623,10 @@ export function platerPaFlate(flate, o) {
   //
   // Resten blir derfor ikke en egen plate. Den står igjen som `restMm` slik at
   // panelet kan si hvor mye kanten mangler — skjult blir den ikke.
-  const minRest = Math.max(20, n(opp.trpBolgeMm));
   const restUtenfor = rest > 0 && rest <= minRest ? rest : 0;
   if (restUtenfor) rest = 0;
+  const foerUtenfor = restFoer > 0 && restFoer <= minRest ? restFoer : 0;
+  if (foerUtenfor) restFoer = 0;
   let nedFall = platerNedFall(fall, opp);
   // 🔩 Skjøtene ned på åsene (Emil 21.09) — men BARE når Emil ikke har tastet
   // lengdene selv.
@@ -655,10 +675,12 @@ export function platerPaFlate(flate, o) {
     if (rest > 20)
       rader.push({ vFra: rund(flate.v0), breddeMm: rest, kappetBredde: true, plater: medU });
   } else {
+    if (restFoer > 20)
+      rader.push({ vFra: rund(flate.v0), breddeMm: restFoer, kappetBredde: true, plater: medU });
     for (let i = 0; i < hele; i++)
-      rader.push({ vFra: rund(flate.v0 + i * pb), breddeMm: pb, kappetBredde: false, plater: medU });
+      rader.push({ vFra: rund(start + i * pb), breddeMm: pb, kappetBredde: false, plater: medU });
     if (rest > 20)
-      rader.push({ vFra: rund(flate.v0 + hele * pb), breddeMm: rest, kappetBredde: true, plater: medU });
+      rader.push({ vFra: rund(start + hele * pb), breddeMm: rest, kappetBredde: true, plater: medU });
   }
   rader.sort((a, b) => a.vFra - b.vFra);
   // skjøter: én endeskjøt mindre enn antall plater, per rad
@@ -666,7 +688,7 @@ export function platerPaFlate(flate, o) {
   // sideskjøter: én mellom hvert par naborader
   const sideskjoter = Math.max(0, rader.length - 1);
   return {
-    ...flate, rader, restMm: restUtenfor,
+    ...flate, rader, restMm: restUtenfor + foerUtenfor,
     antallPlater: rader.reduce((a, r) => a + r.plater.length, 0),
     endeskjoter, sideskjoter,
     // skjøtlengde i lm: sideskjøtene løper ned fallet, endeskjøtene langs mønet
@@ -930,8 +952,10 @@ export function roterFlate(f) {
     lengdeMm: f.breddeMm, breddeMm: f.lengdeMm,
     fallGrader: rund(Math.asin(Math.max(-1, Math.min(1, n(f.V.y)))) * 180 / Math.PI),
     rotert: !f.rotert,
-    // skjøtlinjene hører til den GAMLE retningen og gjelder ikke lenger
-    skjotU: undefined
+    // skjøtlinjene hører til den GAMLE retningen og gjelder ikke lenger — og det
+    // gjør radrutenettet også. Etter en rotasjon legges radene fra mønet, og da
+    // møtes de to halvdelene uten et delt anker.
+    skjotU: undefined, radAnker: undefined
   };
 }
 export function roterFlater(flater) { return (flater || []).map(roterFlate); }
@@ -1046,7 +1070,87 @@ export function klippMoner(flater, o) {
   });
 }
 
+// ═══════ 🔁 BEGGE TAKHALVDELENE LEGGES SAMME VEI ═══════
+//
+// 🔎 EMILS FUNN 22.09, ANDRE RUNDE: «de to sidene lastes inn speilvendt av
+// hverandre — den ene starter fra høyre til venstre og den andre fra venstre
+// til høyre.» Han har rett, og det er hele forklaringen på at bølgene ikke
+// møtes.
+//
+// Målt på Sundland: `tverretning()` gir V av U, og når de to sperrene faller
+// hver sin vei, peker V-ene også hver sin vei — den ene mot −X, den andre mot
+// +X. Radene legges fra `v0`, altså fra hver SIN ende av bygget. Rutenettet
+// den ene siden legger fra x = 35 966 og nedover møter rutenettet den andre
+// legger fra x = −18 150 og oppover, og de to landet 116 mm fra hverandre.
+// Samme grunn gjorde merketeksten speilvendt på den ene halvdelen.
+//
+// To grep, i denne rekkefølgen:
+//   1. ensrettFlater()    — V peker samme vei i verden på alle flater
+//   2. deltRadrutenett()  — to halvdeler som deler et møne deler også rutenettet
+//
+// Faller V (etter «Roter takflata 90°»), er retningen gitt av fallet og skal
+// ikke snus. Da er det også unødvendig: radene legges fra mønet på begge sider,
+// og da møtes de av seg selv.
+export function ensrettFlater(flater) {
+  return (flater || []).map(f => {
+    if (!f || !f.V) return f;
+    if (Math.abs(n(f.V.y)) > 1e-6) return f;          // V bærer fallet — la den stå
+    const kanonisk = Math.abs(n(f.V.x)) > 1e-6 ? n(f.V.x) > 0 : n(f.V.z) >= 0;
+    if (kanonisk) return f;
+    return { ...f, speilet: true,
+      V: { x: -n(f.V.x), y: -n(f.V.y), z: -n(f.V.z) },
+      v0: rund(-n(f.v1)), v1: rund(-n(f.v0)) };
+  });
+}
+
+// Faller de to flatene MOT hverandre? Samme prøve som møneklippet bruker.
+function motHverandre(f, g, o) {
+  const opp = { ...TAK_STD, ...(o || {}) };
+  if (!f || !g || !f.U || !g.U) return false;
+  const motsatt = -Math.cos(Math.max(0, n(opp.retningTolGrader)) * Math.PI / 180);
+  return f.U.x * g.U.x + f.U.y * g.U.y + f.U.z * g.U.z <= motsatt;
+}
+
+// To halvdeler som deler et møne skal ha radene på SAMME rutenett langs mønet.
+// `radAnker` er v-verdien der rutenettet begynner; platerPaFlate legger radene
+// derfra. Den første flata i paret bestemmer, og naboen får den samme linja
+// regnet om til sine egne koordinater.
+export function deltRadrutenett(flater, o) {
+  const F = (flater || []).filter(Boolean);
+  if (F.length < 2) return F;
+  const ut = F.map(f => ({ ...f }));
+  for (let i = 0; i < ut.length; i++) {
+    const f = ut[i];
+    if (!f.V || Math.abs(n(f.V.y)) > 1e-6) continue;   // bare når V løper langs mønet
+    if (!tallEr(f.radAnker)) f.radAnker = rund(n(f.v0));
+    for (let j = i + 1; j < ut.length; j++) {
+      const g = ut[j];
+      if (!g.V || tallEr(g.radAnker)) continue;
+      if (Math.abs(n(g.V.y)) > 1e-6) continue;
+      if (!motHverandre(f, g, o)) continue;
+      // Verdenspunktet der f sitt rutenett begynner, lest i g sine koordinater.
+      //
+      // Punktet tas ved MØNET, ikke midt på flata. De to V-aksene er ikke helt
+      // parallelle — på Sundland skiller de 0,16°, fordi sperrene er modellert
+      // slik — og da avhenger svaret av hvilket punkt man måler i. I mønet
+      // MÅ rutenettene falle sammen; det er der bølgene møtes. Resten av
+      // skjevheten er bygget selv, og den kan ikke regnes bort.
+      const uH = n(f.U.y) >= 0 ? n(f.u1) : n(f.u0);
+      const pt = punktPaFlate(f, uH, n(f.radAnker));
+      const uv = uvPaFlate(g, pt.x, pt.z);
+      if (!uv) continue;
+      g.radAnker = rund(uv[1]);
+    }
+  }
+  return ut;
+}
+
 // Hele taket: bjelkelinjene inn, ferdige takflater ut.
+//
+// ⚠ ensrettFlater() og deltRadrutenett() hører IKKE hjemme her. De må kjøre
+// ETTER en eventuell rotasjon og etter at åsene er funnet — rotasjonen bytter
+// U og V, og en V som er snudd her ville blitt en snudd FALLRETNING der. Se
+// js/veggelement/tak.js, som kaller dem i riktig rekkefølge.
 export function takflaterFraBjelker(linjer, o) {
   return klippMoner(grupperBjelker(linjer, o).map(g => flateFraGruppe(g, o)).filter(Boolean), o)
     .sort((a, b) => b.arealM2 - a.arealM2);
