@@ -47,6 +47,7 @@ export const TAK_FELT = [
   ["plateOverMm", "Platene over bjelka (mm)"],
   ["skjotPlanTolMm", "Hvor nær flata en ås må ligge (mm)"],
   ["maksFallGrader", "Bratteste tak (grader)"],
+  ["maksSperreAvstandMm", "Maks avstand mellom sperrer (mm)"],
   ["flattFallProsent", "Fall på flatt tak (%)"]
 ];
 
