@@ -972,8 +972,50 @@ export function flateFraGruppe(gruppe, o) {
 // ⚠ Etter en rotasjon er det V som bærer fallet, ikke U. Alt som leser høyden
 // av flata må derfor tåle det — se uvVannrett over, som er skrevet om til å
 // løse begge tilfellene i stedet for å anta at V er vannrett.
+// 🔄 KANTLINJENE ETTER EN ROTASJON (Emils funn 22.09: «skråkapp funker kun
+// hvis takflaten ikke er rotert 90° — de skal kappes uansett hvilken vei»).
+//
+// Kantene er «hvor langt rekker taket i u, ved denne v-en». Etter en rotasjon
+// bytter u og v plass, og det spørsmålet er et ANNET spørsmål — ikke de samme
+// tallene snudd. Første utgave kastet derfor kantene, og da ble et skråtak
+// aldri kappet i rotert stilling.
+//
+// Her leses omrisset på nytt i den nye rammen: for hver nye v (som er den
+// gamle u) finnes den første og siste nye u (den gamle v) som ligger inne på
+// taket. Grovsøk og så halvering, så kanten blir funnet på under en millimeter
+// uten å anta at omrisset er rett.
+export function kanterEtterRotasjon(f) {
+  if (!f || !Array.isArray(f.kantLav) || !Array.isArray(f.kantHoy)) return null;
+  if (!f.kantLav.length || !f.kantHoy.length) return null;
+  const uA = n(f.v0), uB = n(f.v1);       // ny u-akse = gammel v
+  const vA = n(f.u0), vB = n(f.u1);       // ny v-akse = gammel u
+  if (!(uB - uA > 1) || !(vB - vA > 1)) return null;
+  const inne = (up, vp) => {
+    const a = kantU(f.kantLav, up), b = kantU(f.kantHoy, up);
+    return a !== null && b !== null && vp >= a - 1 && vp <= b + 1;
+  };
+  const N = 48, M = 240;
+  const lav = [], hoy = [];
+  const rute = (j) => uA + (uB - uA) * j / M;
+  for (let i = 0; i <= N; i++) {
+    const vp = vA + (vB - vA) * i / N;
+    let a = null, b = null;
+    for (let j = 0; j <= M; j++) if (inne(rute(j), vp)) { if (a === null) a = j; b = j; }
+    if (a === null) continue;
+    const finn = (innside, utside) => {
+      let x = innside, y = utside;
+      for (let k = 0; k < 24; k++) { const m = (x + y) / 2; if (inne(m, vp)) x = m; else y = m; }
+      return x;
+    };
+    lav.push([rund(vp), rund(a > 0 ? finn(rute(a), rute(a - 1)) : rute(0))]);
+    hoy.push([rund(vp), rund(b < M ? finn(rute(b), rute(b + 1)) : rute(M))]);
+  }
+  return lav.length >= 2 ? { kantLav: lav, kantHoy: hoy } : null;
+}
+
 export function roterFlate(f) {
   if (!f || !f.U || !f.V) return f;
+  const nyeKanter = kanterEtterRotasjon(f);
   return {
     ...f,
     U: f.V, V: f.U,
@@ -985,8 +1027,9 @@ export function roterFlate(f) {
     // gjør radrutenettet også. Etter en rotasjon legges radene fra mønet, og da
     // møtes de to halvdelene uten et delt anker.
     skjotU: undefined, radAnker: undefined,
-    // kantlinjene er målt langs U og gjelder ikke når U og V bytter plass
-    kantLav: undefined, kantHoy: undefined
+    // kantlinjene leses på NYTT i den nye rammen — se kanterEtterRotasjon
+    kantLav: nyeKanter ? nyeKanter.kantLav : undefined,
+    kantHoy: nyeKanter ? nyeKanter.kantHoy : undefined
   };
 }
 export function roterFlater(flater) { return (flater || []).map(roterFlate); }
@@ -1365,17 +1408,30 @@ export function kappMotKant(f, o) {
         : (ned ? (n(u) - k > 1 ? k : n(u)) : (k - n(u) > 1 ? k : n(u)));
       const tA = klipp(p.uTil, hA, true), tB = klipp(p.uTil, hB, true);
       const fA = klipp(p.uFra, lA, false), fB = klipp(p.uFra, lB, false);
-      const a = tA - fA, b = tB - fB;
+      // 🔎 EMILS FUNN 22.09 (bilde 4–5): «TRP-plater på skrå som ikke går til
+      // neste bjelke, og plater som står i løse lufta.»
+      //
+      // Målt på Valle: i raden ved v = −10 692 endte den øverste plata med
+      // uFra = 6 699 og uTil = 5 451 i den ene kanten — 1 248 mm BAKLENGS.
+      // Takkanten krysser hele plata, så den enden har ikke tak i det hele
+      // tatt. Firkanten ble da tegnet med to kanter som krysser hverandre, og
+      // det er strimmelen som henger i lufta.
+      //
+      // En plate som krysses helt er en TREKANT: ett rett kutt fra der kanten
+      // treffer den ene siden til der den forsvinner på den andre. Det er
+      // nøyaktig ett sagsnitt, slik en tekker ville gjort det.
+      const tA2 = Math.max(tA, fA), tB2 = Math.max(tB, fB);
+      const a = tA2 - fA, b = tB2 - fB;
       // ingen av kantene har tak her — da er det ikke en plate
       if (!(a > 20) && !(b > 20)) continue;
-      const ny = { ...p, uFra: rund(Math.min(fA, fB)), uTil: rund(Math.max(tA, tB)) };
+      const ny = { ...p, uFra: rund(Math.min(fA, fB)), uTil: rund(Math.max(tA2, tB2)) };
       ny.lengdeMm = Math.round(Math.max(a, b));
       if (Math.abs(a - b) > tol) {
         ny.skra = true;
         ny.lengdeVMm = Math.round(Math.max(0, a));
         ny.lengdeHMm = Math.round(Math.max(0, b));
         ny.uFraA = rund(fA); ny.uFraB = rund(fB);
-        ny.uTilA = rund(tA); ny.uTilB = rund(tB);
+        ny.uTilA = rund(tA2); ny.uTilB = rund(tB2);
         ny.vinkel = kappVinkel(n(r.breddeMm), a, b);
       } else {
         delete ny.skra; delete ny.lengdeVMm; delete ny.lengdeHMm;
