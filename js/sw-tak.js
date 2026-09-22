@@ -401,27 +401,47 @@ export function platerNedFall(fallengdeMm, o) {
   }
 
   // 2) Med stabel: legg lengdene fra GESIMSEN og oppover, siste gjentas.
-  //    Den øverste plata beholder full lengde (Emils valg), så det er den
-  //    NEDERSTE som kappes når stabelen ikke går opp.
-  const ut = [];
+  //
+  // 🔑 EMILS AVKLARING 22.09: «lengde + skjøt/overlapp blir fullstendig
+  // lengde — hvis en plate blir 5000 mm når du drar den til skjøten og du har
+  // satt skjøt til 20, så blir det 5000 + 20 = 5020 mm.»
+  //
+  // Tallene han taster er altså DEKNINGEN — hvor mye tak plata tar — og
+  // overlappen kommer i TILLEGG. Før regnet koden motsatt: den tastede
+  // lengden var bestillingslengden, og overlappen spiste av dekningen. Da
+  // dekket «4853, 2267» bare 6970 av et fall på 7120, og det manglet 150 mm
+  // tak uten at noen sa fra.
+  //
+  // HVILKEN plate som blir lengre er ikke en smakssak: vannet renner NEDOVER,
+  // så den ØVRE plata må lappe over den nedre. Derfor er det hver plate med
+  // en skjøt UNDER seg som får overlappen lagt til — den nederste står med
+  // sin egen lengde.
+  const dekning = [];
   let dekket = 0, i = 0;
-  while (dekket < L - 1 && ut.length < 200) {
-    const lengde = stabel[Math.min(i, stabel.length - 1)];
-    ut.push({ lengdeMm: lengde, kappet: false });
-    dekket += ut.length === 1 ? lengde : lengde - ov;
+  while (dekket < L - 1 && dekning.length < 200) {
+    const d = stabel[Math.min(i, stabel.length - 1)];
+    dekning.push(d);
+    dekket += d;
     i++;
   }
-  if (!ut.length) return [];
+  if (!dekning.length) return [];
   // Overskytende kappes av den NEDERSTE plata — skjøtene ligger da i rett
   // linje der stabelen sier, og det er mønet som er fast (steg 4: plata føres
   // på plass i riktig avstand i henhold til arbeidstegning).
   const over = dekket - L;
   if (over > 0) {
-    const nederst = ut[0];
-    const ny = nederst.lengdeMm - over;
-    if (ny > 20) { nederst.lengdeMm = Math.round(ny); nederst.kappet = true; }
-    else { ut.shift(); }        // den ble for kort til å være en plate i det hele tatt
+    const ny = dekning[0] - over;
+    if (ny > 20) dekning[0] = Math.round(ny);
+    else dekning.shift();
   }
+  if (!dekning.length) return [];
+  const ut = dekning.map((d, j) => ({
+    // dekningen er Emils tall; bestillingslengden er dekning + overlapp for
+    // hver plate som har en skjøt under seg
+    lengdeMm: Math.round(j > 0 ? d + ov : d),
+    dekningMm: Math.round(d),
+    kappet: j === 0 && over > 0
+  }));
   // 🔎 EN STABEL SOM IKKE GÅR OPP. «6000, 6000» på et fall på 12 000 ser ut til
   // å passe, men gjør det ikke: overlappen spiser 150 mm, så to plater dekker
   // 11 850. Da trengs en tredje, og den nederste blir stående igjen på 300 mm.
@@ -548,18 +568,28 @@ export function platerPaFlate(flate, o) {
   const hele = Math.floor(bredde / pb);
   const rest = Math.round(bredde - hele * pb);
   let nedFall = platerNedFall(fall, opp);
-  // 🔩 Skjøtene ned på åsene (Emil 21.09). Flata bærer sine egne åser i
-  // `skjotU` — absolutte u-verdier — og her måles de fra den LAVE enden, som
-  // er u0: det er der platestabelen starter.
-  if (opp.snapSkjot !== false && Array.isArray(flate.skjotU))
+  // 🔩 Skjøtene ned på åsene (Emil 21.09) — men BARE når Emil ikke har tastet
+  // lengdene selv.
+  //
+  // 🔑 EMILS VALG 22.09: «mine tall vinner alltid.» Taster han en stabel, er
+  // det den som gjelder, og åsene blir en KONTROLL som panelet melder fra om.
+  // Det var snappingen som ga de to takhalvdelene hver sine lengder
+  // (5025/2245 mot 4925/2345) fordi åsene deres står ulikt — mens Emil ville
+  // ha samme to lengder på begge.
+  const harStabel = parsePlatelengder(opp.platelengder).length > 0;
+  if (opp.snapSkjot !== false && !harStabel && Array.isArray(flate.skjotU))
     nedFall = snapSkjoterTilAser(nedFall, fall, indreAser(flate, opp), opp);
   // hver plate med sin egen strekning langs u, fra den LAVE enden og oppover
+  // Hver plate DEKKER `dekningMm` av fallet og strekker seg `ov` NEDOVER
+  // forbi skjøten under seg — det er den overlappen som gjør taket tett.
   const ov2 = Math.max(0, n(opp.endeOverlappMm));
   let s2 = 0;
-  const medU = nedFall.map(p => {
-    const uFra = n(flate.u0) + s2, uTil = uFra + p.lengdeMm;
-    s2 += p.lengdeMm - ov2;
-    return { ...p, uFra: rund(uFra), uTil: rund(uTil) };
+  const medU = nedFall.map((p, j) => {
+    const dek = tallEr(p.dekningMm) ? n(p.dekningMm) : n(p.lengdeMm) - (j > 0 ? ov2 : 0);
+    const topp = n(flate.u0) + s2 + dek;
+    const bunn = n(flate.u0) + s2 - (j > 0 ? ov2 : 0);
+    s2 += dek;
+    return { ...p, uFra: rund(bunn), uTil: rund(topp) };
   });
   const rader = [];
   for (let i = 0; i < hele; i++)
@@ -595,7 +625,15 @@ export function trpListe(flater, o, medPlaterInn) {
     arealM2 += n(f.arealM2);
     skjotLm += n(f.skjotLm);
     for (const r of f.rader) for (const p of r.plater) {
-      const navn = "TRP " + p.lengdeMm + (r.kappetBredde ? " (" + r.breddeMm + " mm)" : "");
+      // 🔎 EMILS FUNN 22.09: «TRP-platene som er samme lengde får forskjellige
+      // navn i stedet for å legges i en bunke.»
+      //
+      // Navnet het «TRP 5025» for full bredde og «TRP 5025 (940 mm)» for en
+      // kappet rad. To plater med samme lengde og samme bredde kunne dermed
+      // ikke havne i samme bunke hvis den ene raden tilfeldigvis var merket
+      // kappet. Nå står begge målene alltid, slik Emil selv skriver dem
+      // («4853 x 5552»), og like plater er per definisjon samme vare.
+      const navn = plateNokkel(p.lengdeMm, r.breddeMm);
       const e = perType.get(navn) || { navn, lengdeMm: p.lengdeMm, breddeMm: r.breddeMm, antall: 0 };
       e.antall++;
       perType.set(navn, e);
@@ -605,14 +643,27 @@ export function trpListe(flater, o, medPlaterInn) {
   const skrueAvst = Math.max(50, n(opp.skrueAvstandMm));
   const korte = medPlater.reduce((a, f) =>
     a + f.rader.reduce((b, r) => b + r.plater.filter(p => p.kort).length, 0), 0);
+  // 🏷 EN KODE PER STØRRELSE (Emil 22.09: «samme merking som veggelement, med
+  // dimensjon i senter og nummer/navn oppe i hjørnet»). Koden hører til
+  // VAREN, ikke til den enkelte plata: står det TRP-02 på taket, vet montøren
+  // hvilken bunke på bakken den kommer fra.
+  const sortert = [...perType.values()]
+    .sort((a, b) => b.lengdeMm - a.lengdeMm || a.breddeMm - b.breddeMm);
+  sortert.forEach((e, i) => { e.kode = "TRP-" + String(i + 1).padStart(2, "0"); });
   return {
-    plater: [...perType.values()].sort((a, b) => b.lengdeMm - a.lengdeMm || a.breddeMm - b.breddeMm),
+    plater: sortert,
     antall, arealM2: rund(arealM2), skjotLm: rund(skjotLm),
     // sagt fra om, ikke skjult bort — se platerNedFall
     korte, advarsel: korte > 0,
     // «ca 40-50 cm avstand mellom skruene» langs hver skjøt (prosedyren, steg 5)
     skruer: Math.ceil(skjotLm * 1000 / skrueAvst)
   };
+}
+
+// Nøkkelen en plate slås opp under — samme streng som navnet i lista, slik at
+// merkingen i 3D og bunken på bakken aldri kan bli to forskjellige varer.
+export function plateNokkel(lengdeMm, breddeMm) {
+  return "TRP " + Math.round(n(lengdeMm)) + " × " + Math.round(n(breddeMm));
 }
 
 // Radene i arket «Tak».
@@ -988,6 +1039,43 @@ export function platerPaTaket(flater, o) {
     // bruker, så de to kan ikke komme i utakt.
     return summerFlate({ ...f, rader }, opp);
   }).filter(f => f.antallPlater > 0);
+}
+
+// ═══════ 🧲 SNAPPING NÅR DU DRAR EN PLATEKANT (Emil 22.09) ═══════
+//
+// Emils ord: «de skal snappe til enden av andre TRP-plater. De skal snappe
+// til senter på toppbjelkene + det som er satt som skjøt — så hvis en plate
+// blir 5000 mm når du drar den til skjøten og du har satt skjøt til 20, så
+// blir det 5000 + 20 = 5020 mm.»
+//
+// Det gir tre slags festepunkter for kanten du drar, alle i flatas u:
+//   1. kantene til de andre platene — så to plater møtes nøyaktig
+//   2. senter av en ås — der skjøten SKAL ligge
+//   3. åsen pluss overlappen, i den retningen du drar: det er der kanten må
+//      ligge for at plata skal dekke fram til åsen OG lappe over den
+//
+// Ren tallfunksjon, ingen three.js: kandidatene ut, nærmeste inn.
+export function snapKandidater(ende, aserAbs, andreKanter, overlappMm) {
+  const ov = Math.max(0, n(overlappMm));
+  const ut = [];
+  for (const k of andreKanter || []) if (tallEr(k)) ut.push(n(k));
+  for (const a of aserAbs || []) {
+    if (!tallEr(a)) continue;
+    ut.push(n(a));
+    ut.push(ende === "fra" ? n(a) - ov : n(a) + ov);
+  }
+  return [...new Set(ut.map(rund))].sort((x, y) => x - y);
+}
+
+// Nærmeste kandidat innenfor toleransen — ellers tallet uendret.
+export function snapVerdi(u, kandidater, tolMm) {
+  const tol = tallEr(tolMm) ? Math.abs(n(tolMm)) : 150;
+  let beste = null, avstand = Infinity;
+  for (const k of kandidater || []) {
+    const d = Math.abs(n(k) - n(u));
+    if (d < avstand) { avstand = d; beste = n(k); }
+  }
+  return (beste !== null && avstand <= tol) ? beste : n(u);
 }
 
 // ═══════ 🔧 HÅNDJUSTERING AV TRP-PLATENE (Emil 21.09) ═══════
