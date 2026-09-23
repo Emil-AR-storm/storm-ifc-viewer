@@ -872,9 +872,19 @@ export function bjelkeLinje(punkter) {
   const ende = (naer) => {
     const nre = P.filter(p => naer ? t(p) <= tMin + kant : t(p) >= tMax - kant);
     const br = nre.length ? nre : P;
-    let best = br[0];
-    for (const p of br) if (n(p[1]) > n(best[1])) best = p;
-    return { x: n(best[0]), y: n(best[1]), z: n(best[2]) };
+    let topp = -Infinity;
+    for (const p of br) if (n(p[1]) > topp) topp = n(p[1]);
+    // 🔎 EMILS FUNN 23.09 (Norsjø golfklubb, saltak): «kun halve taket
+    // legger seg på toppen av høyeste bjelke.» Sperrene er hulprofiler, 140
+    // mm brede, og BEGGE toppkantene står like høyt. Før tok vi den første av
+    // dem — og hos tre av ni sperrer var det motsatt kant i de to endene. Da
+    // ble sperra lest 140 mm skjev, takplanet vippet 0,5° og platene lå
+    // 185 mm feil i den ene gavlen. Midten av toppflaten er ett punkt uansett
+    // hvilken rekkefølge modellen har lagret hjørnene i.
+    const pa = br.filter(p => n(p[1]) >= topp - 1);
+    let sx = 0, sz = 0;
+    for (const p of pa) { sx += n(p[0]); sz += n(p[2]); }
+    return { x: sx / pa.length, y: topp, z: sz / pa.length };
   };
   const a = ende(true), b = ende(false);
   // fra LAV til HØY, så retningen alltid peker oppover fallet
@@ -1779,7 +1789,7 @@ function leggPaFlater(P, flater, tolMm, annen, celle, raa, K) {
     const ut1 = (t) => ({ x: a.x + (b.x - a.x) * t + ytre.x * 1.5 * celle, z: a.z + (b.z - a.z) * t + ytre.z * 1.5 * celle });
     const naboer = annen ? [0.25, 0.5, 0.75].map(t => { const q = ut1(t); return annen(q.x, q.z); }).filter(Boolean) : [];
     const delt = naboer.length >= 2;
-    let best = null, bestS = -Infinity;
+    let best = null, bestS = -Infinity, bestOv = 0;
     if (L >= tolMm && !delt) for (const f of flater) {
       if (Math.abs(kryssV(d, f.d)) > sinTol) continue;
       const s = prikkV({ x: f.a.x - m.x, z: f.a.z - m.z }, ytre);
@@ -1790,7 +1800,12 @@ function leggPaFlater(P, flater, tolMm, annen, celle, raa, K) {
       const t2 = prikkV({ x: f.b.x - a.x, z: f.b.z - a.z }, d);
       const ov = Math.min(L, Math.max(t1, t2)) - Math.max(0, Math.min(t1, t2));
       if (ov < 0.3 * Math.min(L, f.L)) continue;
-      if (s > bestS) { bestS = s; best = f; }
+      // Den flaten som ligger langs MEST av kanten vinner; er to like lange,
+      // den ytterste. En kort, litt skjev bjelke i enden av en lang takfot
+      // (Norsjø: 6,3 m med 20 mm skjevhet ved en 32 m takfot) skal ikke få
+      // vippe hele kanten.
+      const bedre = !best || ov > bestOv * 1.1 || (ov >= bestOv * 0.9 && s > bestS);
+      if (bedre) { bestS = s; best = f; bestOv = ov; }
     }
     const fit = delt ? (delingsLinje(K, naboer[0], a, b, ytre, celle) || tilpass(a, b)) : null;
     if (fit) {
