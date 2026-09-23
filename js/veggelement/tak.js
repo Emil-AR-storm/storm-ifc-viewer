@@ -503,6 +503,10 @@ export function tegnPlate(data, flate, vFra, breddeMm, uFra, uTil, farge, legg, 
 // på profilen, lite nok til at den ikke svever synlig over taket sett fra
 // siden.
 export const MERKE_KLARING_MM = 10;
+// Størrelsen på merkingen. 150/220 mm ganget med 1,35 (Emil 23.09).
+export const MERKE_SKALA = 1.35;
+export const MERKE_DIM_MM = Math.round(150 * MERKE_SKALA);
+export const MERKE_KODE_MM = Math.round(220 * MERKE_SKALA);
 
 // 🏷 MERKINGEN PÅ EN TRP-PLATE (Emil 22.09): «samme merking som veggelement
 // — dimensjon i senter og nummer/navn oppe i hjørnet.»
@@ -538,6 +542,14 @@ function merkPlate(data, flate, naa, kode, legg) {
     aX.negate();
     aZ.crossVectors(aX, aY).normalize();
   }
+  // 🔎 EMILS ØNSKE 23.09: «skriften skal ligge samme vei på alt.» Teksten
+  // fulgte flatas egne akser, og to takhalvdeler som faller hver sin vei har
+  // motsatte akser — da sto merkingen opp ned på den ene halvdelen. Nå leses
+  // retningen i VERDEN: teksten går alltid mot +x, eller mot −z når den går
+  // mer langs z enn x. Å snu både X og Y er en halv omdreining om N — teksten
+  // ligger fortsatt oppå taket, bare lesbar samme vei overalt.
+  const snu = Math.abs(aX.x) >= Math.abs(aX.z) ? aX.x < 0 : aX.z > 0;
+  if (snu) { aX.negate(); aY.negate(); }
   const kvat = new THREE.Quaternion().setFromRotationMatrix(
     new THREE.Matrix4().makeBasis(aX, aY, aZ));
   const uMid = (Number(naa.uFra) + Number(naa.uTil)) / 2;
@@ -566,12 +578,14 @@ function merkPlate(data, flate, naa, kode, legg) {
     ? Math.round(Number(naa.lengdeVMm)) + "/" + Math.round(Number(naa.lengdeHMm))
     : String(Math.round(lengde));
   const vTekst = naa.skra ? " " + vinkelTekstTak(naa.vinkel) : "";
-  sett(tekstDekal(lTekst + "×" + Math.round(bredde) + "MM" + vTekst, 150, maks * 0.7),
+  // 🔠 35 % større enn før (Emil 23.09: «lettere å lese»)
+  sett(tekstDekal(lTekst + "×" + Math.round(bredde) + "MM" + vTekst, MERKE_DIM_MM, maks * 0.7 * MERKE_SKALA),
     uMid, Number(naa.vFra) + bredde / 2);
-  // koden oppe i hjørnet, mot den høye enden
+  // koden oppe i venstre hjørne slik teksten leses — følger med når den snus
   if (kode)
-    sett(tekstDekal(kode, 220, maks * 0.45),
-      uMid + (Number(naa.uTil) - uMid) * 0.62, Number(naa.vFra) + bredde * 0.22);
+    sett(tekstDekal(kode, MERKE_KODE_MM, maks * 0.45 * MERKE_SKALA),
+      snu ? uMid - (uMid - Number(naa.uFra)) * 0.62 : uMid + (Number(naa.uTil) - uMid) * 0.62,
+      Number(naa.vFra) + bredde * (snu ? 0.78 : 0.22));
 }
 
 export function tegnTak() {
