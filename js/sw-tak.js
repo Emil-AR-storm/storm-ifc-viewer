@@ -552,6 +552,56 @@ function stableU(nedFall, uStart, ov) {
   });
 }
 
+// 📏 Bjelkene som løper LANGS platene (parallelt med U) og ligger i flata —
+// de deler taket i rader, slik åsene deler det i lengder. Som linjer i verden.
+export function radBjelker(flate, linjer, o) {
+  const opp = { ...TAK_STD, ...(o || {}) };
+  if (!flate || !flate.U || !flate.V || !flate.origo) return [];
+  const U = flate.U, oo = flate.origo, N = flate.N || { x: 0, y: 1, z: 0 };
+  const Uh = Math.hypot(U.x, U.z);
+  if (!(Uh > 1e-9)) return [];
+  const cos = Math.cos(Math.max(0, n(opp.retningTolGrader)) * Math.PI / 180);
+  const tol = RAMME_PLAN_TOL_MM;
+  const d = (p) => (p.x - oo.x) * N.x + (p.y - oo.y) * N.y + (p.z - oo.z) * N.z;
+  const ut = [];
+  for (const l of linjer || []) {
+    if (!l || !l.lav || !l.hoy) continue;
+    const dx = l.hoy.x - l.lav.x, dz = l.hoy.z - l.lav.z, L = Math.hypot(dx, dz);
+    if (!(L > 500)) continue;
+    if (Math.abs((dx * U.x + dz * U.z) / (L * Uh)) < cos) continue;
+    if (Math.abs(d(l.lav)) > tol || Math.abs(d(l.hoy)) > tol) continue;
+    ut.push([rund(l.lav.x), rund(l.lav.z), rund(l.hoy.x), rund(l.hoy.z)]);
+  }
+  return ut;
+}
+
+// Radgrensene i flatas v: midt på hver langsgående bjelke inne i flata som
+// spenner over minst 30 % av lengden. Null når flata ikke har lista (lagret
+// før 23.09) — da gjelder den gamle dekkende bredden.
+export function radLinjerV(flate) {
+  if (!flate || !Array.isArray(flate.radL)) return null;
+  const L = n(flate.u1) - n(flate.u0);
+  const kant = 300;
+  // En sperre kan være modellert i flere stykker på linje (Arendal: fire
+  // biter over 20 m). Bitene på samme linje telles sammen.
+  const biter = [];
+  for (const [x1, z1, x2, z2] of flate.radL) {
+    const a = uvVannrett(flate, x1, z1), b = uvVannrett(flate, x2, z2);
+    if (!a || !b) continue;
+    const ov = Math.min(n(flate.u1), Math.max(a[0], b[0])) - Math.max(n(flate.u0), Math.min(a[0], b[0]));
+    if (ov > 0) biter.push({ v: (a[1] + b[1]) / 2, ov });
+  }
+  biter.sort((p, q) => p.v - q.v);
+  const linjer = [];
+  for (const b of biter) {
+    const sist = linjer[linjer.length - 1];
+    if (sist && b.v - sist.v <= 100) { sist.v = (sist.v * sist.ov + b.v * b.ov) / (sist.ov + b.ov); sist.ov += b.ov; }
+    else linjer.push({ ...b });
+  }
+  return linjer.filter(q => q.ov >= 0.3 * L && q.v > n(flate.v0) + kant && q.v < n(flate.v1) - kant)
+    .map(q => rund(q.v));
+}
+
 // Åsene i flatas (u, v): hvor de ligger langs fallet, og hvilken strekning
 // på tvers de dekker. Uten linjer (lagret før 23.09) gjelder en ås hele flata.
 export function aserUV(flate) {
@@ -664,6 +714,21 @@ export function platerPaFlate(flate, o) {
       rader.push({ vFra: rund(start + i * pb), breddeMm: pb, kappetBredde: false, plater: medU });
     if (rest > 20)
       rader.push({ vFra: rund(start + hele * pb), breddeMm: rest, kappetBredde: true, plater: medU });
+  }
+  // 📏 RADENE LEGGES FRA BJELKE TIL BJELKE OGSÅ PÅ TVERS (Emil 23.09): «vi
+  // kan fjerne dekkende bredde — fasit er bjelke til bjelke, og den regelen er
+  // på plass.» Lengden deles av åsene (regel 2); bredden deles nå av bjelkene
+  // som løper LANGS platene (radBjelker). Sideskjøten ligger midt på bjelken,
+  // og den ytterste raden går ut til rammens utvendige flate. Står det ingen
+  // slik bjelke inne i flata, er hele bredden én rad.
+  const radV = radLinjerV(flate);
+  if (radV) {
+    rader.length = 0;
+    const grenser = [n(flate.v0), ...radV, n(flate.v1)];
+    for (let i = 1; i < grenser.length; i++) {
+      const b = grenser[i] - grenser[i - 1];
+      if (b > 20) rader.push({ vFra: rund(grenser[i - 1]), breddeMm: rund(b), kappetBredde: false, fraBjelke: true, plater: medU });
+    }
   }
   rader.sort((a, b) => a.vFra - b.vFra);
   // 🖼 MED OMRISS: hver rad legges fra der TAKET begynner i raden til der det
@@ -1970,6 +2035,48 @@ function delingsLinje(K, G, a, b, ytre, celle) {
   return { p: { x: mx, z: mz }, d: { x: Math.cos(th), z: Math.sin(th) } };
 }
 
+// Mønelinja mellom flate f og en nabo g som faller MOT den: der de to planene
+// skjærer hverandre, i plan, over hele lengden de to spenner over sammen.
+// Null når de ikke møtes i et møne (samme fall, parallelle plan, eller
+// krysset ligger ikke ved den høye enden av sperrene).
+function moneLinje(f, sf, g, sg, o) {
+  const opp = { ...TAK_STD, ...(o || {}) };
+  if (!f || !g || !f.U || !g.U || !sf.length || !sg.length) return null;
+  const motsatt = -Math.cos(Math.max(0, n(opp.retningTolGrader)) * Math.PI / 180);
+  if (f.U.x * g.U.x + f.U.y * g.U.y + f.U.z * g.U.z > motsatt) return null;
+  // hvor langt opp fallet f når, og hvor på tvers de to spenner
+  let uH = -Infinity;
+  const vs = [];
+  for (const b of sf) {
+    const q = uvVannrett(f, b.hoy.x, b.hoy.z);
+    if (q) { uH = Math.max(uH, q[0]); vs.push(q[1]); }
+  }
+  for (const b of sg) for (const e of [b.lav, b.hoy]) {
+    const q = uvVannrett(f, e.x, e.z);
+    if (q) vs.push(q[1]);
+  }
+  if (!vs.length || !(uH > -Infinity)) return null;
+  const v0 = Math.min(...vs), v1 = Math.max(...vs);
+  // krysset langs u ved en gitt v: h_f(u) − h_g(u) er rett i u
+  const kryss = (v) => {
+    const d = (u) => {
+      const p = punktPaFlate(f, u, v);
+      const hg = planHoydeVed(g, p.x, p.z);
+      return hg === null ? null : p.y - hg;
+    };
+    const a = d(uH - 1000), b = d(uH);
+    if (a === null || b === null || !(Math.abs(b - a) > 1e-9)) return null;
+    return uH - 1000 + 1000 * (0 - a) / (b - a);
+  };
+  const ua = kryss(v0), ub = kryss(v1);
+  if (ua === null || ub === null) return null;
+  // mønet må ligge ved den høye enden av sperrene, ikke midt på taket
+  const naer = Math.max(10, n(opp.valmTolMm)) + 600;
+  if (Math.abs(ua - uH) > naer || Math.abs(ub - uH) > naer) return null;
+  const A = punktPaFlate(f, ua, v0), B = punktPaFlate(f, ub, v1);
+  return [{ x: A.x, z: A.z }, { x: B.x, z: B.z }];
+}
+
 // Omrisset for alle flatene på en gang — de må deles der de møtes.
 //
 // `grupper[i].bjelker` er sperrene til `flater[i]`, `linjer` er toppbjelkene.
@@ -2021,6 +2128,17 @@ export function omrissForFlater(flater, grupper, linjer, o) {
         if (naerAndre(a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t)) naer++;
       }
       if (naer < 6) virtuelle.push([{ x: a.x, z: a.z }, { x: b.x, z: b.z }]);
+    }
+    // 🏔 MØNET ER DER TO TAKFALL MØTES — MED ELLER UTEN MØNEBJELKE (Emil
+    // 23.09, Arendal: «er problemet fordi bjelken til mønet ikke går gjennom
+    // hele bygget?»). Ja: der mønebjelken manglet, var rammen åpen langs
+    // mønet, og taket fant en skråstiver i stedet. Møter flata en nabo som
+    // faller mot den, legges skjæringslinja mellom de to planene inn som en
+    // kant — over hele lengden de to spenner over sammen.
+    for (let gi = 0; gi < F.length; gi++) {
+      if (gi === fi) continue;
+      const m = moneLinje(f, sperrer, F[gi], (grupper[gi] && grupper[gi].bjelker) || [], o);
+      if (m) virtuelle.push(m);
     }
     const alle = fot.concat(virtuelle);
     const xs = [], zs = [];
