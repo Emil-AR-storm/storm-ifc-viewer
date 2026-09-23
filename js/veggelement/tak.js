@@ -20,7 +20,7 @@ import { t } from "../i18n.js";
 import * as THREE from "three";
 import { MALTYPER, trpProfil } from "../materiell-vis.js";
 import { TAK_RADER, TAK_STD, bjelkeLinje, fallRetningFraBjelker, justerPlater, plateId,
-         platerPaFlate, roterFlater, skjotBjelker, takFlater, takRamme, takRektangel,
+         platerPaFlate, roterFlater, skjotBjelker, aserVerden, takFlater, takRamme, takRektangel,
          takflaterFraBjelker, platerPaTaket, tilUV, fraUV, trpListe, takTotaler,
          ensrettFlater, deltRadrutenett, vinkelTekstTak,
          indreAser, plateNokkel } from "../sw-tak.js";
@@ -276,7 +276,7 @@ function takDataFraStal(bjelker, o) {
     if (o.rotert) flater = roterFlater(flater);
     // 🔩 Hver flate bærer sine egne åser — de bjelkene som ligger i flata og
     // går på tvers av fallet. Uten dem er det ingenting å skru en skjøt i.
-    flater = flater.map(f => ({ ...f, skjotU: skjotBjelker(f, linjer, o) }));
+    flater = flater.map(f => ({ ...f, skjotU: skjotBjelker(f, linjer, o), aserL: aserVerden(f, linjer, o) }));
     // 🔁 SIST: begge takhalvdelene legges samme vei, og to halvdeler som deler
     // et møne deler også radrutenettet. MÅ stå etter rotasjonen og etter at
     // åsene er funnet — se kommentaren over takflaterFraBjelker i js/sw-tak.js.
@@ -445,10 +445,24 @@ export function tegnPlate(data, flate, vFra, breddeMm, uFra, uTil, farge, legg, 
   // veggelementer fikk 08.09.
   const B = Math.max(1, Number(breddeMm) || 1);
   const skra = meta && meta.skra;
-  const enden = (v) => skra
+  // 🖼 KNEKKET KAPP (23.09): når omrisset har et hjørne inne i raden, følger
+  // enden hvert knekkpunkt [v, u] — ellers den rette linja mellom sidene.
+  const langs = (kurve, v) => {
+    for (let i = 1; i < kurve.length; i++) {
+      const a = kurve[i - 1], b = kurve[i];
+      if (v <= b[0] || i === kurve.length - 1) {
+        const d = b[0] - a[0];
+        return d > 1e-9 ? a[1] + (b[1] - a[1]) * (v - a[0]) / d : b[1];
+      }
+    }
+    return kurve[0][1];
+  };
+  const knekkTil = skra && Array.isArray(meta.kappTil) && meta.kappTil.length > 1;
+  const knekkFra = skra && Array.isArray(meta.kappFra) && meta.kappFra.length > 1;
+  const enden = (v) => knekkTil ? langs(meta.kappTil, v) : skra
     ? Number(meta.uTilA) + (Number(meta.uTilB) - Number(meta.uTilA)) * (v / B)
     : uTil;
-  const starten = (v) => skra
+  const starten = (v) => knekkFra ? langs(meta.kappFra, v) : skra
     ? Number(meta.uFraA) + (Number(meta.uFraB) - Number(meta.uFraA)) * (v / B)
     : uFra;
   // to trekanter per segment av profilen, strukket fra uFra til uTil
@@ -591,6 +605,7 @@ export function tegnTak() {
           // ✂ skråkappet følger med til tegningen og til merkingen
           skra: !!p.skra, lengdeVMm: p.lengdeVMm, lengdeHMm: p.lengdeHMm,
           uFraA: p.uFraA, uFraB: p.uFraB, uTilA: p.uTilA, uTilB: p.uTilB,
+          kappFra: p.kappFra, kappTil: p.kappTil,
           vinkel: p.vinkel,
           // rammen følger med, så «Juster TRP» kan regne seg tilbake til u
           U: f.U, V: f.V, N: f.N, origo: f.origo };

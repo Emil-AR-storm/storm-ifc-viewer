@@ -71,7 +71,7 @@ export function tegnTakJustBar(paaNytt) {
   const info = d && d.info;
   el.innerHTML =
     '<span style="font-size:12px;max-width:360px">' +
-    esc(t("Trykk på en takplate. Dra i den blå pila for lengden eller den oransje for bredden — eller ta tak i enden som før. Shift+klikk for å ta flere.")) +
+    esc(t("Trykk på en takplate. Dra i en av de blå pilene for lengden eller en av de oransje for bredden — hver pil flytter sin egen kant. Shift+klikk for å ta flere.")) +
     ' <b>' + esc(t("{0} valgt", n)) + '</b>' +
     (info ? ' <span style="color:var(--muted)">' +
       esc(t("Takflate {0} · {1} mm", (info.flate || 0) + 1, Math.round(info.lengdeMm || 0))) +
@@ -205,12 +205,20 @@ export function pilMal(info, akse) {
   return { pilMm, uMid: (n2(info.uFra) + n2(info.uTil)) / 2, vMid: n2(info.vFra) + bredde / 2 };
 }
 
+// ↔ FIRE PILER (Emil 23.09: «det går kun an å dra den i 2 retninger og ikke
+// 4 — vi trenger at den kan dras i alle 4»). Én pil per kant: to blå langs
+// lengden (den ene flytter nedre ende, den andre øvre) og to oransje på tvers
+// (den ene flytter radens start, den andre dens slutt). Hver pil drar SIN
+// kant, og det er retningen pila peker som er retningen kanten går.
 function lagPiler(info, id) {
   const ut = [];
-  for (const akse of ["lengde", "bredde"]) {
+  for (const [akse, ende] of [["lengde", "til"], ["lengde", "fra"], ["bredde", "til"], ["bredde", "fra"]]) {
     const aks = akse === "bredde" ? info.V : info.U;
     if (!aks) continue;
-    const { pilMm, uMid, vMid } = pilMal(info, akse);
+    const { pilMm: pil0, uMid, vMid } = pilMal(info, akse);
+    const tegn = ende === "fra" ? -1 : 1;
+    const pilMm = pil0 * 0.85;
+    const start = pil0 * 0.12;              // litt fra midten, så de to pilene ikke går i hverandre
     const N = info.N || { x: 0, y: 1, z: 0 };
     // samme løft som merketeksten: over bølgetoppen, ikke nede i dalen
     const loft = 60;
@@ -221,7 +229,7 @@ function lagPiler(info, id) {
         info.V.y * (vMid + (akse === "bredde" ? t : 0)) + N.y * loft),
       tilScene(info.origo.z + info.U.z * (uMid + (akse === "bredde" ? 0 : t)) +
         info.V.z * (vMid + (akse === "bredde" ? t : 0)) + N.z * loft));
-    const a = pkt(0), b = pkt(pilMm);
+    const a = pkt(tegn * start), b = pkt(tegn * (start + pilMm));
     const retning = b.clone().sub(a);
     const L = retning.length();
     if (!(L > 0)) continue;
@@ -238,7 +246,7 @@ function lagPiler(info, id) {
     hode.quaternion.copy(kvat);
     for (const m of [skaft, hode]) {
       m.renderOrder = 1000;
-      m.userData.takPil = { akse, id };
+      m.userData.takPil = { akse, id, ende };
       ut.push(m);
     }
   }
@@ -448,14 +456,17 @@ window.addEventListener("pointerdown", (e) => {
       for (const id of takJust.valgt) {
         const j = b0.just[id] || {};
         base.set(id, { dFra: Number(j.dFra) || 0, dTil: Number(j.dTil) || 0,
+          dvFra: Number(j.dvFra) || 0,
           breddeMm: Number(j.breddeMm) || Number(d0.info.breddeMm) || 0 });
       }
       const startMm = pil.akse === "bredde"
         ? takTverrMm(pil.id, pekPlan(e.clientX, e.clientY, pil.id))
         : takLopMm(pil.id, pekPlan(e.clientX, e.clientY, pil.id));
+      const ende = pil.ende === "fra" ? "fra" : "til";
       if (startMm !== null) {
-        takJust.drar = { id: pil.id, akse: pil.akse, ende: "til", startMm, base,
-          kantStart: pil.akse === "bredde" ? null : Number(d0.info.uTil) };
+        takJust.drar = { id: pil.id, akse: pil.akse, ende, startMm, base,
+          kantStart: pil.akse === "bredde" ? null
+            : Number(ende === "fra" ? d0.info.uFra : d0.info.uTil) };
         e.stopPropagation();
         merkTakValgte(); tegnTakJustBar(takJust.tegnPanel);
         return;
@@ -506,9 +517,16 @@ window.addEventListener("pointermove", (e) => {
     for (const id of takJust.valgt) {
       const basis = d.base.get(id);
       if (!basis) continue;
-      const ny = Math.max(50, Math.round(basis.breddeMm + delta));
       const j = b2.just[id] || (b2.just[id] = {});
-      j.breddeMm = ny;
+      if (d.ende === "fra") {
+        // den NEDRE sida flyttes: raden begynner et annet sted, og bredden
+        // tar igjen det samme — den andre sida står stille
+        const ny = Math.max(50, Math.round(basis.breddeMm - delta));
+        j.dvFra = basis.dvFra + (basis.breddeMm - ny);
+        j.breddeMm = ny;
+      } else {
+        j.breddeMm = Math.max(50, Math.round(basis.breddeMm + delta));
+      }
     }
     skrivLagret();
     tegnAlt();
