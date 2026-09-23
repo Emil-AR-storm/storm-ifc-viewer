@@ -2507,18 +2507,18 @@ export function justerPlater(medPlater, just, ekstra, o) {
   const opp = { ...TAK_STD, ...(o || {}) };
   const J = just || {};
   return (medPlater || []).map((f, fi) => {
-    const rader = (f.rader || []).map(r => {
-      const plater = [];
-      let bredde = n(r.breddeMm), vFra = n(r.vFra);
+    // 🔎 EMILS FUNN 23.09: «når jeg drar i de gule pilene påvirker det hele
+    // rekken, og ikke bare den jeg faktisk drar i.» Bredden ble lagt på RADEN.
+    //
+    // Nå får en plate med egen bredde (eller flyttet side) sin EGEN rad — de
+    // andre platene i raden står der de stod. Det er slik det monteres: en
+    // plate som kappes på langs er én plate, ikke hele rekka.
+    const egenRad = (j) => (tallEr(j.breddeMm) && Number(j.breddeMm) > 20) || tallEr(j.dvFra);
+    const rader = (f.rader || []).flatMap(r => {
+      const plater = [], egne = [];
       for (const p of r.plater || []) {
         const id = p.id || plateId(fi, r, p);
         const j = J[id] || {};
-        // egen bredde gjelder RADEN plata ligger i — en TRP-plate er like
-        // bred hele veien, så en «halv bredde» midt i en rad finnes ikke
-        if (tallEr(j.breddeMm) && Number(j.breddeMm) > 20) bredde = Number(j.breddeMm);
-        // ↔ dratt i den ANDRE sida (Emil 23.09: «den må kunne dras i alle 4»):
-        // raden flytter starten sin, og bredden følger med
-        if (tallEr(j.dvFra)) vFra = n(r.vFra) + Number(j.dvFra);
         if (j.av) continue;
         const [uFra, uTil] = paaFlata(f, n(p.uFra) - n(j.dFra), n(p.uTil) + n(j.dTil));
         if (uTil - uFra <= 20) continue;
@@ -2530,12 +2530,20 @@ export function justerPlater(medPlater, just, ekstra, o) {
               uFraA: undefined, uFraB: undefined, uTilA: undefined, uTilB: undefined,
               vinkel: undefined, kappFra: undefined, kappTil: undefined, middelMm: undefined }
           : p;
-        plater.push({ ...rest, id, uFra: rund(uFra), uTil: rund(uTil),
-          lengdeMm: rund(uTil - uFra) });
+        const ny = { ...rest, id, uFra: rund(uFra), uTil: rund(uTil), lengdeMm: rund(uTil - uFra) };
+        if (!egenRad(j)) { plater.push(ny); continue; }
+        // ↔ egen bredde og/eller flyttet nedre side (Emil 23.09: «alle 4»)
+        const dv = tallEr(j.dvFra) ? Number(j.dvFra) : 0;
+        const bredde = tallEr(j.breddeMm) && Number(j.breddeMm) > 20 ? Number(j.breddeMm) : n(r.breddeMm);
+        // et knekket kapp er målt fra radens gamle start — flytt det med
+        if (Array.isArray(ny.kappFra)) ny.kappFra = ny.kappFra.map(([v, u]) => [rund(v - dv), u]);
+        if (Array.isArray(ny.kappTil)) ny.kappTil = ny.kappTil.map(([v, u]) => [rund(v - dv), u]);
+        egne.push({ ...r, vFra: rund(n(r.vFra) + dv), breddeMm: rund(bredde),
+          kappetBredde: r.kappetBredde || bredde !== n(r.breddeMm), egenBredde: true, plater: [ny] });
       }
-      return { ...r, vFra: rund(vFra), breddeMm: rund(bredde), kappetBredde: r.kappetBredde ||
-        bredde !== n(r.breddeMm), plater };
-    }).filter(r => r.plater.length);
+      const ut = plater.length ? [{ ...r, plater }] : [];
+      return ut.concat(egne);
+    });
     // lagt til for hånd
     for (const e of ekstra || []) {
       if (Number(e.fi) !== fi) continue;
@@ -2543,8 +2551,9 @@ export function justerPlater(medPlater, just, ekstra, o) {
       if (j.av) continue;
       const [uFra, uTil] = paaFlata(f, n(e.uFra) - n(j.dFra), n(e.uTil) + n(j.dTil));
       if (uTil - uFra <= 20) continue;
-      rader.push({ vFra: n(e.vFra), breddeMm: n(e.breddeMm) || n(opp.trpBreddeMm),
-        kappetBredde: false, lagtTil: true,
+      const bE = tallEr(j.breddeMm) && Number(j.breddeMm) > 20 ? Number(j.breddeMm) : (n(e.breddeMm) || n(opp.trpBreddeMm));
+      rader.push({ vFra: rund(n(e.vFra) + (tallEr(j.dvFra) ? Number(j.dvFra) : 0)), breddeMm: rund(bE),
+        kappetBredde: bE !== (n(e.breddeMm) || n(opp.trpBreddeMm)), lagtTil: true,
         plater: [{ id: e.id, lagtTil: true, uFra: rund(uFra), uTil: rund(uTil),
           lengdeMm: rund(uTil - uFra) }] });
     }

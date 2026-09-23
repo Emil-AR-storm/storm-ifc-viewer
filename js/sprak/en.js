@@ -1414,6 +1414,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Legg til plate": "Add a sheet",
   "Nullstille alle håndjusteringene av takplatene?": "Reset all manual adjustments of the roof sheets?",
   "Juster TRP": "Adjust TRP",
+  "Juster tak": "Adjust roof",
   "Fjerne taket? De {0} håndjusteringene forsvinner også.": "Remove the roof? The {0} manual adjustments are lost too.",
   "Platene over bjelka (mm)": "Sheets above the beam (mm)",
   "Ingen av takbjelkene ligger med fall. Velg fallretning selv nedenfor.": "None of the roof beams sit at a pitch. Choose the fall direction yourself below.",
