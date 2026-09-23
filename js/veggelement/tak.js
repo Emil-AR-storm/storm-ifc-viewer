@@ -38,11 +38,9 @@ import { lagreMateriellLokalt, tegnMateriell, vaskMateriell } from "../materiell
 // ───────────────────── oppsettet ─────────────────────
 
 export const TAK_FELT = [
-  ["utstikkGesimsMm", "Utstikk gesims (mm)"],
-  ["utstikkGavlMm", "Utstikk gavl (mm)"],
   ["trpBreddeMm", "TRP dekkende bredde (mm)"],
   ["endeOverlappMm", "Overlapp endeskjøt (mm)"],
-  ["maksLengdeMm", "Maks platelengde (mm)"],
+  ["maksLengdeMm", "Transportgrense (mm) — varsler, deler ikke"],
   ["skrueAvstandMm", "Skrueavstand i skjøt (mm)"],
   ["plateOverMm", "Platene over bjelka (mm)"],
   ["skjotPlanTolMm", "Hvor nær flata en ås må ligge (mm)"],
@@ -727,6 +725,13 @@ export function takPanelHtml() {
             "{0} plater blir kortere enn 500 mm. Platelengdene går ikke opp med overlappen — juster stabelen.",
             L.korte)) + "</p>"
         : "") +
+      // 🚛 TRANSPORTGRENSA SIER FRA, DEN DELER IKKE (Emil 22.09: «jeg er enig
+      // i at den kan bli rød»). Delte koden selv, havnet skjøten i løse lufta.
+      (L.overMaks
+        ? "<p class='hint' style='color:var(--warn,#c05a5a)'>" + esc(t(
+            "{0} plater er lengre enn transportgrensa på {1} mm (lengste {2} mm). Bjelkene gir ingen skjøt før der — tast platelengder selv hvis de må deles, eller bestill spesialtransport.",
+            L.overMaks, Math.round(Number((data.o && data.o.maksLengdeMm) || 0)), L.lengsteMm)) + "</p>"
+        : "") +
       // 🔎 EMILS FUNN 22.09: strimlene langs kanten er borte — men de er
       // ikke bortforklart. Står det igjen en rest smalere enn én bølge, sier
       // panelet hvor mye, så Emil selv kan avgjøre om den skal dekkes.
@@ -769,16 +774,13 @@ export function takPanelHtml() {
     "<label>" + esc(t("Platelengder fra gesimsen og opp (mm) — tom = automatisk")) +
       "<input type='text' id='takPlatelengder' maxlength='200' value='" +
       esc(o.platelengder || "") + "'></label>" +
-    "<p class='hint'>" + esc(t("Skriv stabelen fra gesimsen og opp mot mønet, f.eks. «6000, 6000, 3000». Siste lengde gjentas hvis fallet er lengre. Husk at hver skjøt spiser overlappen: to plater à 6000 med 150 mm overlapp dekker 11 850 mm, ikke 12 000.")) + "</p>" +
+    "<p class='hint'>" + esc(t("Tom = platene deles av bjelkene: én skjøt på hver ås, ingen andre steder. Skriver du tall — f.eks. «6000, 5500, 6000, 5000» — blir platene akkurat de lengdene etter hverandre, fra gesimsen og opp. Siste lengde gjentas hvis fallet er lengre, og tallene er DEKNING: overlappen kommer i tillegg.")) + "</p>" +
     TAK_FELT.map(([id, tekst]) =>
       "<label class='swfelt'><span>" + esc(t(tekst)) + "</span>" +
       "<input id='tf_" + id + "' type='number' step='any' min='0' value='" +
       esc(String(o[id])) + "'></label>").join("") +
     // 🔄 Emil 21.09, bilde 4: «vi legger inn en enkel roter-knapp som endrer
     // retningen taket legger seg i.»
-    "<label class='swfelt'><span>" + esc(t("Skjøt bare på ås")) + "</span>" +
-      "<input type='checkbox' id='takSnapSkjot'" + (o.snapSkjot === false ? "" : " checked") +
-      "></label>" +
     "<div class='prop-actions' data-sw-fast style='margin-top:10px;flex-wrap:wrap'>" +
     "<button id='takRoter'" + (pa ? "" : " disabled") + ">" + ikon("juster") + " " +
       esc(t("Roter takflata 90°")) + (o.rotert ? " ✓" : "") + "</button></div>" +
@@ -845,18 +847,18 @@ function aseLinje(F, data) {
   // snappingen ser bort fra
   const per = F.map(f => indreAser(f, data.o).map(Math.round));
   const med = per.filter(l => l.length).length;
-  const av = data.o && data.o.snapSkjot === false;
   // 🔎 Emil 21.09: modellen har oftest ingen åser i takplanet. Da STÅR
   // platelengdene hans — men han skal vite at ingen har kontrollert at
   // skjøtene treffer stål.
   if (!med)
     return "<p class='hint' style='color:var(--warn,#c05a5a)'>" + esc(t(
-      "Ingen åser på tvers er modellert i takplanet. Platelengdene dine står som du skriver dem, men skjøtene er IKKE kontrollert mot stål — sjekk mot arbeidstegning, eller roter takflata hvis platene skal ligge den andre veien.")) + "</p>";
+      "Ingen åser på tvers er modellert i takplanet. Da er det ingenting å skjøte i, og hvert fall blir én plate. Taster du platelengder selv, står de som du skriver dem — men skjøtene er IKKE kontrollert mot stål. Sjekk mot arbeidstegning, eller roter takflata hvis platene skal ligge den andre veien.")) + "</p>";
   const forste = per.find(l => l.length) || [];
-  return "<p class='hint'>" + esc(av
-    ? t("Åser på tvers, målt opp fallet: {0} mm ({1} av {2} takflater har åser). Snapping er slått AV — skjøtene ligger der du sier.",
+  const egne = data.o && String(data.o.platelengder || "").trim();
+  return "<p class='hint'>" + esc(egne
+    ? t("Åser på tvers, målt opp fallet: {0} mm ({1} av {2} takflater har åser). Du har tastet platelengder selv — dine tall vinner, og skjøtene ligger der du sier.",
         forste.join(", "), med, F.length)
-    : t("Åser på tvers, målt opp fallet: {0} mm ({1} av {2} takflater har åser). Skjøtene flyttes til nærmeste ås.",
+    : t("Åser på tvers, målt opp fallet: {0} mm ({1} av {2} takflater har åser). Platene skjøtes på hver av dem — én skjøt per ås, ingen andre steder.",
         forste.join(", "), med, F.length)) + "</p>";
 }
 
@@ -874,8 +876,6 @@ export function koblTakPanel(paaNytt) {
     if (f) ny.farge = f.value;
     const pl = $("takPlatelengder");
     if (pl) ny.platelengder = pl.value;
-    const sn = $("takSnapSkjot");
-    if (sn) ny.snapSkjot = !!sn.checked;
     ny.rotert = !!takOppsett().rotert;     // knappen eier den, ikke feltene
     const ff = $("takFallFasade");
     ny.fallFasade = !ff ? "auto"
@@ -885,7 +885,7 @@ export function koblTakPanel(paaNytt) {
     tegnAlt();
     if (paaNytt) paaNytt();
   };
-  for (const id of ["takFarge", "takPlatelengder", "takFallFasade", "takSnapSkjot"])
+  for (const id of ["takFarge", "takPlatelengder", "takFallFasade"])
     if ($(id)) $(id).onchange = les;
   if ($("takRoter")) $("takRoter").onclick = () => {
     settTakOppsett({ rotert: !takOppsett().rotert });
