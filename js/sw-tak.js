@@ -952,10 +952,16 @@ export function bjelkeLinje(punkter) {
     // ble sperra lest 140 mm skjev, takplanet vippet 0,5° og platene lå
     // 185 mm feil i den ene gavlen. Midten av toppflaten er ett punkt uansett
     // hvilken rekkefølge modellen har lagret hjørnene i.
+    //
+    // 🔎 EMILS FUNN 23.09 (Geithus): «begge sidene av taket er like, men alle
+    // fire platene fikk forskjellige mål.» Midten var et SNITT av punktene, og
+    // modellen lagrer ikke like mange hjørner på hver side av flensen. Åsen
+    // på 4 700–4 800 ble lest som 4 764 i den ene halvdelen og 4 736 i den
+    // andre — 28 mm forskjell, og platene ble 2 256/2 284 i stedet for like.
+    // Midten er derfor midt mellom YTTERPUNKTENE, ikke snittet av dem.
     const pa = br.filter(p => n(p[1]) >= topp - 1);
-    let sx = 0, sz = 0;
-    for (const p of pa) { sx += n(p[0]); sz += n(p[2]); }
-    return { x: sx / pa.length, y: topp, z: sz / pa.length };
+    const mx = pa.map(p => n(p[0])), mz = pa.map(p => n(p[2]));
+    return { x: (Math.min(...mx) + Math.max(...mx)) / 2, y: topp, z: (Math.min(...mz) + Math.max(...mz)) / 2 };
   };
   const a = ende(true), b = ende(false);
   // fra LAV til HØY, så retningen alltid peker oppover fallet
