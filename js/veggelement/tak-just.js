@@ -465,7 +465,8 @@ window.addEventListener("pointerdown", (e) => {
       const ende = pil.ende === "fra" ? "fra" : "til";
       if (startMm !== null) {
         takJust.drar = { id: pil.id, akse: pil.akse, ende, startMm, base,
-          kantStart: pil.akse === "bredde" ? null
+          kantStart: pil.akse === "bredde"
+            ? Number(d0.info.vFra) + (ende === "fra" ? 0 : Number(d0.info.breddeMm))
             : Number(ende === "fra" ? d0.info.uFra : d0.info.uTil) };
         e.stopPropagation();
         merkTakValgte(); tegnTakJustBar(takJust.tegnPanel);
@@ -513,7 +514,22 @@ window.addEventListener("pointermove", (e) => {
     const b2 = tilstand();
     const naV = takTverrMm(d.id, pekPlan(e.clientX, e.clientY, d.id));
     if (!b2 || naV === null) return;
-    const delta = Math.round((naV - d.startMm) / 5) * 5;
+    let delta = Math.round((naV - d.startMm) / 5) * 5;
+    // 🧲 SIDEN SNAPPER TIL SIDEN PÅ ANDRE TRP-PLATER (Emil 23.09): «hvis jeg
+    // bruker tid på å justere en plate, kan jeg bare dra litt i den på siden
+    // for at den skal bli lik — den snapper til kanten av den.» Samme grep som
+    // lengdedraget har hatt siden 22.09: bare med ÉN plate valgt.
+    if (takJust.valgt.size === 1 && tallEr(d.kantStart)) {
+      const meg = takMeshPerId.get(d.id);
+      const fi = meg && meg.info ? meg.info.flate : null;
+      const kanter = [];
+      for (const [id2, d2] of takMeshPerId) {
+        if (id2 === d.id || !d2.info || d2.info.flate !== fi) continue;
+        kanter.push(n2(d2.info.vFra), n2(d2.info.vFra) + n2(d2.info.breddeMm));
+      }
+      const raa = n2(d.kantStart) + delta;
+      delta = Math.round(snapVerdi(raa, kanter, takOppsettNaa().snapDragTolMm) - n2(d.kantStart));
+    }
     for (const id of takJust.valgt) {
       const basis = d.base.get(id);
       if (!basis) continue;
