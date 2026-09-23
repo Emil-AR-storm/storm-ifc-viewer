@@ -790,9 +790,15 @@ export function platerPaFlate(flate, o) {
         const lA = loK[0][1], lB = loK[loK.length - 1][1], hA = hiK[0][1], hB = hiK[hiK.length - 1][1];
         const uS = Math.min(...loK.map(q => q[1])), uE = Math.max(...hiK.map(q => q[1]));
         if (!(uE - uS > 20)) continue;
-        const inne = aser
-          .filter(q => Math.min(vB, q.vB) - Math.max(vA, q.vA) >= 0.5 * w)
-          .map(q => rund(q.u - uS));
+        // en ås modellert i flere biter på linje telles sammen (Arendal)
+        const perU = [];
+        for (const q of aser) {
+          const ov = Math.min(vB, q.vB) - Math.max(vA, q.vA);
+          if (!(ov > 0)) continue;
+          const g = perU.find(x => Math.abs(x.u - q.u) <= 60);
+          if (g) g.ov += ov; else perU.push({ u: q.u, ov });
+        }
+        const inne = perU.filter(q => q.ov >= 0.5 * w).map(q => rund(q.u - uS));
         ut.push({ ...r, plater: stableU(platerNedFall(uE - uS, opp, inne), uS, ov2),
           kant: { lA: rund(lA), lB: rund(lB), hA: rund(hA), hB: rund(hB), lo: loK, hi: hiK } });
       }
@@ -1145,7 +1151,22 @@ export function grupperBjelker(linjer, o) {
   }
   // en «gruppe» med én kort bjelke er et avstivningsstag, ikke et takfall
   const minst = n(opp.minFlateBjelker) || 1;
-  return grupper.filter(g => g.bjelker.length >= minst);
+  // 🔎 EMILS FUNN 23.09 (Sundland, tilbake fra runde 4l): to skråstivere i
+  // hver gavl, 24 m fra hverandre og 43° bratte, ble to «takflater» som stjal
+  // endefeltet fra det ekte taket. Ingen TRP spenner over 12 m mellom to
+  // sperrer — da er det ingenting som bærer platene. Samme regel som 4l hadde,
+  // nå fast og uten felt: den skal ikke justeres, den er hva et tak er.
+  const avstandOk = (g) => {
+    if (g.bjelker.length < 2) return true;
+    const a = g.bjelker[0];
+    const t = tverretning(a);
+    if (!t) return true;
+    const vs = g.bjelker.map(b => ((b.lav.x + b.hoy.x) / 2) * t.x + ((b.lav.z + b.hoy.z) / 2) * t.z)
+      .sort((p, q) => p - q);
+    for (let i = 1; i < vs.length; i++) if (vs[i] - vs[i - 1] > MAKS_SPERREAVSTAND_MM) return false;
+    return true;
+  };
+  return grupper.filter(g => g.bjelker.length >= minst && avstandOk(g));
 }
 
 // Takflata fra én gruppe: en lokal ramme i flatens eget plan.
@@ -1604,6 +1625,7 @@ export function deltRadrutenett(flater, o) {
 // Mangler rammen en side (ingen kantbjelke), lukkes den med en rett linje
 // mellom sperreendene — det er det samme omrisset som før.
 
+export const MAKS_SPERREAVSTAND_MM = 12000; // lenger enn dette mellom to sperrer bærer ingen TRP
 export const RAMME_PLAN_TOL_MM = 100;  // en bjelke ligger «i flata» innenfor dette
 export const RAMME_LUKK_MM = 300;      // glipper i bjelkeskjøtene opp til 2 × dette lukkes
 export const RAMME_HAKK_MM = 600;      // hakk/trinn i omrisset under dette rettes ut
@@ -1894,6 +1916,26 @@ function hjornerAv(L) {
   return P;
 }
 
+// Linja flest av punktene ligger på (innenfor 30 mm), fra det første til det
+// siste punktet projisert inn på den. Ved likt antall vinner det lengste
+// spennet. To punkter gir streken mellom dem.
+function endeLinje(pts) {
+  if (pts.length <= 2) return [pts[0], pts[pts.length - 1]];
+  let best = null;
+  for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) {
+    const a = pts[i], b = pts[j], L = Math.hypot(b.x - a.x, b.z - a.z);
+    if (L < 1) continue;
+    const d = { x: (b.x - a.x) / L, z: (b.z - a.z) / L };
+    let antall = 0;
+    for (const q of pts) if (Math.abs(kryssV(d, { x: q.x - a.x, z: q.z - a.z })) <= 30) antall++;
+    if (!best || antall > best.antall || (antall === best.antall && L > best.L)) best = { a, d, antall, L };
+  }
+  if (!best) return [pts[0], pts[pts.length - 1]];
+  const inn = (q) => { const t = (q.x - best.a.x) * best.d.x + (q.z - best.a.z) * best.d.z;
+    return { x: best.a.x + best.d.x * t, z: best.a.z + best.d.z * t }; };
+  return [inn(pts[0]), inn(pts[pts.length - 1])];
+}
+
 // Hakk og trinn under `hakkMm` rettes ut. En kort kant mellom to kanter som
 // krysser hverandre fjernes (hjørnet blir krysset deres). En kort kant mellom
 // to PARALLELLE kanter er et trinn — da vinner den ytterste.
@@ -2120,14 +2162,30 @@ export function omrissForFlater(flater, grupper, linjer, o) {
       return { b, v: uv ? uv[1] : 0 };
     }).sort((a, b) => a.v - b.v).map(x => x.b);
     const virtuelle = [];
-    for (let k = 1; k < sortert.length; k++) for (const ende of ["lav", "hoy"]) {
-      const a = sortert[k - 1][ende], b = sortert[k][ende];
-      let naer = 0;
-      for (let s = 0; s <= 10; s++) {
-        const t = s / 10;
-        if (naerAndre(a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t)) naer++;
+    // 📏 DER INGEN BJELKE LUKKER ENDEN, ER KANTEN LINJA GJENNOM SPERREENDENE —
+    // ÉN linje for hele strekket, ikke en strek fra ende til ende. Slutter én
+    // sperre litt kort (Sundland: gavlsperra 152 mm før de andre), skal ikke
+    // takfoten knekke på skrå mot den. Linja er den som flest sperreender
+    // ligger på (innenfor 30 mm); de andre endene projiseres inn på den.
+    for (const ende of ["lav", "hoy"]) {
+      const aapen = [];
+      for (let k = 1; k < sortert.length; k++) {
+        const a = sortert[k - 1][ende], b = sortert[k][ende];
+        let naer = 0;
+        for (let s = 0; s <= 10; s++) {
+          const t = s / 10;
+          if (naerAndre(a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t)) naer++;
+        }
+        aapen.push(naer < 6);
       }
-      if (naer < 6) virtuelle.push([{ x: a.x, z: a.z }, { x: b.x, z: b.z }]);
+      for (let k = 0; k < aapen.length; k++) {
+        if (!aapen[k]) continue;
+        let k2 = k;
+        while (k2 + 1 < aapen.length && aapen[k2 + 1]) k2++;
+        const pts = sortert.slice(k, k2 + 2).map(b => ({ x: n(b[ende].x), z: n(b[ende].z) }));
+        virtuelle.push(endeLinje(pts));
+        k = k2;
+      }
     }
     // 🏔 MØNET ER DER TO TAKFALL MØTES — MED ELLER UTEN MØNEBJELKE (Emil
     // 23.09, Arendal: «er problemet fordi bjelken til mønet ikke går gjennom
