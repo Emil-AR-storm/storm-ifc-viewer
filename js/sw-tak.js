@@ -539,6 +539,35 @@ export function indreAser(flate, o) {
 // Kortere enn dette er ikke en plate, det er en strimmel.
 export const MIN_PLATE_MM = 500;
 
+// Platene i en stabel lagt ut langs u fra `uStart` og oppover. Hver plate
+// DEKKER `dekningMm` og strekker seg `ov` nedover forbi skjøten under seg.
+function stableU(nedFall, uStart, ov) {
+  let s = 0;
+  return nedFall.map((p, j) => {
+    const dek = tallEr(p.dekningMm) ? n(p.dekningMm) : n(p.lengdeMm) - (j > 0 ? ov : 0);
+    const topp = n(uStart) + s + dek;
+    const bunn = n(uStart) + s - (j > 0 ? ov : 0);
+    s += dek;
+    return { ...p, uFra: rund(bunn), uTil: rund(topp) };
+  });
+}
+
+// Åsene i flatas (u, v): hvor de ligger langs fallet, og hvilken strekning
+// på tvers de dekker. Uten linjer (lagret før 23.09) gjelder en ås hele flata.
+export function aserUV(flate) {
+  if (!flate) return [];
+  if (Array.isArray(flate.aserL) && flate.aserL.length) {
+    return flate.aserL.map(([x1, z1, x2, z2]) => {
+      const a = uvVannrett(flate, x1, z1), b = uvVannrett(flate, x2, z2);
+      if (!a || !b) return null;
+      return { u: (a[0] + b[0]) / 2, vA: Math.min(a[1], b[1]), vB: Math.max(a[1], b[1]) };
+    }).filter(Boolean);
+  }
+  if (Array.isArray(flate.skjotU))
+    return flate.skjotU.map(u => ({ u: n(u), vA: -Infinity, vB: Infinity }));
+  return [];
+}
+
 // Hele takfallet delt i plater: én rad per platebredde langs mønet, hver med
 // sine lengder ned fallet.
 //
@@ -637,8 +666,77 @@ export function platerPaFlate(flate, o) {
       rader.push({ vFra: rund(start + hele * pb), breddeMm: rest, kappetBredde: true, plater: medU });
   }
   rader.sort((a, b) => a.vFra - b.vFra);
+  // 🖼 MED OMRISS: hver rad legges fra der TAKET begynner i raden til der det
+  // slutter, og deles bare av åsene som faktisk ligger under raden. Kantene
+  // der raden krysser rammen følger med til kappingen (kappMotKant).
+  const PUV = omrissUV(flate);
+  if (PUV) {
+    const aser = aserUV(flate);
+    const ut = [];
+    for (const r of rader) {
+      const vA = n(r.vFra), w = n(r.breddeMm), vB = vA + w;
+      const linje = (v) => spennVed(PUV, v, flate.u0, flate.u1);
+      // 📏 KANTEN ER OMRISSET SELV, KNEKK FOR KNEKK. En bred rad (Emil kjører
+      // 6 000 mm) kan krysse både en skrå bjelke og et hjørne — én rett linje
+      // over hele bredden ville da lagt en del av plata i løse lufta. Kappet
+      // følger derfor omrisset gjennom hvert hjørne som ligger inne i raden.
+      //
+      // Men det leses INNE i raden, ikke på selve siden: en side som ligger
+      // nesten langs omrisset (på Valle står sperrene 0,17° skjevt mot renna —
+      // 75 mm over 24 m) ville ellers truffet omrisset i den ene enden og gitt
+      // en trekant. De ytterste `d` mm forlenges fra innsiden.
+      const d = Math.min(w / 10, 200);
+      // bare der en SIDEKANT (nesten parallell med raden) faktisk ligger ved
+      // siden av raden — ellers leses omrisset helt ut, hjørne for hjørne
+      const sideVed = (v) => PUV.some((q, i) => {
+        const r2 = PUV[(i + 1) % PUV.length];
+        const du = Math.abs(r2[0] - q[0]), dv = Math.abs(r2[1] - q[1]);
+        return du > 20 * dv && Math.min(q[1], r2[1]) <= v + d && Math.max(q[1], r2[1]) >= v - d;
+      });
+      const va = vA + (sideVed(vA) ? d : 0.5), vb = vB - (sideVed(vB) ? d : 0.5);
+      const vs = [va, vb];
+      for (const q of PUV) if (q[1] > va + 0.5 && q[1] < vb - 0.5) vs.push(q[1] - 0.5, q[1] + 0.5);
+      vs.sort((p2, q2) => p2 - q2);
+      const iM = linje((vA + vB) / 2);
+      const midt = iM.length ? iM : (vs.map(linje).find(I => I.length) || []);
+      for (const [lo, hi] of midt) {
+        const treff = [];
+        for (const v of vs) {
+          let b2 = null, bo = 0;
+          for (const s2 of linje(v)) { const ov = Math.min(hi, s2[1]) - Math.max(lo, s2[0]); if (ov > bo) { bo = ov; b2 = s2; } }
+          if (b2) treff.push({ v, lo: b2[0], hi: b2[1] });
+        }
+        if (!treff.length) continue;
+        const klem = (u) => Math.max(n(flate.u0), Math.min(n(flate.u1), u));
+        // forleng ut til sidene langs det nærmeste stykket som er langt nok
+        const forleng = (k, v, fra) => {
+          const A0 = fra ? treff[0] : treff[treff.length - 1];
+          const B0 = (fra ? treff : treff.slice().reverse()).find(q => Math.abs(q.v - A0.v) >= 50);
+          if (!B0) return A0[k];
+          return A0[k] + (B0[k] - A0[k]) * (v - A0.v) / (B0.v - A0.v);
+        };
+        const kurve = (k) => {
+          const ut2 = [[vA, klem(forleng(k, vA, true))]];
+          for (const q of treff) ut2.push([q.v, klem(q[k])]);
+          ut2.push([vB, klem(forleng(k, vB, false))]);
+          return ut2.map(([v, u]) => [rund(v), rund(u)]);
+        };
+        const loK = kurve("lo"), hiK = kurve("hi");
+        const lA = loK[0][1], lB = loK[loK.length - 1][1], hA = hiK[0][1], hB = hiK[hiK.length - 1][1];
+        const uS = Math.min(...loK.map(q => q[1])), uE = Math.max(...hiK.map(q => q[1]));
+        if (!(uE - uS > 20)) continue;
+        const inne = aser
+          .filter(q => Math.min(vB, q.vB) - Math.max(vA, q.vA) >= 0.5 * w)
+          .map(q => rund(q.u - uS));
+        ut.push({ ...r, plater: stableU(platerNedFall(uE - uS, opp, inne), uS, ov2),
+          kant: { lA: rund(lA), lB: rund(lB), hA: rund(hA), hB: rund(hB), lo: loK, hi: hiK } });
+      }
+    }
+    rader.length = 0;
+    rader.push(...ut);
+  }
   // skjøter: én endeskjøt mindre enn antall plater, per rad
-  const endeskjoter = rader.length * Math.max(0, nedFall.length - 1);
+  const endeskjoter = rader.reduce((a, r) => a + Math.max(0, r.plater.length - 1), 0);
   // sideskjøter: én mellom hvert par naborader
   const sideskjoter = Math.max(0, rader.length - 1);
   return {
@@ -1118,7 +1216,10 @@ export function kanterEtterRotasjon(f) {
 
 export function roterFlate(f) {
   if (!f || !f.U || !f.V) return f;
-  const nyeKanter = kanterEtterRotasjon(f);
+  // 🖼 Med et omriss i verden er det ingenting å lese på nytt: det er samme
+  // polygon, og (u, v) regnes av det når platene legges. Kantlinjene under
+  // gjelder bare flater lagret før 23.09.
+  const nyeKanter = Array.isArray(f.omriss) ? null : kanterEtterRotasjon(f);
   return {
     ...f,
     U: f.V, V: f.U,
@@ -1154,6 +1255,32 @@ export function roterFlater(flater) { return (flater || []).map(roterFlate); }
 //      under taket, og med 300 mm slark hadde den blitt lest som en ås.
 //   3. Den strekker seg faktisk inn under platene i v-retningen.
 export const SKJOT_PLAN_TOL_MM = 60;
+
+// Åsene som LINJER i verden — for å vite hvilke rader de faktisk ligger under.
+//
+// 🔎 EMILS FUNN 23.09 (Valle): en ås på 1 900 mm i det ene hjørnet delte
+// platene i ALLE radene, 30 m ut på taket der det ikke fantes stål under
+// skjøten. En ås bærer en skjøt bare der den ligger — se platerPaFlate.
+export function aserVerden(flate, linjer, o) {
+  return skjotKandidater(flate, linjer, o).map(l =>
+    [rund(l.lav.x), rund(l.lav.z), rund(l.hoy.x), rund(l.hoy.z)]);
+}
+
+function skjotKandidater(flate, linjer, o) {
+  const opp = { ...TAK_STD, ...(o || {}) };
+  if (!flate || !flate.U || !flate.V || !flate.origo) return [];
+  const U = flate.U, V = flate.V, oo = flate.origo, N = flate.N || { x: 0, y: 1, z: 0 };
+  const tol = Math.sin(Math.max(0, n(opp.retningTolGrader)) * Math.PI / 180);
+  const planTol = n(opp.skjotPlanTolMm) > 0 ? n(opp.skjotPlanTolMm) : SKJOT_PLAN_TOL_MM;
+  const langs = (p, A) => (p.x - oo.x) * A.x + (p.y - oo.y) * A.y + (p.z - oo.z) * A.z;
+  return (linjer || []).filter(l => {
+    if (!l || !l.lav || !l.hoy) return false;
+    if (Math.abs(l.ux * U.x + l.uy * U.y + l.uz * U.z) > tol) return false;
+    if (Math.abs(langs(l.lav, N)) > planTol || Math.abs(langs(l.hoy, N)) > planTol) return false;
+    const v1 = langs(l.lav, V), v2 = langs(l.hoy, V);
+    return !(Math.max(v1, v2) < n(flate.v0) || Math.min(v1, v2) > n(flate.v1));
+  });
+}
 
 export function skjotBjelker(flate, linjer, o) {
   const opp = { ...TAK_STD, ...(o || {}) };
@@ -1366,6 +1493,679 @@ export function deltRadrutenett(flater, o) {
   return ut;
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// 🖼 REGEL 3, ANDRE UTGAVE: TAKET ER RAMMEN AV TOPPBJELKER (Emil 23.09)
+// ═══════════════════════════════════════════════════════════════════════
+//
+// «jeg prøver å få generatoren til kun å generere TRP-plater som går fra
+// toppbjelke til toppbjelke og stopper på utvendig kant av toppbjelkene som
+// lager rammen til taket» (Emil 23.09, Valle bilde 1–4).
+//
+// FØR: omrisset ble lest av SPERRENE alene. Hver sperre ga ett punkt i hver
+// ende, og mellom to sperrer ble det trukket en rett strek. Målt på Valle:
+//   • den skrå toppbjelken var ikke med i det hele tatt — streken mellom
+//     sperreendene lå opptil 660 mm UTENFOR den, og innenfor den ellers
+//     (sperrene slutter på bjelkens innside, ikke på dens utvendige flate)
+//   • etter «Roter takflata 90°» ble streken prøvd på nytt i 48 punkter, og
+//     hvert hjørne ble til en skrå linje — platene ble ikke firkantet
+//   • en kort ås (1,9 m) delte platene på HELE flata, 30 m ut i løse lufta
+//
+// NÅ: omrisset er et polygon i VERDEN (plan, x/z), bygget av ALLE
+// toppbjelkene som ligger i flatas plan — sperrer, åser, kantbjelker og skrå
+// bjelker, uansett retning. Fire faste steg, ingen av dem vet noe om bygget:
+//
+//   1. Rammen tegnes i et rutenett: fotavtrykket til hver bjelke i planet.
+//   2. Glippene i bjelkeskjøtene lukkes (opp til 2 × RAMME_LUKK_MM), og alt
+//      som er INNESTENGT av rammen fylles. Det er taket.
+//   3. To flater som gjør krav på samme sted deler det der de møtes: punktet
+//      tilhører flata med nærmeste egne sperre.
+//   4. Kanten leses ut som et polygon og legges på bjelkenes UTVENDIGE flate.
+//      Hakk og trinn under RAMME_HAKK_MM er skjøter i stålet, ikke form på
+//      taket, og rettes ut.
+//
+// Polygonet ligger i verden, så «Roter takflata 90°» og speilingen rører det
+// ikke — det er det samme taket sett den andre veien, nøyaktig.
+//
+// Mangler rammen en side (ingen kantbjelke), lukkes den med en rett linje
+// mellom sperreendene — det er det samme omrisset som før.
+
+export const RAMME_PLAN_TOL_MM = 100;  // en bjelke ligger «i flata» innenfor dette
+export const RAMME_LUKK_MM = 300;      // glipper i bjelkeskjøtene opp til 2 × dette lukkes
+export const RAMME_HAKK_MM = 600;      // hakk/trinn i omrisset under dette rettes ut
+export const RAMME_NAER_MM = 3000;     // rammebjelker lenger enn dette fra flatas sperrer er ikke med
+
+// ── rutenett ────────────────────────────────────────────────────────────
+function lagRute(minX, minZ, maxX, maxZ, celle) {
+  const nx = Math.max(1, Math.ceil((maxX - minX) / celle));
+  const nz = Math.max(1, Math.ceil((maxZ - minZ) / celle));
+  return { x0: minX, z0: minZ, c: celle, nx, nz, m: new Uint8Array(nx * nz) };
+}
+
+function avstSegment(px, pz, a, b) {
+  const dx = b.x - a.x, dz = b.z - a.z;
+  const L2 = dx * dx + dz * dz;
+  let t = L2 > 1e-9 ? ((px - a.x) * dx + (pz - a.z) * dz) / L2 : 0;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (a.x + dx * t), pz - (a.z + dz * t));
+}
+
+// Fyll cellene et plan-polygon dekker. En celle regnes med når midten ligger
+// inne, eller nærmere kanten enn en halv celle — ellers forsvinner en smal
+// bjelke mellom to cellemidter.
+function malPolygon(R, poly, strengt) {
+  const P = (poly || []).filter(Boolean);
+  if (!P.length) return;
+  const xs = P.map(q => n(q.x)), zs = P.map(q => n(q.z));
+  const i0 = Math.max(0, Math.floor((Math.min(...xs) - R.x0) / R.c) - 1);
+  const i1 = Math.min(R.nx - 1, Math.ceil((Math.max(...xs) - R.x0) / R.c) + 1);
+  const j0 = Math.max(0, Math.floor((Math.min(...zs) - R.z0) / R.c) - 1);
+  const j1 = Math.min(R.nz - 1, Math.ceil((Math.max(...zs) - R.z0) / R.c) + 1);
+  const halv = R.c * 0.5;
+  for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+    const x = R.x0 + (i + 0.5) * R.c, z = R.z0 + (j + 0.5) * R.c;
+    let med = P.length >= 3 && iPlanPolygon(P, x, z);
+    if (!med && !strengt) for (let k = 0; k < P.length && !med; k++)
+      if (avstSegment(x, z, P[k], P[(k + 1) % P.length]) <= halv) med = true;
+    if (med) R.m[j * R.nx + i] = 1;
+  }
+}
+
+// Kvadrert avstand (i celler) fra hver celle til nærmeste celle der
+// `m[k] === sett`. Felzenszwalb & Huttenlocher, én akse om gangen.
+function avstandKart(R, m, sett) {
+  const { nx, nz } = R, STOR = 1e20;
+  const D = new Float64Array(nx * nz);
+  for (let k = 0; k < D.length; k++) D[k] = m[k] === sett ? 0 : STOR;
+  const N = Math.max(nx, nz);
+  const f = new Float64Array(N), d = new Float64Array(N);
+  const v = new Int32Array(N), z = new Float64Array(N + 1);
+  const en = (len) => {
+    let k = 0; v[0] = 0; z[0] = -STOR; z[1] = STOR;
+    for (let q = 1; q < len; q++) {
+      let s = ((f[q] + q * q) - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]);
+      while (s <= z[k] && k > 0) { k--; s = ((f[q] + q * q) - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]); }
+      if (s <= z[k]) { v[0] = q; z[0] = -STOR; z[1] = STOR; k = 0; continue; }
+      k++; v[k] = q; z[k] = s; z[k + 1] = STOR;
+    }
+    k = 0;
+    for (let q = 0; q < len; q++) {
+      while (z[k + 1] < q) k++;
+      const dq = q - v[k];
+      d[q] = Math.min(STOR, dq * dq + f[v[k]]);
+    }
+  };
+  for (let j = 0; j < nz; j++) {
+    for (let i = 0; i < nx; i++) f[i] = D[j * nx + i];
+    en(nx);
+    for (let i = 0; i < nx; i++) D[j * nx + i] = d[i];
+  }
+  for (let i = 0; i < nx; i++) {
+    for (let j = 0; j < nz; j++) f[j] = D[j * nx + i];
+    en(nz);
+    for (let j = 0; j < nz; j++) D[j * nx + i] = d[j];
+  }
+  return D;
+}
+
+// Alt som IKKE er innestengt: fylles fra kanten av rutenettet.
+function utenfor(R, sperre) {
+  const { nx, nz } = R;
+  const ute = new Uint8Array(nx * nz);
+  const ko = [];
+  const legg = (i, j) => {
+    const k = j * nx + i;
+    if (ute[k] || sperre[k]) return;
+    ute[k] = 1; ko.push(k);
+  };
+  for (let i = 0; i < nx; i++) { legg(i, 0); legg(i, nz - 1); }
+  for (let j = 0; j < nz; j++) { legg(0, j); legg(nx - 1, j); }
+  while (ko.length) {
+    const k = ko.pop(), i = k % nx, j = (k - i) / nx;
+    if (i > 0) legg(i - 1, j);
+    if (i < nx - 1) legg(i + 1, j);
+    if (j > 0) legg(i, j - 1);
+    if (j < nz - 1) legg(i, j + 1);
+  }
+  return ute;
+}
+
+// Den største sammenhengende biten — en løs flekk er ikke tak.
+function storsteBit(R, m) {
+  const { nx, nz } = R;
+  const merke = new Int32Array(nx * nz);
+  let beste = 0, besteN = 0, nr = 0;
+  for (let s = 0; s < m.length; s++) {
+    if (!m[s] || merke[s]) continue;
+    nr++;
+    let ant = 0;
+    const ko = [s]; merke[s] = nr;
+    while (ko.length) {
+      const k = ko.pop(); ant++;
+      const i = k % nx, j = (k - i) / nx;
+      const nb = [i > 0 ? k - 1 : -1, i < nx - 1 ? k + 1 : -1, j > 0 ? k - nx : -1, j < nz - 1 ? k + nx : -1];
+      for (const q of nb) if (q >= 0 && m[q] && !merke[q]) { merke[q] = nr; ko.push(q); }
+    }
+    if (ant > besteN) { besteN = ant; beste = nr; }
+  }
+  const ut = new Uint8Array(nx * nz);
+  if (beste) for (let k = 0; k < m.length; k++) if (merke[k] === beste) ut[k] = 1;
+  return ut;
+}
+
+// Kanten av cellene som et polygon (celle-hjørner), mot klokka i (x, z).
+function kantPolygon(R, m) {
+  const { nx, nz, c, x0, z0 } = R;
+  const har = (i, j) => i >= 0 && j >= 0 && i < nx && j < nz && m[j * nx + i] === 1;
+  const W = nx + 1;
+  const ut = new Map();                     // hjørne → liste av neste hjørner
+  const kant = (a, b) => { let l = ut.get(a); if (!l) ut.set(a, l = []); l.push(b); };
+  for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
+    if (!har(i, j)) continue;
+    if (!har(i, j - 1)) kant(j * W + i, j * W + i + 1);
+    if (!har(i + 1, j)) kant(j * W + i + 1, (j + 1) * W + i + 1);
+    if (!har(i, j + 1)) kant((j + 1) * W + i + 1, (j + 1) * W + i);
+    if (!har(i - 1, j)) kant((j + 1) * W + i, j * W + i);
+  }
+  let beste = null, besteA = 0;
+  const brukt = new Set();
+  for (const [start, liste] of ut) {
+    for (let li = 0; li < liste.length; li++) {
+      if (brukt.has(start + ":" + li)) continue;
+      const sloyfe = [];
+      let a = start, idx = li, vakt = 0;
+      while (vakt++ < 4 * nx * nz + 8) {
+        const l = ut.get(a);
+        if (!l || idx >= l.length) break;
+        const nokkel = a + ":" + idx;
+        if (brukt.has(nokkel)) break;
+        brukt.add(nokkel);
+        sloyfe.push(a);
+        const b = l[idx];
+        if (b === start) break;
+        const lb = ut.get(b) || [];
+        // ved et klemmepunkt (to celler møtes i et hjørne): ta den første
+        // kanten som ikke er brukt
+        idx = 0;
+        while (idx < lb.length && brukt.has(b + ":" + idx)) idx++;
+        a = b;
+      }
+      if (sloyfe.length < 4) continue;
+      const P = sloyfe.map(k => ({ x: x0 + (k % W) * c, z: z0 + Math.floor(k / W) * c }));
+      const A = arealPlan(P);
+      if (A > besteA) { besteA = A; beste = P; }
+    }
+  }
+  return beste;
+}
+
+export function arealPlan(P) {
+  let A = 0;
+  for (let i = 0; i < P.length; i++) {
+    const a = P[i], b = P[(i + 1) % P.length];
+    A += n(a.x) * n(b.z) - n(b.x) * n(a.z);
+  }
+  return A / 2;
+}
+
+// Douglas–Peucker på et lukket polygon.
+function forenkle(P, tol) {
+  if (!P || P.length < 4) return P;
+  let fjern = 0, dm = -1;
+  for (let i = 1; i < P.length; i++) {
+    const d = Math.hypot(P[i].x - P[0].x, P[i].z - P[0].z);
+    if (d > dm) { dm = d; fjern = i; }
+  }
+  const dp = (pts) => {
+    if (pts.length < 3) return pts;
+    const a = pts[0], b = pts[pts.length - 1];
+    let k = -1, maks = -1;
+    for (let i = 1; i < pts.length - 1; i++) {
+      const d = avstSegment(pts[i].x, pts[i].z, a, b);
+      if (d > maks) { maks = d; k = i; }
+    }
+    if (maks <= tol) return [a, b];
+    const v = dp(pts.slice(0, k + 1)), h = dp(pts.slice(k));
+    return v.slice(0, -1).concat(h);
+  };
+  const en = dp(P.slice(0, fjern + 1));
+  const to = dp(P.slice(fjern).concat([P[0]]));
+  return en.slice(0, -1).concat(to.slice(0, -1));
+}
+
+// ── linjer ──────────────────────────────────────────────────────────────
+function linjeKryss(A, B) {
+  const det = A.d.x * B.d.z - A.d.z * B.d.x;
+  if (Math.abs(det) < 1e-9) return null;
+  const t = ((B.p.x - A.p.x) * B.d.z - (B.p.z - A.p.z) * B.d.x) / det;
+  return { x: A.p.x + A.d.x * t, z: A.p.z + A.d.z * t };
+}
+const kryssV = (a, b) => a.x * b.z - a.z * b.x;
+const prikkV = (a, b) => a.x * b.x + a.z * b.z;
+
+// Legg hver kant av det forenklede polygonet på den bjelkeflaten den ligger
+// langs — den YTTERSTE, for det er den utvendige flaten taket skal ut til.
+function leggPaFlater(P, flater, tolMm, annen, celle, raa, K) {
+  const ut = [];
+  const idx = raa ? new Map(raa.map((q, i) => [q, i])) : null;
+  // rett linje gjennom rutenettets egne kantpunkter mellom a og b (minste
+  // kvadrater) — for en delt kant, der det ikke finnes noen bjelkeflate
+  const tilpass = (a, b) => {
+    if (!idx || !idx.has(a) || !idx.has(b)) return null;
+    const pts = [];
+    for (let i = idx.get(a), vakt = 0; vakt <= raa.length; i = (i + 1) % raa.length, vakt++) {
+      pts.push(raa[i]);
+      if (raa[i] === b) break;
+    }
+    if (pts.length < 3) return null;
+    let mx = 0, mz = 0;
+    for (const q of pts) { mx += q.x; mz += q.z; }
+    mx /= pts.length; mz /= pts.length;
+    let sxx = 0, szz = 0, sxz = 0;
+    for (const q of pts) { const dx = q.x - mx, dz = q.z - mz; sxx += dx * dx; szz += dz * dz; sxz += dx * dz; }
+    const th = 0.5 * Math.atan2(2 * sxz, sxx - szz);
+    return { p: { x: mx, z: mz }, d: { x: Math.cos(th), z: Math.sin(th) } };
+  };
+  const sinTol = Math.sin(4 * Math.PI / 180);
+  for (let i = 0; i < P.length; i++) {
+    const a = P[i], b = P[(i + 1) % P.length];
+    const L = Math.hypot(b.x - a.x, b.z - a.z);
+    if (!(L > 1e-6)) continue;
+    const d = { x: (b.x - a.x) / L, z: (b.z - a.z) / L };
+    const ytre = { x: d.z, z: -d.x };           // høyre side = utsiden (polygonet går mot klokka)
+    const m = { x: (a.x + b.x) / 2, z: (a.z + b.z) / 2 };
+    // 🤝 en kant mot NABOFLATA er ingen bjelkeflate — der møtes to tak, og
+    // delingen er allerede gjort (nærmeste sperre). Den skal ikke flyttes ut
+    // til en bjelkeflate, for da overlapper de to flatene.
+    const ut1 = (t) => ({ x: a.x + (b.x - a.x) * t + ytre.x * 1.5 * celle, z: a.z + (b.z - a.z) * t + ytre.z * 1.5 * celle });
+    const naboer = annen ? [0.25, 0.5, 0.75].map(t => { const q = ut1(t); return annen(q.x, q.z); }).filter(Boolean) : [];
+    const delt = naboer.length >= 2;
+    let best = null, bestS = -Infinity;
+    if (L >= tolMm && !delt) for (const f of flater) {
+      if (Math.abs(kryssV(d, f.d)) > sinTol) continue;
+      const s = prikkV({ x: f.a.x - m.x, z: f.a.z - m.z }, ytre);
+      if (Math.abs(s) > tolMm) continue;
+      // flaten må faktisk ligge langs kanten, ikke bare på samme linje et
+      // annet sted på bygget
+      const t1 = prikkV({ x: f.a.x - a.x, z: f.a.z - a.z }, d);
+      const t2 = prikkV({ x: f.b.x - a.x, z: f.b.z - a.z }, d);
+      const ov = Math.min(L, Math.max(t1, t2)) - Math.max(0, Math.min(t1, t2));
+      if (ov < 0.3 * Math.min(L, f.L)) continue;
+      if (s > bestS) { bestS = s; best = f; }
+    }
+    const fit = delt ? (delingsLinje(K, naboer[0], a, b, ytre, celle) || tilpass(a, b)) : null;
+    if (fit) {
+      const dd = prikkV(fit.d, d) >= 0 ? fit.d : { x: -fit.d.x, z: -fit.d.z };
+      ut.push({ p: fit.p, d: dd, paaFlate: false, delt });
+      continue;
+    }
+    const dd = best ? (prikkV(best.d, d) >= 0 ? best.d : { x: -best.d.x, z: -best.d.z }) : d;
+    ut.push({ p: best ? { x: best.a.x, z: best.a.z } : a, d: dd, paaFlate: !!best, delt });
+  }
+  return ut;
+}
+
+function hjornerAv(L) {
+  const P = [];
+  for (let i = 0; i < L.length; i++) {
+    const A = L[(i - 1 + L.length) % L.length], B = L[i];
+    const X = linjeKryss(A, B);
+    P.push(X || { x: B.p.x, z: B.p.z });
+  }
+  return P;
+}
+
+// Hakk og trinn under `hakkMm` rettes ut. En kort kant mellom to kanter som
+// krysser hverandre fjernes (hjørnet blir krysset deres). En kort kant mellom
+// to PARALLELLE kanter er et trinn — da vinner den ytterste.
+function rettUt(L0, hakkMm) {
+  let L = L0.slice();
+  const parallell = (A, B) => Math.abs(kryssV(A.d, B.d)) < Math.sin(8 * Math.PI / 180);
+  const sammeLinje = (A, B) => parallell(A, B) &&
+    Math.abs(kryssV(A.d, { x: B.p.x - A.p.x, z: B.p.z - A.p.z })) < 20;
+  for (let runde = 0; runde < 400 && L.length > 3; runde++) {
+    // slå sammen naboer som er samme linje
+    let slatt = false;
+    for (let i = 0; i < L.length && L.length > 3; i++) {
+      const j = (i + 1) % L.length;
+      if (sammeLinje(L[i], L[j])) {
+        if (!L[i].paaFlate && L[j].paaFlate) L[i] = L[j];
+        L.splice(j, 1); slatt = true; break;
+      }
+    }
+    if (slatt) continue;
+    const P = hjornerAv(L);
+    // Kandidatene: korte kanter, og skråkanter som ikke ligger på noen
+    // bjelke (rutenettets avfasing av et hjørne). En lang kant på en ekte
+    // bjelkeflate røres aldri.
+    let kort = -1, kortL = Infinity;
+    for (let i = 0; i < L.length; i++) {
+      if (L[i].laast) continue;
+      const a = P[i], b = P[(i + 1) % L.length];
+      const len = Math.hypot(b.x - a.x, b.z - a.z);
+      // en kant som snur retning (kryssene ligger «baklengs») er også et hakk
+      const bak = prikkV({ x: b.x - a.x, z: b.z - a.z }, L[i].d) < 0;
+      const lengde = bak ? 0 : len;
+      const kandidat = lengde < hakkMm || (!L[i].paaFlate && !L[i].delt && lengde < 3 * hakkMm);
+      if (kandidat && lengde < kortL) { kortL = lengde; kort = i; }
+    }
+    if (kort < 0) break;
+    const iF = (kort - 1 + L.length) % L.length, iN = (kort + 1) % L.length;
+    const F = L[iF], N = L[iN];
+    if (!parallell(F, N)) {
+      const X = linjeKryss(F, N);
+      const a = P[kort], b = P[(kort + 1) % L.length];
+      // hjørnet er krysset av naboene — så lenge det bare flytter en liten
+      // trekant (et hakk i en bjelkeskjøt), ikke en bit av taket
+      const tri = X ? Math.abs(kryssV({ x: a.x - X.x, z: a.z - X.z }, { x: b.x - X.x, z: b.z - X.z })) / 2 : Infinity;
+      const langt = X ? Math.max(Math.hypot(a.x - X.x, a.z - X.z), Math.hypot(b.x - X.x, b.z - X.z)) : Infinity;
+      if (tri <= hakkMm * hakkMm / 2 && langt <= 2 * hakkMm) { L.splice(kort, 1); continue; }
+      L[kort] = { ...L[kort], laast: true };
+      continue;
+    }
+    // trinn: den ytterste av de to parallelle kantene vinner — men ikke mot
+    // naboflata, der er delingen allerede gjort
+    const ytre = { x: F.d.z, z: -F.d.x };
+    const s = prikkV({ x: N.p.x - F.p.x, z: N.p.z - F.p.z }, ytre);
+    // En kant på en ekte bjelkeflate slår alltid en kant som bare er
+    // rutenettets (en bjelkeende som stikker opp) — ellers den ytterste.
+    // Mot naboflata er trinnet ekte: der slutter den ene flata på sin
+    // bjelkeflate og den andre deler med naboen. Det står.
+    if (F.delt !== N.delt) { L[kort] = { ...L[kort], laast: true }; continue; }
+    const vinner = (F.paaFlate !== N.paaFlate) ? (F.paaFlate ? F : N) : (s > 0 ? N : F);
+    const fjern = [kort, iN].sort((x, y) => y - x);
+    L[iF] = { ...vinner, d: F.d };
+    for (const k of fjern) L.splice(k, 1);
+    if (fjern[0] < iF || fjern[1] < iF) { /* indeksene over er allerede riktige */ }
+  }
+  return L;
+}
+
+// Er bjelken en del av flatas plan? Begge ender (og midten) innenfor tol.
+function iFlatensPlan(f, l, tol) {
+  if (!f || !f.N || !f.origo || !l || !l.lav || !l.hoy) return false;
+  const d = (p) => (n(p.x) - f.origo.x) * f.N.x + (n(p.y) - f.origo.y) * f.N.y + (n(p.z) - f.origo.z) * f.N.z;
+  return Math.abs(d(l.lav)) <= tol && Math.abs(d(l.hoy)) <= tol;
+}
+
+function fotAv(l) {
+  return (l && l.fot && l.fot.length >= 3) ? l.fot
+    : (l && l.lav && l.hoy ? [{ x: l.lav.x, z: l.lav.z }, { x: l.hoy.x, z: l.hoy.z }] : []);
+}
+
+// Avstanden fra et punkt til flatas sperrefelt (0 inne i det).
+function feltAvst(K, x, z) {
+  let d = Infinity;
+  for (const p of K.felt) {
+    if (p.length >= 3 && iPlanPolygon(p, x, z)) return 0;
+    for (let k = 0; k < p.length; k++) d = Math.min(d, avstSegment(x, z, p[k], p[(k + 1) % p.length]));
+  }
+  return d;
+}
+
+// Vinner flate K over G i punktet (x, z)?
+//
+// Nærmeste sperrefelt vinner. Ligger punktet INNE i begge feltene (sperrer
+// som krysser hverandre i et valmhjørne), avgjør planene selv: på et tak som
+// buer UT (møne, valm) er taket det LAVESTE planet — det andre ligger over
+// taket der. På et tak som buer INN (renne) er det det HØYESTE.
+function vinnerAv(K, G, x, z) {
+  const dk = feltAvst(K, x, z), dg = feltAvst(G, x, z);
+  if (dk > 1 || dg > 1) return dk < dg || (dk === dg && K.fi < G.fi);
+  const hk = planHoydeVed(K.f, x, z), hg = planHoydeVed(G.f, x, z);
+  if (hk === null || hg === null) return K.fi < G.fi;
+  const hGmegSelv = planHoydeVed(G.f, K.midt.x, K.midt.z), hKmegSelv = planHoydeVed(K.f, K.midt.x, K.midt.z);
+  const utover = hGmegSelv !== null && hKmegSelv !== null && hGmegSelv > hKmegSelv;
+  if (Math.abs(hk - hg) < 1e-6) return K.fi < G.fi;
+  return utover ? hk < hg : hk > hg;
+}
+
+// Eier K punktet når naboen er G? Ja der G ikke har tak i det hele tatt
+// (G sitt eget, rettede omriss), ellers etter vinnerAv.
+function eierAv(K, G, x, z) {
+  if (G.P1 && !iPlanPolygon(G.P1, x, z)) return true;
+  return vinnerAv(K, G, x, z);
+}
+
+// Delingslinja mellom K og naboen G langs en kant fra a til b: der
+// eierskapet faktisk skifter, funnet ved halvering i ni punkter. Begge
+// flatene regner den SAMME linja — da møtes de uten glipe og uten overlapp.
+function delingsLinje(K, G, a, b, ytre, celle) {
+  if (!K || !G) return null;
+  const pts = [];
+  const r = 4 * celle;
+  for (let s = 1; s <= 9; s++) {
+    const t = s / 10;
+    const p = { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t };
+    let inn = { x: p.x - ytre.x * r, z: p.z - ytre.z * r };
+    let ut = { x: p.x + ytre.x * r, z: p.z + ytre.z * r };
+    if (!eierAv(K, G, inn.x, inn.z) || eierAv(K, G, ut.x, ut.z)) continue;
+    for (let k = 0; k < 30; k++) {
+      const m = { x: (inn.x + ut.x) / 2, z: (inn.z + ut.z) / 2 };
+      if (eierAv(K, G, m.x, m.z)) inn = m; else ut = m;
+    }
+    pts.push({ x: (inn.x + ut.x) / 2, z: (inn.z + ut.z) / 2 });
+  }
+  if (pts.length < 2) return null;
+  let mx = 0, mz = 0;
+  for (const q of pts) { mx += q.x; mz += q.z; }
+  mx /= pts.length; mz /= pts.length;
+  let sxx = 0, szz = 0, sxz = 0;
+  for (const q of pts) { const dx = q.x - mx, dz = q.z - mz; sxx += dx * dx; szz += dz * dz; sxz += dx * dz; }
+  const th = 0.5 * Math.atan2(2 * sxz, sxx - szz);
+  return { p: { x: mx, z: mz }, d: { x: Math.cos(th), z: Math.sin(th) } };
+}
+
+// Omrisset for alle flatene på en gang — de må deles der de møtes.
+//
+// `grupper[i].bjelker` er sperrene til `flater[i]`, `linjer` er toppbjelkene.
+// Svaret er flatene med `omriss` ([[x, z], …] i verden) og utstrekningen
+// u0…v1 lest av det. En flate der omrisset ikke lar seg lese står urørt.
+export function omrissForFlater(flater, grupper, linjer, o) {
+  const opp = { ...TAK_STD, ...(o || {}) };
+  const tol = RAMME_PLAN_TOL_MM, R = RAMME_LUKK_MM;
+  const F = flater || [];
+  const alleSperrer = new Set();
+  for (const g of grupper || []) for (const b of (g && g.bjelker) || []) alleSperrer.add(b);
+  const kart = F.map((f, fi) => {
+    const sperrer = ((grupper[fi] && grupper[fi].bjelker) || []).filter(Boolean);
+    if (!f || !f.U || !sperrer.length) return null;
+    const egne = new Set(sperrer);
+    // en sperre i en ANNEN flate er aldri ramme her — den bærer naboen, og
+    // på et nesten flatt tak ligger den lett innenfor toleransen likevel
+    // 📦 bare bjelker i nærheten av flatas egne sperrer — et stort, flatt bygg
+    // har hele taket i samme plan, og da ville hver flate ellers regnet over
+    // hele bygget. Rammen står inntil sperreendene; RAMME_NAER_MM er god margin.
+    let bx0 = Infinity, bx1 = -Infinity, bz0 = Infinity, bz1 = -Infinity;
+    for (const b of sperrer) for (const q of fotAv(b)) {
+      bx0 = Math.min(bx0, q.x); bx1 = Math.max(bx1, q.x); bz0 = Math.min(bz0, q.z); bz1 = Math.max(bz1, q.z);
+    }
+    const M = RAMME_NAER_MM;
+    const naer = (l) => fotAv(l).some(q => q.x >= bx0 - M && q.x <= bx1 + M && q.z >= bz0 - M && q.z <= bz1 + M);
+    const ramme = (linjer || []).filter(l => egne.has(l) ||
+      (!alleSperrer.has(l) && iFlatensPlan(f, l, tol) && naer(l)));
+    const fot = ramme.map(fotAv).filter(p => p.length);
+    // 🔗 SPERREENDENE SOM RESERVE. Mellom to nabosperrer trekkes en linje i
+    // hver ende — men bare der det IKKE står en ekte bjelke langs den. Står
+    // det en skrå bjelke der, er det den som er kanten.
+    const andre = ramme.filter(l => !egne.has(l)).map(fotAv).filter(p => p.length);
+    const naerAndre = (x, z) => andre.some(p => {
+      if (p.length >= 3 && iPlanPolygon(p, x, z)) return true;
+      for (let k = 0; k < p.length; k++) if (avstSegment(x, z, p[k], p[(k + 1) % p.length]) <= 2 * R) return true;
+      return false;
+    });
+    const sortert = sperrer.map(b => {
+      const uv = uvVannrett(f, (b.lav.x + b.hoy.x) / 2, (b.lav.z + b.hoy.z) / 2);
+      return { b, v: uv ? uv[1] : 0 };
+    }).sort((a, b) => a.v - b.v).map(x => x.b);
+    const virtuelle = [];
+    for (let k = 1; k < sortert.length; k++) for (const ende of ["lav", "hoy"]) {
+      const a = sortert[k - 1][ende], b = sortert[k][ende];
+      let naer = 0;
+      for (let s = 0; s <= 10; s++) {
+        const t = s / 10;
+        if (naerAndre(a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t)) naer++;
+      }
+      if (naer < 6) virtuelle.push([{ x: a.x, z: a.z }, { x: b.x, z: b.z }]);
+    }
+    const alle = fot.concat(virtuelle);
+    const xs = [], zs = [];
+    for (const p of alle) for (const q of p) { xs.push(n(q.x)); zs.push(n(q.z)); }
+    if (!xs.length) return null;
+    const minX = Math.min(...xs), maxX = Math.max(...xs), minZ = Math.min(...zs), maxZ = Math.max(...zs);
+    const celle = Math.max(40, Math.ceil(Math.max(maxX - minX, maxZ - minZ) / 1200),
+      Math.ceil(Math.sqrt((maxX - minX + 2 * R) * (maxZ - minZ + 2 * R) / 1.5e6)));
+    const pad = R + 4 * celle;
+    const Rt = lagRute(minX - pad, minZ - pad, maxX + pad, maxZ + pad, celle);
+    for (const p of fot) malPolygon(Rt, p);
+    for (const [a, b] of virtuelle) malPolygon(Rt, [a, b]);
+    // 2. lukk glippene og fyll det innestengte
+    const r2 = Math.pow(R / celle, 2);
+    const dB = avstandKart(Rt, Rt.m, 1);
+    const tykk = new Uint8Array(Rt.m.length);
+    for (let k = 0; k < tykk.length; k++) tykk[k] = dB[k] <= r2 ? 1 : 0;
+    const ute = utenfor(Rt, tykk);
+    const dU = avstandKart(Rt, ute, 1);
+    const tak = new Uint8Array(Rt.m.length);
+    for (let k = 0; k < tak.length; k++) tak[k] = (dU[k] > r2 || Rt.m[k]) ? 1 : 0;
+    // en bjelkeende som stikker ut av rammen er ikke tak: åpning med
+    // en halv lukkeradius tar alt smalere enn det
+    const r2b = Math.pow(R / 2 / celle, 2);
+    const dI = avstandKart(Rt, tak, 0);
+    const kjerne = new Uint8Array(tak.length);
+    for (let k = 0; k < tak.length; k++) kjerne[k] = dI[k] > r2b ? 1 : 0;
+    const dK = avstandKart(Rt, kjerne, 1);
+    for (let k = 0; k < tak.length; k++) tak[k] = dK[k] <= r2b ? 1 : 0;
+    // 🤝 HVEM EIER ET OMSTRIDT PUNKT? Avstanden til flatas eget SPERREFELT:
+    // området sperrene spenner over, fra ende til ende. Ikke avstanden til
+    // nærmeste sperre — den måles mest på tvers, og da ville nabosperrer
+    // 200 mm forskjøvet i v ha flyttet delingen en meter inn på taket.
+    // I en renne eller et møne der sperrene møtes ende mot ende, deler
+    // dette nøyaktig midt mellom sperreendene. Se vinnerAv().
+    const felt = sperrer.map(fotAv).filter(p => p.length);
+    if (sortert.length >= 2)
+      felt.push(sortert.map(b => ({ x: b.lav.x, z: b.lav.z }))
+        .concat(sortert.slice().reverse().map(b => ({ x: b.hoy.x, z: b.hoy.z }))));
+    let sx = 0, sz = 0;
+    for (const b of sperrer) { sx += (b.lav.x + b.hoy.x) / 2; sz += (b.lav.z + b.hoy.z) / 2; }
+    const midt = { x: sx / sperrer.length, z: sz / sperrer.length };
+    const flaterB = [];
+    const seg = (a, b) => {
+      const L = Math.hypot(b.x - a.x, b.z - a.z);
+      if (L > 1) flaterB.push({ a, b, L, d: { x: (b.x - a.x) / L, z: (b.z - a.z) / L } });
+    };
+    for (const p of fot) for (let k = 0; k < p.length; k++) seg(p[k], p[(k + 1) % p.length]);
+    for (const [a, b] of virtuelle) seg(a, b);
+    const K = { f, fi, Rt, tak, felt, midt, flaterB };
+    // ✅ FØRSTE RUNDE: flatas EGET omriss, rettet, tegnes tilbake i rutenettet.
+    // Et hakk i en bjelkeskjøt i hjørnet skal ikke gi naboflata et stykke tak
+    // den ikke har — da må hakket være rettet før de to deler.
+    const P1 = rettPolygon(K, storsteBit(Rt, tak), null);
+    K.P1 = P1;
+    if (P1) {
+      const Rp = { ...Rt, m: new Uint8Array(Rt.m.length) };
+      malPolygon(Rp, P1, true);
+      K.tak = Rp.m;
+    }
+    return K;
+  });
+  // 3. to flater som gjør krav på samme sted: nærmeste sperrefelt vinner
+  const harTak = (G, x, z) => {
+    const i = Math.floor((x - G.Rt.x0) / G.Rt.c), j = Math.floor((z - G.Rt.z0) / G.Rt.c);
+    return i >= 0 && j >= 0 && i < G.Rt.nx && j < G.Rt.nz && G.tak[j * G.Rt.nx + i] === 1;
+  };
+  const endelig = kart.map((K) => {
+    if (!K) return null;
+    const { Rt } = K;
+    const m = new Uint8Array(K.tak.length);
+    for (let k = 0; k < m.length; k++) {
+      if (!K.tak[k]) continue;
+      const i = k % Rt.nx, j = (k - i) / Rt.nx;
+      const x = Rt.x0 + (i + 0.5) * Rt.c, z = Rt.z0 + (j + 0.5) * Rt.c;
+      let behold = true;
+      for (const G of kart) {
+        if (!G || G === K || !harTak(G, x, z)) continue;
+        if (!vinnerAv(K, G, x, z)) { behold = false; break; }
+      }
+      if (behold) m[k] = 1;
+    }
+    return storsteBit(Rt, m);
+  });
+  // 4. kanten som polygon, lagt på bjelkenes utvendige flate
+  return F.map((f, fi) => {
+    const K = kart[fi], m = endelig[fi];
+    if (!K || !m) return f;
+    const annen = (x, z) => {
+      for (let gi = 0; gi < kart.length; gi++) {
+        const G = kart[gi];
+        if (!G || gi === fi || !endelig[gi]) continue;
+        const i = Math.floor((x - G.Rt.x0) / G.Rt.c), j = Math.floor((z - G.Rt.z0) / G.Rt.c);
+        if (i >= 0 && j >= 0 && i < G.Rt.nx && j < G.Rt.nz && endelig[gi][j * G.Rt.nx + i] === 1) return G;
+      }
+      return null;
+    };
+    const P = rettPolygon(K, m, annen);
+    return P ? medOmriss(f, P.map(q => [rund(q.x), rund(q.z)])) : f;
+  });
+}
+
+// Rutenettets kant som et rettet polygon: forenklet, lagt på bjelkeflatene og
+// med hakkene i bjelkeskjøtene rettet ut. Null når det ikke lar seg lese.
+function rettPolygon(K, m, annen) {
+  const raa = kantPolygon(K.Rt, m);
+  if (!raa || raa.length < 4) return null;
+  const enkel = forenkle(raa, 1.5 * K.Rt.c);
+  const lagt = leggPaFlater(enkel, K.flaterB, Math.max(2 * K.Rt.c, 60), annen, K.Rt.c, raa, K);
+  const linjerP = rettUt(lagt, RAMME_HAKK_MM);
+  let P = hjornerAv(linjerP);
+  const aRaa = arealPlan(raa), aP = arealPlan(P);
+  // et rettet omriss som ikke lenger ligner rutenettet er en feil — da står
+  // det forenklede omrisset (på rutenettets nøyaktighet) i stedet
+  if (!(aP > 0) || Math.abs(aP - aRaa) > 0.08 * aRaa) P = enkel;
+  return P;
+}
+
+// Utstrekning og areal lest av omrisset, i flatas egen (u, v).
+export function medOmriss(f, omriss) {
+  const UV = omriss.map(([x, z]) => uvVannrett(f, x, z)).filter(Boolean);
+  if (UV.length < 3) return f;
+  const us = UV.map(q => q[0]), vs = UV.map(q => q[1]);
+  const u0 = Math.min(...us), u1 = Math.max(...us), v0 = Math.min(...vs), v1 = Math.max(...vs);
+  let A = 0;
+  for (let i = 0; i < UV.length; i++) {
+    const a = UV[i], b = UV[(i + 1) % UV.length];
+    A += a[0] * b[1] - b[0] * a[1];
+  }
+  return { ...f, omriss, u0: rund(u0), u1: rund(u1), v0: rund(v0), v1: rund(v1),
+    lengdeMm: rund(u1 - u0), breddeMm: rund(v1 - v0), arealM2: rund(Math.abs(A) / 2 / 1e6) };
+}
+
+// Omrisset i flatas (u, v) — én gang per flate, ikke per plate.
+export function omrissUV(f) {
+  if (!f || !Array.isArray(f.omriss) || f.omriss.length < 3 || !f.U || !f.V) return null;
+  const P = f.omriss.map(([x, z]) => uvVannrett(f, x, z)).filter(Boolean);
+  return P.length >= 3 ? P : null;
+}
+
+// Hvor finnes det tak langs linja v = konstant? Intervaller [fra, til] i u.
+export function spennVed(PUV, v, u0, u1) {
+  if (!PUV) return [];
+  const x = [];
+  for (let i = 0; i < PUV.length; i++) {
+    const a = PUV[i], b = PUV[(i + 1) % PUV.length];
+    if ((a[1] > v) === (b[1] > v)) continue;
+    x.push(a[0] + (v - a[1]) * (b[0] - a[0]) / (b[1] - a[1]));
+  }
+  x.sort((p, q) => p - q);
+  const ut = [];
+  for (let i = 0; i + 1 < x.length; i += 2) {
+    let a = x[i], b = x[i + 1];
+    if (tallEr(u0)) a = Math.max(a, n(u0));
+    if (tallEr(u1)) b = Math.min(b, n(u1));
+    if (b - a > 1) ut.push([a, b]);
+  }
+  return ut;
+}
+
 // Hele taket: bjelkelinjene inn, ferdige takflater ut.
 //
 // ⚠ ensrettFlater() og deltRadrutenett() hører IKKE hjemme her. De må kjøre
@@ -1375,8 +2175,11 @@ export function deltRadrutenett(flater, o) {
 export function takflaterFraBjelker(linjer, o) {
   // ⬆ REGEL 1 FØRST: bare de bjelkene som ingenting ligger over.
   const topp = toppBjelker(linjer);
-  return klippMoner(grupperBjelker(topp, o).map(g => flateFraGruppe(g, o)).filter(Boolean), o)
-    .sort((a, b) => b.arealM2 - a.arealM2);
+  const par = grupperBjelker(topp, o).map(g => ({ g, f: flateFraGruppe(g, o) })).filter(x => x.f);
+  // 🖼 REGEL 3, ANDRE UTGAVE: omrisset leses av HELE rammen av toppbjelker,
+  // ikke bare av sperrene — se omrissForFlater
+  const med = omrissForFlater(par.map(x => x.f), par.map(x => x.g), topp, o);
+  return klippMoner(med, o).sort((a, b) => b.arealM2 - a.arealM2);
 }
 
 // ═══════ 🔺 VALMENE: HVILKEN FLATE EIER PUNKTET? ═══════
@@ -1500,13 +2303,63 @@ export function flateEier(flater, fi, x, z, tolMm) {
 // («5980×1100/460MM 6,1°»).
 export function kappMotKant(f, o) {
   const opp = { ...TAK_STD, ...(o || {}) };
-  if (!f || (!Array.isArray(f.kantLav) && !Array.isArray(f.kantHoy))) return f;
+  const harKant = (f && f.rader || []).some(r => r && r.kant);
+  if (!f || (!harKant && !Array.isArray(f.kantLav) && !Array.isArray(f.kantHoy))) return f;
   const tol = 5;
   const rader = (f.rader || []).map(r => {
     const vA = n(r.vFra), vB = vA + n(r.breddeMm);
-    const hA = kantU(f.kantHoy, vA), hB = kantU(f.kantHoy, vB);
-    const lA = kantU(f.kantLav, vA), lB = kantU(f.kantLav, vB);
+    // 🖼 kanten fra omrisset (lest per rad i platerPaFlate) går foran de gamle
+    // kantlinjene
+    const K = r.kant;
+    const hA = K ? K.hA : kantU(f.kantHoy, vA), hB = K ? K.hB : kantU(f.kantHoy, vB);
+    const lA = K ? K.lA : kantU(f.kantLav, vA), lB = K ? K.lB : kantU(f.kantLav, vB);
     const plater = [];
+    // 🖼 KNEKKET KANT (omrisset krysser raden med et hjørne inne i den): hver
+    // plate kappes i hvert knekkpunkt, ikke bare på de to sidene
+    if (K && Array.isArray(K.lo) && Array.isArray(K.hi) && (K.lo.length > 2 || K.hi.length > 2)) {
+      const vsK = [...new Set(K.lo.map(q => q[0]).concat(K.hi.map(q => q[0])))].sort((a2, b2) => a2 - b2);
+      const ved = (kurve, v) => {
+        for (let i = 1; i < kurve.length; i++) {
+          const a2 = kurve[i - 1], b2 = kurve[i];
+          if (v <= b2[0] || i === kurve.length - 1) {
+            const dd = b2[0] - a2[0];
+            return dd > 1e-9 ? a2[1] + (b2[1] - a2[1]) * (v - a2[0]) / dd : b2[1];
+          }
+        }
+        return kurve[0][1];
+      };
+      for (const p of r.plater || []) {
+        const fraK = [], tilK = [];
+        for (const v of vsK) {
+          const lo = ved(K.lo, v), hi = ved(K.hi, v);
+          const f2 = lo - n(p.uFra) > 1 ? lo : n(p.uFra);
+          const t2 = Math.max(f2, n(p.uTil) - hi > 1 ? hi : n(p.uTil));
+          fraK.push([rund(v - vA), rund(f2)]); tilK.push([rund(v - vA), rund(t2)]);
+        }
+        const L = fraK.map((q, i) => tilK[i][1] - q[1]);
+        if (!L.some(x => x > 20)) continue;
+        const rett = fraK.every(q => Math.abs(q[1] - fraK[0][1]) <= tol) && tilK.every(q => Math.abs(q[1] - tilK[0][1]) <= tol);
+        const ny = { ...p, uFra: rund(Math.min(...fraK.map(q => q[1]))), uTil: rund(Math.max(...tilK.map(q => q[1]))) };
+        ny.lengdeMm = Math.round(Math.max(...L));
+        delete ny.skra; delete ny.lengdeVMm; delete ny.lengdeHMm; delete ny.vinkel;
+        delete ny.uFraA; delete ny.uFraB; delete ny.uTilA; delete ny.uTilB; delete ny.kappFra; delete ny.kappTil; delete ny.middelMm;
+        if (!rett) {
+          ny.skra = true;
+          ny.lengdeVMm = Math.round(Math.max(0, L[0]));
+          ny.lengdeHMm = Math.round(Math.max(0, L[L.length - 1]));
+          ny.uFraA = fraK[0][1]; ny.uFraB = fraK[fraK.length - 1][1];
+          ny.uTilA = tilK[0][1]; ny.uTilB = tilK[tilK.length - 1][1];
+          ny.vinkel = kappVinkel(n(r.breddeMm), L[0], L[L.length - 1]);
+          ny.kappFra = fraK; ny.kappTil = tilK;
+          // middellengden av et knekket kapp: arealet delt på bredden
+          let A = 0;
+          for (let i = 1; i < L.length; i++) A += (L[i - 1] + L[i]) / 2 * (fraK[i][0] - fraK[i - 1][0]);
+          ny.middelMm = rund(A / Math.max(1, n(r.breddeMm)));
+        }
+        plater.push(ny);
+      }
+      return { ...r, plater };
+    }
     for (const p of r.plater || []) {
       // 1 mm slark: kantlinja er lest av bjelkeendene og platelengdene er
       // avrundet til hele mm. Uten slarken hadde et helt rett tak fått
@@ -1563,6 +2416,8 @@ export function platerPaTaket(flater, o) {
       ...r,
       plater: (r.plater || []).filter(p => {
         if (!f.U) return true;                 // den gamle modellen har ingen valmer
+        // 🖼 med omriss er det allerede avgjort hvem som eier hvert punkt
+        if (Array.isArray(f.omriss)) return true;
         const um = (n(p.uFra) + n(p.uTil)) / 2;
         const vm = n(r.vFra) + n(r.breddeMm) / 2;
         const pt = punktPaFlate(f, um, vm);
@@ -1654,13 +2509,16 @@ export function justerPlater(medPlater, just, ekstra, o) {
   return (medPlater || []).map((f, fi) => {
     const rader = (f.rader || []).map(r => {
       const plater = [];
-      let bredde = n(r.breddeMm);
+      let bredde = n(r.breddeMm), vFra = n(r.vFra);
       for (const p of r.plater || []) {
         const id = p.id || plateId(fi, r, p);
         const j = J[id] || {};
         // egen bredde gjelder RADEN plata ligger i — en TRP-plate er like
         // bred hele veien, så en «halv bredde» midt i en rad finnes ikke
         if (tallEr(j.breddeMm) && Number(j.breddeMm) > 20) bredde = Number(j.breddeMm);
+        // ↔ dratt i den ANDRE sida (Emil 23.09: «den må kunne dras i alle 4»):
+        // raden flytter starten sin, og bredden følger med
+        if (tallEr(j.dvFra)) vFra = n(r.vFra) + Number(j.dvFra);
         if (j.av) continue;
         const [uFra, uTil] = paaFlata(f, n(p.uFra) - n(j.dFra), n(p.uTil) + n(j.dTil));
         if (uTil - uFra <= 20) continue;
@@ -1670,12 +2528,12 @@ export function justerPlater(medPlater, just, ekstra, o) {
         const rest = dratt
           ? { ...p, skra: undefined, lengdeVMm: undefined, lengdeHMm: undefined,
               uFraA: undefined, uFraB: undefined, uTilA: undefined, uTilB: undefined,
-              vinkel: undefined }
+              vinkel: undefined, kappFra: undefined, kappTil: undefined, middelMm: undefined }
           : p;
         plater.push({ ...rest, id, uFra: rund(uFra), uTil: rund(uTil),
           lengdeMm: rund(uTil - uFra) });
       }
-      return { ...r, breddeMm: rund(bredde), kappetBredde: r.kappetBredde ||
+      return { ...r, vFra: rund(vFra), breddeMm: rund(bredde), kappetBredde: r.kappetBredde ||
         bredde !== n(r.breddeMm), plater };
     }).filter(r => r.plater.length);
     // lagt til for hånd
@@ -1725,7 +2583,7 @@ export function summerFlate(f, o) {
   // av den lengste kanten. Ellers bestilles det for mye på hvert skråtak.
   const arealM2 = rund(rader.reduce((a, r) =>
     a + r.plater.reduce((b, p) => b + (p.skra
-      ? (n(p.lengdeVMm) + n(p.lengdeHMm)) / 2
+      ? (tallEr(p.middelMm) ? n(p.middelMm) : (n(p.lengdeVMm) + n(p.lengdeHMm)) / 2)
       : n(p.uTil) - n(p.uFra)) * n(r.breddeMm), 0), 0) / 1e6);
   return { ...f, rader, antallPlater: antall, endeskjoter, sideskjoter, arealM2,
     skjotLm: rund(sideLm + endeLm) };
