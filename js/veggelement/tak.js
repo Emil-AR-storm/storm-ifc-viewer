@@ -20,7 +20,7 @@ import { t } from "../i18n.js";
 import * as THREE from "three";
 import { MALTYPER, trpProfil } from "../materiell-vis.js";
 import { TAK_RADER, TAK_STD, bjelkeLinje, fallRetningFraBjelker, justerPlater, plateId,
-         platerPaFlate, roterFlater, skjotBjelker, aserVerden, takFlater, takRamme, takRektangel,
+         platerPaFlate, roterFlater, skjotBjelker, aserVerden, radBjelker, takFlater, takRamme, takRektangel,
          takflaterFraBjelker, platerPaTaket, tilUV, fraUV, trpListe, takTotaler,
          ensrettFlater, deltRadrutenett, vinkelTekstTak,
          indreAser, plateNokkel, platePunkter } from "../sw-tak.js";
@@ -38,7 +38,8 @@ import { lagreMateriellLokalt, tegnMateriell, vaskMateriell } from "../materiell
 // ───────────────────── oppsettet ─────────────────────
 
 export const TAK_FELT = [
-  ["trpBreddeMm", "TRP dekkende bredde (mm)"],
+  // 📏 «TRP dekkende bredde» er fjernet (Emil 23.09): radene legges fra
+  // bjelke til bjelke også på tvers — se radBjelker i js/sw-tak.js.
   ["endeOverlappMm", "Overlapp endeskjøt (mm)"],
   ["maksLengdeMm", "Transportgrense (mm) — varsler, deler ikke"],
   ["skrueAvstandMm", "Skrueavstand i skjøt (mm)"],
@@ -276,7 +277,9 @@ function takDataFraStal(bjelker, o) {
     if (o.rotert) flater = roterFlater(flater);
     // 🔩 Hver flate bærer sine egne åser — de bjelkene som ligger i flata og
     // går på tvers av fallet. Uten dem er det ingenting å skru en skjøt i.
-    flater = flater.map(f => ({ ...f, skjotU: skjotBjelker(f, linjer, o), aserL: aserVerden(f, linjer, o) }));
+    flater = flater.map(f => ({ ...f, skjotU: skjotBjelker(f, linjer, o), aserL: aserVerden(f, linjer, o),
+      // 📏 bredden bestemmes av bjelkene langs platene — «dekkende bredde» er borte (Emil 23.09)
+      radL: radBjelker(f, linjer, o) }));
     // 🔁 SIST: begge takhalvdelene legges samme vei, og to halvdeler som deler
     // et møne deler også radrutenettet. MÅ stå etter rotasjonen og etter at
     // åsene er funnet — se kommentaren over takflaterFraBjelker i js/sw-tak.js.
