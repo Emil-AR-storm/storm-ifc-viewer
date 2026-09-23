@@ -2588,3 +2588,45 @@ export function summerFlate(f, o) {
   return { ...f, rader, antallPlater: antall, endeskjoter, sideskjoter, arealM2,
     skjotLm: rund(sideLm + endeLm) };
 }
+
+// ═══════ 🔄 TRP-PLATA SOM TREKANTER: RIBBENE PÅ TVERS AV LENGDEN (Emil 23.09) ═══════
+//
+// «De 2 sidene av TRP-plata som avslutter med flat ende er de som må legge seg
+// på bjelken, der skruen får best feste — nå står de 90° feil.»
+//
+// Plata går fra bjelke til bjelke langs u. Da er det den FLATE kanten som
+// skal ligge på bjelken i hver ende: ribbene løper langs v, parallelt med
+// bjelken, og profilen går langs u. Ribbene står på faste u-verdier, så et
+// skråkapp skjærer rett gjennom dem slik et sagsnitt gjør.
+//
+// `prof` er [[x, h], …] langs u fra 0, `vs` stripene på tvers (0, knekkpunkt,
+// bredde), `starten(v)`/`enden(v)` platas ender målt fra samme 0. Svaret er
+// hjørnene i trekantene som [v, h, u], tre og tre. Ren tallfunksjon.
+export function platePunkter(prof, vs, starten, enden) {
+  const ut = [];
+  const P = prof || [];
+  const hAv = (xInn, i) => {
+    const [x0, h0] = P[i - 1], [x1, h1] = P[i];
+    const x = Math.max(x0, Math.min(x1, xInn));
+    return x1 - x0 > 1e-9 ? h0 + (h1 - h0) * (x - x0) / (x1 - x0) : h1;
+  };
+  const klem = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
+  for (let k = 1; k < (vs || []).length; k++) {
+    const va = vs[k - 1], vb = vs[k];
+    if (!(vb - va > 0.1)) continue;
+    const sa = starten(va), ea = enden(va), sb = starten(vb), eb = enden(vb);
+    for (let i = 1; i < P.length; i++) {
+      const x0 = P[i - 1][0], x1 = P[i][0];
+      const a0 = Math.max(x0, sa), a1 = Math.min(x1, ea);
+      const b0 = Math.max(x0, sb), b1 = Math.min(x1, eb);
+      if (!(a1 > a0) && !(b1 > b0)) continue;
+      // tomt på den ene sida: segmentet krymper til plateenden der, så
+      // trekanten ender PÅ kappet og ikke ute i lufta
+      const [A0, A1] = a1 > a0 ? [a0, a1] : [klem(x0, sa, ea), klem(x0, sa, ea)];
+      const [B0, B1] = b1 > b0 ? [b0, b1] : [klem(x0, sb, eb), klem(x0, sb, eb)];
+      ut.push([va, hAv(A0, i), A0], [va, hAv(A1, i), A1], [vb, hAv(B1, i), B1],
+              [va, hAv(A0, i), A0], [vb, hAv(B1, i), B1], [vb, hAv(B0, i), B0]);
+    }
+  }
+  return ut;
+}
