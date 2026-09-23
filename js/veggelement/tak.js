@@ -620,7 +620,7 @@ export function tegnTak() {
           uFraA: p.uFraA, uFraB: p.uFraB, uTilA: p.uTilA, uTilB: p.uTilB,
           kappFra: p.kappFra, kappTil: p.kappTil,
           vinkel: p.vinkel,
-          // rammen følger med, så «Juster TRP» kan regne seg tilbake til u
+          // rammen følger med, så «Juster tak» kan regne seg tilbake til u
           U: f.U, V: f.V, N: f.N, origo: f.origo };
         tegnPlate(data, f, rad.vFra, rad.breddeMm, ua, ub,
           p.kort ? "#c05a5a" : (p.lagtTil ? "#7fae7f" : farge), legg, naa);
@@ -815,7 +815,7 @@ export function takPanelHtml() {
     "<div class='prop-actions' data-sw-fast style='margin-top:10px;flex-wrap:wrap'>" +
     "<button id='takGenerer' class='primary'>" + ikon("boks") + " " + esc(t("Generer tak")) + "</button>" +
     "<button id='takJusterBtn'" + (pa ? "" : " disabled") + ">" + ikon("juster") + " " +
-      esc(t("Juster TRP")) + "</button>" +
+      esc(t("Juster tak")) + "</button>" +
     "<button id='takNullstillJust'" + (antJust ? "" : " disabled") + ">" + ikon("nullstill") + " " +
       esc(t("Nullstill justeringer ({0})", antJust)) + "</button>" +
     "<button id='takListe'" + (pa ? "" : " disabled") + ">" + ikon("lastned") + " " +
