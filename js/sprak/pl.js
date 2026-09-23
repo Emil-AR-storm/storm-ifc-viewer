@@ -1414,6 +1414,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Legg til plate": "Dodaj płytę",
   "Nullstille alle håndjusteringene av takplatene?": "Wyzerować wszystkie ręczne korekty płyt dachowych?",
   "Juster TRP": "Dostosuj TRP",
+  "Juster tak": "Dostosuj dach",
   "Fjerne taket? De {0} håndjusteringene forsvinner også.": "Usunąć dach? {0} ręcznych korekt również zniknie.",
   "Platene over bjelka (mm)": "Płyty nad belką (mm)",
   "Ingen av takbjelkene ligger med fall. Velg fallretning selv nedenfor.": "Żadna z belek dachowych nie leży w spadku. Wybierz kierunek spadku poniżej.",

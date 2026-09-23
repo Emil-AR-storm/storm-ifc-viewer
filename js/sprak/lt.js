@@ -1414,6 +1414,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Legg til plate": "Pridėti lakštą",
   "Nullstille alle håndjusteringene av takplatene?": "Atstatyti visus rankinius stogo lakštų koregavimus?",
   "Juster TRP": "Koreguoti TRP",
+  "Juster tak": "Koreguoti stogą",
   "Fjerne taket? De {0} håndjusteringene forsvinner også.": "Pašalinti stogą? Taip pat dings {0} rankiniai koregavimai.",
   "Platene over bjelka (mm)": "Lakštai virš sijos (mm)",
   "Ingen av takbjelkene ligger med fall. Velg fallretning selv nedenfor.": "Nė viena stogo sija neguli nuolydyje. Pasirinkite nuolydžio kryptį žemiau.",
