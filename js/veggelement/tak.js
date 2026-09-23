@@ -23,7 +23,7 @@ import { TAK_RADER, TAK_STD, bjelkeLinje, fallRetningFraBjelker, justerPlater, p
          platerPaFlate, roterFlater, skjotBjelker, aserVerden, takFlater, takRamme, takRektangel,
          takflaterFraBjelker, platerPaTaket, tilUV, fraUV, trpListe, takTotaler,
          ensrettFlater, deltRadrutenett, vinkelTekstTak,
-         indreAser, plateNokkel } from "../sw-tak.js";
+         indreAser, plateNokkel, platePunkter } from "../sw-tak.js";
 import { husTakMesh, nullstillTakMesh, startTakJuster, takJust,
          lagreTakResultat, lastInnTakResultat, lesTakLagrede, slettTakResultat,
          takLagringsTekst } from "./tak-just.js";
@@ -433,7 +433,6 @@ function hVed(flate, uMm) {
 // fra takflata. Plata strekkes ned fallet fra uFra til uTil.
 export function tegnPlate(data, flate, vFra, breddeMm, uFra, uTil, farge, legg, meta) {
   const mal = MALTYPER.trp;
-  const prof = trpProfil(breddeMm, mal.deling, mal.profilHoyde);
   const pos = [];
   const pkt = (v, h, uu) => {
     const p = P(data, uu, vFra + v, hVed(flate, uu) + h, flate);
@@ -465,13 +464,27 @@ export function tegnPlate(data, flate, vFra, breddeMm, uFra, uTil, farge, legg, 
   const starten = (v) => knekkFra ? langs(meta.kappFra, v) : skra
     ? Number(meta.uFraA) + (Number(meta.uFraB) - Number(meta.uFraA)) * (v / B)
     : uFra;
-  // to trekanter per segment av profilen, strukket fra uFra til uTil
-  for (let i = 1; i < prof.length; i++) {
-    const [v0, h0] = prof[i - 1], [v1, h1] = prof[i];
-    const a0 = starten(v0), a1 = starten(v1), b0 = enden(v0), b1 = enden(v1);
-    pkt(v0, h0, a0); pkt(v1, h1, a1); pkt(v1, h1, b1);
-    pkt(v0, h0, a0); pkt(v1, h1, b1); pkt(v0, h0, b0);
-  }
+  // 🔄 BØLGENE LØPER PÅ TVERS AV PLATELENGDEN (Emil 23.09): «de 2 sidene av
+  // TRP-plata som avslutter med flat ende er de som må legge seg på bjelken,
+  // der skruen får best feste — nå står de 90° feil.»
+  //
+  // Plata går fra bjelke til bjelke langs u. Da skal det være den FLATE
+  // kanten som ligger på bjelken i hver ende, altså må ribbene løpe langs v
+  // (parallelt med bjelken), og profilen gå langs u. Før gikk profilen langs
+  // v, og det var den bølgete kanten som lå på bjelken.
+  //
+  // Ribbene står på faste u-verdier, så et skråkapp skjærer rett gjennom dem
+  // — slik et sagsnitt gjør — i stedet for å strekke dem.
+  const vs = [0, B];
+  for (const k of [knekkFra ? meta.kappFra : null, knekkTil ? meta.kappTil : null])
+    if (k) for (const q of k) if (q[0] > 0.5 && q[0] < B - 0.5) vs.push(Number(q[0]));
+  vs.sort((a, b) => a - b);
+  let uMin = Infinity, uMax = -Infinity;
+  for (const v of vs) { uMin = Math.min(uMin, starten(v), enden(v)); uMax = Math.max(uMax, starten(v), enden(v)); }
+  if (!(uMax - uMin > 1)) return null;
+  const prof = trpProfil(uMax - uMin, mal.deling, mal.profilHoyde);
+  for (const [v, h, uu] of platePunkter(prof, vs, (v) => starten(v) - uMin, (v) => enden(v) - uMin))
+    pkt(v, h, uMin + uu);
   if (!pos.length) return null;
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(pos), 3));
