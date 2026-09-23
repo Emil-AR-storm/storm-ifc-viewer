@@ -1409,6 +1409,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Hatprofil flens (mm)": "Skrybėlinio profilio flanšas (mm)",
   "Hatprofil høyde (mm)": "Skrybėlinio profilio aukštis (mm)",
   "Trykk på en takplate. Dra i den blå pila for lengden eller den oransje for bredden — eller ta tak i enden som før. Shift+klikk for å ta flere.": "Spustelėkite stogo lakštą. Tempkite mėlyną rodyklę ilgiui arba oranžinę pločiui — arba imkite už galo kaip anksčiau. Shift+spustelėjimas – keliems.",
+  "Trykk på en takplate. Dra i en av de blå pilene for lengden eller en av de oransje for bredden — hver pil flytter sin egen kant. Shift+klikk for å ta flere.": "Spustelėkite stogo lakštą. Tempkite vieną iš mėlynų rodyklių ilgiui arba vieną iš oranžinių pločiui — kiekviena rodyklė perkelia savo kraštą. Shift+spustelėjimas – pažymėti daugiau.",
   "Takflate {0} · {1} mm": "Stogo plokštuma {0} · {1} mm",
   "Legg til plate": "Pridėti lakštą",
   "Nullstille alle håndjusteringene av takplatene?": "Atstatyti visus rankinius stogo lakštų koregavimus?",
