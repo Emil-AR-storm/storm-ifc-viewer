@@ -33,18 +33,17 @@ export const rund = (x) => Math.round(x * 1000) / 1000;
 // Standardverdiene. Alle er settbare felt i panelet — dette er bare det som
 // står der før Emil endrer noe.
 export const TAK_STD = {
-  utstikkGesimsMm: 50,     // hvor langt platene stikker ut over gesimsen
-  utstikkGavlMm: 50,       // … og ut over gavlen
+  // ⚠ INGEN UTSTIKK-FELT. Regel 3: kanten ER bjelkenes utvendige flate, og
+  // den leses av fotavtrykkene — den settes ikke.
   trpBreddeMm: 1030,       // DEKKENDE bredde, altså etter sideoverlappen
   trpBolgeMm: 206,         // én bølge — sideoverlappen er nøyaktig én (prosedyren, steg 2)
   platelengder: "",        // stabelen ned fallet, som radhøydene. Tom = én plate per fall
   endeOverlappMm: 150,     // 10–20 cm ved endeskjøt (prosedyren, steg 6)
-  maksLengdeMm: 12000,     // transportgrense — deler fallet når stabelen er tom
+  maksLengdeMm: 12000,     // transportgrense — RØD MELDING, deler ikke fallet
   skrueAvstandMm: 450,     // 40–50 cm mellom skruene i skjøten (prosedyren, steg 5)
   flattFallProsent: 0,     // fall på et ellers flatt tak
-  // 🔩 Skjøtene hviler på en ås (Emil 21.09). PÅ som standard: en skjøt i
-  // løse lufta er ikke et valg noen tar med vilje.
-  snapSkjot: true,
+  // ⚠ INGEN `snapSkjot`. Regel 2: skjøtene LIGGER på åsene, de flyttes ikke dit
+  // etterpå. Det er ikke lenger noe å slå av.
   skjotPlanTolMm: 60,
   // 🔄 «Roter takflata 90°» (Emil 21.09, bilde 4)
   rotert: false,
@@ -378,6 +377,22 @@ export function parsePlatelengder(tekst) {
 
 // Platene NED ETT FALL. Svaret er lengdene fra gesimsen og opp mot mønet.
 //
+// ═══════ REGEL 2 (Emil 22.09) ═══════
+// «TRP-plater skal automatisk legge seg fra bjelke til bjelke og skjøtes —
+// ingen av dem skal stoppe i løse lufta.»
+//
+// Det er derfor BJELKENE, ikke et tall i panelet, som deler fallet når
+// `platelengder` står tom. Hver ås inne i fallet får en skjøt, og det finnes
+// ingen annen grunn til å dele en plate. Transportgrensa deler ikke lenger —
+// den er blitt en rød melding i panelet (`overMaks`), fordi en plate som er
+// for lang å kjøre ut er et bestillingsproblem, ikke et takproblem: deler
+// koden den selv, havner skjøten i løse lufta, og det er akkurat feilen Emil
+// ser på Geithus.
+//
+// Finnes det ingen ås inne i fallet, blir det ÉN plate. Da er det ingenting
+// å skru skjøten i, og å dele likevel ville være å gjette. Plata merkes
+// `ingenAas` og panelet sier fra.
+//
 // Emils valg 18.09 på skjøtene: «1 er riktig» — skjøten går i rett linje, og
 // den ØVERSTE plata beholder full lengde. Kappet havner altså nederst, ved
 // gesimsen, der det er lettest å komme til.
@@ -385,7 +400,10 @@ export function parsePlatelengder(tekst) {
 // Hver skjøt koster `endeOverlappMm`: to plater à 6000 med 150 mm overlapp
 // dekker 11 850, ikke 12 000. Det er den feilen som ellers ville gitt for lite
 // materiell bestilt.
-export function platerNedFall(fallengdeMm, o) {
+//
+// `aserInn` er åsene inne i fallet, målt opp fallet fra den LAVE enden —
+// samme liste som indreAser() gir, og som panelet viser.
+export function platerNedFall(fallengdeMm, o, aserInn) {
   const opp = { ...TAK_STD, ...(o || {}) };
   const L = n(fallengdeMm);
   if (!(L > 0)) return [];
@@ -393,14 +411,30 @@ export function platerNedFall(fallengdeMm, o) {
   const stabel = parsePlatelengder(opp.platelengder);
   const maks = Math.max(100, n(opp.maksLengdeMm));
 
-  // 1) Ingen stabel: del i så få plater som mulig innenfor maks lengde.
+  // 1) Ingen stabel: ÉN SKJØT PER ÅS, ingen andre steder (regel 2).
+  //
+  // Åsen ligger UNDER overlappen: den nederste plata slutter `ov/2` over
+  // åsen, den øverste starter `ov/2` under den. Da dekker platene fallet
+  // nøyaktig, og skruene i skjøten treffer stål.
   if (!stabel.length) {
-    if (L <= maks) return [{ lengdeMm: Math.round(L), kappet: false }];
-    // n plater dekker n*lengde − (n−1)*overlapp. Finn minste n som når fram.
-    let ant = 2;
-    while (ant * maks - (ant - 1) * ov < L && ant < 200) ant++;
-    const hver = (L + (ant - 1) * ov) / ant;
-    return Array.from({ length: ant }, () => ({ lengdeMm: Math.round(hver), kappet: true }));
+    const kant = Math.max(MIN_PLATE_MM, ov);
+    const A = [...new Set((aserInn || []).map(x => rund(n(x))))]
+      .filter(u => u > kant && u < L - kant).sort((a, b) => a - b);
+    if (!A.length)
+      return [merkPlatelengde({ lengdeMm: Math.round(L), dekningMm: Math.round(L),
+        kappet: false, ingenAas: true }, maks)];
+    const dek = [];
+    for (let i = 0; i <= A.length; i++) {
+      const fra = i === 0 ? 0 : A[i - 1];
+      const til = i === A.length ? L : A[i];
+      dek.push((til - fra) + (i === 0 ? ov / 2 : 0) - (i === A.length ? ov / 2 : 0));
+    }
+    return dek.map((d, j) => merkPlatelengde({
+      lengdeMm: Math.round(j > 0 ? d + ov : d),
+      dekningMm: Math.round(d),
+      kappet: true,
+      paaAas: j < dek.length - 1
+    }, maks));
   }
 
   // 2) Med stabel: legg lengdene fra GESIMSEN og oppover, siste gjentas.
@@ -468,32 +502,31 @@ export function platerNedFall(fallengdeMm, o) {
   // later ikke som det går opp. Plata merkes `kort`, og panelet sier fra at
   // stabelen bør justeres. Det er Emils tall, og han skal få vite at de ikke
   // går opp — ikke oppdage det på taket.
-  for (const p of ut) if (p.lengdeMm < MIN_PLATE_MM) p.kort = true;
+  for (const p of ut) merkPlatelengde(p, maks);
   return ut;
 }
 
-// ═══════ 🔩 SKJØTENE FLYTTES NED PÅ ÅSENE (Emil 21.09) ═══════
+// Kortere enn 500 mm er en strimmel, og lengre enn transportgrensa er en plate
+// ingen kan kjøre ut. Begge sies fra om — ingen av dem endrer taket.
+function merkPlatelengde(p, maksMm) {
+  if (p.lengdeMm < MIN_PLATE_MM) p.kort = true;
+  if (maksMm > 0 && p.lengdeMm > maksMm) p.overMaks = true;
+  return p;
+}
+
+// ═══════ 🔩 SKJØTENE LIGGER PÅ ÅSENE (regel 2) ═══════
 //
 // «takplatene skal skjøtes på hver toppbjelke, men det er masse små plater
-// som henger i løse lufta.»
+// som henger i løse lufta.» (Emil 21.09)
 //
-// Stabelen Emil taster er et ØNSKE om hvor skjøtene skal ligge. Her flyttes
-// hver av dem til nærmeste ås, og lengdene leses av der skjøtene faktisk
-// havnet. Det er åsene som bestemmer — de er det eneste som kan skrus i.
+// Det finnes ikke lenger noen snapping: platene LEGGES på åsene med én gang,
+// i platerNedFall(). Det som var «ønsket lengde som flyttes til nærmeste ås»
+// var et mellomledd som kunne bomme — og bommet på Geithus.
 //
-// Åsen ligger UNDER overlappen, så den nederste plata slutter `ov/2` over
-// åsen og den øverste starter `ov/2` under den. Da dekker platene fallet
-// nøyaktig, og skruene i skjøten treffer stål.
-//
-//   · `skjot` er avstandene opp fallet, målt fra den LAVE enden.
-//   · To skjøter kan ikke havne på samme ås — da hadde en plate fått lengde 0.
-//   · Finnes det INGEN ås inne i fallet, kan det ikke skjøtes i det hele tatt.
-//     Da blir det én plate, og panelet sier fra. Å late som noe annet er å
-//     sende en montør opp med plater han ikke får festet.
 // Åsene som FAKTISK kan bære en skjøt på denne flata: målt opp fallet fra den
 // lave enden, og uten dem som ligger så nær en kant at plata ville blitt en
-// strimmel. Panelet og snappingen leser den SAMME funksjonen — ellers kunne
-// panelet listet en ås som snappingen så bort fra.
+// strimmel. Panelet og plateinndelingen leser den SAMME funksjonen — ellers
+// kunne panelet listet en ås platene ikke skjøtes på.
 export function indreAser(flate, o) {
   const opp = { ...TAK_STD, ...(o || {}) };
   if (!flate || !Array.isArray(flate.skjotU)) return [];
@@ -501,70 +534,6 @@ export function indreAser(flate, o) {
   const kant = Math.max(MIN_PLATE_MM, Math.max(0, n(opp.endeOverlappMm)));
   return [...new Set(flate.skjotU.map(u => rund(n(u) - n(flate.u0))))]
     .filter(u => u > kant && u < L - kant).sort((a, b) => a - b);
-}
-
-export function snapSkjoterTilAser(plater, fallengdeMm, skjot, o) {
-  const opp = { ...TAK_STD, ...(o || {}) };
-  const L = n(fallengdeMm);
-  const ov = Math.max(0, n(opp.endeOverlappMm));
-  const P = (plater || []).filter(Boolean);
-  if (!(L > 0) || P.length <= 1) return P;
-  const kant = Math.max(MIN_PLATE_MM, ov);
-  const indre = [...new Set((skjot || []).map(x => rund(n(x))))]
-    .filter(u => u > kant && u < L - kant).sort((a, b) => a - b);
-
-  // 🔎 EMILS FUNN 21.09, ANDRE RUNDE: «når jeg justerer på platelengder skjer
-  // det ingenting med taket — gjør denne funksjonen noe lenger?»
-  //
-  // Nei, den gjorde ikke det, og det var min feil. Første utgave svarte ÉN
-  // PLATE over hele fallet så snart modellen ikke hadde en eneste ås. Da ble
-  // stabelen han taster kastet uten et ord, og feltet var dødt på hvert bygg
-  // uten åser i takplanet — det vil si alle han har prøvd.
-  //
-  // Verre: den ene plata tok ikke hensyn til `maksLengdeMm`. På Sundland ga
-  // det TRP 12153 og TRP 12147 mot en transportgrense på 12 000. Plater ingen
-  // kan kjøre ut på bil, regnet fram av en regel som skulle gjøre taket
-  // riktigere.
-  //
-  // At modellen ikke HAR åser betyr ikke at taket mangler dem — det betyr at
-  // de ikke er modellert. Å overstyre Emils tall på grunn av data som ikke
-  // finnes er å gjette. Stabelen hans står derfor som den er, hver plate
-  // merkes `ingenAas`, og panelet sier fra at skjøtene ikke er kontrollert
-  // mot stål.
-  if (!indre.length) return P.map(p => ({ ...p, ingenAas: true }));
-
-  // hvor stabelen VILLE lagt skjøtene, målt fra den lave enden
-  const onsket = [];
-  let s = 0;
-  for (let i = 0; i < P.length - 1; i++) { s += n(P[i].lengdeMm) - (i ? ov : 0); onsket.push(s); }
-
-  // nærmeste ledige ås til hver — nærmeste ønske først, så den som treffer
-  // best får velge før de andre
-  const rest = indre.slice();
-  const valgt = [];
-  for (const u of onsket.slice().sort((a, b) =>
-      minAvstand(a, indre) - minAvstand(b, indre))) {
-    if (!rest.length) break;
-    let beste = 0;
-    for (let i = 1; i < rest.length; i++)
-      if (Math.abs(rest[i] - u) < Math.abs(rest[beste] - u)) beste = i;
-    valgt.push(rest.splice(beste, 1)[0]);
-  }
-  valgt.sort((a, b) => a - b);
-
-  const ut = [];
-  let forrige = 0;
-  for (let i = 0; i <= valgt.length; i++) {
-    const topp = i < valgt.length ? valgt[i] + ov / 2 : L;
-    const lengde = topp - forrige;
-    if (lengde > 20) ut.push({ lengdeMm: Math.round(lengde), kappet: true, paaAas: i < valgt.length });
-    forrige = (i < valgt.length ? valgt[i] - ov / 2 : L);
-  }
-  for (const p of ut) if (p.lengdeMm < MIN_PLATE_MM) p.kort = true;
-  return ut.length ? ut : P;
-}
-function minAvstand(u, liste) {
-  return liste.reduce((a, k) => Math.min(a, Math.abs(k - u)), Infinity);
 }
 
 // Kortere enn dette er ikke en plate, det er en strimmel.
@@ -618,18 +587,12 @@ export function platerPaFlate(flate, o) {
   if (restUtenfor) rest = 0;
   const foerUtenfor = restFoer > 0 && restFoer <= minRest ? restFoer : 0;
   if (foerUtenfor) restFoer = 0;
-  let nedFall = platerNedFall(fall, opp);
-  // 🔩 Skjøtene ned på åsene (Emil 21.09) — men BARE når Emil ikke har tastet
-  // lengdene selv.
+  // 🔩 REGEL 2: åsene deler fallet når Emil ikke har tastet lengdene selv.
   //
   // 🔑 EMILS VALG 22.09: «mine tall vinner alltid.» Taster han en stabel, er
   // det den som gjelder, og åsene blir en KONTROLL som panelet melder fra om.
-  // Det var snappingen som ga de to takhalvdelene hver sine lengder
-  // (5025/2245 mot 4925/2345) fordi åsene deres står ulikt — mens Emil ville
-  // ha samme to lengder på begge.
-  const harStabel = parsePlatelengder(opp.platelengder).length > 0;
-  if (opp.snapSkjot !== false && !harStabel && Array.isArray(flate.skjotU))
-    nedFall = snapSkjoterTilAser(nedFall, fall, indreAser(flate, opp), opp);
+  // Står feltet tomt, er det bjelkene som bestemmer — en skjøt per ås.
+  const nedFall = platerNedFall(fall, opp, indreAser(flate, opp));
   // hver plate med sin egen strekning langs u, fra den LAVE enden og oppover
   // Hver plate DEKKER `dekningMm` av fallet og strekker seg `ov` NEDOVER
   // forbi skjøten under seg — det er den overlappen som gjør taket tett.
@@ -724,6 +687,12 @@ export function trpListe(flater, o, medPlaterInn) {
   const skrueAvst = Math.max(50, n(opp.skrueAvstandMm));
   const korte = medPlater.reduce((a, f) =>
     a + f.rader.reduce((b, r) => b + r.plater.filter(p => p.kort).length, 0), 0);
+  // 🚛 Over transportgrensa: telles og sies fra om — platene står som de er.
+  const overMaks = medPlater.reduce((a, f) =>
+    a + f.rader.reduce((b, r) => b + r.plater.filter(p => p.overMaks).length, 0), 0);
+  const lengsteMm = medPlater.reduce((a, f) =>
+    Math.max(a, f.rader.reduce((b, r) =>
+      Math.max(b, r.plater.reduce((c, p) => Math.max(c, n(p.lengdeMm)), 0)), 0)), 0);
   // 🏷 EN KODE PER STØRRELSE (Emil 22.09: «samme merking som veggelement, med
   // dimensjon i senter og nummer/navn oppe i hjørnet»). Koden hører til
   // VAREN, ikke til den enkelte plata: står det TRP-02 på taket, vet montøren
@@ -735,7 +704,7 @@ export function trpListe(flater, o, medPlaterInn) {
     plater: sortert,
     antall, arealM2: rund(arealM2), skjotLm: rund(skjotLm),
     // sagt fra om, ikke skjult bort — se platerNedFall
-    korte, advarsel: korte > 0,
+    korte, advarsel: korte > 0, overMaks, lengsteMm: Math.round(lengsteMm),
     // «ca 40-50 cm avstand mellom skruene» langs hver skjøt (prosedyren, steg 5)
     skruer: Math.ceil(skjotLm * 1000 / skrueAvst)
   };
@@ -1030,12 +999,37 @@ export function flateFraGruppe(gruppe, o) {
     (p.x - p0.x) * U.x + (p.y - p0.y) * U.y + (p.z - p0.z) * U.z,
     (p.x - p0.x) * V.x + (p.z - p0.z) * V.z
   ];
-  const pkt = [];
-  for (const a of B) { pkt.push(uv(a.lav)); pkt.push(uv(a.hoy)); }
-  const us = pkt.map(p => p[0]), vs = pkt.map(p => p[1]);
-  const ug = n(opp.utstikkGesimsMm), vg = n(opp.utstikkGavlMm);
-  const u0 = Math.min(...us) - ug, u1 = Math.max(...us) + ug;
-  const v0 = Math.min(...vs) - vg, v1 = Math.max(...vs) + vg;
+  // ═════ 📐 REGEL 3: OMRISSET ER BJELKENES UTVENDIGE FLATE ═════
+  //
+  // «Platene skal kun komme opp innenfor rammen til toppbjelken, og stikke ut
+  // til utvendig flate av bjelkene som går langs kanten» (Emil 22.09).
+  //
+  // FØR: rammen ble spent mellom bjelkenes SENTERLINJER, og så ble det lagt
+  // på et settbart utstikk på 50 mm i hver ende. To gjetninger på samme
+  // spørsmål — og ingen av dem var kanten.
+  //
+  // NÅ: hvert hjørne i bjelkens fotavtrykk regnes om til (u, v), med bjelkens
+  // egen overflate som høyde. Ytterkanten av rammen er da den ytterste
+  // bjelkeflaten, uten en eneste innstilling.
+  const hjorner = [];
+  const perBjelke = [];
+  for (const a of B) {
+    const c = (a.fot && a.fot.length >= 3)
+      ? a.fot
+      : [{ x: a.lav.x, z: a.lav.z }, { x: a.hoy.x, z: a.hoy.z }];
+    const uu = [], vv = [];
+    for (const q of c) {
+      const y = bjelkeToppY(a, q.x, q.z);
+      const pt = uv({ x: n(q.x), y: y === null ? n(a.hoy.y) : y, z: n(q.z) });
+      uu.push(pt[0]); vv.push(pt[1]); hjorner.push(pt);
+    }
+    perBjelke.push({ vMid: rund((Math.min(...vv) + Math.max(...vv)) / 2),
+      uMin: rund(Math.min(...uu)), uMax: rund(Math.max(...uu)) });
+  }
+  if (!hjorner.length) return null;
+  const us = hjorner.map(q => q[0]), vs = hjorner.map(q => q[1]);
+  const u0 = Math.min(...us), u1 = Math.max(...us);
+  const v0 = Math.min(...vs), v1 = Math.max(...vs);
   // 📐 KANTLINJENE: hvor langt taket FAKTISK rekker ved hver v.
   //
   // 🔎 EMILS FUNN 22.09 (bilde 3–5, bygg med skrå vegg): «vi må legge inn at
@@ -1048,11 +1042,9 @@ export function flateFraGruppe(gruppe, o) {
   // Hver sperre gir étt punkt på hver kant: [v, u]. Kantene er altså taket sin
   // egen omriss, ikke en antagelse om at det er firkantet.
   const kantLav = [], kantHoy = [];
-  for (const a of B) {
-    const L = uv(a.lav), H = uv(a.hoy);
-    const vm = rund((L[1] + H[1]) / 2);
-    kantLav.push([vm, rund(Math.min(L[0], H[0]) - ug)]);
-    kantHoy.push([vm, rund(Math.max(L[0], H[0]) + ug)]);
+  for (const b of perBjelke) {
+    kantLav.push([b.vMid, b.uMin]);
+    kantHoy.push([b.vMid, b.uMax]);
   }
   kantLav.sort((a, b) => a[0] - b[0]);
   kantHoy.sort((a, b) => a[0] - b[0]);
@@ -1245,9 +1237,11 @@ export function klippMoner(flater, o) {
   const opp = { ...TAK_STD, ...(o || {}) };
   const F = (flater || []).filter(Boolean);
   if (F.length < 2) return F;
-  const ug = Math.max(0, n(opp.utstikkGesimsMm));
   const slark = Math.max(10, n(opp.valmTolMm));
-  const naer = 2 * ug + slark;
+  // Krysset må ligge ved den høye enden. Rommet er nå bjelkenes egen
+  // overlapp i mønet — utstikket er borte, så terskelen er bare slarken pluss
+  // en halv platebredde som tar sperrer som er modellert litt forbi hverandre.
+  const naer = slark + 300;
   const motsatt = -Math.cos(Math.max(0, n(opp.retningTolGrader)) * Math.PI / 180);
   return F.map((f, fi) => {
     if (!f.U || !f.V || !f.origo) return f;
