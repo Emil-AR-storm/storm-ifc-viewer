@@ -1485,5 +1485,6 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Ben på veggflaten (mm)": "Leg on the wall face (mm)",
   "Retur på innsiden (mm)": "Return on the inside (mm)",
   "{0} innervegger (begge sider)": "{0} inner walls (both faces)",
-  "Innervegger": "Inner walls"
+  "Innervegger": "Inner walls",
+  "Antall deler (telt i 3D)": "Number of pieces (counted in 3D)"
 };

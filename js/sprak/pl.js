@@ -1485,5 +1485,6 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Ben på veggflaten (mm)": "Ramię na licu ściany (mm)",
   "Retur på innsiden (mm)": "Zawinięcie od wewnątrz (mm)",
   "{0} innervegger (begge sider)": "{0} ścian wewnętrznych (obie strony)",
-  "Innervegger": "Ściany wewnętrzne"
+  "Innervegger": "Ściany wewnętrzne",
+  "Antall deler (telt i 3D)": "Liczba elementów (policzone w 3D)"
 };
