@@ -1485,5 +1485,6 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Ben på veggflaten (mm)": "Petys ant sienos paviršiaus (mm)",
   "Retur på innsiden (mm)": "Atvartas iš vidaus (mm)",
   "{0} innervegger (begge sider)": "{0} vidinės sienos (abi pusės)",
-  "Innervegger": "Vidinės sienos"
+  "Innervegger": "Vidinės sienos",
+  "Antall deler (telt i 3D)": "Dalių skaičius (suskaičiuota 3D)"
 };

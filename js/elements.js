@@ -160,6 +160,8 @@ export async function showProperties(expressID) {
     if (p && p[0]) rows.push(["Name", p[0]]);
     if (p && p[1]) rows.push(["ObjectType", p[1]]);
     if (p && p[3]) rows.push([t("Materiale"), p[3]]);
+    armeringRader(expressID, { typeName: p && p[2], navn: p && p[0],
+      objektType: p && p[1], materiale: p && p[3] }).forEach(r => rows.push(r));
     try { maalRader(expressID).forEach(r => rows.push(r)); } catch(_){}
     rows.push([t("Merk"), t("Lett kopi – åpne original-IFC-en for full egenskapsliste")]);
   } else {
@@ -173,6 +175,9 @@ export async function showProperties(expressID) {
       p.felt.forEach(([k, v]) => rows.push([k, v]));
       const mMeta = metaFor(expressID);
       if (mMeta && mMeta.material) rows.push([t("Materiale"), mMeta.material]);
+      const felt = Object.fromEntries(p.felt);
+      armeringRader(expressID, { typeName: p.typeName, navn: felt.Name,
+        objektType: felt.ObjectType, materiale: mMeta && mMeta.material }).forEach(r => rows.push(r));
       try { maalRader(expressID).forEach(r => rows.push(r)); } catch(_){}
       psets = p.psets || [];
     }
@@ -469,6 +474,104 @@ export function forHverTrekant(idSet, cb) {
            m.matrixWorld, m.userData.expressID);
     }
   });
+}
+
+// ---------- 🔩 Armering: antall deler i ett objekt ----------
+//
+// HVORFOR. Armering modelleres i grupper: ÉN IfcReinforcingBar kan være 40
+// U-bøyler. Det er riktig måte å modellere på (ellers ble 3D-armering
+// uoverkommelig), men da står det «1 objekt» overalt, og bestillingen måtte
+// telles for hånd bøyle for bøyle.
+//
+// HVORDAN. Hver bøyle/stang er en egen, lukket bit geometri som ikke henger
+// sammen med de andre. Vi slår sammen hjørner som ligger på samme punkt
+// (±0,2 mm — web-ifc lager egne hjørner per flate fordi normalene er
+// forskjellige) og teller hvor mange sammenhengende biter trekantene danner
+// (union-find, én gjennomgang).
+//
+// HVA DET KOSTER. Ingenting ved åpning av modellen. Det regnes BARE når noen
+// trykker på et armeringsobjekt, bare for det ene objektet, og svaret huskes.
+// Et vanlig armeringsobjekt er noen tusen trekanter: millisekunder, også på
+// telefon. Geometrien som allerede ligger i scenen brukes — ingen ny lesing av
+// IFC-fila, og det virker likt i full kvalitet, 🪶 lav kvalitet og lett kopi.
+//
+// KJENT GRENSE. To stenger som er modellert slik at de deler et hjørnepunkt
+// (ikke bare krysser/berører hverandre) telles som én. Krysser i et nett deler
+// ikke hjørner, så de telles riktig.
+export const BIT_TOL_M = 0.0002;          // 0,2 mm
+export const BIT_MIN_TREKANTER = 4;       // mindre enn dette er støy, ikke en stang
+const BIT_MAKS_TREKANTER = 1500000;       // vern: over dette teller vi ikke
+
+// Ren funksjon (testbar uten three.js): xyz = 9 tall per trekant.
+export function tellBiter(xyz, tol) {
+  const inv = 1 / tol;
+  const nøkler = new Map();
+  const far = [];
+  const finn = (i) => { while (far[i] !== i) { far[i] = far[far[i]]; i = far[i]; } return i; };
+  const node = (x, y, z) => {
+    const k = Math.round(x * inv) + "," + Math.round(y * inv) + "," + Math.round(z * inv);
+    let n = nøkler.get(k);
+    if (n === undefined) { n = far.length; far.push(n); nøkler.set(k, n); }
+    return n;
+  };
+  const slå = (a, b) => { a = finn(a); b = finn(b); if (a !== b) far[b] = a; };
+  const nT = Math.floor(xyz.length / 9);
+  const triNode = new Int32Array(nT);
+  for (let t = 0, o = 0; t < nT; t++, o += 9) {
+    const a = node(xyz[o], xyz[o + 1], xyz[o + 2]);
+    const b = node(xyz[o + 3], xyz[o + 4], xyz[o + 5]);
+    const c = node(xyz[o + 6], xyz[o + 7], xyz[o + 8]);
+    slå(a, b); slå(a, c);
+    triNode[t] = a;
+  }
+  const perBit = new Map();
+  for (let t = 0; t < nT; t++) {
+    const r = finn(triNode[t]);
+    perBit.set(r, (perBit.get(r) || 0) + 1);
+  }
+  let n = 0;
+  for (const antall of perBit.values()) if (antall >= BIT_MIN_TREKANTER) n++;
+  return n;
+}
+
+// Er dette armering? IFC-typen først, så materiale og navn — mange modeller
+// har armeringen som proxy eller sammenstilling med «B500NC» som materiale.
+const ARM_ORD = /armering|reinforc|rebar|kamstål|\bb500|bøyle|bojle|stirrup/i;
+export function erArmering({ typeName, navn, objektType, materiale } = {}) {
+  if (/reinforc/i.test(typeName || "")) return true;
+  return ARM_ORD.test([navn, objektType, materiale].filter(Boolean).join(" "));
+}
+
+const biterCache = new Map();
+let biterModell = null;
+export function tellArmeringsdeler(id) {
+  const kjenne = S.modelGroup && S.modelGroup.children[0];
+  if (kjenne !== biterModell) { biterCache.clear(); biterModell = kjenne; }
+  if (biterCache.has(id)) return biterCache.get(id);
+  const xyz = [];
+  const v = new THREE.Vector3();
+  let forMye = false;
+  forHverTrekant(new Set([id]), (p, a, b, c, m) => {
+    if (forMye) return;
+    if (xyz.length > BIT_MAKS_TREKANTER * 9) { forMye = true; return; }
+    for (const i of [a, b, c]) {
+      v.fromBufferAttribute(p, i);
+      if (m) v.applyMatrix4(m);
+      xyz.push(v.x, v.y, v.z);
+    }
+  });
+  const toM = S.enhetSkala || 1;
+  const n = (forMye || !xyz.length) ? null : tellBiter(xyz, BIT_TOL_M / toM);
+  biterCache.set(id, n);
+  return n;
+}
+
+// Raden i egenskapspanelet (tom liste når det ikke er armering)
+function armeringRader(id, info) {
+  if (!erArmering(info)) return [];
+  let n = null;
+  try { n = tellArmeringsdeler(id); } catch (err) { console.warn(err); }
+  return n ? [[t("Antall deler (telt i 3D)"), n + " " + t("stk")]] : [];
 }
 
 // Beregner ytre mål, volum (m³), fotavtrykk (m²), overflate delt på retning og
