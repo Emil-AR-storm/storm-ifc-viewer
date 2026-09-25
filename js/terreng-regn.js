@@ -28,7 +28,14 @@ export const ADRESSE_URL = "https://ws.geonorge.no/adresser/v1/sok";
 // ~2,5 MB, fortsatt raskt; større enn det gir ingenting en byggeplass trenger.
 // 50 og 100 m kom til 25.09 (Emil): en liten tomt eller et tilbygg trenger
 // ikke 400 m landskap, og en mindre flate er lettere å se detaljer i.
-export const UTSNITT = [50, 100, 200, 400, 600, 800];
+// 1000–2000 m kom til 25.09 (Emil): Drammenselva ved Geithus ligger 1,2 km
+// fra tomta og kom ikke med i 600 m.
+export const UTSNITT = [50, 100, 200, 400, 600, 800, 1000, 1500, 2000];
+
+// Flest punkt per side vi henter. 2000 m med 1 m oppløsning er 4 millioner
+// punkt og 16 MB — for tungt for en nettleser, og ingen trenger meteren
+// 1 km unna tomta. Over 1000 m blir rutene større: 1500 m → 1,5 m, 2000 m → 2 m.
+export const MAKS_PX = 1000;
 export const STANDARD_UTSNITT = 400;
 
 // Høyder utenfor dette er ikke terreng. Kartverket har ingen nodata-tagg i
@@ -125,11 +132,15 @@ export function bboxFra(E, N, side) {
 
 // 1 piksel per meter: bredde og høyde = sidelengden. Det er DTM1-oppløsningen;
 // ber vi om flere piksler, finner tjenesten bare på mellomverdier.
+export function gridPx(side) {
+  return Math.max(1, Math.min(MAKS_PX, Math.round(side)));
+}
+
 export function wcsUrl(bbox) {
   return WCS_URL + "?service=WCS&version=1.0.0&request=GetCoverage" +
     "&coverage=" + WCS_DEKNING + "&crs=EPSG:25833" +
     "&bbox=" + [bbox.minE, bbox.minN, bbox.maxE, bbox.maxN].join(",") +
-    "&width=" + bbox.side + "&height=" + bbox.side + "&format=GeoTIFF";
+    "&width=" + gridPx(bbox.side) + "&height=" + gridPx(bbox.side) + "&format=GeoTIFF";
 }
 
 // ═══════════════════════ GEOTIFF ═══════════════════════
@@ -563,4 +574,53 @@ export function tolkKote(tekst) {
   if (!m) return null;
   const v = Number(m[1]);
   return Number.isFinite(v) && v > MIN_HOYDE && v < MAKS_HOYDE ? v : null;
+}
+
+// ═══════════════════════ KART PÅ TERRENGET ═══════════════════════
+//
+// FLYFOTO ER IKKE MULIG UTEN AVTALE. Norge i bilder-tjenestene er forbeholdt
+// partene i Norge digitalt (GeoID-innlogging); de åpne tjenestene ble lagt
+// ned. Prøvd 25.09.2026: wms.nib svarer «Bruker kan ikke autentiseres».
+// Google/Esri-flyfoto er ikke lov å lagre eller lage avledede produkter av
+// (spesifikasjonen punkt 2).
+//
+// Det som ER åpent: Kartverkets topografiske kart (CC BY 4.0, «© Kartverket»).
+// Det har elver, vann, veier, bygninger og høydekurver — og tjenesten leverer
+// rett i UTM33, så bildet dekker nøyaktig samme firkant som høydegridet.
+export const TOPO_URL = "https://wms.geonorge.no/skwms1/wms.topo";
+
+// Bildets størrelse: ~4 piksler per meter på små tomter, taket 2048 (1 m per
+// piksel på 2 km). Mindre enn 512 blir grøtete når man zoomer inn.
+export function kartPx(side) {
+  return Math.max(512, Math.min(2048, Math.round(side * 4)));
+}
+
+export function topoUrl(bbox) {
+  const px = kartPx(bbox.side);
+  return TOPO_URL + "?service=WMS&version=1.3.0&request=GetMap&layers=topo&styles=" +
+    "&crs=EPSG:25833&bbox=" + [bbox.minE, bbox.minN, bbox.maxE, bbox.maxN].join(",") +
+    "&width=" + px + "&height=" + px + "&format=image/png";
+}
+
+// Teksturkoordinater: punktet (i, j) sitt sted i bildet. u går fra vest (0)
+// til øst (1), v fra SØR (0) til NORD (1) — three.js snur bildet (flipY), så
+// bildets øverste rad (nord) havner på v = 1.
+export function kartUv(grid) {
+  const uv = new Float32Array(grid.w * grid.h * 2);
+  for (let j = 0; j < grid.h; j++) {
+    for (let i = 0; i < grid.w; i++) {
+      const k = j * grid.w + i;
+      uv[k * 2] = (i + 0.5) / grid.w;
+      uv[k * 2 + 1] = 1 - (j + 0.5) / grid.h;
+    }
+  }
+  return uv;
+}
+
+// ═══════════════════════ NORDPIL ═══════════════════════
+// Nord i scenen, gitt byggets rotasjon: terrengets −Z dreid med rot (landGroup
+// roteres +rot rundt Y). Svar som { x, z } (enhetsvektor i verden).
+export function nordRetning(rot) {
+  const t = (Number(rot) || 0) * Math.PI / 180;
+  return { x: -Math.sin(t), z: -Math.cos(t) };
 }

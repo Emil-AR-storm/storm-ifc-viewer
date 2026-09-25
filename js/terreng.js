@@ -21,10 +21,10 @@
 import * as THREE from "three";
 import { $, S, apnePanel, esc, ikon, på, registrerEkstraGruppe } from "./state.js";
 import { t } from "./i18n.js";
-import { camera, canvas, controls, frameHooks, grid, scene, updateScreenScaled } from "./scene.js";
+import { camera, canvas, controls, frameHooks, grid, makeLabel, renderer, scene, updateScreenScaled } from "./scene.js";
 import {
   STANDARD_UTSNITT, UTSNITT, adresseUrl, bboxFra, byggTilTerreng, flyttKlippKant, flyttPadKant, flyttPlass,
-  fulltKlipp, gridTilTrekanter, hoydeFarger, hoydeIPunkt, hoydeSpenn, hoydeVed, klippHandtak,
+  fulltKlipp, gridTilTrekanter, hoydeFarger, hoydeIPunkt, kartUv, nordRetning, topoUrl, hoydeSpenn, hoydeVed, klippHandtak,
   klippMeter, klippOmriss, lagIndeks, lavesteUnder, lesTiff, likeKlipp, likePad, mTilScene, normVinkel,
   padFlagg, padHandtak, padMeter, padStandard, pikselSenter, punktFraE, punktFraN, snapVinkel, tolkKoordinat,
   tolkKote, vaskAdresseSvar, wcsUrl
@@ -50,6 +50,9 @@ let treff = [];          // adressetreff å velge mellom
 let sisteSok = "";
 let utsnitt = STANDARD_UTSNITT;
 let flyttModus = false;  // ✥ «Flytt og roter bygget» er slått på
+// 🗺 Hva som ligger på terrenget: "topo" (Kartverkets kart) eller "hoyde"
+// (høydefarger). Valget huskes mellom hentinger — det er brukerens, ikke tomtas.
+let kartValg = "topo";
 
 // ═══════════════════════ SCENEN ═══════════════════════
 //
@@ -215,6 +218,7 @@ function tomGruppe(g) {
     g.remove(o);
     if (o.geometry && o.geometry !== handtakGeo) o.geometry.dispose();
     if (o.userData.egetMat && o.material) o.material.dispose();   // plata har sitt eget
+    if (o.isSprite && o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); }
   }
 }
 
@@ -267,6 +271,7 @@ function tegnHandtak() {
   omriss.renderOrder = 997;
   klippGroup.add(omriss);
   for (const hd of klippHandtak(k)) nyttHandtak(klippGroup, "klipp", hd.kant, lokaltPunkt(hd.i, hd.j, LOFT_M));
+  tegnNord();
 
   // Plata og fotavtrykket står i gulvhøyde, i modellens koordinater
   const gulvY = mr.gulvY;
@@ -320,10 +325,120 @@ function ryddScene() {
     flateMesh = null;
   }
   handtakene = [];
-  tomGruppe(klippGroup); tomGruppe(padGroup); tomGruppe(flyttGroup);
+  tomGruppe(klippGroup); tomGruppe(padGroup); tomGruppe(flyttGroup); tomGruppe(nordGroup);
   plateMesh = null;
   trengerFar = 0;
 }
+
+// ═══════════════════════ 🗺 KART PÅ TERRENGET ═══════════════════════
+//
+// Kartverkets topografiske kart legges som tekstur på terrenget: elver, vann,
+// veier og bygninger synes, og man kjenner igjen tomta fra et vanlig kart.
+// Flyfoto (Norge i bilder) krever avtale — se terreng-regn.js.
+//
+// Bildet hentes én gang per terreng og ligger på terreng-objektet, så angre
+// ikke henter det på nytt.
+async function hentKart(t0) {
+  if (!t0 || t0.kart) return;
+  t0.kart = { status: "laster", tex: null };
+  if (erApen()) tegnPanel();
+  try {
+    const r = await hentMedFrist(topoUrl(t0.bb), 30000);
+    const blob = await r.blob();
+    if (!/^image\//.test(blob.type)) throw new Error(t("tjenesten svarte ikke med et bilde"));
+    const url = URL.createObjectURL(blob);
+    const img = await new Promise((ok, feil) => {
+      const i = new Image();
+      i.onload = () => ok(i);
+      i.onerror = () => feil(new Error(t("bildet kunne ikke leses")));
+      i.src = url;
+    });
+    const tex = new THREE.Texture(img);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    // Skrått innsyn på en 2 km tomt blir grøt uten anisotropi
+    const maks = renderer.capabilities && renderer.capabilities.getMaxAnisotropy ? renderer.capabilities.getMaxAnisotropy() : 1;
+    tex.anisotropy = Math.min(8, maks || 1);
+    tex.needsUpdate = true;
+    t0.kart = { status: "ok", tex, url };
+  } catch (err) {
+    console.warn("Kartet kunne ikke hentes:", err);
+    t0.kart = { status: "feil", tex: null, detalj: detaljAv(err) };
+  }
+  if (terreng === t0) brukKart();
+  if (erApen()) tegnPanel();
+}
+
+function brukKart() {
+  if (!flateMesh || !terreng) return;
+  const mat = flateMesh.material;
+  const tex = kartValg === "topo" && terreng.kart && terreng.kart.tex;
+  mat.map = tex || null;
+  mat.vertexColors = !tex;
+  mat.color.set(0xffffff);
+  mat.needsUpdate = true;
+}
+
+function ryddKart(t0) {
+  if (t0 && t0.kart) {
+    if (t0.kart.tex) t0.kart.tex.dispose();
+    if (t0.kart.url) URL.revokeObjectURL(t0.kart.url);
+    t0.kart = null;
+  }
+}
+
+// ═══════════════════════ 🧭 NORDPIL ═══════════════════════
+//
+// To ting: en kompassrose i hjørnet av 3D-vinduet som dreier med kameraet,
+// og en «N» på terrengets nordkant. Kompasset er det man ser på; «N»-en er
+// det man kjenner igjen når man sammenligner med kartet.
+const nordGroup = new THREE.Group();
+nordGroup.name = "terreng-nord";
+innhold.add(nordGroup);
+
+const kompass = document.createElement("div");
+kompass.id = "terrengKompass";
+kompass.setAttribute("aria-hidden", "true");
+kompass.style.cssText = "position:fixed;right:22px;top:212px;width:54px;height:54px;border-radius:50%;" +
+  "background:var(--flate-82);border:1px solid var(--border);box-shadow:var(--skygge);display:none;" +
+  "pointer-events:none;z-index:5";
+kompass.innerHTML = '<svg viewBox="0 0 54 54" width="54" height="54"><g id="terrengKompassPil">' +
+  '<path d="M27 6 L34 28 L27 24 L20 28 Z" fill="var(--accent)"/>' +
+  '<path d="M27 48 L34 26 L27 30 L20 26 Z" fill="var(--muted)"/>' +
+  '<text x="27" y="17" text-anchor="middle" font-size="9" font-weight="700" fill="var(--paa-accent)" font-family="sans-serif">N</text>' +
+  "</g></svg>";
+if (document.body) document.body.appendChild(kompass);
+const kompassPil = kompass.querySelector("#terrengKompassPil");
+
+const _kA = new THREE.Vector3(), _kB = new THREE.Vector3();
+frameHooks.push(() => {
+  const vis = !!terreng && !skjult && terrengGroup.visible;
+  kompass.style.display = vis ? "block" : "none";
+  if (!vis || !kompassPil) return;
+  updateScreenScaled(nordGroup);
+  // Nord i verden → to punkt på skjermen → vinkelen pilen skal peke.
+  // Skjermkoordinatene (NDC) strekkes med bildeforholdet, ellers blir
+  // vinkelen feil på en bred skjerm.
+  const n = nordRetning(terreng.plass.rot);
+  const len = (S.modelSize || 20) * 0.5;
+  _kA.copy(controls.target).project(camera);
+  _kB.set(controls.target.x + n.x * len, controls.target.y, controls.target.z + n.z * len).project(camera);
+  const dx = (_kB.x - _kA.x) * (camera.aspect || 1), dy = _kB.y - _kA.y;
+  if (Math.abs(dx) + Math.abs(dy) < 1e-9) return;
+  const grader = Math.atan2(dx, dy) * 180 / Math.PI;
+  kompassPil.setAttribute("transform", "rotate(" + grader.toFixed(1) + " 27 27)");
+});
+
+function tegnNord() {
+  tomGruppe(nordGroup);
+  if (!terreng) return;
+  const k = terreng.klipp;
+  const lapp = makeLabel("N", "#e53935");
+  lapp.userData.px = 26;
+  lapp.userData.aspect = lapp.scale.x / lapp.scale.y;
+  lapp.position.copy(lokaltPunkt((k.i0 + k.i1) / 2, k.j0, 6));
+  nordGroup.add(lapp);
+}
+
 
 // Plasserer gruppene etter plass, gulvkote og modellen. Billig — kalles for
 // hvert musetrekk mens bygget dras.
@@ -368,6 +483,7 @@ function tegnTerreng() {
   if (!terreng.klipp) terreng.klipp = fulltKlipp(g);
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("color", new THREE.BufferAttribute(hoydeFarger(g, terreng.spenn), 3));
+  geo.setAttribute("uv", new THREE.BufferAttribute(kartUv(g), 2));
   const mat = new THREE.MeshLambertMaterial({
     vertexColors: true,
     side: THREE.DoubleSide,
@@ -383,6 +499,8 @@ function tegnTerreng() {
   byggFlate(mr);
   plasserGrupper(mr);
   tegnHandtak();
+  brukKart();
+  if (kartValg === "topo" && !terreng.kart) hentKart(terreng);
   terrengGroup.visible = !skjult;
   trengerFar = mTilScene(g.w * g.dx * 4, mr.skala);
   oppdaterRutenett();
@@ -918,6 +1036,7 @@ function fjernTerreng() {
 // dens enheter. Det hører ikke til den neste. (Trinn 8: finnes en
 // plasseringsfil for den nye modellen, hentes terrenget inn igjen av seg selv.)
 S.ryddTerreng = () => {
+  ryddKart(terreng);
   terreng = null; skjult = false; treff = []; flyttModus = false;
   ryddScene();
   oppdaterRutenett();
@@ -1028,6 +1147,17 @@ function tegnPanel() {
         '<div class="prop-actions"><button id="trPadStd">' + ikon("nullstill") + " " +
         t("Tilbakestill (2 m rundt bygget)") + "</button></div>" : "") +
 
+      // 🗺 Kart på terrenget
+      '<h4 style="margin:14px 0 4px">' + ikon("tegning") + " " + t("Kart på terrenget") + "</h4>" +
+      '<label>' + t("Vis") + '<select id="trKart">' +
+      '<option value="topo"' + (kartValg === "topo" ? " selected" : "") + ">" + t("Topografisk kart (Kartverket)") + "</option>" +
+      '<option value="hoyde"' + (kartValg === "hoyde" ? " selected" : "") + ">" + t("Høydefarger") + "</option></select></label>" +
+      (kartValg === "topo" && terreng.kart && terreng.kart.status === "laster" ? "<p " + LITEN + ">" + t("Henter kartet …") + "</p>" : "") +
+      (kartValg === "topo" && terreng.kart && terreng.kart.status === "feil"
+        ? '<p style="font-size:11px;margin:4px 0 0;color:var(--accent)">' + t("Kartet kunne ikke hentes — viser høydefarger.") +
+          (terreng.kart.detalj ? " " + esc(terreng.kart.detalj) : "") + "</p>" : "") +
+      "<p " + LITEN + ">" + t("Kart og høydedata: © Kartverket (CC BY 4.0). Flyfoto fra Norge i bilder krever avtale gjennom Norge digitalt og er derfor ikke med.") + "</p>" +
+
       // ✂ Trinn 4 — beskjæring
       '<h4 style="margin:14px 0 4px">' + ikon("snitt") + " " + t("Beskjær") +
       ' <span id="trKlippTall" style="font-weight:700;margin-left:6px">' + esc(klippTekst()) + "</span></h4>" +
@@ -1083,6 +1213,13 @@ function tegnPanel() {
     gulv.onchange = bruk;
     gulv.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); gulv.blur(); } };
   }
+  const kart = $("trKart");
+  if (kart) kart.onchange = () => {
+    kartValg = kart.value === "hoyde" ? "hoyde" : "topo";
+    if (terreng && kartValg === "topo" && (!terreng.kart || terreng.kart.status === "feil")) { terreng.kart = null; hentKart(terreng); }
+    brukKart();
+    tegnPanel();
+  };
   const padPaa = $("trPadPaa");
   if (padPaa) padPaa.onchange = () => {
     if (!terreng) return;
