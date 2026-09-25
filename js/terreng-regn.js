@@ -276,7 +276,10 @@ export function hoydeSpenn(grid) {
 //
 // Trekanter som rører en piksel uten høyde (sjø, hull i laserdataene) hoppes
 // over — heller et hull enn et stup ned til −772 m.
-export function gridTilTrekanter(grid, E0, N0, h0, skala) {
+// `flat` (valgfri) = { flagg: Uint8Array, hoyde: moh } — punktene som er
+// flagget legges i den høyden. Det er utskjæringen rundt bygget: terrenget
+// innenfor plata senkes til like under plata, så det ikke stikker gjennom.
+export function gridTilTrekanter(grid, E0, N0, h0, skala, flat) {
   const { w, h } = grid;
   const pos = new Float32Array(w * h * 3);
   const ok = new Uint8Array(w * h);
@@ -287,7 +290,8 @@ export function gridTilTrekanter(grid, E0, N0, h0, skala) {
       const v = grid.data[k];
       ok[k] = gyldigHoyde(v, grid.nodata) ? 1 : 0;
       pos[k * 3] = mTilScene(c.E - E0, skala);
-      pos[k * 3 + 1] = ok[k] ? mTilScene(v - h0, skala) : 0;
+      const hv = (flat && flat.flagg[k]) ? flat.hoyde : v;
+      pos[k * 3 + 1] = ok[k] ? mTilScene(hv - h0, skala) : 0;
       pos[k * 3 + 2] = -mTilScene(c.N - N0, skala);
     }
   }
@@ -407,4 +411,156 @@ export function hoydeFarger(grid, spenn) {
     for (let c = 0; c < 3; c++) ut[k * 3 + c] = a[c] + (b[c] - a[c]) * u;
   }
   return ut;
+}
+
+// ═══════════════════════ PLASSERING (trinn 5) ═══════════════════════
+//
+// MODELLEN FLYTTES ALDRI. Markeringer, materiell, SW-elementer, snitt og
+// delte lenker står alle i modellens koordinater — flytter vi modellen, flytter
+// vi alt det. Det er TERRENGET som legges under bygget, med en plassering:
+//
+//   plass = { pE, pN, rot }
+//     pE, pN — hvor byggets senter står, i meter øst/nord for adressepunktet
+//     rot    — byggets rotasjon i forhold til terrenget, i grader MED KLOKKA
+//              sett ovenfra (som et kompass). 0 = modellens −Z peker mot nord.
+//
+// «Byggrammen» er modellens plan i METER, med origo i modellens senter og
+// aksene langs scenens X og Z (Z peker mot sør når rot = 0).
+
+export function terrengTilBygg(E, N, E0, N0, plass) {
+  const t = (plass.rot || 0) * Math.PI / 180, c = Math.cos(t), s = Math.sin(t);
+  const lx = E - E0 - (plass.pE || 0), lz = -(N - N0 - (plass.pN || 0));
+  return { bx: lx * c + lz * s, bz: -lx * s + lz * c };
+}
+
+export function byggTilTerreng(bx, bz, E0, N0, plass) {
+  const t = (plass.rot || 0) * Math.PI / 180, c = Math.cos(t), s = Math.sin(t);
+  const lx = bx * c - bz * s, lz = bx * s + bz * c;
+  return { E: E0 + (plass.pE || 0) + lx, N: N0 + (plass.pN || 0) - lz };
+}
+
+// Et flytt i byggrammen (meter) → nytt senterpunkt i terrenget. Bygget
+// flyttes over terrenget, så senteret flytter seg like langt i TERRENGETS
+// retninger — derfor roteres flyttet tilbake med byggets rotasjon.
+export function flyttPlass(plass, dbx, dbz) {
+  const t = (plass.rot || 0) * Math.PI / 180, c = Math.cos(t), s = Math.sin(t);
+  const lx = dbx * c - dbz * s, lz = dbx * s + dbz * c;
+  return { pE: (plass.pE || 0) + lx, pN: (plass.pN || 0) - lz, rot: plass.rot || 0 };
+}
+
+// Grader til [0, 360), med én desimal.
+export function normVinkel(g) {
+  const v = ((Number(g) || 0) % 360 + 360) % 360;
+  return Math.round(v * 10) / 10 % 360;
+}
+
+// Snapper til nærmeste 90° når vinkelen er innenfor `tol` grader. Bygg står
+// nesten alltid rett på en vei eller en nabogrense — 90°-trinnene er det man
+// oftest vil ha, og det skal være lett å treffe dem med musa.
+export function snapVinkel(g, tol) {
+  const v = normVinkel(g), n = Math.round(v / 90) * 90;
+  return Math.abs(v - n) <= (tol == null ? 4 : tol) ? normVinkel(n) : v;
+}
+
+// Laveste terrenghøyde innenfor et rektangel i byggrammen (fotavtrykket).
+// Brukes av «Legg oppå terrenget»: gulvet på laveste punkt betyr at bygget
+// ikke svever noe sted — resten graves ned. null hvis det ikke finnes høyder.
+export function lavesteUnder(grid, E0, N0, plass, r) {
+  let min = Infinity;
+  for (let j = 0; j < grid.h; j++) {
+    for (let i = 0; i < grid.w; i++) {
+      const v = grid.data[j * grid.w + i];
+      if (!gyldigHoyde(v, grid.nodata)) continue;
+      const c = pikselSenter(grid, i, j);
+      const b = terrengTilBygg(c.E, c.N, E0, N0, plass);
+      if (b.bx >= r.x0 && b.bx <= r.x1 && b.bz >= r.z0 && b.bz <= r.z1 && v < min) min = v;
+    }
+  }
+  if (min < Infinity) return min;
+  // Mindre enn en rute (lite bygg, 1 m-grid): ta høyden midt i
+  const m = byggTilTerreng((r.x0 + r.x1) / 2, (r.z0 + r.z1) / 2, E0, N0, plass);
+  return hoydeVed(grid, m.E, m.N);
+}
+
+// ═══════════════════════ UTSKJÆRING (plata rundt bygget) ═══════════════════════
+//
+// Terrenget går rett gjennom bygget — inn i hallen og opp over gulvet. Plata
+// er et rektangel i BYGGRAMMEN (følger bygget når det flyttes og roteres):
+// terrenget innenfor senkes, og en flat plate legges i gulvhøyde.
+//   pad = { paa, x0, x1, z0, z1 }  (meter i byggrammen)
+
+export const PAD_MARG_M = 2;      // standard: 2 m rundt bygget
+export const MIN_PAD_M = 2;
+
+export function padStandard(fp, marg) {
+  const m = marg == null ? PAD_MARG_M : marg;
+  return { paa: true, x0: fp.x0 - m, x1: fp.x1 + m, z0: fp.z0 - m, z1: fp.z1 + m };
+}
+
+export function padMeter(pad) {
+  return { bredde: pad.x1 - pad.x0, lengde: pad.z1 - pad.z0 };
+}
+
+// Samme kanter som beskjæringen: NORD = z0 (−Z), SØR = z1, VEST = x0, ØST = x1.
+// Rundes til 10 cm — ingen trenger millimeter på en utgravingsplate.
+export function flyttPadKant(pad, kant, bx, bz) {
+  const p = Object.assign({}, pad), r = (v) => Math.round(v * 10) / 10;
+  if (kant.includes("v")) p.x0 = Math.min(r(bx), p.x1 - MIN_PAD_M);
+  if (kant.includes("o")) p.x1 = Math.max(r(bx), p.x0 + MIN_PAD_M);
+  if (kant.includes("n")) p.z0 = Math.min(r(bz), p.z1 - MIN_PAD_M);
+  if (kant.includes("s")) p.z1 = Math.max(r(bz), p.z0 + MIN_PAD_M);
+  return p;
+}
+
+export function padHandtak(p) {
+  const mx = (p.x0 + p.x1) / 2, mz = (p.z0 + p.z1) / 2;
+  return [
+    { kant: "nv", bx: p.x0, bz: p.z0 }, { kant: "n", bx: mx, bz: p.z0 }, { kant: "no", bx: p.x1, bz: p.z0 },
+    { kant: "o", bx: p.x1, bz: mz }, { kant: "so", bx: p.x1, bz: p.z1 }, { kant: "s", bx: mx, bz: p.z1 },
+    { kant: "sv", bx: p.x0, bz: p.z1 }, { kant: "v", bx: p.x0, bz: mz }
+  ];
+}
+
+export function likePad(a, b) {
+  return !!a && !!b && a.paa === b.paa && a.x0 === b.x0 && a.x1 === b.x1 && a.z0 === b.z0 && a.z1 === b.z1;
+}
+
+// Hvilke punkter i gridet ligger under plata?
+export function padFlagg(grid, E0, N0, plass, pad) {
+  const f = new Uint8Array(grid.w * grid.h);
+  if (!pad || !pad.paa) return f;
+  const t = (plass.rot || 0) * Math.PI / 180, c = Math.cos(t), s = Math.sin(t);
+  for (let j = 0; j < grid.h; j++) {
+    const N = grid.y0 - (j + 0.5) * grid.dy;
+    const lz = -(N - N0 - (plass.pN || 0));
+    for (let i = 0; i < grid.w; i++) {
+      const lx = grid.x0 + (i + 0.5) * grid.dx - E0 - (plass.pE || 0);
+      const bx = lx * c + lz * s, bz = -lx * s + lz * c;
+      if (bx >= pad.x0 && bx <= pad.x1 && bz >= pad.z0 && bz <= pad.z1) f[j * grid.w + i] = 1;
+    }
+  }
+  return f;
+}
+
+// ═══════════════════════ GULVKOTE (trinn 6) ═══════════════════════
+//
+// Tegningene sier «±0 = kote +75,30». Modellen er nesten alltid tegnet med
+// gulvet i ±0, og da ER gulvkoten det tallet som skal legges til modellens
+// egne koter for å få moh. Ligger ±0 ikke innenfor modellen i det hele tatt
+// (modellen er flyttet, eller står allerede i moh.), regnes modellens laveste
+// punkt som gulv — da er det i det minste ingenting som havner under bakken
+// uten at brukeren ser det.
+//   minK, maxK — modellens laveste og høyeste kote i METER (egne koter)
+// Svar: { mg, relativ } — modellkoten for gulvet, og om ±0 ble brukt.
+export function gulvReferanse(minK, maxK) {
+  if (Number.isFinite(minK) && Number.isFinite(maxK) && minK - 0.5 <= 0 && 0 <= maxK) return { mg: 0, relativ: true };
+  return { mg: Number.isFinite(minK) ? minK : 0, relativ: false };
+}
+
+// Gulvkoten slik brukeren skriver den: «75,30», «75.3», «+75,30 moh».
+export function tolkKote(tekst) {
+  const m = String(tekst == null ? "" : tekst).replace(/\s/g, "").replace(",", ".").match(/^[+]?(-?\d+(?:\.\d+)?)/);
+  if (!m) return null;
+  const v = Number(m[1]);
+  return Number.isFinite(v) && v > MIN_HOYDE && v < MAKS_HOYDE ? v : null;
 }
