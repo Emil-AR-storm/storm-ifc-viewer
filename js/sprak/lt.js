@@ -1542,5 +1542,6 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Utskjæring rundt bygget": "Iškirtimas aplink pastatą",
   "Skjær ut terrenget og legg en flat plate i gulvhøyde": "Iškirpti reljefą ir paklota plokščią aikštelę grindų lygyje",
   "Dra i de gule håndtakene for å endre størrelsen på plata.": "Tempkite geltonas rankenėles, kad pakeistumėte aikštelės dydį.",
-  "Tilbakestill (2 m rundt bygget)": "Atstatyti (2 m aplink pastatą)"
+  "Tilbakestill (2 m rundt bygget)": "Atstatyti (2 m aplink pastatą)",
+  "Gulvet er modellens laveste punkt — bunnen av søylene, toppen av betonggulvet. ▲ Kote viser nå moh.": "Grindys yra žemiausias modelio taškas — kolonų apačia, betoninių grindų viršus. ▲ Aukštis dabar rodo m virš j. l."
 };

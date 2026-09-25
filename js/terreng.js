@@ -19,13 +19,12 @@
 // Den rene regningen (TIFF-lesing, UTM, grid → trekanter, plassering, plate,
 // gulvkote) ligger i js/terreng-regn.js, så den kan testes uten nettleser.
 import * as THREE from "three";
-import { $, S, apnePanel, esc, ikon, på, registrerEkstraGruppe, tilM } from "./state.js";
+import { $, S, apnePanel, esc, ikon, på, registrerEkstraGruppe } from "./state.js";
 import { t } from "./i18n.js";
 import { camera, canvas, controls, frameHooks, grid, scene, updateScreenScaled } from "./scene.js";
-import { koteValue } from "./measure.js";
 import {
   STANDARD_UTSNITT, UTSNITT, adresseUrl, bboxFra, byggTilTerreng, flyttKlippKant, flyttPadKant, flyttPlass,
-  fulltKlipp, gridTilTrekanter, gulvReferanse, hoydeFarger, hoydeIPunkt, hoydeSpenn, hoydeVed, klippHandtak,
+  fulltKlipp, gridTilTrekanter, hoydeFarger, hoydeIPunkt, hoydeSpenn, hoydeVed, klippHandtak,
   klippMeter, klippOmriss, lagIndeks, lavesteUnder, lesTiff, likeKlipp, likePad, mTilScene, normVinkel,
   padFlagg, padHandtak, padMeter, padStandard, pikselSenter, punktFraE, punktFraN, snapVinkel, tolkKoordinat,
   tolkKote, vaskAdresseSvar, wcsUrl
@@ -129,37 +128,39 @@ frameHooks.push(() => {
 //   c      — senteret i plan (scene)
 //   skala  — meter per sceneenhet
 //   fp     — fotavtrykket (modellens boks i plan) i byggrammen, meter
-//   a      — modellkoten (meter) i scenens y = 0, så y ↔ kote kan regnes
-//   ref    — gulvReferanse: hvilken modellkote gulvet har (±0 eller laveste)
+//   gulvY  — scenens y for GULVET: modellens laveste punkt
+//
+// GULVET ER MODELLENS LAVESTE PUNKT — bunnen av stålsøylene, som er toppen
+// av betonggulvet (Emil 25.09). Første utgave regnet gulvet ut fra modellens
+// egne koter (±0 via koteValue), og på Geithus havnet plata og terrenget i
+// TAKHØYDE: modellens koter og scenens y hang ikke sammen slik regnestykket
+// antok. Laveste punkt i scenen er det man ser, og det bommer ikke.
 function modellRef() {
   const boks = new THREE.Box3().setFromObject(S.modelGroup);
   const c = boks.getCenter(new THREE.Vector3());
   const skala = S.enhetSkala || 1;
-  // ▲ Kote-verktøyet leser modellens EGNE koter (koteValue i measure.js).
-  // Vi regner på samme måte, så gulvkoten og Kote-lappen alltid er enige.
-  const kote = (y) => tilM(koteValue(new THREE.Vector3(c.x, y, c.z)));
-  const a = kote(0);
-  const minK = kote(boks.min.y), maxK = kote(boks.max.y);
   return {
-    boks, c, skala, a,
+    boks, c, skala, gulvY: boks.min.y,
     fp: { x0: (boks.min.x - c.x) * skala, x1: (boks.max.x - c.x) * skala,
-          z0: (boks.min.z - c.z) * skala, z1: (boks.max.z - c.z) * skala },
-    ref: gulvReferanse(Math.min(minK, maxK), Math.max(minK, maxK))
+          z0: (boks.min.z - c.z) * skala, z1: (boks.max.z - c.z) * skala }
   };
 }
 
-// Tillegget som gjør modellkoter om til moh. Kote-verktøyet i main.js leser
-// denne, så ▲ Kote på gulvet viser gulvkoten, og på terrenget terrengets moh.
-function koteTillegg(mr) {
-  if (!terreng || !terreng.gulv) return 0;
-  return terreng.gulv.kote - (mr || modellRef()).ref.mg;
-}
-S.koteTillegg = () => (terreng && S.modelGroup) ? koteTillegg() : 0;
-
-// moh. → scenens y
+// moh. → scenens y: gulvkoten ligger i gulvY, og resten følger med meter
+// for meter. Ingen omvei om modellens egne koter.
 function yFraMoh(moh, mr) {
-  return (moh - koteTillegg(mr) - mr.a) / mr.skala;
+  const g = terreng && terreng.gulv ? terreng.gulv.kote : moh;
+  return mr.gulvY + (moh - g) / mr.skala;
 }
+
+// ▲ Kote-verktøyet (main.js) spør her først: er terrenget lagt under
+// modellen, er høyden på ethvert punkt gulvkoten pluss høyden over gulvet.
+// Da viser Kote på gulvet nøyaktig gulvkoten, og på terrenget terrengets moh.
+S.koteMoh = (punkt) => {
+  if (!terreng || !terreng.gulv || !S.modelGroup || !punkt) return null;
+  const mr = modellRef();
+  return terreng.gulv.kote + (punkt.y - mr.gulvY) * mr.skala;
+};
 
 // ═══════════════════════ TREFF (Mål og Kote) ═══════════════════════
 const _ray = new THREE.Raycaster();
@@ -268,7 +269,7 @@ function tegnHandtak() {
   for (const hd of klippHandtak(k)) nyttHandtak(klippGroup, "klipp", hd.kant, lokaltPunkt(hd.i, hd.j, LOFT_M));
 
   // Plata og fotavtrykket står i gulvhøyde, i modellens koordinater
-  const gulvY = (mr.ref.mg - mr.a) / s;
+  const gulvY = mr.gulvY;
   byggGroup.position.set(mr.c.x, 0, mr.c.z);
   const p = terreng.pad;
   if (p && p.paa) {
@@ -617,7 +618,7 @@ let satteMarkor = "";
 
 function gulvPlanY() {
   const mr = modellRef();
-  return { y: (mr.ref.mg - mr.a) / mr.skala, mr };
+  return { y: mr.gulvY, mr };
 }
 
 window.addEventListener("pointerdown", (e) => {
@@ -1014,9 +1015,7 @@ function tegnPanel() {
       (gulv && gulv.grov
         ? t("Grovt: beregnet fra laveste terrengpunkt under bygget, ikke oppgitt. Skriv gulvkoten fra tegningen.")
         : t("Oppgitt fra tegningen.")) + "</p>" +
-      "<p " + LITEN + ">" + (mr.ref.relativ
-        ? t("Modellens ±0 regnes som gulv. ▲ Kote viser nå moh.")
-        : t("Modellen har ikke ±0 innenfor seg — modellens laveste punkt regnes som gulv. ▲ Kote viser nå moh.")) + "</p>" +
+      "<p " + LITEN + ">" + t("Gulvet er modellens laveste punkt — bunnen av søylene, toppen av betonggulvet. ▲ Kote viser nå moh.") + "</p>" +
       '<div class="prop-actions"><button id="trOppaa">' + ikon("kote") + " " + t("Legg oppå terrenget") + "</button></div>" +
 
       // Utskjæring

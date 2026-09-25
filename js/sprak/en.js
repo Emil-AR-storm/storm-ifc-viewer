@@ -1542,5 +1542,6 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Utskjæring rundt bygget": "Cut-out around the building",
   "Skjær ut terrenget og legg en flat plate i gulvhøyde": "Cut out the terrain and lay a flat pad at floor level",
   "Dra i de gule håndtakene for å endre størrelsen på plata.": "Drag the yellow handles to resize the pad.",
-  "Tilbakestill (2 m rundt bygget)": "Reset (2 m around the building)"
+  "Tilbakestill (2 m rundt bygget)": "Reset (2 m around the building)",
+  "Gulvet er modellens laveste punkt — bunnen av søylene, toppen av betonggulvet. ▲ Kote viser nå moh.": "The floor is the model's lowest point — the bottom of the columns, the top of the concrete slab. ▲ Level now shows m a.s.l."
 };

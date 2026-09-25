@@ -268,7 +268,7 @@ S.settGrupperFraLett = null;    // markers.js: grupper fra Workerens JSON (bygg)
 
 // ⛰ Terreng. Kroken settes av terreng.js (kun kontor).
 S.ryddTerreng = null;           // modellbytte: fjern terrenget fra scenen
-S.koteTillegg = null;           // main.js ▲ Kote: meter som gjør modellkote om til moh.
+S.koteMoh = null;               // main.js ▲ Kote: moh. for et punkt når terrenget er lagt under (ellers null)
 
 // 🏗 Stort prosjekt (byggeplass.js ↔ ifc.js)
 S.lettOverstyr = null;          // { minst, sirkel } for neste (om)lasting — settes/nullstilles av byggeplass.js
