@@ -17,6 +17,8 @@ export function setMode(m) {
   // skal knappen dens slippe å stå som aktiv
   const bm = $("btnMateriell");
   if (bm && S.mode !== "materiell") bm.classList.remove("active");
+  const br = $("btnRigg");   // 🏕 samme for rigg-modusen (js/rigg.js)
+  if (br && S.mode !== "rigg") br.classList.remove("active");
   S.measureFirst = null;
   hideSnapPreview();
   updateModeBar();
@@ -38,7 +40,7 @@ S.oppdaterModeBar = updateModeBar;
 //   · Snitt, etasjefilter, gjennomsiktig og fargelegging er VISNINGER, ikke
 //     moduser. De bestemmer hva du ser på, og skal overleve at du bytter
 //     verktøy — nøyaktig som at du skrur dem av selv når du er ferdig.
-const KLIKKMODUSER = { marker: "commentPanel", materiell: "materiellPanel" };
+const KLIKKMODUSER = { marker: "commentPanel", materiell: "materiellPanel", rigg: "riggPanel" };
 
 S.avsluttKlikkModus = (nyttPanel) => {
   const eier = KLIKKMODUSER[S.mode];
@@ -47,6 +49,7 @@ S.avsluttKlikkModus = (nyttPanel) => {
   // rydder også bort en påbegynt plassering. setMode() alene ville latt en
   // halvferdig kasse bli hengende i scenen.
   if (S.mode === "materiell") { if (S.avsluttMateriell) S.avsluttMateriell(); return; }
+  if (S.mode === "rigg") { if (S.avsluttRigg) S.avsluttRigg(); return; }   // 🏕 samme grunn
   setMode(S.mode);   // setMode på gjeldende modus slår den av
 };
 
@@ -114,6 +117,9 @@ export function updateModeBar() {
   } else if (S.mode === "materiell" && S.materiellModeBar) {
     // 📦 materiell-verktøyet eier innholdet sitt selv (js/materiell.js)
     S.materiellModeBar(modeBar);
+  } else if (S.mode === "rigg" && S.riggModeBar) {
+    // 🏕 rigg-verktøyet eier innholdet sitt selv (js/rigg.js)
+    S.riggModeBar(modeBar);
   } else {
     modeBar.classList.remove("open");
     modeBar.innerHTML = "";

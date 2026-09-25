@@ -22,6 +22,7 @@ import "./display.js";
 import "./outline.js";
 import "./hjelp.js";
 import "./materiell-vis.js";   // 📦 materiell: montøren SER objektene (verktøyet er kontor-bare)
+import "./rigg-vis.js";        // 🏕 rigg: montøren SER riggen på gulvhøyde (verktøyet er kontor-bare)
 import "./grupper.js";         // 🎯 objektgrupper: montøren kan trykke på dem (kameraet flyr)
 import "./sw-lett.js";        // 🏗 SW-elementene som monteringsinstruks (ikke generatoren)
 import "./markers.js";

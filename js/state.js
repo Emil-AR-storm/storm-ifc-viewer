@@ -204,7 +204,9 @@ export function modellStartverdier() {
     // 📦 materiell (vareleveranser) plassert i denne modellen
     materiell: [],
     // 🎯 objektgrupper (lagrede flervalg) i denne modellen
-    grupper: []
+    grupper: [],
+    // 🏕 rigg på tomta: objekter, gravsteiner og referansen (js/rigg-regn.js)
+    rigg: []
   };
 }
 
@@ -223,6 +225,8 @@ export function nullstillModellState() {
   if (S.ryddMateriell) S.ryddMateriell();
   // ⛰ Terrenget lå under modellen som ble lukket, med dens senter og enheter.
   if (S.ryddTerreng) S.ryddTerreng();
+  // 🏕 Riggen hører til modellen (og tomta) som ble lukket.
+  if (S.ryddRigg) S.ryddRigg();
 }
 
 Object.assign(S, modellStartverdier());
@@ -270,6 +274,16 @@ S.settGrupperFraLett = null;    // markers.js: grupper fra Workerens JSON (bygg)
 S.ryddTerreng = null;           // modellbytte: fjern terrenget fra scenen
 S.lastTerreng = null;           // ifc.js afterLoad: hent terrenget modellen er plassert i (kontor)
 S.koteMoh = null;               // main.js ▲ Kote: moh. for et punkt når terrenget er lagt under (ellers null)
+S.terrengRef = null;            // rigg-vis.js: hvor bygget står på tomta + bakkehøyden (null uten terreng)
+
+// 🏕 Rigg. Krokene settes av rigg-vis.js / rigg.js; null når modulen ikke er lastet.
+S.lastRigg = null;              // ifc.js afterLoad: les riggen for denne modellen (kontor)
+S.settRiggFraLett = null;       // markers.js: riggen fra Workerens JSON (bygg)
+S.ryddRigg = null;              // modellbytte: tøm gruppa
+S.riggOmplasser = null;         // terreng.js: bygget er flyttet på tomta, eller terrenget kom/gikk
+S.riggModeBar = null;           // modes.js: kontrollinja i rigg-modus
+S.avsluttRigg = null;           // modes.js: et annet verktøy ble åpnet
+S.etterTegnRigg = null;         // rigg-vis.js → rigg.js: legg valg-effekten og knapperaden på igjen
 
 // 🏗 Stort prosjekt (byggeplass.js ↔ ifc.js)
 S.lettOverstyr = null;          // { minst, sirkel } for neste (om)lasting — settes/nullstilles av byggeplass.js

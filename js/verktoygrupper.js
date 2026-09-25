@@ -36,7 +36,7 @@ export const GRUPPER = [
     knapper: ["btnMeasure", "btnKote", "btnAxes"] },
   { id: "info",     navn: "Bygg Info",        ikonNavn: "sok",
     hjelp: "Informasjon om bygget: markeringer, mengder, søk og sammenligning",
-    knapper: ["btnMarker", "btnQty", "btnSearch", "btnGrupper", "btnTerreng", "btnCompare"] },
+    knapper: ["btnMarker", "btnQty", "btnSearch", "btnGrupper", "btnTerreng", "btnRigg", "btnCompare"] },
   { id: "utseende", navn: "Visning",          ikonNavn: "utseende",
     hjelp: "Snitt, etasjer, gjennomsiktig og farger",
     knapper: ["btnClip", "btnStorey", "btnGhost", "btnColors"] },
