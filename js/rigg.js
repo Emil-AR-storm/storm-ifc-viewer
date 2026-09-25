@@ -20,6 +20,11 @@
 //  · skjøtene: prikker som kan dras; dobbeltklikk på et panel gir ny skjøt,
 //    Delete (eller knappen) fjerner den valgte
 //  · paneler: klikk på to paneler ved siden av hverandre → «Gjør om til port»
+//
+// ➜ PILENE (trinn 5) tegnes punkt for punkt: klikk på bakken for hvert knekk-
+// punkt, dobbeltklikk (eller Enter / «Ferdig pil») for å avslutte. Etterpå
+// virker prikkene akkurat som på gjerdet — dra, shift-klikk, dobbeltklikk for
+// nytt punkt og Delete — men pila er en åpen linje uten paneler og porter.
 import * as THREE from "three";
 import { $, S, apnePanel, esc, ikon, på } from "./state.js";
 import { t } from "./i18n.js";
@@ -30,7 +35,7 @@ import {
   MAKS_ETASJER, MAKS_MODULER, REF_ID, RIGG_FORKLARING, RIGG_REKKEFOLGE, RIGG_TYPER, ROT_STEG,
   byggTilRigg, enTilLokal, fjernSkjoter, flyttSkjoter, gjerdeFraRektangel, gjerdeMengder, gjerdeStykker,
   gjorOmTilPort, gjorTilbake, leggTilSkjot, naboStykker, nyRiggId, normVinkel, riggAntall, riggObjekter,
-  riggTelling, trengerOpplasting, vaskRiggListe, vaskRiggObjekt
+  riggTelling, trengerOpplasting, vaskRiggListe, vaskRiggObjekt, erGjerde, erPil, minPunkter, pilFraPunkter, pilLengde
 } from "./rigg-regn.js";
 import {
   aktivRef, byggRiggObjekt, finnRiggObjekt, gjerdeDelLabel, lappStorrelse, oppdaterRiggValgEffekt, riggBase, riggGroup,
@@ -48,7 +53,8 @@ const KLIKK_PX = 8;
 let merker = null;             // { start: Vector3|null, linje } — markeringsboksen
 let skjotDrar = null;          // { id, k, punkter, flyttet } — en skjøt som dras
 let valgteSkjoter = [];        // skjøtene som er valgt i det valgte gjerdet (shift-klikk gir flere)
-let shiftSkjot = false;        // pointerdown med shift traff en skjøt — pointerup skal svelges
+let shiftSkjot = false;
+let tegner = null;             // ➜ { type, punkter: [Vector3], linje } — pil under tegning        // pointerdown med shift traff en skjøt — pointerup skal svelges
 let valgteStykker = [];        // panelene som er valgt (maks to) — til port
 
 function hentO(id) { return riggObjekter(S.rigg || []).find(o => o.id === id) || null; }
@@ -436,8 +442,19 @@ function portValg(o) {
   return { kanPort, portI };
 }
 
+function fjernSkjotKnapp(o) {
+  if (!valgteSkjoter.length) return "";
+  const min = minPunkter(o);
+  return '<button id="rvFjernSkjot" class="btn" style="padding:3px 8px"' +
+    (o.punkter.length - valgteSkjoter.length < min ? " disabled" : "") + ">" +
+    (valgteSkjoter.length > 1 ? t("Fjern {0} skjøter", valgteSkjoter.length) : t("Fjern skjøt")) + "</button>";
+}
+
 function gjerdeKnapper(o) {
   if (!o.punkter) return "";
+  // ➜ Pila: lengden og fjern-knappen — ingen paneler og porter
+  if (erPil(o)) return '<span style="font-size:11px;color:var(--muted)">' +
+    (Math.round(pilLengde(o) * 10) / 10) + " m</span>" + fjernSkjotKnapp(o);
   const v = portValg(o);
   const m = gjerdeMengder(o);
   return '<span style="font-size:11px;color:var(--muted)">' + t("{0} paneler · {1} porter", m.paneler, m.porter) +
@@ -445,13 +462,12 @@ function gjerdeKnapper(o) {
     '<button id="rvPort" class="btn" style="padding:3px 8px"' + (v.kanPort ? "" : " disabled") +
     ' title="' + t("Velg to paneler ved siden av hverandre, og gjør dem om til én port") + '">' + t("Gjør om til port") + "</button>" +
     (v.portI != null ? '<button id="rvTilbake" class="btn" style="padding:3px 8px">' + t("Gjør tilbake til paneler") + "</button>" : "") +
-    (valgteSkjoter.length ? '<button id="rvFjernSkjot" class="btn" style="padding:3px 8px"' +
-      (o.punkter.length - valgteSkjoter.length < 3 ? " disabled" : "") + ">" +
-      (valgteSkjoter.length > 1 ? t("Fjern {0} skjøter", valgteSkjoter.length) : t("Fjern skjøt")) + "</button>" : "");
+    fjernSkjotKnapp(o);
 }
 
 function koblGjerdeKnapper(o) {
   if (!o.punkter) return;
+  if (erPil(o)) { if ($("rvFjernSkjot")) $("rvFjernSkjot").onclick = () => fjernValgtSkjot(); return; }
   const v = portValg(o);
   if ($("rvPort")) $("rvPort").onclick = () => {
     if (!v.kanPort) return;
@@ -468,7 +484,7 @@ function koblGjerdeKnapper(o) {
 function fjernValgtSkjot() {
   const o = valgtGjerde();
   if (!o || !valgteSkjoter.length) return;
-  const ny = fjernSkjoter(o.punkter, valgteSkjoter);
+  const ny = fjernSkjoter(o.punkter, valgteSkjoter, minPunkter(o));
   if (!ny) return;
   valgteSkjoter = []; valgteStykker = []; settMarkering();
   oppdater(o.id, { punkter: ny }, "Skjøt fjernet");
@@ -495,6 +511,58 @@ function veksleStykke(o, i) {
   tegnEnRigg(o);
   oppdaterValgBar();
   oppdaterHandtak();
+}
+
+// ── ➜ Tegne en pil ──
+function startPil(type) {
+  avbrytPlassering(); avbrytMerker(); avbrytPil();
+  if (!S.modelGroup || !RIGG_TYPER[type]) return;
+  tegner = { type, punkter: [], linje: null };
+  if (!iModus()) settRiggModus(true);
+  $("riggPanel").classList.remove("open");
+  if (S.riggModeBarTegn) S.riggModeBarTegn();
+}
+
+function avbrytPil() {
+  if (!tegner) return;
+  if (tegner.linje) { scene.remove(tegner.linje); tegner.linje.geometry.dispose(); }
+  tegner = null;
+  if (S.riggModeBarTegn && iModus()) S.riggModeBarTegn();
+}
+
+// Forhåndsvisning: punktene så langt, og en strek videre til pekeren.
+function tegnPilKladd(peker) {
+  if (!tegner) return;
+  const pts = tegner.punkter.concat(peker ? [peker] : []);
+  if (tegner.linje) { scene.remove(tegner.linje); tegner.linje.geometry.dispose(); tegner.linje = null; }
+  if (pts.length < 2) return;
+  const loft = 0.1 / (S.enhetSkala || 1);
+  tegner.linje = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts.map(p => new THREE.Vector3(p.x, p.y + loft, p.z))),
+    new THREE.LineBasicMaterial({ color: RIGG_TYPER[tegner.type].farge, depthTest: false }));
+  tegner.linje.renderOrder = 999;
+  scene.add(tegner.linje);
+}
+
+// Ferdig: punktene (scene) → byggrammen (meter) → en pil med origo i første
+// punkt, lagt langs scenens akser (samme grep som gjerdet).
+function fullforPil() {
+  if (!tegner) return;
+  const base = riggBase();
+  const type = tegner.type;
+  const pts = tegner.punkter.slice();
+  avbrytPil();
+  if (!base || pts.length < 2) return;
+  const f = pilFraPunkter(pts.map(p => ({ x: (p.x - base.c.x) * base.skala, z: (p.z - base.c.z) * base.skala })));
+  if (!f) return;
+  const start = new THREE.Vector3(base.c.x + f.x0 / base.skala, pts[0].y, base.c.z + f.z0 / base.skala);
+  const pos = posisjonFra(start);
+  if (!pos) return;
+  const ref = aktivRef();
+  const rot = pos.ramme === "utm" && ref ? ref.plass.rot : 0;
+  const o = vaskRiggObjekt(Object.assign({ id: nyRiggId(), type, rot, punkter: f.punkter }, pos));
+  if (!o) return;
+  leggTil(o, true);
+  velg(o.id);
 }
 
 // ── Markeringsboksen ──
@@ -551,6 +619,13 @@ function iModus() { return S.mode === "rigg"; }
 
 S.riggModeBar = (bar) => {
   S.riggModeBarTegn = () => {
+    if (tegner) {
+      bar.innerHTML = '<span class="lbl">' + t("Klikk på bakken for hvert punkt i pila — dobbeltklikk eller Enter for å avslutte, Esc avbryter") +
+        '</span><button id="mbPilFerdig"' + (tegner.punkter.length < 2 ? " disabled" : "") + ">" + t("Ferdig pil") + "</button>";
+      $("mbPilFerdig").onclick = () => fullforPil();
+      bar.classList.add("open");
+      return;
+    }
     const hint = merker
       ? t("Dra en boks på bakken der gjerdet skal stå — Esc avbryter")
       : plasserer
@@ -569,7 +644,7 @@ function settRiggModus(paa) {
   S.mode = paa ? "rigg" : (S.mode === "rigg" ? null : S.mode);
   const b = $("btnRigg");
   if (b) b.classList.toggle("active", paa);
-  if (!paa) { avbrytPlassering(); avbrytMerker(); }
+  if (!paa) { avbrytPlassering(); avbrytMerker(); avbrytPil(); }
   if (S.oppdaterModeBar) S.oppdaterModeBar();
   oppdaterHandtak();
 }
@@ -633,6 +708,8 @@ window.addEventListener("pointerdown", (e) => {
   if (flytter || plasserer) { e.stopPropagation(); return; }   // tas på pointerup
   // 🚧 markeringsboksen: første hjørne
   if (merker) { e.stopPropagation(); merker.start = bakkePunkt(e.clientX, e.clientY); return; }
+  // ➜ under pilteging tas klikket på pointerup; et drag roterer kameraet som vanlig
+  if (tegner) return;
   if (iModus()) {
     // 🚧 en skjøt i det valgte gjerdet?
     const gj = valgtGjerde();
@@ -668,6 +745,7 @@ window.addEventListener("pointermove", (e) => {
     if (pt) plasserer.gruppe.position.copy(pt);
     return;
   }
+  if (tegner) { const pt = bakkePunkt(e.clientX, e.clientY); if (pt && tegner.punkter.length) tegnPilKladd(pt); return; }
   if (merker) {
     if (merker.start) { e.stopPropagation(); const pt = bakkePunkt(e.clientX, e.clientY); if (pt) tegnMerkeboks(merker.start, pt); }
     return;
@@ -736,6 +814,15 @@ window.addEventListener("pointerup", (e) => {
     velg(o.id);
     return;
   }
+  // ➜ pil under tegning: et KLIKK er et nytt punkt; et drag var kameraet
+  if (tegner) {
+    const klikkP = ned && Math.hypot(e.clientX - ned.x, e.clientY - ned.y) <= KLIKK_PX;
+    if (!klikkP) return;
+    e.stopPropagation(); slippKamera(e);
+    const pt = bakkePunkt(e.clientX, e.clientY);
+    if (pt) { tegner.punkter.push(pt); tegnPilKladd(null); if (S.riggModeBarTegn) S.riggModeBarTegn(); }
+    return;
+  }
   // 🚧 markeringsboksen: andre hjørne → gjerdet
   if (merker && merker.start) {
     const a = merker.start, b = bakkePunkt(e.clientX, e.clientY);
@@ -763,7 +850,7 @@ window.addEventListener("pointerup", (e) => {
     if (!d.beveget) {
       // Et klikk. På et gjerde som alt var valgt: panelet av/på i utvalget.
       const o = hentO(d.id);
-      if (o && o.punkter && d.varValgt && d.stykke != null) veksleStykke(o, d.stykke);
+      if (o && erGjerde(o) && d.varValgt && d.stykke != null) veksleStykke(o, d.stykke);
       else velg(d.id);
       return;
     }
@@ -783,6 +870,9 @@ window.addEventListener("pointercancel", () => { drar = null; nedPos = null; }, 
 // 🚧 Dobbeltklikk på et panel i det valgte gjerdet: ny skjøt der.
 window.addEventListener("dblclick", (e) => {
   if (!overCanvas(e) || !iModus()) return;
+  // ➜ dobbeltklikk avslutter pila (de to klikkene ga samme punkt to ganger —
+  // pilFraPunkter slår dem sammen)
+  if (tegner) { e.stopPropagation(); e.preventDefault(); fullforPil(); return; }
   const o = valgtGjerde();
   if (!o) return;
   const h = pekRiggTreff(e.clientX, e.clientY);
@@ -804,7 +894,9 @@ window.addEventListener("keydown", (e) => {
     fjernValgtSkjot();
     return;
   }
+  if (tegner && e.key === "Enter" && !iFelt) { e.preventDefault(); fullforPil(); return; }
   if (e.key !== "Escape") return;
+  if (tegner) { avbrytPil(); return; }
   if (merker) { avbrytMerker(); return; }
   if (skjotDrar) { const id = skjotDrar.id; skjotDrar = null; tegnEnRigg(hentO(id)); oppdaterHandtak(); return; }
   if (flytter) {
@@ -870,7 +962,7 @@ function tegnPanel() {
     return '<div class="qty-row"' + (o.skjult ? ' style="opacity:.55"' : "") + '><div class="n" data-rigg-velg="' + esc(o.id) + '" style="cursor:pointer">' +
       flis(o.farge) + esc(o.navn || riggTypeLabel(o.type)) +
       ' <span style="color:var(--muted);font-size:11px">' + esc(riggTypeLabel(o.type)) +
-      (o.punkter ? " · " + gjerdeTekst(o) : " · " + o.L + " × " + o.B + " m" + (n > 1 ? " · ×" + n : "")) + "</span></div>" +
+      (erPil(o) ? " · " + (Math.round(pilLengde(o) * 10) / 10) + " m" : o.punkter ? " · " + gjerdeTekst(o) : " · " + o.L + " × " + o.B + " m" + (n > 1 ? " · ×" + n : "")) + "</span></div>" +
       '<div class="c">' +
       '<button data-rigg-skjul="' + esc(o.id) + '" title="' + t("Skjul/vis") + '" style="padding:3px 8px">' + ikon(o.skjult ? "skjul" : "vis") + "</button>" +
       '<button data-rigg-slett="' + esc(o.id) + '" title="' + t("Slett") + '" style="padding:3px 8px">' + ikon("slett") + "</button></div></div>";
@@ -890,7 +982,9 @@ function tegnPanel() {
 
   body.innerHTML = html;
   body.querySelectorAll("button[data-rigg-ny]").forEach(b => b.onclick = () =>
-    b.dataset.riggNy === "gjerde" ? startGjerde() : startPlassering(b.dataset.riggNy));
+    b.dataset.riggNy === "gjerde" ? startGjerde()
+      : RIGG_TYPER[b.dataset.riggNy].pil ? startPil(b.dataset.riggNy)
+      : startPlassering(b.dataset.riggNy));
   // Trykk på navnet: velg objektet og fly dit
   body.querySelectorAll("[data-rigg-velg]").forEach(d => d.onclick = () => {
     const g = finnRiggObjekt(d.dataset.riggVelg);
@@ -923,7 +1017,10 @@ function tegnSkjema(o) {
     esc(riggTypeLabel(o.type)) + '" value="' + esc(o.navn) + '"></label>' +
     // 🚧 Gjerdet: L er panellengden og H panelhøyden. Et panel som er lengre
     // enn panellengden blir rødt — endres lengden her, endres varslene.
-    (M.gjerde
+    (M.pil
+      ? felt("riggB", "Bredde på pila (m)", o.B, 0.2, 10, 0.1) +
+        '<input type="hidden" id="riggL" value="' + o.L + '"><input type="hidden" id="riggH" value="' + o.H + '">'
+      : M.gjerde
       ? felt("riggL", "Panellengde (m)", o.L, 0.5, 10, 0.01) + felt("riggH", "Panelhøyde (m)", o.H, 0.1, 15, 0.01) +
         '<input type="hidden" id="riggB" value="' + o.B + '">'
       : felt("riggL", "Lengde (m)", o.L, 0.1, 30, 0.01) +

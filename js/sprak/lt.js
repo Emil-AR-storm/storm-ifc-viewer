@@ -1708,5 +1708,13 @@ export default {  // ---------- Toppbar og verktøylinje ----------
 // ---------- 🚧 Rigg: flere skjøter med shift ----------
   "Fjern {0} skjøter": "Pašalinti {0} jungtis",
   "Skjøter flyttet": "Jungtys perkeltos",
-  "Dra i prikkene for å forme gjerdet · shift-klikk for flere prikker · dobbeltklikk på et panel for ny skjøt · velg to paneler for port": "Tempkite taškus tvorai formuoti · shift+spustelėjimas keliems taškams · dukart spustelėkite plokštę naujai jungčiai · pasirinkite dvi plokštes vartams"
+  "Dra i prikkene for å forme gjerdet · shift-klikk for flere prikker · dobbeltklikk på et panel for ny skjøt · velg to paneler for port": "Tempkite taškus tvorai formuoti · shift+spustelėjimas keliems taškams · dukart spustelėkite plokštę naujai jungčiai · pasirinkite dvi plokštes vartams",
+// ---------- ➜ Rigg: piler for trafikkflyt ----------
+  "Klikk på bakken for hvert punkt i pila — dobbeltklikk eller Enter for å avslutte, Esc avbryter": "Spustelėkite ant žemės kiekvienam rodyklės taškui — dukart spustelėkite arba Enter baigti, Esc atšaukia",
+  "Ferdig pil": "Baigti rodyklę",
+  "Pil: kjøretøy": "Rodyklė: transportas",
+  "Pil: gående": "Rodyklė: pėstieji",
+  "Kjørevei for biler, lastebiler og maskiner": "Kelias automobiliams, sunkvežimiams ir mašinoms",
+  "Gangvei for de som går på byggeplassen": "Pėsčiųjų takas statybvietėje",
+  "Bredde på pila (m)": "Rodyklės plotis (m)"
 };
