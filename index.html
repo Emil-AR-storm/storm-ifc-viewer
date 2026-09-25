@@ -165,6 +165,7 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
   <button id="btnShare" title="Lag en lenke som gjenskaper denne visningen hos andre" data-i18n-title><svg class="ikon"><use href="#i-del"/></svg><span class="btn-t" data-i18n>Del visning</span></button>
   <button id="btnSaveLite" title="Eksporter forenklet modell (.glb) som funker på mobil" data-i18n-title><svg class="ikon"><use href="#i-lagre"/></svg><span class="btn-t" data-i18n>Lett kopi</span></button>
   <button id="btnGrupper" title="Objektgrupper: lagre et utvalg med navn og hent det fram igjen" data-i18n-title><svg class="ikon"><use href="#i-fokus"/></svg><span class="btn-t" data-i18n>Grupper</span></button>
+  <button id="btnTerreng" title="Terreng: hent landskapet rundt byggeplassen og sett modellen ned i det" data-i18n-title><svg class="ikon"><use href="#i-kote"/></svg><span class="btn-t" data-i18n>Terreng</span></button>
   <button id="btnMateriell" title="Materiell: legg inn vareleveranser i modellen så alle ser hvor de skal ligge" data-i18n-title><svg class="ikon"><use href="#i-materiell"/></svg><span class="btn-t" data-i18n>Materiell</span></button>
   <button id="btnSW" title="SW-generator: automatiske veggelementer på stålmodeller" data-i18n-title><svg class="ikon"><use href="#i-sw"/></svg><span class="btn-t" data-i18n>SW-generator</span></button>
   <button id="btnBlikk" title="Blikk &amp; Tak: beslag og hatprofil rundt de genererte veggelementene" data-i18n-title><svg class="ikon"><use href="#i-sw"/></svg><span class="btn-t" data-i18n>Blikk &amp; Tak</span></button>
@@ -238,6 +239,11 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
 <div class="panel" id="grupperPanel">
   <header><span data-i18n>Grupper</span><button onclick="document.getElementById('grupperPanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="grupperBody"></div>
+</div>
+
+<div class="panel" id="terrengPanel">
+  <header><span data-i18n>Terreng</span><button onclick="document.getElementById('terrengPanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <div class="body" id="terrengBody"></div>
 </div>
 
 <div class="panel" id="swPanel">
