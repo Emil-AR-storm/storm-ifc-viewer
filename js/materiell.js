@@ -105,6 +105,8 @@ function pekMateriellTreff(clientX, clientY) {
   raycaster.setFromCamera(_ndc, camera);
   const treff = raycaster.intersectObjects(materiellGroup.children, true);
   for (const h of treff) {
+    // en skjult navnelapp (for liten til å leses) skal ikke kunne trykkes på
+    if (h.object.isSprite && !h.object.visible) continue;
     let o = h.object;
     while (o && !o.userData.materiellId) o = o.parent;
     if (o && o.userData.materiellId) return { o, avstand: h.distance };

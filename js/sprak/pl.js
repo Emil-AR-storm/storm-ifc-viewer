@@ -1756,5 +1756,14 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Sett fra sør": "Widok od południa",
   "Sett fra vest": "Widok od zachodu",
   "Sett fra øst": "Widok od wschodu",
-  "Sett fra nord": "Widok od północy"
+  "Sett fra nord": "Widok od północy",
+  // 💾 Rigg: lagrede riggplaner (25.09)
+  "Riggplan hentet": "Wczytano plan placu budowy",
+  "Gi riggplanen et navn før du lagrer den.": "Nadaj planowi placu budowy nazwę przed zapisaniem.",
+  "Plasser noe på tomta før du lagrer riggplanen.": "Umieść coś na działce przed zapisaniem planu placu budowy.",
+  "Lagrede riggplaner": "Zapisane plany placu budowy",
+  "Gi riggplanen et navn og lagre den. Trykk på navnet senere for å hente den fram igjen — den erstatter riggen som står nå (kan angres).": "Nadaj planowi nazwę i zapisz go. Kliknij później nazwę, aby go przywrócić — zastąpi obecne zagospodarowanie placu (można cofnąć).",
+  "Navn på riggplanen": "Nazwa planu placu budowy",
+  "{0} objekter": "{0} obiektów",
+  "Ingen lagrede riggplaner ennå.": "Brak zapisanych planów placu budowy."
 };

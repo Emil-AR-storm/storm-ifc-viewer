@@ -17,7 +17,7 @@ import * as THREE from "three";
 import { $, S, esc, ikon, registrerEkstraGruppe } from "./state.js";
 import { t } from "./i18n.js";
 import { LETT } from "./lett.js";
-import { flyTil, frameHooks, makeLabel, scene, updateScreenScaled } from "./scene.js";
+import { flyTil, frameHooks, makeLabel, scene, skalerLapperMedTak } from "./scene.js";
 
 // ---------- Objektmalene ----------
 // Alle mål i MILLIMETER i lagret form; regnes om til sceneenheter ved bygging.
@@ -432,8 +432,10 @@ registrerEkstraGruppe(materiellGroup, {
   }
 });
 
-// Navnelappene skal ha konstant størrelse på skjermen, som kote-lappene.
-frameHooks.push(() => updateScreenScaled(materiellGroup));
+// Navnelappene: konstant størrelse på skjermen nært, men med TAK langt unna
+// (maks 0.9 m i virkeligheten, skjult under 7 px) — samme regel som riggen.
+// Emil 25.09: uten taket vokste lappene når man zoomet ut og dekket bygget.
+frameHooks.push(() => skalerLapperMedTak(materiellGroup));
 
 function lambert(farge) {
   return new THREE.MeshLambertMaterial({ color: farge, side: THREE.DoubleSide });
