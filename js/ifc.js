@@ -178,6 +178,7 @@ export function afterLoad() {
   loadComments();
   if (S.lastMateriell) S.lastMateriell(); // 📦 materiell plassert i denne modellen
   if (S.lastGrupper) S.lastGrupper();     // 🎯 objektgrupper lagret for denne modellen
+  if (S.lastTerreng) S.lastTerreng();     // ⛰ terrenget denne modellen er plassert i
   if (S.lastSW) S.lastSW();               // 🧱 genererte veggelementer for denne modellen
   restoreAppearance(); // legger på lagret fargelegging/skjuling/transparent
   oppdaterOutline();   // ▣ kantlinjer, hvis de sto på da forrige modell ble lukket

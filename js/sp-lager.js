@@ -129,4 +129,53 @@ export async function spSkriv(mappe, fil, poster, nokkel) {
   }
 }
 
+// ---------- Binære filer som skrives ÉN gang ----------
+// ⛰ Terrengets høydegrid (Float32, noen MB). Det går ikke gjennom lista over:
+// det er ikke JSON, og det skal ALDRI endres (spesifikasjonen, regel 1) — et
+// nytt utsnitt får ny id og ny fil. Derfor ingen fletting og ingen eTag, men
+// If-None-Match: * — finnes fila alt, svarer Graph 412, og da er det samme
+// id og samme innhold: det teller som lagret.
+//
+// Står HER og ikke i terreng.js: byggeplanen advarte mot en tredje lagringsvei.
+// Mappe, område og innlogging er de samme som for lista, og de skal bare
+// finnes ett sted.
+export async function spSkrivBin(mappe, fil, data, type) {
+  const token = await spTokenSilent();
+  if (!token) return { ok: false, grunn: "av" };
+  try {
+    const sid = await omradeId(token);
+    const put = () => fetch(GRAPH + "/sites/" + sid + filSti(mappe, fil) + ":/content", {
+      method: "PUT",
+      headers: authHeaders(token, { "Content-Type": type || "application/octet-stream", "If-None-Match": "*" }, "sp-lager-bin"),
+      body: data
+    });
+    let r = await put();
+    if (r.status === 404) { await sikreMappe(token, sid, mappe); r = await put(); }
+    if (r.status === 412 || r.status === 409) return { ok: true, fantes: true };
+    if (!r.ok) throw new Error("Graph " + r.status);
+    return { ok: true };
+  } catch (err) {
+    console.warn("Kunne ikke lagre " + mappe + "/" + fil + ":", err.message);
+    return { ok: false, grunn: "feil" };
+  }
+}
+
+// Samme tre svar som spLes: "av", "tom" (finnes ikke) og "ok" med `data`
+// (ArrayBuffer), eller "feil".
+export async function spLesBin(mappe, fil) {
+  const token = await spTokenSilent();
+  if (!token) return { status: "av", data: null };
+  try {
+    const sid = await omradeId(token);
+    const r = await fetch(GRAPH + "/sites/" + sid + filSti(mappe, fil) + ":/content",
+      { headers: authHeaders(token, null, "sp-lager-bin") });
+    if (r.status === 404) return { status: "tom", data: null };
+    if (!r.ok) throw new Error("Graph " + r.status);
+    return { status: "ok", data: await r.arrayBuffer() };
+  } catch (err) {
+    console.warn("Kunne ikke lese " + mappe + "/" + fil + ":", err.message);
+    return { status: "feil", data: null };
+  }
+}
+
 export { flett, flettPaaId, flettPaaNavn, ryddGravsteiner } from "./sp-flett.js";
