@@ -12,22 +12,29 @@
 //  · drag av et objekt starter bare i rigg-modus
 //
 // BAKKEN. Objektene skal stå på bakken, ikke på taket av bygget: pekeren
-// treffer terrenget og plata (evnen «flate» i terreng.js) — modellen ignoreres
-// med vilje. Uten terreng treffes gulvplanet.
+// treffer terrenget og plata (evnen «flate» i terreng.js). Treffer den bygget
+// først, havner objektet ved foten av veggen. Uten terreng treffes gulvplanet.
+//
+// 🚧 BYGGEGJERDET (trinn 3–4) har tre ting ekstra, alle bare i rigg-modus:
+//  · markeringsboksen: dra en firkant på bakken → gjerde langs omrisset
+//  · skjøtene: prikker som kan dras; dobbeltklikk på et panel gir ny skjøt,
+//    Delete (eller knappen) fjerner den valgte
+//  · paneler: klikk på to paneler ved siden av hverandre → «Gjør om til port»
 import * as THREE from "three";
 import { $, S, apnePanel, esc, ikon, på } from "./state.js";
 import { t } from "./i18n.js";
-import { camera, canvas, flyTil, raycaster } from "./scene.js";
+import { camera, canvas, flyTil, frameHooks, raycaster, scene } from "./scene.js";
 import { pick, pickFlate } from "./elements.js";
 import { flettPaaId, spLes, spPaalogget, spSkriv } from "./sp-lager.js";
 import {
   MAKS_ETASJER, MAKS_MODULER, REF_ID, RIGG_FORKLARING, RIGG_REKKEFOLGE, RIGG_TYPER, ROT_STEG,
-  byggTilRigg, nyRiggId, normVinkel, riggAntall, riggObjekter, riggTelling, trengerOpplasting,
-  vaskRiggListe, vaskRiggObjekt
+  byggTilRigg, enTilLokal, fjernSkjot, flyttSkjot, gjerdeFraRektangel, gjerdeMengder, gjerdeStykker,
+  gjorOmTilPort, gjorTilbake, leggTilSkjot, naboStykker, nyRiggId, normVinkel, riggAntall, riggObjekter,
+  riggTelling, trengerOpplasting, vaskRiggListe, vaskRiggObjekt
 } from "./rigg-regn.js";
 import {
-  aktivRef, byggRiggObjekt, finnRiggObjekt, oppdaterRiggValgEffekt, riggBase, riggGroup,
-  riggTypeLabel, tegnRigg
+  aktivRef, byggRiggObjekt, finnRiggObjekt, gjerdeDelLabel, lappStorrelse, oppdaterRiggValgEffekt, riggBase, riggGroup,
+  riggTypeLabel, settGjerdeMarkering, tegnEnRigg, tegnRigg
 } from "./rigg-vis.js";
 
 // ═══════════════════════ TILSTAND ═══════════════════════
@@ -37,6 +44,11 @@ let drar = null;        // { id, fra: Vector3 } — drag i rigg-modus
 let flytter = null;     // { id, fra: Vector3 } — Flytt-knappen: følger pekeren til neste trykk
 let nedPos = null;
 const KLIKK_PX = 8;
+// 🚧 byggegjerdet
+let merker = null;             // { start: Vector3|null, linje } — markeringsboksen
+let skjotDrar = null;          // { id, k, punkter, flyttet } — en skjøt som dras
+let valgtSkjot = null;         // indeksen til skjøten som er valgt i det valgte gjerdet
+let valgteStykker = [];        // panelene som er valgt (maks to) — til port
 
 function hentO(id) { return riggObjekter(S.rigg || []).find(o => o.id === id) || null; }
 
@@ -227,18 +239,111 @@ function posisjonFra(p) {
   return byggTilRigg((p.x - base.c.x) * base.skala, (p.z - base.c.z) * base.skala, aktivRef());
 }
 
+// Et punkt i scenen → gjerdets egen ramme ({ x, z } i meter). Går via samme
+// ramme som objektet står i (utm eller bygg), så det virker før og etter at
+// terrenget er hentet.
+function lokalFra(o, p) {
+  const base = riggBase();
+  if (!base || !p || !o) return null;
+  const bx = (p.x - base.c.x) * base.skala, bz = (p.z - base.c.z) * base.skala;
+  const ref = aktivRef();
+  const pos = o.ramme === "utm" ? byggTilRigg(bx, bz, ref) : byggTilRigg(bx, bz, null);
+  if (pos.ramme !== o.ramme) return null;
+  return enTilLokal(o, pos.E, pos.N);
+}
+
 // Peker mot et rigg-objekt? (pick() i elements.js ser bare modellen.)
-function pekRigg(x, y) {
+// Svaret er gruppa, og for gjerdet også hvilket panel (stykke) som ble truffet.
+function pekRiggTreff(x, y) {
   settNdc(x, y);
   raycaster.setFromCamera(_ndc, camera);
   const treff = raycaster.intersectObjects(riggGroup.children, true);
   for (const h of treff) {
-    if (h.object.isSprite) continue;
-    let o = h.object;
-    while (o && !o.userData.riggId) o = o.parent;
-    if (o && o.userData.riggId) return o;
+    if (h.object.isSprite || !h.object.visible) continue;
+    let o = h.object, stykke = null;
+    while (o && !o.userData.riggId) {
+      if (stykke == null && o.userData.stykke != null) stykke = o.userData.stykke;
+      o = o.parent;
+    }
+    if (o && o.userData.riggId) return { g: o, stykke, punkt: h.point };
   }
   return null;
+}
+function pekRigg(x, y) { const h = pekRiggTreff(x, y); return h ? h.g : null; }
+
+// ═══════════════════════ 🚧 SKJØTENE (håndtak) ═══════════════════════
+// Svarte prikker med hvit kant, som på Emils skisse. De står like over
+// bakken ved hver fot, ligger alltid oppå (depthTest av) og har fast
+// størrelse på skjermen.
+const handtakGroup = new THREE.Group();
+handtakGroup.name = "rigg-skjoter";
+scene.add(handtakGroup);
+// Samme tak som navnelappene (lappStorrelse i rigg-vis.js): nært har prikkene
+// fast skjermstørrelse, langt unna blir de aldri større enn SKJOT_MAKS_M og
+// skjules når de blir for små — ellers ble 50 prikker én hvit klump.
+const SKJOT_MAKS_M = 0.6;
+const _hV = new THREE.Vector3();
+function skalerHandtak() {
+  if (!handtakGroup.children.length) return;
+  const k = 2 * Math.tan(camera.fov * Math.PI / 360) / (canvas.clientHeight || 1);
+  const maks = SKJOT_MAKS_M / (S.enhetSkala || 1);
+  for (const m of handtakGroup.children) {
+    m.getWorldPosition(_hV);
+    const d = _hV.distanceTo(camera.position) || 1e-9;
+    const r = lappStorrelse(m.userData.px, 1 / (d * k), maks * m.userData.px / 9);
+    m.visible = r.vis;
+    m.scale.setScalar(r.hoyde / 2);
+  }
+}
+frameHooks.push(skalerHandtak);
+const kuleGeo = new THREE.SphereGeometry(1, 16, 12);
+const matSkjot = new THREE.MeshBasicMaterial({ color: "#111827", depthTest: false });
+const matSkjotValgt = new THREE.MeshBasicMaterial({ color: "#3b82f6", depthTest: false });
+const matKant = new THREE.MeshBasicMaterial({ color: "#ffffff", depthTest: false });
+
+function valgtGjerde() {
+  const o = valgtId ? hentO(valgtId) : null;
+  return o && o.punkter ? o : null;
+}
+
+function tomHandtak() { handtakGroup.children.slice().forEach(m => handtakGroup.remove(m)); }
+
+// `o` kan være en kladd (mens en skjøt dras).
+function oppdaterHandtak(o) {
+  tomHandtak();
+  const gj = o || valgtGjerde();
+  if (!gj || !iModus() || gj.skjult) return;
+  const g = finnRiggObjekt(gj.id);
+  if (!g || !g.children[0]) return;
+  g.updateMatrixWorld(true);
+  const modell = g.children[0], hoyder = g.userData.hoyder || [];
+  gj.punkter.forEach((q, k) => {
+    const v = modell.localToWorld(new THREE.Vector3(q.x, (hoyder[k] || 0) + 0.3, q.z));
+    const kant = new THREE.Mesh(kuleGeo, matKant);
+    kant.position.copy(v); kant.userData.px = 14; kant.renderOrder = 998;
+    const kule = new THREE.Mesh(kuleGeo, k === valgtSkjot ? matSkjotValgt : matSkjot);
+    kule.position.copy(v); kule.userData.px = 9; kule.renderOrder = 999; kule.userData.skjot = k;
+    handtakGroup.add(kant, kule);
+  });
+  skalerHandtak();
+}
+
+function pekHandtak(x, y) {
+  if (!handtakGroup.children.length) return null;
+  settNdc(x, y);
+  raycaster.setFromCamera(_ndc, camera);
+  const h = raycaster.intersectObjects(handtakGroup.children, false)[0];
+  return h ? (h.object.userData.skjot != null ? h.object.userData.skjot : nesteKule(h.object)) : null;
+}
+// Treff på den hvite kanten: skjøten er kula rett etter den i lista.
+function nesteKule(kant) {
+  const i = handtakGroup.children.indexOf(kant);
+  const k = handtakGroup.children[i + 1];
+  return k && k.userData.skjot != null ? k.userData.skjot : null;
+}
+
+function settMarkering() {
+  settGjerdeMarkering(valgtId, valgteStykker);
 }
 
 // Svelger vi et pointerup kameraet fikk pointerdown til, må det få beskjed —
@@ -250,15 +355,24 @@ function slippKamera(e) {
 
 // ═══════════════════════ VALG OG KNAPPERADEN ═══════════════════════
 function velg(id) {
+  if (id !== valgtId) {
+    const hadde = valgteStykker.length;
+    valgteStykker = []; valgtSkjot = null;
+    settGjerdeMarkering(id, []);
+    // de grønne panelene på gjerdet vi forlater må males om
+    const forrige = valgtId && hentO(valgtId);
+    if (hadde && forrige) tegnEnRigg(forrige);
+  }
   valgtId = id;
   S.riggValgtId = id;
   oppdaterRiggValgEffekt();
   oppdaterValgBar();
+  oppdaterHandtak();
   if (S.riggModeBarTegn && S.mode === "rigg") S.riggModeBarTegn();
 }
 
-// tegnRigg() bygger objektene på nytt — effekten og knapperaden må på igjen
-S.etterTegnRigg = () => { oppdaterRiggValgEffekt(); oppdaterValgBar(); };
+// tegnRigg() bygger objektene på nytt — effekten, knapperaden og skjøtene må på igjen
+S.etterTegnRigg = () => { oppdaterRiggValgEffekt(); oppdaterValgBar(); oppdaterHandtak(); };
 
 function valgBarEl() {
   let el = $("riggValgBar");
@@ -289,7 +403,9 @@ function oppdaterValgBar() {
     '<button id="rvSkjul" class="btn" title="' + t("Skjul/vis") + '" style="padding:3px 8px">' + ikon("skjul") + "</button>" +
     '<button id="rvSlett" class="btn" title="' + t("Slett") + '" style="padding:3px 8px">' + ikon("slett") + "</button>" +
     '<button id="rvRediger" class="btn" title="' + t("Rediger") + '" style="padding:3px 8px">' + ikon("rediger") + "</button>" +
+    gjerdeKnapper(o) +
     '<button id="rvLukk" class="btn" title="' + t("Ferdig") + '" style="padding:3px 8px">' + t("Ferdig") + "</button>";
+  koblGjerdeKnapper(o);
   $("rvFlytt").onclick = () => {
     const g = valgtId && finnRiggObjekt(valgtId);
     if (g) flytter = { id: valgtId, fra: g.position.clone() };
@@ -309,13 +425,126 @@ function oppdaterValgBar() {
   $("rvLukk").onclick = () => velg(null);
 }
 
+// ═══════════════════════ 🚧 PORT OG SKJØTER ═══════════════════════
+// Hva kan gjøres med utvalget akkurat nå?
+function portValg(o) {
+  const st = gjerdeStykker(o);
+  const nabo = valgteStykker.length === 2 ? naboStykker(st.length, valgteStykker[0], valgteStykker[1]) : null;
+  const kanPort = !!nabo && !st[valgteStykker[0]].port && !st[valgteStykker[1]].port && st.length - 1 >= 3;
+  const portI = valgteStykker.length === 1 && st[valgteStykker[0]] && st[valgteStykker[0]].port ? valgteStykker[0] : null;
+  return { kanPort, portI };
+}
+
+function gjerdeKnapper(o) {
+  if (!o.punkter) return "";
+  const v = portValg(o);
+  const m = gjerdeMengder(o);
+  return '<span style="font-size:11px;color:var(--muted)">' + t("{0} paneler · {1} porter", m.paneler, m.porter) +
+    (m.forLange ? ' · <span style="color:var(--danger, #e53935)">' + t("{0} for lange", m.forLange) + "</span>" : "") + "</span>" +
+    '<button id="rvPort" class="btn" style="padding:3px 8px"' + (v.kanPort ? "" : " disabled") +
+    ' title="' + t("Velg to paneler ved siden av hverandre, og gjør dem om til én port") + '">' + t("Gjør om til port") + "</button>" +
+    (v.portI != null ? '<button id="rvTilbake" class="btn" style="padding:3px 8px">' + t("Gjør tilbake til paneler") + "</button>" : "") +
+    (valgtSkjot != null ? '<button id="rvFjernSkjot" class="btn" style="padding:3px 8px"' +
+      (o.punkter.length <= 3 ? " disabled" : "") + ">" + t("Fjern skjøt") + "</button>" : "");
+}
+
+function koblGjerdeKnapper(o) {
+  if (!o.punkter) return;
+  const v = portValg(o);
+  if ($("rvPort")) $("rvPort").onclick = () => {
+    if (!v.kanPort) return;
+    const ny = gjorOmTilPort(o.punkter, valgteStykker[0], valgteStykker[1]);
+    if (ny) { valgteStykker = []; valgtSkjot = null; settMarkering(); oppdater(o.id, { punkter: ny }, "Port laget"); }
+  };
+  if ($("rvTilbake")) $("rvTilbake").onclick = () => {
+    const ny = gjorTilbake(o.punkter, v.portI);
+    if (ny) { valgteStykker = []; valgtSkjot = null; settMarkering(); oppdater(o.id, { punkter: ny }, "Port gjort tilbake til paneler"); }
+  };
+  if ($("rvFjernSkjot")) $("rvFjernSkjot").onclick = () => fjernValgtSkjot();
+}
+
+function fjernValgtSkjot() {
+  const o = valgtGjerde();
+  if (!o || valgtSkjot == null) return;
+  const ny = fjernSkjot(o.punkter, valgtSkjot);
+  if (!ny) return;
+  valgtSkjot = null; valgteStykker = []; settMarkering();
+  oppdater(o.id, { punkter: ny }, "Skjøt fjernet");
+}
+
+// Klikk på et panel i det valgte gjerdet: av eller på i utvalget. Maks to —
+// et tredje klikk bytter ut det eldste.
+function veksleStykke(o, i) {
+  const k = valgteStykker.indexOf(i);
+  if (k >= 0) valgteStykker.splice(k, 1);
+  else { valgteStykker.push(i); if (valgteStykker.length > 2) valgteStykker.shift(); }
+  valgtSkjot = null;
+  settMarkering();
+  tegnEnRigg(o);
+  oppdaterValgBar();
+  oppdaterHandtak();
+}
+
+// ── Markeringsboksen ──
+function startGjerde() {
+  avbrytPlassering();
+  avbrytMerker();
+  if (!S.modelGroup) return;
+  merker = { start: null, linje: null };
+  if (!iModus()) settRiggModus(true);
+  $("riggPanel").classList.remove("open");
+  if (S.riggModeBarTegn) S.riggModeBarTegn();
+}
+
+function avbrytMerker() {
+  if (!merker) return;
+  if (merker.linje) { scene.remove(merker.linje); merker.linje.geometry.dispose(); }
+  merker = null;
+  if (S.riggModeBarTegn && iModus()) S.riggModeBarTegn();
+}
+
+const merkeMat = new THREE.LineBasicMaterial({ color: "#3b82f6", depthTest: false });
+function tegnMerkeboks(a, b) {
+  if (!merker) return;
+  const y = Math.max(a.y, b.y) + 0.05 / (S.enhetSkala || 1);
+  const pts = [[a.x, a.z], [b.x, a.z], [b.x, b.z], [a.x, b.z], [a.x, a.z]].map(([x, z]) => new THREE.Vector3(x, y, z));
+  if (merker.linje) { scene.remove(merker.linje); merker.linje.geometry.dispose(); }
+  merker.linje = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), merkeMat);
+  merker.linje.renderOrder = 999;
+  scene.add(merker.linje);
+}
+
+// Firkanten → et gjerde. Firkanten ligger langs scenens akser (byggets), og
+// gjerdet får samme retning: origo midt i, x og z langs scenens x og z.
+function lagGjerde(a, b) {
+  const base = riggBase();
+  if (!base || !a || !b) return;
+  const midt = new THREE.Vector3((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+  const pos = posisjonFra(midt);
+  if (!pos) return;
+  const hx = Math.abs(b.x - a.x) / 2 * base.skala, hz = Math.abs(b.z - a.z) / 2 * base.skala;
+  const punkter = gjerdeFraRektangel(hx, hz, RIGG_TYPER.gjerde.L);
+  if (!punkter) { alert(t("Firkanten er for liten til et gjerde. Dra en større boks.")); return; }
+  const ref = aktivRef();
+  // rotY i scenen = plass.rot − rot. Skal gjerdet ligge langs scenens akser, er rot = plass.rot.
+  const rot = pos.ramme === "utm" && ref ? ref.plass.rot : 0;
+  const o = vaskRiggObjekt(Object.assign({ id: nyRiggId(), type: "gjerde", rot, punkter }, pos));
+  if (!o) return;
+  leggTil(o, true);
+  velg(o.id);
+}
+
 // ═══════════════════════ MODUS ═══════════════════════
 function iModus() { return S.mode === "rigg"; }
 
 S.riggModeBar = (bar) => {
   S.riggModeBarTegn = () => {
-    const hint = plasserer
+    const hint = merker
+      ? t("Dra en boks på bakken der gjerdet skal stå — Esc avbryter")
+      : plasserer
       ? t("Trykk der objektet skal stå — Esc avbryter")
+      : valgtGjerde()
+      ? t("Dra i prikkene for å forme gjerdet · dobbeltklikk på et panel for ny skjøt · velg to paneler for port")
       : t("Trykk på et rigg-objekt for å flytte, rotere eller slette det");
     bar.innerHTML = '<span class="lbl">' + hint + '</span><button id="mbRiggFerdig">' + t("Ferdig") + "</button>";
     $("mbRiggFerdig").onclick = () => { settRiggModus(false); $("riggPanel").classList.remove("open"); };
@@ -328,8 +557,9 @@ function settRiggModus(paa) {
   S.mode = paa ? "rigg" : (S.mode === "rigg" ? null : S.mode);
   const b = $("btnRigg");
   if (b) b.classList.toggle("active", paa);
-  if (!paa) avbrytPlassering();
+  if (!paa) { avbrytPlassering(); avbrytMerker(); }
   if (S.oppdaterModeBar) S.oppdaterModeBar();
+  oppdaterHandtak();
 }
 
 // Et annet verktøy åpnes (apnePanel → modes.js): da er du ferdig med riggen.
@@ -382,12 +612,29 @@ window.addEventListener("pointerdown", (e) => {
   nedPos = { x: e.clientX, y: e.clientY };
   if (!overCanvas(e) || e.button !== 0) return;
   if (flytter || plasserer) { e.stopPropagation(); return; }   // tas på pointerup
+  // 🚧 markeringsboksen: første hjørne
+  if (merker) { e.stopPropagation(); merker.start = bakkePunkt(e.clientX, e.clientY); return; }
   if (iModus()) {
-    const g = pekRigg(e.clientX, e.clientY);
-    if (g) {
+    // 🚧 en skjøt i det valgte gjerdet?
+    const gj = valgtGjerde();
+    const k = gj ? pekHandtak(e.clientX, e.clientY) : null;
+    if (gj && k != null) {
       e.stopPropagation();
-      velg(g.userData.riggId);
-      drar = { id: g.userData.riggId, fra: g.position.clone() };
+      valgtSkjot = k; valgteStykker = []; settMarkering();
+      skjotDrar = { id: gj.id, k, punkter: gj.punkter, flyttet: false };
+      oppdaterValgBar(); oppdaterHandtak();
+      return;
+    }
+    const h = pekRiggTreff(e.clientX, e.clientY);
+    if (h) {
+      e.stopPropagation();
+      const id = h.g.userData.riggId, varValgt = id === valgtId;
+      velg(id);
+      // Draget holder på avstanden mellom pekeren og objektets origo — ellers
+      // hopper et gjerde (origo midt i ringen) bort til pekeren.
+      const pt = bakkePunkt(e.clientX, e.clientY);
+      drar = { id, fra: h.g.position.clone(), stykke: h.stykke, varValgt, beveget: false,
+        offset: pt ? h.g.position.clone().sub(pt) : new THREE.Vector3() };
     }
   }
 }, true);
@@ -399,11 +646,37 @@ window.addEventListener("pointermove", (e) => {
     if (pt) plasserer.gruppe.position.copy(pt);
     return;
   }
+  if (merker) {
+    if (merker.start) { e.stopPropagation(); const pt = bakkePunkt(e.clientX, e.clientY); if (pt) tegnMerkeboks(merker.start, pt); }
+    return;
+  }
+  if (skjotDrar) {
+    e.stopPropagation();
+    const o = hentO(skjotDrar.id);
+    const lok = o && lokalFra(o, bakkePunkt(e.clientX, e.clientY));
+    if (!lok) return;
+    skjotDrar.punkter = flyttSkjot(o.punkter, skjotDrar.k, lok.x, lok.z) || skjotDrar.punkter;
+    skjotDrar.flyttet = true;
+    const kladd = Object.assign({}, o, { punkter: skjotDrar.punkter });
+    tegnEnRigg(kladd);
+    oppdaterHandtak(kladd);
+    return;
+  }
   if (!aktiv) return;
-  if (drar) e.stopPropagation();
+  if (drar) {
+    e.stopPropagation();
+    // Et lite rykk er et klikk (velg panel), ikke et flytt.
+    if (!drar.beveget) {
+      if (!nedPos || Math.hypot(e.clientX - nedPos.x, e.clientY - nedPos.y) <= KLIKK_PX) return;
+      drar.beveget = true;
+      tomHandtak();
+    }
+  }
   const g = finnRiggObjekt(aktiv.id);
   const pt = g ? bakkePunkt(e.clientX, e.clientY) : null;
-  if (pt && g) g.position.copy(pt);
+  if (!pt || !g) return;
+  if (drar && drar.offset) { pt.x += drar.offset.x; pt.z += drar.offset.z; }
+  g.position.copy(pt);
 }, true);
 
 function slippFlytt(tilstand) {
@@ -438,11 +711,33 @@ window.addEventListener("pointerup", (e) => {
     velg(o.id);
     return;
   }
+  // 🚧 markeringsboksen: andre hjørne → gjerdet
+  if (merker && merker.start) {
+    const a = merker.start, b = bakkePunkt(e.clientX, e.clientY);
+    e.stopPropagation(); slippKamera(e);
+    avbrytMerker();
+    lagGjerde(a, b);
+    return;
+  }
+  if (skjotDrar) {
+    const sd = skjotDrar; skjotDrar = null;
+    e.stopPropagation(); slippKamera(e);
+    if (sd.flyttet) oppdater(sd.id, { punkter: sd.punkter }, "Skjøt flyttet");
+    else oppdaterHandtak();
+    return;
+  }
   if (drar) {
     // Les tilstanden FØR slippKamera: pointercancel-lytteren under nullstiller
     // `drar` synkront (samme felle som materiell.js hadde 21.08).
     const d = drar; drar = null;
     e.stopPropagation(); slippKamera(e);
+    if (!d.beveget) {
+      // Et klikk. På et gjerde som alt var valgt: panelet av/på i utvalget.
+      const o = hentO(d.id);
+      if (o && o.punkter && d.varValgt && d.stykke != null) veksleStykke(o, d.stykke);
+      else velg(d.id);
+      return;
+    }
     slippFlytt(d);
     return;
   }
@@ -456,8 +751,33 @@ window.addEventListener("pointerup", (e) => {
 
 window.addEventListener("pointercancel", () => { drar = null; nedPos = null; }, true);
 
+// 🚧 Dobbeltklikk på et panel i det valgte gjerdet: ny skjøt der.
+window.addEventListener("dblclick", (e) => {
+  if (!overCanvas(e) || !iModus()) return;
+  const o = valgtGjerde();
+  if (!o) return;
+  const h = pekRiggTreff(e.clientX, e.clientY);
+  if (!h || h.g.userData.riggId !== o.id || h.stykke == null) return;
+  e.stopPropagation(); e.preventDefault();
+  // Treffpunktet på selve panelet, ikke bakken bak det: da havner skjøten
+  // på gjerdelinja og panelene blir ikke lengre av å bli delt.
+  const lok = lokalFra(o, h.punkt);
+  const ny = lok && leggTilSkjot(o.punkter, h.stykke, lok.x, lok.z);
+  if (!ny) return;
+  valgteStykker = []; valgtSkjot = h.stykke + 1; settMarkering();
+  oppdater(o.id, { punkter: ny }, "Skjøt lagt til");
+}, true);
+
 window.addEventListener("keydown", (e) => {
+  const iFelt = e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
+  if ((e.key === "Delete" || e.key === "Backspace") && !iFelt && iModus() && valgtSkjot != null && valgtGjerde()) {
+    e.preventDefault(); e.stopPropagation();
+    fjernValgtSkjot();
+    return;
+  }
   if (e.key !== "Escape") return;
+  if (merker) { avbrytMerker(); return; }
+  if (skjotDrar) { const id = skjotDrar.id; skjotDrar = null; tegnEnRigg(hentO(id)); oppdaterHandtak(); return; }
   if (flytter) {
     const g = finnRiggObjekt(flytter.id);
     if (g) g.position.copy(flytter.fra);
@@ -480,6 +800,12 @@ på("btnRigg", "click", () => {
   settRiggModus(true);
   tegnPanel();
 });
+
+function gjerdeTekst(o) {
+  const m = gjerdeMengder(o);
+  return t("{0} paneler · {1} porter", m.paneler, m.porter) + " · " + (Math.round(m.lengde * 10) / 10) + " m" +
+    (m.forLange ? " · ⚠ " + t("{0} for lange", m.forLange) : "");
+}
 
 // Liten fargeflis — samme som i materiell-panelet.
 function flis(farge) {
@@ -515,7 +841,7 @@ function tegnPanel() {
     return '<div class="qty-row"' + (o.skjult ? ' style="opacity:.55"' : "") + '><div class="n" data-rigg-velg="' + esc(o.id) + '" style="cursor:pointer">' +
       flis(o.farge) + esc(o.navn || riggTypeLabel(o.type)) +
       ' <span style="color:var(--muted);font-size:11px">' + esc(riggTypeLabel(o.type)) +
-      " · " + o.L + " × " + o.B + " m" + (n > 1 ? " · ×" + n : "") + "</span></div>" +
+      (o.punkter ? " · " + gjerdeTekst(o) : " · " + o.L + " × " + o.B + " m" + (n > 1 ? " · ×" + n : "")) + "</span></div>" +
       '<div class="c">' +
       '<button data-rigg-skjul="' + esc(o.id) + '" title="' + t("Skjul/vis") + '" style="padding:3px 8px">' + ikon(o.skjult ? "skjul" : "vis") + "</button>" +
       '<button data-rigg-slett="' + esc(o.id) + '" title="' + t("Slett") + '" style="padding:3px 8px">' + ikon("slett") + "</button></div></div>";
@@ -525,7 +851,7 @@ function tegnPanel() {
   const telling = riggTelling(S.rigg || []);
   if (telling.length) {
     html += '<h4 style="margin:12px 0 4px">' + t("Til bestilling") + "</h4>" +
-      telling.map(r => '<div class="qty-row"><div class="n">' + esc(riggTypeLabel(r.type)) +
+      telling.map(r => '<div class="qty-row"><div class="n">' + esc(r.del ? gjerdeDelLabel(r.del) : riggTypeLabel(r.type)) +
         '</div><div class="c">' + r.antall + t(" stk") + "</div></div>").join("") +
       "<p " + LITEN + ">" + t("Står også i Mengder under typen «Rigg», og kommer med i Excel-arket.") + "</p>";
   }
@@ -534,7 +860,8 @@ function tegnPanel() {
     '<p id="riggLagringTekst" ' + LITEN + ">" + esc(lagringsTekst()) + "</p>";
 
   body.innerHTML = html;
-  body.querySelectorAll("button[data-rigg-ny]").forEach(b => b.onclick = () => startPlassering(b.dataset.riggNy));
+  body.querySelectorAll("button[data-rigg-ny]").forEach(b => b.onclick = () =>
+    b.dataset.riggNy === "gjerde" ? startGjerde() : startPlassering(b.dataset.riggNy));
   // Trykk på navnet: velg objektet og fly dit
   body.querySelectorAll("[data-rigg-velg]").forEach(d => d.onclick = () => {
     const g = finnRiggObjekt(d.dataset.riggVelg);
@@ -565,9 +892,14 @@ function tegnSkjema(o) {
     '<h4 style="margin:0 0 6px">' + t("Rediger rigg-objekt") + " — " + esc(riggTypeLabel(o.type)) + "</h4>" +
     "<label>" + t("Navn på objektet") + '<input type="text" id="riggNavn" maxlength="80" placeholder="' +
     esc(riggTypeLabel(o.type)) + '" value="' + esc(o.navn) + '"></label>' +
-    felt("riggL", "Lengde (m)", o.L, 0.1, 30, 0.01) +
-    felt("riggB", "Bredde (m)", o.B, 0.1, 30, 0.01) +
-    felt("riggH", "Høyde (m)", o.H, 0.1, 15, 0.01) +
+    // 🚧 Gjerdet: L er panellengden og H panelhøyden. Et panel som er lengre
+    // enn panellengden blir rødt — endres lengden her, endres varslene.
+    (M.gjerde
+      ? felt("riggL", "Panellengde (m)", o.L, 0.5, 10, 0.01) + felt("riggH", "Panelhøyde (m)", o.H, 0.1, 15, 0.01) +
+        '<input type="hidden" id="riggB" value="' + o.B + '">'
+      : felt("riggL", "Lengde (m)", o.L, 0.1, 30, 0.01) +
+        felt("riggB", "Bredde (m)", o.B, 0.1, 30, 0.01) +
+        felt("riggH", "Høyde (m)", o.H, 0.1, 15, 0.01)) +
     (M.moduler ? felt("riggMod", "Moduler side om side", o.moduler, 1, MAKS_MODULER, 1) +
       felt("riggEt", "Etasjer", o.etasjer, 1, MAKS_ETASJER, 1) : "") +
     felt("riggRot", "Rotasjon (grader, med klokka)", o.rot, 0, 359.9, 1) +

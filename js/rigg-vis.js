@@ -19,12 +19,14 @@ import * as THREE from "three";
 import { $, S, esc, ikon, registrerEkstraGruppe } from "./state.js";
 import { t } from "./i18n.js";
 import { LETT } from "./lett.js";
-import { flyTil, frameHooks, grid, makeLabel, scene, updateScreenScaled } from "./scene.js";
+import { camera, flyTil, frameHooks, grid, makeLabel, renderer, scene } from "./scene.js";
 import { settValgEffekt } from "./materiell-vis.js";
 import {
-  RIGG_REKKEFOLGE, RIGG_TYPER, riggAntall, riggFraByggeplass, riggForByggeplassFra, riggMengdeRader,
+  GJERDE_DELER, RIGG_REKKEFOLGE, RIGG_TYPER, gjerdeStykker, lokalTilEN, riggAntall, riggFraByggeplass, riggForByggeplassFra, riggMengdeRader,
   riggFotavtrykk, riggObjekter, riggRef, riggTilBygg, tilUtm, vaskRef, REF_ID
 } from "./rigg-regn.js";
+
+export function gjerdeDelLabel(del) { return t(GJERDE_DELER[del] || del); }
 
 export function riggTypeLabel(type) {
   return RIGG_TYPER[type] ? t(RIGG_TYPER[type].label) : type;
@@ -74,6 +76,17 @@ export function riggScenePos(o, base, ref, live) {
   // fire hjørnene): da ser det ut som det står på klosser i nedoverbakken, i
   // stedet for å være halvveis begravd i oppoverbakken (nettleserprøven 25.09).
   let y = null;
+  if (o.punkter) {
+    // 🚧 Gjerdet: gruppa står på det LAVESTE punktet, og hver fot løftes
+    // til bakken under seg (gjerdeHoyder) — gjerdet følger terrenget panel
+    // for panel i stedet for å henge i lufta over en dump.
+    if (live && o.ramme === "utm") for (const p of riggFotavtrykk(o)) {
+      const h = live.yVed(p.E, p.N);
+      if (h != null && (y == null || h < y)) y = h;
+    }
+    if (y == null) y = base.gulvY;
+    return { x, y, z, rotY: b.rotY };
+  }
   if (live && o.ramme === "utm") {
     for (const p of [{ E: o.E, N: o.N }].concat(riggFotavtrykk(o))) {
       const h = live.yVed(p.E, p.N);
@@ -82,6 +95,16 @@ export function riggScenePos(o, base, ref, live) {
   }
   if (y == null) y = base.gulvY;
   return { x, y, z, rotY: b.rotY };
+}
+
+// Høyden under hver skjøt i gjerdet, i METER over gruppas bunn (gy, scene).
+export function gjerdeHoyder(o, base, live, gy) {
+  return o.punkter.map(q => {
+    if (!live || o.ramme !== "utm") return 0;
+    const p = lokalTilEN(o, q.x, q.z);
+    const h = live.yVed(p.E, p.N);
+    return h == null ? 0 : Math.max(0, (h - gy) * base.skala);
+  });
 }
 
 // ═══════════════════════ LAGET ═══════════════════════
@@ -142,12 +165,46 @@ registrerEkstraGruppe(riggGroup, {
   }
 });
 
-// Navnelappene har konstant størrelse på skjermen, som materiellets.
-frameHooks.push(() => updateScreenScaled(riggGroup));
+// ═══════════════════════ NAVNELAPPENE ═══════════════════════
+//
+// Nært: konstant størrelse på skjermen, som materiellets lapper (px).
+// Langt unna: lappen blir ALDRI større enn LAPP_MAKS_M meter i virkeligheten.
+// Emils funn 25.09: med bare skjermstørrelse vokste lappene i forhold til
+// tomta når man zoomet ut, til de dekket hele riggen. Nå krymper de sammen
+// med objektene når taket er nådd — og blir de mindre enn LAPP_MIN_PX, skjules
+// de helt: en lapp man ikke kan lese er bare støy.
+export const LAPP_MAKS_M = 0.9;
+export const LAPP_MIN_PX = 7;
+const _lappV = new THREE.Vector3();
+
+// Ren regel (testes): skjermhøyden i px ved avstanden, og om lappen vises.
+//   pxPerEnhet — hvor mange skjermpiksler én sceneenhet er på denne avstanden
+//   maksEnheter — taket, i sceneenheter
+export function lappStorrelse(px, pxPerEnhet, maksEnheter) {
+  const onsket = px / pxPerEnhet;                 // sceneenheter for px piksler
+  const hoyde = Math.min(onsket, maksEnheter);
+  const vistPx = hoyde * pxPerEnhet;
+  return { hoyde, vis: vistPx >= LAPP_MIN_PX };
+}
+
+frameHooks.push(() => {
+  if (!riggGroup.children.length) return;
+  const h = renderer.domElement.clientHeight || 1;
+  const k = 2 * Math.tan(camera.fov * Math.PI / 360) / h;     // sceneenheter per px per avstand
+  const maks = LAPP_MAKS_M / (S.enhetSkala || 1);
+  riggGroup.traverse(o => {
+    if (!o.isSprite || !o.userData.px) return;
+    o.getWorldPosition(_lappV);
+    const d = _lappV.distanceTo(camera.position) || 1e-9;
+    const r = lappStorrelse(o.userData.px, 1 / (d * k), maks);
+    o.visible = r.vis;
+    o.scale.set(r.hoyde * (o.userData.aspect || 3), r.hoyde, 1);
+  });
+});
 
 export function leggRiggIMengder(groups, rows) {
   const liste = riggListe().filter(o => !skjulteTyper.has(o.type));
-  for (const r of riggMengdeRader(liste, riggTypeLabel)) {
+  for (const r of riggMengdeRader(liste, t)) {
     if (!groups.has(r.key)) groups.set(r.key,
       { count: 0, length: 0, vol: 0, area: 0, flate: 0, forskaling: 0, kg: 0, kgGeo: 0,
         utenVekt: 0, umulige: 0, nominelle: 0, type: r.type, material: r.material });
@@ -368,6 +425,50 @@ const BYGG = {
     boks(g, L * 0.4, 0.08, 0.02, "#26c6da", 0, fot + (H - fot) * 0.25, B / 2 + 0.01);   // leseren
   },
 
+  // 🚧 Byggegjerde: nettingpanel i stålrør mellom hver skjøt, fot og klemme
+  // i skjøten (Emils bilder 2 og 3). For lange paneler er RØDE (varsel), valgte
+  // er GRØNNE (som på skissen), porter er gule med skråstag.
+  gjerde(g, o, hoyder) {
+    const H = o.H, mark = gjerdeMark.id === o.id ? gjerdeMark.stykker : null;
+    const hv = (k) => (hoyder && hoyder[k]) || 0;
+    for (const st of gjerdeStykker(o)) {
+      const farge = mark && mark.has(st.i) ? "#2e7d32" : st.forLang ? "#e53935" : st.port ? "#f2b705" : o.farge;
+      const dx = st.b.x - st.a.x, dz = st.b.z - st.a.z, l = Math.max(0.05, st.l);
+      const panel = new THREE.Group();
+      panel.position.set((st.a.x + st.b.x) / 2, (hv(st.i) + hv(st.j)) / 2, (st.a.z + st.b.z) / 2);
+      panel.rotation.y = Math.atan2(-dz, dx);
+      const rammer = [
+        boks(panel, l, 0.045, 0.045, farge, 0, H - 0.02, 0),
+        boks(panel, l, 0.045, 0.045, farge, 0, 0.12, 0),
+        boks(panel, 0.045, H - 0.1, 0.045, farge, -l / 2 + 0.03, H / 2 + 0.05, 0),
+        boks(panel, 0.045, H - 0.1, 0.045, farge, l / 2 - 0.03, H / 2 + 0.05, 0)
+      ];
+      const netting = new THREE.Mesh(new THREE.BoxGeometry(l, H - 0.16, 0.01), nettingMat(farge));
+      netting.position.set(0, H / 2 + 0.05, 0);
+      panel.add(netting);
+      rammer.push(netting);
+      if (st.port) {
+        // skråstaget som gjør porten til en port, og en midtstolpe (to fløyer)
+        const diag = Math.hypot(l / 2, H - 0.2);
+        for (const side of [-1, 1]) {
+          const d = boks(panel, 0.04, diag, 0.04, farge, side * l / 4, H / 2 + 0.05, 0);
+          d.rotation.z = side * Math.atan2(l / 2, H - 0.2);
+          rammer.push(d);
+        }
+        rammer.push(boks(panel, 0.05, H - 0.1, 0.05, farge, 0, H / 2 + 0.05, 0));
+      }
+      for (const m of rammer) m.userData.stykke = st.i;
+      g.add(panel);
+    }
+    // føttene og klemmene, én per skjøt
+    o.punkter.forEach((q, k) => {
+      const fot = boks(g, o.B, 0.15, 0.22, "#9e9e9e", q.x, hv(k) + 0.075, q.z);
+      const neste = o.punkter[(k + 1) % o.punkter.length];
+      fot.rotation.y = Math.atan2(-(neste.z - q.z), neste.x - q.x);
+      boks(g, 0.08, 0.12, 0.08, "#37474f", q.x, hv(k) + H * 0.55, q.z);
+    });
+  },
+
   // Søppelcontainer (liftcontainer, åpen): skrå gavler, åpen topp, løfteører.
   soppel(g, o) {
     const { L, B, H } = o, t = 0.05, inn = Math.min(0.5, L * 0.15);
@@ -394,6 +495,24 @@ const BYGG = {
   }
 };
 
+// Nettingen er halvgjennomsiktig: gjerdet skal ikke skjule det som står bak.
+const nettCache = new Map();
+function nettingMat(farge) {
+  let m = nettCache.get(farge);
+  if (!m) {
+    m = new THREE.MeshLambertMaterial({ color: farge, transparent: true, opacity: 0.28, depthWrite: false, side: THREE.DoubleSide });
+    nettCache.set(farge, m);
+  }
+  return m;
+}
+
+// Hvilket gjerde og hvilke paneler som er valgt til port (rigg.js setter det).
+const gjerdeMark = { id: null, stykker: new Set() };
+export function settGjerdeMarkering(id, stykker) {
+  gjerdeMark.id = id || null;
+  gjerdeMark.stykker = new Set(stykker || []);
+}
+
 // Høyden på det ferdige objektet (til navnelappen): brakken i etasjer.
 export function riggTotalHoyde(o) {
   return RIGG_TYPER[o.type] && RIGG_TYPER[o.type].moduler ? o.H * (o.etasjer || 1) : o.H;
@@ -402,21 +521,29 @@ export function riggTotalHoyde(o) {
 // Hele objektet: en ytre gruppe som står i scenen (posisjon, rotasjon, id),
 // med modellen skalert inni og navnelappen ved siden av — ikke inni den
 // skalerte gruppa, ellers ville skjermstørrelsen på lappen blitt feil.
-export function byggRiggObjekt(o, skala) {
+export function byggRiggObjekt(o, skala, hoyder) {
   const ytre = new THREE.Group();
   const modell = new THREE.Group();
   const s = 1 / (skala || 1);
   modell.scale.set(s, s, s);
   const bygg = BYGG[o.type];
-  if (bygg) bygg(modell, o);
+  if (bygg) bygg(modell, o, hoyder);
   ytre.add(modell);
   const n = riggAntall(o);
-  const tekst = (o.navn || riggTypeLabel(o.type)) + (n > 1 ? "  ×" + n : "");
+  let tekst = (o.navn || riggTypeLabel(o.type)) + (n > 1 ? "  ×" + n : "");
   const lapp = makeLabel(tekst, o.farge);
   lapp.userData.px = 22;
   lapp.userData.aspect = lapp.scale.x / lapp.scale.y;
   lapp.position.y = (riggTotalHoyde(o) + 0.8) * s;
+  if (o.punkter) {
+    // gjerdets lapp står midt i ringen, over det høyeste punktet
+    const cx = o.punkter.reduce((a, q) => a + q.x, 0) / o.punkter.length;
+    const cz = o.punkter.reduce((a, q) => a + q.z, 0) / o.punkter.length;
+    const hm = Math.max(0, ...(hoyder || [0]));
+    lapp.position.set(cx * s, (o.H + hm + 0.8) * s, cz * s);
+  }
   ytre.add(lapp);
+  ytre.userData.hoyder = hoyder || null;
   ytre.userData.riggId = o.id;
   ytre.userData.riggType = o.type;
   return ytre;
@@ -435,6 +562,27 @@ export function finnRiggObjekt(id) {
   return riggGroup.children.find(o => o.userData.riggId === id) || null;
 }
 
+function byggPlassert(o, base, ref, live) {
+  const pos = riggScenePos(o, base, ref, live);
+  if (!pos) return null;
+  const g = byggRiggObjekt(o, base.skala, o.punkter ? gjerdeHoyder(o, base, live, pos.y) : null);
+  g.position.set(pos.x, pos.y, pos.z);
+  g.rotation.y = pos.rotY;
+  return g;
+}
+
+// Ett objekt på nytt (rigg.js, mens en skjøt dras): `o` kan være en kladd
+// som ikke er lagret ennå. Valget og effekten beholdes.
+export function tegnEnRigg(o) {
+  const base = riggBase();
+  if (!base || !o) return null;
+  const gammel = finnRiggObjekt(o.id);
+  if (gammel) { gammel.traverse(m => { if (m.geometry) m.geometry.dispose(); }); riggGroup.remove(gammel); }
+  const g = byggPlassert(o, base, aktivRef(), !LETT && S.terrengRef ? S.terrengRef() : null);
+  if (g) { riggGroup.add(g); valgEffekt(g, o.id === S.riggValgtId); }
+  return g;
+}
+
 export function tegnRigg() {
   fjernAlle();
   const base = riggBase();
@@ -443,12 +591,8 @@ export function tegnRigg() {
     const live = !LETT && S.terrengRef ? S.terrengRef() : null;
     for (const o of riggListe()) {
       if (o.skjult || skjulteTyper.has(o.type)) continue;
-      const pos = riggScenePos(o, base, ref, live);
-      if (!pos) continue;
-      const g = byggRiggObjekt(o, base.skala);
-      g.position.set(pos.x, pos.y, pos.z);
-      g.rotation.y = pos.rotY;
-      riggGroup.add(g);
+      const g = byggPlassert(o, base, ref, live);
+      if (g) riggGroup.add(g);
     }
   }
   if (S.etterTegnRigg) S.etterTegnRigg();
@@ -464,13 +608,18 @@ export function plasserRigg() {
   const ref = aktivRef();
   const live = !LETT && S.terrengRef ? S.terrengRef() : null;
   const alle = new Map(riggListe().map(o => [o.id, o]));
-  for (const g of riggGroup.children) {
+  const gjerder = [];
+  for (const g of riggGroup.children.slice()) {
     const o = alle.get(g.userData.riggId);
+    if (o && o.punkter) { gjerder.push(o); continue; }
     const pos = o && riggScenePos(o, base, ref, live);
     if (!pos) continue;
     g.position.set(pos.x, pos.y, pos.z);
     g.rotation.y = pos.rotY;
   }
+  // Gjerdets føtter står hver på sin bakke — flyttes tomta under, må de
+  // regnes på nytt, ikke bare flyttes.
+  for (const o of gjerder) tegnEnRigg(o);
 }
 
 // terreng.js: bygget er flyttet på tomta, eller terrenget kom eller gikk.
@@ -519,8 +668,15 @@ function likRefSmaa(a, b) {
 
 // ═══════════════════════ 🔵 VALG ═══════════════════════
 // Samme blå som materiell og elementvalget (settValgEffekt i materiell-vis.js).
+// 🚧 Gjerdet males IKKE blått når det er valgt: da ville det skjult det som
+// betyr noe på gjerdet — røde paneler (for lange), grønne (valgt til port) og
+// gule porter. Valget vises med skjøtene (prikkene) i stedet.
+function valgEffekt(g, paa) {
+  settValgEffekt(g, paa && g.userData.riggType !== "gjerde");
+}
+
 export function oppdaterRiggValgEffekt() {
-  riggGroup.children.forEach(o => settValgEffekt(o, o.userData.riggId === S.riggValgtId));
+  riggGroup.children.forEach(o => valgEffekt(o, o.userData.riggId === S.riggValgtId));
 }
 
 // ═══════════════════════ BYGGEPLASSEN ═══════════════════════

@@ -5,8 +5,9 @@
 // enkle modeller av dem på tomta, så riggplanen kan vises og lastes ned.
 //
 // Grunnlag: «Storm IFC-Viewer handoff Rigg 2026-09-25.md» og Emils bestilling
-// i Rigg/rigg verktøy 25.09.2026.txt. Denne fila dekker trinn 1–2: de enkle
-// objektene. Byggegjerdet, pilene og PDF-en kommer i egne runder.
+// i Rigg/rigg verktøy 25.09.2026.txt. Trinn 1–2: de enkle objektene.
+// Trinn 3–4: byggegjerdet (skjøter, paneler og porter). Pilene og PDF-en
+// kommer i egne runder.
 //
 // Alt her testes i Node (_test/test-rigg.mjs).
 
@@ -34,11 +35,17 @@ export const RIGG_TYPER = {
   strom:      { label: "Strømskap", L: 0.6, B: 0.4, H: 1.4, farge: "#e67e22" },
   container:  { label: "Container 20 fot", L: 6.06, B: 2.44, H: 2.59, farge: "#2e6b4f" },
   hms:        { label: "HMS-kort-registrering", L: 0.8, B: 0.6, H: 1.5, farge: "#455a64" },
-  soppel:     { label: "Søppelcontainer", L: 3.5, B: 1.9, H: 1.5, farge: "#2c5f8a" }
+  soppel:     { label: "Søppelcontainer", L: 3.5, B: 1.9, H: 1.5, farge: "#2c5f8a" },
+  // 🚧 Byggegjerdet (trinn 3–4). L = PANELLENGDEN og H = panelhøyden — samme
+  // felt som de andre objektene, så skjema, vasking og lagring er de samme.
+  // B er foten (betongklossen) og brukes bare til tegningen.
+  // Mål: mobilt anleggsgjerde ca. 3,5 × 2,0 m — forslaget fra handoffen, som
+  // Emil valgte 25.09 {Source not found: ikke sjekket mot leverandør}.
+  gjerde:     { label: "Byggegjerde", L: 3.5, B: 0.7, H: 2.0, farge: "#aab4bc", gjerde: true }
 };
 
 // Rekkefølgen knappene står i panelet — det man rigger først, først.
-export const RIGG_REKKEFOLGE = ["brakke", "hjulbrakke", "toalett", "forstehjelp", "mote",
+export const RIGG_REKKEFOLGE = ["gjerde", "brakke", "hjulbrakke", "toalett", "forstehjelp", "mote",
   "strom", "container", "hms", "soppel"];
 
 // Kort forklaring per type. Står i panelet nå, og blir teksten i
@@ -52,7 +59,8 @@ export const RIGG_FORKLARING = {
   strom: "Byggestrøm — tilkobling for verktøy og brakker",
   container: "Lager for verktøy og materiell",
   hms: "Registrering av HMS-kort ved inngangen",
-  soppel: "Avfall og kildesortering"
+  soppel: "Avfall og kildesortering",
+  gjerde: "Byggegjerde rundt byggeplassen, med port for kjøretøy"
 };
 
 export const MAKS_ETASJER = 3;
@@ -113,7 +121,7 @@ export function vaskRiggObjekt(p) {
     id, type: p.type,
     navn: tekst(p.navn, 80),
     farge: vaskFarge(p.farge, M.farge),
-    L: mal(p.L, 0.1, 30, M.L),
+    L: mal(p.L, M.gjerde ? 0.5 : 0.1, M.gjerde ? 10 : 30, M.L),
     B: mal(p.B, 0.1, 30, M.B),
     H: mal(p.H, 0.1, 15, M.H),
     // "utm" = E/N er UTM33 i meter (riggen hører til TOMTA, Emil 25.09).
@@ -131,7 +139,182 @@ export function vaskRiggObjekt(p) {
     ut.etasjer = heltall(p.etasjer, 1, MAKS_ETASJER, 1);
     ut.moduler = heltall(p.moduler, 1, MAKS_MODULER, 1);
   }
+  if (M.gjerde) {
+    ut.punkter = vaskPunkter(p.punkter);
+    if (!ut.punkter) return null;
+  }
   return ut;
+}
+
+// ═══════════════════════ 🚧 BYGGEGJERDET ═══════════════════════
+//
+// REGELEN (handoffen kap. 2, bekreftet av Emil 25.09 — «start trinn 3–4»):
+//
+//  · Gjerdet er en LUKKET RING AV SKJØTER. Hvert stykke mellom to skjøter er
+//    ETT PANEL. Da er «dra i skjøten» det samme som å flytte ett punkt, og de
+//    to panelene på hver side følger med.
+//  · Skjøtene ligger i gjerdets EGEN ramme ({ x, z } i meter fra objektets
+//    origo, x langs objektets lengderetning og z på tvers — samme ramme som
+//    de andre objektenes 3D-modell). Da er gjerdet et helt vanlig rigg-objekt:
+//    Flytt endrer E/N, roter endrer rot, og overgangen bygg → tomt (tilUtm)
+//    virker uten en eneste særregel.
+//  · Et panel har FAST lengde i virkeligheten. Blir et panel dratt lengre enn
+//    panellengden (L), strekkes det ikke — det tegnes rødt og telles som et
+//    varsel. Et kortere panel er lov: da overlapper det i skjøten.
+//  · En PORT er to paneler ved siden av hverandre gjort om til ett stykke.
+//    Den midterste skjøten forsvinner, og stykket merkes som port. Porten kan
+//    gjøres tilbake til to paneler. Flaggen `port` står på skjøten stykket
+//    STARTER i — da følger den med når skjøter legges til og fjernes foran.
+//  · Mengder: paneler (stykker som ikke er port), føtter og klemmer (én per
+//    skjøt) og porter.
+
+export const MIN_SKJOTER = 3;
+export const MAKS_SKJOTER = 400;
+const MAKS_GJERDE_M = 2000;
+// Litt slingring før et panel regnes som for langt: 1 cm er ingen feil, det
+// er avrunding i musa.
+const TOLERANSE_M = 0.01;
+
+function vaskPunkter(liste) {
+  if (!Array.isArray(liste)) return null;
+  const ut = [];
+  for (const q of liste.slice(0, MAKS_SKJOTER)) {
+    if (!q || typeof q !== "object") continue;
+    const x = tall(q.x), z = tall(q.z);
+    if (x == null || z == null || Math.abs(x) > MAKS_GJERDE_M || Math.abs(z) > MAKS_GJERDE_M) continue;
+    const p = { x: Math.round(x * 1000) / 1000, z: Math.round(z * 1000) / 1000 };
+    if (q.port === true) p.port = true;
+    ut.push(p);
+  }
+  return ut.length >= MIN_SKJOTER ? ut : null;
+}
+
+// Markeringsboksen → skjøtene langs omrisset. Hver side deles i så mange like
+// paneler som trengs for at ingen blir lengre enn panellengden:
+// ceil(side / panellengde). Rundt med klokka sett ovenfra, fra hjørnet (−x, −z).
+export function gjerdeFraRektangel(hx, hz, panelL) {
+  const P = Math.max(0.5, Number(panelL) || 3.5);
+  const a = Math.abs(hx), b = Math.abs(hz);
+  if (!(a > 0.25 && b > 0.25)) return null;
+  const hjorner = [[-a, -b], [a, -b], [a, b], [-a, b]];
+  const ut = [];
+  for (let s = 0; s < 4; s++) {
+    const [x0, z0] = hjorner[s], [x1, z1] = hjorner[(s + 1) % 4];
+    const lengde = Math.hypot(x1 - x0, z1 - z0);
+    const n = Math.max(1, Math.ceil(lengde / P - 1e-9));
+    for (let i = 0; i < n; i++) {
+      const t = i / n;
+      ut.push({ x: rund(x0 + (x1 - x0) * t), z: rund(z0 + (z1 - z0) * t) });
+    }
+  }
+  return ut;
+}
+
+// Stykkene i ringen: { i, j, a, b, l, port, forLang }. i og j er skjøtene i
+// hver ende (j = i + 1, og siste stykke går tilbake til skjøt 0).
+export function gjerdeStykker(o) {
+  const p = (o && o.punkter) || [];
+  const P = o ? o.L : 3.5;
+  const ut = [];
+  for (let i = 0; i < p.length; i++) {
+    const j = (i + 1) % p.length;
+    const a = p[i], b = p[j];
+    const l = Math.hypot(b.x - a.x, b.z - a.z);
+    const port = a.port === true;
+    // En port er to paneler bred — lengre enn det er den for bred.
+    const maks = (port ? 2 : 1) * P + TOLERANSE_M;
+    ut.push({ i, j, a, b, l, port, forLang: l > maks });
+  }
+  return ut;
+}
+
+export function gjerdeMengder(o) {
+  const st = gjerdeStykker(o);
+  const porter = st.filter(s => s.port).length;
+  return {
+    paneler: st.length - porter,
+    fotter: st.length,        // én fot under hver skjøt, og ringen er lukket
+    klemmer: st.length,       // én klemme i hver skjøt
+    porter,
+    forLange: st.filter(s => s.forLang).length,
+    lengde: st.reduce((sum, s) => sum + s.l, 0)
+  };
+}
+
+// To stykker ved siden av hverandre? Da deler de en skjøt: svaret er
+// { forst, sist } (sist = forst + 1 rundt ringen), ellers null.
+export function naboStykker(antall, i, j) {
+  if (antall < 2 || i === j) return null;
+  if ((i + 1) % antall === j) return { forst: i, sist: j };
+  if ((j + 1) % antall === i) return { forst: j, sist: i };
+  return null;
+}
+
+// «Gjør om til port»: to naboer uten port blir ett stykke med port-flagg.
+// Skjøten mellom dem forsvinner. Minst tre skjøter må være igjen.
+export function gjorOmTilPort(punkter, i, j) {
+  const p = punkter || [];
+  const n = naboStykker(p.length, i, j);
+  if (!n || p.length - 1 < MIN_SKJOTER) return null;
+  if (p[n.forst].port || p[n.sist].port) return null;
+  const ut = p.map(q => Object.assign({}, q));
+  ut[n.forst].port = true;
+  ut.splice(n.sist, 1);          // skjøten mellom dem (starten på det andre stykket)
+  return ut;
+}
+
+// «Gjør tilbake»: porten blir to paneler igjen, med en ny skjøt midt på.
+export function gjorTilbake(punkter, i) {
+  const p = punkter || [];
+  if (!p[i] || !p[i].port || p.length + 1 > MAKS_SKJOTER) return null;
+  const a = p[i], b = p[(i + 1) % p.length];
+  const ut = p.map(q => Object.assign({}, q));
+  delete ut[i].port;
+  ut.splice(i + 1, 0, { x: rund((a.x + b.x) / 2), z: rund((a.z + b.z) / 2) });
+  return ut;
+}
+
+// Ny skjøt i stykke i, i punktet (x, z). Et panel delt i to er to paneler;
+// en port delt i to er to paneler (en port kan ikke ha skjøt på midten).
+export function leggTilSkjot(punkter, i, x, z) {
+  const p = punkter || [];
+  if (!p[i] || p.length + 1 > MAKS_SKJOTER) return null;
+  const ut = p.map(q => Object.assign({}, q));
+  delete ut[i].port;
+  ut.splice(i + 1, 0, { x: rund(x), z: rund(z) });
+  return ut;
+}
+
+// Fjern skjøt k: de to stykkene på hver side blir ett. Var stykket FØR skjøten
+// en port, er det fortsatt en port.
+export function fjernSkjot(punkter, k) {
+  const p = punkter || [];
+  if (!p[k] || p.length - 1 < MIN_SKJOTER) return null;
+  const ut = p.map(q => Object.assign({}, q));
+  ut.splice(k, 1);
+  return ut;
+}
+
+export function flyttSkjot(punkter, k, x, z) {
+  const p = punkter || [];
+  if (!p[k]) return null;
+  const ut = p.map(q => Object.assign({}, q));
+  ut[k].x = rund(x); ut[k].z = rund(z);
+  return ut;
+}
+
+// Gjerdets egen ramme ↔ objektets posisjonsramme (E, N). Samme dreining som
+// fotavtrykket: x-retningen er (cos r, −sin r) og z-retningen (−sin r, −cos r).
+// Matrisen er sin egen invers, så begge veier regnes likt.
+export function lokalTilEN(o, x, z) {
+  const r = (o.rot || 0) * Math.PI / 180, c = Math.cos(r), s = Math.sin(r);
+  return { E: o.E + x * c - z * s, N: o.N - x * s - z * c };
+}
+
+export function enTilLokal(o, E, N) {
+  const r = (o.rot || 0) * Math.PI / 180, c = Math.cos(r), s = Math.sin(r);
+  const dE = E - o.E, dN = N - o.N;
+  return { x: dE * c - dN * s, z: -dE * s - dN * c };
 }
 
 // ═══════════════════════ REFERANSEN ═══════════════════════
@@ -233,6 +416,7 @@ export function riggTilBygg(o, ref) {
 // rotasjonen i scenen. Brakkeriggen er så bred som alle modulene til sammen.
 export function riggFotavtrykk(o) {
   if (!o) return [];
+  if (o.punkter) return o.punkter.map(q => lokalTilEN(o, q.x, q.z));
   const r = (o.rot || 0) * Math.PI / 180, c = Math.cos(r), s = Math.sin(r);
   const bredde = RIGG_TYPER[o.type] && RIGG_TYPER[o.type].moduler ? o.B * (o.moduler || 1) : o.B;
   const hl = o.L / 2, hb = bredde / 2;
@@ -309,44 +493,80 @@ export function riggFraByggeplass(d) {
 // objekt. Skjulte objekter telles ikke: de er tatt ut av planen.
 export function riggAntall(o) {
   if (!o) return 0;
+  if (o.punkter) return gjerdeMengder(o).paneler;
   return RIGG_TYPER[o.type] && RIGG_TYPER[o.type].moduler
     ? (o.etasjer || 1) * (o.moduler || 1) : 1;
 }
 
+// Delene i et byggegjerde, slik de bestilles. Egne rader i Mengder, men IKKE
+// egne objekter: gjerdet er ÉN post (handoffen, advarsel 4) — ellers ville
+// hvert panel havnet i flervalg, grupper og Mengder hver for seg.
+export const GJERDE_DELER = {
+  panel: "Gjerdepanel", fot: "Gjerdefot", klemme: "Gjerdeklemme", port: "Byggeport"
+};
+
 // Én rad per ENHET (som materiell-vis.js), så «Antall» i Mengder og i Excel
-// teller brakkemoduler, ikke rigger. `label` oversetter typenavnet.
-export function riggMengdeRader(liste, label) {
-  const lab = label || ((k) => RIGG_TYPER[k].label);
+// teller brakkemoduler og gjerdepaneler, ikke rigger. `tr` oversetter tekst.
+export function riggMengdeRader(liste, tr) {
+  const lab = tr || ((x) => x);
   const ut = [];
   let n = 0;
+  const rad = (key, navn, del, L, B, H) => {
+    n++;
+    ut.push({
+      id: -(2000000 + n),     // syntetisk, kolliderer aldri med IFC-id-er eller materiell
+      key, name: navn, objType: del,
+      type: "Rigg", material: del,
+      L, B, H, len: Math.max(L, B),
+      vol: 0, area: L * B, flate: L * B, forskaling: 0,
+      kg: 0, kgGeo: 0, kjentVekt: false, umuligVolum: false,
+      vektKilde: "", profil: "", nomKgPerM: 0, avvik: null
+    });
+  };
   for (const o of riggObjekter(liste)) {
     if (o.skjult) continue;
-    const typeNavn = lab(o.type);
-    const key = (o.navn || typeNavn) + " · " + typeNavn;
-    for (let i = 0; i < riggAntall(o); i++) {
-      n++;
-      ut.push({
-        id: -(2000000 + n),     // syntetisk, kolliderer aldri med IFC-id-er eller materiell
-        key, name: o.navn || typeNavn, objType: typeNavn,
-        type: "Rigg", material: typeNavn,
-        L: o.L, B: o.B, H: o.H, len: Math.max(o.L, o.B),
-        vol: 0, area: o.L * o.B, flate: o.L * o.B, forskaling: 0,
-        kg: 0, kgGeo: 0, kjentVekt: false, umuligVolum: false,
-        vektKilde: "", profil: "", nomKgPerM: 0, avvik: null
-      });
+    if (o.punkter) {
+      const m = gjerdeMengder(o), navn = o.navn || lab(RIGG_TYPER.gjerde.label);
+      const del = (k) => lab(GJERDE_DELER[k]);
+      for (let i = 0; i < m.paneler; i++) rad(navn + " · " + del("panel"), navn, del("panel"), o.L, 0.05, o.H);
+      for (let i = 0; i < m.porter; i++) rad(navn + " · " + del("port"), navn, del("port"), o.L * 2, 0.05, o.H);
+      for (let i = 0; i < m.fotter; i++) rad(navn + " · " + del("fot"), navn, del("fot"), o.B, 0.2, 0.15);
+      for (let i = 0; i < m.klemmer; i++) rad(navn + " · " + del("klemme"), navn, del("klemme"), 0.1, 0.1, 0.1);
+      continue;
     }
+    const typeNavn = lab(RIGG_TYPER[o.type].label);
+    const key = (o.navn || typeNavn) + " · " + typeNavn;
+    for (let i = 0; i < riggAntall(o); i++) rad(key, o.navn || typeNavn, typeNavn, o.L, o.B, o.H);
   }
   return ut;
 }
 
 // Oppsummering per type, til panelet (og tegnforklaringen senere).
+// Gjerdet gir fire linjer (paneler, porter, føtter, klemmer) med `del` satt.
 export function riggTelling(liste) {
   const m = new Map();
+  const gj = { panel: 0, port: 0, fot: 0, klemme: 0 };
+  let harGjerde = false;
   for (const o of riggObjekter(liste)) {
     if (o.skjult) continue;
+    if (o.punkter) {
+      const g = gjerdeMengder(o);
+      harGjerde = true;
+      gj.panel += g.paneler; gj.port += g.porter; gj.fot += g.fotter; gj.klemme += g.klemmer;
+      continue;
+    }
     m.set(o.type, (m.get(o.type) || 0) + riggAntall(o));
   }
-  return RIGG_REKKEFOLGE.filter(k => m.has(k)).map(k => ({ type: k, antall: m.get(k) }));
+  const ut = [];
+  for (const k of RIGG_REKKEFOLGE) {
+    if (k === "gjerde") {
+      if (harGjerde) for (const d of ["panel", "port", "fot", "klemme"])
+        if (gj[d]) ut.push({ type: "gjerde", del: d, antall: gj[d] });
+      continue;
+    }
+    if (m.has(k)) ut.push({ type: k, antall: m.get(k) });
+  }
+  return ut;
 }
 
 export function nyRiggId() {
