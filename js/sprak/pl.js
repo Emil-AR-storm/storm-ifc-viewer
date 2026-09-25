@@ -1553,5 +1553,20 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Høydefarger": "Kolory wysokości",
   "Henter kartet …": "Pobieranie mapy …",
   "Kartet kunne ikke hentes — viser høydefarger.": "Nie udało się pobrać mapy — pokazuję kolory wysokości.",
-  "Kart og høydedata: © Kartverket (CC BY 4.0). Flyfoto fra Norge i bilder krever avtale gjennom Norge digitalt og er derfor ikke med.": "Mapa i dane wysokościowe: © Kartverket (CC BY 4.0). Zdjęcia lotnicze z Norge i bilder wymagają umowy w ramach Norge digitalt i dlatego nie są dostępne."
+  "Kart og høydedata: © Kartverket (CC BY 4.0). Flyfoto fra Norge i bilder krever avtale gjennom Norge digitalt og er derfor ikke med.": "Mapa i dane wysokościowe: © Kartverket (CC BY 4.0). Zdjęcia lotnicze z Norge i bilder wymagają umowy w ramach Norge digitalt i dlatego nie są dostępne.",
+// ---------- ⛰ Terreng: lagring ----------
+  "Gi terrenget et navn først.": "Najpierw nadaj terenowi nazwę.",
+  "Kartverket svarte med et annet rutenett enn det som ble lagret": "Kartverket zwrócił inną siatkę niż zapisana",
+  "Henter lagret terreng …": "Pobieranie zapisanego terenu …",
+  "Klarte ikke å hente det lagrede terrenget: ": "Nie udało się pobrać zapisanego terenu: ",
+  "Slette «{0}» fra lista over lagrede terreng?": "Usunąć „{0}” z listy zapisanych terenów?",
+  "Navn på terrenget": "Nazwa terenu",
+  "Lagrer …": "Zapisywanie …",
+  "Lagre terreng": "Zapisz teren",
+  "Lagrer terrenget og plasseringen av denne modellen. Etterpå lagres endringer i plasseringen av seg selv.": "Zapisuje teren i położenie tego modelu. Potem zmiany położenia zapisują się automatycznie.",
+  "Lagret som": "Zapisano jako",
+  "Plassering, gulvkote og plate lagres av seg selv for denne modellen.": "Położenie, rzędna posadzki i płyta zapisują się automatycznie dla tego modelu.",
+  "Lagrede terreng": "Zapisane tereny",
+  "Ingen terreng lagret ennå.": "Nie zapisano jeszcze żadnego terenu.",
+  "Trykk på et terreng for å legge det under modellen.": "Kliknij teren, aby umieścić go pod modelem."
 };

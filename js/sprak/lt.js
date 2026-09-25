@@ -1553,5 +1553,20 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Høydefarger": "Aukščio spalvos",
   "Henter kartet …": "Gaunamas žemėlapis …",
   "Kartet kunne ikke hentes — viser høydefarger.": "Žemėlapio gauti nepavyko — rodomos aukščio spalvos.",
-  "Kart og høydedata: © Kartverket (CC BY 4.0). Flyfoto fra Norge i bilder krever avtale gjennom Norge digitalt og er derfor ikke med.": "Žemėlapis ir aukščio duomenys: © Kartverket (CC BY 4.0). Aerofotografijoms iš Norge i bilder reikia sutarties per Norge digitalt, todėl jų nėra."
+  "Kart og høydedata: © Kartverket (CC BY 4.0). Flyfoto fra Norge i bilder krever avtale gjennom Norge digitalt og er derfor ikke med.": "Žemėlapis ir aukščio duomenys: © Kartverket (CC BY 4.0). Aerofotografijoms iš Norge i bilder reikia sutarties per Norge digitalt, todėl jų nėra.",
+// ---------- ⛰ Terreng: lagring ----------
+  "Gi terrenget et navn først.": "Pirmiausia suteikite reljefui pavadinimą.",
+  "Kartverket svarte med et annet rutenett enn det som ble lagret": "Kartverket grąžino kitokį tinklelį nei išsaugotas",
+  "Henter lagret terreng …": "Gaunamas išsaugotas reljefas …",
+  "Klarte ikke å hente det lagrede terrenget: ": "Nepavyko gauti išsaugoto reljefo: ",
+  "Slette «{0}» fra lista over lagrede terreng?": "Ištrinti „{0}“ iš išsaugotų reljefų sąrašo?",
+  "Navn på terrenget": "Reljefo pavadinimas",
+  "Lagrer …": "Įrašoma …",
+  "Lagre terreng": "Įrašyti reljefą",
+  "Lagrer terrenget og plasseringen av denne modellen. Etterpå lagres endringer i plasseringen av seg selv.": "Įrašo reljefą ir šio modelio padėtį. Vėliau padėties pakeitimai įrašomi automatiškai.",
+  "Lagret som": "Įrašyta kaip",
+  "Plassering, gulvkote og plate lagres av seg selv for denne modellen.": "Padėtis, grindų aukštis ir aikštelė šiam modeliui įrašomi automatiškai.",
+  "Lagrede terreng": "Išsaugoti reljefai",
+  "Ingen terreng lagret ennå.": "Dar neišsaugota jokio reljefo.",
+  "Trykk på et terreng for å legge det under modellen.": "Spustelėkite reljefą, kad padėtumėte jį po modeliu."
 };
