@@ -31,12 +31,13 @@ import { t } from "./i18n.js";
 import { camera, canvas, flyTil, frameHooks, raycaster, scene } from "./scene.js";
 import { eierPunktet, registrerPeker } from "./pek-eier.js";
 import { pick, pickFlate } from "./elements.js";
-import { flettPaaId, spLes, spPaalogget, spSkriv } from "./sp-lager.js";
+import { flettPaaId, flettPaaNavn, spLes, spPaalogget, spSkriv } from "./sp-lager.js";
 import {
   MAKS_ETASJER, MAKS_MODULER, REF_ID, RIGG_FORKLARING, RIGG_REKKEFOLGE, RIGG_TYPER, ROT_STEG,
   byggTilRigg, enTilLokal, fjernSkjoter, flyttSkjoter, gjerdeFraRektangel, gjerdeMengder, gjerdeStykker,
   gjorOmTilPort, gjorTilbake, leggTilSkjot, naboStykker, nyRiggId, normVinkel, riggAntall, riggObjekter,
-  riggTelling, trengerOpplasting, vaskRiggListe, vaskRiggObjekt, erGjerde, MALESTOKKER, riggplanDekning, vaskMalestokkValg, erPil, minPunkter, parkeringsPlasser, pilFraPunkter, pilLengde
+  riggTelling, trengerOpplasting, vaskRiggListe, vaskRiggObjekt, erGjerde, MALESTOKKER, riggplanDekning, vaskMalestokkValg, erPil, minPunkter, parkeringsPlasser, pilFraPunkter, pilLengde,
+  RIGGPLAN_NAVN_MAKS, riggFraLagret, riggOyeblikk, riggplanSammendrag
 } from "./rigg-regn.js";
 import {
   aktivRef, byggRiggObjekt, finnRiggObjekt, gjerdeDelLabel, lappStorrelse, oppdaterRiggValgEffekt, riggBase, riggGroup,
@@ -132,6 +133,7 @@ S.lastRigg = async () => {
   const fil = S.fileName;
   S.rigg = lsLes();
   tegnRigg();
+  hentPlanerFraSp();
   if (!spPaalogget()) { spStatus = "av"; return; }
   const sp = await spLes(SP_MAPPE, spFil());
   if (S.fileName !== fil) return;
@@ -145,6 +147,100 @@ S.lastRigg = async () => {
   if (erApen()) tegnPanel();
   if (trengerOpplasting(lokale, eksterne)) planLagring();
 };
+
+// ═══════════════════════ 💾 LAGREDE RIGGPLANER ═══════════════════════
+//
+// Emil 25.09: lagre og hente fram flere riggplaner, SAMME oppsett som
+// «Lagrede SW-resultater» i SW-generator. Egen liste per modellfil, navnet er
+// nøkkelen. Lokalt først, så SharePoint i IFC-modeller/Rigg-planer (mappa
+// lages av sp-lager.js første gang noen lagrer — ingen skal måtte lage den
+// for hånd). Flettes på NAVN med gravsteiner, som SW-resultatene: to som
+// lagrer hver sin plan samtidig mister ikke hverandres.
+const PLAN_SP_MAPPE = "Rigg-planer";
+function planSpFil() { return S.fileName + ".riggplaner.json"; }
+function planNokkel() { return "storm-ifc-rigg-planer::" + S.fileName; }
+
+function lesPlanerRaa() {
+  try {
+    const l = JSON.parse(localStorage.getItem(planNokkel()) || "[]");
+    return Array.isArray(l) ? l : [];
+  } catch (_) { return []; }
+}
+function lesPlaner() {
+  return lesPlanerRaa().filter(p => p && !p.slettet && p.navn)
+    .sort((a, b) => String(b.endret || b.dato || "").localeCompare(String(a.endret || a.dato || "")));
+}
+function skrivPlaner(liste) {
+  try { localStorage.setItem(planNokkel(), JSON.stringify(liste)); return true; }
+  catch (_) { return false; }
+}
+function lagrePlanerBeggeSteder(liste) {
+  if (!skrivPlaner(liste)) return false;
+  if (!spPaalogget()) return true;
+  const fil = S.fileName;
+  spSkriv(PLAN_SP_MAPPE, planSpFil(), liste).then(res => {
+    if (S.fileName !== fil) return;
+    if (res.ok && res.liste) skrivPlaner(res.liste);
+    if (erApen()) tegnPanel();
+  });
+  return true;
+}
+async function hentPlanerFraSp() {
+  if (!spPaalogget() || !S.fileName) return;
+  const fil = S.fileName;
+  const res = await spLes(PLAN_SP_MAPPE, planSpFil());
+  if (S.fileName !== fil) return;
+  if (res.status === "ok" || res.status === "tom") {
+    skrivPlaner(flettPaaNavn(lesPlanerRaa(), res.liste));
+    if (erApen()) tegnPanel();
+  }
+}
+
+function lagrePlan(navn) {
+  const rent = String(navn || "").trim().slice(0, RIGGPLAN_NAVN_MAKS);
+  if (!rent) { alert(t("Gi riggplanen et navn før du lagrer den.")); return; }
+  if (!riggObjekter(S.rigg || []).length) { alert(t("Plasser noe på tomta før du lagrer riggplanen.")); return; }
+  const liste = lesPlanerRaa();
+  const i = liste.findIndex(p => p && p.navn === rent);
+  if (i >= 0 && !liste[i].slettet && !confirm(t("«{0}» finnes allerede. Skal den skrives over?", rent))) return;
+  const naa = new Date();
+  const data = riggOyeblikk(S.rigg || []);
+  const post = { navn: rent, dato: naa.toISOString().slice(0, 10), endret: naa.toISOString(),
+    av: mittNavn(), antall: riggplanSammendrag(data).objekter, data };
+  if (i >= 0) liste[i] = post; else liste.push(post);
+  if (!lagrePlanerBeggeSteder(liste)) {
+    alert(t("Klarte ikke å lagre — nettleserens lagring er full. Slett et gammelt resultat og prøv igjen."));
+    return;
+  }
+  tegnPanel();
+}
+
+// Henter en lagret plan fram: den erstatter riggen som står nå. Ingen
+// «er du sikker?» — det kan angres, som alt annet i verktøyet.
+function settRiggFraPlan(data, angreTekst) {
+  const forrige = riggOyeblikk(S.rigg || []);
+  avbrytPlassering(); avbrytPil(); avbrytMerker();
+  velg(null);
+  S.rigg = vaskRiggListe(riggFraLagret(S.rigg || [], data));
+  tegnRigg();
+  if (S.riggOmplasser) S.riggOmplasser();
+  planLagring();
+  if (S.oppdaterVisAlle) S.oppdaterVisAlle();
+  if (erApen()) tegnPanel();
+  if (angreTekst) post(angreTekst, () => settRiggFraPlan(forrige, null), () => settRiggFraPlan(data, null));
+}
+function lastInnPlan(navn) {
+  const p = lesPlaner().find(x => x.navn === navn);
+  if (!p || !p.data) return;
+  settRiggFraPlan(JSON.parse(JSON.stringify(p.data)), "Riggplan hentet");
+}
+function slettPlan(navn) {
+  if (!confirm(t("Slette «{0}»?", navn))) return;
+  const liste = lesPlanerRaa().map(p => p && p.navn === navn
+    ? { navn: p.navn, slettet: true, endret: new Date().toISOString() } : p);
+  lagrePlanerBeggeSteder(liste);
+  tegnPanel();
+}
 
 // ═══════════════════════ ENDRINGER (med angre) ═══════════════════════
 function post(tekst, angreFn, gjenFn) {
@@ -925,6 +1021,7 @@ på("btnRigg", "click", () => {
   apnePanel("riggPanel");
   settRiggModus(true);
   tegnPanel();
+  hentPlanerFraSp();   // kollegaenes planer kan ha kommet til siden modellen ble åpnet
 });
 
 function gjerdeTekst(o) {
@@ -1000,8 +1097,24 @@ function tegnPanel() {
       ikon("lastned") + " " + t("Last ned riggplan (PDF)") + "</button></div>" +
       "<p " + LITEN + ">" + t("A3 liggende: tomta sett ovenfra med nord opp, tegnforklaring og tittelfelt. Tallet bak målestokken er hvor mye av tomta arket dekker.") + "</p>";
   }
-  html += '<h4 style="margin:14px 0 4px">' + ikon("lagre") + " " + t("Lagring") + "</h4>" +
-    '<p id="riggLagringTekst" ' + LITEN + ">" + esc(lagringsTekst()) + "</p>";
+  // 💾 Lagrede riggplaner — helt nederst, som «Lagrede SW-resultater».
+  const planer = lesPlaner();
+  html += '<h4 data-sek="riggplaner" style="margin:14px 0 4px">' + ikon("lagre") + " " + t("Lagrede riggplaner") + "</h4>" +
+    "<p " + LITEN + ">" + t("Gi riggplanen et navn og lagre den. Trykk på navnet senere for å hente den fram igjen — den erstatter riggen som står nå (kan angres).") + "</p>" +
+    '<p id="riggLagringTekst" ' + LITEN + ">" + esc(lagringsTekst()) + "</p>" +
+    '<div class="prop-actions sw-lagre">' +
+      '<input type="text" id="riggLagreNavn" maxlength="' + RIGGPLAN_NAVN_MAKS + '" placeholder="' + esc(t("Navn på riggplanen")) + '">' +
+      '<button id="riggLagreBtn">' + ikon("lagre") + " " + t("Lagre") + "</button></div>" +
+    (planer.length
+      ? planer.map(p =>
+        '<div class="qty-row"><div class="n" style="font-size:12px">' +
+          '<button class="sw-last" data-riggplan-last="' + esc(p.navn) + '">' + esc(p.navn) + "</button>" +
+          ' <span style="color:var(--muted);font-size:11px">' +
+          esc([p.dato, p.antall ? t("{0} objekter", p.antall) : "", p.av || ""].filter(Boolean).join(" · ")) +
+          "</span></div>" +
+        '<div class="c"><button data-riggplan-slett="' + esc(p.navn) + '" title="' + esc(t("Slett")) +
+        '" style="padding:3px 8px">' + ikon("slett") + "</button></div></div>").join("")
+      : "<p " + LITEN + ">" + t("Ingen lagrede riggplaner ennå.") + "</p>");
 
   body.innerHTML = html;
   // Lastes først når knappen trykkes: PDF-koden og jsPDF skal ikke koste noe
@@ -1037,6 +1150,10 @@ function tegnPanel() {
     if (o) oppdater(o.id, { skjult: !o.skjult }, o.skjult ? "Rigg vist" : "Rigg skjult");
   });
   body.querySelectorAll("button[data-rigg-slett]").forEach(b => b.onclick = () => fjern(b.dataset.riggSlett, true));
+  if ($("riggLagreBtn")) $("riggLagreBtn").onclick = () => lagrePlan(($("riggLagreNavn") || {}).value);
+  if ($("riggLagreNavn")) $("riggLagreNavn").onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); lagrePlan(e.target.value); } };
+  body.querySelectorAll("button[data-riggplan-last]").forEach(b => b.onclick = () => lastInnPlan(b.dataset.riggplanLast));
+  body.querySelectorAll("button[data-riggplan-slett]").forEach(b => b.onclick = () => slettPlan(b.dataset.riggplanSlett));
 }
 
 // Krok: «Vis alle» (rigg-vis.js) må kunne tegne lista på nytt.

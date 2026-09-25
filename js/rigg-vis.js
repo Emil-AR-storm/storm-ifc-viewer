@@ -19,7 +19,7 @@ import * as THREE from "three";
 import { $, S, esc, ikon, registrerEkstraGruppe } from "./state.js";
 import { t } from "./i18n.js";
 import { LETT } from "./lett.js";
-import { camera, flyTil, frameHooks, grid, makeLabel, renderer, scene } from "./scene.js";
+import { LAPP_MAKS_M, LAPP_MIN_PX, camera, flyTil, frameHooks, grid, lappStorrelse, makeLabel, renderer, scene, skalerLapperMedTak } from "./scene.js";
 import { settValgEffekt } from "./materiell-vis.js";
 import {
   GJERDE_DELER, P_PLASS_B, P_PLASS_D, RIGG_REKKEFOLGE, RIGG_TYPER, erPil, gjerdeStykker, parkeringsPlasser, lokalTilEN, riggAntall, riggFraByggeplass, riggForByggeplassFra, riggMengdeRader,
@@ -169,41 +169,10 @@ registrerEkstraGruppe(riggGroup, {
 });
 
 // ═══════════════════════ NAVNELAPPENE ═══════════════════════
-//
-// Nært: konstant størrelse på skjermen, som materiellets lapper (px).
-// Langt unna: lappen blir ALDRI større enn LAPP_MAKS_M meter i virkeligheten.
-// Emils funn 25.09: med bare skjermstørrelse vokste lappene i forhold til
-// tomta når man zoomet ut, til de dekket hele riggen. Nå krymper de sammen
-// med objektene når taket er nådd — og blir de mindre enn LAPP_MIN_PX, skjules
-// de helt: en lapp man ikke kan lese er bare støy.
-export const LAPP_MAKS_M = 0.9;
-export const LAPP_MIN_PX = 7;
-const _lappV = new THREE.Vector3();
-
-// Ren regel (testes): skjermhøyden i px ved avstanden, og om lappen vises.
-//   pxPerEnhet — hvor mange skjermpiksler én sceneenhet er på denne avstanden
-//   maksEnheter — taket, i sceneenheter
-export function lappStorrelse(px, pxPerEnhet, maksEnheter) {
-  const onsket = px / pxPerEnhet;                 // sceneenheter for px piksler
-  const hoyde = Math.min(onsket, maksEnheter);
-  const vistPx = hoyde * pxPerEnhet;
-  return { hoyde, vis: vistPx >= LAPP_MIN_PX };
-}
-
-frameHooks.push(() => {
-  if (!riggGroup.children.length) return;
-  const h = renderer.domElement.clientHeight || 1;
-  const k = 2 * Math.tan(camera.fov * Math.PI / 360) / h;     // sceneenheter per px per avstand
-  const maks = LAPP_MAKS_M / (S.enhetSkala || 1);
-  riggGroup.traverse(o => {
-    if (!o.isSprite || !o.userData.px) return;
-    o.getWorldPosition(_lappV);
-    const d = _lappV.distanceTo(camera.position) || 1e-9;
-    const r = lappStorrelse(o.userData.px, 1 / (d * k), maks);
-    o.visible = r.vis;
-    o.scale.set(r.hoyde * (o.userData.aspect || 3), r.hoyde, 1);
-  });
-});
+// Regelen (maks 0.9 m, skjult under 7 px) bor i scene.js — materiellet bruker
+// den samme (Emil 25.09). Eksporteres videre herfra for de eksisterende testene.
+export { LAPP_MAKS_M, LAPP_MIN_PX, lappStorrelse };
+frameHooks.push(() => skalerLapperMedTak(riggGroup));
 
 export function leggRiggIMengder(groups, rows) {
   const liste = riggListe().filter(o => !skjulteTyper.has(o.type));

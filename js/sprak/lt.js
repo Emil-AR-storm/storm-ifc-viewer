@@ -1756,5 +1756,14 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Sett fra sør": "Vaizdas iš pietų",
   "Sett fra vest": "Vaizdas iš vakarų",
   "Sett fra øst": "Vaizdas iš rytų",
-  "Sett fra nord": "Vaizdas iš šiaurės"
+  "Sett fra nord": "Vaizdas iš šiaurės",
+  // 💾 Rigg: lagrede riggplaner (25.09)
+  "Riggplan hentet": "Aikštelės planas įkeltas",
+  "Gi riggplanen et navn før du lagrer den.": "Prieš išsaugodami suteikite aikštelės planui pavadinimą.",
+  "Plasser noe på tomta før du lagrer riggplanen.": "Prieš išsaugodami aikštelės planą, pastatykite ką nors sklype.",
+  "Lagrede riggplaner": "Išsaugoti aikštelės planai",
+  "Gi riggplanen et navn og lagre den. Trykk på navnet senere for å hente den fram igjen — den erstatter riggen som står nå (kan angres).": "Suteikite planui pavadinimą ir išsaugokite. Vėliau spustelėkite pavadinimą, kad jį atkurtumėte — jis pakeis dabartinį aikštelės išdėstymą (galima atšaukti).",
+  "Navn på riggplanen": "Aikštelės plano pavadinimas",
+  "{0} objekter": "{0} objektai",
+  "Ingen lagrede riggplaner ennå.": "Išsaugotų aikštelės planų dar nėra."
 };

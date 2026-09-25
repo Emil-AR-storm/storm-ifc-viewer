@@ -385,6 +385,46 @@ export const pointer = new THREE.Vector2();
 // Lapper og punkter med userData.px holder konstant størrelse på skjermen uansett modellstørrelse
 const _ssV = new THREE.Vector3();
 
+// ═══════ NAVNELAPPER MED TAK (rigg og materiell) ═══════
+// Nært: konstant størrelse på skjermen (userData.px), som før.
+// Langt unna: lappen blir ALDRI større enn LAPP_MAKS_M meter i virkeligheten.
+// Emils funn 25.09: med bare skjermstørrelse vokste lappene i forhold til
+// modellen når man zoomet ut, til de dekket alt. Nå krymper de sammen med
+// objektene når taket er nådd — og blir de mindre enn LAPP_MIN_PX, skjules de
+// helt: en lapp man ikke kan lese er bare støy. Regelen bor HER fordi både
+// rigg-vis.js og materiell-vis.js bruker den; to kopier ville drevet fra
+// hverandre første gang noen justerte taket.
+export const LAPP_MAKS_M = 0.9;
+export const LAPP_MIN_PX = 7;
+const _lappV = new THREE.Vector3();
+
+// Ren regel (testes): skjermhøyden i px ved avstanden, og om lappen vises.
+//   pxPerEnhet — hvor mange skjermpiksler én sceneenhet er på denne avstanden
+//   maksEnheter — taket, i sceneenheter
+export function lappStorrelse(px, pxPerEnhet, maksEnheter) {
+  const onsket = px / pxPerEnhet;                 // sceneenheter for px piksler
+  const hoyde = Math.min(onsket, maksEnheter);
+  const vistPx = hoyde * pxPerEnhet;
+  return { hoyde, vis: vistPx >= LAPP_MIN_PX };
+}
+
+// Skalerer alle sprites med userData.px i gruppa etter regelen over.
+// S.enhetSkala: modeller i mm har 1 sceneenhet = 1 mm, ikke 1 m.
+export function skalerLapperMedTak(group) {
+  if (!group.children.length) return;
+  const h = renderer.domElement.clientHeight || 1;
+  const k = 2 * Math.tan(camera.fov * Math.PI / 360) / h;     // sceneenheter per px per avstand
+  const maks = LAPP_MAKS_M / (S.enhetSkala || 1);
+  group.traverse(o => {
+    if (!o.isSprite || !o.userData.px) return;
+    o.getWorldPosition(_lappV);
+    const d = _lappV.distanceTo(camera.position) || 1e-9;
+    const r = lappStorrelse(o.userData.px, 1 / (d * k), maks);
+    o.visible = r.vis;
+    o.scale.set(r.hoyde * (o.userData.aspect || 3), r.hoyde, 1);
+  });
+}
+
 export function updateScreenScaled(group) {
   if (!group.children.length) return;
   const k = 2 * Math.tan(camera.fov * Math.PI / 360) / renderer.domElement.clientHeight;

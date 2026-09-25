@@ -816,3 +816,58 @@ export function nordOgOst(rot) {
   const n = { x: -Math.sin(t), z: -Math.cos(t) };
   return { nord: n, ost: { x: -n.z, z: n.x } };
 }
+
+// ═══════════════════════ 💾 LAGREDE RIGGPLANER ═══════════════════════
+//
+// Emil 25.09: «lagre og hente fram forskjellige riggplaner, akkurat som
+// veggelement i SW-generator». En lagret riggplan er et ØYEBLIKKSBILDE av
+// objektene på tomta, med et navn. Det er noe annet enn den løpende riggen
+// (IFC-modeller/Rigg), som alltid er «slik det står nå».
+
+export const RIGGPLAN_NAVN_MAKS = 60;
+
+// Det som lagres: objektene (uten gravsteiner) og referansen. `endret` og
+// `av` tas ikke med — de sier noe om den løpende riggen, ikke om planen.
+export function riggOyeblikk(liste) {
+  const obj = riggObjekter(liste).map(o => {
+    const k = JSON.parse(JSON.stringify(o));
+    delete k.endret;
+    return k;
+  });
+  const ref = riggRef(liste);
+  return { objekter: obj, ref: ref ? Object.assign({ id: REF_ID }, ref) : null };
+}
+
+// Den nye løpende lista når en lagret plan hentes fram.
+//   · objekter som står nå men ikke finnes i planen, blir GRAVSTEINER — ellers
+//     kom de tilbake ved neste fletting med SharePoint (se sp-lager.js)
+//   · planens objekter stemples med ny `endret`, så de vinner flettingen
+//   · referansen (hvor bygget står på tomta) beholdes fra NÅ hvis den finnes:
+//     den hører til terrenget som er lastet, ikke til planen. Uten en slik
+//     brukes planens, så riggen havner der den sto da den ble lagret.
+export function riggFraLagret(naa, oyeblikk, tid) {
+  const stempel = tid || new Date().toISOString();
+  const planObj = vaskRiggListe((oyeblikk && oyeblikk.objekter) || [])
+    .filter(p => p.id !== REF_ID && !p.slettet);
+  const iPlan = new Set(planObj.map(p => p.id));
+  const ut = [];
+  for (const p of riggObjekter(naa)) {
+    if (!iPlan.has(p.id)) ut.push({ id: p.id, slettet: true, endret: stempel });
+  }
+  // gamle gravsteiner beholdes, så flettingen fortsatt vet at de er borte
+  for (const p of (naa || [])) {
+    if (p && p.slettet && p.id !== REF_ID && !iPlan.has(p.id) && !ut.some(u => u.id === p.id)) ut.push(p);
+  }
+  for (const p of planObj) ut.push(Object.assign({}, p, { endret: stempel }));
+  const refNaa = (naa || []).find(p => p && p.id === REF_ID && vaskRef(p));
+  const refPlan = oyeblikk && oyeblikk.ref && vaskRef(oyeblikk.ref) ? Object.assign({}, oyeblikk.ref, { id: REF_ID }) : null;
+  const ref = refNaa || refPlan;
+  if (ref) ut.push(ref);
+  return ut;
+}
+
+// Kort beskrivelse i lista: «6 objekter · 1 gjerde».
+export function riggplanSammendrag(oyeblikk) {
+  const obj = (oyeblikk && oyeblikk.objekter) || [];
+  return { objekter: obj.length, gjerder: obj.filter(p => p && p.punkter && RIGG_TYPER[p.type] && RIGG_TYPER[p.type].gjerde).length };
+}

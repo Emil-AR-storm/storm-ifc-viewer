@@ -1756,5 +1756,14 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Sett fra sør": "Seen from the south",
   "Sett fra vest": "Seen from the west",
   "Sett fra øst": "Seen from the east",
-  "Sett fra nord": "Seen from the north"
+  "Sett fra nord": "Seen from the north",
+  // 💾 Rigg: lagrede riggplaner (25.09)
+  "Riggplan hentet": "Site plan loaded",
+  "Gi riggplanen et navn før du lagrer den.": "Give the site plan a name before saving it.",
+  "Plasser noe på tomta før du lagrer riggplanen.": "Place something on the site before saving the site plan.",
+  "Lagrede riggplaner": "Saved site plans",
+  "Gi riggplanen et navn og lagre den. Trykk på navnet senere for å hente den fram igjen — den erstatter riggen som står nå (kan angres).": "Give the site plan a name and save it. Click the name later to bring it back — it replaces the current site setup (can be undone).",
+  "Navn på riggplanen": "Site plan name",
+  "{0} objekter": "{0} objects",
+  "Ingen lagrede riggplaner ennå.": "No saved site plans yet."
 };
