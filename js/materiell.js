@@ -22,6 +22,7 @@ import * as THREE from "three";
 import { $, S, apnePanel, esc, ikon, på } from "./state.js";
 import { t } from "./i18n.js";
 import { camera, canvas, grid, raycaster } from "./scene.js";
+import { eierPunktet, registrerPeker } from "./pek-eier.js";
 import { pick } from "./elements.js";
 import { GRAPH, SP, authHeaders, graphGet, spTokenSilent } from "./sharepoint.js";
 import {
@@ -99,17 +100,24 @@ function pekPunkt(clientX, clientY, unntatt) {
 
 // Peker mot et materiell-objekt? Raycast mot materiellGroup — pick() i
 // elements.js ser bare modellen, med vilje.
-function pekMateriell(clientX, clientY) {
+function pekMateriellTreff(clientX, clientY) {
   settNdc(clientX, clientY);
   raycaster.setFromCamera(_ndc, camera);
   const treff = raycaster.intersectObjects(materiellGroup.children, true);
   for (const h of treff) {
     let o = h.object;
     while (o && !o.userData.materiellId) o = o.parent;
-    if (o && o.userData.materiellId) return o;
+    if (o && o.userData.materiellId) return { o, avstand: h.distance };
   }
   return null;
 }
+// Bare et treff som ligger nærmere enn alt annet klikkbart (rigg) teller —
+// ellers ble både materiellet og rigg-objektet bak det markert (25.09).
+function pekMateriell(clientX, clientY) {
+  const h = pekMateriellTreff(clientX, clientY);
+  return h && eierPunktet("materiell", clientX, clientY) ? h.o : null;
+}
+registrerPeker("materiell", (x, y) => { const h = pekMateriellTreff(x, y); return h ? h.avstand : null; });
 
 // ---------- Angre ----------
 function post(tekst, angreFn, gjenFn) {

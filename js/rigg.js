@@ -29,6 +29,7 @@ import * as THREE from "three";
 import { $, S, apnePanel, esc, ikon, på, writePrefs } from "./state.js";
 import { t } from "./i18n.js";
 import { camera, canvas, flyTil, frameHooks, raycaster, scene } from "./scene.js";
+import { eierPunktet, registrerPeker } from "./pek-eier.js";
 import { pick, pickFlate } from "./elements.js";
 import { flettPaaId, spLes, spPaalogget, spSkriv } from "./sp-lager.js";
 import {
@@ -272,11 +273,15 @@ function pekRiggTreff(x, y) {
       if (stykke == null && o.userData.stykke != null) stykke = o.userData.stykke;
       o = o.parent;
     }
-    if (o && o.userData.riggId) return { g: o, stykke, punkt: h.point };
+    if (o && o.userData.riggId) return { g: o, stykke, punkt: h.point, avstand: h.distance };
   }
   return null;
 }
-function pekRigg(x, y) { const h = pekRiggTreff(x, y); return h ? h.g : null; }
+// Bare et treff som ligger nærmere enn alt annet klikkbart (materiell) teller —
+// ellers ble både rigg-objektet og materiellet foran det markert (25.09).
+function pekRiggEier(x, y) { const h = pekRiggTreff(x, y); return h && eierPunktet("rigg", x, y) ? h : null; }
+function pekRigg(x, y) { const h = pekRiggEier(x, y); return h ? h.g : null; }
+registrerPeker("rigg", (x, y) => { const h = pekRiggTreff(x, y); return h ? h.avstand : null; });
 
 // ═══════════════════════ 🚧 SKJØTENE (håndtak) ═══════════════════════
 // Svarte prikker med hvit kant, som på Emils skisse. De står like over
@@ -724,7 +729,7 @@ window.addEventListener("pointerdown", (e) => {
       oppdaterValgBar(); oppdaterHandtak();
       return;
     }
-    const h = pekRiggTreff(e.clientX, e.clientY);
+    const h = pekRiggEier(e.clientX, e.clientY);
     if (h) {
       e.stopPropagation();
       const id = h.g.userData.riggId, varValgt = id === valgtId;
@@ -875,7 +880,7 @@ window.addEventListener("dblclick", (e) => {
   if (tegner) { e.stopPropagation(); e.preventDefault(); fullforPil(); return; }
   const o = valgtGjerde();
   if (!o) return;
-  const h = pekRiggTreff(e.clientX, e.clientY);
+  const h = pekRiggEier(e.clientX, e.clientY);
   if (!h || h.g.userData.riggId !== o.id || h.stykke == null) return;
   e.stopPropagation(); e.preventDefault();
   // Treffpunktet på selve panelet, ikke bakken bak det: da havner skjøten
