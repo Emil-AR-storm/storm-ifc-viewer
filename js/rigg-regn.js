@@ -36,6 +36,10 @@ export const RIGG_TYPER = {
   container:  { label: "Container 20 fot", L: 6.06, B: 2.44, H: 2.59, farge: "#2e6b4f" },
   hms:        { label: "HMS-kort-registrering", L: 0.8, B: 0.6, H: 1.5, farge: "#455a64" },
   soppel:     { label: "Søppelcontainer", L: 3.5, B: 1.9, H: 1.5, farge: "#2c5f8a" },
+  // 🅿 Parkeringsområde (Emil 25.09): asfaltflate med oppmerkede plasser og
+  // et P-skilt. L × B er hele området; plassene regnes ut av målene
+  // (parkeringsPlasser), aldri skrives inn. H er skiltets høyde.
+  parkering:  { label: "Parkeringsområde", L: 25, B: 16, H: 2.2, farge: "#6e757c", parkering: true },
   // 🚧 Byggegjerdet (trinn 3–4). L = PANELLENGDEN og H = panelhøyden — samme
   // felt som de andre objektene, så skjema, vasking og lagring er de samme.
   // B er foten (betongklossen) og brukes bare til tegningen.
@@ -61,7 +65,7 @@ export function minPunkter(o) { return erPil(o) ? 2 : 3; }
 
 // Rekkefølgen knappene står i panelet — det man rigger først, først.
 export const RIGG_REKKEFOLGE = ["gjerde", "pilKjoretoy", "pilGaende", "brakke", "hjulbrakke", "toalett", "forstehjelp", "mote",
-  "strom", "container", "hms", "soppel"];
+  "strom", "container", "hms", "soppel", "parkering"];
 
 // Kort forklaring per type. Står i panelet nå, og blir teksten i
 // tegnforklaringen på riggplan-PDF-en (trinn 6).
@@ -75,6 +79,7 @@ export const RIGG_FORKLARING = {
   container: "Lager for verktøy og materiell",
   hms: "Registrering av HMS-kort ved inngangen",
   soppel: "Avfall og kildesortering",
+  parkering: "Parkering for ansatte og besøkende",
   gjerde: "Byggegjerde rundt byggeplassen, med port for kjøretøy",
   pilKjoretoy: "Kjørevei for biler, lastebiler og maskiner",
   pilGaende: "Gangvei for de som går på byggeplassen"
@@ -138,8 +143,8 @@ export function vaskRiggObjekt(p) {
     id, type: p.type,
     navn: tekst(p.navn, 80),
     farge: vaskFarge(p.farge, M.farge),
-    L: mal(p.L, M.gjerde ? 0.5 : 0.1, M.gjerde ? 10 : 30, M.L),
-    B: mal(p.B, 0.1, 30, M.B),
+    L: mal(p.L, M.gjerde ? 0.5 : 0.1, M.gjerde ? 10 : M.parkering ? 200 : 30, M.L),
+    B: mal(p.B, 0.1, M.parkering ? 200 : 30, M.B),
     H: mal(p.H, 0.1, 15, M.H),
     // "utm" = E/N er UTM33 i meter (riggen hører til TOMTA, Emil 25.09).
     // "bygg" = lagt inn før noe terreng fantes: E/N er byggrammen (E = x,
@@ -163,6 +168,21 @@ export function vaskRiggObjekt(p) {
     if (M.pil) ut.punkter.forEach(q => { delete q.port; });
   }
   return ut;
+}
+
+// ═══════════════════════ 🅿 PARKERING ═══════════════════════
+//
+// Standard personbilplass 2,5 × 5,0 m og kjørebane 6 m mellom to rader
+// {Source not found: typiske mål, ikke sjekket mot kommunens parkeringsnorm}.
+// Regelen: er området minst 2 × 5 + 6 = 16 m dypt, blir det to rader mot
+// hverandre med kjørebanen i midten; er det minst 5 + 6 = 11 m, én rad med
+// kjørebane foran; ellers én rad uten. Plassene ligger langs lengden (L).
+export const P_PLASS_B = 2.5, P_PLASS_D = 5.0, P_KJOREBANE = 6.0;
+export function parkeringsPlasser(L, B) {
+  const perRad = Math.max(0, Math.floor((Number(L) || 0) / P_PLASS_B + 1e-9));
+  const d = Number(B) || 0;
+  const rader = d >= 2 * P_PLASS_D + P_KJOREBANE ? 2 : d >= P_PLASS_D ? 1 : 0;
+  return { rader, perRad, totalt: rader * perRad };
 }
 
 // ═══════════════════════ 🚧 BYGGEGJERDET ═══════════════════════
@@ -633,4 +653,81 @@ export function riggTelling(liste) {
 
 export function nyRiggId() {
   return "R-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 7);
+}
+
+
+// ═══════════════════════ 📄 RIGGPLAN-PDF (trinn 6) ═══════════════════════
+//
+// Arket: A3 liggende (Emil 25.09). Til venstre tomta sett rett ovenfra med
+// NORD OPP, til høyre tegnforklaringen, nederst tittelfeltet. Alt i mm.
+export const RIGGPLAN = {
+  b: 420, h: 297, marg: 10,
+  bildeB: 292,                 // bildefeltet (venstre)
+  tittelH: 24,                 // tittelfeltet (nederst, hele bredden)
+  mellom: 4                    // luft mellom feltene
+};
+RIGGPLAN.bildeH = RIGGPLAN.h - 2 * RIGGPLAN.marg - RIGGPLAN.tittelH - RIGGPLAN.mellom;
+RIGGPLAN.forklaringX = RIGGPLAN.marg + RIGGPLAN.bildeB + RIGGPLAN.mellom;
+RIGGPLAN.forklaringB = RIGGPLAN.b - RIGGPLAN.marg - RIGGPLAN.forklaringX;
+
+// Målestokkene en riggplan tegnes i. Planen tegnes i en RUND målestokk — da
+// kan den måles på med linjal, og målestokken i tittelfeltet stemmer.
+export const MALESTOKKER = [100, 200, 250, 500, 750, 1000, 1500, 2000, 2500, 5000, 10000, 20000];
+
+// Minste målestokk der området (bM × hM meter) får plass på bildefeltet.
+export function velgMalestokk(bM, hM, bMm, hMm) {
+  for (const s of MALESTOKKER) if (bM * 1000 / s <= bMm && hM * 1000 / s <= hMm) return s;
+  return MALESTOKKER[MALESTOKKER.length - 1];
+}
+
+// Skalastreken: en rund lengde som blir høyst maksMm lang på arket.
+const STREKER = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000];
+export function skalaStrek(malestokk, maksMm) {
+  let m = STREKER[0];
+  for (const l of STREKER) if (l * 1000 / malestokk <= maksMm) m = l;
+  const mm = m * 1000 / malestokk;
+  return { m, mm, deler: m % 5 === 0 || m === 25 || m === 250 ? 5 : m % 2 === 0 ? 4 : 2 };
+}
+
+export function riggplanFilnavn(modell, iso) {
+  const navn = String(modell || "modell").replace(/\.(ifc|glb)$/i, "").replace(/[\\/:*?"<>|]/g, "_").trim() || "modell";
+  return "Riggplan " + navn + " " + (iso || "") + ".pdf";
+}
+
+// Tegnforklaringen: én rad per type som står på planen (ikke skjult), i
+// panelets rekkefølge, nummerert 1, 2, 3 … Nummeret står også i en ring ved
+// hvert objekt på planen. `tr` oversetter tekstene.
+export function riggplanTegnforklaring(liste, tr) {
+  const lab = tr || ((x) => x);
+  const obj = riggObjekter(liste).filter(o => !o.skjult);
+  const ut = [];
+  for (const k of RIGG_REKKEFOLGE) {
+    const av = obj.filter(o => o.type === k);
+    if (!av.length) continue;
+    const M = RIGG_TYPER[k];
+    let antall;
+    if (M.gjerde) {
+      const g = av.reduce((a, o) => { const m = gjerdeMengder(o); a.p += m.paneler; a.port += m.porter; a.l += m.lengde; return a; }, { p: 0, port: 0, l: 0 });
+      antall = lab("{0} paneler · {1} porter").replace("{0}", g.p).replace("{1}", g.port) + " · " + Math.round(g.l) + " m";
+    } else if (M.pil) {
+      antall = av.length + " " + lab("stk") + " · " + Math.round(av.reduce((a, o) => a + pilLengde(o), 0)) + " m";
+    } else if (M.parkering) {
+      const pl = av.reduce((a, o) => a + parkeringsPlasser(o.L, o.B).totalt, 0);
+      antall = lab("{0} plasser").replace("{0}", pl);
+    } else {
+      antall = av.reduce((a, o) => a + riggAntall(o), 0) + " " + lab("stk");
+    }
+    ut.push({ nr: ut.length + 1, type: k, label: lab(M.label), farge: M.farge, stiplet: !!M.stiplet, pil: !!M.pil,
+      antall, forklaring: lab(RIGG_FORKLARING[k] || "") });
+  }
+  return ut;
+}
+
+// Nord i scenen, gitt byggets rotasjon på tomta (samme som nordRetning i
+// terreng-regn.js, kopiert av samme grunn som rammene over), og øst 90° med
+// klokka fra nord sett ovenfra.
+export function nordOgOst(rot) {
+  const t = (Number(rot) || 0) * Math.PI / 180;
+  const n = { x: -Math.sin(t), z: -Math.cos(t) };
+  return { nord: n, ost: { x: -n.z, z: n.x } };
 }

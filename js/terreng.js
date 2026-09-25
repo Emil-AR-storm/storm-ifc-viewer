@@ -200,6 +200,8 @@ S.terrengRef = () => {
   return {
     E0, N0, plass: { pE: plass.pE || 0, pN: plass.pN || 0, rot: plass.rot || 0 },
     synlig,
+    // 📄 riggplanen skriver adressen i tittelfeltet
+    adresse: (terreng.adresse && terreng.adresse.tekst) || "",
     yVed(E, N) {
       if (!synlig) return null;
       if (pad && pad.paa && gulv && !visMasser) {

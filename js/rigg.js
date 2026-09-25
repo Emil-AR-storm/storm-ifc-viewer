@@ -35,7 +35,7 @@ import {
   MAKS_ETASJER, MAKS_MODULER, REF_ID, RIGG_FORKLARING, RIGG_REKKEFOLGE, RIGG_TYPER, ROT_STEG,
   byggTilRigg, enTilLokal, fjernSkjoter, flyttSkjoter, gjerdeFraRektangel, gjerdeMengder, gjerdeStykker,
   gjorOmTilPort, gjorTilbake, leggTilSkjot, naboStykker, nyRiggId, normVinkel, riggAntall, riggObjekter,
-  riggTelling, trengerOpplasting, vaskRiggListe, vaskRiggObjekt, erGjerde, erPil, minPunkter, pilFraPunkter, pilLengde
+  riggTelling, trengerOpplasting, vaskRiggListe, vaskRiggObjekt, erGjerde, erPil, minPunkter, parkeringsPlasser, pilFraPunkter, pilLengde
 } from "./rigg-regn.js";
 import {
   aktivRef, byggRiggObjekt, finnRiggObjekt, gjerdeDelLabel, lappStorrelse, oppdaterRiggValgEffekt, riggBase, riggGroup,
@@ -962,7 +962,8 @@ function tegnPanel() {
     return '<div class="qty-row"' + (o.skjult ? ' style="opacity:.55"' : "") + '><div class="n" data-rigg-velg="' + esc(o.id) + '" style="cursor:pointer">' +
       flis(o.farge) + esc(o.navn || riggTypeLabel(o.type)) +
       ' <span style="color:var(--muted);font-size:11px">' + esc(riggTypeLabel(o.type)) +
-      (erPil(o) ? " · " + (Math.round(pilLengde(o) * 10) / 10) + " m" : o.punkter ? " · " + gjerdeTekst(o) : " · " + o.L + " × " + o.B + " m" + (n > 1 ? " · ×" + n : "")) + "</span></div>" +
+      (erPil(o) ? " · " + (Math.round(pilLengde(o) * 10) / 10) + " m" : o.punkter ? " · " + gjerdeTekst(o) : " · " + o.L + " × " + o.B + " m" + (n > 1 ? " · ×" + n : "") +
+        (RIGG_TYPER[o.type].parkering ? " · " + t("{0} plasser", parkeringsPlasser(o.L, o.B).totalt) : "")) + "</span></div>" +
       '<div class="c">' +
       '<button data-rigg-skjul="' + esc(o.id) + '" title="' + t("Skjul/vis") + '" style="padding:3px 8px">' + ikon(o.skjult ? "skjul" : "vis") + "</button>" +
       '<button data-rigg-slett="' + esc(o.id) + '" title="' + t("Slett") + '" style="padding:3px 8px">' + ikon("slett") + "</button></div></div>";
@@ -977,10 +978,22 @@ function tegnPanel() {
       "<p " + LITEN + ">" + t("Står også i Mengder under typen «Rigg», og kommer med i Excel-arket.") + "</p>";
   }
 
+  // 📄 Riggplanen (trinn 6): hovedhandlingen i panelet når noe er plassert
+  if (liste.length) html += '<div class="prop-actions" style="margin-top:12px"><button id="riggPdf" class="primary">' +
+    ikon("lastned") + " " + t("Last ned riggplan (PDF)") + "</button></div>" +
+    "<p " + LITEN + ">" + t("A3 liggende: tomta sett ovenfra med nord opp, tegnforklaring og tittelfelt.") + "</p>";
   html += '<h4 style="margin:14px 0 4px">' + ikon("lagre") + " " + t("Lagring") + "</h4>" +
     '<p id="riggLagringTekst" ' + LITEN + ">" + esc(lagringsTekst()) + "</p>";
 
   body.innerHTML = html;
+  // Lastes først når knappen trykkes: PDF-koden og jsPDF skal ikke koste noe
+  // for den som aldri laster ned en riggplan.
+  if ($("riggPdf")) $("riggPdf").onclick = async () => {
+    const b = $("riggPdf"); b.disabled = true;
+    try { const m = await import("./riggplan.js"); await m.lastNedRiggplan(); }
+    catch (err) { alert(t("Klarte ikke å lage riggplanen: {0}", err.message)); }
+    finally { if ($("riggPdf")) $("riggPdf").disabled = false; }
+  };
   body.querySelectorAll("button[data-rigg-ny]").forEach(b => b.onclick = () =>
     b.dataset.riggNy === "gjerde" ? startGjerde()
       : RIGG_TYPER[b.dataset.riggNy].pil ? startPil(b.dataset.riggNy)

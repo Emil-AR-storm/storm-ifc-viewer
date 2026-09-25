@@ -1716,5 +1716,27 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Pil: gående": "Strzałka: piesi",
   "Kjørevei for biler, lastebiler og maskiner": "Droga dla samochodów, ciężarówek i maszyn",
   "Gangvei for de som går på byggeplassen": "Ciąg pieszy dla osób poruszających się po budowie",
-  "Bredde på pila (m)": "Szerokość strzałki (m)"
+  "Bredde på pila (m)": "Szerokość strzałki (m)",
+// ---------- 📄 Rigg: riggplan-PDF og parkering ----------
+  "{0} plasser": "{0} miejsc",
+  "Last ned riggplan (PDF)": "Pobierz plan zagospodarowania (PDF)",
+  "A3 liggende: tomta sett ovenfra med nord opp, tegnforklaring og tittelfelt.": "A3 poziomo: działka z góry, północ u góry, legenda i tabliczka rysunkowa.",
+  "Klarte ikke å lage riggplanen: {0}": "Nie udało się utworzyć planu: {0}",
+  "Legg inn noe rigg først — planen er tom.": "Najpierw dodaj elementy zaplecza — plan jest pusty.",
+  "Lager riggplan …": "Tworzenie planu …",
+  "Fant ingenting å tegne.": "Nie znaleziono nic do narysowania.",
+  "Terreng og kart: © Kartverket (CC BY 4.0)": "Teren i mapa: © Kartverket (CC BY 4.0)",
+  "Uten terreng — bakgrunnen er ikke et kart": "Bez terenu — tło nie jest mapą",
+  "Nord er ikke kontrollert: modellen står ikke i et terreng.": "Północ nie jest sprawdzona: model nie stoi w terenie.",
+  "Tegnforklaring": "Legenda",
+  "… flere typer enn det er plass til": "… więcej typów niż miejsca",
+  "Tegning": "Rysunek",
+  "Riggplan": "Plan zagospodarowania",
+  "Prosjekt og adresse": "Projekt i adres",
+  "Omtrentlig plassering (±1–2 m). Skal ikke brukes til utstikking.": "Położenie przybliżone (±1–2 m). Nie do tyczenia.",
+  "Dato": "Data",
+  "Målestokk": "Skala",
+  "Laget av": "Sporządził",
+  "Parkeringsområde": "Parking",
+  "Parkering for ansatte og besøkende": "Parking dla pracowników i gości"
 };
