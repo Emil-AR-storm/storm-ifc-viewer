@@ -624,3 +624,90 @@ export function nordRetning(rot) {
   const t = (Number(rot) || 0) * Math.PI / 180;
   return { x: -Math.sin(t), z: -Math.cos(t) };
 }
+
+// ═══════════════════════ LAGRING (trinn 7) ═══════════════════════
+//
+// Tre ting lagres i SharePoint, i mappa IFC-modeller/Terreng:
+//   terreng.json               — katalogen over tomter (delt mellom alle modeller)
+//   <id>.bin                   — høydegridet, rå Float32 (skrives ÉN gang, endres aldri)
+//   <modellfil>.plassering.json — hvor DENNE modellen står på terrenget
+// Plasseringen ligger på modellen, ikke på terrenget (spesifikasjonen punkt 4):
+// ARK, RIB og nye revisjoner kan peke på samme terreng og lande likt.
+//
+// Alt som kommer tilbake fra SharePoint vaskes her. En fil kan inneholde hva
+// som helst, og en plassering med NaN i gulvkoten ville sendt terrenget ut av
+// synsfeltet uten et eneste feilsymptom.
+
+const tall = (v) => (typeof v === "number" && Number.isFinite(v)) ? v : null;
+const tekst = (v, n) => String(v == null ? "" : v).slice(0, n || 80).trim();
+
+export function nyTerrengId() {
+  return "T-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 7);
+}
+
+export function vaskTerrengPost(p) {
+  if (!p || typeof p !== "object" || typeof p.id !== "string" || !p.id) return null;
+  const id = p.id.slice(0, 40), navn = tekst(p.navn, 80), endret = tekst(p.endret, 40);
+  if (!navn) return null;
+  if (p.slettet === true) return { id, navn, slettet: true, endret };
+  const b = p.bbox || {};
+  const bbox = { minE: tall(b.minE), minN: tall(b.minN), maxE: tall(b.maxE), maxN: tall(b.maxN), side: tall(b.side) };
+  if (Object.values(bbox).some(v => v == null) || !(bbox.side > 0)) return null;
+  const w = tall(p.w), h = tall(p.h), dx = tall(p.dx), dy = tall(p.dy), x0 = tall(p.x0), y0 = tall(p.y0);
+  if (!(w >= 2 && w <= 4000 && h >= 2 && h <= 4000 && Number.isInteger(w) && Number.isInteger(h))) return null;
+  if (!(dx > 0 && dy > 0) || x0 == null || y0 == null) return null;
+  const E0 = tall(p.E0), N0 = tall(p.N0);
+  if (E0 == null || N0 == null) return null;
+  const a = p.adresse || {};
+  const adresse = { tekst: tekst(a.tekst, 120) || navn, postnummer: tekst(a.postnummer, 8), poststed: tekst(a.poststed, 60),
+    kommune: tekst(a.kommune, 60), E: tall(a.E) != null ? a.E : E0, N: tall(a.N) != null ? a.N : N0 };
+  return {
+    id, navn, bbox, w, h, dx, dy, x0, y0, E0, N0, adresse,
+    nodata: tall(p.nodata),
+    kilde: tekst(p.kilde, 120), laserdato: p.laserdato == null ? null : tekst(p.laserdato, 20),
+    av: tekst(p.av, 60), opprettet: tekst(p.opprettet, 40), endret
+  };
+}
+
+export function vaskTerrengListe(liste) {
+  return (Array.isArray(liste) ? liste : []).map(vaskTerrengPost).filter(Boolean);
+}
+
+export function vaskPlassering(p) {
+  if (!p || typeof p !== "object" || p.id !== "plassering" || typeof p.terreng !== "string" || !p.terreng) return null;
+  const pl = p.plass || {};
+  const plass = { pE: tall(pl.pE) || 0, pN: tall(pl.pN) || 0, rot: normVinkel(tall(pl.rot) || 0) };
+  if (Math.abs(plass.pE) > 5000 || Math.abs(plass.pN) > 5000) return null;
+  const g = p.gulv || {};
+  const kote = tall(g.kote);
+  const gulv = (kote != null && kote > MIN_HOYDE && kote < MAKS_HOYDE) ? { kote, grov: g.grov === true } : null;
+  let pad = null;
+  if (p.pad && typeof p.pad === "object") {
+    const q = p.pad, v = [q.x0, q.x1, q.z0, q.z1].map(tall);
+    if (v.every(x => x != null) && v[1] > v[0] && v[3] > v[2] && v.every(x => Math.abs(x) < 5000))
+      pad = { paa: q.paa !== false, x0: v[0], x1: v[1], z0: v[2], z1: v[3] };
+  }
+  let klipp = null;
+  if (p.klipp && typeof p.klipp === "object") {
+    const q = p.klipp, v = [q.i0, q.i1, q.j0, q.j1].map(tall);
+    if (v.every(x => x != null && Number.isInteger(x) && x >= 0) && v[1] > v[0] && v[3] > v[2])
+      klipp = { i0: v[0], i1: v[1], j0: v[2], j1: v[3] };
+  }
+  return {
+    id: "plassering", terreng: p.terreng.slice(0, 40), plass, gulv, pad, klipp,
+    kart: p.kart === "hoyde" ? "hoyde" : "topo",
+    av: tekst(p.av, 60), endret: tekst(p.endret, 40)
+  };
+}
+
+// Høydegridet som rå bytes og tilbake. Lengden sjekkes mot katalogposten:
+// en avkuttet opplasting skal gi en feilmelding, ikke et terreng med et hull.
+export function gridTilBin(grid) {
+  return grid.data.buffer.slice(grid.data.byteOffset, grid.data.byteOffset + grid.data.byteLength);
+}
+
+export function binTilGrid(buf, post) {
+  const ab = buf instanceof ArrayBuffer ? buf : (buf && buf.buffer) ? buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) : null;
+  if (!ab || ab.byteLength !== post.w * post.h * 4) throw new Error("gridfila har feil størrelse");
+  return { w: post.w, h: post.h, data: new Float32Array(ab), x0: post.x0, y0: post.y0, dx: post.dx, dy: post.dy, nodata: post.nodata };
+}

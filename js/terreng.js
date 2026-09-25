@@ -21,13 +21,15 @@
 import * as THREE from "three";
 import { $, S, apnePanel, esc, ikon, på, registrerEkstraGruppe } from "./state.js";
 import { t } from "./i18n.js";
+import { flettPaaId, spLes, spLesBin, spPaalogget, spSkriv, spSkrivBin } from "./sp-lager.js";
 import { camera, canvas, controls, frameHooks, grid, makeLabel, renderer, scene, updateScreenScaled } from "./scene.js";
 import {
   STANDARD_UTSNITT, UTSNITT, adresseUrl, bboxFra, byggTilTerreng, flyttKlippKant, flyttPadKant, flyttPlass,
   fulltKlipp, gridTilTrekanter, hoydeFarger, hoydeIPunkt, kartUv, nordRetning, topoUrl, hoydeSpenn, hoydeVed, klippHandtak,
   klippMeter, klippOmriss, lagIndeks, lavesteUnder, lesTiff, likeKlipp, likePad, mTilScene, normVinkel,
   padFlagg, padHandtak, padMeter, padStandard, pikselSenter, punktFraE, punktFraN, snapVinkel, tolkKoordinat,
-  tolkKote, vaskAdresseSvar, wcsUrl
+  tolkKote, vaskAdresseSvar, wcsUrl,
+  binTilGrid, gridTilBin, navneforslag, nyTerrengId, vaskPlassering, vaskTerrengListe
 } from "./terreng-regn.js";
 
 // ═══════════════════════ TILSTAND ═══════════════════════
@@ -515,6 +517,7 @@ function oppdaterAlt() {
   plasserGrupper(mr);
   tegnHandtak();
   visTall();
+  planLagring();
 }
 
 function flyTilTerreng() {
@@ -535,6 +538,7 @@ function brukKlipp() {
   flateMesh.geometry.setIndex(new THREE.BufferAttribute(idx, 1));
   tegnHandtak();
   visTall();
+  planLagring();
 }
 
 function klippTekst() {
@@ -1036,11 +1040,260 @@ function fjernTerreng() {
 // dens enheter. Det hører ikke til den neste. (Trinn 8: finnes en
 // plasseringsfil for den nye modellen, hentes terrenget inn igjen av seg selv.)
 S.ryddTerreng = () => {
+  clearTimeout(lagreTid);
   ryddKart(terreng);
   terreng = null; skjult = false; treff = []; flyttModus = false;
   ryddScene();
   oppdaterRutenett();
 };
+
+// ═══════════════════════ 💾 LAGRING (trinn 7) ═══════════════════════
+//
+// Katalogen (terreng.json) og plasseringen (<modell>.plassering.json) går
+// gjennom sp-lager.js — fletting, eTag, 412 og gravsteiner ligger der ferdig
+// prøvd. Høydegridet er en rå Float32-fil som skrives én gang (spSkrivBin).
+//
+// LOKALT FØRST, SÅ SHAREPOINT (samme mønster som grupper.js): plasseringen og
+// katalogposten ligger også i localStorage, så terrenget kommer tilbake på
+// denne maskinen selv uten innlogging. Gridet får ikke plass i localStorage
+// (4 MB) — men det er åpne data, så uten SharePoint hentes det bare på nytt
+// fra Kartverket med samme firkant. Det gir nøyaktig de samme høydene.
+const SP_MAPPE = "Terreng";
+const KATALOG_FIL = "terreng.json";
+const LS_KATALOG = "storm-ifc-terreng-katalog";
+function plassFil() { return S.fileName + ".plassering.json"; }
+function lsPlassNokkel() { return "storm-ifc-terreng-plassering::" + S.fileName; }
+
+let katalog = [];          // vasket, med gravsteiner
+let spStatus = "av";       // "av" | "ok" | "feil" — vises i panelet
+let lagrer = false;
+let lagreTid = 0;
+
+function lsLes(k, fb) { try { return JSON.parse(localStorage.getItem(k) || "null") || fb; } catch (_) { return fb; } }
+function lsSkriv(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} }
+
+function mittNavn() {
+  try {
+    const acc = S.msalApp && S.msalApp.getActiveAccount();
+    return (acc && (acc.name || acc.username)) || "";
+  } catch (_) { return ""; }
+}
+
+function lagringsTekst() {
+  if (spStatus === "ok") return t("Lagres i SharePoint — alle med tilgang ser det samme.");
+  if (spStatus === "feil") return t("Får ikke kontakt med SharePoint. Lagres bare på denne maskinen inntil videre.");
+  return t("Lagres bare på denne maskinen. Logg inn i Biblioteket for å dele med de andre.");
+}
+
+function synligKatalog() { return katalog.filter(p => !p.slettet); }
+
+function katalogPost(t0, navn) {
+  const g = t0.grid, naa = new Date().toISOString();
+  return {
+    id: t0.id, navn, bbox: t0.bb, w: g.w, h: g.h, dx: g.dx, dy: g.dy, x0: g.x0, y0: g.y0, nodata: g.nodata,
+    E0: t0.E0, N0: t0.N0, adresse: t0.adresse,
+    kilde: "Kartverket Høyde DTM (NHM_DTM_25833)", laserdato: null,
+    av: mittNavn(), opprettet: naa, endret: naa
+  };
+}
+
+function plassPost() {
+  return {
+    id: "plassering", terreng: terreng.id, plass: terreng.plass, gulv: terreng.gulv, pad: terreng.pad,
+    klipp: terreng.klipp, kart: kartValg, av: mittNavn(), endret: new Date().toISOString()
+  };
+}
+
+async function skrivKatalog(poster) {
+  katalog = vaskTerrengListe(flettPaaId(poster, katalog));
+  lsSkriv(LS_KATALOG, katalog);
+  if (!spPaalogget()) { spStatus = "av"; return; }
+  const res = await spSkriv(SP_MAPPE, KATALOG_FIL, poster, (p) => String(p && p.id || ""));
+  spStatus = res.ok ? "ok" : "feil";
+  if (res.ok && res.liste) { katalog = vaskTerrengListe(res.liste); lsSkriv(LS_KATALOG, katalog); }
+}
+
+// Plasseringen skrives ETTER at brukeren har sluppet musa, og samlet: et drag
+// med rotasjon og tre justeringer av plata blir ÉN skriving, ikke fire.
+function planLagring() {
+  if (!terreng || !terreng.id || !S.fileName) return;
+  const fil = S.fileName;
+  lsSkriv(lsPlassNokkel(), plassPost());
+  clearTimeout(lagreTid);
+  lagreTid = setTimeout(async () => {
+    if (!terreng || !terreng.id || S.fileName !== fil) return;
+    if (!spPaalogget()) { spStatus = "av"; if (erApen()) visLagring(); return; }
+    const res = await spSkriv(SP_MAPPE, plassFil(), [plassPost()], (p) => String(p && p.id || ""));
+    spStatus = res.ok ? "ok" : "feil";
+    if (erApen()) visLagring();
+  }, 1200);
+}
+
+function visLagring() {
+  const el = $("trLagringTekst");
+  if (el) el.textContent = lagringsTekst();
+}
+
+// «Lagre terreng»: gridet først (tregest, og uten det er katalogposten
+// verdiløs), så katalogen, så plasseringen for denne modellen.
+async function lagreTerreng(navn) {
+  if (!terreng || lagrer) return;
+  const n = String(navn || "").trim().slice(0, 80);
+  if (!n) { alert(t("Gi terrenget et navn først.")); return; }
+  lagrer = true; tegnPanel();
+  const t0 = terreng;
+  t0.id = nyTerrengId();
+  try {
+    if (spPaalogget()) {
+      const bin = await spSkrivBin(SP_MAPPE, t0.id + ".bin", gridTilBin(t0.grid));
+      if (!bin.ok) spStatus = bin.grunn === "av" ? "av" : "feil";
+    }
+    await skrivKatalog([katalogPost(t0, n)]);
+    t0.navn = n;
+    if (terreng === t0) planLagring();
+  } finally {
+    lagrer = false;
+    if (erApen()) tegnPanel();
+  }
+}
+
+// Gridet til en katalogpost: SharePoint først, ellers Kartverket med samme
+// firkant og samme oppløsning.
+async function gridFor(post) {
+  // Ikke innlogget → rett til Kartverket. (Uten MSAL-biblioteket kaster
+  // selve token-kallet, og det skal ikke stoppe gjenopprettingen.)
+  if (spPaalogget()) {
+    try {
+      const sp = await spLesBin(SP_MAPPE, post.id + ".bin");
+      if (sp.status === "ok") return binTilGrid(sp.data, post);
+    } catch (err) { console.warn("Gridfila i SharePoint kunne ikke brukes:", err.message); }
+  }
+  const r = await hentMedFrist(wcsUrl(post.bbox), 30000);
+  const g = lesTiff(await r.arrayBuffer());
+  if (g.w !== post.w || g.h !== post.h) throw new Error(t("Kartverket svarte med et annet rutenett enn det som ble lagret"));
+  return g;
+}
+
+// Bygger terreng-objektet fra en katalogpost (+ plassering hvis den finnes).
+async function lastTerrengPost(post, pl, medKamera) {
+  if (!S.modelGroup) return;
+  const forFil = S.fileName;
+  opptatt = true; settMelding(t("Henter lagret terreng …"));
+  try {
+    const g = await gridFor(post);
+    if (S.fileName !== forFil) { opptatt = false; return; }
+    const spenn = hoydeSpenn(g);
+    const E0 = post.E0, N0 = post.N0;
+    const hPunkt = hoydeVed(g, E0, N0);
+    const h0 = hPunkt != null ? hPunkt : spenn.min;
+    const mr = modellRef();
+    const plass = pl ? pl.plass : { pE: 0, pN: 0, rot: 0 };
+    let gulv = pl && pl.gulv;
+    if (!gulv) {
+      const gk = lavesteUnder(g, E0, N0, plass, mr.fp);
+      gulv = { kote: Math.round((gk != null ? gk : h0) * 1000) / 1000, grov: true };
+    }
+    const fullt = fulltKlipp(g);
+    const klipp = pl && pl.klipp && pl.klipp.i1 <= fullt.i1 && pl.klipp.j1 <= fullt.j1 ? pl.klipp : fullt;
+    if (pl && pl.kart) kartValg = pl.kart;
+    ryddKart(terreng);
+    terreng = {
+      grid: g, bb: post.bbox, E0, N0, h0, hPunkt, spenn, adresse: post.adresse, klipp, plass, gulv,
+      pad: (pl && pl.pad) || padStandard(mr.fp), id: post.id, navn: post.navn
+    };
+    sisteSok = post.adresse.tekst || sisteSok;
+    skjult = false;
+    tegnTerreng();
+    if (medKamera) flyTilTerreng();
+    opptatt = false;
+    settMelding("");
+    if (!pl) planLagring();       // ny kobling modell ↔ terreng
+  } catch (err) {
+    opptatt = false;
+    console.warn("Kunne ikke laste lagret terreng:", err);
+    settMelding(t("Klarte ikke å hente det lagrede terrenget: ") + detaljAv(err), true);
+  }
+}
+
+// Trykk på et terreng i lista: legg det under DENNE modellen. Har modellen
+// alt en plassering på akkurat det terrenget, brukes den.
+async function velgLagret(id) {
+  const post = synligKatalog().find(p => p.id === id);
+  if (!post) return;
+  const lok = vaskPlassering(lsLes(lsPlassNokkel(), null));
+  await lastTerrengPost(post, lok && lok.terreng === id ? lok : null, true);
+}
+
+async function slettLagret(id) {
+  const post = synligKatalog().find(p => p.id === id);
+  if (!post) return;
+  if (!confirm(t("Slette «{0}» fra lista over lagrede terreng?", post.navn))) return;
+  // Gravstein (se sp-lager.js): uten den kommer terrenget tilbake ved neste
+  // fletting fra SharePoint.
+  await skrivKatalog([{ id, navn: post.navn, slettet: true, endret: new Date().toISOString() }]);
+  if (terreng && terreng.id === id) terreng.id = null;
+  if (erApen()) tegnPanel();
+}
+
+// Når en modell åpnes (afterLoad i ifc.js): les katalogen, og finnes det en
+// plassering for modellen, hent terrenget i bakgrunnen — modellen står alt på
+// skjermen. Nyeste `endret` vinner mellom denne maskinen og SharePoint.
+S.lastTerreng = async () => {
+  const forFil = S.fileName;
+  katalog = vaskTerrengListe(lsLes(LS_KATALOG, []));
+  let pl = vaskPlassering(lsLes(lsPlassNokkel(), null));
+  if (spPaalogget()) {
+    const [kat, plSp] = await Promise.all([spLes(SP_MAPPE, KATALOG_FIL), spLes(SP_MAPPE, plassFil())]);
+    if (S.fileName !== forFil) return;
+    spStatus = (kat.status === "ok" || kat.status === "tom") ? "ok" : "feil";
+    if (kat.status === "ok") { katalog = vaskTerrengListe(flettPaaId(katalog, vaskTerrengListe(kat.liste))); lsSkriv(LS_KATALOG, katalog); }
+    const fraSp = plSp.status === "ok" ? vaskPlassering(plSp.liste[0]) : null;
+    if (fraSp && (!pl || String(fraSp.endret) > String(pl.endret))) { pl = fraSp; lsSkriv(lsPlassNokkel(), pl); }
+  } else spStatus = "av";
+  if (erApen()) tegnPanel();
+  if (!pl || S.fileName !== forFil || terreng) return;
+  const post = synligKatalog().find(p => p.id === pl.terreng);
+  if (!post) return;                          // terrenget er slettet fra katalogen
+  await lastTerrengPost(post, pl, false);
+};
+
+function tegnLagring() {
+  let html = '<h4 style="margin:14px 0 4px">' + ikon("lagre") + " " + t("Lagring") + "</h4>";
+  if (terreng && !terreng.id) {
+    html += '<label>' + t("Navn på terrenget") +
+      '<input type="text" id="trNavn" maxlength="80" value="' + esc(navneforslag(terreng.adresse)) + '"></label>' +
+      '<div class="prop-actions"><button id="trLagre" class="primary"' + (lagrer ? " disabled" : "") + ">" +
+      ikon("lagre") + " " + (lagrer ? t("Lagrer …") : t("Lagre terreng")) + "</button></div>" +
+      "<p " + LITEN + ">" + t("Lagrer terrenget og plasseringen av denne modellen. Etterpå lagres endringer i plasseringen av seg selv.") + "</p>";
+  } else if (terreng && terreng.id) {
+    html += '<p style="font-size:12px;margin:4px 0 0">' + ikon("hake") + " " + t("Lagret som") + " «" + esc(terreng.navn || "") + "». " +
+      t("Plassering, gulvkote og plate lagres av seg selv for denne modellen.") + "</p>";
+  }
+  html += '<p id="trLagringTekst" style="color:var(--muted);font-size:11px;margin:4px 0 0">' + esc(lagringsTekst()) + "</p>";
+  const liste = synligKatalog();
+  html += '<h4 style="margin:12px 0 4px">' + t("Lagrede terreng") +
+    ' <span style="color:var(--muted);font-size:11px">(' + liste.length + ")</span></h4>";
+  if (!liste.length) html += "<p " + LITEN + ">" + t("Ingen terreng lagret ennå.") + "</p>";
+  else {
+    html += liste.map(p => {
+      const dato = p.opprettet ? new Date(p.opprettet).toLocaleDateString("no-NO") : "";
+      const aktiv = terreng && terreng.id === p.id;
+      return '<div class="qty-row"><div class="n" data-tr-lagret="' + esc(p.id) + '" style="cursor:pointer' + (aktiv ? ";font-weight:700" : "") + '">' +
+        ikon("kote") + " " + esc(p.navn) +
+        ' <span style="color:var(--muted);font-size:11px;font-weight:400">' + Math.round(p.bbox.side) + " × " + Math.round(p.bbox.side) + " m" +
+        (dato ? " · " + esc(dato) : "") + (p.av ? " · " + esc(p.av) : "") + "</span></div>" +
+        '<div class="c"><button data-tr-slett="' + esc(p.id) + '" title="' + t("Slett") + '" style="padding:3px 8px">' + ikon("slett") + "</button></div></div>";
+    }).join("") + "<p " + LITEN + ">" + t("Trykk på et terreng for å legge det under modellen.") + "</p>";
+  }
+  return html;
+}
+
+function koblLagring(body) {
+  const lagre = $("trLagre");
+  if (lagre) lagre.onclick = () => lagreTerreng(($("trNavn") || {}).value);
+  body.querySelectorAll("[data-tr-lagret]").forEach(d => d.onclick = () => velgLagret(d.dataset.trLagret));
+  body.querySelectorAll("button[data-tr-slett]").forEach(b => b.onclick = (e) => { e.stopPropagation(); slettLagret(b.dataset.trSlett); });
+}
 
 // ═══════════════════════ 🎨 UTSEENDE ═══════════════════════
 function tegnUtseendeRad(body) {
@@ -1168,6 +1421,10 @@ function tegnPanel() {
       ikon("fullskjerm") + " " + t("Vis hele utsnittet") + "</button></div>";
   }
 
+  // 💾 Lagring og lagrede terreng — lista vises også uten et hentet terreng,
+  // så et lagret terreng kan legges under en ny modell uten å hente på nytt.
+  if (S.modelGroup) html += tegnLagring();
+
   // Advarselen står i PANELET, ikke bare i spesifikasjonen (byggeplanen,
   // advarsel 4). Den som skal grave, leser ikke spesifikasjoner.
   html += '<p style="font-size:11px;margin:10px 0 0;padding:6px 8px;border:1px solid var(--border);border-radius:6px">' +
@@ -1175,6 +1432,7 @@ function tegnPanel() {
     t("Plasseringen er omtrentlig (±1–2 m) og skal aldri brukes til utstikking.") + "</p>";
 
   body.innerHTML = html;
+  koblLagring(body);
 
   const inp = $("trAdresse");
   if (inp) inp.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); startHenting(); } };
@@ -1218,6 +1476,7 @@ function tegnPanel() {
     kartValg = kart.value === "hoyde" ? "hoyde" : "topo";
     if (terreng && kartValg === "topo" && (!terreng.kart || terreng.kart.status === "feil")) { terreng.kart = null; hentKart(terreng); }
     brukKart();
+    planLagring();
     tegnPanel();
   };
   const padPaa = $("trPadPaa");
