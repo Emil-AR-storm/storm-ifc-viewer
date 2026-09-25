@@ -221,6 +221,8 @@ export function nullstillModellState() {
   if (S.ryddOutline) S.ryddOutline();
   // 📦 Materiell-objektene hører til modellen som ble lukket.
   if (S.ryddMateriell) S.ryddMateriell();
+  // ⛰ Terrenget lå under modellen som ble lukket, med dens senter og enheter.
+  if (S.ryddTerreng) S.ryddTerreng();
 }
 
 Object.assign(S, modellStartverdier());
@@ -263,6 +265,9 @@ S.etterTegnMateriell = null;    // materiell-vis.js → materiell.js: legg valg-
 // 🎯 Objektgrupper. Krokene settes av grupper.js; null når modulen ikke er lastet.
 S.lastGrupper = null;           // ifc.js: les lagrede grupper når modellen åpnes
 S.settGrupperFraLett = null;    // markers.js: grupper fra Workerens JSON (bygg)
+
+// ⛰ Terreng. Kroken settes av terreng.js (kun kontor).
+S.ryddTerreng = null;           // modellbytte: fjern terrenget fra scenen
 
 // 🏗 Stort prosjekt (byggeplass.js ↔ ifc.js)
 S.lettOverstyr = null;          // { minst, sirkel } for neste (om)lasting — settes/nullstilles av byggeplass.js

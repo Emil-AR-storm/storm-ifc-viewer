@@ -103,6 +103,19 @@ export function pickEkstra(x, y) {
   return best;
 }
 
+// ⛰ Flater som Mål og Kote kan treffe, men som IKKE kan velges: terrenget.
+// Egen evne («flate») og ikke «plukk», med vilje — et lag med «plukk» havner
+// i valg, flervalg, grupper og Mengder. Svaret har `utenSnap: true`, så
+// kant-snappen (laget for stål) ikke prøver seg på 300 000 terrengtrekanter.
+export function pickFlate(x, y) {
+  let best = null;
+  for (const l of ekstraLagSom("flate")) {
+    const h = l.flate(x, y);
+    if (h && (!best || h.distance < best.distance)) best = h;
+  }
+  return best;
+}
+
 export function selectElement(expressID, additive) {
   if (!additive) clearSelection();
   S.currentPropID = expressID;

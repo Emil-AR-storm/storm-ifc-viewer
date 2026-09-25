@@ -1,7 +1,7 @@
 // 📏 Mål og ⛰ kote, med kant-snapping.
 import * as THREE from "three";
 import { S, fmtLen, tilM } from "./state.js";
-import { pick } from "./elements.js";
+import { pick, pickFlate } from "./elements.js";
 import { camera, canvas, frameHooks, koteGroup, makeLabel, measureGroup, renderer, scene, updateScreenScaled } from "./scene.js";
 
 // ---------- Kote ----------
@@ -74,9 +74,12 @@ canvas.addEventListener("pointermove", (e) => {
   const now = performance.now();
   if (now - S._snapPrevT < 60) return; // ikke raycast oftere enn ~16 g/s (store modeller)
   S._snapPrevT = now;
-  const hit = pick(e.clientX, e.clientY);
+  let hit = pick(e.clientX, e.clientY);
+  // ⛰ terrenget kan måles på (se main.js) — forhåndsvisningen må vite det
+  const f = pickFlate(e.clientX, e.clientY);
+  if (f && (!hit || f.distance < hit.distance)) hit = f;
   if (!hit) { hideSnapPreview(); return; }
-  const sr = snapPoint(hit);
+  const sr = hit.utenSnap ? utenSnap(hit) : snapPoint(hit);
   const traff = !!sr.type;
   // Uten treff er prikken like stor som fangstsonen, så man ser hvor nær man må
   // være. Med treff krymper den til et presist punkt.
