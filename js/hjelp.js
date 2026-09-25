@@ -153,6 +153,16 @@ export const KORT = [
     tekst: "Velg elementer med shift-klikk eller shift-dra, åpne Grupper (i Bygg Info) og lagre utvalget med navn. Trykk på en lagret gruppe for å hente den fram: alt annet skjules og kameraet flyr dit. Vis alle henter tilbake resten."
   },
   {
+    hvor: "kontor", ikonNavn: "kote",
+    tittel: "Terrenget rundt bygget",
+    tekst: "Terreng (i Bygg Info) henter høydedata og kart fra Kartverket for en adresse. Flytt og roter bygget på plass, skriv gulvkoten fra tegningen og trykk Lagre terreng — da kommer terrenget av seg selv neste gang modellen åpnes, også hos kollegaene. Plasseringen er omtrentlig og skal aldri brukes til utstikking."
+  },
+  {
+    hvor: "kontor", ikonNavn: "mengder",
+    tittel: "Skjæring og fylling",
+    tekst: "Under Masser under plata i Terreng-panelet står hvor mye som må graves bort og fylles inn ned til planum — gulvkote minus oppbygging, eller en planumkote du skriver selv. Kryss av for å se det i rødt og blått i terrenget. Tallene er et overslag: terrenget er skannet før graving, og skråninger er ikke med."
+  },
+  {
     hvor: "kontor", ikonNavn: "tegning",
     tittel: "Ta arbeidet ut igjen",
     tekst: "Rapport gir en PDF med bilder og status. BCF-eksport gir en fil som Solibri, Dalux og Revit kan åpne. Del lager en lenke som gjenskaper akkurat denne visningen hos andre."

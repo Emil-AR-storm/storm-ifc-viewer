@@ -1568,5 +1568,27 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Plassering, gulvkote og plate lagres av seg selv for denne modellen.": "Położenie, rzędna posadzki i płyta zapisują się automatycznie dla tego modelu.",
   "Lagrede terreng": "Zapisane tereny",
   "Ingen terreng lagret ennå.": "Nie zapisano jeszcze żadnego terenu.",
-  "Trykk på et terreng for å legge det under modellen.": "Kliknij teren, aby umieścić go pod modelem."
+  "Trykk på et terreng for å legge det under modellen.": "Kliknij teren, aby umieścić go pod modelem.",
+// ---------- ⛰ Terreng: masser og hjelpekort ----------
+  "Masser under plata": "Roboty ziemne pod płytą",
+  "Slå på utskjæringen for å regne skjæring og fylling.": "Włącz wycięcie, aby obliczyć wykop i nasyp.",
+  "Planum": "Poziom posadowienia",
+  "Gulvkote minus oppbygging": "Rzędna posadzki minus warstwy",
+  "Egen planumkote": "Własny poziom posadowienia",
+  "Planumkote (moh.)": "Poziom posadowienia (m n.p.m.)",
+  "Oppbygging under gulv (m) — betong, isolasjon og pukk": "Warstwy pod posadzką (m) — beton, izolacja i tłuczeń",
+  "Skriv gulvkoten først.": "Najpierw wpisz rzędną posadzki.",
+  "Skjæring (grave bort)": "Wykop (usunąć)",
+  "Fylling (fylle inn)": "Nasyp (dosypać)",
+  "Overskudd av masser": "Nadmiar mas ziemnych",
+  "Underskudd av masser": "Niedobór mas ziemnych",
+  "Areal under plata": "Powierzchnia pod płytą",
+  "10 cm høyere eller lavere planum endrer massene med ca. {0}.": "Poziom posadowienia wyżej lub niżej o 10 cm zmienia objętości o ok. {0}.",
+  "Snitthøyde for terrenget under plata: {0}": "Średnia wysokość terenu pod płytą: {0}",
+  "Vis skjæring (rødt) og fylling (blått) i terrenget": "Pokaż wykop (czerwony) i nasyp (niebieski) na terenie",
+  "Overslag, ikke til oppgjør: terrenget er laserskannet før graving, plasseringen er ±1–2 m, og skråninger utenfor plata er ikke med.": "Szacunek, nie do rozliczeń: teren zeskanowano przed wykopem, położenie ±1–2 m, skarpy poza płytą nie są uwzględnione.",
+  "Terrenget rundt bygget": "Teren wokół budynku",
+  "Skjæring og fylling": "Wykop i nasyp",
+  "Terreng (i Bygg Info) henter høydedata og kart fra Kartverket for en adresse. Flytt og roter bygget på plass, skriv gulvkoten fra tegningen og trykk Lagre terreng — da kommer terrenget av seg selv neste gang modellen åpnes, også hos kollegaene. Plasseringen er omtrentlig og skal aldri brukes til utstikking.": "Teren (w Informacje o budynku) pobiera dane wysokościowe i mapę z Kartverket dla adresu. Przesuń i obróć budynek na miejsce, wpisz rzędną posadzki z rysunku i naciśnij Zapisz teren — teren pojawi się sam przy następnym otwarciu modelu, także u kolegów. Położenie jest przybliżone i nigdy nie może być używane do tyczenia.",
+  "Under Masser under plata i Terreng-panelet står hvor mye som må graves bort og fylles inn ned til planum — gulvkote minus oppbygging, eller en planumkote du skriver selv. Kryss av for å se det i rødt og blått i terrenget. Tallene er et overslag: terrenget er skannet før graving, og skråninger er ikke med.": "W sekcji Roboty ziemne pod płytą w panelu Teren widać, ile trzeba wykopać i dosypać do poziomu posadowienia — rzędna posadzki minus warstwy albo poziom wpisany samodzielnie. Zaznacz pole, aby zobaczyć to na czerwono i niebiesko na terenie. Liczby są szacunkiem: teren zeskanowano przed wykopem, skarpy nie są uwzględnione."
 };

@@ -1568,5 +1568,27 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Plassering, gulvkote og plate lagres av seg selv for denne modellen.": "Padėtis, grindų aukštis ir aikštelė šiam modeliui įrašomi automatiškai.",
   "Lagrede terreng": "Išsaugoti reljefai",
   "Ingen terreng lagret ennå.": "Dar neišsaugota jokio reljefo.",
-  "Trykk på et terreng for å legge det under modellen.": "Spustelėkite reljefą, kad padėtumėte jį po modeliu."
+  "Trykk på et terreng for å legge det under modellen.": "Spustelėkite reljefą, kad padėtumėte jį po modeliu.",
+// ---------- ⛰ Terreng: masser og hjelpekort ----------
+  "Masser under plata": "Žemės darbai po aikštele",
+  "Slå på utskjæringen for å regne skjæring og fylling.": "Įjunkite iškirtimą, kad apskaičiuotumėte kasimą ir pylimą.",
+  "Planum": "Pagrindo lygis",
+  "Gulvkote minus oppbygging": "Grindų aukštis minus sluoksniai",
+  "Egen planumkote": "Savas pagrindo lygis",
+  "Planumkote (moh.)": "Pagrindo lygis (m virš j. l.)",
+  "Oppbygging under gulv (m) — betong, isolasjon og pukk": "Sluoksniai po grindimis (m) — betonas, izoliacija ir skalda",
+  "Skriv gulvkoten først.": "Pirmiausia įveskite grindų aukštį.",
+  "Skjæring (grave bort)": "Kasimas (iškasti)",
+  "Fylling (fylle inn)": "Pylimas (užpilti)",
+  "Overskudd av masser": "Grunto perteklius",
+  "Underskudd av masser": "Grunto trūkumas",
+  "Areal under plata": "Plotas po aikštele",
+  "10 cm høyere eller lavere planum endrer massene med ca. {0}.": "Pagrindo lygis 10 cm aukščiau ar žemiau pakeičia tūrius maždaug {0}.",
+  "Snitthøyde for terrenget under plata: {0}": "Vidutinis žemės aukštis po aikštele: {0}",
+  "Vis skjæring (rødt) og fylling (blått) i terrenget": "Rodyti kasimą (raudona) ir pylimą (mėlyna) reljefe",
+  "Overslag, ikke til oppgjør: terrenget er laserskannet før graving, plasseringen er ±1–2 m, og skråninger utenfor plata er ikke med.": "Sąmata, ne atsiskaitymui: reljefas nuskenuotas prieš kasimą, padėtis ±1–2 m, šlaitai už aikštelės neįtraukti.",
+  "Terrenget rundt bygget": "Reljefas aplink pastatą",
+  "Skjæring og fylling": "Kasimas ir pylimas",
+  "Terreng (i Bygg Info) henter høydedata og kart fra Kartverket for en adresse. Flytt og roter bygget på plass, skriv gulvkoten fra tegningen og trykk Lagre terreng — da kommer terrenget av seg selv neste gang modellen åpnes, også hos kollegaene. Plasseringen er omtrentlig og skal aldri brukes til utstikking.": "Reljefas (skiltyje Pastato informacija) gauna aukščio duomenis ir žemėlapį iš Kartverket pagal adresą. Perkelkite ir pasukite pastatą į vietą, įveskite grindų aukštį iš brėžinio ir paspauskite Įrašyti reljefą — kitą kartą atidarius modelį reljefas atsiras pats, ir kolegoms. Padėtis apytikslė ir niekada negali būti naudojama nužymėjimui.",
+  "Under Masser under plata i Terreng-panelet står hvor mye som må graves bort og fylles inn ned til planum — gulvkote minus oppbygging, eller en planumkote du skriver selv. Kryss av for å se det i rødt og blått i terrenget. Tallene er et overslag: terrenget er skannet før graving, og skråninger er ikke med.": "Skiltyje Žemės darbai po aikštele reljefo skydelyje matyti, kiek reikia iškasti ir užpilti iki pagrindo lygio — grindų aukštis minus sluoksniai arba jūsų įvestas lygis. Pažymėkite langelį, kad pamatytumėte tai raudonai ir mėlynai reljefe. Skaičiai yra sąmata: reljefas nuskenuotas prieš kasimą, šlaitai neįtraukti."
 };
