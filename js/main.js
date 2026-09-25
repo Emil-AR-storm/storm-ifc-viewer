@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { $, S, fmtLen, loadingEl, loadingText, tilM } from "./state.js";
 import { lastSprak, oversettDom, setLang, t } from "./i18n.js";
 import { setClipFromFace } from "./clip.js";
-import { clearSelection, hitID, pick, pickEkstra, selectElement, showProperties } from "./elements.js";
+import { clearSelection, hitID, pick, pickEkstra, pickFlate, selectElement, showProperties } from "./elements.js";
 import { afterLoad, ifcReady, loadModel } from "./ifc.js";
 import { closeMarkerPopup, forberedNyMarkering, openMarkerPopup, pickMarker } from "./markers.js";
 import { addMeasure, koteValue, rettPunkt, snapPoint } from "./measure.js";
@@ -17,6 +17,7 @@ import "./hjelp.js";
 import "./materiell-vis.js";   // 📦 materiell: visningen (lastes av begge sider)
 import "./materiell.js";       // 📦 materiell: verktøyet (kun kontor)
 import "./grupper.js";
+import "./terreng.js";     // ⛰ terreng fra Kartverket (kun kontor — IKKE i lett-main.js)
 import "./veggelement.js";   // 🧱 SW-generator: veggelementer på stålmodeller (kun kontor)         // 🎯 objektgrupper: lagre og hente fram flervalg
 import "./markers.js";
 import "./minimap.js";
@@ -83,7 +84,7 @@ canvas.addEventListener("pointerup", (e) => {
     if (mc) { openMarkerPopup(mc); return; }
     closeMarkerPopup();
   }
-  const hit = pick(e.clientX, e.clientY);
+  let hit = pick(e.clientX, e.clientY);
   // 🧱 SW-elementene bor i sin egen gruppe, som pick() ikke ser. Ligger et av
   // dem nærmere kameraet enn modelltreffet, er DET du trykte på — samme regel
   // som for materiellet i shift-klikket. Uten dette kunne ikke et SW-element
@@ -97,6 +98,13 @@ canvas.addEventListener("pointerup", (e) => {
       if (ek.lag.visEgenskaper) ek.lag.visEgenskaper(ek.id);
       return;
     }
+  }
+  // ⛰ Mål og Kote kan også treffe TERRENGET (og bare de — terrenget kan ikke
+  // velges som element). Ligger terrenget nærmere kameraet enn modellen, er
+  // det terrenget du pekte på. Uten dette kan ikke målestokken kontrolleres.
+  if (S.mode === "measure" || S.mode === "kote") {
+    const f = pickFlate(e.clientX, e.clientY);
+    if (f && (!hit || f.distance < hit.distance)) hit = f;
   }
   if (!hit) {
     // Shift eies av flervalget (elements.js) — og det kan ha truffet MATERIELL,
@@ -112,7 +120,8 @@ canvas.addEventListener("pointerup", (e) => {
     $("commentDialog").classList.add("open");
     setTimeout(() => $("commentText").focus(), 50);
   } else if (S.mode === "measure") {
-    const mp0 = snapPoint(hit).point; // fester seg til nærmeste kant/hjørne
+    // fester seg til nærmeste kant/hjørne — men ikke på terrenget (utenSnap)
+    const mp0 = hit.utenSnap ? hit.point.clone() : snapPoint(hit).point;
     // «Rett strek» på: andrepunktet låses til nærmeste akse fra førstepunktet
     const mp = (S.measureFirst && S.rettOn) ? rettPunkt(S.measureFirst, mp0) : mp0;
     if (!S.measureFirst) {
