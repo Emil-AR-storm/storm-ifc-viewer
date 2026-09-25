@@ -174,10 +174,42 @@ function flyTilTerreng() {
 
 // ═══════════════════════ HENTING ═══════════════════════
 
+// Nettkall med frist og ETT nytt forsøk. Første test hos Emil 25.09 ga
+// «Fikk ikke kontakt med Kartverket» på et kall som virket fra samme side
+// minuttet etter — et nettblaff, ikke en feil i koden. Én gang til koster
+// ingenting; å be brukeren trykke på nytt koster tillit. Fristen hindrer at
+// panelet henger på «Søker …» for alltid hvis tjenesten ikke svarer.
+async function hentMedFrist(url, ms) {
+  let sisteFeil = null;
+  for (let forsok = 0; forsok < 2; forsok++) {
+    const ac = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const tid = ac ? setTimeout(() => ac.abort(), ms) : 0;
+    try {
+      const r = await fetch(url, ac ? { signal: ac.signal } : undefined);
+      clearTimeout(tid);
+      if (r.ok) return r;
+      sisteFeil = new Error("HTTP " + r.status);
+      if (r.status < 500) break;          // 4xx blir ikke bedre av et nytt forsøk
+    } catch (err) {
+      clearTimeout(tid);
+      sisteFeil = (err && err.name === "AbortError") ? new Error(t("svarte ikke innen {0} sekunder", Math.round(ms / 1000))) : err;
+    }
+    if (forsok === 0) await new Promise(r => setTimeout(r, 800));
+  }
+  throw sisteFeil || new Error("ukjent feil");
+}
+
+// Selve feilteksten vises i panelet (grått, under meldingen). Uten den er
+// «fikk ikke kontakt» umulig å feilsøke over telefon.
+let feilDetalj = "";
+function detaljAv(err) {
+  const m = String((err && err.message) || err || "");
+  return m === "Failed to fetch" ? t("nettleseren fikk ikke svar (nett, brannmur eller tjenesten nede)") : m.slice(0, 200);
+}
+
 async function sokAdresse(tekst) {
   const hent = async (fuzzy) => {
-    const r = await fetch(adresseUrl(tekst, fuzzy));
-    if (!r.ok) throw new Error("HTTP " + r.status);
+    const r = await hentMedFrist(adresseUrl(tekst, fuzzy), 15000);
     return vaskAdresseSvar(await r.json());
   };
   let liste = await hent(false);
@@ -187,13 +219,12 @@ async function sokAdresse(tekst) {
 
 async function hentGrid(E, N) {
   const bb = bboxFra(E, N, utsnitt);
-  const r = await fetch(wcsUrl(bb));
-  if (!r.ok) throw new Error("HTTP " + r.status);
+  const r = await hentMedFrist(wcsUrl(bb), 30000);
   return { grid: lesTiff(await r.arrayBuffer()), bb };
 }
 
-function settMelding(tekst, feil) {
-  melding = tekst || ""; meldingFeil = !!feil;
+function settMelding(tekst, feil, detalj) {
+  melding = tekst || ""; meldingFeil = !!feil; feilDetalj = detalj || "";
   if (erApen()) tegnPanel();
 }
 
@@ -220,7 +251,7 @@ async function startHenting() {
   } catch (err) {
     opptatt = false;
     console.warn("Adressesøk feilet:", err);
-    settMelding(t("Fikk ikke kontakt med Kartverket. Sjekk nettet og prøv igjen."), true);
+    settMelding(t("Fikk ikke kontakt med Kartverket. Sjekk nettet og prøv igjen."), true, detaljAv(err));
   }
 }
 
@@ -258,7 +289,7 @@ async function hentTerreng(adr) {
   } catch (err) {
     opptatt = false;
     console.warn("Henting av terreng feilet:", err);
-    settMelding(t("Klarte ikke å hente terrenget: ") + (err && err.message || err), true);
+    settMelding(t("Klarte ikke å hente terrenget: ") + detaljAv(err), true);
   }
 }
 
@@ -323,6 +354,7 @@ function tegnPanel() {
   if (melding) {
     html += '<p style="font-size:12px;margin:6px 0 0;color:' + (meldingFeil ? "var(--accent)" : "var(--muted)") + '">' +
       esc(melding) + "</p>";
+    if (feilDetalj) html += '<p style="font-size:11px;margin:2px 0 0;color:var(--muted)">' + esc(feilDetalj) + "</p>";
   }
   if (treff.length) {
     html += treff.map((a, i) =>
