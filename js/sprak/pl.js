@@ -1543,5 +1543,15 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Skjær ut terrenget og legg en flat plate i gulvhøyde": "Wytnij teren i połóż płaską płytę na poziomie posadzki",
   "Dra i de gule håndtakene for å endre størrelsen på plata.": "Przeciągnij żółte uchwyty, aby zmienić rozmiar płyty.",
   "Tilbakestill (2 m rundt bygget)": "Resetuj (2 m wokół budynku)",
-  "Gulvet er modellens laveste punkt — bunnen av søylene, toppen av betonggulvet. ▲ Kote viser nå moh.": "Posadzka to najniższy punkt modelu — spód słupów, wierzch betonowej posadzki. ▲ Rzędna pokazuje teraz m n.p.m."
+  "Gulvet er modellens laveste punkt — bunnen av søylene, toppen av betonggulvet. ▲ Kote viser nå moh.": "Posadzka to najniższy punkt modelu — spód słupów, wierzch betonowej posadzki. ▲ Rzędna pokazuje teraz m n.p.m.",
+// ---------- ⛰ Terreng: kart og nordpil ----------
+  "tjenesten svarte ikke med et bilde": "usługa nie zwróciła obrazu",
+  "bildet kunne ikke leses": "nie można odczytać obrazu",
+  "Kart på terrenget": "Mapa na terenie",
+  "Vis": "Pokaż",
+  "Topografisk kart (Kartverket)": "Mapa topograficzna (Kartverket)",
+  "Høydefarger": "Kolory wysokości",
+  "Henter kartet …": "Pobieranie mapy …",
+  "Kartet kunne ikke hentes — viser høydefarger.": "Nie udało się pobrać mapy — pokazuję kolory wysokości.",
+  "Kart og høydedata: © Kartverket (CC BY 4.0). Flyfoto fra Norge i bilder krever avtale gjennom Norge digitalt og er derfor ikke med.": "Mapa i dane wysokościowe: © Kartverket (CC BY 4.0). Zdjęcia lotnicze z Norge i bilder wymagają umowy w ramach Norge digitalt i dlatego nie są dostępne."
 };
