@@ -1543,5 +1543,15 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Skjær ut terrenget og legg en flat plate i gulvhøyde": "Cut out the terrain and lay a flat pad at floor level",
   "Dra i de gule håndtakene for å endre størrelsen på plata.": "Drag the yellow handles to resize the pad.",
   "Tilbakestill (2 m rundt bygget)": "Reset (2 m around the building)",
-  "Gulvet er modellens laveste punkt — bunnen av søylene, toppen av betonggulvet. ▲ Kote viser nå moh.": "The floor is the model's lowest point — the bottom of the columns, the top of the concrete slab. ▲ Level now shows m a.s.l."
+  "Gulvet er modellens laveste punkt — bunnen av søylene, toppen av betonggulvet. ▲ Kote viser nå moh.": "The floor is the model's lowest point — the bottom of the columns, the top of the concrete slab. ▲ Level now shows m a.s.l.",
+// ---------- ⛰ Terreng: kart og nordpil ----------
+  "tjenesten svarte ikke med et bilde": "the service did not return an image",
+  "bildet kunne ikke leses": "the image could not be read",
+  "Kart på terrenget": "Map on the terrain",
+  "Vis": "Show",
+  "Topografisk kart (Kartverket)": "Topographic map (Norwegian Mapping Authority)",
+  "Høydefarger": "Height colours",
+  "Henter kartet …": "Fetching the map …",
+  "Kartet kunne ikke hentes — viser høydefarger.": "The map could not be fetched — showing height colours.",
+  "Kart og høydedata: © Kartverket (CC BY 4.0). Flyfoto fra Norge i bilder krever avtale gjennom Norge digitalt og er derfor ikke med.": "Map and elevation data: © Kartverket (CC BY 4.0). Aerial photos from Norge i bilder require an agreement through Norge digitalt and are therefore not included."
 };

@@ -1543,5 +1543,15 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Skjær ut terrenget og legg en flat plate i gulvhøyde": "Iškirpti reljefą ir paklota plokščią aikštelę grindų lygyje",
   "Dra i de gule håndtakene for å endre størrelsen på plata.": "Tempkite geltonas rankenėles, kad pakeistumėte aikštelės dydį.",
   "Tilbakestill (2 m rundt bygget)": "Atstatyti (2 m aplink pastatą)",
-  "Gulvet er modellens laveste punkt — bunnen av søylene, toppen av betonggulvet. ▲ Kote viser nå moh.": "Grindys yra žemiausias modelio taškas — kolonų apačia, betoninių grindų viršus. ▲ Aukštis dabar rodo m virš j. l."
+  "Gulvet er modellens laveste punkt — bunnen av søylene, toppen av betonggulvet. ▲ Kote viser nå moh.": "Grindys yra žemiausias modelio taškas — kolonų apačia, betoninių grindų viršus. ▲ Aukštis dabar rodo m virš j. l.",
+// ---------- ⛰ Terreng: kart og nordpil ----------
+  "tjenesten svarte ikke med et bilde": "paslauga negrąžino paveikslėlio",
+  "bildet kunne ikke leses": "paveikslėlio nepavyko nuskaityti",
+  "Kart på terrenget": "Žemėlapis ant reljefo",
+  "Vis": "Rodyti",
+  "Topografisk kart (Kartverket)": "Topografinis žemėlapis (Kartverket)",
+  "Høydefarger": "Aukščio spalvos",
+  "Henter kartet …": "Gaunamas žemėlapis …",
+  "Kartet kunne ikke hentes — viser høydefarger.": "Žemėlapio gauti nepavyko — rodomos aukščio spalvos.",
+  "Kart og høydedata: © Kartverket (CC BY 4.0). Flyfoto fra Norge i bilder krever avtale gjennom Norge digitalt og er derfor ikke med.": "Žemėlapis ir aukščio duomenys: © Kartverket (CC BY 4.0). Aerofotografijoms iš Norge i bilder reikia sutarties per Norge digitalt, todėl jų nėra."
 };
