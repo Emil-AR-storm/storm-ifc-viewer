@@ -29,7 +29,8 @@ import {
   klippMeter, klippOmriss, lagIndeks, lavesteUnder, lesTiff, likeKlipp, likePad, mTilScene, normVinkel,
   padFlagg, padHandtak, padMeter, padStandard, pikselSenter, punktFraE, punktFraN, snapVinkel, tolkKoordinat,
   tolkKote, vaskAdresseSvar, wcsUrl,
-  binTilGrid, gridTilBin, navneforslag, nyTerrengId, vaskPlassering, vaskTerrengListe
+  binTilGrid, gridTilBin, navneforslag, nyTerrengId, vaskPlassering, vaskTerrengListe,
+  masseFarger, masser, planumKote, vaskPlanum
 } from "./terreng-regn.js";
 
 // ═══════════════════════ TILSTAND ═══════════════════════
@@ -55,6 +56,9 @@ let flyttModus = false;  // ✥ «Flytt og roter bygget» er slått på
 // 🗺 Hva som ligger på terrenget: "topo" (Kartverkets kart) eller "hoyde"
 // (høydefarger). Valget huskes mellom hentinger — det er brukerens, ikke tomtas.
 let kartValg = "topo";
+// ⛏ «Vis skjæring/fylling»: plata tas bort, terrenget under blir liggende og
+// farges rødt (grave) og blått (fylle) mot planum.
+let visMasser = false;
 
 // ═══════════════════════ SCENEN ═══════════════════════
 //
@@ -279,7 +283,7 @@ function tegnHandtak() {
   const gulvY = mr.gulvY;
   byggGroup.position.set(mr.c.x, 0, mr.c.z);
   const p = terreng.pad;
-  if (p && p.paa) {
+  if (p && p.paa && !visMasser) {
     const geo = new THREE.PlaneGeometry((p.x1 - p.x0) / s, (p.z1 - p.z0) / s);
     geo.rotateX(-Math.PI / 2);
     plateMesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({
@@ -375,9 +379,10 @@ function brukKart() {
   const mat = flateMesh.material;
   const tex = kartValg === "topo" && terreng.kart && terreng.kart.tex;
   mat.map = tex || null;
-  mat.vertexColors = !tex;
+  mat.vertexColors = true;   // hvitt under kartet, se oppdaterFarger
   mat.color.set(0xffffff);
   mat.needsUpdate = true;
+  oppdaterFarger();
 }
 
 function ryddKart(t0) {
@@ -459,7 +464,7 @@ function plasserGrupper(mr) {
 function byggFlate(mr) {
   const { grid: g, E0, N0, h0 } = terreng;
   const p = terreng.pad;
-  const flat = (p && p.paa && terreng.gulv)
+  const flat = (p && p.paa && terreng.gulv && !visMasser)
     // Litt under plata: terrenget skal ikke stikke opp gjennom den i skrå
     // ruter langs kanten.
     ? { flagg: padFlagg(g, E0, N0, terreng.plass, p), hoyde: terreng.gulv.kote - 0.05 }
@@ -475,6 +480,31 @@ function byggFlate(mr) {
   geo.computeBoundingSphere();
   geo.computeBoundingBox();
   terreng.ok = tr.ok;
+  beregnMasser();
+  oppdaterFarger();
+}
+
+// ⛏ Massene regnes på nytt hver gang plass, plate, gulv eller planum er
+// ferdig endret. Et gjennomløp av gridet: ~10 ms på 1000 × 1000.
+function beregnMasser() {
+  terreng.masser = null;
+  const p = terreng.pad;
+  if (!p || !p.paa) return;
+  const pk = planumKote(terreng.gulv, terreng.planum);
+  if (pk == null) return;
+  terreng.padFlagg = padFlagg(terreng.grid, terreng.E0, terreng.N0, terreng.plass, p);
+  terreng.masser = Object.assign({ planum: pk }, masser(terreng.grid, terreng.padFlagg, pk));
+}
+
+// Fargene på punktene: hvite under kartet (kartet gir fargen), høydefarger
+// uten kart — og rødt/blått under plata når skjæring/fylling vises.
+function oppdaterFarger() {
+  if (!flateMesh || !terreng) return;
+  const g = terreng.grid;
+  const tex = kartValg === "topo" && terreng.kart && terreng.kart.tex;
+  let farger = tex ? new Float32Array(g.w * g.h * 3).fill(1) : (terreng.hf || (terreng.hf = hoydeFarger(g, terreng.spenn)));
+  if (visMasser && terreng.masser && terreng.padFlagg) farger = masseFarger(g, terreng.padFlagg, terreng.masser.planum, farger);
+  flateMesh.geometry.setAttribute("color", new THREE.BufferAttribute(farger, 3));
 }
 
 function tegnTerreng() {
@@ -517,7 +547,17 @@ function oppdaterAlt() {
   plasserGrupper(mr);
   tegnHandtak();
   visTall();
+  visMasseTall();
   planLagring();
+}
+
+// Masse-delen av panelet tegnes på nytt når plass/plate/gulv endres — men
+// ikke mens brukeren skriver i et av feltene der (da mister hun markøren).
+function visMasseTall() {
+  const el = $("trMasser");
+  if (!el || !terreng || (document.activeElement && el.contains(document.activeElement))) return;
+  el.innerHTML = tegnMasser();
+  koblMasser();
 }
 
 function flyTilTerreng() {
@@ -1001,7 +1041,7 @@ async function hentTerreng(adr) {
     const nytt = {
       grid: g, bb, E0, N0, h0, hPunkt, spenn, adresse: adr, klipp: fulltKlipp(g), plass,
       gulv: { kote: Math.round((gk != null ? gk : h0) * 1000) / 1000, grov: true },
-      pad: padStandard(mr.fp)
+      pad: padStandard(mr.fp), planum: vaskPlanum(null)
     };
     terreng = nytt;
     skjult = false;
@@ -1100,7 +1140,7 @@ function katalogPost(t0, navn) {
 function plassPost() {
   return {
     id: "plassering", terreng: terreng.id, plass: terreng.plass, gulv: terreng.gulv, pad: terreng.pad,
-    klipp: terreng.klipp, kart: kartValg, av: mittNavn(), endret: new Date().toISOString()
+    klipp: terreng.klipp, planum: terreng.planum, kart: kartValg, av: mittNavn(), endret: new Date().toISOString()
   };
 }
 
@@ -1199,7 +1239,8 @@ async function lastTerrengPost(post, pl, medKamera) {
     ryddKart(terreng);
     terreng = {
       grid: g, bb: post.bbox, E0, N0, h0, hPunkt, spenn, adresse: post.adresse, klipp, plass, gulv,
-      pad: (pl && pl.pad) || padStandard(mr.fp), id: post.id, navn: post.navn
+      pad: (pl && pl.pad) || padStandard(mr.fp), id: post.id, navn: post.navn,
+      planum: vaskPlanum(pl && pl.planum)
     };
     sisteSok = post.adresse.tekst || sisteSok;
     skjult = false;
@@ -1293,6 +1334,78 @@ function koblLagring(body) {
   if (lagre) lagre.onclick = () => lagreTerreng(($("trNavn") || {}).value);
   body.querySelectorAll("[data-tr-lagret]").forEach(d => d.onclick = () => velgLagret(d.dataset.trLagret));
   body.querySelectorAll("button[data-tr-slett]").forEach(b => b.onclick = (e) => { e.stopPropagation(); slettLagret(b.dataset.trSlett); });
+}
+
+// ═══════════════════════ ⛏ MASSER I PANELET ═══════════════════════
+function m3(v) { return Math.round(v).toLocaleString("no-NO") + " m³"; }
+
+function tegnMasser() {
+  const pad = terreng.pad, pl = terreng.planum || vaskPlanum(null), m = terreng.masser;
+  let html = '<h4 style="margin:14px 0 4px">' + ikon("mengder") + " " + t("Masser under plata") + "</h4>";
+  if (!pad || !pad.paa) return html + "<p " + LITEN + ">" + t("Slå på utskjæringen for å regne skjæring og fylling.") + "</p>";
+  html += '<label>' + t("Planum") + '<select id="trPlanumModus">' +
+    '<option value="oppbygging"' + (pl.modus !== "kote" ? " selected" : "") + ">" + t("Gulvkote minus oppbygging") + "</option>" +
+    '<option value="kote"' + (pl.modus === "kote" ? " selected" : "") + ">" + t("Egen planumkote") + "</option></select></label>" +
+    (pl.modus === "kote"
+      ? '<label>' + t("Planumkote (moh.)") + '<input type="text" id="trPlanumKote" inputmode="decimal" value="' +
+        esc(pl.kote != null ? pl.kote.toFixed(2).replace(".", ",") : (m ? m.planum.toFixed(2).replace(".", ",") : "")) + '"></label>'
+      : '<label>' + t("Oppbygging under gulv (m) — betong, isolasjon og pukk") + '<input type="text" id="trOppbygging" inputmode="decimal" value="' +
+        esc(pl.oppbygging.toFixed(2).replace(".", ",")) + '"></label>');
+  if (!m) return html + "<p " + LITEN + ">" + t("Skriv gulvkoten først.") + "</p>";
+  // Bare skjæring og fylling får farge (samme rødt/blått som i terrenget);
+  // resten står i vanlig tekstfarge, så ikke alt ser ut som en advarsel.
+  const rad = (navn, verdi, farge) => '<div class="qty-row"><div class="n">' + navn + '</div><div class="c" style="font-weight:700;color:' +
+    (farge || "var(--text)") + '">' + verdi + "</div></div>";
+  html += rad(t("Planum"), esc((Math.round(m.planum * 100) / 100).toLocaleString("no-NO", { minimumFractionDigits: 2 }) + " " + t("moh."))) +
+    rad(t("Skjæring (grave bort)"), m3(m.skjaering), "#e53935") +
+    rad(t("Fylling (fylle inn)"), m3(m.fylling), "#3b82f6") +
+    rad(m.netto >= 0 ? t("Overskudd av masser") : t("Underskudd av masser"), m3(Math.abs(m.netto))) +
+    rad(t("Areal under plata"), Math.round(m.areal).toLocaleString("no-NO") + " m²") +
+    "<p " + LITEN + ">" + t("10 cm høyere eller lavere planum endrer massene med ca. {0}.", m3(m.per10cm)) +
+    (m.snitt != null ? " " + t("Snitthøyde for terrenget under plata: {0}", fmtMoh(m.snitt, 2)) : "") + "</p>" +
+    '<label style="display:flex;gap:6px;align-items:center;font-size:12px;margin-top:6px"><input type="checkbox" id="trVisMasser"' +
+    (visMasser ? " checked" : "") + "> " + t("Vis skjæring (rødt) og fylling (blått) i terrenget") + "</label>" +
+    '<p style="font-size:11px;margin:6px 0 0;color:var(--accent)">' +
+    t("Overslag, ikke til oppgjør: terrenget er laserskannet før graving, plasseringen er ±1–2 m, og skråninger utenfor plata er ikke med.") + "</p>";
+  return html;
+}
+
+function settPlanum(ny, medAngre) {
+  if (!terreng) return;
+  const fra = Object.assign({}, terreng.planum), til = vaskPlanum(ny), gjeldende = terreng;
+  if (JSON.stringify(fra) === JSON.stringify(til)) return;
+  terreng.planum = til;
+  oppdaterAlt();
+  if (erApen()) tegnPanel();
+  if (medAngre && S.pushAngre) S.pushAngre({
+    tekst: "Planum",
+    angre: () => { if (terreng === gjeldende) { terreng.planum = fra; oppdaterAlt(); if (erApen()) tegnPanel(); } },
+    gjenopprett: () => { if (terreng === gjeldende) { terreng.planum = til; oppdaterAlt(); if (erApen()) tegnPanel(); } }
+  });
+}
+
+function koblMasser() {
+  if (!terreng) return;
+  const modus = $("trPlanumModus");
+  if (modus) modus.onchange = () => {
+    const pl = terreng.planum || vaskPlanum(null);
+    if (modus.value === "kote") settPlanum(Object.assign({}, pl, { modus: "kote", kote: pl.kote != null ? pl.kote : (terreng.masser ? Math.round(terreng.masser.planum * 100) / 100 : null) }), true);
+    else settPlanum(Object.assign({}, pl, { modus: "oppbygging" }), true);
+    tegnPanel();
+  };
+  const tall = (el) => Number(String(el.value).replace(/\s/g, "").replace(",", "."));
+  const opp = $("trOppbygging");
+  if (opp) {
+    opp.onchange = () => { const v = tall(opp); if (Number.isFinite(v) && v >= 0 && v <= 5) settPlanum(Object.assign({}, terreng.planum, { oppbygging: v }), true); else tegnPanel(); };
+    opp.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); opp.blur(); } };
+  }
+  const kote = $("trPlanumKote");
+  if (kote) {
+    kote.onchange = () => { const v = tolkKote(kote.value); if (v != null) settPlanum(Object.assign({}, terreng.planum, { modus: "kote", kote: v }), true); else tegnPanel(); };
+    kote.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); kote.blur(); } };
+  }
+  const vis = $("trVisMasser");
+  if (vis) vis.onchange = () => { visMasser = vis.checked; oppdaterAlt(); };
 }
 
 // ═══════════════════════ 🎨 UTSEENDE ═══════════════════════
@@ -1400,6 +1513,9 @@ function tegnPanel() {
         '<div class="prop-actions"><button id="trPadStd">' + ikon("nullstill") + " " +
         t("Tilbakestill (2 m rundt bygget)") + "</button></div>" : "") +
 
+      // ⛏ Masser: skjæring og fylling under plata
+      '<div id="trMasser">' + tegnMasser() + "</div>" +
+
       // 🗺 Kart på terrenget
       '<h4 style="margin:14px 0 4px">' + ikon("tegning") + " " + t("Kart på terrenget") + "</h4>" +
       '<label>' + t("Vis") + '<select id="trKart">' +
@@ -1433,6 +1549,7 @@ function tegnPanel() {
 
   body.innerHTML = html;
   koblLagring(body);
+  koblMasser();
 
   const inp = $("trAdresse");
   if (inp) inp.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); startHenting(); } };

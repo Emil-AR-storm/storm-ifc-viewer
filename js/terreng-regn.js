@@ -695,6 +695,7 @@ export function vaskPlassering(p) {
   }
   return {
     id: "plassering", terreng: p.terreng.slice(0, 40), plass, gulv, pad, klipp,
+    planum: vaskPlanum(p.planum),
     kart: p.kart === "hoyde" ? "hoyde" : "topo",
     av: tekst(p.av, 60), endret: tekst(p.endret, 40)
   };
@@ -710,4 +711,71 @@ export function binTilGrid(buf, post) {
   const ab = buf instanceof ArrayBuffer ? buf : (buf && buf.buffer) ? buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) : null;
   if (!ab || ab.byteLength !== post.w * post.h * 4) throw new Error("gridfila har feil størrelse");
   return { w: post.w, h: post.h, data: new Float32Array(ab), x0: post.x0, y0: post.y0, dx: post.dx, dy: post.dy, nodata: post.nodata };
+}
+
+// ═══════════════════════ MASSER: SKJÆRING OG FYLLING ═══════════════════════
+//
+// Hvor mye som må graves bort og fylles inn under plata, ned/opp til PLANUM.
+// Planum er IKKE gulvkoten: under gulvet ligger betong, isolasjon og pukk.
+// Standard er gulvkote − 0,50 m oppbygging, men planumkoten kan også skrives
+// direkte (Emil 25.09: «1 + 3, så man kan sette det manuelt også»).
+//
+// Regnestykket: hvert punkt i gridet som ligger under plata står for én rute
+// (dx × dy m²). Ligger terrenget over planum, er differansen skjæring; under,
+// fylling. Med 1 m-grid er det 1 m² per punkt — på en tomt er det godt nok,
+// og det er langt bedre enn feilen i selve plasseringen (±1–2 m).
+//
+// Skråninger utenfor plata er IKKE med. Det er det neste man ville lagt til.
+
+export const STANDARD_OPPBYGGING = 0.5;
+
+export function vaskPlanum(p) {
+  const q = p && typeof p === "object" ? p : {};
+  const opp = typeof q.oppbygging === "number" && Number.isFinite(q.oppbygging) && q.oppbygging >= 0 && q.oppbygging <= 5 ? q.oppbygging : STANDARD_OPPBYGGING;
+  const kote = typeof q.kote === "number" && Number.isFinite(q.kote) && q.kote > MIN_HOYDE && q.kote < MAKS_HOYDE ? q.kote : null;
+  return { modus: q.modus === "kote" && kote != null ? "kote" : "oppbygging", oppbygging: opp, kote };
+}
+
+export function planumKote(gulv, planum) {
+  const p = vaskPlanum(planum);
+  if (p.modus === "kote") return p.kote;
+  return gulv && Number.isFinite(gulv.kote) ? gulv.kote - p.oppbygging : null;
+}
+
+export function masser(grid, flagg, planum) {
+  const A = grid.dx * grid.dy;
+  let skj = 0, fyl = 0, n = 0, uten = 0, sum = 0;
+  if (planum == null || !Number.isFinite(planum)) return null;
+  for (let k = 0; k < flagg.length; k++) {
+    if (!flagg[k]) continue;
+    const v = grid.data[k];
+    if (!gyldigHoyde(v, grid.nodata)) { uten++; continue; }
+    n++; sum += v;
+    const d = v - planum;
+    if (d > 0) skj += d * A; else fyl -= d * A;
+  }
+  const areal = n * A;
+  return {
+    skjaering: skj, fylling: fyl, netto: skj - fyl, areal,
+    snitt: n ? sum / n : null,     // terrengets middelhøyde under plata
+    per10cm: areal * 0.1,          // hva 10 cm feil i planum utgjør
+    utenHoyde: uten
+  };
+}
+
+// Farger for «Vis skjæring/fylling»: punkt under plata blir rødt (skjæring)
+// eller blått (fylling), sterkere jo dypere; resten beholder grunnfargen.
+// 2 m forskjell = full farge.
+export function masseFarger(grid, flagg, planum, grunn) {
+  const ut = Float32Array.from(grunn);
+  for (let k = 0; k < flagg.length; k++) {
+    if (!flagg[k]) continue;
+    const v = grid.data[k];
+    if (!gyldigHoyde(v, grid.nodata)) continue;
+    const d = v - planum, s = Math.min(1, Math.abs(d) / 2);
+    const c = d > 0 ? [0.90, 0.25, 0.22] : [0.22, 0.45, 0.90];
+    const f = 0.35 + 0.65 * s;                   // blek ved liten forskjell, sterk ved stor
+    for (let i = 0; i < 3; i++) ut[k * 3 + i] = 0.95 * (1 - f) + c[i] * f;
+  }
+  return ut;
 }

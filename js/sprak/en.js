@@ -1568,5 +1568,27 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Plassering, gulvkote og plate lagres av seg selv for denne modellen.": "Placement, floor level and pad are saved automatically for this model.",
   "Lagrede terreng": "Saved terrains",
   "Ingen terreng lagret ennå.": "No terrain saved yet.",
-  "Trykk på et terreng for å legge det under modellen.": "Click a terrain to place it under the model."
+  "Trykk på et terreng for å legge det under modellen.": "Click a terrain to place it under the model.",
+// ---------- ⛰ Terreng: masser og hjelpekort ----------
+  "Masser under plata": "Earthworks under the pad",
+  "Slå på utskjæringen for å regne skjæring og fylling.": "Turn on the cut-out to calculate cut and fill.",
+  "Planum": "Formation level",
+  "Gulvkote minus oppbygging": "Floor level minus build-up",
+  "Egen planumkote": "Own formation level",
+  "Planumkote (moh.)": "Formation level (m a.s.l.)",
+  "Oppbygging under gulv (m) — betong, isolasjon og pukk": "Build-up under floor (m) — concrete, insulation and gravel",
+  "Skriv gulvkoten først.": "Enter the floor level first.",
+  "Skjæring (grave bort)": "Cut (dig away)",
+  "Fylling (fylle inn)": "Fill (fill in)",
+  "Overskudd av masser": "Surplus of material",
+  "Underskudd av masser": "Shortage of material",
+  "Areal under plata": "Area under the pad",
+  "10 cm høyere eller lavere planum endrer massene med ca. {0}.": "A formation level 10 cm higher or lower changes the volumes by about {0}.",
+  "Snitthøyde for terrenget under plata: {0}": "Average ground level under the pad: {0}",
+  "Vis skjæring (rødt) og fylling (blått) i terrenget": "Show cut (red) and fill (blue) on the terrain",
+  "Overslag, ikke til oppgjør: terrenget er laserskannet før graving, plasseringen er ±1–2 m, og skråninger utenfor plata er ikke med.": "Estimate, not for settlement: the terrain was laser scanned before excavation, the placement is ±1–2 m, and slopes outside the pad are not included.",
+  "Terrenget rundt bygget": "The terrain around the building",
+  "Skjæring og fylling": "Cut and fill",
+  "Terreng (i Bygg Info) henter høydedata og kart fra Kartverket for en adresse. Flytt og roter bygget på plass, skriv gulvkoten fra tegningen og trykk Lagre terreng — da kommer terrenget av seg selv neste gang modellen åpnes, også hos kollegaene. Plasseringen er omtrentlig og skal aldri brukes til utstikking.": "Terrain (in Building Info) fetches elevation data and a map from the Norwegian Mapping Authority for an address. Move and rotate the building into place, enter the floor level from the drawing and press Save terrain — the terrain then comes back by itself the next time the model is opened, for colleagues too. The placement is approximate and must never be used for setting out.",
+  "Under Masser under plata i Terreng-panelet står hvor mye som må graves bort og fylles inn ned til planum — gulvkote minus oppbygging, eller en planumkote du skriver selv. Kryss av for å se det i rødt og blått i terrenget. Tallene er et overslag: terrenget er skannet før graving, og skråninger er ikke med.": "Under Earthworks under the pad in the Terrain panel you see how much must be dug away and filled in down to formation level — floor level minus build-up, or a formation level you enter yourself. Tick the box to see it in red and blue on the terrain. The figures are an estimate: the terrain was scanned before excavation, and slopes are not included."
 };
