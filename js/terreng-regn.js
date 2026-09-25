@@ -26,7 +26,9 @@ export const ADRESSE_URL = "https://ws.geonorge.no/adresser/v1/sok";
 // vanlig Storm-tomt (byggeplanen: «se på en ekte tomt før du låser det») —
 // derfor et valg og ikke et fast tall. 800 × 800 m er 640 000 punkt og
 // ~2,5 MB, fortsatt raskt; større enn det gir ingenting en byggeplass trenger.
-export const UTSNITT = [200, 400, 600, 800];
+// 50 og 100 m kom til 25.09 (Emil): en liten tomt eller et tilbygg trenger
+// ikke 400 m landskap, og en mindre flate er lettere å se detaljer i.
+export const UTSNITT = [50, 100, 200, 400, 600, 800];
 export const STANDARD_UTSNITT = 400;
 
 // Høyder utenfor dette er ikke terreng. Kartverket har ingen nodata-tagg i
@@ -289,15 +291,105 @@ export function gridTilTrekanter(grid, E0, N0, h0, skala) {
       pos[k * 3 + 2] = -mTilScene(c.N - N0, skala);
     }
   }
-  const idx = [];
-  for (let j = 0; j < h - 1; j++) {
-    for (let i = 0; i < w - 1; i++) {
+  return { pos, idx: lagIndeks(ok, w, h, null), ok };
+}
+
+// Trekantene innenfor et klipp. Punktene (posisjonene) er de samme for hele
+// gridet — BESKJÆRINGEN BYTTER BARE INDEKSEN. Da kan brukeren dra kanten ut
+// igjen uten et nytt nettkall (byggeplanen, trinn 4), og det er raskt nok til
+// å gjøres for hvert musetrekk: 400 × 400 m er ~10 ms.
+// klipp = { i0, i1, j0, j1 } — første og siste PUNKT (inklusive) i hver retning.
+export function lagIndeks(ok, w, h, klipp) {
+  const k = klipp || { i0: 0, i1: w - 1, j0: 0, j1: h - 1 };
+  const i0 = Math.max(0, k.i0), i1 = Math.min(w - 1, k.i1);
+  const j0 = Math.max(0, k.j0), j1 = Math.min(h - 1, k.j1);
+  const n = Math.max(0, (i1 - i0) * (j1 - j0) * 6);
+  const idx = new Uint32Array(n);
+  let o = 0;
+  for (let j = j0; j < j1; j++) {
+    for (let i = i0; i < i1; i++) {
       const a = j * w + i, b = a + w, c = a + 1, d = b + 1;
-      if (ok[a] && ok[b] && ok[c]) idx.push(a, b, c);
-      if (ok[c] && ok[b] && ok[d]) idx.push(c, b, d);
+      if (ok[a] && ok[b] && ok[c]) { idx[o++] = a; idx[o++] = b; idx[o++] = c; }
+      if (ok[c] && ok[b] && ok[d]) { idx[o++] = c; idx[o++] = b; idx[o++] = d; }
     }
   }
-  return { pos, idx: new Uint32Array(idx), ok };
+  return o === n ? idx : idx.slice(0, o);
+}
+
+// ═══════════════════════ BESKJÆRING ═══════════════════════
+
+export function fulltKlipp(grid) {
+  return { i0: 0, i1: grid.w - 1, j0: 0, j1: grid.h - 1 };
+}
+
+// Hvor stort klippet er, i meter. Hvert punkt er senteret i en 1 m-rute, så
+// punktene i0…i1 dekker (i1 − i0 + 1) ruter: hele 400-gridet er 400 m, ikke 399.
+export function klippMeter(grid, k) {
+  return { bredde: (k.i1 - k.i0 + 1) * grid.dx, hoyde: (k.j1 - k.j0 + 1) * grid.dy };
+}
+
+// Koordinat → nærmeste punkt i gridet, klemt innenfor.
+export function punktFraE(grid, E) {
+  return Math.max(0, Math.min(grid.w - 1, Math.round((E - grid.x0) / grid.dx - 0.5)));
+}
+export function punktFraN(grid, N) {
+  return Math.max(0, Math.min(grid.h - 1, Math.round((grid.y0 - N) / grid.dy - 0.5)));
+}
+
+// Minste klipp: 10 m. Mindre enn det er ikke et terreng, det er en flekk —
+// og da kan de to kantene ikke lenger skilles fra hverandre med musa.
+export const MIN_KLIPP_M = 10;
+
+// Flytter én kant (n/s/v/o) eller ett hjørne (nv/no/sv/so) til punktet (i, j).
+// NORD er j0 (øverste rad i fila), SØR j1, VEST i0, ØST i1. Motstående kant
+// står stille, og klippet blir aldri mindre enn MIN_KLIPP_M.
+export function flyttKlippKant(grid, klipp, kant, i, j) {
+  const k = Object.assign({}, klipp);
+  const minI = Math.max(1, Math.round(MIN_KLIPP_M / grid.dx) - 1);
+  const minJ = Math.max(1, Math.round(MIN_KLIPP_M / grid.dy) - 1);
+  const ii = Math.max(0, Math.min(grid.w - 1, Math.round(i)));
+  const jj = Math.max(0, Math.min(grid.h - 1, Math.round(j)));
+  if (kant.includes("v")) k.i0 = Math.min(ii, k.i1 - minI);
+  if (kant.includes("o")) k.i1 = Math.max(ii, k.i0 + minI);
+  if (kant.includes("n")) k.j0 = Math.min(jj, k.j1 - minJ);
+  if (kant.includes("s")) k.j1 = Math.max(jj, k.j0 + minJ);
+  k.i0 = Math.max(0, k.i0); k.j0 = Math.max(0, k.j0);
+  k.i1 = Math.min(grid.w - 1, k.i1); k.j1 = Math.min(grid.h - 1, k.j1);
+  return k;
+}
+
+export function likeKlipp(a, b) {
+  return !!a && !!b && a.i0 === b.i0 && a.i1 === b.i1 && a.j0 === b.j0 && a.j1 === b.j1;
+}
+
+// Høyden i et punkt (i, j) — også et brøkpunkt (midt på en kant). Nærmeste
+// punkt med høyde; null bare hvis det ikke finnes noe gyldig der.
+export function hoydeIPunkt(grid, i, j) {
+  const ii = Math.max(0, Math.min(grid.w - 1, Math.round(i)));
+  const jj = Math.max(0, Math.min(grid.h - 1, Math.round(j)));
+  const v = grid.data[jj * grid.w + ii];
+  return gyldigHoyde(v, grid.nodata) ? v : null;
+}
+
+// De åtte håndtakene: fire hjørner og fire kantmidter, som (i, j).
+export function klippHandtak(k) {
+  const mi = (k.i0 + k.i1) / 2, mj = (k.j0 + k.j1) / 2;
+  return [
+    { kant: "nv", i: k.i0, j: k.j0 }, { kant: "n", i: mi, j: k.j0 }, { kant: "no", i: k.i1, j: k.j0 },
+    { kant: "o", i: k.i1, j: mj }, { kant: "so", i: k.i1, j: k.j1 }, { kant: "s", i: mi, j: k.j1 },
+    { kant: "sv", i: k.i0, j: k.j1 }, { kant: "v", i: k.i0, j: mj }
+  ];
+}
+
+// Omrisset rundt klippet, punkt for punkt langs kantene (med urviseren fra
+// nordvest), så streken kan legges oppå terrenget i stedet for å sveve.
+export function klippOmriss(k) {
+  const ut = [];
+  for (let i = k.i0; i <= k.i1; i++) ut.push([i, k.j0]);
+  for (let j = k.j0 + 1; j <= k.j1; j++) ut.push([k.i1, j]);
+  for (let i = k.i1 - 1; i >= k.i0; i--) ut.push([i, k.j1]);
+  for (let j = k.j1 - 1; j > k.j0; j--) ut.push([k.i0, j]);
+  return ut;
 }
 
 // Farge per punkt etter høyde: grønt i bunnen, brunt i midten, lyst på
