@@ -1542,5 +1542,6 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Utskjæring rundt bygget": "Wycięcie wokół budynku",
   "Skjær ut terrenget og legg en flat plate i gulvhøyde": "Wytnij teren i połóż płaską płytę na poziomie posadzki",
   "Dra i de gule håndtakene for å endre størrelsen på plata.": "Przeciągnij żółte uchwyty, aby zmienić rozmiar płyty.",
-  "Tilbakestill (2 m rundt bygget)": "Resetuj (2 m wokół budynku)"
+  "Tilbakestill (2 m rundt bygget)": "Resetuj (2 m wokół budynku)",
+  "Gulvet er modellens laveste punkt — bunnen av søylene, toppen av betonggulvet. ▲ Kote viser nå moh.": "Posadzka to najniższy punkt modelu — spód słupów, wierzch betonowej posadzki. ▲ Rzędna pokazuje teraz m n.p.m."
 };

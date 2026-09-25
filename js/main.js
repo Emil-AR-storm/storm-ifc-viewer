@@ -139,9 +139,10 @@ canvas.addEventListener("pointerup", (e) => {
     }
   } else if (S.mode === "kote") {
     // koteValue gir høyden i MODELLENS enheter – må til meter først.
-    // ⛰ Er modellen satt ned i terrenget med en gulvkote, legges tillegget på,
-    // så lappen viser moh. — gulvet viser gulvkoten, terrenget sin høyde.
-    const koteM = tilM(koteValue(hit.point)) + (S.koteTillegg ? S.koteTillegg() : 0);
+    // ⛰ Er modellen satt ned i terrenget med en gulvkote, svarer terreng.js i
+    // stedet (moh.) — gulvet viser gulvkoten, terrenget sin høyde.
+    const moh = S.koteMoh ? S.koteMoh(hit.point) : null;
+    const koteM = moh != null ? moh : tilM(koteValue(hit.point));
     const label = makeLabel("▲ " + fmtLen(koteM), "#22d3ee");
     label.userData.px = 30; // konstant skjermstørrelse
     label.userData.aspect = label.scale.x / label.scale.y;
