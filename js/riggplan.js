@@ -28,10 +28,11 @@ import { grid, renderer, scene } from "./scene.js";
 import { hentJsPDF, lastNedFil, norskDato } from "./rapport.js";
 import { hentLogo, hentLogoer } from "./tegninger.js";
 import {
-  MAKS_AVSTAND_M, RIGGPLAN, nordOgOst, riggObjekter, riggplanDekning, riggplanFilnavn, riggplanTegnforklaring,
+  MAKS_AVSTAND_M, OVERSIKTSBILDER, OVERSIKT_FOV, OVERSIKT_VINKEL, PORT_FARGE, RIGGPLAN, gjerdeStykker, nordOgOst,
+  oversiktAvstand, riggplanNummer, riggObjekter, riggplanDekning, riggplanFilnavn, riggplanTegnforklaring,
   skalaStrek, vaskMalestokkValg, velgMalestokk
 } from "./rigg-regn.js";
-import { aktivRef, finnRiggObjekt, riggBase, riggGroup } from "./rigg-vis.js";
+import { aktivRef, finnRiggObjekt, riggBase, riggGroup, toneFarge } from "./rigg-vis.js";
 
 const PX_PER_MM = 7;          // bildets oppløsning: 292 mm → ~2000 px
 const GRÅ = "#6b7280", SORT = "#14161a", STREK = "#9aa1ab";
@@ -95,7 +96,11 @@ function tegnOvenfra(senter, nord, bredde, hoyde, toppY, bunnY, pxB, pxH, skala)
   kam.lookAt(senter.x, bunnY, senter.z);
   kam.updateProjectionMatrix();
   kam.updateMatrixWorld(true);
+  return { data: tegnMedKamera(kam, pxB, pxH), kamera: kam };
+}
 
+// Tegner scenen med et hvilket som helst kamera til et JPEG-bilde (data-URL).
+function tegnMedKamera(kam, pxB, pxH) {
   // Alt som hører skjermen til, skjules for bildet: navnelapper (sprites),
   // skjøteprikker og håndtak. Settes tilbake i finally, uansett hva som skjer.
   const skjult = [];
@@ -127,7 +132,7 @@ function tegnOvenfra(senter, nord, bredde, hoyde, toppY, bunnY, pxB, pxH, skala)
     const img = ctx.createImageData(pxB, pxH);
     for (let y = 0; y < pxH; y++) img.data.set(px.subarray((pxH - 1 - y) * pxB * 4, (pxH - y) * pxB * 4), y * pxB * 4);
     ctx.putImageData(img, 0, 0);
-    return { data: c.toDataURL("image/jpeg", 0.9), kamera: kam };
+    return c.toDataURL("image/jpeg", 0.9);
   } finally {
     renderer.setRenderTarget(gammelt);
     scene.remove(utskriftsLys);
@@ -136,6 +141,28 @@ function tegnOvenfra(senter, nord, bredde, hoyde, toppY, bunnY, pxB, pxH, skala)
     grid.visible = gammeltRutenett;
     for (const o of skjult) o.visible = true;
   }
+}
+
+// 📷 Fire skrå bilder mot byggeplassen (Emil 25.09: «et bilde fra sør, vest,
+// øst og nord som ser ned over byggeplassen fra en skrå vinkel»). Kameraet
+// står i den himmelretningen bildet heter etter, OVERSIKT_VINKEL grader over
+// bakken, og så langt unna at hele riggen (radius rM meter) får plass.
+function tegnOversikt(base, senter, nord, ost, rM, bunnY, flisB, flisH) {
+  const aspekt = flisB / flisH;
+  const pxB = Math.round(flisB * 5), pxH = Math.round(flisH * 5);
+  const avstand = oversiktAvstand(rM, OVERSIKT_FOV, aspekt) / base.skala;
+  const v = OVERSIKT_VINKEL * Math.PI / 180;
+  const mål = new THREE.Vector3(senter.x, bunnY, senter.z);
+  return OVERSIKTSBILDER.map(b => {
+    // retningen kameraet står i, i scenen
+    const dx = b.fra.e * ost.x + b.fra.n * nord.x, dz = b.fra.e * ost.z + b.fra.n * nord.z;
+    const kam = new THREE.PerspectiveCamera(OVERSIKT_FOV, aspekt, avstand / 1000, avstand * 20);
+    kam.position.set(mål.x + dx * avstand * Math.cos(v), mål.y + avstand * Math.sin(v), mål.z + dz * avstand * Math.cos(v));
+    kam.lookAt(mål);
+    kam.updateProjectionMatrix();
+    kam.updateMatrixWorld(true);
+    return { navn: t(b.navn), data: tegnMedKamera(kam, pxB, pxH) };
+  });
 }
 
 // ═══════════════════════ HOVEDINNGANGEN ═══════════════════════
@@ -203,7 +230,12 @@ export async function lastNedRiggplan(valg) {
 
     // Nummerringene: midten av hvert objekt, projisert inn på arket
     const forklaring = riggplanTegnforklaring(S.rigg || [], t);
-    const nrFor = new Map(forklaring.map(r => [r.type, r.nr]));
+    const portNr = (forklaring.find(r => r.type === "gjerdePort") || {}).nr;
+    const tilArk = (v) => {
+      v.project(bilde.kamera);
+      if (Math.abs(v.x) > 1 || Math.abs(v.y) > 1) return null;
+      return { x: RIGGPLAN.marg + (v.x + 1) / 2 * RIGGPLAN.bildeB, y: RIGGPLAN.marg + (1 - v.y) / 2 * RIGGPLAN.bildeH };
+    };
     const ringer = [];
     for (const o of objekter) {
       const g = finnRiggObjekt(o.id);
@@ -223,15 +255,30 @@ export async function lastNedRiggplan(valg) {
       }
       v.project(bilde.kamera);
       if (Math.abs(v.x) > 1 || Math.abs(v.y) > 1) continue;
-      ringer.push({ nr: nrFor.get(o.type), x: RIGGPLAN.marg + (v.x + 1) / 2 * RIGGPLAN.bildeB, y: RIGGPLAN.marg + (1 - v.y) / 2 * RIGGPLAN.bildeH });
+      ringer.push({ nr: riggplanNummer(forklaring, o), x: RIGGPLAN.marg + (v.x + 1) / 2 * RIGGPLAN.bildeB, y: RIGGPLAN.marg + (1 - v.y) / 2 * RIGGPLAN.bildeH });
+      // 🚪 En ring ved hver port i gjerdet, med portens eget nummer
+      if (portNr && o.type === "gjerde" && g.children[0]) {
+        for (const st of gjerdeStykker(o)) {
+          if (!st.port) continue;
+          const h = ((g.userData.hoyder && g.userData.hoyder[st.i]) || 0) + 1;
+          const p = tilArk(g.children[0].localToWorld(new THREE.Vector3((st.a.x + st.b.x) / 2, h, (st.a.z + st.b.z) / 2)));
+          if (p) ringer.push({ nr: portNr, x: p.x, y: p.y, port: true });
+        }
+      }
     }
+
+    // 📷 Fire skrå oversiktsbilder (side 2), ett fra hver himmelretning.
+    vis(t("Tegner oversiktsbilder …"));
+    const flisB = (RIGGPLAN.b - 2 * RIGGPLAN.marg - RIGGPLAN.mellom) / 2;
+    const flisH = (RIGGPLAN.h - 2 * RIGGPLAN.marg - 10 - RIGGPLAN.mellom - 12) / 2;
+    const oversikt = tegnOversikt(base, senter, nord, ost, Math.max(maxE - minE, maxN - minN) / 2 + marg, bunnY, flisB, flisH);
 
     const logo = await finnLogo();
     vis(t("Henter PDF-biblioteket …"));
     const jsPDF = await hentJsPDF();
     const iDag = new Date().toISOString().slice(0, 10);
     const d = tegnArk(jsPDF, {
-      bilde, ringer, forklaring, skala, nordKjent, logo, iDag, langtUnna, kuttet,
+      bilde, ringer, forklaring, skala, nordKjent, logo, iDag, langtUnna, kuttet, oversikt, flisB, flisH,
       kartkilde: !!(live && live.synlig),
       modell: String(S.fileName || "").replace(/\.(ifc|glb)$/i, ""),
       prosjekt: S.lettProsjekt || "",
@@ -263,7 +310,7 @@ function tegnArk(jsPDF, m) {
   // Nummerringene
   d.setFontSize(7); d.setFont(undefined, "bold");
   for (const r of m.ringer) {
-    hex(d, "#ffffff", "fyll"); hex(d, SORT, "strek"); d.setLineWidth(0.35);
+    hex(d, r.port ? PORT_FARGE : "#ffffff", "fyll"); hex(d, SORT, "strek"); d.setLineWidth(0.35);
     d.circle(r.x, r.y, 2.4, "FD");
     hex(d, SORT); d.text(String(r.nr), r.x, r.y + 0.9, { align: "center" });
   }
@@ -331,7 +378,8 @@ function tegnArk(jsPDF, m) {
       d.setLineDashPattern([], 0);
       hex(d, r.farge, "fyll"); d.triangle(fx + 19, y - 1.6, fx + 22, y, fx + 19, y + 1.6, "F");
     } else {
-      hex(d, r.farge, "fyll"); hex(d, SORT, "strek"); d.setLineWidth(0.2);
+      // lagringsområdet: fargen inni og en mørkere kant, som i 3D
+      hex(d, r.farge, "fyll"); hex(d, r.kant ? toneFarge(r.farge, 0.45) : SORT, "strek"); d.setLineWidth(r.kant ? 0.8 : 0.2);
       d.rect(fx + 11, y - 2.2, 9, 4.4, "FD");
     }
     d.setFontSize(9); hex(d, SORT);
@@ -376,5 +424,27 @@ function tegnArk(jsPDF, m) {
   d.text(norskDato(m.iDag), kol[3] + 3, ty + 10);
   d.text("1:" + m.skala.toLocaleString("nb-NO") + " (A3)", kol[3] + 40, ty + 10);
   d.text(d.splitTextToSize(m.av || "—", kol[4] - kol[3] - 6).slice(0, 1), kol[3] + 3, ty + 20);
+
+  // ── Side 2: oversiktsbildene ──
+  if (m.oversikt && m.oversikt.length) {
+    d.addPage("a3", "landscape");
+    d.setFontSize(14); d.setFont(undefined, "bold"); hex(d, SORT);
+    d.text(t("Riggplan — oversiktsbilder"), x0, y0 + 6);
+    d.setFont(undefined, "normal"); d.setFontSize(8); hex(d, GRÅ);
+    d.text([m.modell, m.prosjekt, m.adresse, norskDato(m.iDag)].filter(Boolean).join(" · "), R.b - R.marg, y0 + 6, { align: "right" });
+    const oy = y0 + 10;
+    m.oversikt.forEach((b, i) => {
+      const bx = x0 + (i % 2) * (m.flisB + R.mellom);
+      const by = oy + Math.floor(i / 2) * (m.flisH + R.mellom + 6);
+      d.addImage(b.data, "JPEG", bx, by, m.flisB, m.flisH);
+      hex(d, SORT, "strek"); d.setLineWidth(0.3); d.rect(bx, by, m.flisB, m.flisH);
+      d.setFontSize(9); d.setFont(undefined, "bold"); hex(d, SORT);
+      d.text(b.navn, bx, by + m.flisH + 4.5);
+      d.setFont(undefined, "normal");
+    });
+    d.setFontSize(6.5); hex(d, GRÅ);
+    d.text(t("Bildene er perspektiv og kan ikke måles på. Bruk planen på side 1 til mål.") +
+      (m.kartkilde ? "  " + t("Terreng og kart: © Kartverket (CC BY 4.0)") : ""), x0, R.h - R.marg + 2);
+  }
   return d;
 }

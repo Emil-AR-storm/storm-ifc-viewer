@@ -1745,5 +1745,16 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "{0} × {1} m": "{0} × {1} m",
   "A3 liggende: tomta sett ovenfra med nord opp, tegnforklaring og tittelfelt. Tallet bak målestokken er hvor mye av tomta arket dekker.": "A3 landscape: the plot seen from above with north up, legend and title block. The number after the scale is how much of the plot the sheet covers.",
   "Målestokken er for liten til hele riggen — noe av den er utenfor bildet.": "The scale is too small for the whole site setup — part of it is outside the picture.",
-  "{0} rigg-objekter ligger over 1 km fra bygget og er ikke med på planen.": "{0} site objects are more than 1 km from the building and are not on the plan."
+  "{0} rigg-objekter ligger over 1 km fra bygget og er ikke med på planen.": "{0} site objects are more than 1 km from the building and are not on the plan.",
+// ---------- 📷 Rigg: oversiktsbilder, port og lagring ----------
+  "Tegner oversiktsbilder …": "Drawing overview pictures …",
+  "Riggplan — oversiktsbilder": "Site plan — overview pictures",
+  "Bildene er perspektiv og kan ikke måles på. Bruk planen på side 1 til mål.": "The pictures are perspective views and cannot be measured. Use the plan on page 1 for dimensions.",
+  "Lagringsområde": "Storage area",
+  "Område for lagring av materiell og utstyr": "Area for storing materials and equipment",
+  "Port i byggegjerdet for kjøretøy og varelevering": "Gate in the site fence for vehicles and deliveries",
+  "Sett fra sør": "Seen from the south",
+  "Sett fra vest": "Seen from the west",
+  "Sett fra øst": "Seen from the east",
+  "Sett fra nord": "Seen from the north"
 };
