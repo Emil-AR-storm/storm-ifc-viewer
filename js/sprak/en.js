@@ -1716,5 +1716,27 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Pil: gående": "Arrow: pedestrians",
   "Kjørevei for biler, lastebiler og maskiner": "Route for cars, lorries and machines",
   "Gangvei for de som går på byggeplassen": "Walkway for people on foot on the site",
-  "Bredde på pila (m)": "Arrow width (m)"
+  "Bredde på pila (m)": "Arrow width (m)",
+// ---------- 📄 Rigg: riggplan-PDF og parkering ----------
+  "{0} plasser": "{0} spaces",
+  "Last ned riggplan (PDF)": "Download site plan (PDF)",
+  "A3 liggende: tomta sett ovenfra med nord opp, tegnforklaring og tittelfelt.": "A3 landscape: the plot seen from above with north up, legend and title block.",
+  "Klarte ikke å lage riggplanen: {0}": "Could not create the site plan: {0}",
+  "Legg inn noe rigg først — planen er tom.": "Add some site setup first — the plan is empty.",
+  "Lager riggplan …": "Creating site plan …",
+  "Fant ingenting å tegne.": "Found nothing to draw.",
+  "Terreng og kart: © Kartverket (CC BY 4.0)": "Terrain and map: © Kartverket (CC BY 4.0)",
+  "Uten terreng — bakgrunnen er ikke et kart": "No terrain — the background is not a map",
+  "Nord er ikke kontrollert: modellen står ikke i et terreng.": "North is not verified: the model is not placed in a terrain.",
+  "Tegnforklaring": "Legend",
+  "… flere typer enn det er plass til": "… more types than there is room for",
+  "Tegning": "Drawing",
+  "Riggplan": "Site plan",
+  "Prosjekt og adresse": "Project and address",
+  "Omtrentlig plassering (±1–2 m). Skal ikke brukes til utstikking.": "Approximate position (±1–2 m). Not to be used for setting out.",
+  "Dato": "Date",
+  "Målestokk": "Scale",
+  "Laget av": "Made by",
+  "Parkeringsområde": "Parking area",
+  "Parkering for ansatte og besøkende": "Parking for staff and visitors"
 };

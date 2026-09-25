@@ -22,7 +22,7 @@ import { LETT } from "./lett.js";
 import { camera, flyTil, frameHooks, grid, makeLabel, renderer, scene } from "./scene.js";
 import { settValgEffekt } from "./materiell-vis.js";
 import {
-  GJERDE_DELER, RIGG_REKKEFOLGE, RIGG_TYPER, erPil, gjerdeStykker, lokalTilEN, riggAntall, riggFraByggeplass, riggForByggeplassFra, riggMengdeRader,
+  GJERDE_DELER, P_PLASS_B, P_PLASS_D, RIGG_REKKEFOLGE, RIGG_TYPER, erPil, gjerdeStykker, parkeringsPlasser, lokalTilEN, riggAntall, riggFraByggeplass, riggForByggeplassFra, riggMengdeRader,
   riggFotavtrykk, riggObjekter, riggRef, riggTilBygg, tilUtm, vaskRef, REF_ID
 } from "./rigg-regn.js";
 
@@ -87,8 +87,11 @@ export function riggScenePos(o, base, ref, live) {
     if (y == null) y = base.gulvY;
     return { x, y, z, rotY: b.rotY };
   }
+  // 🅿 En parkeringsplass er en stor, flat flate: høyeste hjørne ville løftet
+  // hele asfalten opp i lufta på en skrå tomt. Den legges i midtpunktets høyde.
+  const bareMidten = !!(RIGG_TYPER[o.type] && RIGG_TYPER[o.type].parkering);
   if (live && o.ramme === "utm") {
-    for (const p of [{ E: o.E, N: o.N }].concat(riggFotavtrykk(o))) {
+    for (const p of [{ E: o.E, N: o.N }].concat(bareMidten ? [] : riggFotavtrykk(o))) {
       const h = live.yVed(p.E, p.N);
       if (h != null && (y == null || h > y)) y = h;
     }
@@ -475,6 +478,36 @@ const BYGG = {
   pilKjoretoy(g, o, hoyder) { byggPil(g, o, hoyder); },
   pilGaende(g, o, hoyder) { byggPil(g, o, hoyder); },
 
+  // 🅿 Parkeringsområde: asfalt, hvite oppmerkingsstreker mellom plassene og
+  // et blått P-skilt i hjørnet. Plassene regnes ut av målene
+  // (parkeringsPlasser i rigg-regn.js) — to rader med kjørebane i midten når
+  // området er dypt nok.
+  parkering(g, o) {
+    const { L, B, H } = o, asfalt = 0.04, loft = asfalt + 0.006;
+    boks(g, L, asfalt, B, o.farge, 0, asfalt / 2, 0);
+    const pl = parkeringsPlasser(L, B);
+    const start = -L / 2 + (L - pl.perRad * P_PLASS_B) / 2;
+    const radZ = pl.rader === 2 ? [-B / 2 + P_PLASS_D / 2, B / 2 - P_PLASS_D / 2] : pl.rader === 1 ? [-B / 2 + P_PLASS_D / 2] : [];
+    for (const z of radZ) {
+      for (let i = 0; i <= pl.perRad; i++)
+        boks(g, 0.12, 0.012, P_PLASS_D - 0.2, HVIT, start + i * P_PLASS_B, loft, z);
+      // bakkant av raden
+      boks(g, pl.perRad * P_PLASS_B, 0.012, 0.12, HVIT, start + pl.perRad * P_PLASS_B / 2, loft, z < 0 ? -B / 2 + 0.15 : B / 2 - 0.15);
+    }
+    // P-skiltet: stolpe og blått skilt med hvit P (fire staver, ingen tekstur)
+    const sx = L / 2 - 0.5, sz = -B / 2 + 0.5, side = 0.6, topp = Math.max(1.2, H);
+    boks(g, 0.08, topp, 0.08, "#9e9e9e", sx, topp / 2, sz);
+    for (const r of [1, -1]) {
+      const zf = sz + r * 0.03;
+      boks(g, side, side, 0.02, "#1f5fbf", sx, topp - side / 2, sz);
+      const y0 = topp - side / 2, st = side * 0.13, hs = side * 0.62;
+      boks(g, st, hs, 0.01, HVIT, sx - side * 0.15, y0, zf + r * 0.006);                     // stammen
+      boks(g, side * 0.32, st, 0.01, HVIT, sx - side * 0.02, y0 + hs / 2 - st / 2, zf + r * 0.006);   // toppen av bøyen
+      boks(g, side * 0.32, st, 0.01, HVIT, sx - side * 0.02, y0 + st / 2 - hs * 0.02, zf + r * 0.006); // bunnen av bøyen
+      boks(g, st, hs * 0.45, 0.01, HVIT, sx + side * 0.13, y0 + hs * 0.24, zf + r * 0.006);   // bøyens høyre side
+    }
+  },
+
   // Søppelcontainer (liftcontainer, åpen): skrå gavler, åpen topp, løfteører.
   soppel(g, o) {
     const { L, B, H } = o, t = 0.05, inn = Math.min(0.5, L * 0.15);
@@ -588,6 +621,9 @@ export function byggRiggObjekt(o, skala, hoyder) {
   ytre.add(modell);
   const n = riggAntall(o);
   let tekst = (o.navn || riggTypeLabel(o.type)) + (n > 1 ? "  ×" + n : "");
+  // 🅿 parkeringen viser antall plasser, det er det man lurer på
+  if (RIGG_TYPER[o.type] && RIGG_TYPER[o.type].parkering)
+    tekst += "  · " + t("{0} plasser", parkeringsPlasser(o.L, o.B).totalt);
   // ➜ Pilene har ingen navnelapp med mindre brukeren har gitt dem et navn:
   // fargen og streken sier hva de er, og en lapp på hver pil ville druknet
   // riggplanen.

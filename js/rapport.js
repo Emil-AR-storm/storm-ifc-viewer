@@ -812,7 +812,7 @@ export async function tegn(jsPDF, m, bilde, logo) {
 
 // ---------- Nedlasting ----------
 
-function lastNedFil(blob, navn) {
+export function lastNedFil(blob, navn) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url; a.download = navn;

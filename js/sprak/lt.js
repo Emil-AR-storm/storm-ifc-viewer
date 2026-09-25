@@ -1716,5 +1716,27 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Pil: gående": "Rodyklė: pėstieji",
   "Kjørevei for biler, lastebiler og maskiner": "Kelias automobiliams, sunkvežimiams ir mašinoms",
   "Gangvei for de som går på byggeplassen": "Pėsčiųjų takas statybvietėje",
-  "Bredde på pila (m)": "Rodyklės plotis (m)"
+  "Bredde på pila (m)": "Rodyklės plotis (m)",
+// ---------- 📄 Rigg: riggplan-PDF og parkering ----------
+  "{0} plasser": "{0} vietos",
+  "Last ned riggplan (PDF)": "Atsisiųsti statybvietės planą (PDF)",
+  "A3 liggende: tomta sett ovenfra med nord opp, tegnforklaring og tittelfelt.": "A3 gulsčias: sklypas iš viršaus, šiaurė viršuje, legenda ir spaudas.",
+  "Klarte ikke å lage riggplanen: {0}": "Nepavyko sukurti plano: {0}",
+  "Legg inn noe rigg først — planen er tom.": "Pirmiausia pridėkite įrengimo objektų — planas tuščias.",
+  "Lager riggplan …": "Kuriamas planas …",
+  "Fant ingenting å tegne.": "Nėra ką piešti.",
+  "Terreng og kart: © Kartverket (CC BY 4.0)": "Reljefas ir žemėlapis: © Kartverket (CC BY 4.0)",
+  "Uten terreng — bakgrunnen er ikke et kart": "Be reljefo — fonas nėra žemėlapis",
+  "Nord er ikke kontrollert: modellen står ikke i et terreng.": "Šiaurė nepatikrinta: modelis nepastatytas reljefe.",
+  "Tegnforklaring": "Legenda",
+  "… flere typer enn det er plass til": "… daugiau tipų, nei telpa",
+  "Tegning": "Brėžinys",
+  "Riggplan": "Statybvietės planas",
+  "Prosjekt og adresse": "Projektas ir adresas",
+  "Omtrentlig plassering (±1–2 m). Skal ikke brukes til utstikking.": "Apytikslė padėtis (±1–2 m). Nenaudoti nužymėjimui.",
+  "Dato": "Data",
+  "Målestokk": "Mastelis",
+  "Laget av": "Parengė",
+  "Parkeringsområde": "Automobilių stovėjimo aikštelė",
+  "Parkering for ansatte og besøkende": "Stovėjimo vieta darbuotojams ir lankytojams"
 };
