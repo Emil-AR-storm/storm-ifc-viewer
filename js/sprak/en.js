@@ -1553,5 +1553,20 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Høydefarger": "Height colours",
   "Henter kartet …": "Fetching the map …",
   "Kartet kunne ikke hentes — viser høydefarger.": "The map could not be fetched — showing height colours.",
-  "Kart og høydedata: © Kartverket (CC BY 4.0). Flyfoto fra Norge i bilder krever avtale gjennom Norge digitalt og er derfor ikke med.": "Map and elevation data: © Kartverket (CC BY 4.0). Aerial photos from Norge i bilder require an agreement through Norge digitalt and are therefore not included."
+  "Kart og høydedata: © Kartverket (CC BY 4.0). Flyfoto fra Norge i bilder krever avtale gjennom Norge digitalt og er derfor ikke med.": "Map and elevation data: © Kartverket (CC BY 4.0). Aerial photos from Norge i bilder require an agreement through Norge digitalt and are therefore not included.",
+// ---------- ⛰ Terreng: lagring ----------
+  "Gi terrenget et navn først.": "Give the terrain a name first.",
+  "Kartverket svarte med et annet rutenett enn det som ble lagret": "The Mapping Authority returned a different grid than the one saved",
+  "Henter lagret terreng …": "Fetching saved terrain …",
+  "Klarte ikke å hente det lagrede terrenget: ": "Could not fetch the saved terrain: ",
+  "Slette «{0}» fra lista over lagrede terreng?": "Delete “{0}” from the list of saved terrains?",
+  "Navn på terrenget": "Name of the terrain",
+  "Lagrer …": "Saving …",
+  "Lagre terreng": "Save terrain",
+  "Lagrer terrenget og plasseringen av denne modellen. Etterpå lagres endringer i plasseringen av seg selv.": "Saves the terrain and the placement of this model. After that, changes to the placement are saved automatically.",
+  "Lagret som": "Saved as",
+  "Plassering, gulvkote og plate lagres av seg selv for denne modellen.": "Placement, floor level and pad are saved automatically for this model.",
+  "Lagrede terreng": "Saved terrains",
+  "Ingen terreng lagret ennå.": "No terrain saved yet.",
+  "Trykk på et terreng for å legge det under modellen.": "Click a terrain to place it under the model."
 };
