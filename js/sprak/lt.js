@@ -1745,5 +1745,16 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "{0} × {1} m": "{0} × {1} m",
   "A3 liggende: tomta sett ovenfra med nord opp, tegnforklaring og tittelfelt. Tallet bak målestokken er hvor mye av tomta arket dekker.": "A3 gulsčias: sklypas iš viršaus, šiaurė viršuje, legenda ir spaudas. Skaičius po masteliu rodo, kiek sklypo apima lapas.",
   "Målestokken er for liten til hele riggen — noe av den er utenfor bildet.": "Mastelis per mažas visam įrengimui — dalis už paveikslo ribų.",
-  "{0} rigg-objekter ligger over 1 km fra bygget og er ikke med på planen.": "{0} įrengimo objektų yra toliau nei 1 km nuo pastato ir nerodomi plane."
+  "{0} rigg-objekter ligger over 1 km fra bygget og er ikke med på planen.": "{0} įrengimo objektų yra toliau nei 1 km nuo pastato ir nerodomi plane.",
+// ---------- 📷 Rigg: oversiktsbilder, port og lagring ----------
+  "Tegner oversiktsbilder …": "Piešiami apžvalgos vaizdai …",
+  "Riggplan — oversiktsbilder": "Statybvietės planas — apžvalgos vaizdai",
+  "Bildene er perspektiv og kan ikke måles på. Bruk planen på side 1 til mål.": "Vaizdai yra perspektyviniai ir netinka matavimui. Matmenims naudokite planą 1 puslapyje.",
+  "Lagringsområde": "Sandėliavimo aikštelė",
+  "Område for lagring av materiell og utstyr": "Medžiagų ir įrangos sandėliavimo vieta",
+  "Port i byggegjerdet for kjøretøy og varelevering": "Vartai tvoroje transportui ir pristatymams",
+  "Sett fra sør": "Vaizdas iš pietų",
+  "Sett fra vest": "Vaizdas iš vakarų",
+  "Sett fra øst": "Vaizdas iš rytų",
+  "Sett fra nord": "Vaizdas iš šiaurės"
 };

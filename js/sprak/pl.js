@@ -1745,5 +1745,16 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "{0} × {1} m": "{0} × {1} m",
   "A3 liggende: tomta sett ovenfra med nord opp, tegnforklaring og tittelfelt. Tallet bak målestokken er hvor mye av tomta arket dekker.": "A3 poziomo: działka z góry, północ u góry, legenda i tabliczka. Liczba po skali to obszar działki, który obejmuje arkusz.",
   "Målestokken er for liten til hele riggen — noe av den er utenfor bildet.": "Skala jest za mała dla całego zaplecza — część jest poza obrazem.",
-  "{0} rigg-objekter ligger over 1 km fra bygget og er ikke med på planen.": "{0} obiektów zaplecza jest ponad 1 km od budynku i nie ma ich na planie."
+  "{0} rigg-objekter ligger over 1 km fra bygget og er ikke med på planen.": "{0} obiektów zaplecza jest ponad 1 km od budynku i nie ma ich na planie.",
+// ---------- 📷 Rigg: oversiktsbilder, port og lagring ----------
+  "Tegner oversiktsbilder …": "Rysowanie widoków …",
+  "Riggplan — oversiktsbilder": "Plan zagospodarowania — widoki",
+  "Bildene er perspektiv og kan ikke måles på. Bruk planen på side 1 til mål.": "Widoki są perspektywiczne i nie nadają się do pomiarów. Do wymiarów użyj planu na stronie 1.",
+  "Lagringsområde": "Plac składowy",
+  "Område for lagring av materiell og utstyr": "Miejsce składowania materiałów i sprzętu",
+  "Port i byggegjerdet for kjøretøy og varelevering": "Brama w ogrodzeniu dla pojazdów i dostaw",
+  "Sett fra sør": "Widok od południa",
+  "Sett fra vest": "Widok od zachodu",
+  "Sett fra øst": "Widok od wschodu",
+  "Sett fra nord": "Widok od północy"
 };

@@ -89,7 +89,7 @@ export function riggScenePos(o, base, ref, live) {
   }
   // 🅿 En parkeringsplass er en stor, flat flate: høyeste hjørne ville løftet
   // hele asfalten opp i lufta på en skrå tomt. Den legges i midtpunktets høyde.
-  const bareMidten = !!(RIGG_TYPER[o.type] && RIGG_TYPER[o.type].parkering);
+  const bareMidten = !!(RIGG_TYPER[o.type] && RIGG_TYPER[o.type].flate);   // parkering og lagring
   if (live && o.ramme === "utm") {
     for (const p of [{ E: o.E, N: o.N }].concat(bareMidten ? [] : riggFotavtrykk(o))) {
       const h = live.yVed(p.E, p.N);
@@ -506,6 +506,18 @@ const BYGG = {
       boks(g, side * 0.32, st, 0.01, HVIT, sx - side * 0.02, y0 + st / 2 - hs * 0.02, zf + r * 0.006); // bunnen av bøyen
       boks(g, st, hs * 0.45, 0.01, HVIT, sx + side * 0.13, y0 + hs * 0.24, zf + r * 0.006);   // bøyens høyre side
     }
+  },
+
+  // 🟦 Lagringsområde: flate på bakken i objektets farge, med en kant i en
+  // mørkere utgave av samme farge (Emil 25.09: lys blå inni, mørkeblå kant).
+  lagring(g, o) {
+    const { L, B } = o, tykk = 0.03, kant = Math.min(0.3, Math.min(L, B) * 0.06);
+    const mork = toneFarge(o.farge, 0.45);
+    boks(g, L - 2 * kant, tykk, B - 2 * kant, o.farge, 0, tykk / 2, 0);
+    boks(g, L, tykk + 0.01, kant, mork, 0, (tykk + 0.01) / 2, -B / 2 + kant / 2);
+    boks(g, L, tykk + 0.01, kant, mork, 0, (tykk + 0.01) / 2, B / 2 - kant / 2);
+    boks(g, kant, tykk + 0.01, B - 2 * kant, mork, -L / 2 + kant / 2, (tykk + 0.01) / 2, 0);
+    boks(g, kant, tykk + 0.01, B - 2 * kant, mork, L / 2 - kant / 2, (tykk + 0.01) / 2, 0);
   },
 
   // Søppelcontainer (liftcontainer, åpen): skrå gavler, åpen topp, løfteører.

@@ -39,7 +39,12 @@ export const RIGG_TYPER = {
   // 🅿 Parkeringsområde (Emil 25.09): asfaltflate med oppmerkede plasser og
   // et P-skilt. L × B er hele området; plassene regnes ut av målene
   // (parkeringsPlasser), aldri skrives inn. H er skiltets høyde.
-  parkering:  { label: "Parkeringsområde", L: 25, B: 16, H: 2.2, farge: "#6e757c", parkering: true },
+  parkering:  { label: "Parkeringsområde", L: 25, B: 16, H: 2.2, farge: "#6e757c", parkering: true, flate: true },
+  // 🟦 Lagringsområde (Emil 25.09): en firkant på bakken, lys blå inni med
+  // mørkeblå kant. Fargen kan endres i Rediger — kanten blir alltid en
+  // mørkere utgave av den (toneFarge i rigg-vis.js), så flere områder i hver
+  // sin farge kan bety hver sin ting (stål, betong, avfall …).
+  lagring:    { label: "Lagringsområde", L: 10, B: 6, H: 0.05, farge: "#8ec5ff", flate: true },
   // 🚧 Byggegjerdet (trinn 3–4). L = PANELLENGDEN og H = panelhøyden — samme
   // felt som de andre objektene, så skjema, vasking og lagring er de samme.
   // B er foten (betongklossen) og brukes bare til tegningen.
@@ -65,7 +70,7 @@ export function minPunkter(o) { return erPil(o) ? 2 : 3; }
 
 // Rekkefølgen knappene står i panelet — det man rigger først, først.
 export const RIGG_REKKEFOLGE = ["gjerde", "pilKjoretoy", "pilGaende", "brakke", "hjulbrakke", "toalett", "forstehjelp", "mote",
-  "strom", "container", "hms", "soppel", "parkering"];
+  "strom", "container", "hms", "soppel", "parkering", "lagring"];
 
 // Kort forklaring per type. Står i panelet nå, og blir teksten i
 // tegnforklaringen på riggplan-PDF-en (trinn 6).
@@ -80,6 +85,7 @@ export const RIGG_FORKLARING = {
   hms: "Registrering av HMS-kort ved inngangen",
   soppel: "Avfall og kildesortering",
   parkering: "Parkering for ansatte og besøkende",
+  lagring: "Område for lagring av materiell og utstyr",
   gjerde: "Byggegjerde rundt byggeplassen, med port for kjøretøy",
   pilKjoretoy: "Kjørevei for biler, lastebiler og maskiner",
   pilGaende: "Gangvei for de som går på byggeplassen"
@@ -143,8 +149,8 @@ export function vaskRiggObjekt(p) {
     id, type: p.type,
     navn: tekst(p.navn, 80),
     farge: vaskFarge(p.farge, M.farge),
-    L: mal(p.L, M.gjerde ? 0.5 : 0.1, M.gjerde ? 10 : M.parkering ? 200 : 30, M.L),
-    B: mal(p.B, 0.1, M.parkering ? 200 : 30, M.B),
+    L: mal(p.L, M.gjerde ? 0.5 : 0.1, M.gjerde ? 10 : M.flate ? 200 : 30, M.L),
+    B: mal(p.B, 0.1, M.flate ? 200 : 30, M.B),
     H: mal(p.H, 0.1, 15, M.H),
     // "utm" = E/N er UTM33 i meter (riggen hører til TOMTA, Emil 25.09).
     // "bygg" = lagt inn før noe terreng fantes: E/N er byggrammen (E = x,
@@ -720,15 +726,44 @@ export function riggplanTegnforklaring(liste, tr) {
   const lab = tr || ((x) => x);
   const obj = riggObjekter(liste).filter(o => !o.skjult);
   const ut = [];
+  const rad = (r) => ut.push(Object.assign({ nr: ut.length + 1, stiplet: false, pil: false, kant: null }, r));
   for (const k of RIGG_REKKEFOLGE) {
     const av = obj.filter(o => o.type === k);
     if (!av.length) continue;
     const M = RIGG_TYPER[k];
-    let antall;
+    // Fargen i tegnforklaringen er fargen objektet faktisk har på planen —
+    // ikke malens, som brukeren kan ha endret.
+    const farge = av[0].farge || M.farge;
     if (M.gjerde) {
       const g = av.reduce((a, o) => { const m = gjerdeMengder(o); a.p += m.paneler; a.port += m.porter; a.l += m.lengde; return a; }, { p: 0, port: 0, l: 0 });
-      antall = lab("{0} paneler · {1} porter").replace("{0}", g.p).replace("{1}", g.port) + " · " + Math.round(g.l) + " m";
-    } else if (M.pil) {
+      rad({ type: k, label: lab(M.label), farge,
+        antall: lab("{0} paneler · {1} porter").replace("{0}", g.p).replace("{1}", g.port) + " · " + Math.round(g.l) + " m",
+        forklaring: lab(RIGG_FORKLARING[k] || "") });
+      // 🚪 Portene i gjerdet er et eget punkt (Emil 25.09) — det er der
+      // kjøretøyene kommer inn, og det skal kunne pekes ut på planen.
+      if (g.port) rad({ type: "gjerdePort", label: lab("Byggeport"), farge: PORT_FARGE,
+        antall: g.port + " " + lab("stk"), forklaring: lab("Port i byggegjerdet for kjøretøy og varelevering") });
+      continue;
+    }
+    if (k === "lagring") {
+      // Ett punkt per farge (og navn): et blått og et grønt lagringsområde
+      // er to forskjellige ting, og skal stå som to punkter.
+      const grupper = new Map();
+      for (const o of av) {
+        const nokkel = o.farge + "|" + (o.navn || "");
+        if (!grupper.has(nokkel)) grupper.set(nokkel, []);
+        grupper.get(nokkel).push(o);
+      }
+      for (const [nokkel, gr] of grupper) {
+        const areal = gr.reduce((a, o) => a + o.L * o.B, 0);
+        rad({ type: "lagring", gruppe: nokkel, label: gr[0].navn || lab(M.label), farge: gr[0].farge, kant: true,
+          antall: gr.length + " " + lab("stk") + " · " + Math.round(areal) + " m²",
+          forklaring: lab(RIGG_FORKLARING[k] || "") });
+      }
+      continue;
+    }
+    let antall;
+    if (M.pil) {
       antall = av.length + " " + lab("stk") + " · " + Math.round(av.reduce((a, o) => a + pilLengde(o), 0)) + " m";
     } else if (M.parkering) {
       const pl = av.reduce((a, o) => a + parkeringsPlasser(o.L, o.B).totalt, 0);
@@ -736,10 +771,41 @@ export function riggplanTegnforklaring(liste, tr) {
     } else {
       antall = av.reduce((a, o) => a + riggAntall(o), 0) + " " + lab("stk");
     }
-    ut.push({ nr: ut.length + 1, type: k, label: lab(M.label), farge: M.farge, stiplet: !!M.stiplet, pil: !!M.pil,
-      antall, forklaring: lab(RIGG_FORKLARING[k] || "") });
+    rad({ type: k, label: lab(M.label), farge, stiplet: !!M.stiplet, pil: !!M.pil, antall,
+      forklaring: lab(RIGG_FORKLARING[k] || "") });
   }
   return ut;
+}
+
+// Hvilket nummer et objekt har i tegnforklaringen.
+export function riggplanNummer(forklaring, o) {
+  const r = o.type === "lagring"
+    ? forklaring.find(x => x.type === "lagring" && x.gruppe === o.farge + "|" + (o.navn || ""))
+    : forklaring.find(x => x.type === o.type);
+  return r ? r.nr : null;
+}
+
+// Portens farge i 3D og på planen (gul, som i rigg-vis.js).
+export const PORT_FARGE = "#f2b705";
+
+// 📷 Oversiktsbildene (side 2): fire skrå bilder mot byggeplassen, ett fra
+// hver himmelretning (Emil 25.09). Retningen er der KAMERAET står: «fra sør»
+// står sør for plassen og ser nordover. `hoyde` er vinkelen ned mot bakken.
+export const OVERSIKTSBILDER = [
+  { id: "sor", navn: "Sett fra sør", fra: { e: 0, n: -1 } },
+  { id: "vest", navn: "Sett fra vest", fra: { e: -1, n: 0 } },
+  { id: "ost", navn: "Sett fra øst", fra: { e: 1, n: 0 } },
+  { id: "nord", navn: "Sett fra nord", fra: { e: 0, n: 1 } }
+];
+export const OVERSIKT_VINKEL = 35;     // grader ned fra vannrett
+export const OVERSIKT_FOV = 40;        // kameraets synsvinkel (loddrett)
+
+// Hvor langt unna kameraet må stå for at en sirkel med radius r (meter) skal
+// få plass i bildet, gitt synsvinkel og bildeforhold. Litt luft rundt.
+export function oversiktAvstand(r, fovGrader, aspekt) {
+  const v = (fovGrader || OVERSIKT_FOV) * Math.PI / 360;
+  const h = Math.atan(Math.tan(v) * (aspekt || 1));
+  return 1.15 * r / Math.sin(Math.min(v, h));
 }
 
 // Nord i scenen, gitt byggets rotasjon på tomta (samme som nordRetning i
