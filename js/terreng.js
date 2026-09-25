@@ -31,9 +31,9 @@ import {
   tolkKote, vaskAdresseSvar, wcsUrl,
   binTilGrid, gridTilBin, navneforslag, nyTerrengId, vaskPlassering, vaskTerrengListe,
   planumKote, vaskPlanum,
-  KOORDSYS, dzFarger, ferdigGrid, festEttPunkt, festSjekk, festToPunkt, masseFelt, vaskFest, vaskSkraning
+  KOORDSYS, SIDER, dzFarger, ferdigGrid, masseRader, sideRetning, festEttPunkt, festSjekk, festToPunkt, masseFelt, vaskFest, vaskSkraning
 } from "./terreng-regn.js";
-import { pick } from "./elements.js";
+import { lastNedXlsx, pick } from "./elements.js";
 import { snapPoint } from "./measure.js";
 
 // ═══════════════════════ TILSTAND ═══════════════════════
@@ -1456,9 +1456,12 @@ function tegnMasser() {
   html += '<label style="display:flex;gap:6px;align-items:center;font-size:12px;margin-top:6px"><input type="checkbox" id="trSkrPaa"' +
     (sk.paa ? " checked" : "") + "> " + t("Ta med skråninger rundt plata") + "</label>" +
     (sk.paa
-      ? '<div style="display:flex;gap:8px">' +
+      ? (sk.perSide ? "" : '<div style="display:flex;gap:8px">' +
         '<label style="flex:1">' + t("Skjæring 1:") + '<input type="text" id="trSkrSkj" inputmode="decimal" value="' + esc(n1(sk.skjaering)) + '"></label>' +
-        '<label style="flex:1">' + t("Fylling 1:") + '<input type="text" id="trSkrFyl" inputmode="decimal" value="' + esc(n1(sk.fylling)) + '"></label></div>' +
+        '<label style="flex:1">' + t("Fylling 1:") + '<input type="text" id="trSkrFyl" inputmode="decimal" value="' + esc(n1(sk.fylling)) + '"></label></div>') +
+        '<label style="display:flex;gap:6px;align-items:center;font-size:12px;margin-top:4px"><input type="checkbox" id="trSkrPerSide"' +
+        (sk.perSide ? " checked" : "") + "> " + t("Ulik helning per side") + "</label>" +
+        (sk.perSide ? tegnSider(sk, m) : "") +
         "<p " + LITEN + ">" + t("1:1,5 betyr 1 m opp for hver 1,5 m ut. Typisk 1:1,5 i skjæring og 1:2 i fylling, men det avhenger av massene — geoteknikeren bestemmer.") + "</p>"
       : "");
   html += rad(t("Planum"), esc((Math.round(m.planum * 100) / 100).toLocaleString("no-NO", { minimumFractionDigits: 2 }) + " " + t("moh."))) +
@@ -1476,6 +1479,7 @@ function tegnMasser() {
     (visMasser ? " checked" : "") + "> " + t("Vis skjæring (rødt) og fylling (blått) i terrenget") + "</label>" +
     '<label style="display:flex;gap:6px;align-items:center;font-size:12px;margin-top:4px"><input type="checkbox" id="trVisFerdig"' +
     (visFerdig ? " checked" : "") + "> " + t("Vis terrenget etter graving (planum og skråninger)") + "</label>" +
+    '<div class="prop-actions"><button id="trMasseEksport">' + ikon("lastned") + " " + t("Last ned masser (Excel)") + "</button></div>" +
     '<p style="font-size:11px;margin:6px 0 0;color:var(--accent)">' +
     t("Overslag, ikke til oppgjør: terrenget er laserskannet før graving, og skråningene er regnet med fast helning uten grøfter, drenering eller masseutskifting.") +
     (erLaast() ? "" : " " + t("Uten festet hjørne er plasseringen ±1–2 m.")) + "</p>";
@@ -1520,6 +1524,27 @@ function koblMasser() {
   if (vis) vis.onchange = () => { visMasser = vis.checked; oppdaterAlt(); };
   const ferdig = $("trVisFerdig");
   if (ferdig) ferdig.onchange = () => { visFerdig = ferdig.checked; oppdaterAlt(); };
+  const eks = $("trMasseEksport");
+  if (eks) eks.onclick = () => eksporterMasser();
+  const perSide = $("trSkrPerSide");
+  if (perSide) perSide.onchange = () => {
+    // Slås det på, starter alle sidene med de felles helningene
+    const sk = terreng.skraning || vaskSkraning(null);
+    const sider = perSide.checked && !sk.perSide
+      ? Object.fromEntries(SIDER.map(k => [k, { skjaering: sk.skjaering, fylling: sk.fylling }])) : sk.sider;
+    settSkraning(Object.assign({}, sk, { perSide: perSide.checked, sider }));
+  };
+  document.querySelectorAll("input[data-tr-skr]").forEach(el => {
+    el.onchange = () => {
+      const [k, felt] = el.dataset.trSkr.split(":");
+      const v = tall(el);
+      if (!(Number.isFinite(v) && v >= 0.2 && v <= 10)) { tegnPanel(); return; }
+      const sk = terreng.skraning || vaskSkraning(null);
+      const sider = Object.assign({}, sk.sider, { [k]: Object.assign({}, sk.sider[k], { [felt]: v }) });
+      settSkraning(Object.assign({}, sk, { sider }));
+    };
+    el.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); el.blur(); } };
+  });
   const skrPaa = $("trSkrPaa");
   if (skrPaa) skrPaa.onchange = () => settSkraning(Object.assign({}, terreng.skraning, { paa: skrPaa.checked }));
   for (const [id, felt] of [["trSkrSkj", "skjaering"], ["trSkrFyl", "fylling"]]) {
@@ -1532,6 +1557,35 @@ function koblMasser() {
     };
     el.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); el.blur(); } };
   }
+}
+
+// Én rad per side av plata: himmelretningen den vender mot (følger byggets
+// rotasjon), helningene, og hva skråningen på den siden gir.
+function tegnSider(sk, m) {
+  const n1 = (v) => String(v).replace(".", ",");
+  return SIDER.map(k => {
+    const e = sk.sider[k], ps = m && m.perSide ? m.perSide[k] : null;
+    return '<div style="display:flex;gap:6px;align-items:flex-end;margin-top:4px">' +
+      '<div style="width:48px;font-size:12px;font-weight:700;padding-bottom:6px">' + t("Mot {0}", sideRetning(k, terreng.plass.rot)) + "</div>" +
+      '<label style="flex:1">' + t("Skjæring 1:") + '<input type="text" inputmode="decimal" data-tr-skr="' + k + ':skjaering" value="' + esc(n1(e.skjaering)) + '"></label>' +
+      '<label style="flex:1">' + t("Fylling 1:") + '<input type="text" inputmode="decimal" data-tr-skr="' + k + ':fylling" value="' + esc(n1(e.fylling)) + '"></label></div>' +
+      (ps ? '<div style="font-size:11px;color:var(--muted);text-align:right">' + t("skjæring {0} · fylling {1}", m3(ps.skjaering), m3(ps.fylling)) + "</div>" : "");
+  }).join("");
+}
+
+function eksporterMasser() {
+  if (!terreng || !terreng.masser) return;
+  const pl = terreng.planum || vaskPlanum(null), pm = padMeter(terreng.pad);
+  const d = new Date();
+  const rader = masseRader({
+    modell: S.fileName || "", adresse: terreng.navn || (terreng.adresse && terreng.adresse.tekst) || "",
+    dato: d.toLocaleDateString("no-NO"), av: mittNavn(),
+    gulv: terreng.gulv ? terreng.gulv.kote : null, planumModus: pl.modus, oppbygging: pl.oppbygging,
+    padMeter: { b: pm.bredde, d: pm.lengde }, skraning: terreng.skraning, rot: terreng.plass.rot,
+    m: terreng.masser, fest: terreng.fest
+  });
+  const base = (S.fileName || "modell").replace(/\.(ifc|glb)$/i, "");
+  lastNedXlsx(base + " masser " + d.toISOString().slice(0, 10) + ".xlsx", "Masser", rader);
 }
 
 function settSkraning(ny) {

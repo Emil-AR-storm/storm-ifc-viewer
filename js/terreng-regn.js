@@ -898,10 +898,34 @@ export function festToPunkt(b1, b2, E0, N0, t1, t2) {
 // Mellom de to flatene ligger terrenget urørt.
 export const STANDARD_SKRANING = { skjaering: 1.5, fylling: 2 };
 
+// Sidene er platas fire kanter i BYGGRAMMEN (x0 = venstre, x1 = høyre,
+// z0 = bak, z1 = foran når bygget ikke er rotert). De følger bygget når det
+// roteres; himmelretningen de vender mot regnes ut med sideRetning.
+export const SIDER = ["z0", "x1", "z1", "x0"];
+
 export function vaskSkraning(s) {
   const q = s && typeof s === "object" ? s : {};
   const ok = (v, std) => (typeof v === "number" && Number.isFinite(v) && v >= 0.2 && v <= 10) ? v : std;
-  return { paa: q.paa !== false, skjaering: ok(q.skjaering, STANDARD_SKRANING.skjaering), fylling: ok(q.fylling, STANDARD_SKRANING.fylling) };
+  const skj = ok(q.skjaering, STANDARD_SKRANING.skjaering), fyl = ok(q.fylling, STANDARD_SKRANING.fylling);
+  const qs = q.sider && typeof q.sider === "object" ? q.sider : {};
+  const sider = {};
+  for (const k of SIDER) {
+    const e = qs[k] && typeof qs[k] === "object" ? qs[k] : {};
+    sider[k] = { skjaering: ok(e.skjaering, skj), fylling: ok(e.fylling, fyl) };
+  }
+  return { paa: q.paa !== false, skjaering: skj, fylling: fyl, perSide: q.perSide === true, sider };
+}
+
+// Himmelretningen en side av plata vender UT mot, med byggets rotasjon.
+// Utoverpekende normal i byggrammen → terrengrammen (samme regning som
+// byggTilTerreng) → vinkel fra nord med klokka.
+const RETNINGER = ["N", "NØ", "Ø", "SØ", "S", "SV", "V", "NV"];
+export function sideRetning(side, rot) {
+  const n = { x0: [-1, 0], x1: [1, 0], z0: [0, -1], z1: [0, 1] }[side] || [0, -1];
+  const t = (rot || 0) * Math.PI / 180, c = Math.cos(t), s = Math.sin(t);
+  const lx = n[0] * c - n[1] * s, lz = n[0] * s + n[1] * c;
+  const g = (Math.atan2(lx, -lz) * 180 / Math.PI + 360) % 360;
+  return RETNINGER[Math.round(g / 45) % 8];
 }
 
 function avstandTilRekt(bx, bz, r) {
@@ -919,6 +943,8 @@ export function masseFelt(grid, E0, N0, plass, pad, planum, skraning) {
   const flagg = new Uint8Array(n);
   const t = (plass.rot || 0) * RAD, c = Math.cos(t), s = Math.sin(t);
   const r = { skjP: 0, fylP: 0, skjS: 0, fylS: 0, arealP: 0, arealS: 0, sum: 0, nP: 0, uten: 0, kant: false };
+  const perSide = {};
+  for (const k of SIDER) perSide[k] = { skjaering: 0, fylling: 0, areal: 0 };
   for (let j = 0; j < grid.h; j++) {
     const N = grid.y0 - (j + 0.5) * grid.dy, lz = -(N - N0 - (plass.pN || 0));
     for (let i = 0; i < grid.w; i++) {
@@ -935,13 +961,29 @@ export function masseFelt(grid, E0, N0, plass, pad, planum, skraning) {
         continue;
       }
       if (!sk.paa) continue;
-      const d = avstandTilRekt(bx, bz, pad);
-      const opp = planum + d / sk.skjaering, ned = planum - d / sk.fylling;
+      // Avstanden ut fra plata, og hvilken side punktet hører til. Ved
+      // hjørnene blandes helningen til de to sidene etter vinkelen, så
+      // skråningsflata henger sammen rundt hjørnet uten et sprang.
+      const ax0 = pad.x0 - bx, ax1 = bx - pad.x1, az0 = pad.z0 - bz, az1 = bz - pad.z1;
+      const ax = Math.max(ax0, 0, ax1), az = Math.max(az0, 0, az1);
+      const d = Math.hypot(ax, az);
+      const sx = ax0 > 0 ? "x0" : "x1", sz = az0 > 0 ? "z0" : "z1";
+      const side = ax >= az ? sx : sz;
+      let nS = sk.skjaering, nF = sk.fylling;
+      if (sk.perSide) {
+        const w = az === 0 ? 0 : ax === 0 ? 1 : Math.atan2(az, ax) / (Math.PI / 2);
+        const hx = sk.sider[sx], hz = sk.sider[sz];
+        nS = hx.skjaering * (1 - w) + hz.skjaering * w;
+        nF = hx.fylling * (1 - w) + hz.fylling * w;
+      }
+      const opp = planum + d / nS, ned = planum - d / nF;
       let dd = 0;
-      if (v > opp) { dd = v - opp; r.skjS += dd * A; }
-      else if (v < ned) { dd = v - ned; r.fylS -= dd * A; }
+      // Punkt nøyaktig på diagonalen ut fra hjørnet deles likt på de to sidene
+      const del = ax === az && ax > 0 ? [[sx, 0.5], [sz, 0.5]] : [[side, 1]];
+      if (v > opp) { dd = v - opp; r.skjS += dd * A; for (const [q, w] of del) perSide[q].skjaering += dd * A * w; }
+      else if (v < ned) { dd = v - ned; r.fylS -= dd * A; for (const [q, w] of del) perSide[q].fylling -= dd * A * w; }
       if (dd !== 0) {
-        dz[k] = dd; r.arealS += A;
+        dz[k] = dd; r.arealS += A; for (const [q, w] of del) perSide[q].areal += A * w;
         if (i === 0 || j === 0 || i === grid.w - 1 || j === grid.h - 1) r.kant = true;
       } else dz[k] = 0;
     }
@@ -953,6 +995,7 @@ export function masseFelt(grid, E0, N0, plass, pad, planum, skraning) {
     areal: r.arealP, arealSkraning: r.arealS, snitt: r.nP ? r.sum / r.nP : null,
     per10cm: r.arealP * 0.1, utenHoyde: r.uten,
     skraningUtAvUtsnitt: r.kant,        // skråningen treffer kanten av det hentede terrenget
+    perSide,                            // skråningsmassene fordelt på platas fire sider
     dz, flagg
   };
 }
@@ -1018,4 +1061,57 @@ export function vaskFest(f) {
     ? { avvikM: k.avvikM, lengdeModell: k.lengdeModell, lengdeLandmaaler: k.lengdeLandmaaler } : null;
   const laast = f.laast === true;
   return { sys: koordsys(f.sys).id, laast, antall: laast && (f.antall === 2) ? 2 : (laast ? 1 : 0), kontroll: laast ? kontroll : null, punkter };
+}
+
+// ═══════════════════════ EKSPORT AV MASSENE ═══════════════════════
+//
+// Radene til regnearket (js/xlsx.js skriver fila). Rene data, så de kan
+// testes uten nettleser. Tallene står som TALL (ikke tekst) og summene som
+// SUM-formler — da kan kalkylen regne videre, og man ser hvor summen kommer fra.
+//   inn: { modell, adresse, dato, av, gulv, planum, oppbygging, planumModus,
+//          padMeter:{b,d}, skraning (vasket), rot, m (masseFelt-svaret), fest }
+const avr = (v, d) => { const f = Math.pow(10, d == null ? 1 : d); return Math.round((Number(v) || 0) * f) / f; };
+export function masseRader(inn) {
+  const m = inn.m, sk = vaskSkraning(inn.skraning);
+  const h = (n) => "1:" + String(n).replace(".", ",");
+  const rader = [
+    ["Masseoverslag — Storm IFC-Viewer"],
+    ["Modell", inn.modell || ""],
+    ["Terreng", inn.adresse || ""],
+    ["Dato", inn.dato || ""],
+    ["Laget av", inn.av || ""],
+    [],
+    ["Gulvkote (moh.)", avr(inn.gulv, 2)],
+    ["Planum (moh.)", avr(m.planum, 2)],
+    ["Planum satt som", inn.planumModus === "kote" ? "Egen planumkote" : "Gulvkote minus oppbygging " + String(avr(inn.oppbygging, 2)).replace(".", ",") + " m"],
+    ["Plate (m)", inn.padMeter ? String(avr(inn.padMeter.b, 1)).replace(".", ",") + " × " + String(avr(inn.padMeter.d, 1)).replace(".", ",") : ""],
+    ["Skråninger", !sk.paa ? "Ikke med" : sk.perSide ? "Ulik helning per side" : "Skjæring " + h(sk.skjaering) + ", fylling " + h(sk.fylling)],
+    [],
+    ["Post", "Helning skjæring", "Helning fylling", "Skjæring (m³)", "Fylling (m³)", "Areal (m²)"]
+  ];
+  const forste = rader.length + 1;              // første tallrad, 1-basert som i Excel
+  rader.push(["Under plata", "", "", avr(m.skjaeringPlate), avr(m.fyllingPlate), avr(m.areal, 0)]);
+  if (sk.paa) {
+    for (const k of SIDER) {
+      const e = sk.perSide ? sk.sider[k] : sk;
+      const ps = (m.perSide && m.perSide[k]) || { skjaering: 0, fylling: 0, areal: 0 };
+      rader.push(["Skråning mot " + sideRetning(k, inn.rot), h(e.skjaering), h(e.fylling), avr(ps.skjaering), avr(ps.fylling), avr(ps.areal, 0)]);
+    }
+  }
+  const siste = rader.length;
+  rader.push(["Sum", "", "", "=SUM(D" + forste + ":D" + siste + ")", "=SUM(E" + forste + ":E" + siste + ")", "=SUM(F" + forste + ":F" + siste + ")"]);
+  const sumRad = rader.length;
+  rader.push(["Netto (+ overskudd, − underskudd)", "", "", "=D" + sumRad + "-E" + sumRad]);
+  rader.push(["10 cm høyere/lavere planum ≈ (m³)", "", "", avr(m.per10cm)]);
+  rader.push([]);
+  const f = inn.fest;
+  rader.push(["Plassering", f && f.laast
+    ? "Festet i " + (f.antall === 2 ? "to hjørner" : "ett hjørne") + " etter landmålerens koordinater"
+    : "Omtrentlig (±1–2 m), ikke festet"]);
+  if (f && f.laast && f.kontroll) rader.push(["Avvik mellom hjørnene (m)", avr(f.kontroll.avvikM, 3)]);
+  if (m.skraningUtAvUtsnitt) rader.push(["ADVARSEL", "Skråningen når kanten av det hentede terrenget — skråningsmassene er for små."]);
+  rader.push([]);
+  rader.push(["Forbehold", "Overslag, ikke til oppgjør. Terrenget er Kartverkets laserdata (DTM 1 m) fra før graving. Skråningene er regnet med fast helning uten grøfter, drenering eller masseutskifting. Skal aldri brukes til utstikking."]);
+  rader.push(["Kilde", "Høydedata: © Kartverket (CC BY 4.0)"]);
+  return rader;
 }
