@@ -1571,16 +1571,16 @@ body:not(.har-modell) #btnFit { display: none !important; }
 
 /* Lagre-raden nederst: navnefeltet tar plassen som er, knappen beholder sin.
    Uten min-width: 0 presser feltet knappen ut av panelet. */
-#swBody .prop-actions.sw-lagre { flex-wrap: nowrap; }
-#swBody .prop-actions.sw-lagre > input {
+#swBody .prop-actions.sw-lagre, #riggBody .prop-actions.sw-lagre { flex-wrap: nowrap; }
+#swBody .prop-actions.sw-lagre > input, #riggBody .prop-actions.sw-lagre > input {
   flex: 1; min-width: 0; box-sizing: border-box;
   font-family: inherit; font-size: 13px;
 }
 
 /* Navnet på et lagret resultat er en lenke å trykke på, ikke en knapp å se på. */
-#swBody button.sw-last {
+#swBody button.sw-last, #riggBody button.sw-last {
   background: none; border: 0; padding: 0;
   color: inherit; font: inherit; text-align: left;
   text-decoration: underline; cursor: pointer;
 }
-#swBody button.sw-last:hover { color: var(--accent, inherit); }
+#swBody button.sw-last:hover, #riggBody button.sw-last:hover { color: var(--accent, inherit); }
