@@ -1738,5 +1738,12 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Målestokk": "Scale",
   "Laget av": "Made by",
   "Parkeringsområde": "Parking area",
-  "Parkering for ansatte og besøkende": "Parking for staff and visitors"
+  "Parkering for ansatte og besøkende": "Parking for staff and visitors",
+// ---------- 📄 Rigg: valg av målestokk ----------
+  "Målestokk på A3": "Scale on A3",
+  "Automatisk (hele riggen får plass)": "Automatic (the whole site setup fits)",
+  "{0} × {1} m": "{0} × {1} m",
+  "A3 liggende: tomta sett ovenfra med nord opp, tegnforklaring og tittelfelt. Tallet bak målestokken er hvor mye av tomta arket dekker.": "A3 landscape: the plot seen from above with north up, legend and title block. The number after the scale is how much of the plot the sheet covers.",
+  "Målestokken er for liten til hele riggen — noe av den er utenfor bildet.": "The scale is too small for the whole site setup — part of it is outside the picture.",
+  "{0} rigg-objekter ligger over 1 km fra bygget og er ikke med på planen.": "{0} site objects are more than 1 km from the building and are not on the plan."
 };

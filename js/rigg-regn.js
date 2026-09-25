@@ -672,7 +672,26 @@ RIGGPLAN.forklaringB = RIGGPLAN.b - RIGGPLAN.marg - RIGGPLAN.forklaringX;
 
 // Målestokkene en riggplan tegnes i. Planen tegnes i en RUND målestokk — da
 // kan den måles på med linjal, og målestokken i tittelfeltet stemmer.
-export const MALESTOKKER = [100, 200, 250, 500, 750, 1000, 1500, 2000, 2500, 5000, 10000, 20000];
+// 1:5000 er største: A3 dekker da 1,5 × 1,2 km — mer enn noen byggeplass.
+// Større målestokk ga et hvitt ark (Emils funn 25.09: 1:20 000, der tomta
+// ble en prikk og bildet sto midt i ingenting).
+export const MALESTOKKER = [100, 200, 250, 500, 750, 1000, 1500, 2000, 2500, 5000];
+
+// Valget i panelet: «auto» eller en av målestokkene. Alt annet → auto.
+export function vaskMalestokkValg(v) {
+  const n = Number(v);
+  return MALESTOKKER.includes(n) ? n : "auto";
+}
+
+// Hvor mye av tomta bildet dekker i en gitt målestokk (meter).
+export function riggplanDekning(malestokk) {
+  return { b: RIGGPLAN.bildeB * malestokk / 1000, h: RIGGPLAN.bildeH * malestokk / 1000 };
+}
+
+// Hvor langt fra bygget et rigg-objekt kan stå og fortsatt telle med når
+// planen rammes inn. Et objekt 200 km unna (f.eks. lagret i feil ramme) skal
+// ikke dra planen ut til 1:5000 og sette bygget i kanten av arket.
+export const MAKS_AVSTAND_M = 1000;
 
 // Minste målestokk der området (bM × hM meter) får plass på bildefeltet.
 export function velgMalestokk(bM, hM, bMm, hMm) {

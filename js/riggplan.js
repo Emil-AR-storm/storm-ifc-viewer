@@ -28,7 +28,8 @@ import { grid, renderer, scene } from "./scene.js";
 import { hentJsPDF, lastNedFil, norskDato } from "./rapport.js";
 import { hentLogo, hentLogoer } from "./tegninger.js";
 import {
-  RIGGPLAN, nordOgOst, riggObjekter, riggplanFilnavn, riggplanTegnforklaring, skalaStrek, velgMalestokk
+  MAKS_AVSTAND_M, RIGGPLAN, nordOgOst, riggObjekter, riggplanDekning, riggplanFilnavn, riggplanTegnforklaring,
+  skalaStrek, vaskMalestokkValg, velgMalestokk
 } from "./rigg-regn.js";
 import { aktivRef, finnRiggObjekt, riggBase, riggGroup } from "./rigg-vis.js";
 
@@ -138,7 +139,8 @@ function tegnOvenfra(senter, nord, bredde, hoyde, toppY, bunnY, pxB, pxH, skala)
 }
 
 // ═══════════════════════ HOVEDINNGANGEN ═══════════════════════
-export async function lastNedRiggplan() {
+// valg: «auto» (minste målestokk der alt får plass) eller et tall (1:valg).
+export async function lastNedRiggplan(valg) {
   const base = riggBase();
   if (!base) { alert(t("Åpne en modell først.")); return null; }
   const objekter = riggObjekter(S.rigg || []).filter(o => !o.skjult);
@@ -155,29 +157,47 @@ export async function lastNedRiggplan() {
     const nordKjent = !!ref;
     const { nord, ost } = nordOgOst(ref ? ref.plass.rot : 0);
 
-    // Utstrekningen: riggen og bygget, målt langs øst og nord (meter).
-    const bokser = [boksUtenLapper(riggGroup)];
-    if (S.modelGroup) bokser.push(new THREE.Box3().setFromObject(S.modelGroup));
+    // Utstrekningen: bygget og hvert rigg-objekt, målt langs øst og nord
+    // (meter fra byggets senter). Objekter lenger unna enn MAKS_AVSTAND_M
+    // hoppes over og nevnes på arket — de ville ellers trukket planen ut i
+    // en målestokk der tomta forsvinner.
+    const tilEN = (p) => {
+      const dx = (p.x - base.c.x) * base.skala, dz = (p.z - base.c.z) * base.skala;
+      return { e: dx * ost.x + dz * ost.z, n: dx * nord.x + dz * nord.z };
+    };
     let minE = Infinity, maxE = -Infinity, minN = Infinity, maxN = -Infinity, toppY = -Infinity, bunnY = Infinity;
-    for (const b of bokser) {
-      if (b.isEmpty()) continue;
+    const taMed = (b) => {
       toppY = Math.max(toppY, b.max.y); bunnY = Math.min(bunnY, b.min.y);
       for (const p of hjorner(b)) {
-        const dx = (p.x - base.c.x) * base.skala, dz = (p.z - base.c.z) * base.skala;
-        const e = dx * ost.x + dz * ost.z, n = dx * nord.x + dz * nord.z;
-        minE = Math.min(minE, e); maxE = Math.max(maxE, e); minN = Math.min(minN, n); maxN = Math.max(maxN, n);
+        const q = tilEN(p);
+        minE = Math.min(minE, q.e); maxE = Math.max(maxE, q.e); minN = Math.min(minN, q.n); maxN = Math.max(maxN, q.n);
       }
+    };
+    const gyldig = (b) => !b.isEmpty() && [b.min.x, b.min.y, b.min.z, b.max.x, b.max.y, b.max.z].every(Number.isFinite);
+    if (S.modelGroup) { const mb = new THREE.Box3().setFromObject(S.modelGroup); if (gyldig(mb)) taMed(mb); }
+    let langtUnna = 0;
+    for (const g of riggGroup.children) {
+      const b = boksUtenLapper(g);
+      if (!gyldig(b)) continue;
+      const q = tilEN(b.getCenter(new THREE.Vector3()));
+      if (Math.hypot(q.e, q.n) > MAKS_AVSTAND_M) { langtUnna++; continue; }
+      taMed(b);
     }
-    if (!isFinite(minE)) throw new Error(t("Fant ingenting å tegne."));
+    if (!isFinite(minE) || !isFinite(toppY)) throw new Error(t("Fant ingenting å tegne."));
     const marg = Math.max(5, 0.08 * Math.max(maxE - minE, maxN - minN));
     const bM = maxE - minE + 2 * marg, hM = maxN - minN + 2 * marg;
-    const skala = velgMalestokk(bM, hM, RIGGPLAN.bildeB, RIGGPLAN.bildeH);
+    // Målestokken: brukerens valg, ellers den minste der alt får plass
+    const fast = vaskMalestokkValg(valg);
+    const skala = fast === "auto" ? velgMalestokk(bM, hM, RIGGPLAN.bildeB, RIGGPLAN.bildeH) : fast;
+    const dekning = riggplanDekning(skala);
+    const kuttet = dekning.b < bM - 2 * marg || dekning.h < hM - 2 * marg;
     // Bildet dekker HELE bildefeltet i den runde målestokken
-    const rammeB = RIGGPLAN.bildeB * skala / 1000, rammeH = RIGGPLAN.bildeH * skala / 1000;
+    const rammeB = dekning.b, rammeH = dekning.h;
     const mE = (minE + maxE) / 2, mN = (minN + maxN) / 2;
     const senter = new THREE.Vector3(
       base.c.x + (mE * ost.x + mN * nord.x) / base.skala, 0,
       base.c.z + (mE * ost.z + mN * nord.z) / base.skala);
+    if (![senter.x, senter.z, rammeB, rammeH].every(Number.isFinite)) throw new Error(t("Fant ingenting å tegne."));
     const pxB = Math.round(RIGGPLAN.bildeB * PX_PER_MM), pxH = Math.round(RIGGPLAN.bildeH * PX_PER_MM);
     const bilde = tegnOvenfra(senter, nord, rammeB / base.skala, rammeH / base.skala, toppY, bunnY, pxB, pxH, base.skala);
 
@@ -211,7 +231,7 @@ export async function lastNedRiggplan() {
     const jsPDF = await hentJsPDF();
     const iDag = new Date().toISOString().slice(0, 10);
     const d = tegnArk(jsPDF, {
-      bilde, ringer, forklaring, skala, nordKjent, logo, iDag,
+      bilde, ringer, forklaring, skala, nordKjent, logo, iDag, langtUnna, kuttet,
       kartkilde: !!(live && live.synlig),
       modell: String(S.fileName || "").replace(/\.(ifc|glb)$/i, ""),
       prosjekt: S.lettProsjekt || "",
@@ -219,7 +239,7 @@ export async function lastNedRiggplan() {
       av: mittNavn()
     });
     lastNedFil(d.output("blob"), riggplanFilnavn(S.fileName, iDag));
-    return { skala, ringer: ringer.length, rader: forklaring.length };
+    return { skala, ringer: ringer.length, rader: forklaring.length, langtUnna, kuttet };
   } catch (err) {
     console.warn("Riggplanen feilet:", err);
     alert(t("Klarte ikke å lage riggplanen: {0}", err.message));
@@ -281,10 +301,13 @@ function tegnArk(jsPDF, m) {
   const kb = d.getTextWidth(kilde) + 4;
   hex(d, "#ffffff", "fyll"); d.rect(x0 + R.bildeB - kb - 2, y0 + R.bildeH - 6, kb, 5, "F");
   hex(d, GRÅ); d.text(kilde, x0 + R.bildeB - 4, y0 + R.bildeH - 2.5, { align: "right" });
-  if (!m.nordKjent) {
-    d.setFontSize(7); hex(d, "#a8232b");
-    d.text(t("Nord er ikke kontrollert: modellen står ikke i et terreng."), x0 + 4, y0 + 6);
-  }
+  // Merknader øverst til venstre i bildet, én linje hver
+  const merknader = [];
+  if (!m.nordKjent) merknader.push(t("Nord er ikke kontrollert: modellen står ikke i et terreng."));
+  if (m.kuttet) merknader.push(t("Målestokken er for liten til hele riggen — noe av den er utenfor bildet."));
+  if (m.langtUnna) merknader.push(t("{0} rigg-objekter ligger over 1 km fra bygget og er ikke med på planen.", m.langtUnna));
+  d.setFontSize(7); hex(d, "#a8232b");
+  merknader.forEach((tekst, i) => d.text(tekst, x0 + 4, y0 + 6 + i * 4));
 
   // ── Tegnforklaringen ──
   const fx = R.forklaringX, fb = R.forklaringB;
