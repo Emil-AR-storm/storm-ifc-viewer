@@ -1443,7 +1443,7 @@ body:not(.har-modell) #btnFit { display: none !important; }
    uleselig, nøyaktig som SW-panelet var 03.09. */
 /* ⛰ Terreng-panelet fikk samme sykdom første dag: «Adresse eller koordinat»
    og feltet sto klistret på én linje (Emil 25.09). Samme kur. */
-#terrengBody > label,
+#terrengBody label,
 #blikkBody > label,
 #blikkBody label.swfelt,
 #blikkBody .sw-seksjon > label,
@@ -1455,8 +1455,8 @@ body:not(.har-modell) #btnFit { display: none !important; }
   color: var(--muted);
   line-height: 1.35;
 }
-#terrengBody > label > input[type=text],
-#terrengBody > label > select,
+#terrengBody label > input[type=text],
+#terrengBody label > select,
 #blikkBody > label > input[type=text],
 #blikkBody > label > input[type=number],
 #blikkBody > label > select,
