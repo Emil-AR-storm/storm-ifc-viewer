@@ -18,6 +18,8 @@ import "./materiell-vis.js";   // 📦 materiell: visningen (lastes av begge sid
 import "./materiell.js";       // 📦 materiell: verktøyet (kun kontor)
 import "./grupper.js";
 import "./terreng.js";     // ⛰ terreng fra Kartverket (kun kontor — IKKE i lett-main.js)
+import "./rigg-vis.js";    // 🏕 rigg: visningen (lastes av begge sider) — ETTER terreng.js
+import "./rigg.js";        // 🏕 rigg: verktøyet (kun kontor)
 import "./veggelement.js";   // 🧱 SW-generator: veggelementer på stålmodeller (kun kontor)         // 🎯 objektgrupper: lagre og hente fram flervalg
 import "./markers.js";
 import "./minimap.js";

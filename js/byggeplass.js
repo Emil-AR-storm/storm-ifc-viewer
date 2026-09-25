@@ -10,6 +10,7 @@ import { lagreOgSynk, leggTilImportertMarkering, vaskMarkering } from "./markers
 import { tegningNavn } from "./tegninger.js";
 import { GRAPH, authHeaders, spTokenSilent } from "./sharepoint.js";
 import { materiellForEksport } from "./materiell-vis.js";
+import { riggForByggeplass } from "./rigg-vis.js";
 import { grupperForEksport } from "./grupper.js";
 // 🏗 SW-elementene ut som MONTERINGSINSTRUKS — en ferdig beskrivelse, ikke
 // generatoren. Se swForByggeplass i js/veggelement.js for hvorfor.
@@ -190,7 +191,10 @@ if (btn) btn.addEventListener("click", async () => {
         grupper: grupperForEksport(),
         // 🏗 SW-oppsettet: hvor hvert veggelement skal stå, med SW-nummeret.
         // Gamle lesere ser bort fra feltet; bygg.html tegner det (js/sw-lett.js).
-        sw: swForByggeplass()
+        sw: swForByggeplass(),
+        // 🏕 Riggen: objektene og hvor bygget sto på tomta sist (referansen),
+        // så bygg.html kan tegne dem rundt bygget uten terrenget.
+        rigg: riggForByggeplass()
       })
     });
 

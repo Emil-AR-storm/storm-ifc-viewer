@@ -206,6 +206,9 @@ async function lastLettMarkeringer() {
       // 🏗 SW-elementene: montøren ser hvor hvert panel skal stå
       if (S.settSwFraLett)
         S.settSwFraLett(d && !Array.isArray(d) ? d.sw : null);
+      // 🏕 Riggen på tomta (rigg-vis.js). Gamle filer har ikke feltet.
+      if (S.settRiggFraLett)
+        S.settRiggFraLett(d && !Array.isArray(d) ? d.rigg : null);
     }
   } catch (e) {
     feil = (e && e.tidsavbrudd)

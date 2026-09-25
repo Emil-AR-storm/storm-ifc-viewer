@@ -24,7 +24,7 @@ import { t } from "./i18n.js";
 import { flettPaaId, spLes, spLesBin, spPaalogget, spSkriv, spSkrivBin } from "./sp-lager.js";
 import { camera, canvas, controls, frameHooks, grid, makeLabel, renderer, scene, updateScreenScaled } from "./scene.js";
 import {
-  STANDARD_UTSNITT, UTSNITT, adresseUrl, bboxFra, byggTilTerreng, flyttKlippKant, flyttPadKant, flyttPlass,
+  STANDARD_UTSNITT, UTSNITT, adresseUrl, bboxFra, byggTilTerreng, terrengTilBygg, flyttKlippKant, flyttPadKant, flyttPlass,
   fulltKlipp, gridTilTrekanter, hoydeFarger, hoydeIPunkt, kartUv, nordRetning, topoUrl, hoydeSpenn, hoydeVed, klippHandtak,
   klippMeter, klippOmriss, lagIndeks, lavesteUnder, lesTiff, likeKlipp, likePad, mTilScene, normVinkel,
   padFlagg, padHandtak, padMeter, padStandard, pikselSenter, punktFraE, punktFraN, snapVinkel, tolkKoordinat,
@@ -120,6 +120,7 @@ function settSkjult(v) {
   skjult = !!v;
   terrengGroup.visible = !!terreng && !skjult;
   oppdaterRutenett();
+  if (S.riggOmplasser) S.riggOmplasser();   // 🏕 bakken riggen står på ble borte/kom tilbake
   if (S.oppdaterVisAlle) S.oppdaterVisAlle();
   if (erApen()) tegnPanel();
 }
@@ -180,6 +181,35 @@ S.koteMoh = (punkt) => {
   if (!terreng || !terreng.gulv || !S.modelGroup || !punkt) return null;
   const mr = modellRef();
   return terreng.gulv.kote + (punkt.y - mr.gulvY) * mr.skala;
+};
+
+// 🏕 Rigg (js/rigg-vis.js) står på TOMTA, i UTM33, og trenger to ting herfra:
+// hvor bygget står på terrenget (referansen) og hvor bakken er. Svaret er
+// null uten terreng — da står riggen på gulvhøyde rundt bygget.
+//
+// yVed(E, N) gir scenens y på bakken: plata (gulvhøyde) innenfor utskjæringen,
+// ellers terrenget. modellRef() regnes ÉN gang per kall på terrengRef, ikke per
+// objekt — Box3 over hele modellen er det som koster.
+// Er terrenget skjult, står riggen på gulvhøyde: et objekt som svever i lufta
+// over et usynlig terreng ser ut som en feil.
+S.terrengRef = () => {
+  if (!terreng || !S.modelGroup) return null;
+  const mr = modellRef();
+  const { E0, N0, plass, pad, gulv, grid: g } = terreng;
+  const synlig = !skjult;
+  return {
+    E0, N0, plass: { pE: plass.pE || 0, pN: plass.pN || 0, rot: plass.rot || 0 },
+    synlig,
+    yVed(E, N) {
+      if (!synlig) return null;
+      if (pad && pad.paa && gulv && !visMasser) {
+        const b = terrengTilBygg(E, N, E0, N0, plass);
+        if (b.bx >= pad.x0 && b.bx <= pad.x1 && b.bz >= pad.z0 && b.bz <= pad.z1) return mr.gulvY;
+      }
+      const h = hoydeVed(g, E, N);
+      return h == null ? null : yFraMoh(h, mr);
+    }
+  };
 };
 
 // ═══════════════════════ TREFF (Mål og Kote) ═══════════════════════
@@ -488,6 +518,9 @@ function plasserGrupper(mr) {
   landGroup.rotation.set(0, (plass.rot || 0) * Math.PI / 180, 0);
   innhold.position.set(-mTilScene(plass.pE || 0, s), 0, mTilScene(plass.pN || 0, s));
   void E0; void N0;
+  // 🏕 Riggen står på tomta: flyttes bygget over terrenget, blir riggen
+  // stående der den står — altså må den tegnes på nytt i scenen.
+  if (S.riggOmplasser) S.riggOmplasser();
 }
 
 // Bygger flata: punktene (med plata skåret ut) og normalene. Kalles når
@@ -1174,6 +1207,7 @@ S.ryddTerreng = () => {
   terreng = null; skjult = false; treff = []; flyttModus = false;
   ryddScene();
   oppdaterRutenett();
+  if (S.riggOmplasser) S.riggOmplasser();   // 🏕 riggen faller tilbake på gulvhøyde
 };
 
 // ═══════════════════════ 💾 LAGRING (trinn 7) ═══════════════════════
