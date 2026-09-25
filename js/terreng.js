@@ -1119,12 +1119,14 @@ async function startHenting() {
   if (!tekst) { settMelding(t("Skriv en adresse eller en koordinat først."), true); return; }
   treff = [];
   const k = tolkKoordinat(tekst);
-  if (k) { await hentTerreng({ tekst: Math.round(k.E) + " Ø, " + Math.round(k.N) + " N", E: k.E, N: k.N }); return; }
+  // Bredde/lengde (Google Maps) er gjort om til UTM33 — teksten viser begge,
+  // så det er lett å se at det ble riktig sted.
+  if (k) { await hentTerreng({ tekst: (k.grader ? tekst + " → " : "") + Math.round(k.E) + " Ø, " + Math.round(k.N) + " N", E: k.E, N: k.N }); return; }
   opptatt = true; settMelding(t("Søker etter adressen …"));
   try {
     const liste = await sokAdresse(tekst);
     opptatt = false;
-    if (!liste.length) { settMelding(t("Fant ingen adresse. Prøv med postnummer eller poststed, eller skriv en UTM33-koordinat."), true); return; }
+    if (!liste.length) { settMelding(t("Fant ingen adresse. Prøv med postnummer eller poststed, eller lim inn en koordinat fra Google Maps (f.eks. 59.1467, 8.7710) eller UTM33."), true); return; }
     if (liste.length === 1) { await hentTerreng(liste[0]); return; }
     treff = liste.slice(0, 5);
     settMelding(t("Velg riktig adresse:"));

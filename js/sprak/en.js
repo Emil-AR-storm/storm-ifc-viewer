@@ -1702,5 +1702,11 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Port gjort tilbake til paneler": "Gate turned back into panels",
   "Skjøt fjernet": "Joint removed",
   "Skjøt flyttet": "Joint moved",
-  "Skjøt lagt til": "Joint added"
+  "Skjøt lagt til": "Joint added",
+// ---------- ⛰ Terreng: koordinat fra Google Maps ----------
+  "Fant ingen adresse. Prøv med postnummer eller poststed, eller lim inn en koordinat fra Google Maps (f.eks. 59.1467, 8.7710) eller UTM33.": "No address found. Try with a postcode or place name, or paste a coordinate from Google Maps (e.g. 59.1467, 8.7710) or UTM33.",
+// ---------- 🚧 Rigg: flere skjøter med shift ----------
+  "Fjern {0} skjøter": "Remove {0} joints",
+  "Skjøter flyttet": "Joints moved",
+  "Dra i prikkene for å forme gjerdet · shift-klikk for flere prikker · dobbeltklikk på et panel for ny skjøt · velg to paneler for port": "Drag the dots to shape the fence · shift-click for several dots · double-click a panel for a new joint · select two panels for a gate"
 };

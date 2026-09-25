@@ -1702,5 +1702,11 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Port gjort tilbake til paneler": "Brama przywrócona do paneli",
   "Skjøt fjernet": "Łącznik usunięty",
   "Skjøt flyttet": "Łącznik przesunięty",
-  "Skjøt lagt til": "Łącznik dodany"
+  "Skjøt lagt til": "Łącznik dodany",
+// ---------- ⛰ Terreng: koordinat fra Google Maps ----------
+  "Fant ingen adresse. Prøv med postnummer eller poststed, eller lim inn en koordinat fra Google Maps (f.eks. 59.1467, 8.7710) eller UTM33.": "Nie znaleziono adresu. Spróbuj z kodem pocztowym lub miejscowością albo wklej współrzędne z Google Maps (np. 59.1467, 8.7710) lub UTM33.",
+// ---------- 🚧 Rigg: flere skjøter med shift ----------
+  "Fjern {0} skjøter": "Usuń {0} łączników",
+  "Skjøter flyttet": "Łączniki przesunięte",
+  "Dra i prikkene for å forme gjerdet · shift-klikk for flere prikker · dobbeltklikk på et panel for ny skjøt · velg to paneler for port": "Przeciągnij punkty, aby ukształtować ogrodzenie · shift+klik, aby wybrać kilka punktów · kliknij dwukrotnie panel, aby dodać łącznik · wybierz dwa panele, aby zrobić bramę"
 };

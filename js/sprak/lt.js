@@ -1702,5 +1702,11 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Port gjort tilbake til paneler": "Vartai grąžinti į plokštes",
   "Skjøt fjernet": "Jungtis pašalinta",
   "Skjøt flyttet": "Jungtis perkelta",
-  "Skjøt lagt til": "Jungtis pridėta"
+  "Skjøt lagt til": "Jungtis pridėta",
+// ---------- ⛰ Terreng: koordinat fra Google Maps ----------
+  "Fant ingen adresse. Prøv med postnummer eller poststed, eller lim inn en koordinat fra Google Maps (f.eks. 59.1467, 8.7710) eller UTM33.": "Adresas nerastas. Bandykite su pašto kodu ar vietove arba įklijuokite koordinates iš Google Maps (pvz., 59.1467, 8.7710) arba UTM33.",
+// ---------- 🚧 Rigg: flere skjøter med shift ----------
+  "Fjern {0} skjøter": "Pašalinti {0} jungtis",
+  "Skjøter flyttet": "Jungtys perkeltos",
+  "Dra i prikkene for å forme gjerdet · shift-klikk for flere prikker · dobbeltklikk på et panel for ny skjøt · velg to paneler for port": "Tempkite taškus tvorai formuoti · shift+spustelėjimas keliems taškams · dukart spustelėkite plokštę naujai jungčiai · pasirinkite dvi plokštes vartams"
 };

@@ -28,7 +28,7 @@ import { pick, pickFlate } from "./elements.js";
 import { flettPaaId, spLes, spPaalogget, spSkriv } from "./sp-lager.js";
 import {
   MAKS_ETASJER, MAKS_MODULER, REF_ID, RIGG_FORKLARING, RIGG_REKKEFOLGE, RIGG_TYPER, ROT_STEG,
-  byggTilRigg, enTilLokal, fjernSkjot, flyttSkjot, gjerdeFraRektangel, gjerdeMengder, gjerdeStykker,
+  byggTilRigg, enTilLokal, fjernSkjoter, flyttSkjoter, gjerdeFraRektangel, gjerdeMengder, gjerdeStykker,
   gjorOmTilPort, gjorTilbake, leggTilSkjot, naboStykker, nyRiggId, normVinkel, riggAntall, riggObjekter,
   riggTelling, trengerOpplasting, vaskRiggListe, vaskRiggObjekt
 } from "./rigg-regn.js";
@@ -47,7 +47,8 @@ const KLIKK_PX = 8;
 // 🚧 byggegjerdet
 let merker = null;             // { start: Vector3|null, linje } — markeringsboksen
 let skjotDrar = null;          // { id, k, punkter, flyttet } — en skjøt som dras
-let valgtSkjot = null;         // indeksen til skjøten som er valgt i det valgte gjerdet
+let valgteSkjoter = [];        // skjøtene som er valgt i det valgte gjerdet (shift-klikk gir flere)
+let shiftSkjot = false;        // pointerdown med shift traff en skjøt — pointerup skal svelges
 let valgteStykker = [];        // panelene som er valgt (maks to) — til port
 
 function hentO(id) { return riggObjekter(S.rigg || []).find(o => o.id === id) || null; }
@@ -321,7 +322,7 @@ function oppdaterHandtak(o) {
     const v = modell.localToWorld(new THREE.Vector3(q.x, (hoyder[k] || 0) + 0.3, q.z));
     const kant = new THREE.Mesh(kuleGeo, matKant);
     kant.position.copy(v); kant.userData.px = 14; kant.renderOrder = 998;
-    const kule = new THREE.Mesh(kuleGeo, k === valgtSkjot ? matSkjotValgt : matSkjot);
+    const kule = new THREE.Mesh(kuleGeo, valgteSkjoter.includes(k) ? matSkjotValgt : matSkjot);
     kule.position.copy(v); kule.userData.px = 9; kule.renderOrder = 999; kule.userData.skjot = k;
     handtakGroup.add(kant, kule);
   });
@@ -357,7 +358,7 @@ function slippKamera(e) {
 function velg(id) {
   if (id !== valgtId) {
     const hadde = valgteStykker.length;
-    valgteStykker = []; valgtSkjot = null;
+    valgteStykker = []; valgteSkjoter = [];
     settGjerdeMarkering(id, []);
     // de grønne panelene på gjerdet vi forlater må males om
     const forrige = valgtId && hentO(valgtId);
@@ -444,8 +445,9 @@ function gjerdeKnapper(o) {
     '<button id="rvPort" class="btn" style="padding:3px 8px"' + (v.kanPort ? "" : " disabled") +
     ' title="' + t("Velg to paneler ved siden av hverandre, og gjør dem om til én port") + '">' + t("Gjør om til port") + "</button>" +
     (v.portI != null ? '<button id="rvTilbake" class="btn" style="padding:3px 8px">' + t("Gjør tilbake til paneler") + "</button>" : "") +
-    (valgtSkjot != null ? '<button id="rvFjernSkjot" class="btn" style="padding:3px 8px"' +
-      (o.punkter.length <= 3 ? " disabled" : "") + ">" + t("Fjern skjøt") + "</button>" : "");
+    (valgteSkjoter.length ? '<button id="rvFjernSkjot" class="btn" style="padding:3px 8px"' +
+      (o.punkter.length - valgteSkjoter.length < 3 ? " disabled" : "") + ">" +
+      (valgteSkjoter.length > 1 ? t("Fjern {0} skjøter", valgteSkjoter.length) : t("Fjern skjøt")) + "</button>" : "");
 }
 
 function koblGjerdeKnapper(o) {
@@ -454,22 +456,32 @@ function koblGjerdeKnapper(o) {
   if ($("rvPort")) $("rvPort").onclick = () => {
     if (!v.kanPort) return;
     const ny = gjorOmTilPort(o.punkter, valgteStykker[0], valgteStykker[1]);
-    if (ny) { valgteStykker = []; valgtSkjot = null; settMarkering(); oppdater(o.id, { punkter: ny }, "Port laget"); }
+    if (ny) { valgteStykker = []; valgteSkjoter = []; settMarkering(); oppdater(o.id, { punkter: ny }, "Port laget"); }
   };
   if ($("rvTilbake")) $("rvTilbake").onclick = () => {
     const ny = gjorTilbake(o.punkter, v.portI);
-    if (ny) { valgteStykker = []; valgtSkjot = null; settMarkering(); oppdater(o.id, { punkter: ny }, "Port gjort tilbake til paneler"); }
+    if (ny) { valgteStykker = []; valgteSkjoter = []; settMarkering(); oppdater(o.id, { punkter: ny }, "Port gjort tilbake til paneler"); }
   };
   if ($("rvFjernSkjot")) $("rvFjernSkjot").onclick = () => fjernValgtSkjot();
 }
 
 function fjernValgtSkjot() {
   const o = valgtGjerde();
-  if (!o || valgtSkjot == null) return;
-  const ny = fjernSkjot(o.punkter, valgtSkjot);
+  if (!o || !valgteSkjoter.length) return;
+  const ny = fjernSkjoter(o.punkter, valgteSkjoter);
   if (!ny) return;
-  valgtSkjot = null; valgteStykker = []; settMarkering();
+  valgteSkjoter = []; valgteStykker = []; settMarkering();
   oppdater(o.id, { punkter: ny }, "Skjøt fjernet");
+}
+
+// Shift-klikk på en skjøt: av eller på i utvalget. Da kan flere skjøter
+// flyttes på én gang — dra i en av dem, og alle de valgte følger med.
+function veksleSkjot(k) {
+  const i = valgteSkjoter.indexOf(k);
+  if (i >= 0) valgteSkjoter.splice(i, 1); else valgteSkjoter.push(k);
+  valgteStykker = []; settMarkering();
+  oppdaterValgBar(); oppdaterHandtak();
+  if (S.riggModeBarTegn) S.riggModeBarTegn();
 }
 
 // Klikk på et panel i det valgte gjerdet: av eller på i utvalget. Maks to —
@@ -478,7 +490,7 @@ function veksleStykke(o, i) {
   const k = valgteStykker.indexOf(i);
   if (k >= 0) valgteStykker.splice(k, 1);
   else { valgteStykker.push(i); if (valgteStykker.length > 2) valgteStykker.shift(); }
-  valgtSkjot = null;
+  valgteSkjoter = [];
   settMarkering();
   tegnEnRigg(o);
   oppdaterValgBar();
@@ -544,7 +556,7 @@ S.riggModeBar = (bar) => {
       : plasserer
       ? t("Trykk der objektet skal stå — Esc avbryter")
       : valgtGjerde()
-      ? t("Dra i prikkene for å forme gjerdet · dobbeltklikk på et panel for ny skjøt · velg to paneler for port")
+      ? t("Dra i prikkene for å forme gjerdet · shift-klikk for flere prikker · dobbeltklikk på et panel for ny skjøt · velg to paneler for port")
       : t("Trykk på et rigg-objekt for å flytte, rotere eller slette det");
     bar.innerHTML = '<span class="lbl">' + hint + '</span><button id="mbRiggFerdig">' + t("Ferdig") + "</button>";
     $("mbRiggFerdig").onclick = () => { settRiggModus(false); $("riggPanel").classList.remove("open"); };
@@ -608,7 +620,14 @@ function flyttetFelter(o, pt) {
 
 // ═══════════════════════ PEKERNE (window, fangstfase) ═══════════════════════
 window.addEventListener("pointerdown", (e) => {
-  if (e.shiftKey && !plasserer && !drar && !flytter) return;   // shift = markeringsboksen sin
+  if (e.shiftKey && !plasserer && !drar && !flytter) {
+    // 🚧 Shift-klikk på en skjøt i det valgte gjerdet: flervalg av skjøter.
+    // Alt annet med shift er fortsatt markeringsboksens (elements.js).
+    const gj = overCanvas(e) && e.button === 0 && iModus() ? valgtGjerde() : null;
+    const k = gj ? pekHandtak(e.clientX, e.clientY) : null;
+    if (k != null) { e.stopPropagation(); shiftSkjot = true; veksleSkjot(k); }
+    return;
+  }
   nedPos = { x: e.clientX, y: e.clientY };
   if (!overCanvas(e) || e.button !== 0) return;
   if (flytter || plasserer) { e.stopPropagation(); return; }   // tas på pointerup
@@ -620,8 +639,11 @@ window.addEventListener("pointerdown", (e) => {
     const k = gj ? pekHandtak(e.clientX, e.clientY) : null;
     if (gj && k != null) {
       e.stopPropagation();
-      valgtSkjot = k; valgteStykker = []; settMarkering();
-      skjotDrar = { id: gj.id, k, punkter: gj.punkter, flyttet: false };
+      // Er skjøten alt med i et flervalg, dras hele utvalget; ellers bare den.
+      const flere = valgteSkjoter.includes(k) && valgteSkjoter.length > 1;
+      if (!flere) valgteSkjoter = [k];
+      valgteStykker = []; settMarkering();
+      skjotDrar = { id: gj.id, k, ider: valgteSkjoter.slice(), fra: gj.punkter, punkter: gj.punkter, flyttet: false, flere };
       oppdaterValgBar(); oppdaterHandtak();
       return;
     }
@@ -655,7 +677,9 @@ window.addEventListener("pointermove", (e) => {
     const o = hentO(skjotDrar.id);
     const lok = o && lokalFra(o, bakkePunkt(e.clientX, e.clientY));
     if (!lok) return;
-    skjotDrar.punkter = flyttSkjot(o.punkter, skjotDrar.k, lok.x, lok.z) || skjotDrar.punkter;
+    // Alle de valgte flyttes like langt som den man holder i.
+    const a = skjotDrar.fra[skjotDrar.k];
+    skjotDrar.punkter = flyttSkjoter(skjotDrar.fra, skjotDrar.ider, lok.x - a.x, lok.z - a.z) || skjotDrar.punkter;
     skjotDrar.flyttet = true;
     const kladd = Object.assign({}, o, { punkter: skjotDrar.punkter });
     tegnEnRigg(kladd);
@@ -689,6 +713,7 @@ function slippFlytt(tilstand) {
 }
 
 window.addEventListener("pointerup", (e) => {
+  if (shiftSkjot) { shiftSkjot = false; e.stopPropagation(); slippKamera(e); nedPos = null; return; }
   if (e.shiftKey && !plasserer && !drar && !flytter) return;
   const ned = nedPos;
   nedPos = null;
@@ -722,8 +747,12 @@ window.addEventListener("pointerup", (e) => {
   if (skjotDrar) {
     const sd = skjotDrar; skjotDrar = null;
     e.stopPropagation(); slippKamera(e);
-    if (sd.flyttet) oppdater(sd.id, { punkter: sd.punkter }, "Skjøt flyttet");
-    else oppdaterHandtak();
+    if (sd.flyttet) oppdater(sd.id, { punkter: sd.punkter }, sd.ider.length > 1 ? "Skjøter flyttet" : "Skjøt flyttet");
+    else {
+      // Et klikk uten drag på en av flere valgte: bare den blir valgt.
+      if (sd.flere) valgteSkjoter = [sd.k];
+      oppdaterValgBar(); oppdaterHandtak();
+    }
     return;
   }
   if (drar) {
@@ -764,13 +793,13 @@ window.addEventListener("dblclick", (e) => {
   const lok = lokalFra(o, h.punkt);
   const ny = lok && leggTilSkjot(o.punkter, h.stykke, lok.x, lok.z);
   if (!ny) return;
-  valgteStykker = []; valgtSkjot = h.stykke + 1; settMarkering();
+  valgteStykker = []; valgteSkjoter = [h.stykke + 1]; settMarkering();
   oppdater(o.id, { punkter: ny }, "Skjøt lagt til");
 }, true);
 
 window.addEventListener("keydown", (e) => {
   const iFelt = e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
-  if ((e.key === "Delete" || e.key === "Backspace") && !iFelt && iModus() && valgtSkjot != null && valgtGjerde()) {
+  if ((e.key === "Delete" || e.key === "Backspace") && !iFelt && iModus() && valgteSkjoter.length && valgtGjerde()) {
     e.preventDefault(); e.stopPropagation();
     fjernValgtSkjot();
     return;
