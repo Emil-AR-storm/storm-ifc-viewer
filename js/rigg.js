@@ -26,7 +26,7 @@
 // virker prikkene akkurat som på gjerdet — dra, shift-klikk, dobbeltklikk for
 // nytt punkt og Delete — men pila er en åpen linje uten paneler og porter.
 import * as THREE from "three";
-import { $, S, apnePanel, esc, ikon, på } from "./state.js";
+import { $, S, apnePanel, esc, ikon, på, writePrefs } from "./state.js";
 import { t } from "./i18n.js";
 import { camera, canvas, flyTil, frameHooks, raycaster, scene } from "./scene.js";
 import { pick, pickFlate } from "./elements.js";
@@ -35,7 +35,7 @@ import {
   MAKS_ETASJER, MAKS_MODULER, REF_ID, RIGG_FORKLARING, RIGG_REKKEFOLGE, RIGG_TYPER, ROT_STEG,
   byggTilRigg, enTilLokal, fjernSkjoter, flyttSkjoter, gjerdeFraRektangel, gjerdeMengder, gjerdeStykker,
   gjorOmTilPort, gjorTilbake, leggTilSkjot, naboStykker, nyRiggId, normVinkel, riggAntall, riggObjekter,
-  riggTelling, trengerOpplasting, vaskRiggListe, vaskRiggObjekt, erGjerde, erPil, minPunkter, parkeringsPlasser, pilFraPunkter, pilLengde
+  riggTelling, trengerOpplasting, vaskRiggListe, vaskRiggObjekt, erGjerde, MALESTOKKER, riggplanDekning, vaskMalestokkValg, erPil, minPunkter, parkeringsPlasser, pilFraPunkter, pilLengde
 } from "./rigg-regn.js";
 import {
   aktivRef, byggRiggObjekt, finnRiggObjekt, gjerdeDelLabel, lappStorrelse, oppdaterRiggValgEffekt, riggBase, riggGroup,
@@ -979,18 +979,39 @@ function tegnPanel() {
   }
 
   // 📄 Riggplanen (trinn 6): hovedhandlingen i panelet når noe er plassert
-  if (liste.length) html += '<div class="prop-actions" style="margin-top:12px"><button id="riggPdf" class="primary">' +
-    ikon("lastned") + " " + t("Last ned riggplan (PDF)") + "</button></div>" +
-    "<p " + LITEN + ">" + t("A3 liggende: tomta sett ovenfra med nord opp, tegnforklaring og tittelfelt.") + "</p>";
+  // Målestokken velges her (Emil 25.09): «Automatisk» tar den minste der
+  // hele riggen og bygget får plass. Valget huskes mellom øktene.
+  if (liste.length) {
+    const valgt = vaskMalestokkValg(S.settings && S.settings.riggMalestokk);
+    html += '<h4 style="margin:14px 0 4px">' + ikon("tegning") + " " + t("Riggplan") + "</h4>" +
+      "<label>" + t("Målestokk på A3") + '<select id="riggMalestokk">' +
+      '<option value="auto"' + (valgt === "auto" ? " selected" : "") + ">" + t("Automatisk (hele riggen får plass)") + "</option>" +
+      MALESTOKKER.map(m => {
+        const dk = riggplanDekning(m);
+        return '<option value="' + m + '"' + (valgt === m ? " selected" : "") + ">1:" + m.toLocaleString("nb-NO") +
+          " — " + t("{0} × {1} m", Math.round(dk.b), Math.round(dk.h)) + "</option>";
+      }).join("") + "</select></label>" +
+      '<div class="prop-actions" style="margin-top:8px"><button id="riggPdf" class="primary">' +
+      ikon("lastned") + " " + t("Last ned riggplan (PDF)") + "</button></div>" +
+      "<p " + LITEN + ">" + t("A3 liggende: tomta sett ovenfra med nord opp, tegnforklaring og tittelfelt. Tallet bak målestokken er hvor mye av tomta arket dekker.") + "</p>";
+  }
   html += '<h4 style="margin:14px 0 4px">' + ikon("lagre") + " " + t("Lagring") + "</h4>" +
     '<p id="riggLagringTekst" ' + LITEN + ">" + esc(lagringsTekst()) + "</p>";
 
   body.innerHTML = html;
   // Lastes først når knappen trykkes: PDF-koden og jsPDF skal ikke koste noe
   // for den som aldri laster ned en riggplan.
+  if ($("riggMalestokk")) $("riggMalestokk").onchange = (e) => {
+    if (!S.settings) return;
+    S.settings.riggMalestokk = e.target.value;
+    writePrefs();
+  };
   if ($("riggPdf")) $("riggPdf").onclick = async () => {
     const b = $("riggPdf"); b.disabled = true;
-    try { const m = await import("./riggplan.js"); await m.lastNedRiggplan(); }
+    try {
+      const m = await import("./riggplan.js");
+      await m.lastNedRiggplan(vaskMalestokkValg(S.settings && S.settings.riggMalestokk));
+    }
     catch (err) { alert(t("Klarte ikke å lage riggplanen: {0}", err.message)); }
     finally { if ($("riggPdf")) $("riggPdf").disabled = false; }
   };

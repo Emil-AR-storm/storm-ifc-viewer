@@ -1738,5 +1738,12 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Målestokk": "Skala",
   "Laget av": "Sporządził",
   "Parkeringsområde": "Parking",
-  "Parkering for ansatte og besøkende": "Parking dla pracowników i gości"
+  "Parkering for ansatte og besøkende": "Parking dla pracowników i gości",
+// ---------- 📄 Rigg: valg av målestokk ----------
+  "Målestokk på A3": "Skala na A3",
+  "Automatisk (hele riggen får plass)": "Automatycznie (całe zaplecze się mieści)",
+  "{0} × {1} m": "{0} × {1} m",
+  "A3 liggende: tomta sett ovenfra med nord opp, tegnforklaring og tittelfelt. Tallet bak målestokken er hvor mye av tomta arket dekker.": "A3 poziomo: działka z góry, północ u góry, legenda i tabliczka. Liczba po skali to obszar działki, który obejmuje arkusz.",
+  "Målestokken er for liten til hele riggen — noe av den er utenfor bildet.": "Skala jest za mała dla całego zaplecza — część jest poza obrazem.",
+  "{0} rigg-objekter ligger over 1 km fra bygget og er ikke med på planen.": "{0} obiektów zaplecza jest ponad 1 km od budynku i nie ma ich na planie."
 };

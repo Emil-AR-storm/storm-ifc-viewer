@@ -1738,5 +1738,12 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Målestokk": "Mastelis",
   "Laget av": "Parengė",
   "Parkeringsområde": "Automobilių stovėjimo aikštelė",
-  "Parkering for ansatte og besøkende": "Stovėjimo vieta darbuotojams ir lankytojams"
+  "Parkering for ansatte og besøkende": "Stovėjimo vieta darbuotojams ir lankytojams",
+// ---------- 📄 Rigg: valg av målestokk ----------
+  "Målestokk på A3": "Mastelis A3",
+  "Automatisk (hele riggen får plass)": "Automatiškai (tilps visas įrengimas)",
+  "{0} × {1} m": "{0} × {1} m",
+  "A3 liggende: tomta sett ovenfra med nord opp, tegnforklaring og tittelfelt. Tallet bak målestokken er hvor mye av tomta arket dekker.": "A3 gulsčias: sklypas iš viršaus, šiaurė viršuje, legenda ir spaudas. Skaičius po masteliu rodo, kiek sklypo apima lapas.",
+  "Målestokken er for liten til hele riggen — noe av den er utenfor bildet.": "Mastelis per mažas visam įrengimui — dalis už paveikslo ribų.",
+  "{0} rigg-objekter ligger over 1 km fra bygget og er ikke med på planen.": "{0} įrengimo objektų yra toliau nei 1 km nuo pastato ir nerodomi plane."
 };
