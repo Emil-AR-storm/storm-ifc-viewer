@@ -295,6 +295,24 @@ export function fjernSkjot(punkter, k) {
   return ut;
 }
 
+// Flere skjøter på én gang (shift-klikk, Emil 25.09): alle flyttes like
+// langt, så formen mellom dem står. Ukjente indekser hoppes over.
+export function flyttSkjoter(punkter, ider, dx, dz) {
+  const p = punkter || [];
+  const sett = new Set((ider || []).filter(k => p[k]));
+  if (!sett.size) return null;
+  return p.map((q, k) => sett.has(k) ? Object.assign({}, q, { x: rund(q.x + dx), z: rund(q.z + dz) }) : Object.assign({}, q));
+}
+
+// Fjern flere skjøter. Blir det færre enn tre igjen, fjernes ingenting —
+// heller en beskjed enn et gjerde som ikke er en ring.
+export function fjernSkjoter(punkter, ider) {
+  const p = punkter || [];
+  const sett = new Set((ider || []).filter(k => p[k]));
+  if (!sett.size || p.length - sett.size < MIN_SKJOTER) return null;
+  return p.filter((_, k) => !sett.has(k)).map(q => Object.assign({}, q));
+}
+
 export function flyttSkjot(punkter, k, x, z) {
   const p = punkter || [];
   if (!p[k]) return null;

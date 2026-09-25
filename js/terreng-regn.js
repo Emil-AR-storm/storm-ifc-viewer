@@ -58,21 +58,76 @@ export function mTilScene(m, skala) {
 
 // ═══════════════════════ INNDATA ═══════════════════════
 
-// Skriver brukeren to tall i stedet for en adresse, er det en UTM33-koordinat
-// fra et kart eller en landmåler: «218262 6652579», «218262, 6652579» eller
-// «Ø 218262 N 6652579». Øst ligger mellom ca. −100 000 og 1 100 000 i sone 33,
-// nord mellom 6,4 og 8,0 millioner. Rekkefølgen tåles begge veier — det er
-// lett å bytte om på dem, og tallområdene overlapper ikke.
-// Svar: { E, N } eller null (da er det en adresse).
+// Skriver brukeren to tall i stedet for en adresse, er det en koordinat. To
+// slags godtas:
+//
+//  · UTM33 fra et kart eller en landmåler: «218262 6652579», «218262,
+//    6652579» eller «Ø 218262 N 6652579». Øst ligger mellom ca. −100 000 og
+//    1 100 000 i sone 33, nord mellom 6,4 og 8,0 millioner.
+//  · BREDDE/LENGDE i grader, slik Google Maps gir dem når man høyreklikker:
+//    «59.146733, 8.771015» (Emils funn 25.09 — det var den første koordinaten
+//    han prøvde, og den ga «Fant ingen adresse»). Også med komma som desimal-
+//    tegn («59,146733 8,771015») og med grader, minutter og sekunder
+//    («59°08'48.2"N 8°46'15.7"E»). Gjøres om til UTM33 med tilTM lenger ned.
+//    Norge ligger på bredde 57–72° og lengde −10–35°, så de to kan ikke
+//    forveksles med hverandre eller med UTM.
+//
+// Rekkefølgen tåles begge veier — det er lett å bytte om, og tallområdene
+// overlapper ikke. Svar: { E, N, grader? } eller null (da er det en adresse).
+// `grader: true` betyr at koordinaten kom som bredde/lengde.
+const erBredde = (v) => v >= 57 && v <= 72;
+const erLengde = (v) => v >= -10 && v <= 35;
+
+function fraGrader(lat, lon) {
+  const p = tilTM(lat, lon, koordsys("25833"));
+  return { E: p.E, N: p.N, grader: true };
+}
+
+// «59°08'48.2"N 8°46'15.7"E» → [59.1467…, 8.7710…]. Minutter og sekunder er
+// valgfrie; S og W gir minus.
+function lesGMS(s) {
+  const re = /(-?\d+(?:[.,]\d+)?)\s*°\s*(?:(\d+(?:[.,]\d+)?)\s*['′’]\s*)?(?:(\d+(?:[.,]\d+)?)\s*(?:["″”]|'')\s*)?([NSØOEWV])?/gi;
+  const ut = [];
+  let m;
+  while ((m = re.exec(s))) {
+    const n = (x) => Number(String(x || 0).replace(",", "."));
+    let v = n(m[1]) + n(m[2]) / 60 + n(m[3]) / 3600;
+    const retning = (m[4] || "").toUpperCase();
+    if (retning === "S" || retning === "W" || retning === "V") v = -Math.abs(v);
+    ut.push({ v, retning });
+  }
+  return ut;
+}
+
 export function tolkKoordinat(tekst) {
   const s = String(tekst || "").trim();
-  if (!s || /[a-zæøå]{3,}/i.test(s)) return null;   // et ord på tre bokstaver = adresse
-  const tall = (s.match(/-?\d+(?:\.\d+)?/g) || []).map(Number);
+  if (!s) return null;
+  // Grader, minutter, sekunder (Google Maps' andre format)
+  if (s.includes("°")) {
+    const g = lesGMS(s);
+    if (g.length !== 2) return null;
+    let lat = g[0].v, lon = g[1].v;
+    // Står bokstavene der, bestemmer de hvem som er hvem
+    if (/[ØOEWV]/.test(g[0].retning) || /[NS]/.test(g[1].retning)) [lat, lon] = [lon, lat];
+    if (!erBredde(lat) && erBredde(lon)) [lat, lon] = [lon, lat];
+    return erBredde(lat) && erLengde(lon) ? fraGrader(lat, lon) : null;
+  }
+  if (/[a-zæøå]{3,}/i.test(s)) return null;   // et ord på tre bokstaver = adresse
+  // Komma som desimaltegn: «59,146733 8,771015» eller «59,146733; 8,771015».
+  // Bare når det står nøyaktig to slike tall — ellers er kommaet et skille.
+  let t = s;
+  if (/^\s*-?\d+,\d+\s*[;\s]\s*-?\d+,\d+\s*$/.test(t)) t = t.replace(/(\d),(\d)/g, "$1.$2");
+  const tall = (t.match(/-?\d+(?:\.\d+)?/g) || []).map(Number);
   if (tall.length !== 2) return null;
   const erN = (v) => v >= 6.3e6 && v <= 8.0e6;
   const erE = (v) => v >= -1.2e5 && v <= 1.2e6;
   if (erE(tall[0]) && erN(tall[1])) return { E: tall[0], N: tall[1] };
   if (erN(tall[0]) && erE(tall[1])) return { E: tall[1], N: tall[0] };
+  // Bredde/lengde har desimaler — to heltall som «60 10» er ikke en koordinat
+  // noen skriver med vilje.
+  const harDesimaler = /\.\d/.test(t);
+  if (harDesimaler && erBredde(tall[0]) && erLengde(tall[1])) return fraGrader(tall[0], tall[1]);
+  if (harDesimaler && erBredde(tall[1]) && erLengde(tall[0])) return fraGrader(tall[1], tall[0]);
   return null;
 }
 
