@@ -165,7 +165,7 @@ export const KORT = [
   {
     hvor: "kontor", ikonNavn: "mengder",
     tittel: "Skjæring og fylling",
-    tekst: "Under Masser under plata i Terreng-panelet står hvor mye som må graves bort og fylles inn ned til planum — gulvkote minus oppbygging, eller en planumkote du skriver selv. Kryss av for å se det i rødt og blått i terrenget. Skråningene rundt plata er med (1:1,5 i skjæring og 1:2 i fylling som standard — endre dem etter massene). Tallene er et overslag: terrenget er skannet før graving."
+    tekst: "Under Masser under plata i Terreng-panelet står hvor mye som må graves bort og fylles inn ned til planum — gulvkote minus oppbygging, eller en planumkote du skriver selv. Kryss av for å se det i rødt og blått i terrenget. Skråningene rundt plata er med (1:1,5 i skjæring og 1:2 i fylling som standard — endre dem etter massene). Tallene er et overslag: terrenget er skannet før graving. Helningen kan settes ulikt per side, og Last ned masser gir et Excel-ark til kalkylen."
   },
   {
     hvor: "kontor", ikonNavn: "tegning",
