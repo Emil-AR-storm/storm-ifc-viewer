@@ -6,8 +6,8 @@
 //
 // Grunnlag: «Storm IFC-Viewer handoff Rigg 2026-09-25.md» og Emils bestilling
 // i Rigg/rigg verktøy 25.09.2026.txt. Trinn 1–2: de enkle objektene.
-// Trinn 3–4: byggegjerdet (skjøter, paneler og porter). Pilene og PDF-en
-// kommer i egne runder.
+// Trinn 3–4: byggegjerdet (skjøter, paneler og porter). Trinn 5: pilene for
+// trafikkflyt. PDF-en kommer i en egen runde.
 //
 // Alt her testes i Node (_test/test-rigg.mjs).
 
@@ -41,11 +41,26 @@ export const RIGG_TYPER = {
   // B er foten (betongklossen) og brukes bare til tegningen.
   // Mål: mobilt anleggsgjerde ca. 3,5 × 2,0 m — forslaget fra handoffen, som
   // Emil valgte 25.09 {Source not found: ikke sjekket mot leverandør}.
-  gjerde:     { label: "Byggegjerde", L: 3.5, B: 0.7, H: 2.0, farge: "#aab4bc", gjerde: true }
+  gjerde:     { label: "Byggegjerde", L: 3.5, B: 0.7, H: 2.0, farge: "#aab4bc", gjerde: true },
+  // ➜ Piler for trafikkflyt (trinn 5, Emil: «piler man kan legge inn selv —
+  // bra for å vise trafikkflyt»). Brukeren tegner dem selv, punkt for punkt.
+  // To typer i hver sin farge, og gående er stiplet, så de kan skilles også
+  // på en svart-hvitt-utskrift av riggplanen. B = bredden på pila; L og H
+  // brukes ikke. Pilene telles ikke i Mengder — de bestilles ikke.
+  pilKjoretoy: { label: "Pil: kjøretøy", L: 1, B: 1.5, H: 0.05, farge: "#f57c00", pil: true },
+  pilGaende:   { label: "Pil: gående", L: 1, B: 0.8, H: 0.05, farge: "#43a047", pil: true, stiplet: true }
 };
 
+// Objekter med skjøter ({ x, z }-punkter): gjerdet (lukket ring) og pilene
+// (åpen linje).
+export function harPunkter(type) { return !!(RIGG_TYPER[type] && (RIGG_TYPER[type].gjerde || RIGG_TYPER[type].pil)); }
+export function erGjerde(o) { return !!(o && RIGG_TYPER[o.type] && RIGG_TYPER[o.type].gjerde); }
+export function erPil(o) { return !!(o && RIGG_TYPER[o.type] && RIGG_TYPER[o.type].pil); }
+// Minste antall punkter: en ring trenger tre, en pil to.
+export function minPunkter(o) { return erPil(o) ? 2 : 3; }
+
 // Rekkefølgen knappene står i panelet — det man rigger først, først.
-export const RIGG_REKKEFOLGE = ["gjerde", "brakke", "hjulbrakke", "toalett", "forstehjelp", "mote",
+export const RIGG_REKKEFOLGE = ["gjerde", "pilKjoretoy", "pilGaende", "brakke", "hjulbrakke", "toalett", "forstehjelp", "mote",
   "strom", "container", "hms", "soppel"];
 
 // Kort forklaring per type. Står i panelet nå, og blir teksten i
@@ -60,7 +75,9 @@ export const RIGG_FORKLARING = {
   container: "Lager for verktøy og materiell",
   hms: "Registrering av HMS-kort ved inngangen",
   soppel: "Avfall og kildesortering",
-  gjerde: "Byggegjerde rundt byggeplassen, med port for kjøretøy"
+  gjerde: "Byggegjerde rundt byggeplassen, med port for kjøretøy",
+  pilKjoretoy: "Kjørevei for biler, lastebiler og maskiner",
+  pilGaende: "Gangvei for de som går på byggeplassen"
 };
 
 export const MAKS_ETASJER = 3;
@@ -139,9 +156,11 @@ export function vaskRiggObjekt(p) {
     ut.etasjer = heltall(p.etasjer, 1, MAKS_ETASJER, 1);
     ut.moduler = heltall(p.moduler, 1, MAKS_MODULER, 1);
   }
-  if (M.gjerde) {
-    ut.punkter = vaskPunkter(p.punkter);
+  if (M.gjerde || M.pil) {
+    ut.punkter = vaskPunkter(p.punkter, M.pil ? 2 : MIN_SKJOTER);
     if (!ut.punkter) return null;
+    // Pilene har ingen porter
+    if (M.pil) ut.punkter.forEach(q => { delete q.port; });
   }
   return ut;
 }
@@ -175,7 +194,7 @@ const MAKS_GJERDE_M = 2000;
 // er avrunding i musa.
 const TOLERANSE_M = 0.01;
 
-function vaskPunkter(liste) {
+function vaskPunkter(liste, min) {
   if (!Array.isArray(liste)) return null;
   const ut = [];
   for (const q of liste.slice(0, MAKS_SKJOTER)) {
@@ -186,7 +205,7 @@ function vaskPunkter(liste) {
     if (q.port === true) p.port = true;
     ut.push(p);
   }
-  return ut.length >= MIN_SKJOTER ? ut : null;
+  return ut.length >= (min || MIN_SKJOTER) ? ut : null;
 }
 
 // Markeringsboksen → skjøtene langs omrisset. Hver side deles i så mange like
@@ -210,20 +229,44 @@ export function gjerdeFraRektangel(hx, hz, panelL) {
   return ut;
 }
 
+// Pilens lengde langs linja (meter).
+export function pilLengde(o) {
+  return gjerdeStykker(o).reduce((sum, s) => sum + s.l, 0);
+}
+
+// Punktene brukeren trykket på (byggrammen, meter) → pilens egne punkter med
+// origo i første punkt. Punkter nærmere enn 0,3 m forrige slås sammen — et
+// dobbeltklikk for å avslutte gir ellers to punkter oppå hverandre.
+export const PIL_MIN_AVSTAND = 0.3;
+export function pilFraPunkter(liste) {
+  const ut = [];
+  for (const q of liste || []) {
+    if (!q || !Number.isFinite(q.x) || !Number.isFinite(q.z)) continue;
+    const f = ut[ut.length - 1];
+    if (f && Math.hypot(q.x - f.x, q.z - f.z) < PIL_MIN_AVSTAND) continue;
+    ut.push({ x: q.x, z: q.z });
+  }
+  if (ut.length < 2) return null;
+  const x0 = ut[0].x, z0 = ut[0].z;
+  return { x0, z0, punkter: ut.map(q => ({ x: rund(q.x - x0), z: rund(q.z - z0) })) };
+}
+
 // Stykkene i ringen: { i, j, a, b, l, port, forLang }. i og j er skjøtene i
 // hver ende (j = i + 1, og siste stykke går tilbake til skjøt 0).
 export function gjerdeStykker(o) {
   const p = (o && o.punkter) || [];
   const P = o ? o.L : 3.5;
   const ut = [];
-  for (let i = 0; i < p.length; i++) {
+  // En pil er en ÅPEN linje: siste stykke går ikke tilbake til første punkt.
+  const antall = erPil(o) ? p.length - 1 : p.length;
+  for (let i = 0; i < antall; i++) {
     const j = (i + 1) % p.length;
     const a = p[i], b = p[j];
     const l = Math.hypot(b.x - a.x, b.z - a.z);
     const port = a.port === true;
     // En port er to paneler bred — lengre enn det er den for bred.
     const maks = (port ? 2 : 1) * P + TOLERANSE_M;
-    ut.push({ i, j, a, b, l, port, forLang: l > maks });
+    ut.push({ i, j, a, b, l, port, forLang: !erPil(o) && l > maks });
   }
   return ut;
 }
@@ -287,9 +330,9 @@ export function leggTilSkjot(punkter, i, x, z) {
 
 // Fjern skjøt k: de to stykkene på hver side blir ett. Var stykket FØR skjøten
 // en port, er det fortsatt en port.
-export function fjernSkjot(punkter, k) {
+export function fjernSkjot(punkter, k, min) {
   const p = punkter || [];
-  if (!p[k] || p.length - 1 < MIN_SKJOTER) return null;
+  if (!p[k] || p.length - 1 < (min || MIN_SKJOTER)) return null;
   const ut = p.map(q => Object.assign({}, q));
   ut.splice(k, 1);
   return ut;
@@ -306,10 +349,10 @@ export function flyttSkjoter(punkter, ider, dx, dz) {
 
 // Fjern flere skjøter. Blir det færre enn tre igjen, fjernes ingenting —
 // heller en beskjed enn et gjerde som ikke er en ring.
-export function fjernSkjoter(punkter, ider) {
+export function fjernSkjoter(punkter, ider, min) {
   const p = punkter || [];
   const sett = new Set((ider || []).filter(k => p[k]));
-  if (!sett.size || p.length - sett.size < MIN_SKJOTER) return null;
+  if (!sett.size || p.length - sett.size < (min || MIN_SKJOTER)) return null;
   return p.filter((_, k) => !sett.has(k)).map(q => Object.assign({}, q));
 }
 
@@ -511,6 +554,7 @@ export function riggFraByggeplass(d) {
 // objekt. Skjulte objekter telles ikke: de er tatt ut av planen.
 export function riggAntall(o) {
   if (!o) return 0;
+  if (erPil(o)) return 1;
   if (o.punkter) return gjerdeMengder(o).paneler;
   return RIGG_TYPER[o.type] && RIGG_TYPER[o.type].moduler
     ? (o.etasjer || 1) * (o.moduler || 1) : 1;
@@ -542,7 +586,7 @@ export function riggMengdeRader(liste, tr) {
     });
   };
   for (const o of riggObjekter(liste)) {
-    if (o.skjult) continue;
+    if (o.skjult || erPil(o)) continue;     // pilene bestilles ikke
     if (o.punkter) {
       const m = gjerdeMengder(o), navn = o.navn || lab(RIGG_TYPER.gjerde.label);
       const del = (k) => lab(GJERDE_DELER[k]);
@@ -566,7 +610,7 @@ export function riggTelling(liste) {
   const gj = { panel: 0, port: 0, fot: 0, klemme: 0 };
   let harGjerde = false;
   for (const o of riggObjekter(liste)) {
-    if (o.skjult) continue;
+    if (o.skjult || erPil(o)) continue;
     if (o.punkter) {
       const g = gjerdeMengder(o);
       harGjerde = true;

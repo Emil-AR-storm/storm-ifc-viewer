@@ -1708,5 +1708,13 @@ export default {  // ---------- Toppbar og verktøylinje ----------
 // ---------- 🚧 Rigg: flere skjøter med shift ----------
   "Fjern {0} skjøter": "Remove {0} joints",
   "Skjøter flyttet": "Joints moved",
-  "Dra i prikkene for å forme gjerdet · shift-klikk for flere prikker · dobbeltklikk på et panel for ny skjøt · velg to paneler for port": "Drag the dots to shape the fence · shift-click for several dots · double-click a panel for a new joint · select two panels for a gate"
+  "Dra i prikkene for å forme gjerdet · shift-klikk for flere prikker · dobbeltklikk på et panel for ny skjøt · velg to paneler for port": "Drag the dots to shape the fence · shift-click for several dots · double-click a panel for a new joint · select two panels for a gate",
+// ---------- ➜ Rigg: piler for trafikkflyt ----------
+  "Klikk på bakken for hvert punkt i pila — dobbeltklikk eller Enter for å avslutte, Esc avbryter": "Click on the ground for each point of the arrow — double-click or Enter to finish, Esc cancels",
+  "Ferdig pil": "Finish arrow",
+  "Pil: kjøretøy": "Arrow: vehicles",
+  "Pil: gående": "Arrow: pedestrians",
+  "Kjørevei for biler, lastebiler og maskiner": "Route for cars, lorries and machines",
+  "Gangvei for de som går på byggeplassen": "Walkway for people on foot on the site",
+  "Bredde på pila (m)": "Arrow width (m)"
 };

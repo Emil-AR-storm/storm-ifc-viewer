@@ -22,7 +22,7 @@ import { LETT } from "./lett.js";
 import { camera, flyTil, frameHooks, grid, makeLabel, renderer, scene } from "./scene.js";
 import { settValgEffekt } from "./materiell-vis.js";
 import {
-  GJERDE_DELER, RIGG_REKKEFOLGE, RIGG_TYPER, gjerdeStykker, lokalTilEN, riggAntall, riggFraByggeplass, riggForByggeplassFra, riggMengdeRader,
+  GJERDE_DELER, RIGG_REKKEFOLGE, RIGG_TYPER, erPil, gjerdeStykker, lokalTilEN, riggAntall, riggFraByggeplass, riggForByggeplassFra, riggMengdeRader,
   riggFotavtrykk, riggObjekter, riggRef, riggTilBygg, tilUtm, vaskRef, REF_ID
 } from "./rigg-regn.js";
 
@@ -469,6 +469,12 @@ const BYGG = {
     });
   },
 
+  // ➜ Piler for trafikkflyt: et flatt bånd på bakken med pilhode i enden.
+  // Kjøretøy er heltrukket, gående stiplet — de skal kunne skilles også uten
+  // farge (utskrift av riggplanen i svart-hvitt).
+  pilKjoretoy(g, o, hoyder) { byggPil(g, o, hoyder); },
+  pilGaende(g, o, hoyder) { byggPil(g, o, hoyder); },
+
   // Søppelcontainer (liftcontainer, åpen): skrå gavler, åpen topp, løfteører.
   soppel(g, o) {
     const { L, B, H } = o, t = 0.05, inn = Math.min(0.5, L * 0.15);
@@ -494,6 +500,57 @@ const BYGG = {
     for (const s of [-1, 1]) sylinder(g, 0.06, B + 0.3, "#37474f", s * (bunnL / 2 + inn * 0.6), H * 0.62, 0, "z");
   }
 };
+
+// Pilens mål: tykkelse, hodets lengde og bredde (i forhold til båndet) og
+// stiplene for gående. Løftet litt over bakken så båndet ikke flimrer i
+// terrenget (z-fighting).
+const PIL_TYKK = 0.06, PIL_LOFT = 0.08, PIL_STIPPEL = 1.0, PIL_MELLOM = 0.6;
+function byggPil(g, o, hoyder) {
+  const B = o.B, hodeL = Math.max(1.5, B * 2.5), hodeB = B * 2.8;
+  const st = gjerdeStykker(o);
+  const stiplet = !!(RIGG_TYPER[o.type] && RIGG_TYPER[o.type].stiplet);
+  const hv = (k) => (hoyder && hoyder[k]) || 0;
+  st.forEach((s, n) => {
+    const siste = n === st.length - 1;
+    const dx = s.b.x - s.a.x, dz = s.b.z - s.a.z;
+    const l = s.l;
+    if (l < 1e-6) return;
+    const ux = dx / l, uz = dz / l;
+    // siste stykke kortes inn med hodet, så spissen står nøyaktig i sluttpunktet
+    const brukL = siste ? Math.max(0, l - hodeL) : l;
+    const vinkel = Math.atan2(-dz, dx);
+    const y0 = hv(s.i), y1 = hv(s.j);
+    const bit = (fra, til) => {
+      const m = (fra + til) / 2, len = til - fra;
+      if (len <= 1e-3) return;
+      const b = boks(g, len, PIL_TYKK, B, o.farge, s.a.x + ux * m, y0 + (y1 - y0) * (m / l) + PIL_LOFT, s.a.z + uz * m);
+      b.rotation.y = vinkel;
+      b.userData.stykke = s.i;
+    };
+    if (stiplet) {
+      for (let t = 0; t < brukL; t += PIL_STIPPEL + PIL_MELLOM) bit(t, Math.min(brukL, t + PIL_STIPPEL));
+    } else bit(0, brukL);
+    // rund skjøt mellom to stykker, så knekken ikke får et hakk
+    if (!siste && !stiplet) {
+      const r = sylinder(g, B / 2, PIL_TYKK, o.farge, s.b.x, y1 + PIL_LOFT, s.b.z);
+      r.userData.stykke = s.i;
+    }
+    if (siste) {
+      const form = new THREE.Shape();
+      form.moveTo(0, -hodeB / 2); form.lineTo(hodeL, 0); form.lineTo(0, hodeB / 2); form.lineTo(0, -hodeB / 2);
+      const hode = new THREE.Mesh(new THREE.ExtrudeGeometry(form, { depth: PIL_TYKK, bevelEnabled: false }), mat(o.farge));
+      // Formen ligger i xy; lagt ned i xz med spissen langs stykket
+      const holder = new THREE.Group();
+      hode.rotation.x = -Math.PI / 2;
+      hode.position.y = -PIL_TYKK / 2;
+      holder.add(hode);
+      holder.position.set(s.a.x + ux * brukL, y1 + PIL_LOFT, s.a.z + uz * brukL);
+      holder.rotation.y = vinkel;
+      hode.userData.stykke = s.i;
+      g.add(holder);
+    }
+  });
+}
 
 // Nettingen er halvgjennomsiktig: gjerdet skal ikke skjule det som står bak.
 const nettCache = new Map();
@@ -531,6 +588,15 @@ export function byggRiggObjekt(o, skala, hoyder) {
   ytre.add(modell);
   const n = riggAntall(o);
   let tekst = (o.navn || riggTypeLabel(o.type)) + (n > 1 ? "  ×" + n : "");
+  // ➜ Pilene har ingen navnelapp med mindre brukeren har gitt dem et navn:
+  // fargen og streken sier hva de er, og en lapp på hver pil ville druknet
+  // riggplanen.
+  if (erPil(o) && !o.navn) {
+    ytre.userData.hoyder = hoyder || null;
+    ytre.userData.riggId = o.id;
+    ytre.userData.riggType = o.type;
+    return ytre;
+  }
   const lapp = makeLabel(tekst, o.farge);
   lapp.userData.px = 22;
   lapp.userData.aspect = lapp.scale.x / lapp.scale.y;
@@ -672,7 +738,7 @@ function likRefSmaa(a, b) {
 // betyr noe på gjerdet — røde paneler (for lange), grønne (valgt til port) og
 // gule porter. Valget vises med skjøtene (prikkene) i stedet.
 function valgEffekt(g, paa) {
-  settValgEffekt(g, paa && g.userData.riggType !== "gjerde");
+  settValgEffekt(g, paa && g.userData.riggType !== "gjerde" && !(RIGG_TYPER[g.userData.riggType] || {}).pil);
 }
 
 export function oppdaterRiggValgEffekt() {

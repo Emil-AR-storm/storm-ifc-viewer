@@ -1708,5 +1708,13 @@ export default {  // ---------- Toppbar og verktøylinje ----------
 // ---------- 🚧 Rigg: flere skjøter med shift ----------
   "Fjern {0} skjøter": "Usuń {0} łączników",
   "Skjøter flyttet": "Łączniki przesunięte",
-  "Dra i prikkene for å forme gjerdet · shift-klikk for flere prikker · dobbeltklikk på et panel for ny skjøt · velg to paneler for port": "Przeciągnij punkty, aby ukształtować ogrodzenie · shift+klik, aby wybrać kilka punktów · kliknij dwukrotnie panel, aby dodać łącznik · wybierz dwa panele, aby zrobić bramę"
+  "Dra i prikkene for å forme gjerdet · shift-klikk for flere prikker · dobbeltklikk på et panel for ny skjøt · velg to paneler for port": "Przeciągnij punkty, aby ukształtować ogrodzenie · shift+klik, aby wybrać kilka punktów · kliknij dwukrotnie panel, aby dodać łącznik · wybierz dwa panele, aby zrobić bramę",
+// ---------- ➜ Rigg: piler for trafikkflyt ----------
+  "Klikk på bakken for hvert punkt i pila — dobbeltklikk eller Enter for å avslutte, Esc avbryter": "Kliknij na gruncie dla każdego punktu strzałki — dwuklik lub Enter kończy, Esc anuluje",
+  "Ferdig pil": "Zakończ strzałkę",
+  "Pil: kjøretøy": "Strzałka: pojazdy",
+  "Pil: gående": "Strzałka: piesi",
+  "Kjørevei for biler, lastebiler og maskiner": "Droga dla samochodów, ciężarówek i maszyn",
+  "Gangvei for de som går på byggeplassen": "Ciąg pieszy dla osób poruszających się po budowie",
+  "Bredde på pila (m)": "Szerokość strzałki (m)"
 };
