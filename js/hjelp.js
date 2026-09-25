@@ -158,9 +158,14 @@ export const KORT = [
     tekst: "Terreng (i Bygg Info) henter høydedata og kart fra Kartverket for en adresse. Flytt og roter bygget på plass, skriv gulvkoten fra tegningen og trykk Lagre terreng — da kommer terrenget av seg selv neste gang modellen åpnes, også hos kollegaene. Plasseringen er omtrentlig og skal aldri brukes til utstikking."
   },
   {
+    hvor: "kontor", ikonNavn: "markering",
+    tittel: "Fest bygget med landmålerens koordinater",
+    tekst: "Under Fest til landmålerens koordinater i Terreng-panelet: trykk Velg i modellen, trykk på et hjørne, og skriv nord (x) og øst (y) fra landmåleren. Velg koordinatsystemet landmåleren bruker (UTM32, UTM33 eller NTM). To hjørner gir også rotasjonen og en kontroll av avstanden. Bygget låses til du trykker Løsne bygget."
+  },
+  {
     hvor: "kontor", ikonNavn: "mengder",
     tittel: "Skjæring og fylling",
-    tekst: "Under Masser under plata i Terreng-panelet står hvor mye som må graves bort og fylles inn ned til planum — gulvkote minus oppbygging, eller en planumkote du skriver selv. Kryss av for å se det i rødt og blått i terrenget. Tallene er et overslag: terrenget er skannet før graving, og skråninger er ikke med."
+    tekst: "Under Masser under plata i Terreng-panelet står hvor mye som må graves bort og fylles inn ned til planum — gulvkote minus oppbygging, eller en planumkote du skriver selv. Kryss av for å se det i rødt og blått i terrenget. Skråningene rundt plata er med (1:1,5 i skjæring og 1:2 i fylling som standard — endre dem etter massene). Tallene er et overslag: terrenget er skannet før graving."
   },
   {
     hvor: "kontor", ikonNavn: "tegning",

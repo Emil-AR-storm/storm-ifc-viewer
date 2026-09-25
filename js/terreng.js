@@ -30,8 +30,11 @@ import {
   padFlagg, padHandtak, padMeter, padStandard, pikselSenter, punktFraE, punktFraN, snapVinkel, tolkKoordinat,
   tolkKote, vaskAdresseSvar, wcsUrl,
   binTilGrid, gridTilBin, navneforslag, nyTerrengId, vaskPlassering, vaskTerrengListe,
-  masseFarger, masser, planumKote, vaskPlanum
+  planumKote, vaskPlanum,
+  KOORDSYS, dzFarger, ferdigGrid, festEttPunkt, festSjekk, festToPunkt, masseFelt, vaskFest, vaskSkraning
 } from "./terreng-regn.js";
+import { pick } from "./elements.js";
+import { snapPoint } from "./measure.js";
 
 // ═══════════════════════ TILSTAND ═══════════════════════
 // Alt om det lastede terrenget. null = ingen terreng.
@@ -59,6 +62,14 @@ let kartValg = "topo";
 // ⛏ «Vis skjæring/fylling»: plata tas bort, terrenget under blir liggende og
 // farges rødt (grave) og blått (fylle) mot planum.
 let visMasser = false;
+// ⛏ «Vis terrenget etter graving»: terrenget tegnes med skråningene og
+// planum, slik tomta blir seende ut når gravemaskinen er ferdig.
+let visFerdig = false;
+// 📍 Fest hjørne: hvilket punkt (1 eller 2) neste trykk i modellen velger.
+let festVelger = 0;
+let festNed = null;
+let festMelding = "", festFeil = false;
+function erLaast() { return !!(terreng && terreng.fest && terreng.fest.laast); }
 
 // ═══════════════════════ SCENEN ═══════════════════════
 //
@@ -205,7 +216,8 @@ const handtakGeo = new THREE.SphereGeometry(1, 12, 8);
 const handtakMat = {
   klipp: new THREE.MeshBasicMaterial({ color: FARGE_KLIPP, depthTest: false }),
   pad: new THREE.MeshBasicMaterial({ color: FARGE_PAD, depthTest: false }),
-  rot: new THREE.MeshBasicMaterial({ color: FARGE_FOT, depthTest: false })
+  rot: new THREE.MeshBasicMaterial({ color: FARGE_FOT, depthTest: false }),
+  fest: new THREE.MeshBasicMaterial({ color: 0x00c853, depthTest: false })
 };
 
 const klippGroup = new THREE.Group();   // i innhold (følger terrenget)
@@ -215,7 +227,11 @@ klippGroup.name = "terreng-beskjaering";
 padGroup.name = "terreng-plate";
 flyttGroup.name = "terreng-flytt";
 innhold.add(klippGroup);
-byggGroup.add(padGroup, flyttGroup);
+// 📍 festGroup: de valgte hjørnene («1», «2») for Fest hjørne. Ikke håndtak —
+// de dras ikke, de velges på nytt med «Velg i modellen».
+const festGroup = new THREE.Group();
+festGroup.name = "terreng-fest";
+byggGroup.add(padGroup, flyttGroup, festGroup);
 
 let handtakene = [];    // [{ type: "klipp"|"pad"|"rot", kant, mesh }]
 
@@ -264,7 +280,7 @@ function rektangel(x0, x1, z0, z1, y, mat) {
 
 function tegnHandtak() {
   handtakene = [];
-  tomGruppe(klippGroup); tomGruppe(padGroup); tomGruppe(flyttGroup);
+  tomGruppe(klippGroup); tomGruppe(padGroup); tomGruppe(flyttGroup); tomGruppe(festGroup);
   plateMesh = null;
   if (!terreng || !S.modelGroup) return;
   const mr = modellRef();
@@ -310,6 +326,21 @@ function tegnHandtak() {
   stang.renderOrder = 997;
   flyttGroup.add(stang);
   nyttHandtak(flyttGroup, "rot", "rot", rotPos);
+
+  // 📍 valgte hjørner — grønne, med nummer
+  const fp = terreng.fest ? terreng.fest.punkter : [];
+  fp.forEach((q, i) => {
+    if (!q || q.bx == null) return;
+    const pos = byggPunkt(q.bx, q.bz, gulvY + q.hy / s);
+    const m = new THREE.Mesh(handtakGeo, handtakMat.fest);
+    m.position.copy(pos); m.userData.px = 10; m.renderOrder = 998;
+    festGroup.add(m);
+    const lapp = makeLabel(String(i + 1), "#00a844");
+    lapp.userData.px = 20;
+    lapp.userData.aspect = lapp.scale.x / lapp.scale.y;
+    lapp.position.copy(pos).add(new THREE.Vector3(0, 1.2 / s, 0));
+    festGroup.add(lapp);
+  });
 }
 
 // Håndtakene synes bare med panelet åpent, og har konstant skjermstørrelse.
@@ -319,7 +350,8 @@ frameHooks.push(() => {
   klippGroup.visible = vis;
   for (const o of padGroup.children) if (o !== plateMesh) o.visible = vis;
   flyttGroup.visible = vis && flyttModus;
-  if (vis) { updateScreenScaled(klippGroup); updateScreenScaled(padGroup); if (flyttModus) updateScreenScaled(flyttGroup); }
+  festGroup.visible = vis;
+  if (vis) { updateScreenScaled(klippGroup); updateScreenScaled(padGroup); updateScreenScaled(festGroup); if (flyttModus) updateScreenScaled(flyttGroup); }
 });
 
 // ═══════════════════════ TEGNING ═══════════════════════
@@ -331,7 +363,7 @@ function ryddScene() {
     flateMesh = null;
   }
   handtakene = [];
-  tomGruppe(klippGroup); tomGruppe(padGroup); tomGruppe(flyttGroup); tomGruppe(nordGroup);
+  tomGruppe(klippGroup); tomGruppe(padGroup); tomGruppe(flyttGroup); tomGruppe(festGroup); tomGruppe(nordGroup);
   plateMesh = null;
   trengerFar = 0;
 }
@@ -462,12 +494,15 @@ function plasserGrupper(mr) {
 // terrenget hentes og når plass/plate/gulv er FERDIG endret — ikke for hvert
 // musetrekk (160 000 punkt + normaler er ~50 ms).
 function byggFlate(mr) {
-  const { grid: g, E0, N0, h0 } = terreng;
+  const { E0, N0, h0 } = terreng;
+  beregnMasser();
+  const felt = terreng.masser;
+  const g = visFerdig && felt ? ferdigGrid(terreng.grid, felt.dz) : terreng.grid;
   const p = terreng.pad;
   const flat = (p && p.paa && terreng.gulv && !visMasser)
     // Litt under plata: terrenget skal ikke stikke opp gjennom den i skrå
     // ruter langs kanten.
-    ? { flagg: padFlagg(g, E0, N0, terreng.plass, p), hoyde: terreng.gulv.kote - 0.05 }
+    ? { flagg: felt ? felt.flagg : padFlagg(g, E0, N0, terreng.plass, p), hoyde: terreng.gulv.kote - 0.05 }
     : null;
   const tr = gridTilTrekanter(g, E0, N0, h0, mr.skala, flat);
   const geo = flateMesh.geometry;
@@ -480,20 +515,20 @@ function byggFlate(mr) {
   geo.computeBoundingSphere();
   geo.computeBoundingBox();
   terreng.ok = tr.ok;
-  beregnMasser();
   oppdaterFarger();
 }
 
 // ⛏ Massene regnes på nytt hver gang plass, plate, gulv eller planum er
 // ferdig endret. Et gjennomløp av gridet: ~10 ms på 1000 × 1000.
+// Skråningene utenfor plata er med (masseFelt i terreng-regn.js).
 function beregnMasser() {
   terreng.masser = null;
   const p = terreng.pad;
   if (!p || !p.paa) return;
   const pk = planumKote(terreng.gulv, terreng.planum);
   if (pk == null) return;
-  terreng.padFlagg = padFlagg(terreng.grid, terreng.E0, terreng.N0, terreng.plass, p);
-  terreng.masser = Object.assign({ planum: pk }, masser(terreng.grid, terreng.padFlagg, pk));
+  const f = masseFelt(terreng.grid, terreng.E0, terreng.N0, terreng.plass, p, pk, terreng.skraning);
+  if (f) terreng.masser = Object.assign({ planum: pk }, f);
 }
 
 // Fargene på punktene: hvite under kartet (kartet gir fargen), høydefarger
@@ -503,7 +538,7 @@ function oppdaterFarger() {
   const g = terreng.grid;
   const tex = kartValg === "topo" && terreng.kart && terreng.kart.tex;
   let farger = tex ? new Float32Array(g.w * g.h * 3).fill(1) : (terreng.hf || (terreng.hf = hoydeFarger(g, terreng.spenn)));
-  if (visMasser && terreng.masser && terreng.padFlagg) farger = masseFarger(g, terreng.padFlagg, terreng.masser.planum, farger);
+  if (visMasser && terreng.masser) farger = dzFarger(terreng.masser.dz, farger);
   flateMesh.geometry.setAttribute("color", new THREE.BufferAttribute(farger, 3));
 }
 
@@ -687,6 +722,23 @@ function settPlass(ny, { kompenser = true, angre = false, fullt = true } = {}) {
   if (fullt) oppdaterAlt(); else { plasserGrupper(mr); visTall(); }
 }
 
+// Rotasjon fra panelet. Er bygget festet i ETT hjørne, dreies det rundt det
+// hjørnet — så hjørnet blir stående på landmålerens koordinat.
+function settRotasjon(rot) {
+  if (!terreng) return;
+  const f = terreng.fest;
+  if (f && f.laast && f.antall === 2) return;
+  if (f && f.laast) {
+    const q = f.punkter.find(p => p && p.bx != null && p.E != null);
+    if (q) {
+      const naa = byggTilTerreng(q.bx, q.bz, terreng.E0, terreng.N0, terreng.plass);
+      settPlass(festEttPunkt(q, terreng.E0, terreng.N0, rot, naa.E, naa.N), { angre: true });
+      return;
+    }
+  }
+  settPlass(Object.assign({}, terreng.plass, { rot }), { angre: true });
+}
+
 // ═══════════════════════ GULVKOTE (trinn 6) ═══════════════════════
 //
 // ALDRI DRA I Z (spesifikasjonen punkt 3). Høyden settes med et tall fra
@@ -745,7 +797,7 @@ function handtakVed(x, y) {
   const r = canvas.getBoundingClientRect();
   let best = null, bestD = TREFF_PX;
   for (const h of handtakene) {
-    if (h.type === "rot" && !flyttModus) continue;
+    if (h.type === "rot" && (!flyttModus || erLaast())) continue;
     h.mesh.getWorldPosition(_v).project(camera);
     if (_v.z > 1) continue;                              // bak kameraet
     const sx = r.left + (_v.x * 0.5 + 0.5) * r.width, sy = r.top + (-_v.y * 0.5 + 0.5) * r.height;
@@ -828,6 +880,7 @@ window.addEventListener("pointermove", (e) => {
         }
       }
     }
+    if (festVelger && e.target === canvas && e.buttons === 0 && !m) m = "crosshair";
     if (m !== satteMarkor) { canvas.style.cursor = m; satteMarkor = m; }
     return;
   }
@@ -927,8 +980,44 @@ window.addEventListener("pointerup", (e) => {
 window.addEventListener("pointercancel", () => { drar = null; }, true);
 
 window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && festVelger && erApen()) { festVelger = 0; tegnPanel(); return; }
   if (e.key === "Escape" && flyttModus && erApen()) { flyttModus = false; tegnPanel(); }
 });
+
+// 📍 Fest hjørne: et vanlig trykk (under 8 px bevegelse, som i main.js) i
+// modellen velger punktet — draging roterer kameraet som før. Trykket stoppes
+// her i fangstfasen, så main.js ikke også velger elementet.
+window.addEventListener("pointerdown", (e) => {
+  festNed = festVelger && e.target === canvas && e.button === 0 ? { x: e.clientX, y: e.clientY } : null;
+}, true);
+window.addEventListener("pointerup", (e) => {
+  if (!festVelger || !festNed || e.target !== canvas || !terreng || !S.modelGroup) return;
+  const flyttet = Math.hypot(e.clientX - festNed.x, e.clientY - festNed.y);
+  festNed = null;
+  if (flyttet > 8 || e.button > 0) return;
+  e.stopPropagation();
+  const hit = pick(e.clientX, e.clientY);
+  if (!hit) return;
+  // Snappen fester punktet til nærmeste hjørne eller kant i modellen, som i
+  // 📏 Mål — et trykk «omtrent på hjørnet» blir hjørnet.
+  const sp = snapPoint(hit);
+  const pt = sp && sp.point ? sp.point : hit.point;
+  const mr = modellRef();
+  const i = festVelger - 1;
+  const f = terreng.fest || vaskFest({});
+  const punkter = f.punkter.slice();
+  punkter[i] = Object.assign({ E: null, N: null, Z: null }, punkter[i] || {}, {
+    bx: (pt.x - mr.c.x) * mr.skala, bz: (pt.z - mr.c.z) * mr.skala,
+    hy: Math.max(0, (pt.y - mr.gulvY) * mr.skala), snap: sp && sp.type ? sp.type : null
+  });
+  terreng.fest = Object.assign({}, f, { punkter });
+  festVelger = 0;
+  festMelding = ""; festFeil = false;
+  canvas.style.cursor = ""; satteMarkor = "";
+  tegnHandtak();
+  planLagring();
+  if (erApen()) tegnPanel();
+}, true);
 
 // ═══════════════════════ HENTING ═══════════════════════
 
@@ -1041,7 +1130,7 @@ async function hentTerreng(adr) {
     const nytt = {
       grid: g, bb, E0, N0, h0, hPunkt, spenn, adresse: adr, klipp: fulltKlipp(g), plass,
       gulv: { kote: Math.round((gk != null ? gk : h0) * 1000) / 1000, grov: true },
-      pad: padStandard(mr.fp), planum: vaskPlanum(null)
+      pad: padStandard(mr.fp), planum: vaskPlanum(null), skraning: vaskSkraning(null), fest: vaskFest({})
     };
     terreng = nytt;
     skjult = false;
@@ -1140,7 +1229,8 @@ function katalogPost(t0, navn) {
 function plassPost() {
   return {
     id: "plassering", terreng: terreng.id, plass: terreng.plass, gulv: terreng.gulv, pad: terreng.pad,
-    klipp: terreng.klipp, planum: terreng.planum, kart: kartValg, av: mittNavn(), endret: new Date().toISOString()
+    klipp: terreng.klipp, planum: terreng.planum,
+    skraning: terreng.skraning, fest: terreng.fest, kart: kartValg, av: mittNavn(), endret: new Date().toISOString()
   };
 }
 
@@ -1240,7 +1330,9 @@ async function lastTerrengPost(post, pl, medKamera) {
     terreng = {
       grid: g, bb: post.bbox, E0, N0, h0, hPunkt, spenn, adresse: post.adresse, klipp, plass, gulv,
       pad: (pl && pl.pad) || padStandard(mr.fp), id: post.id, navn: post.navn,
-      planum: vaskPlanum(pl && pl.planum)
+      planum: vaskPlanum(pl && pl.planum),
+      skraning: vaskSkraning(pl && pl.skraning),
+      fest: (pl && pl.fest) || vaskFest({})
     };
     sisteSok = post.adresse.tekst || sisteSok;
     skjult = false;
@@ -1356,17 +1448,37 @@ function tegnMasser() {
   // resten står i vanlig tekstfarge, så ikke alt ser ut som en advarsel.
   const rad = (navn, verdi, farge) => '<div class="qty-row"><div class="n">' + navn + '</div><div class="c" style="font-weight:700;color:' +
     (farge || "var(--text)") + '">' + verdi + "</div></div>";
+  const sk = terreng.skraning || vaskSkraning(null);
+  const n1 = (v) => String(v).replace(".", ",");
+  const del = (plate, skr) => sk.paa
+    ? '<div style="font-size:11px;color:var(--muted);margin:-2px 0 4px;text-align:right">' +
+      t("plate {0} · skråning {1}", m3(plate), m3(skr)) + "</div>" : "";
+  html += '<label style="display:flex;gap:6px;align-items:center;font-size:12px;margin-top:6px"><input type="checkbox" id="trSkrPaa"' +
+    (sk.paa ? " checked" : "") + "> " + t("Ta med skråninger rundt plata") + "</label>" +
+    (sk.paa
+      ? '<div style="display:flex;gap:8px">' +
+        '<label style="flex:1">' + t("Skjæring 1:") + '<input type="text" id="trSkrSkj" inputmode="decimal" value="' + esc(n1(sk.skjaering)) + '"></label>' +
+        '<label style="flex:1">' + t("Fylling 1:") + '<input type="text" id="trSkrFyl" inputmode="decimal" value="' + esc(n1(sk.fylling)) + '"></label></div>' +
+        "<p " + LITEN + ">" + t("1:1,5 betyr 1 m opp for hver 1,5 m ut. Typisk 1:1,5 i skjæring og 1:2 i fylling, men det avhenger av massene — geoteknikeren bestemmer.") + "</p>"
+      : "");
   html += rad(t("Planum"), esc((Math.round(m.planum * 100) / 100).toLocaleString("no-NO", { minimumFractionDigits: 2 }) + " " + t("moh."))) +
-    rad(t("Skjæring (grave bort)"), m3(m.skjaering), "#e53935") +
-    rad(t("Fylling (fylle inn)"), m3(m.fylling), "#3b82f6") +
+    rad(t("Skjæring (grave bort)"), m3(m.skjaering), "#e53935") + del(m.skjaeringPlate, m.skjaeringSkraning) +
+    rad(t("Fylling (fylle inn)"), m3(m.fylling), "#3b82f6") + del(m.fyllingPlate, m.fyllingSkraning) +
     rad(m.netto >= 0 ? t("Overskudd av masser") : t("Underskudd av masser"), m3(Math.abs(m.netto))) +
     rad(t("Areal under plata"), Math.round(m.areal).toLocaleString("no-NO") + " m²") +
+    (sk.paa ? rad(t("Areal i skråningene"), Math.round(m.arealSkraning).toLocaleString("no-NO") + " m²") : "") +
+    (sk.paa && m.skraningUtAvUtsnitt
+      ? '<p style="font-size:11px;margin:4px 0 0;color:var(--accent)">' + ikon("advarsel") + " " +
+        t("Skråningen når kanten av det hentede terrenget — massene er for små. Hent et større utsnitt.") + "</p>" : "") +
     "<p " + LITEN + ">" + t("10 cm høyere eller lavere planum endrer massene med ca. {0}.", m3(m.per10cm)) +
     (m.snitt != null ? " " + t("Snitthøyde for terrenget under plata: {0}", fmtMoh(m.snitt, 2)) : "") + "</p>" +
     '<label style="display:flex;gap:6px;align-items:center;font-size:12px;margin-top:6px"><input type="checkbox" id="trVisMasser"' +
     (visMasser ? " checked" : "") + "> " + t("Vis skjæring (rødt) og fylling (blått) i terrenget") + "</label>" +
+    '<label style="display:flex;gap:6px;align-items:center;font-size:12px;margin-top:4px"><input type="checkbox" id="trVisFerdig"' +
+    (visFerdig ? " checked" : "") + "> " + t("Vis terrenget etter graving (planum og skråninger)") + "</label>" +
     '<p style="font-size:11px;margin:6px 0 0;color:var(--accent)">' +
-    t("Overslag, ikke til oppgjør: terrenget er laserskannet før graving, plasseringen er ±1–2 m, og skråninger utenfor plata er ikke med.") + "</p>";
+    t("Overslag, ikke til oppgjør: terrenget er laserskannet før graving, og skråningene er regnet med fast helning uten grøfter, drenering eller masseutskifting.") +
+    (erLaast() ? "" : " " + t("Uten festet hjørne er plasseringen ±1–2 m.")) + "</p>";
   return html;
 }
 
@@ -1406,6 +1518,172 @@ function koblMasser() {
   }
   const vis = $("trVisMasser");
   if (vis) vis.onchange = () => { visMasser = vis.checked; oppdaterAlt(); };
+  const ferdig = $("trVisFerdig");
+  if (ferdig) ferdig.onchange = () => { visFerdig = ferdig.checked; oppdaterAlt(); };
+  const skrPaa = $("trSkrPaa");
+  if (skrPaa) skrPaa.onchange = () => settSkraning(Object.assign({}, terreng.skraning, { paa: skrPaa.checked }));
+  for (const [id, felt] of [["trSkrSkj", "skjaering"], ["trSkrFyl", "fylling"]]) {
+    const el = $(id);
+    if (!el) continue;
+    el.onchange = () => {
+      const v = tall(el);
+      if (Number.isFinite(v) && v >= 0.2 && v <= 10) settSkraning(Object.assign({}, terreng.skraning, { [felt]: v }));
+      else tegnPanel();
+    };
+    el.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); el.blur(); } };
+  }
+}
+
+function settSkraning(ny) {
+  if (!terreng) return;
+  const fra = Object.assign({}, terreng.skraning), til = vaskSkraning(ny), gjeldende = terreng;
+  if (JSON.stringify(fra) === JSON.stringify(til)) { tegnPanel(); return; }
+  const bruk = (v) => { if (terreng === gjeldende) { terreng.skraning = v; oppdaterAlt(); if (erApen()) tegnPanel(); } };
+  bruk(til);
+  if (S.pushAngre) S.pushAngre({ tekst: "Skråninger", angre: () => bruk(fra), gjenopprett: () => bruk(til) });
+}
+
+// ═══════════════════════ 📍 FEST HJØRNE ═══════════════════════
+//
+// Spesifikasjonen punkt 2. Velg et hjørne i modellen, skriv inn landmålerens
+// koordinat — bygget flyttes dit og låses. To hjørner gir også rotasjonen og
+// en kontroll: avstanden mellom dem i modellen skal være den samme som hos
+// landmåleren. Punktene er i byggrammen, så de følger modellen, ikke terrenget.
+function tallFelt(v) {
+  const s0 = String(v == null ? "" : v).replace(/\s/g, "").replace(",", ".");
+  if (!s0) return null;
+  const n = Number(s0);
+  return Number.isFinite(n) ? n : NaN;
+}
+function tallTekst(v, des) {
+  return v == null ? "" : v.toFixed(des).replace(".", ",");
+}
+function mTekst(v) {
+  return (Math.round(v * 100) / 100).toLocaleString("no-NO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " m";
+}
+
+function tegnFest() {
+  const f = terreng.fest || vaskFest({});
+  let html = '<h4 style="margin:14px 0 4px">' + ikon("markering") + " " + t("Fest til landmålerens koordinater") + "</h4>";
+  if (f.laast) {
+    html += '<p style="font-size:12px;margin:4px 0 0">' + ikon("hake") + " " +
+      (f.antall === 2 ? t("Bygget er festet i to hjørner. Flytting og rotering er låst.") : t("Bygget er festet i ett hjørne. Flytting er låst — rotasjonen kan fortsatt skrives inn.")) + "</p>";
+    if (f.kontroll) {
+      const k = f.kontroll, stor = Math.abs(k.avvikM) > 0.10;
+      html += '<p style="font-size:11px;margin:4px 0 0;color:' + (stor ? "var(--accent)" : "var(--muted)") + '">' +
+        t("Avstand mellom hjørnene: {0} i modellen, {1} hos landmåler (avvik {2}).", mTekst(k.lengdeModell), mTekst(k.lengdeLandmaaler), mTekst(Math.abs(k.avvikM))) +
+        (stor ? " " + t("Over 10 cm — sjekk at det er de samme hjørnene og samme koordinatsystem.") : "") + "</p>";
+    }
+    if (festMelding) html += '<p style="font-size:11px;margin:4px 0 0;color:var(--accent)">' + esc(festMelding) + "</p>";
+    html += '<div class="prop-actions"><button id="trFestLos">' + ikon("juster") + " " + t("Løsne bygget") + "</button></div>";
+    return html;
+  }
+  html += "<p " + LITEN + ">" + t("Velg et hjørne i modellen og skriv inn koordinaten fra landmåleren. To hjørner gir også rotasjonen.") + "</p>" +
+    '<label>' + t("Koordinatsystem") + '<select id="trFestSys">' +
+    KOORDSYS.map(k => '<option value="' + k.id + '"' + (k.id === f.sys ? " selected" : "") + ">" + esc(k.navn) + " (EPSG:" + k.id + ")</option>").join("") +
+    "</select></label>";
+  for (let i = 0; i < 2; i++) {
+    const q = f.punkter[i] || {};
+    const valgt = q.bx != null;
+    html += '<div style="border:1px solid var(--border);border-radius:6px;padding:6px 8px;margin-top:6px">' +
+      '<div style="display:flex;align-items:center;gap:6px;font-size:12px"><b>' + t("Hjørne {0}", i + 1) + "</b>" +
+      (i === 1 ? ' <span style="color:var(--muted)">' + t("(valgfritt)") + "</span>" : "") +
+      '<span style="flex:1"></span><button data-tr-festvelg="' + (i + 1) + '"' + (festVelger === i + 1 ? ' class="active"' : "") + ">" +
+      ikon("markering") + " " + (festVelger === i + 1 ? t("Trykk i modellen …") : (valgt ? t("Velg på nytt") : t("Velg i modellen"))) + "</button></div>" +
+      '<div style="font-size:11px;color:' + (valgt ? "var(--muted)" : "var(--accent)") + ';margin-top:2px">' +
+      (valgt ? t("Valgt") + (q.snap === "hjørne" ? " (" + t("snappet til hjørne") + ")" : "") + " · " + t("{0} over gulvet", mTekst(q.hy || 0))
+             : t("Ikke valgt ennå")) + "</div>" +
+      '<div style="display:flex;gap:6px">' +
+      '<label style="flex:1">' + t("Nord (x)") + '<input type="text" inputmode="decimal" data-tr-fest="' + i + ':N" value="' + esc(tallTekst(q.N, 3)) + '"></label>' +
+      '<label style="flex:1">' + t("Øst (y)") + '<input type="text" inputmode="decimal" data-tr-fest="' + i + ':E" value="' + esc(tallTekst(q.E, 3)) + '"></label></div>' +
+      (i === 0 ? '<label>' + t("Kote (moh.) — valgfri, setter gulvkoten") + '<input type="text" inputmode="decimal" data-tr-fest="0:Z" value="' + esc(tallTekst(q.Z, 3)) + '"></label>' : "") +
+      "</div>";
+  }
+  html += "<p " + LITEN + ">" + t("I norsk oppmåling er x nord og y øst. Esc avbryter valget.") + "</p>" +
+    '<div class="prop-actions"><button id="trFestBruk">' + ikon("hake") + " " + t("Fest bygget") + "</button></div>";
+  if (festMelding) html += '<p style="font-size:11px;margin:4px 0 0;color:' + (festFeil ? "var(--accent)" : "var(--muted)") + '">' + esc(festMelding) + "</p>";
+  return html;
+}
+
+function settFest(ny, tekst) {
+  if (!terreng) return;
+  const fra = terreng.fest, til = ny, gjeldende = terreng;
+  const bruk = (v) => { if (terreng === gjeldende) { terreng.fest = v; tegnHandtak(); planLagring(); if (erApen()) tegnPanel(); } };
+  bruk(til);
+  if (tekst && S.pushAngre) S.pushAngre({ tekst, angre: () => bruk(fra), gjenopprett: () => bruk(til) });
+}
+
+function festBruk() {
+  if (!terreng) return;
+  const f = terreng.fest || vaskFest({});
+  const g = terreng.grid, halv = Math.min(g.w * g.dx, g.h * g.dy) / 2;
+  const klare = [];
+  f.punkter.forEach((q, i) => { if (q && q.bx != null && q.E != null && q.N != null) klare.push({ q, i }); });
+  festFeil = true;
+  const halvferdig = f.punkter.some(q => q && ((q.bx != null) !== (q.E != null && q.N != null)));
+  if (!klare.length) { festMelding = t("Velg et hjørne i modellen og skriv inn både nord og øst først."); tegnPanel(); return; }
+  if (halvferdig) { festMelding = t("Et hjørne mangler enten valg i modellen eller koordinater — fullfør det eller tøm feltene."); tegnPanel(); return; }
+  const sj = [];
+  for (const o of klare) {
+    const r = festSjekk(o.q.E, o.q.N, f.sys, terreng.E0, terreng.N0, halv);
+    if (!r.ok) {
+      festMelding = t("Hjørne {0} havner {1} fra adressen, utenfor terrenget.", o.i + 1, Math.round(r.avstand).toLocaleString("no-NO") + " m") + " " +
+        (r.byttet ? t("Nord og øst ser ut til å være byttet om.") : t("Sjekk koordinatsystemet og tallene."));
+      tegnPanel(); return;
+    }
+    sj.push(r);
+  }
+  let ny, kontroll = null;
+  if (klare.length === 2) {
+    const r = festToPunkt(klare[0].q, klare[1].q, terreng.E0, terreng.N0, sj[0], sj[1]);
+    if (!r) { festMelding = t("Hjørnene ligger for nær hverandre — velg to hjørner minst noen meter fra hverandre."); tegnPanel(); return; }
+    ny = r.plass;
+    kontroll = { avvikM: r.avvikM, lengdeModell: r.lengdeModell, lengdeLandmaaler: r.lengdeLandmaaler };
+  } else {
+    ny = festEttPunkt(klare[0].q, terreng.E0, terreng.N0, terreng.plass.rot, sj[0].E, sj[0].N);
+  }
+  festFeil = false; festMelding = "";
+  flyttModus = false; festVelger = 0;
+  settPlass(ny, { angre: true });
+  const z = f.punkter[0];
+  if (z && z.Z != null && z.bx != null) {
+    const kote = z.Z - (z.hy || 0);
+    settGulv(kote, false, true);
+    // Koten gjelder punktet som ble valgt. Står det oppe på en søyle eller
+    // takkanten, er gulvet så mye lavere — si det, så ingen tror gulvkoten
+    // er landmålerens tall rett av.
+    if ((z.hy || 0) > 0.05) festMelding = t("Gulvkoten er satt til {0}: koten {1} minus {2} fra gulvet opp til punktet du valgte.",
+      fmtMoh(kote, 2), fmtMoh(z.Z, 2), mTekst(z.hy));
+  }
+  settFest(Object.assign({}, f, { laast: true, antall: klare.length, kontroll }), "Bygget festet");
+}
+
+function koblFest(body) {
+  if (!terreng) return;
+  const f = () => terreng.fest || vaskFest({});
+  const sys = $("trFestSys");
+  if (sys) sys.onchange = () => settFest(Object.assign({}, f(), { sys: sys.value }), null);
+  body.querySelectorAll("[data-tr-festvelg]").forEach(b => b.onclick = () => {
+    const n = Number(b.dataset.trFestvelg);
+    festVelger = festVelger === n ? 0 : n;
+    tegnPanel();
+  });
+  body.querySelectorAll("input[data-tr-fest]").forEach(el => {
+    el.onchange = () => {
+      const [i, felt] = el.dataset.trFest.split(":");
+      const v = tallFelt(el.value);
+      if (Number.isNaN(v)) { festMelding = t("«{0}» er ikke et tall.", el.value); festFeil = true; tegnPanel(); return; }
+      const punkter = f().punkter.slice();
+      punkter[Number(i)] = Object.assign({ bx: null, bz: null, hy: 0, E: null, N: null, Z: null }, punkter[Number(i)] || {}, { [felt]: v });
+      festMelding = "";
+      settFest(vaskFest(Object.assign({}, f(), { punkter })), null);
+    };
+    el.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); el.blur(); } };
+  });
+  const bruk = $("trFestBruk");
+  if (bruk) bruk.onclick = () => festBruk();
+  const los = $("trFestLos");
+  if (los) los.onclick = () => (festMelding = "", settFest(Object.assign({}, f(), { laast: false, antall: 0, kontroll: null }), "Bygget løsnet"));
 }
 
 // ═══════════════════════ 🎨 UTSEENDE ═══════════════════════
@@ -1468,6 +1746,9 @@ function tegnPanel() {
     const b = Math.round(g.w * g.dx), h = Math.round(g.h * g.dy);
     const gulv = terreng.gulv;
     const pad = terreng.pad;
+    // Ett festet hjørne låser flyttingen; rotasjonen kan fortsatt skrives inn
+    // (bygget dreier da rundt hjørnet, se settRotasjon). To hjørner låser alt.
+    const rotLaast = erLaast() && terreng.fest.antall === 2;
     html += '<h4 style="margin:12px 0 4px">' + t("Lastet terreng") + "</h4>" +
       '<div class="qty-row"><div class="n">' + ikon("kote") + " " + esc(terreng.adresse.tekst) +
       ' <span style="color:var(--muted);font-size:11px">' +
@@ -1479,15 +1760,16 @@ function tegnPanel() {
 
       // ✥ Trinn 5 — plasser og roter
       '<h4 style="margin:14px 0 4px">' + ikon("juster") + " " + t("Plasser bygget") + "</h4>" +
-      '<div class="prop-actions"><button id="trFlytt"' + (flyttModus ? ' class="active"' : "") + ">" +
+      '<div class="prop-actions"><button id="trFlytt"' + (flyttModus ? ' class="active"' : "") + (erLaast() ? " disabled" : "") + ">" +
       ikon("juster") + " " + (flyttModus ? t("Ferdig med å flytte") : t("Flytt og roter bygget")) + "</button></div>" +
       (flyttModus ? "<p " + LITEN + ">" +
         t("Dra i det hvite fotavtrykket for å flytte bygget. Dra i det hvite håndtaket foran bygget for å rotere — det snapper til hver 90°. Esc avslutter.") + "</p>" : "") +
       '<label>' + t("Rotasjon (grader, med klokka)") +
       '<span style="display:flex;gap:6px;margin-top:3px">' +
-      '<input type="text" id="trRot" inputmode="decimal" style="flex:1" value="' + esc(String(normVinkel(terreng.plass.rot)).replace(".", ",")) + '">' +
-      '<button id="trRotV" title="' + t("Roter 90° mot klokka") + '">−90°</button>' +
-      '<button id="trRotH" title="' + t("Roter 90° med klokka") + '">+90°</button></span></label>' +
+      '<input type="text" id="trRot" inputmode="decimal" style="flex:1" value="' + esc(String(normVinkel(terreng.plass.rot)).replace(".", ",")) + '"' + (rotLaast ? " disabled" : "") + ">" +
+      '<button id="trRotV" title="' + t("Roter 90° mot klokka") + '"' + (rotLaast ? " disabled" : "") + ">−90°</button>" +
+      '<button id="trRotH" title="' + t("Roter 90° med klokka") + '"' + (rotLaast ? " disabled" : "") + ">+90°</button></span></label>" +
+      (erLaast() ? "<p " + LITEN + ">" + ikon("markering") + " " + t("Festet til landmålerens koordinater — løsne under «Fest til landmålerens koordinater» for å flytte.") + "</p>" : "") +
       "<p " + LITEN + ">" + t("Byggets senter står") + ' <span id="trPlassTall">' + esc(plassTekst()) + "</span> " +
       t("fra adressepunktet.") + "</p>" +
 
@@ -1512,6 +1794,9 @@ function tegnPanel() {
         t("Dra i de gule håndtakene for å endre størrelsen på plata.") + "</p>" +
         '<div class="prop-actions"><button id="trPadStd">' + ikon("nullstill") + " " +
         t("Tilbakestill (2 m rundt bygget)") + "</button></div>" : "") +
+
+      // 📍 Fest hjørne: landmålerens koordinater
+      tegnFest() +
 
       // ⛏ Masser: skjæring og fylling under plata
       '<div id="trMasser">' + tegnMasser() + "</div>" +
@@ -1545,11 +1830,14 @@ function tegnPanel() {
   // advarsel 4). Den som skal grave, leser ikke spesifikasjoner.
   html += '<p style="font-size:11px;margin:10px 0 0;padding:6px 8px;border:1px solid var(--border);border-radius:6px">' +
     ikon("advarsel") + " " +
-    t("Plasseringen er omtrentlig (±1–2 m) og skal aldri brukes til utstikking.") + "</p>";
+    (erLaast()
+      ? t("Bygget er festet etter landmålerens koordinater, men terrenget er fortsatt laserdata fra før graving. Skal aldri brukes til utstikking.")
+      : t("Plasseringen er omtrentlig (±1–2 m) og skal aldri brukes til utstikking.")) + "</p>";
 
   body.innerHTML = html;
   koblLagring(body);
   koblMasser();
+  koblFest(body);
 
   const inp = $("trAdresse");
   if (inp) inp.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); startHenting(); } };
@@ -1563,9 +1851,9 @@ function tegnPanel() {
   kobl("trSkjul", () => settSkjult(!skjult));
   kobl("trFjern", () => fjernTerreng());
   kobl("trKlippHele", () => { if (terreng) settKlipp(fulltKlipp(terreng.grid), true); });
-  kobl("trFlytt", () => { flyttModus = !flyttModus; tegnPanel(); });
-  kobl("trRotV", () => { if (terreng) settPlass(Object.assign({}, terreng.plass, { rot: snapVinkel(terreng.plass.rot - 90, 0.05) }), { angre: true }); });
-  kobl("trRotH", () => { if (terreng) settPlass(Object.assign({}, terreng.plass, { rot: snapVinkel(terreng.plass.rot + 90, 0.05) }), { angre: true }); });
+  kobl("trFlytt", () => { if (erLaast()) return; flyttModus = !flyttModus; tegnPanel(); });
+  kobl("trRotV", () => { if (terreng) settRotasjon(snapVinkel(terreng.plass.rot - 90, 0.05)); });
+  kobl("trRotH", () => { if (terreng) settRotasjon(snapVinkel(terreng.plass.rot + 90, 0.05)); });
   kobl("trOppaa", () => leggOppaa(true));
   kobl("trPadStd", () => { if (terreng && S.modelGroup) settPad(padStandard(modellRef().fp), true); });
   const rot = $("trRot");
@@ -1573,7 +1861,7 @@ function tegnPanel() {
     const bruk = () => {
       const v = Number(String(rot.value).replace(",", "."));
       if (!terreng || !Number.isFinite(v)) { visTall(); return; }
-      settPlass(Object.assign({}, terreng.plass, { rot: v }), { angre: true });
+      settRotasjon(v);
     };
     rot.onchange = bruk;
     rot.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); rot.blur(); } };

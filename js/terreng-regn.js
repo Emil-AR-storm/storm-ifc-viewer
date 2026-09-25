@@ -696,6 +696,8 @@ export function vaskPlassering(p) {
   return {
     id: "plassering", terreng: p.terreng.slice(0, 40), plass, gulv, pad, klipp,
     planum: vaskPlanum(p.planum),
+    skraning: vaskSkraning(p.skraning),
+    fest: vaskFest(p.fest),
     kart: p.kart === "hoyde" ? "hoyde" : "topo",
     av: tekst(p.av, 60), endret: tekst(p.endret, 40)
   };
@@ -725,7 +727,7 @@ export function binTilGrid(buf, post) {
 // fylling. Med 1 m-grid er det 1 m² per punkt — på en tomt er det godt nok,
 // og det er langt bedre enn feilen i selve plasseringen (±1–2 m).
 //
-// Skråninger utenfor plata er IKKE med. Det er det neste man ville lagt til.
+// Skråningene utenfor plata regnes i masseFelt (se SKRÅNINGER lenger ned).
 
 export const STANDARD_OPPBYGGING = 0.5;
 
@@ -778,4 +780,242 @@ export function masseFarger(grid, flagg, planum, grunn) {
     for (let i = 0; i < 3; i++) ut[k * 3 + i] = 0.95 * (1 - f) + c[i] * f;
   }
   return ut;
+}
+
+// ═══════════════════════ KOORDINATSYSTEMER (fest hjørne) ═══════════════════════
+//
+// Landmåleren leverer ikke alltid UTM33. Sør-Norge stikkes ofte ut i UTM32
+// (Geithus ligger i sone 32), og mange kommuner bruker NTM (én sone per
+// lengdegrad). Høydedataene står i UTM33, så koordinaten gjøres om hit.
+//
+// Alle er EUREF89 (ETRS89, GRS80-ellipsoiden) og transversal Mercator —
+// forskjellen er bare midtmeridian, målestokk og falsk øst/nord. Regnet med
+// Krügers rekker (3 ledd), som gir millimeter innenfor en sone. Kontrollert
+// mot Kartverkets adresse-API 25.09.2026: Industriveien 20 i UTM32, UTM33 og
+// NTM10 (se test-terreng.mjs).
+const GRS80_A = 6378137, GRS80_F = 1 / 298.257222101;
+const TMN = GRS80_F / (2 - GRS80_F);
+const TMA = GRS80_A / (1 + TMN) * (1 + TMN * TMN / 4 + Math.pow(TMN, 4) / 64);
+const ALFA = [TMN / 2 - 2 * TMN * TMN / 3 + 5 * Math.pow(TMN, 3) / 16, 13 * TMN * TMN / 48 - 3 * Math.pow(TMN, 3) / 5, 61 * Math.pow(TMN, 3) / 240];
+const BETA = [TMN / 2 - 2 * TMN * TMN / 3 + 37 * Math.pow(TMN, 3) / 96, TMN * TMN / 48 + Math.pow(TMN, 3) / 15, 17 * Math.pow(TMN, 3) / 480];
+const DELTA = [2 * TMN - 2 * TMN * TMN / 3 - 2 * Math.pow(TMN, 3), 7 * TMN * TMN / 3 - 8 * Math.pow(TMN, 3) / 5, 56 * Math.pow(TMN, 3) / 15];
+const RAD = Math.PI / 180;
+
+// Systemene i nedtrekkslista. NTM: k0 = 1, falsk øst 100 000, falsk nord
+// 1 000 000, breddegrad-origo 58°, midtmeridian = sone + 0,5°.
+export const KOORDSYS = [
+  { id: "25833", navn: "EUREF89 UTM33", cm: 15, k0: 0.9996, fe: 500000, fn: 0, lat0: 0 },
+  { id: "25832", navn: "EUREF89 UTM32", cm: 9, k0: 0.9996, fe: 500000, fn: 0, lat0: 0 },
+  { id: "25835", navn: "EUREF89 UTM35", cm: 27, k0: 0.9996, fe: 500000, fn: 0, lat0: 0 },
+  ...Array.from({ length: 26 }, (_, i) => {
+    const z = 5 + i;
+    return { id: String(5100 + z), navn: "EUREF89 NTM" + z, cm: z + 0.5, k0: 1, fe: 100000, fn: 1000000, lat0: 58 };
+  })
+];
+export function koordsys(id) { return KOORDSYS.find(k => k.id === String(id)) || KOORDSYS[0]; }
+
+function tmXiEta(lat, lon, cm) {
+  const phi = lat * RAD, dl = (lon - cm) * RAD;
+  const k = 2 * Math.sqrt(TMN) / (1 + TMN);
+  const t = Math.sinh(Math.atanh(Math.sin(phi)) - k * Math.atanh(k * Math.sin(phi)));
+  const xi = Math.atan2(t, Math.cos(dl)), eta = Math.atanh(Math.sin(dl) / Math.sqrt(1 + t * t));
+  let x = xi, y = eta;
+  for (let j = 1; j <= 3; j++) {
+    x += ALFA[j - 1] * Math.sin(2 * j * xi) * Math.cosh(2 * j * eta);
+    y += ALFA[j - 1] * Math.cos(2 * j * xi) * Math.sinh(2 * j * eta);
+  }
+  return { x, y };   // x: nord-retning, y: øst-retning (normalisert med A)
+}
+
+export function tilTM(lat, lon, sys) {
+  const s = typeof sys === "object" ? sys : koordsys(sys);
+  const p = tmXiEta(lat, lon, s.cm), o = tmXiEta(s.lat0, s.cm, s.cm);
+  return { E: s.fe + s.k0 * TMA * p.y, N: s.fn + s.k0 * TMA * (p.x - o.x) };
+}
+
+export function fraTM(E, N, sys) {
+  const s = typeof sys === "object" ? sys : koordsys(sys);
+  const o = tmXiEta(s.lat0, s.cm, s.cm);
+  const xi = (N - s.fn) / (s.k0 * TMA) + o.x, eta = (E - s.fe) / (s.k0 * TMA);
+  let x = xi, y = eta;
+  for (let j = 1; j <= 3; j++) {
+    x -= BETA[j - 1] * Math.sin(2 * j * xi) * Math.cosh(2 * j * eta);
+    y -= BETA[j - 1] * Math.cos(2 * j * xi) * Math.sinh(2 * j * eta);
+  }
+  const chi = Math.asin(Math.sin(x) / Math.cosh(y));
+  let phi = chi;
+  for (let j = 1; j <= 3; j++) phi += DELTA[j - 1] * Math.sin(2 * j * chi);
+  return { lat: phi / RAD, lon: s.cm + Math.atan2(Math.sinh(y), Math.cos(x)) / RAD };
+}
+
+// Fra et hvilket som helst system i lista til UTM33 (høydedataenes system).
+export function tilUtm33(E, N, sysId) {
+  const s = koordsys(sysId);
+  if (s.id === "25833") return { E, N };
+  const g = fraTM(E, N, s);
+  return tilTM(g.lat, g.lon, koordsys("25833"));
+}
+
+// ═══════════════════════ FEST HJØRNE ═══════════════════════
+//
+// Spesifikasjonen punkt 2: «Klikk et hjørne, skriv inn ekte koordinat fra
+// landmåler, bygget låses.» Uten dette er plasseringen ±1–2 m — med det er den
+// så god som landmålerens tall.
+//   Ett punkt:  flytter bygget så punktet treffer koordinaten; rotasjonen står.
+//   To punkt:   gir også rotasjonen, og avstanden mellom dem er en kontroll:
+//               avviker modellens avstand fra landmålerens, er noe feil.
+// Punktene står i byggrammen (meter), koordinatene i UTM33.
+
+export function festEttPunkt(b, E0, N0, rot, E, N) {
+  const t = (rot || 0) * RAD, c = Math.cos(t), s = Math.sin(t);
+  const lx = b.bx * c - b.bz * s, lz = b.bx * s + b.bz * c;
+  return { pE: E - E0 - lx, pN: N - N0 + lz, rot: normVinkel(rot || 0) };
+}
+
+export function festToPunkt(b1, b2, E0, N0, t1, t2) {
+  const vb = { x: b2.bx - b1.bx, z: b2.bz - b1.bz };
+  const vt = { x: t2.E - t1.E, z: -(t2.N - t1.N) };
+  const lb = Math.hypot(vb.x, vb.z), lt = Math.hypot(vt.x, vt.z);
+  if (lb < 0.5 || lt < 0.5) return null;                     // punktene må ligge et stykke fra hverandre
+  const rot = normVinkel((Math.atan2(vt.z, vt.x) - Math.atan2(vb.z, vb.x)) / RAD);
+  // Plasser ut fra midtpunktet: da fordeles et lite avvik likt på begge punkt
+  const bm = { bx: (b1.bx + b2.bx) / 2, bz: (b1.bz + b2.bz) / 2 };
+  const plass = festEttPunkt(bm, E0, N0, rot, (t1.E + t2.E) / 2, (t1.N + t2.N) / 2);
+  return { plass, avvikM: lt - lb, lengdeModell: lb, lengdeLandmaaler: lt };
+}
+
+// ═══════════════════════ SKRÅNINGER ═══════════════════════
+//
+// Rundt plata graves eller fylles det ikke loddrett: skjæringen får en
+// skråning opp til terrenget, fyllingen en skråning ned. Skråningen starter i
+// planum på platekanten og går ut til den møter terrenget («dagslys»).
+// Helningen oppgis som 1:n (1 opp, n bort) — typisk 1:1,5 i skjæring og 1:2
+// i fylling, men det avhenger av masser og grunnforhold.
+//
+// For hvert punkt utenfor plata: avstanden d til plata (i byggrammen).
+//   Skjæringsflate: planum + d/nS  → terreng over den = skjæring
+//   Fyllingsflate:  planum − d/nF  → terreng under den = fylling
+// Mellom de to flatene ligger terrenget urørt.
+export const STANDARD_SKRANING = { skjaering: 1.5, fylling: 2 };
+
+export function vaskSkraning(s) {
+  const q = s && typeof s === "object" ? s : {};
+  const ok = (v, std) => (typeof v === "number" && Number.isFinite(v) && v >= 0.2 && v <= 10) ? v : std;
+  return { paa: q.paa !== false, skjaering: ok(q.skjaering, STANDARD_SKRANING.skjaering), fylling: ok(q.fylling, STANDARD_SKRANING.fylling) };
+}
+
+function avstandTilRekt(bx, bz, r) {
+  const dx = Math.max(r.x0 - bx, 0, bx - r.x1), dz = Math.max(r.z0 - bz, 0, bz - r.z1);
+  return Math.hypot(dx, dz);
+}
+
+// Hele massefeltet: volumer delt på plate og skråning, og dz per punkt
+// (terreng minus prosjektert flate: + graves, − fylles, 0 urørt, NaN utenfor).
+export function masseFelt(grid, E0, N0, plass, pad, planum, skraning) {
+  if (!pad || !pad.paa || planum == null || !Number.isFinite(planum)) return null;
+  const sk = vaskSkraning(skraning);
+  const A = grid.dx * grid.dy, n = grid.w * grid.h;
+  const dz = new Float32Array(n).fill(NaN);
+  const flagg = new Uint8Array(n);
+  const t = (plass.rot || 0) * RAD, c = Math.cos(t), s = Math.sin(t);
+  const r = { skjP: 0, fylP: 0, skjS: 0, fylS: 0, arealP: 0, arealS: 0, sum: 0, nP: 0, uten: 0, kant: false };
+  for (let j = 0; j < grid.h; j++) {
+    const N = grid.y0 - (j + 0.5) * grid.dy, lz = -(N - N0 - (plass.pN || 0));
+    for (let i = 0; i < grid.w; i++) {
+      const k = j * grid.w + i, v = grid.data[k];
+      const lx = grid.x0 + (i + 0.5) * grid.dx - E0 - (plass.pE || 0);
+      const bx = lx * c + lz * s, bz = -lx * s + lz * c;
+      const inne = bx >= pad.x0 && bx <= pad.x1 && bz >= pad.z0 && bz <= pad.z1;
+      if (inne) flagg[k] = 1;
+      if (!gyldigHoyde(v, grid.nodata)) { if (inne) r.uten++; continue; }
+      if (inne) {
+        const d = v - planum;
+        dz[k] = d; r.nP++; r.sum += v; r.arealP += A;
+        if (d > 0) r.skjP += d * A; else r.fylP -= d * A;
+        continue;
+      }
+      if (!sk.paa) continue;
+      const d = avstandTilRekt(bx, bz, pad);
+      const opp = planum + d / sk.skjaering, ned = planum - d / sk.fylling;
+      let dd = 0;
+      if (v > opp) { dd = v - opp; r.skjS += dd * A; }
+      else if (v < ned) { dd = v - ned; r.fylS -= dd * A; }
+      if (dd !== 0) {
+        dz[k] = dd; r.arealS += A;
+        if (i === 0 || j === 0 || i === grid.w - 1 || j === grid.h - 1) r.kant = true;
+      } else dz[k] = 0;
+    }
+  }
+  const skj = r.skjP + r.skjS, fyl = r.fylP + r.fylS;
+  return {
+    skjaering: skj, fylling: fyl, netto: skj - fyl,
+    skjaeringPlate: r.skjP, fyllingPlate: r.fylP, skjaeringSkraning: r.skjS, fyllingSkraning: r.fylS,
+    areal: r.arealP, arealSkraning: r.arealS, snitt: r.nP ? r.sum / r.nP : null,
+    per10cm: r.arealP * 0.1, utenHoyde: r.uten,
+    skraningUtAvUtsnitt: r.kant,        // skråningen treffer kanten av det hentede terrenget
+    dz, flagg
+  };
+}
+
+// Farger fra dz: rødt der det graves, blått der det fylles (full farge ved 2 m).
+export function dzFarger(dz, grunn) {
+  const ut = Float32Array.from(grunn);
+  for (let k = 0; k < dz.length; k++) {
+    const d = dz[k];
+    if (!(d > 0.01 || d < -0.01)) continue;
+    const s = Math.min(1, Math.abs(d) / 2), f = 0.35 + 0.65 * s;
+    const c = d > 0 ? [0.90, 0.25, 0.22] : [0.22, 0.45, 0.90];
+    for (let i = 0; i < 3; i++) ut[k * 3 + i] = 0.95 * (1 - f) + c[i] * f;
+  }
+  return ut;
+}
+
+// Terrenget ETTER graving og fylling, til visning: terreng minus dz. Under
+// plata blir det planum, i skråningene skråningsflata, resten urørt.
+export function ferdigGrid(grid, dz) {
+  const data = Float32Array.from(grid.data);
+  for (let k = 0; k < data.length; k++) { const d = dz[k]; if (d === d && d !== 0) data[k] -= d; }
+  return Object.assign({}, grid, { data });
+}
+
+// ═══════════════════════ FEST: KONTROLL OG LAGRING ═══════════════════════
+//
+// En koordinat fra landmåleren kan være skrevet i feil felt (nord og øst
+// byttet — i norsk oppmåling er x = NORD og y = ØST, motsatt av matematikken),
+// eller i et annet koordinatsystem enn valgt. Begge deler flytter bygget
+// hundrevis av meter eller kilometer. Punktet må ligge innenfor det hentede
+// terrenget; ellers avvises det, med et hint om hva som trolig er feil.
+//   → { ok, avstand (m fra adressepunktet), byttet (true hvis N/Ø byttet om ville passet) }
+export function festSjekk(E, N, sysId, E0, N0, halv) {
+  const u = tilUtm33(E, N, sysId);
+  const avstand = Math.hypot(u.E - E0, u.N - N0);
+  const ok = Math.abs(u.E - E0) <= halv && Math.abs(u.N - N0) <= halv;
+  let byttet = false;
+  if (!ok) {
+    const b = tilUtm33(N, E, sysId);
+    byttet = Math.abs(b.E - E0) <= halv && Math.abs(b.N - N0) <= halv;
+  }
+  return { ok, avstand, byttet, E: u.E, N: u.N };
+}
+
+export function vaskFest(f) {
+  if (!f || typeof f !== "object") return null;
+  const tallEl = (v, g) => (typeof v === "number" && Number.isFinite(v) && Math.abs(v) < g) ? v : null;
+  // Et punkt kan være valgt i modellen uten koordinater ennå, eller ha
+  // koordinater skrevet inn før det er valgt — begge deler tas vare på.
+  const punkter = (Array.isArray(f.punkter) ? f.punkter : []).slice(0, 2).map(q => {
+    if (!q || typeof q !== "object") return null;
+    let bx = tallEl(q.bx, 5000), bz = tallEl(q.bz, 5000);
+    if (bx == null || bz == null) bx = bz = null;
+    const E = tallEl(q.E, 1e8), N = tallEl(q.N, 1e8);
+    const Z0 = tallEl(q.Z, MAKS_HOYDE), Z = Z0 != null && Z0 > MIN_HOYDE ? Z0 : null;
+    if (bx == null && E == null && N == null && Z == null) return null;
+    return { bx, bz, hy: tallEl(q.hy, 1000) || 0, E, N, Z, snap: typeof q.snap === "string" ? q.snap.slice(0, 12) : null };
+  });
+  while (punkter.length < 2) punkter.push(null);
+  const k = f.kontroll;
+  const kontroll = k && typeof k === "object" && [k.avvikM, k.lengdeModell, k.lengdeLandmaaler].every(v => tallEl(v, 1e5) != null)
+    ? { avvikM: k.avvikM, lengdeModell: k.lengdeModell, lengdeLandmaaler: k.lengdeLandmaaler } : null;
+  const laast = f.laast === true;
+  return { sys: koordsys(f.sys).id, laast, antall: laast && (f.antall === 2) ? 2 : (laast ? 1 : 0), kontroll: laast ? kontroll : null, punkter };
 }
