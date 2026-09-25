@@ -1510,5 +1510,11 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Foreløpig plassering: adressepunktet ligger midt under modellen, i høyde med modellens laveste punkt. Flytting, rotasjon og gulvkote kommer i neste trinn.": "Provisional placement: the address point lies under the middle of the model, level with the model's lowest point. Moving, rotation and floor level come in the next step.",
   "Kontroller målestokken: mål en kjent avstand på terrenget med Mål.": "Check the scale: measure a known distance on the terrain with Measure.",
   "Utsnittet er": "The extent is",
-  "Plasseringen er omtrentlig (±1–2 m) og skal aldri brukes til utstikking.": "The placement is approximate (±1–2 m) and must never be used for setting out."
+  "Plasseringen er omtrentlig (±1–2 m) og skal aldri brukes til utstikking.": "The placement is approximate (±1–2 m) and must never be used for setting out.",
+  "svarte ikke innen {0} sekunder": "did not answer within {0} seconds",
+  "nettleseren fikk ikke svar (nett, brannmur eller tjenesten nede)": "the browser got no answer (network, firewall or the service is down)",
+  "Hentet": "Fetched",
+  "Beskjær": "Crop",
+  "Dra i de røde håndtakene i 3D-vinduet for å beskjære terrenget. Hele utsnittet er tatt vare på — dra ut igjen, så kommer det tilbake uten å hente på nytt.": "Drag the red handles in the 3D view to crop the terrain. The whole extent is kept — drag back out and it returns without fetching again.",
+  "Vis hele utsnittet": "Show the whole extent"
 };

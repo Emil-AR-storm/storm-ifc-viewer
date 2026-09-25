@@ -17,12 +17,13 @@
 // Den rene regningen (TIFF-lesing, UTM, grid → trekanter) ligger i
 // js/terreng-regn.js, så den kan testes uten nettleser.
 import * as THREE from "three";
-import { $, S, apnePanel, esc, ikon, på, registrerEkstraGruppe, fmtLen } from "./state.js";
+import { $, S, apnePanel, esc, ikon, på, registrerEkstraGruppe } from "./state.js";
 import { t } from "./i18n.js";
-import { camera, controls, frameHooks, grid, scene } from "./scene.js";
+import { camera, canvas, controls, frameHooks, grid, scene, updateScreenScaled } from "./scene.js";
 import {
-  STANDARD_UTSNITT, UTSNITT, adresseUrl, bboxFra, gridTilTrekanter, hoydeFarger,
-  hoydeSpenn, hoydeVed, lesTiff, mTilScene, tolkKoordinat, vaskAdresseSvar, wcsUrl
+  STANDARD_UTSNITT, UTSNITT, adresseUrl, bboxFra, flyttKlippKant, fulltKlipp, gridTilTrekanter,
+  hoydeFarger, hoydeIPunkt, hoydeSpenn, hoydeVed, klippHandtak, klippMeter, klippOmriss, lagIndeks,
+  lesTiff, likeKlipp, mTilScene, pikselSenter, punktFraE, punktFraN, tolkKoordinat, vaskAdresseSvar, wcsUrl
 } from "./terreng-regn.js";
 
 // ═══════════════════════ TILSTAND ═══════════════════════
@@ -116,12 +117,209 @@ function flateTreff(x, y) {
 
 function ryddScene() {
   for (const m of terrengGroup.children.slice()) {
+    if (m === klippGroup) continue;
     terrengGroup.remove(m);
     if (m.geometry) m.geometry.dispose();
     if (m.material) m.material.dispose();
   }
+  ryddKlippVisning();
   trengerFar = 0;
 }
+
+// ═══════════════════════ ✂ BESKJÆRING (trinn 4) ═══════════════════════
+//
+// En boks i plan med åtte håndtak (fire hjørner, fire kantmidter). Dra et
+// håndtak → flata klippes, og tallet i panelet følger med mens du drar.
+//
+// HELE GRIDET BLIR LIGGENDE I MINNET. Beskjæringen bytter bare trekantlista
+// (lagIndeks i terreng-regn.js), så å dra kanten ut igjen henter terrenget
+// tilbake uten et nytt nettkall.
+//
+// Håndtakene vises bare mens Terreng-panelet er åpent. Står de alltid
+// framme, tar de imot trykk som var ment for modellen.
+//
+// Dra-mekanikken er kopiert fra materiell.js, ikke skrevet på nytt:
+// lyttere på window i fangstfasen, stopPropagation så kameraet ikke roterer,
+// og slippKamera() (et syntetisk pointercancel) når draget er ferdig.
+const klippGroup = new THREE.Group();
+klippGroup.name = "terreng-beskjaering";
+klippGroup.visible = false;
+terrengGroup.add(klippGroup);
+
+const HANDTAK_PX = 13;          // håndtakets diameter på skjermen
+const TREFF_PX = 16;            // hvor nær pekeren må være for å ta tak
+const LOFT_M = 0.4;             // omrisset løftes litt, så det ikke forsvinner i terrenget
+const FARGE_KLIPP = 0xe53935;   // Storm-rødt: dette er noe du kan dra i
+
+const klippMat = new THREE.LineBasicMaterial({ color: FARGE_KLIPP, depthTest: false, transparent: true, opacity: 0.95 });
+const handtakMat = new THREE.MeshBasicMaterial({ color: FARGE_KLIPP, depthTest: false });
+const handtakGeo = new THREE.SphereGeometry(1, 12, 8);
+let omrissLinje = null;
+let handtakene = [];              // [{ kant, mesh }]
+
+function ryddKlippVisning() {
+  if (omrissLinje) { klippGroup.remove(omrissLinje); omrissLinje.geometry.dispose(); omrissLinje = null; }
+  for (const h of handtakene) klippGroup.remove(h.mesh);
+  handtakene = [];
+}
+
+// (i, j) i gridet → punkt i terrengGroup sine lokale koordinater
+function lokaltPunkt(i, j, loftM) {
+  const { grid: g, E0, N0, h0 } = terreng;
+  const skala = S.enhetSkala || 1;
+  const c = pikselSenter(g, i, j);
+  const h = hoydeIPunkt(g, i, j);
+  return new THREE.Vector3(
+    mTilScene(c.E - E0, skala),
+    mTilScene((h != null ? h : h0) - h0 + (loftM || 0), skala),
+    -mTilScene(c.N - N0, skala));
+}
+
+function tegnKlippVisning() {
+  ryddKlippVisning();
+  if (!terreng) return;
+  const k = terreng.klipp;
+  const pts = klippOmriss(k).map(([i, j]) => lokaltPunkt(i, j, LOFT_M));
+  const geo = new THREE.BufferGeometry().setFromPoints(pts);
+  omrissLinje = new THREE.LineLoop(geo, klippMat);
+  omrissLinje.renderOrder = 997;
+  klippGroup.add(omrissLinje);
+  for (const hd of klippHandtak(k)) {
+    const m = new THREE.Mesh(handtakGeo, handtakMat);
+    m.position.copy(lokaltPunkt(hd.i, hd.j, LOFT_M));
+    m.userData.px = HANDTAK_PX;
+    m.renderOrder = 998;
+    klippGroup.add(m);
+    handtakene.push({ kant: hd.kant, mesh: m });
+  }
+}
+
+// Bare trekantlista byttes — punktene og normalene står.
+function brukKlipp() {
+  const mesh = terrengGroup.children.find(m => m.userData && m.userData.terreng);
+  if (!mesh || !terreng) return;
+  const idx = lagIndeks(terreng.ok, terreng.grid.w, terreng.grid.h, terreng.klipp);
+  mesh.geometry.setIndex(new THREE.BufferAttribute(idx, 1));
+  tegnKlippVisning();
+  visKlippTall();
+}
+
+function klippTekst() {
+  if (!terreng) return "";
+  const m = klippMeter(terreng.grid, terreng.klipp);
+  return Math.round(m.bredde) + " × " + Math.round(m.hoyde) + " m";
+}
+// Oppdaterer tallet uten å tegne hele panelet på nytt — da ville
+// adressefeltet mistet fokus og markøren for hvert musetrekk.
+function visKlippTall() {
+  const el = $("trKlippTall");
+  if (el) el.textContent = klippTekst();
+  const nb = $("trKlippHele");
+  if (nb && terreng) nb.disabled = likeKlipp(terreng.klipp, fulltKlipp(terreng.grid));
+}
+
+function settKlipp(k, medAngre) {
+  if (!terreng || likeKlipp(k, terreng.klipp)) return;
+  const fra = terreng.klipp, til = Object.assign({}, k), gjeldende = terreng;
+  terreng.klipp = til;
+  brukKlipp();
+  if (medAngre && S.pushAngre) S.pushAngre({
+    tekst: "Terreng beskåret",
+    angre: () => { if (terreng === gjeldende) { terreng.klipp = fra; brukKlipp(); } },
+    gjenopprett: () => { if (terreng === gjeldende) { terreng.klipp = til; brukKlipp(); } }
+  });
+}
+
+// Håndtakene synes bare med panelet åpent, og har konstant skjermstørrelse.
+frameHooks.push(() => {
+  klippGroup.visible = !!terreng && !skjult && erApen();
+  if (klippGroup.visible) updateScreenScaled(klippGroup);
+});
+
+// Nærmeste håndtak under pekeren, målt i SKJERMPIKSLER (samme grunn som
+// snappen i measure.js: et håndtak skal kunne tas uansett avstand).
+const _v = new THREE.Vector3();
+function handtakVed(x, y) {
+  if (!klippGroup.visible) return null;
+  const r = canvas.getBoundingClientRect();
+  let best = null, bestD = TREFF_PX;
+  for (const h of handtakene) {
+    h.mesh.getWorldPosition(_v).project(camera);
+    if (_v.z > 1) continue;                              // bak kameraet
+    const sx = r.left + (_v.x * 0.5 + 0.5) * r.width, sy = r.top + (-_v.y * 0.5 + 0.5) * r.height;
+    const d = Math.hypot(sx - x, sy - y);
+    if (d < bestD) { bestD = d; best = h; }
+  }
+  return best;
+}
+
+// Pekeren → (i, j) i gridet, via et vannrett plan i håndtakets høyde.
+// Planet og ikke terrenget: i en bratt skråning ville et treff på terrenget
+// latt kanten hoppe fram og tilbake mens du drar.
+const _plan = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const _hit = new THREE.Vector3();
+const _ndc = new THREE.Vector2();
+function punktUnderPeker(x, y, planY) {
+  const r = canvas.getBoundingClientRect();
+  _ndc.set(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1);
+  _ray.setFromCamera(_ndc, camera);
+  _plan.constant = -planY;
+  if (!_ray.ray.intersectPlane(_plan, _hit)) return null;
+  const lok = terrengGroup.worldToLocal(_hit.clone());
+  const skala = S.enhetSkala || 1;
+  const E = terreng.E0 + lok.x * skala, N = terreng.N0 - lok.z * skala;
+  return { i: punktFraE(terreng.grid, E), j: punktFraN(terreng.grid, N) };
+}
+
+function slippKamera(e) {
+  try { canvas.dispatchEvent(new PointerEvent("pointercancel", { pointerId: e.pointerId })); }
+  catch (_) { try { canvas.dispatchEvent(new Event("pointercancel")); } catch (__) {} }
+}
+
+let drar = null;        // { kant, fra, planY }
+let venter = 0;         // rAF-id: én ombygging per bilde, uansett hvor mange musetrekk
+let satteMarkor = false;
+
+window.addEventListener("pointerdown", (e) => {
+  if (e.button !== 0 || e.target !== canvas || e.shiftKey || !terreng) return;
+  const h = handtakVed(e.clientX, e.clientY);
+  if (!h) return;
+  e.stopPropagation();   // kameraet skal ikke rotere mens kanten dras
+  drar = { kant: h.kant, fra: Object.assign({}, terreng.klipp), planY: h.mesh.getWorldPosition(new THREE.Vector3()).y };
+}, true);
+
+window.addEventListener("pointermove", (e) => {
+  if (!drar) {
+    // Pekeren blir en hånd over et håndtak, så det synes at det kan dras.
+    const over = e.target === canvas && e.buttons === 0 && !!handtakVed(e.clientX, e.clientY);
+    if (over !== satteMarkor) { canvas.style.cursor = over ? "grab" : ""; satteMarkor = over; }
+    return;
+  }
+  e.stopPropagation();
+  const p = punktUnderPeker(e.clientX, e.clientY, drar.planY);
+  if (!p || !terreng) return;
+  const ny = flyttKlippKant(terreng.grid, terreng.klipp, drar.kant, p.i, p.j);
+  if (likeKlipp(ny, terreng.klipp)) return;
+  terreng.klipp = ny;
+  if (!venter) venter = requestAnimationFrame(() => { venter = 0; brukKlipp(); });
+}, true);
+
+window.addEventListener("pointerup", (e) => {
+  if (!drar) return;
+  // Les ut drag-tilstanden FØR slippKamera: det syntetiske pointercancel-et
+  // treffer vår egen lytter synkront og nullstiller `drar` (samme felle som
+  // materiell.js gikk i 21.08).
+  const fra = drar.fra;
+  drar = null;
+  e.stopPropagation(); slippKamera(e);
+  if (!terreng) return;
+  const til = Object.assign({}, terreng.klipp);
+  terreng.klipp = fra;              // settKlipp lager angre-posten fra→til
+  if (likeKlipp(fra, til)) { brukKlipp(); return; }
+  settKlipp(til, true);
+}, true);
+
+window.addEventListener("pointercancel", () => { drar = null; }, true);
 
 // Bygger flata. Plassering i plan (trinn 3): adressepunktet midt under
 // modellens senter. Høyde: terrenget i adressepunktet legges i modellens
@@ -137,6 +335,8 @@ function tegnTerreng() {
   geo.setAttribute("position", new THREE.BufferAttribute(tr.pos, 3));
   geo.setAttribute("color", new THREE.BufferAttribute(hoydeFarger(g, terreng.spenn), 3));
   geo.setIndex(new THREE.BufferAttribute(tr.idx, 1));
+  // Normalene regnes på HELE gridet, én gang. Beskjæringen bytter bare
+  // indeksen etterpå — da blir ikke lyset på kanten annerledes enn midt i.
   geo.computeVertexNormals();
   geo.computeBoundingSphere();
   geo.computeBoundingBox();
@@ -158,6 +358,11 @@ function tegnTerreng() {
   terrengGroup.position.set(c.x, boks.min.y, c.z);
   terrengGroup.visible = !skjult;
 
+  terreng.ok = tr.ok;
+  if (!terreng.klipp) terreng.klipp = fulltKlipp(g);
+  if (!likeKlipp(terreng.klipp, fulltKlipp(g))) geo.setIndex(new THREE.BufferAttribute(lagIndeks(tr.ok, g.w, g.h, terreng.klipp), 1));
+  tegnKlippVisning();
+
   trengerFar = mTilScene(g.w * g.dx * 4, skala);
   oppdaterRutenett();
   if (S.oppdaterVisAlle) S.oppdaterVisAlle();
@@ -167,7 +372,7 @@ function flyTilTerreng() {
   if (!terreng) return;
   const s = mTilScene(terreng.grid.w * terreng.grid.dx, S.enhetSkala || 1);
   const c = terrengGroup.getWorldPosition(new THREE.Vector3());
-  camera.position.set(c.x + s * 0.45, c.y + s * 0.45, c.z + s * 0.45);
+  camera.position.set(c.x + s * 0.7, c.y + s * 0.6, c.z + s * 0.7);
   controls.target.copy(c);
   controls.update();
 }
@@ -276,15 +481,20 @@ async function hentTerreng(adr) {
     const hPunkt = hoydeVed(g, E0, N0);
     const h0 = hPunkt != null ? hPunkt : spenn.min;
     const forrige = terreng;
-    terreng = { grid: g, bb, E0, N0, h0, hPunkt, spenn, adresse: adr };
+    const nytt = { grid: g, bb, E0, N0, h0, hPunkt, spenn, adresse: adr, klipp: fulltKlipp(g) };
+    terreng = nytt;
     skjult = false;
     tegnTerreng();
+    // Kameraet trekkes ut så hele terrenget — og alle åtte håndtakene — synes.
+    // Uten dette sto kameraet der modellen hadde det, 20 m fra en 400 m tomt,
+    // og halvparten av håndtakene lå utenfor skjermen (funnet i prøvekjøring).
+    flyTilTerreng();
     opptatt = false;
     settMelding("");
     if (S.pushAngre) S.pushAngre({
       tekst: "Terreng hentet",
       angre: () => { terreng = forrige; skjult = false; tegnTerreng(); if (erApen()) tegnPanel(); },
-      gjenopprett: () => { terreng = { grid: g, bb, E0, N0, h0, hPunkt, spenn, adresse: adr }; skjult = false; tegnTerreng(); if (erApen()) tegnPanel(); }
+      gjenopprett: () => { terreng = nytt; skjult = false; tegnTerreng(); if (erApen()) tegnPanel(); }
     });
   } catch (err) {
     opptatt = false;
@@ -377,13 +587,18 @@ function tegnPanel() {
       '<div class="c"><button id="trSkjul" title="' + t("Skjul/vis") + '" style="padding:3px 8px">' + ikon(skjult ? "skjul" : "vis") + "</button>" +
       '<button id="trFjern" title="' + t("Fjern terrenget") + '" style="padding:3px 8px">' + ikon("slett") + "</button></div></div>" +
       '<p style="font-size:12px;margin:4px 0 0">' +
-      b + " × " + h + " m · " + fmtMoh(terreng.spenn.min) + " – " + fmtMoh(terreng.spenn.max) + "<br>" +
+      t("Hentet") + " " + b + " × " + h + " m · " + fmtMoh(terreng.spenn.min) + " – " + fmtMoh(terreng.spenn.max) + "<br>" +
       t("Terrenghøyde i adressepunktet:") + " " + (terreng.hPunkt != null ? fmtMoh(terreng.hPunkt) : "–") + "</p>" +
       '<p style="color:var(--muted);font-size:11px;margin:6px 0 0">' +
       t("Foreløpig plassering: adressepunktet ligger midt under modellen, i høyde med modellens laveste punkt. Flytting, rotasjon og gulvkote kommer i neste trinn.") + "</p>" +
-      '<p style="color:var(--muted);font-size:11px;margin:6px 0 0">' +
-      t("Kontroller målestokken: mål en kjent avstand på terrenget med Mål.") +
-      " " + t("Utsnittet er") + " " + fmtLen(b) + ".</p>";
+      // ✂ Beskjæring
+      '<h4 style="margin:12px 0 4px">' + ikon("snitt") + " " + t("Beskjær") +
+      ' <span id="trKlippTall" style="font-weight:700;margin-left:6px">' + esc(klippTekst()) + "</span></h4>" +
+      '<p style="color:var(--muted);font-size:11px;margin:0">' +
+      t("Dra i de røde håndtakene i 3D-vinduet for å beskjære terrenget. Hele utsnittet er tatt vare på — dra ut igjen, så kommer det tilbake uten å hente på nytt.") + "</p>" +
+      '<div class="prop-actions"><button id="trKlippHele"' +
+      (likeKlipp(terreng.klipp, fulltKlipp(terreng.grid)) ? " disabled" : "") + ">" +
+      ikon("fullskjerm") + " " + t("Vis hele utsnittet") + "</button></div>";
   }
 
   // Advarselen står i PANELET, ikke bare i spesifikasjonen (byggeplanen,
@@ -406,6 +621,8 @@ function tegnPanel() {
   if (sk) sk.onclick = () => settSkjult(!skjult);
   const fj = $("trFjern");
   if (fj) fj.onclick = () => fjernTerreng();
+  const hele = $("trKlippHele");
+  if (hele) hele.onclick = () => { if (terreng) settKlipp(fulltKlipp(terreng.grid), true); };
 }
 
 på("btnTerreng", "click", () => {

@@ -1510,5 +1510,11 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Foreløpig plassering: adressepunktet ligger midt under modellen, i høyde med modellens laveste punkt. Flytting, rotasjon og gulvkote kommer i neste trinn.": "Laikina padėtis: adreso taškas yra po modelio viduriu, žemiausio modelio taško aukštyje. Perkėlimas, pasukimas ir grindų aukštis bus kitame žingsnyje.",
   "Kontroller målestokken: mål en kjent avstand på terrenget med Mål.": "Patikrinkite mastelį: išmatuokite žinomą atstumą reljefe įrankiu Matavimas.",
   "Utsnittet er": "Iškarpa yra",
-  "Plasseringen er omtrentlig (±1–2 m) og skal aldri brukes til utstikking.": "Padėtis apytikslė (±1–2 m) ir niekada negali būti naudojama nužymėjimui."
+  "Plasseringen er omtrentlig (±1–2 m) og skal aldri brukes til utstikking.": "Padėtis apytikslė (±1–2 m) ir niekada negali būti naudojama nužymėjimui.",
+  "svarte ikke innen {0} sekunder": "neatsakė per {0} sekundžių",
+  "nettleseren fikk ikke svar (nett, brannmur eller tjenesten nede)": "naršyklė negavo atsakymo (tinklas, užkarda arba paslauga neveikia)",
+  "Hentet": "Gauta",
+  "Beskjær": "Apkarpyti",
+  "Dra i de røde håndtakene i 3D-vinduet for å beskjære terrenget. Hele utsnittet er tatt vare på — dra ut igjen, så kommer det tilbake uten å hente på nytt.": "Tempkite raudonas rankenėles 3D lange, kad apkarpytumėte reljefą. Visa iškarpa išsaugoma — ištempkite atgal ir ji sugrįš be pakartotinio atsisiuntimo.",
+  "Vis hele utsnittet": "Rodyti visą iškarpą"
 };

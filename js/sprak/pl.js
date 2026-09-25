@@ -1510,5 +1510,11 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Foreløpig plassering: adressepunktet ligger midt under modellen, i høyde med modellens laveste punkt. Flytting, rotasjon og gulvkote kommer i neste trinn.": "Tymczasowe położenie: punkt adresowy leży pod środkiem modelu, na wysokości najniższego punktu modelu. Przesuwanie, obrót i rzędna posadzki pojawią się w następnym kroku.",
   "Kontroller målestokken: mål en kjent avstand på terrenget med Mål.": "Sprawdź skalę: zmierz znaną odległość na terenie narzędziem Pomiar.",
   "Utsnittet er": "Wycinek ma",
-  "Plasseringen er omtrentlig (±1–2 m) og skal aldri brukes til utstikking.": "Położenie jest przybliżone (±1–2 m) i nigdy nie może być używane do tyczenia."
+  "Plasseringen er omtrentlig (±1–2 m) og skal aldri brukes til utstikking.": "Położenie jest przybliżone (±1–2 m) i nigdy nie może być używane do tyczenia.",
+  "svarte ikke innen {0} sekunder": "nie odpowiedział w ciągu {0} sekund",
+  "nettleseren fikk ikke svar (nett, brannmur eller tjenesten nede)": "przeglądarka nie otrzymała odpowiedzi (sieć, zapora lub usługa nie działa)",
+  "Hentet": "Pobrano",
+  "Beskjær": "Przytnij",
+  "Dra i de røde håndtakene i 3D-vinduet for å beskjære terrenget. Hele utsnittet er tatt vare på — dra ut igjen, så kommer det tilbake uten å hente på nytt.": "Przeciągnij czerwone uchwyty w oknie 3D, aby przyciąć teren. Cały wycinek jest zachowany — przeciągnij z powrotem, a wróci bez ponownego pobierania.",
+  "Vis hele utsnittet": "Pokaż cały wycinek"
 };
