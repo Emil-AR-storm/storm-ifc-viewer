@@ -1765,5 +1765,11 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Gi riggplanen et navn og lagre den. Trykk på navnet senere for å hente den fram igjen — den erstatter riggen som står nå (kan angres).": "Nadaj planowi nazwę i zapisz go. Kliknij później nazwę, aby go przywrócić — zastąpi obecne zagospodarowanie placu (można cofnąć).",
   "Navn på riggplanen": "Nazwa planu placu budowy",
   "{0} objekter": "{0} obiektów",
-  "Ingen lagrede riggplaner ennå.": "Brak zapisanych planów placu budowy."
+  "Ingen lagrede riggplaner ennå.": "Brak zapisanych planów placu budowy.",
+  // 🏕 Rigg: Fjern rigg og seksjoner (28.09)
+  "Fjerne alle {0} rigg-objektene fra tomta? Det kan angres med Ctrl+Z.": "Usunąć wszystkie {0} obiekty zaplecza z działki? Można cofnąć skrótem Ctrl+Z.",
+  "Legg til på tomta": "Dodaj na działkę",
+  "Riggplan (PDF)": "Plan placu budowy (PDF)",
+  "Fjern rigg": "Usuń zaplecze",
+  "Rigg fjernet": "Usunięto zaplecze"
 };
