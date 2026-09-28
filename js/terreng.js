@@ -18,6 +18,7 @@
 //
 // Den rene regningen (TIFF-lesing, UTM, grid → trekanter, plassering, plate,
 // gulvkote) ligger i js/terreng-regn.js, så den kan testes uten nettleser.
+import { foldSeksjoner } from "./seksjoner.js";
 import * as THREE from "three";
 import { $, S, apnePanel, esc, ikon, på, registrerEkstraGruppe } from "./state.js";
 import { t } from "./i18n.js";
@@ -1429,7 +1430,7 @@ S.lastTerreng = async () => {
 };
 
 function tegnLagring() {
-  let html = '<h4 style="margin:14px 0 4px">' + ikon("lagre") + " " + t("Lagring") + "</h4>";
+  let html = '<h4 data-sek="tr-lagring" style="margin:14px 0 4px">' + ikon("lagre") + " " + t("Lagring") + "</h4>";
   if (terreng && !terreng.id) {
     html += '<label>' + t("Navn på terrenget") +
       '<input type="text" id="trNavn" maxlength="80" value="' + esc(navneforslag(terreng.adresse)) + '"></label>' +
@@ -1442,7 +1443,7 @@ function tegnLagring() {
   }
   html += '<p id="trLagringTekst" style="color:var(--muted);font-size:11px;margin:4px 0 0">' + esc(lagringsTekst()) + "</p>";
   const liste = synligKatalog();
-  html += '<h4 style="margin:12px 0 4px">' + t("Lagrede terreng") +
+  html += '<h4 data-sek="tr-lagrede" style="margin:12px 0 4px">' + t("Lagrede terreng") +
     ' <span style="color:var(--muted);font-size:11px">(' + liste.length + ")</span></h4>";
   if (!liste.length) html += "<p " + LITEN + ">" + t("Ingen terreng lagret ennå.") + "</p>";
   else {
@@ -1471,7 +1472,10 @@ function m3(v) { return Math.round(v).toLocaleString("no-NO") + " m³"; }
 
 function tegnMasser() {
   const pad = terreng.pad, pl = terreng.planum || vaskPlanum(null), m = terreng.masser;
-  let html = '<h4 style="margin:14px 0 4px">' + ikon("mengder") + " " + t("Masser under plata") + "</h4>";
+  // Overskriften står i tegnPanel, UTENFOR <div id="trMasser">: seksjonene
+  // (seksjoner.js) lages av <h4> som ligger rett i panelet, og denne delen
+  // tegnes på nytt alene (visMasseTall) — da skulle ikke overskriften følge med.
+  let html = "";
   if (!pad || !pad.paa) return html + "<p " + LITEN + ">" + t("Slå på utskjæringen for å regne skjæring og fylling.") + "</p>";
   html += '<label>' + t("Planum") + '<select id="trPlanumModus">' +
     '<option value="oppbygging"' + (pl.modus !== "kote" ? " selected" : "") + ">" + t("Gulvkote minus oppbygging") + "</option>" +
@@ -1656,7 +1660,7 @@ function mTekst(v) {
 
 function tegnFest() {
   const f = terreng.fest || vaskFest({});
-  let html = '<h4 style="margin:14px 0 4px">' + ikon("markering") + " " + t("Fest til landmålerens koordinater") + "</h4>";
+  let html = '<h4 data-sek="tr-fest" style="margin:14px 0 4px">' + ikon("markering") + " " + t("Fest til landmålerens koordinater") + "</h4>";
   if (f.laast) {
     html += '<p style="font-size:12px;margin:4px 0 0">' + ikon("hake") + " " +
       (f.antall === 2 ? t("Bygget er festet i to hjørner. Flytting og rotering er låst.") : t("Bygget er festet i ett hjørne. Flytting er låst — rotasjonen kan fortsatt skrives inn.")) + "</p>";
@@ -1808,7 +1812,10 @@ function tegnPanel() {
   if (!body) return;
   const valg = UTSNITT.map(s => '<option value="' + s + '"' + (s === utsnitt ? " selected" : "") + ">" +
     s + " × " + s + " m</option>").join("");
+  // 📂 Seksjonene foldes som i SW-generator (Emil 28.09). «Hent terreng» står
+  // åpen første gang — det er der alt begynner.
   let html =
+    '<h4 data-sek="tr-hent" style="margin:4px 0 4px">' + ikon("kote") + " " + t("Hent terreng") + "</h4>" +
     '<label>' + t("Adresse eller koordinat") +
     '<input type="text" id="trAdresse" maxlength="120" value="' + esc(sisteSok) + '" placeholder="' +
     t("f.eks. Industriveien 20, Geithus") + '"' + (opptatt ? " disabled" : "") + "></label>" +
@@ -1841,17 +1848,19 @@ function tegnPanel() {
     // Ett festet hjørne låser flyttingen; rotasjonen kan fortsatt skrives inn
     // (bygget dreier da rundt hjørnet, se settRotasjon). To hjørner låser alt.
     const rotLaast = erLaast() && terreng.fest.antall === 2;
-    html += '<h4 style="margin:12px 0 4px">' + t("Lastet terreng") + "</h4>" +
+    // Det lastede terrenget er en STATUS, ikke en seksjon: den står alltid
+    // synlig (data-sw-fast), med skjul- og fjern-knappen.
+    html += '<div data-sw-fast style="margin-top:10px"><h4 style="margin:0 0 4px">' + t("Lastet terreng") + "</h4>" +
       '<div class="qty-row"><div class="n">' + ikon("kote") + " " + esc(terreng.adresse.tekst) +
       ' <span style="color:var(--muted);font-size:11px">' +
       esc([terreng.adresse.postnummer, terreng.adresse.poststed].filter(Boolean).join(" ")) + "</span></div>" +
       '<div class="c"><button id="trSkjul" title="' + t("Skjul/vis") + '" style="padding:3px 8px">' + ikon(skjult ? "skjul" : "vis") + "</button>" +
       '<button id="trFjern" title="' + t("Fjern terrenget") + '" style="padding:3px 8px">' + ikon("slett") + "</button></div></div>" +
       '<p style="font-size:12px;margin:4px 0 0">' +
-      t("Hentet") + " " + b + " × " + h + " m · " + fmtMoh(terreng.spenn.min) + " – " + fmtMoh(terreng.spenn.max) + "</p>" +
+      t("Hentet") + " " + b + " × " + h + " m · " + fmtMoh(terreng.spenn.min) + " – " + fmtMoh(terreng.spenn.max) + "</p></div>" +
 
       // ✥ Trinn 5 — plasser og roter
-      '<h4 style="margin:14px 0 4px">' + ikon("juster") + " " + t("Plasser bygget") + "</h4>" +
+      '<h4 data-sek="tr-plasser" style="margin:14px 0 4px">' + ikon("juster") + " " + t("Plasser bygget") + "</h4>" +
       '<div class="prop-actions"><button id="trFlytt"' + (flyttModus ? ' class="active"' : "") + (erLaast() ? " disabled" : "") + ">" +
       ikon("juster") + " " + (flyttModus ? t("Ferdig med å flytte") : t("Flytt og roter bygget")) + "</button></div>" +
       (flyttModus ? "<p " + LITEN + ">" +
@@ -1866,7 +1875,7 @@ function tegnPanel() {
       t("fra adressepunktet.") + "</p>" +
 
       // ▲ Trinn 6 — gulvkote
-      '<h4 style="margin:14px 0 4px">' + ikon("kote") + " " + t("Gulvkote") + "</h4>" +
+      '<h4 data-sek="tr-gulv" style="margin:14px 0 4px">' + ikon("kote") + " " + t("Gulvkote") + "</h4>" +
       '<label>' + t("Gulvkote (moh.)") +
       '<input type="text" id="trGulv" inputmode="decimal" value="' +
       esc(gulv ? gulv.kote.toFixed(2).replace(".", ",") : "") + '" placeholder="' + t("f.eks. 75,30") + '"></label>' +
@@ -1878,7 +1887,7 @@ function tegnPanel() {
       '<div class="prop-actions"><button id="trOppaa">' + ikon("kote") + " " + t("Legg oppå terrenget") + "</button></div>" +
 
       // Utskjæring
-      '<h4 style="margin:14px 0 4px">' + ikon("boks") + " " + t("Utskjæring rundt bygget") +
+      '<h4 data-sek="tr-pad" style="margin:14px 0 4px">' + ikon("boks") + " " + t("Utskjæring rundt bygget") +
       (pad && pad.paa ? ' <span id="trPadTall" style="font-weight:700;margin-left:6px">' + esc(padTekst()) + "</span>" : "") + "</h4>" +
       '<label style="display:flex;gap:6px;align-items:center;font-size:12px"><input type="checkbox" id="trPadPaa"' +
       (pad && pad.paa ? " checked" : "") + "> " + t("Skjær ut terrenget og legg en flat plate i gulvhøyde") + "</label>" +
@@ -1891,10 +1900,11 @@ function tegnPanel() {
       tegnFest() +
 
       // ⛏ Masser: skjæring og fylling under plata
+      '<h4 data-sek="tr-masser" style="margin:14px 0 4px">' + ikon("mengder") + " " + t("Masser under plata") + "</h4>" +
       '<div id="trMasser">' + tegnMasser() + "</div>" +
 
       // 🗺 Kart på terrenget
-      '<h4 style="margin:14px 0 4px">' + ikon("tegning") + " " + t("Kart på terrenget") + "</h4>" +
+      '<h4 data-sek="tr-kart" style="margin:14px 0 4px">' + ikon("tegning") + " " + t("Kart på terrenget") + "</h4>" +
       '<label>' + t("Vis") + '<select id="trKart">' +
       '<option value="topo"' + (kartValg === "topo" ? " selected" : "") + ">" + t("Topografisk kart (Kartverket)") + "</option>" +
       '<option value="hoyde"' + (kartValg === "hoyde" ? " selected" : "") + ">" + t("Høydefarger") + "</option></select></label>" +
@@ -1905,7 +1915,7 @@ function tegnPanel() {
       "<p " + LITEN + ">" + t("Kart og høydedata: © Kartverket (CC BY 4.0). Flyfoto fra Norge i bilder krever avtale gjennom Norge digitalt og er derfor ikke med.") + "</p>" +
 
       // ✂ Trinn 4 — beskjæring
-      '<h4 style="margin:14px 0 4px">' + ikon("snitt") + " " + t("Beskjær") +
+      '<h4 data-sek="tr-klipp" style="margin:14px 0 4px">' + ikon("snitt") + " " + t("Beskjær") +
       ' <span id="trKlippTall" style="font-weight:700;margin-left:6px">' + esc(klippTekst()) + "</span></h4>" +
       "<p " + LITEN + ">" +
       t("Dra i de røde håndtakene i 3D-vinduet for å beskjære terrenget. Hele utsnittet er tatt vare på — dra ut igjen, så kommer det tilbake uten å hente på nytt.") + "</p>" +
@@ -1920,13 +1930,14 @@ function tegnPanel() {
 
   // Advarselen står i PANELET, ikke bare i spesifikasjonen (byggeplanen,
   // advarsel 4). Den som skal grave, leser ikke spesifikasjoner.
-  html += '<p style="font-size:11px;margin:10px 0 0;padding:6px 8px;border:1px solid var(--border);border-radius:6px">' +
+  html += '<p data-sw-fast style="font-size:11px;margin:10px 0 0;padding:6px 8px;border:1px solid var(--border);border-radius:6px">' +
     ikon("advarsel") + " " +
     (erLaast()
       ? t("Bygget er festet etter landmålerens koordinater, men terrenget er fortsatt laserdata fra før graving. Skal aldri brukes til utstikking.")
       : t("Plasseringen er omtrentlig (±1–2 m) og skal aldri brukes til utstikking.")) + "</p>";
 
   body.innerHTML = html;
+  foldSeksjoner(body, { nokkel: "storm-terreng-seksjoner-apne", standard: ["tr-hent"] });
   koblLagring(body);
   koblMasser();
   koblFest(body);

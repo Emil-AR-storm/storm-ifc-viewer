@@ -1765,5 +1765,11 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Gi riggplanen et navn og lagre den. Trykk på navnet senere for å hente den fram igjen — den erstatter riggen som står nå (kan angres).": "Give the site plan a name and save it. Click the name later to bring it back — it replaces the current site setup (can be undone).",
   "Navn på riggplanen": "Site plan name",
   "{0} objekter": "{0} objects",
-  "Ingen lagrede riggplaner ennå.": "No saved site plans yet."
+  "Ingen lagrede riggplaner ennå.": "No saved site plans yet.",
+  // 🏕 Rigg: Fjern rigg og seksjoner (28.09)
+  "Fjerne alle {0} rigg-objektene fra tomta? Det kan angres med Ctrl+Z.": "Remove all {0} site objects from the plot? This can be undone with Ctrl+Z.",
+  "Legg til på tomta": "Add to the site",
+  "Riggplan (PDF)": "Site plan (PDF)",
+  "Fjern rigg": "Remove site setup",
+  "Rigg fjernet": "Site setup removed"
 };

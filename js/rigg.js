@@ -32,6 +32,7 @@ import { camera, canvas, flyTil, frameHooks, raycaster, scene } from "./scene.js
 import { eierPunktet, registrerPeker } from "./pek-eier.js";
 import { pick, pickFlate } from "./elements.js";
 import { flettPaaId, flettPaaNavn, spLes, spPaalogget, spSkriv } from "./sp-lager.js";
+import { foldSeksjoner } from "./seksjoner.js";
 import {
   MAKS_ETASJER, MAKS_MODULER, REF_ID, RIGG_FORKLARING, RIGG_REKKEFOLGE, RIGG_TYPER, ROT_STEG,
   byggTilRigg, enTilLokal, fjernSkjoter, flyttSkjoter, gjerdeFraRektangel, gjerdeMengder, gjerdeStykker,
@@ -228,6 +229,16 @@ function settRiggFraPlan(data, angreTekst) {
   if (S.oppdaterVisAlle) S.oppdaterVisAlle();
   if (erApen()) tegnPanel();
   if (angreTekst) post(angreTekst, () => settRiggFraPlan(forrige, null), () => settRiggFraPlan(data, null));
+}
+// 🗑 «Fjern rigg» (Emil 28.09): alle objektene ut av tomta på én gang. Det
+// er SAMME vei som å hente en tom plan: objektene blir gravsteiner (ellers
+// kom de tilbake fra SharePoint), referansen blir stående, og alt kan angres.
+// Spør først — riggen er delt, og en kollega kan ha brukt timer på den.
+function fjernAllRigg() {
+  const n = riggObjekter(S.rigg || []).length;
+  if (!n) return;
+  if (!confirm(t("Fjerne alle {0} rigg-objektene fra tomta? Det kan angres med Ctrl+Z.", n))) return;
+  settRiggFraPlan({ objekter: [], ref: null }, "Rigg fjernet");
 }
 function lastInnPlan(navn) {
   const p = lesPlaner().find(x => x.navn === navn);
@@ -1048,15 +1059,19 @@ function tegnPanel() {
     t(ref ? "Terrenget er ikke lastet. Riggen vises rundt bygget på gulvhøyde, der den sto sist."
           : "Uten terreng står riggen på gulvhøyde rundt bygget. Hentes et terreng i Terreng, flyttes den over på tomta.") + "</p>";
 
+  // 📂 Seksjonene foldes som i SW-generator og Blikk & Tak (Emil 28.09):
+  // hver <h4 data-sek> blir en <details>. Katalogen og lista står åpne første
+  // gang — det er dem man trenger for å komme i gang.
   // Katalogen: én knapp per type
-  html += '<div id="riggKatalog" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0">' +
+  html += '<h4 data-sek="rigg-katalog" style="margin:10px 0 4px">' + ikon("pluss") + " " + t("Legg til på tomta") + "</h4>" +
+    '<div id="riggKatalog" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0">' +
     RIGG_REKKEFOLGE.map(k => '<button data-rigg-ny="' + k + '" title="' + esc(t(RIGG_FORKLARING[k])) + '" ' +
       'style="text-align:left;padding:6px 8px">' + flis(RIGG_TYPER[k].farge) + esc(riggTypeLabel(k)) + "</button>").join("") +
     "</div>";
 
   // Det som er plassert
   const liste = riggObjekter(S.rigg || []);
-  html += '<h4 style="margin:12px 0 4px">' + t("Plassert på tomta") +
+  html += '<h4 data-sek="rigg-plassert" style="margin:12px 0 4px">' + t("Plassert på tomta") +
     ' <span style="color:var(--muted);font-size:11px">(' + liste.length + ")</span></h4>";
   if (!liste.length) html += "<p " + LITEN + ">" + t("Ingen rigg-objekter plassert ennå.") + "</p>";
   else html += liste.map(o => {
@@ -1074,7 +1089,7 @@ function tegnPanel() {
   // Oppsummeringen — det som skal bestilles
   const telling = riggTelling(S.rigg || []);
   if (telling.length) {
-    html += '<h4 style="margin:12px 0 4px">' + t("Til bestilling") + "</h4>" +
+    html += '<h4 data-sek="rigg-bestilling" style="margin:12px 0 4px">' + t("Til bestilling") + "</h4>" +
       telling.map(r => '<div class="qty-row"><div class="n">' + esc(r.del ? gjerdeDelLabel(r.del) : riggTypeLabel(r.type)) +
         '</div><div class="c">' + r.antall + t(" stk") + "</div></div>").join("") +
       "<p " + LITEN + ">" + t("Står også i Mengder under typen «Rigg», og kommer med i Excel-arket.") + "</p>";
@@ -1085,7 +1100,7 @@ function tegnPanel() {
   // hele riggen og bygget får plass. Valget huskes mellom øktene.
   if (liste.length) {
     const valgt = vaskMalestokkValg(S.settings && S.settings.riggMalestokk);
-    html += '<h4 style="margin:14px 0 4px">' + ikon("tegning") + " " + t("Riggplan") + "</h4>" +
+    html += '<h4 data-sek="rigg-pdf" style="margin:14px 0 4px">' + ikon("tegning") + " " + t("Riggplan (PDF)") + "</h4>" +
       "<label>" + t("Målestokk på A3") + '<select id="riggMalestokk">' +
       '<option value="auto"' + (valgt === "auto" ? " selected" : "") + ">" + t("Automatisk (hele riggen får plass)") + "</option>" +
       MALESTOKKER.map(m => {
@@ -1093,10 +1108,15 @@ function tegnPanel() {
         return '<option value="' + m + '"' + (valgt === m ? " selected" : "") + ">1:" + m.toLocaleString("nb-NO") +
           " — " + t("{0} × {1} m", Math.round(dk.b), Math.round(dk.h)) + "</option>";
       }).join("") + "</select></label>" +
-      '<div class="prop-actions" style="margin-top:8px"><button id="riggPdf" class="primary">' +
-      ikon("lastned") + " " + t("Last ned riggplan (PDF)") + "</button></div>" +
       "<p " + LITEN + ">" + t("A3 liggende: tomta sett ovenfra med nord opp, tegnforklaring og tittelfelt. Tallet bak målestokken er hvor mye av tomta arket dekker.") + "</p>";
   }
+  // Handlingsknappene står UTENFOR seksjonene (data-sw-fast), som Generer og
+  // Fjern i SW-generator: de skal aldri gjemmes bak en overskrift.
+  html += '<div class="prop-actions" data-sw-fast style="margin-top:10px;flex-wrap:wrap">' +
+    '<button id="riggPdf" class="primary"' + (liste.length ? "" : " disabled") + ">" +
+    ikon("lastned") + " " + t("Last ned riggplan (PDF)") + "</button>" +
+    '<button id="riggFjernAlle"' + (liste.length ? "" : " disabled") + ">" +
+    ikon("slett") + " " + t("Fjern rigg") + "</button></div>";
   // 💾 Lagrede riggplaner — helt nederst, som «Lagrede SW-resultater».
   const planer = lesPlaner();
   html += '<h4 data-sek="riggplaner" style="margin:14px 0 4px">' + ikon("lagre") + " " + t("Lagrede riggplaner") + "</h4>" +
@@ -1117,6 +1137,8 @@ function tegnPanel() {
       : "<p " + LITEN + ">" + t("Ingen lagrede riggplaner ennå.") + "</p>");
 
   body.innerHTML = html;
+  foldSeksjoner(body, { nokkel: "storm-rigg-seksjoner-apne", standard: ["rigg-katalog", "rigg-plassert"] });
+  if ($("riggFjernAlle")) $("riggFjernAlle").onclick = fjernAllRigg;
   // Lastes først når knappen trykkes: PDF-koden og jsPDF skal ikke koste noe
   // for den som aldri laster ned en riggplan.
   if ($("riggMalestokk")) $("riggMalestokk").onchange = (e) => {

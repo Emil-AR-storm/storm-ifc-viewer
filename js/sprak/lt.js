@@ -1765,5 +1765,11 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Gi riggplanen et navn og lagre den. Trykk på navnet senere for å hente den fram igjen — den erstatter riggen som står nå (kan angres).": "Suteikite planui pavadinimą ir išsaugokite. Vėliau spustelėkite pavadinimą, kad jį atkurtumėte — jis pakeis dabartinį aikštelės išdėstymą (galima atšaukti).",
   "Navn på riggplanen": "Aikštelės plano pavadinimas",
   "{0} objekter": "{0} objektai",
-  "Ingen lagrede riggplaner ennå.": "Išsaugotų aikštelės planų dar nėra."
+  "Ingen lagrede riggplaner ennå.": "Išsaugotų aikštelės planų dar nėra.",
+  // 🏕 Rigg: Fjern rigg og seksjoner (28.09)
+  "Fjerne alle {0} rigg-objektene fra tomta? Det kan angres med Ctrl+Z.": "Pašalinti visus {0} aikštelės objektus iš sklypo? Galima atšaukti su Ctrl+Z.",
+  "Legg til på tomta": "Pridėti į sklypą",
+  "Riggplan (PDF)": "Aikštelės planas (PDF)",
+  "Fjern rigg": "Pašalinti aikštelės įrangą",
+  "Rigg fjernet": "Aikštelės įranga pašalinta"
 };
