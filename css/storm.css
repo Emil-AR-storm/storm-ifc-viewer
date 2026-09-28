@@ -1444,6 +1444,7 @@ body:not(.har-modell) #btnFit { display: none !important; }
 /* ⛰ Terreng-panelet fikk samme sykdom første dag: «Adresse eller koordinat»
    og feltet sto klistret på én linje (Emil 25.09). Samme kur. */
 #terrengBody label,
+#riggBody label,
 #blikkBody > label,
 #blikkBody label.swfelt,
 #blikkBody .sw-seksjon > label,
@@ -1457,6 +1458,9 @@ body:not(.har-modell) #btnFit { display: none !important; }
 }
 #terrengBody label > input[type=text],
 #terrengBody label > select,
+#riggBody label > input[type=text],
+#riggBody label > input[type=number],
+#riggBody label > select,
 #blikkBody > label > input[type=text],
 #blikkBody > label > input[type=number],
 #blikkBody > label > select,
@@ -1502,17 +1506,25 @@ body:not(.har-modell) #btnFit { display: none !important; }
    SW-generator». Seksjonene er nå de SAMME <details>-boksene — foldSeksjoner()
    er én funksjon brukt to steder, ikke to utgaver som kan gli fra hverandre.
    Bare selektorene måtte utvides; alt annet var likt fra før. */
+/* 🏕⛰ Emil 28.09: Rigg og Terreng fikk samme dropdown-format — samme
+   foldSeksjoner() (js/seksjoner.js), bare selektorene er utvidet. */
 #swBody .sw-seksjon > summary,
-#blikkBody .sw-seksjon > summary {
+#blikkBody .sw-seksjon > summary,
+#riggBody .sw-seksjon > summary,
+#terrengBody .sw-seksjon > summary {
   cursor: pointer;
   list-style: none;
   display: flex; align-items: center; gap: 6px;
   user-select: none;
 }
 #swBody .sw-seksjon > summary::-webkit-details-marker,
-#blikkBody .sw-seksjon > summary::-webkit-details-marker { display: none; }
+#blikkBody .sw-seksjon > summary::-webkit-details-marker,
+#riggBody .sw-seksjon > summary::-webkit-details-marker,
+#terrengBody .sw-seksjon > summary::-webkit-details-marker { display: none; }
 #swBody .sw-seksjon > summary::before,
-#blikkBody .sw-seksjon > summary::before {
+#blikkBody .sw-seksjon > summary::before,
+#riggBody .sw-seksjon > summary::before,
+#terrengBody .sw-seksjon > summary::before {
   content: "▸";
   color: var(--muted);
   font-size: 13px;
@@ -1520,15 +1532,30 @@ body:not(.har-modell) #btnFit { display: none !important; }
   transition: transform .15s;
 }
 #swBody .sw-seksjon[open] > summary::before,
-#blikkBody .sw-seksjon[open] > summary::before { transform: rotate(90deg); }
+#blikkBody .sw-seksjon[open] > summary::before,
+#riggBody .sw-seksjon[open] > summary::before,
+#terrengBody .sw-seksjon[open] > summary::before { transform: rotate(90deg); }
 #swBody .sw-seksjon > summary > h4,
-#blikkBody .sw-seksjon > summary > h4 { flex: 1; }
+#blikkBody .sw-seksjon > summary > h4,
+#riggBody .sw-seksjon > summary > h4,
+#terrengBody .sw-seksjon > summary > h4 { flex: 1; }
+/* Overskriftene i Rigg og Terreng har ulike marger i HTML-en (10–14 px over).
+   Inne i en <summary> sto pila da skjevt over teksten — lik marg over og
+   under gjør at den står midt på linja. */
+#riggBody .sw-seksjon > summary > h4,
+#terrengBody .sw-seksjon > summary > h4 { margin: 8px 0 !important; }
 #swBody .sw-seksjon:not([open]) > summary > h4,
-#blikkBody .sw-seksjon:not([open]) > summary > h4 { border-bottom-color: transparent; }
+#blikkBody .sw-seksjon:not([open]) > summary > h4,
+#riggBody .sw-seksjon:not([open]) > summary > h4,
+#terrengBody .sw-seksjon:not([open]) > summary > h4 { border-bottom-color: transparent; }
 #swBody .sw-seksjon,
-#blikkBody .sw-seksjon { border-bottom: 1px solid var(--border); }
+#blikkBody .sw-seksjon,
+#riggBody .sw-seksjon,
+#terrengBody .sw-seksjon { border-bottom: 1px solid var(--border); }
 #swBody .sw-seksjon[open],
-#blikkBody .sw-seksjon[open] { padding-bottom: 6px; }
+#blikkBody .sw-seksjon[open],
+#riggBody .sw-seksjon[open],
+#terrengBody .sw-seksjon[open] { padding-bottom: 6px; }
 
 /* Skillet mellom Blikk og Tak i samme panel: et <h3> som ALDRI foldes
    (data-sw-fast), slik at de to halvdelene er til å se fra hverandre. */
@@ -1544,7 +1571,9 @@ body:not(.har-modell) #btnFit { display: none !important; }
    «Ringmur» og «Høyde over gulv (mm)» samme vekt, og panelet ble én lang
    liste uten inndeling. */
 #swBody h4,
-#blikkBody h4 {
+#blikkBody h4,
+#riggBody h4,
+#terrengBody h4 {
   font-size: 13px;
   color: var(--text);
   border-bottom: 1px solid var(--border);
