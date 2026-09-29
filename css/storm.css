@@ -23,6 +23,7 @@
    Ligger på både :root og [data-tema="mork"], slik at temaet er riktig også før
    js/tema.js rekker å sette attributtet. */
 :root, html[data-tema="mork"] {
+  --valgt-bla: #3b82f6;              /* valgt objekt / aktiv type — samme blå som i 3D */
   --bg: #0f1114;
   --panel: #191c21;
   --panel2: #23272e;
@@ -1613,3 +1614,62 @@ body:not(.har-modell) #btnFit { display: none !important; }
   text-decoration: underline; cursor: pointer;
 }
 #swBody button.sw-last:hover, #riggBody button.sw-last:hover { color: var(--accent, inherit); }
+
+
+/* ---------- 🏕 Rigg: katalogen til venstre og knapperaden (runde 15b) ----------
+   Emils valg B (29.09): objekttypene står i en stripe til venstre som ALDRI
+   lukker seg når man velger en type — man trykker bare på neste. Skjemaet for
+   det valgte objektet står i #riggPanel til høyre. top settes også fra JS
+   (under verktøylinja, som kan brekke over flere rader). */
+.rigg-katalog {
+  position: fixed; left: 10px; top: 100px;
+  width: 196px; max-height: calc(100vh - 230px);
+  display: none; flex-direction: column; overflow: hidden;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--radius-stor); box-shadow: var(--skygge); z-index: 11;
+}
+.rigg-katalog.open { display: flex; }
+.rigg-katalog header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 9px 12px; background: var(--panel2); font-size: 14px; font-weight: 600;
+}
+.rigg-katalog header button { padding: 3px 7px; background: none; border: 0; color: var(--muted); }
+.rigg-katalog header button:hover { color: var(--text); }
+.rigg-katalog .body { overflow-y: auto; padding: 8px; }
+.rigg-katalog .rigg-type {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  text-align: left; padding: 4px 8px; margin: 0 0 4px; font-size: 12.5px;
+}
+.rigg-katalog .rigg-type img { width: 22px; height: 22px; border-radius: 5px; flex: none; }
+/* Den aktive typen: blå ramme, ikke rød — rødt er bare hovedhandlingen. */
+.rigg-katalog .rigg-type.aktiv { outline: 2px solid var(--valgt-bla); outline-offset: -2px; }
+.rigg-katalog .tips { color: var(--muted); font-size: 11.5px; margin: 2px 2px 8px; }
+
+/* Knapperaden for det valgte objektet: flytende nederst når høyrepanelet er
+   lukket, men flyttes INN i panelet (i-panel) når det er åpent. */
+#riggValgBar {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: 64px; z-index: 40;
+  display: none; gap: 6px; align-items: center; flex-wrap: wrap;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  padding: 6px 10px; box-shadow: 0 4px 18px rgba(0,0,0,.35);
+}
+#riggValgBar.i-panel {
+  position: static; transform: none; z-index: auto; box-shadow: none;
+  border: 0; border-bottom: 1px solid var(--border); border-radius: 0;
+  padding: 0 0 10px; margin: 0 0 8px; background: transparent;
+}
+/* I panelet står navnet i overskriften, og «Rediger» er det man ser på —
+   de to skjules der (skjules, fjernes aldri). */
+#riggValgBar.i-panel .rv-navn, #riggValgBar.i-panel #rvRediger { display: none; }
+/* Skjemaet og listene står i samme panel nå — det får bruke høyden på PC-en. */
+@media (min-width: 641px) { #riggPanel { max-height: calc(100vh - 150px); } }
+
+@media (max-width: 640px) {
+  /* Telefonen: katalogen blir en vannrett rad under verktøylinja, og
+     høyrepanelet er arket nederst som før. */
+  .rigg-katalog { left: 0; right: 0; width: auto; max-height: none; border-radius: 0; }
+  .rigg-katalog header { display: none; }
+  .rigg-katalog .body { display: flex; gap: 6px; overflow-x: auto; overflow-y: hidden; padding: 6px; }
+  .rigg-katalog .rigg-type { flex: none; width: 74px; flex-direction: column; text-align: center; font-size: 10.5px; margin: 0; padding: 4px; }
+  .rigg-katalog .tips { display: none; }
+}

@@ -249,8 +249,17 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
 </div>
 
 <div class="panel" id="riggPanel">
-  <header><span data-i18n>Rigg</span><button onclick="document.getElementById('riggPanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <header><span id="riggTittel" data-i18n>Rigg</span><button id="riggPanelLukk" onclick="document.getElementById('riggPanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="riggBody"></div>
+</div>
+<!-- 🏕 Rigg-katalogen (runde 15b, Emils valg B): objekttypene i en egen
+     stripe til VENSTRE, som står åpen hele tiden i rigg-modus. Skjemaet og
+     listene er i #riggPanel til høyre — da er det aldri to vinduer oppå
+     hverandre. Ikke klassen .panel: apnePanel() lukker alle .panel, og
+     katalogen skal stå selv om høyrepanelet byttes. -->
+<div id="riggKatalog" class="rigg-katalog">
+  <header><span data-i18n title="Trykk på en type, så der den skal stå." data-i18n-title>Legg til</span><button id="riggKatalogLukk" title="Avslutt rigg" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <div class="body" id="riggKatalogBody"></div>
 </div>
 
 <div class="panel" id="swPanel">
