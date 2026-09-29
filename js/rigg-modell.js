@@ -180,6 +180,7 @@ function skiltMat(nokkel) {
       if (x && typeof x.fillRect === "function") {
         if (tekst) tegnTekstskilt(x, c.width, c.height, tekst);
         else if (nokkel === "P") tegnParkering(x, c.width);
+        else if (nokkel === "lager") tegnLager(x, c.width);
         else tegnVaskebil(x, c.width);
         const tex = new THREE.CanvasTexture(c);
         if (THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
@@ -216,6 +217,36 @@ function tegnParkering(x, s) {
   x.fillStyle = "#ffffff"; x.textAlign = "center"; x.textBaseline = "middle";
   x.font = "bold " + Math.round(s * 0.72) + "px Arial, Helvetica, sans-serif";
   x.fillText("P", s / 2, s * 0.54);
+}
+
+// Lagret materiell: en pall med tre kasser (to nederst, én oppå) og en bunt
+// stålprofiler (I-profiler sett fra enden) ved siden av. Hvitt på blått.
+function tegnLager(x, s) {
+  const k = s / 512;
+  x.fillStyle = "#1f5fbf"; x.fillRect(0, 0, s, s);
+  x.strokeStyle = "#ffffff"; x.lineWidth = 14 * k; x.strokeRect(16 * k, 16 * k, s - 32 * k, s - 32 * k);
+  x.fillStyle = "#ffffff";
+  // bakken
+  x.fillRect(50 * k, 420 * k, 412 * k, 10 * k);
+  // pallen: topplank og tre klosser
+  x.fillRect(60 * k, 372 * k, 250 * k, 16 * k);
+  for (const px of [60, 169, 278]) x.fillRect(px * k, 388 * k, 32 * k, 32 * k);
+  // kassene, med en blå strek (lokk/kant) på hver
+  const kasse = (kx, ky, kb, kh) => {
+    x.fillStyle = "#ffffff"; x.fillRect(kx * k, ky * k, kb * k, kh * k);
+    x.fillStyle = "#1f5fbf";
+    x.fillRect((kx + 10) * k, (ky + 18) * k, (kb - 20) * k, 8 * k);
+    x.fillRect((kx + kb / 2 - 4) * k, (ky + 26) * k, 8 * k, (kh - 36) * k);
+  };
+  kasse(66, 256, 112, 110); kasse(190, 256, 112, 110); kasse(128, 140, 112, 110);
+  // stålprofilene: en bunt I-profiler sett fra enden
+  x.fillStyle = "#ffffff";
+  const iprofil = (ix, iy) => {
+    x.fillRect(ix * k, iy * k, 44 * k, 9 * k);
+    x.fillRect((ix + 17) * k, iy * k, 10 * k, 44 * k);
+    x.fillRect(ix * k, (iy + 35) * k, 44 * k, 9 * k);
+  };
+  for (const [ix, iy] of [[335, 372], [385, 372], [360, 324]]) iprofil(ix, iy);
 }
 
 // Betongbil sett fra siden (førerhus til høyre, trommel på skrå), en
@@ -315,6 +346,44 @@ function takRing(g, L, B, topp, farge, x, z) {
   boks(g, L, h, b, farge, x, y, z - B / 2 + b / 2);
   boks(g, b, h, B - 2 * b, farge, x + L / 2 - b / 2, y, z);
   boks(g, b, h, B - 2 * b, farge, x - L / 2 + b / 2, y, z);
+}
+
+// Sonene på bakken (lagring, vaskeplass): flaten i objektets farge og en kant
+// i en mørkere utgave av samme farge. Gir tykkelsen tilbake.
+function sone(g, o) {
+  const { L, B } = o, tykk = 0.03, kant = soneKant(o);
+  const mork = toneFarge(o.farge, 0.45);
+  boks(g, L - 2 * kant, tykk, B - 2 * kant, o.farge, 0, tykk / 2, 0);
+  boks(g, L, tykk + 0.01, kant, mork, 0, (tykk + 0.01) / 2, -B / 2 + kant / 2);
+  boks(g, L, tykk + 0.01, kant, mork, 0, (tykk + 0.01) / 2, B / 2 - kant / 2);
+  boks(g, kant, tykk + 0.01, B - 2 * kant, mork, -L / 2 + kant / 2, (tykk + 0.01) / 2, 0);
+  boks(g, kant, tykk + 0.01, B - 2 * kant, mork, L / 2 - kant / 2, (tykk + 0.01) / 2, 0);
+  return tykk;
+}
+function soneKant(o) { return Math.min(0.3, Math.min(o.L, o.B) * 0.06); }
+
+// Skiltet i +x-enden av en sone: stolpe, bildeskilt (blått, 0,7 × 0,7 m som
+// førstehjelpsskiltet) og tekstplate under. Plata sitter på UTSIDEN av
+// stolpen, så den som kommer inn mot enden ser skiltet uten stolpen foran;
+// bildet står på begge sider. Høyden er objektets H — men eldre lagrings-
+// områder ble lagret med H = 0,05 (bare flaten), og da brukes skiltets
+// vanlige høyde.
+const SKILT_H = 2.2;
+function soneSkilt(g, o, bilde, tekst, opts) {
+  const { L, B } = o, enkel = !!(opts && opts.enkel), kant = soneKant(o);
+  const H = o.H >= 1.2 ? o.H : SKILT_H;
+  const side = 0.7, sx = L / 2 - kant - 0.3, sz = B / 2 - kant - 0.25;
+  const yBilde = H - side / 2 - 0.05, tekstH = 0.2, yTekst = yBilde - side / 2 - 0.04 - tekstH / 2;
+  boks(g, 0.08, H, 0.08, "#9e9e9e", sx, H / 2, sz);
+  boks(g, 0.3, 0.04, 0.5, "#9e9e9e", sx, 0.02, sz);                          // fotplate
+  const px = sx + 0.055;
+  boks(g, 0.03, side, side, "#1f5fbf", px, yBilde, sz, { r: enkel ? 0 : 0.008 });
+  boks(g, 0.03, tekstH, side, HVIT, px, yTekst, sz);
+  for (const sd of [1, -1]) {
+    const n = sd > 0 ? "x" : "-x", x = px + sd * 0.0151;
+    skiltFlate(g, bilde, side, side, x, yBilde, sz, n);
+    skiltFlate(g, "tekst:" + tekst, side, tekstH, x, yTekst, sz, n);
+  }
 }
 
 const BYGG = {
@@ -617,14 +686,11 @@ const BYGG = {
 
   // 🟦 Lagringsområde: flate på bakken i objektets farge, med en kant i en
   // mørkere utgave av samme farge (Emil 25.09: lys blå inni, mørkeblå kant).
-  lagring(g, o) {
-    const { L, B } = o, tykk = 0.03, kant = Math.min(0.3, Math.min(L, B) * 0.06);
-    const mork = toneFarge(o.farge, 0.45);
-    boks(g, L - 2 * kant, tykk, B - 2 * kant, o.farge, 0, tykk / 2, 0);
-    boks(g, L, tykk + 0.01, kant, mork, 0, (tykk + 0.01) / 2, -B / 2 + kant / 2);
-    boks(g, L, tykk + 0.01, kant, mork, 0, (tykk + 0.01) / 2, B / 2 - kant / 2);
-    boks(g, kant, tykk + 0.01, B - 2 * kant, mork, -L / 2 + kant / 2, (tykk + 0.01) / 2, 0);
-    boks(g, kant, tykk + 0.01, B - 2 * kant, mork, L / 2 - kant / 2, (tykk + 0.01) / 2, 0);
+  // Emil 29.09: skilt i enden, som vaskeplassen — bilde av lagret materiell
+  // (pall med kasser og en bunt stålprofiler) og tekstplata «LAGRINGSOMRÅDE».
+  lagring(g, o, _h, opts) {
+    sone(g, o);
+    soneSkilt(g, o, "lager", opts.skiltTekster && opts.skiltTekster.lagring || "LAGRINGSOMRÅDE", opts);
   },
 
   // Søppelcontainer (liftcontainer, åpen): skrå gavler, åpen topp, kantlist,
@@ -668,29 +734,9 @@ const BYGG = {
   // vaskes og en tekstplate «VASKEPLASS» under. Skiltet står innenfor sonen,
   // i hjørnet av +x-enden, og vender langs sonen (mot bilene som kjører inn).
   vaskeplass(g, o, _h, opts) {
-    const { L, B, H } = o, enkel = !!opts.enkel, tykk = 0.03, kant = Math.min(0.3, Math.min(L, B) * 0.06);
-    const mork = toneFarge(o.farge, 0.45);
-    boks(g, L - 2 * kant, tykk, B - 2 * kant, o.farge, 0, tykk / 2, 0);
-    boks(g, L, tykk + 0.01, kant, mork, 0, (tykk + 0.01) / 2, -B / 2 + kant / 2);
-    boks(g, L, tykk + 0.01, kant, mork, 0, (tykk + 0.01) / 2, B / 2 - kant / 2);
-    boks(g, kant, tykk + 0.01, B - 2 * kant, mork, -L / 2 + kant / 2, (tykk + 0.01) / 2, 0);
-    boks(g, kant, tykk + 0.01, B - 2 * kant, mork, L / 2 - kant / 2, (tykk + 0.01) / 2, 0);
-    if (!enkel) flat(g, 0.6, 0.6, "#3a4046", 0, tykk + 0.001, 0, "y");            // sluket
-    // skiltet
-    const side = 0.7, sx = L / 2 - kant - 0.3, sz = B / 2 - kant - 0.25;
-    const yBilde = H - side / 2 - 0.05, tekstH = 0.2, yTekst = yBilde - side / 2 - 0.04 - tekstH / 2;
-    boks(g, 0.08, H, 0.08, "#9e9e9e", sx, H / 2, sz);
-    boks(g, 0.3, 0.04, 0.5, "#9e9e9e", sx, 0.02, sz);                          // fotplate
-    // skiltplata sitter på UTSIDEN av stolpen (+x), så bilene som kjører inn
-    // mot enden ser skiltet uten stolpen foran; bildet står på begge sider
-    const px = sx + 0.055;
-    boks(g, 0.03, side, side, "#1f5fbf", px, yBilde, sz, { r: enkel ? 0 : 0.008 });
-    boks(g, 0.03, tekstH, side, HVIT, px, yTekst, sz);
-    for (const sd of [1, -1]) {
-      const n = sd > 0 ? "x" : "-x", x = px + sd * 0.0151;
-      skiltFlate(g, "vaskebil", side, side, x, yBilde, sz, n);
-      skiltFlate(g, "tekst:" + (opts.skiltTekst || "VASKEPLASS"), side, tekstH, x, yTekst, sz, n);
-    }
+    const tykk = sone(g, o);
+    if (!opts.enkel) flat(g, 0.6, 0.6, "#3a4046", 0, tykk + 0.001, 0, "y");            // sluket
+    soneSkilt(g, o, "vaskebil", (opts.skiltTekster && opts.skiltTekster.vaskeplass) || opts.skiltTekst || "VASKEPLASS", opts);
   }
 };
 

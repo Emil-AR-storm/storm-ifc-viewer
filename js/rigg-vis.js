@@ -216,7 +216,7 @@ export function byggRiggObjekt(o, skala, hoyder) {
   // (o.logo, valgt i skjemaet — Emil 29.09); rigg.js henter bildet fra
   // SharePoint. Byggeplass-siden har ingen innlogging, og viser ingen logo.
   const logo = !LETT && o.logo && S.riggLogoFor ? S.riggLogoFor(o.logo) : null;
-  byggModell(modell, o, hoyder, { enkel: LETT, logo, mark: gjerdeMark, skiltTekst: t("Vaskeplass").toUpperCase() });
+  byggModell(modell, o, hoyder, { enkel: LETT, logo, mark: gjerdeMark, skiltTekster: { vaskeplass: t("Vaskeplass").toUpperCase(), lagring: t("Lagringsområde").toUpperCase() } });
   ytre.add(modell);
   const n = riggAntall(o);
   let tekst = (o.navn || riggTypeLabel(o.type)) + (n > 1 ? "  ×" + n : "");
