@@ -713,17 +713,32 @@ export function nyRiggId() {
 
 // ═══════════════════════ 📄 RIGGPLAN-PDF (trinn 6) ═══════════════════════
 //
-// Arket: A3 liggende (Emil 25.09). Til venstre tomta sett rett ovenfra med
-// NORD OPP, til høyre tegnforklaringen, nederst tittelfeltet. Alt i mm.
+// Arket: A3 liggende (Emil 25.09). Alt i mm.
+// Oppsett «C — presentasjon» (Emil 29.09, valgt av tre prøver): et toppbånd
+// med logo, tittel, dato, målestokk og hvem som laget den; under det tomta
+// sett rett ovenfra med NORD OPP, og til høyre «Hva er hva» som kort med
+// ikon. Nederst en smal linje med forbehold og kartkilde. Tittelfeltet står
+// ØVERST fordi det er det første leseren trenger (hvilket prosjekt, hvilken
+// dato), og planen får hele høyden under.
+//   ┌─────────────────────────────────────────────────────┐
+//   │ logo │ Riggplan · prosjekt/adresse │ dato  målestokk  laget av │  toppH
+//   ├──────────────────────────────────────┬──────────────┤  (rød strek)
+//   │ tomta ovenfra, nord opp              │ Hva er hva   │
+//   │                                      │ (kort)       │
+//   ├──────────────────────────────────────┴──────────────┤
+//   │ forbehold · kartkilde                  Storm Entreprenør AS │  bunnH
+//   └─────────────────────────────────────────────────────┘
 export const RIGGPLAN = {
   b: 420, h: 297, marg: 10,
-  bildeB: 292,                 // bildefeltet (venstre)
-  tittelH: 24,                 // tittelfeltet (nederst, hele bredden)
+  toppH: 22,                   // toppbåndet (hele bredden)
+  bunnH: 7,                    // bunnlinja med forbehold og kartkilde
+  forklaringB: 100,            // «Hva er hva» (høyre)
   mellom: 4                    // luft mellom feltene
 };
-RIGGPLAN.bildeH = RIGGPLAN.h - 2 * RIGGPLAN.marg - RIGGPLAN.tittelH - RIGGPLAN.mellom;
+RIGGPLAN.bildeY = RIGGPLAN.marg + RIGGPLAN.toppH + RIGGPLAN.mellom;
+RIGGPLAN.bildeB = RIGGPLAN.b - 2 * RIGGPLAN.marg - RIGGPLAN.mellom - RIGGPLAN.forklaringB;
+RIGGPLAN.bildeH = RIGGPLAN.h - RIGGPLAN.marg - RIGGPLAN.bunnH - RIGGPLAN.bildeY;
 RIGGPLAN.forklaringX = RIGGPLAN.marg + RIGGPLAN.bildeB + RIGGPLAN.mellom;
-RIGGPLAN.forklaringB = RIGGPLAN.b - RIGGPLAN.marg - RIGGPLAN.forklaringX;
 
 // Målestokkene en riggplan tegnes i. Planen tegnes i en RUND målestokk — da
 // kan den måles på med linjal, og målestokken i tittelfeltet stemmer.
@@ -836,6 +851,88 @@ export function riggplanNummer(forklaring, o) {
 
 // Portens farge i 3D og på planen (gul, som i rigg-vis.js).
 export const PORT_FARGE = "#f2b705";
+
+// ═══════════════════════ 📍 MERKENE PÅ PLANEN ═══════════════════════
+//
+// Nummermerkene («nålene») må kunne leses også der mange objekter står tett.
+// Faste regler, samme rigg gir samme plan hver gang (alt i mm på arket):
+//   1. Like numre som står tett (tre søppelcontainere på rad) blir ETT merke
+//      med én ledelinje til hvert objekt — tre like «14» ved siden av
+//      hverandre er bare støy. «Tett» er innenfor MERKE_SAMLE_MM av et annet
+//      objekt med samme nummer, i kjede.
+//   2. Et merke står aldri oppå et annet merke, et annet objekts punkt, et
+//      lite objekt (under MERKE_LITE × merkets bredde — da ville merket
+//      skjult det det skulle vise fram), nordpila eller skalastreken.
+//   3. Hodet prøves rett over punktet først, så i ringer lenger og lenger ut
+//      i fast vinkelrekkefølge. Første ledige plass vinner, og en linje går
+//      fra hodet ned til en prikk på objektet.
+//   4. Er alt tatt, står merket på punktet sitt (heller et merke for mye enn
+//      et objekt uten nummer).
+export const MERKE_R = 2.6;            // radius på hodet (mm)
+export const MERKE_SAMLE_MM = 14;
+export const MERKE_LITE = 3;
+export const MERKE_AVSTANDER = [2.3, 3.2, 4.3, 5.8, 7.8, 10];     // × radius
+// Grader i arkets retning (y nedover): −90 er rett opp.
+export const MERKE_VINKLER = [-90, -45, -135, 0, 180, -68, -112, -22, -158, 45, 135, 90];
+
+// punkt: { nr, x, y, rekt?: {x,y,b,h} } → { nr, x, y, mål: [{x,y}], rekter }
+export function samleLikeMerker(liste) {
+  const ut = [], brukt = new Set();
+  (liste || []).forEach((a, i) => {
+    if (brukt.has(i)) return;
+    const gr = [a]; brukt.add(i);
+    for (let k = 0; k < gr.length; k++)
+      liste.forEach((b, j) => {
+        if (!brukt.has(j) && b.nr === a.nr && Math.hypot(b.x - gr[k].x, b.y - gr[k].y) <= MERKE_SAMLE_MM) { gr.push(b); brukt.add(j); }
+      });
+    const x = gr.reduce((s, b) => s + b.x, 0) / gr.length, y = gr.reduce((s, b) => s + b.y, 0) / gr.length;
+    ut.push(Object.assign({}, a, { x, y, mål: gr.map(b => ({ x: b.x, y: b.y })) }));
+  });
+  return ut;
+}
+
+// punkter: som over. o: { r, ramme: {x,y,b,h}, hindre: [{x,y,b,h}] }
+// Svar: ett merke per gruppe, { nr, mx, my, mål, leder, port … }.
+export function plasserMerker(punkter, o) {
+  const r = (o && o.r) || MERKE_R, R = o.ramme, hin = (o && o.hindre) || [];
+  const luft = 0.8;
+  const grupper = samleLikeMerker(punkter);
+  const smaa = (punkter || []).filter(p => p.rekt && Math.max(p.rekt.b, p.rekt.h) < MERKE_LITE * 2 * r).map(p => p.rekt);
+  const utenfor = (x, y, h) => x + r < h.x || x - r > h.x + h.b || y + r < h.y || y - r > h.y + h.h;
+  const ut = [];
+  const fri = (x, y) =>
+    x - r >= R.x + 1 && x + r <= R.x + R.b - 1 && y - r >= R.y + 1 && y + r <= R.y + R.h - 1 &&
+    ut.every(m => Math.hypot(m.mx - x, m.my - y) >= 2 * r + luft) &&
+    grupper.every(g => g.mål.every(p => Math.hypot(p.x - x, p.y - y) >= r + 0.6)) &&
+    hin.every(h => utenfor(x, y, h)) && smaa.every(h => utenfor(x, y, h));
+  for (const g of grupper) {
+    let plass = null;
+    for (const d of MERKE_AVSTANDER) {
+      for (const v of MERKE_VINKLER) {
+        const x = g.x + d * r * Math.cos(v * Math.PI / 180), y = g.y + d * r * Math.sin(v * Math.PI / 180);
+        if (fri(x, y)) { plass = { mx: x, my: y, leder: true }; break; }
+      }
+      if (plass) break;
+    }
+    ut.push(Object.assign({}, g, plass || { mx: g.x, my: g.y, leder: false }));
+  }
+  return ut;
+}
+
+// ═══════════════════════ 🎨 FARGENE I PDF-BILDENE ═══════════════════════
+// Lineær → sRGB, som oppslagstabell for 8-bits piksler. Et WebGLRenderTarget
+// får IKKE fargeomregningen skjermen får (three.js skriver lineære verdier
+// til et render target). Uten den ble riggplanens bilder mørke og grumsete
+// (Emils første prøve 25.09 — den oransje pila ble brun), og det ble lappet
+// med et ekstra lys. Med omregningen blir fargene de samme som på skjermen.
+export const SRGB_TABELL = (() => {
+  const t = new Uint8Array(256);
+  for (let i = 0; i < 256; i++) {
+    const v = i / 255;
+    t[i] = Math.round(255 * (v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055));
+  }
+  return t;
+})();
 
 // 📷 Oversiktsbildene (side 2): fire skrå bilder mot byggeplassen, ett fra
 // hver himmelretning (Emil 25.09). Retningen er der KAMERAET står: «fra sør»

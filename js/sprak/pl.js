@@ -1797,5 +1797,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Til høyre": "Po prawej",
   "Til venstre": "Po lewej",
   "Én dør per etasje. Med 2–3 etasjer kommer trapp og repos utenfor døra.": "Jedne drzwi na kondygnację. Przy 2–3 kondygnacjach przed drzwiami pojawią się schody i podest.",
-  "Dører": "Drzwi"
+  "Dører": "Drzwi",
+  "Hva er hva": "Co jest czym",
+  "Slik ser det ut": "Tak to wygląda"
 };
