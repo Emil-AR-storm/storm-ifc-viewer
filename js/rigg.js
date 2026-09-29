@@ -62,6 +62,15 @@ let valgteSkjoter = [];        // skjøtene som er valgt i det valgte gjerdet (s
 let shiftSkjot = false;
 let tegner = null;             // ➜ { type, punkter: [Vector3], linje } — pil under tegning        // pointerdown med shift traff en skjøt — pointerup skal svelges
 let valgteStykker = [];        // panelene som er valgt (maks to) — til port
+// 🚪 PORT-STEGET (Emil 29.09, runde 15a). Før kunne man trykke på paneler når
+// som helst, og «Gjør om til port» var en grå knapp som ikke gjorde noe — man
+// så ikke at man var i et eget steg, ikke hvor man skulle trykke, og «Ferdig»
+// i knapperaden så ut som «lagre», men lukket raden og kastet utvalget. Nå er
+// det et tydelig steg: «Lag port» → raden sier «trykk på 2 paneler (0 av 2)»,
+// panelet under pekeren lyser → etter to naboer kommer «Gjør om til port» som
+// hovedknapp. «Ferdig» er borte mens steget pågår; «Avbryt» går ut av det.
+let portModus = false;
+let overStykke = null;         // panelet under pekeren i port-steget
 
 function hentO(id) { return riggObjekter(S.rigg || []).find(o => o.id === id) || null; }
 
@@ -498,7 +507,9 @@ function tomHandtak() { handtakGroup.children.slice().forEach(m => handtakGroup.
 function oppdaterHandtak(o) {
   tomHandtak();
   const gj = o || valgtGjerde();
-  if (!gj || !iModus() || gj.skjult) return;
+  // 🚪 I port-steget er det panelene som skal trykkes på — prikkene ville
+  // tatt klikkene (de ligger øverst) og druknet de grønne panelene.
+  if (!gj || !iModus() || gj.skjult || portModus) return;
   const g = finnRiggObjekt(gj.id);
   if (!g || !g.children[0]) return;
   g.updateMatrixWorld(true);
@@ -529,7 +540,27 @@ function nesteKule(kant) {
 }
 
 function settMarkering() {
-  settGjerdeMarkering(valgtId, valgteStykker);
+  settGjerdeMarkering(valgtId, valgteStykker, portModus ? overStykke : null);
+}
+
+function startPortModus() {
+  if (!valgtGjerde()) return;
+  portModus = true; overStykke = null;
+  valgteStykker = []; valgteSkjoter = [];
+  settMarkering();
+  const o = valgtGjerde(); if (o) tegnEnRigg(o);
+  oppdaterValgBar(); oppdaterHandtak();
+  if (S.riggModeBarTegn) S.riggModeBarTegn();
+}
+
+function avsluttPortModus() {
+  if (!portModus) return;
+  portModus = false; overStykke = null;
+  valgteStykker = [];
+  settMarkering();
+  const o = valgtGjerde(); if (o) tegnEnRigg(o);
+  oppdaterValgBar(); oppdaterHandtak();
+  if (S.riggModeBarTegn) S.riggModeBarTegn();
 }
 
 // Svelger vi et pointerup kameraet fikk pointerdown til, må det få beskjed —
@@ -542,8 +573,9 @@ function slippKamera(e) {
 // ═══════════════════════ VALG OG KNAPPERADEN ═══════════════════════
 function velg(id) {
   if (id !== valgtId) {
-    const hadde = valgteStykker.length;
+    const hadde = valgteStykker.length || (portModus && overStykke != null);
     valgteStykker = []; valgteSkjoter = [];
+    portModus = false; overStykke = null;   // port-steget hører til ett gjerde
     settGjerdeMarkering(id, []);
     // de grønne panelene på gjerdet vi forlater må males om
     const forrige = valgtId && hentO(valgtId);
@@ -579,6 +611,11 @@ function oppdaterValgBar() {
   if (!o || o.skjult) { el.style.display = "none"; el.innerHTML = ""; return; }
   const n = riggAntall(o);
   el.style.display = "flex";
+  if (portModus && erGjerde(o)) {
+    el.innerHTML = '<span style="font-size:12px;font-weight:600">' + ikon("pluss") + " " + t("Lag port") + "</span>" + portStegKnapper(o);
+    koblPortSteg(o);
+    return;
+  }
   el.innerHTML =
     '<span style="font-size:12px;font-weight:600;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
     '<span style="display:inline-block;width:9px;height:9px;border-radius:3px;background:' + esc(o.farge) + ';margin-right:6px"></span>' +
@@ -634,29 +671,66 @@ function gjerdeKnapper(o) {
   // ➜ Pila: lengden og fjern-knappen — ingen paneler og porter
   if (erPil(o)) return '<span style="font-size:11px;color:var(--muted)">' +
     (Math.round(pilLengde(o) * 10) / 10) + " m</span>" + fjernSkjotKnapp(o);
-  const v = portValg(o);
   const m = gjerdeMengder(o);
   return '<span style="font-size:11px;color:var(--muted)">' + t("{0} paneler · {1} porter", m.paneler, m.porter) +
     (m.forLange ? ' · <span style="color:var(--danger, #e53935)">' + t("{0} for lange", m.forLange) + "</span>" : "") + "</span>" +
-    '<button id="rvPort" class="btn" style="padding:3px 8px"' + (v.kanPort ? "" : " disabled") +
-    ' title="' + t("Velg to paneler ved siden av hverandre, og gjør dem om til én port") + '">' + t("Gjør om til port") + "</button>" +
-    (v.portI != null ? '<button id="rvTilbake" class="btn" style="padding:3px 8px">' + t("Gjør tilbake til paneler") + "</button>" : "") +
+    '<button id="rvPort" class="btn" style="padding:3px 8px"' +
+    ' title="' + t("Gjør to paneler ved siden av hverandre om til én port — eller en port tilbake til paneler") + '">' + t("Lag port") + "</button>" +
     fjernSkjotKnapp(o);
+}
+
+// 🚪 Hva port-steget sier og kan akkurat nå. Ren tekst og tilstand, så testen
+// kan sjekke hvert steg uten en scene.
+function portStegStatus(o) {
+  const st = gjerdeStykker(o);
+  const v = portValg(o);
+  const n = valgteStykker.length;
+  if (v.portI != null) return { tekst: t("Du har valgt en port"), kan: "tilbake" };
+  if (n < 2) return { tekst: t("Trykk på 2 paneler som står ved siden av hverandre ({0} av 2)", n), kan: null };
+  if (v.kanPort) return { tekst: t("2 av 2 valgt"), kan: "port" };
+  if (valgteStykker.some(i => st[i] && st[i].port)) return { tekst: t("En port kan ikke bli en del av en ny port — trykk på et vanlig panel"), kan: null };
+  if (st.length - 1 < 3) return { tekst: t("Gjerdet er for lite til en port"), kan: null };
+  return { tekst: t("Panelene står ikke ved siden av hverandre — trykk på et annet panel"), kan: null };
+}
+
+function portStegKnapper(o) {
+  const s = portStegStatus(o);
+  return '<span id="rvPortTekst" style="font-size:12px;color:var(--muted)">' + esc(s.tekst) + "</span>" +
+    (s.kan === "port" ? '<button id="rvPortLag" class="btn primary" style="padding:3px 10px">' + t("Gjør om til port") + "</button>" : "") +
+    (s.kan === "tilbake" ? '<button id="rvTilbake" class="btn primary" style="padding:3px 10px">' + t("Gjør tilbake til paneler") + "</button>" : "") +
+    '<button id="rvPortAvbryt" class="btn" style="padding:3px 8px">' + t("Avbryt") + "</button>";
+}
+
+function lagPortNaa(o) {
+  const v = portValg(o);
+  if (!v.kanPort) return false;
+  const ny = gjorOmTilPort(o.punkter, valgteStykker[0], valgteStykker[1]);
+  if (!ny) return false;
+  portModus = false; overStykke = null;
+  valgteStykker = []; valgteSkjoter = []; settMarkering();
+  oppdater(o.id, { punkter: ny }, "Port laget");
+  if (S.riggModeBarTegn) S.riggModeBarTegn();
+  return true;
+}
+
+function koblPortSteg(o) {
+  if ($("rvPortLag")) $("rvPortLag").onclick = () => lagPortNaa(o);
+  if ($("rvTilbake")) $("rvTilbake").onclick = () => {
+    const v = portValg(o);
+    const ny = v.portI != null && gjorTilbake(o.punkter, v.portI);
+    if (!ny) return;
+    portModus = false; overStykke = null;
+    valgteStykker = []; valgteSkjoter = []; settMarkering();
+    oppdater(o.id, { punkter: ny }, "Port gjort tilbake til paneler");
+    if (S.riggModeBarTegn) S.riggModeBarTegn();
+  };
+  if ($("rvPortAvbryt")) $("rvPortAvbryt").onclick = () => avsluttPortModus();
 }
 
 function koblGjerdeKnapper(o) {
   if (!o.punkter) return;
   if (erPil(o)) { if ($("rvFjernSkjot")) $("rvFjernSkjot").onclick = () => fjernValgtSkjot(); return; }
-  const v = portValg(o);
-  if ($("rvPort")) $("rvPort").onclick = () => {
-    if (!v.kanPort) return;
-    const ny = gjorOmTilPort(o.punkter, valgteStykker[0], valgteStykker[1]);
-    if (ny) { valgteStykker = []; valgteSkjoter = []; settMarkering(); oppdater(o.id, { punkter: ny }, "Port laget"); }
-  };
-  if ($("rvTilbake")) $("rvTilbake").onclick = () => {
-    const ny = gjorTilbake(o.punkter, v.portI);
-    if (ny) { valgteStykker = []; valgteSkjoter = []; settMarkering(); oppdater(o.id, { punkter: ny }, "Port gjort tilbake til paneler"); }
-  };
+  if ($("rvPort")) $("rvPort").onclick = () => startPortModus();
   if ($("rvFjernSkjot")) $("rvFjernSkjot").onclick = () => fjernValgtSkjot();
 }
 
@@ -805,12 +879,21 @@ S.riggModeBar = (bar) => {
       bar.classList.add("open");
       return;
     }
+    if (portModus && valgtGjerde()) {
+      bar.innerHTML = '<span class="lbl">' + t("Lag port: trykk på to paneler som står ved siden av hverandre — Esc avbryter") +
+        '</span><button id="mbPortAvbryt">' + t("Avbryt") + "</button>";
+      $("mbPortAvbryt").onclick = () => avsluttPortModus();
+      bar.classList.add("open");
+      return;
+    }
     const hint = merker
       ? t("Dra en boks på bakken der gjerdet skal stå — Esc avbryter")
       : plasserer
       ? t("Trykk der objektet skal stå — Esc avbryter")
+      : valgtGjerde() && erPil(valgtGjerde())
+      ? t("Dra i prikkene for å forme pila · shift-klikk for flere prikker")
       : valgtGjerde()
-      ? t("Dra i prikkene for å forme gjerdet · shift-klikk for flere prikker · dobbeltklikk på et panel for ny skjøt · velg to paneler for port")
+      ? t("Dra i prikkene for å forme gjerdet · shift-klikk for flere prikker · dobbeltklikk på et panel for ny skjøt · «Lag port» for å lage en port")
       : t("Trykk på et rigg-objekt for å flytte, rotere eller slette det");
     bar.innerHTML = '<span class="lbl">' + hint + '</span><button id="mbRiggFerdig">' + t("Ferdig") + "</button>";
     $("mbRiggFerdig").onclick = () => { settRiggModus(false); $("riggPanel").classList.remove("open"); };
@@ -943,8 +1026,18 @@ window.addEventListener("pointermove", (e) => {
     oppdaterHandtak(kladd);
     return;
   }
+  if (!aktiv && portModus) {
+    // 🚪 panelet under pekeren lyser — tegnes bare på nytt når det bytter
+    const o = valgtGjerde();
+    const h = o && overCanvas(e) ? pekRiggTreff(e.clientX, e.clientY) : null;
+    const i = h && h.g.userData.riggId === o.id && h.stykke != null ? h.stykke : null;
+    if (i !== overStykke && o) { overStykke = i; settMarkering(); tegnEnRigg(o); }
+    return;
+  }
   if (!aktiv) return;
   if (drar) {
+    // i port-steget flyttes ikke gjerdet: et lite rykk skal fortsatt velge panelet
+    if (portModus && !drar.beveget) return;
     e.stopPropagation();
     // Et lite rykk er et klikk (velg panel), ikke et flytt.
     if (!drar.beveget) {
@@ -1027,9 +1120,11 @@ window.addEventListener("pointerup", (e) => {
     const d = drar; drar = null;
     e.stopPropagation(); slippKamera(e);
     if (!d.beveget) {
-      // Et klikk. På et gjerde som alt var valgt: panelet av/på i utvalget.
+      // Et klikk. I port-steget, på det valgte gjerdet: panelet av/på i
+      // utvalget. Utenfor port-steget velger et klikk bare gjerdet (15a) —
+      // ellers ble paneler grønne uten at man visste hvorfor.
       const o = hentO(d.id);
-      if (o && erGjerde(o) && d.varValgt && d.stykke != null) veksleStykke(o, d.stykke);
+      if (o && erGjerde(o) && d.varValgt && d.stykke != null && portModus) veksleStykke(o, d.stykke);
       else velg(d.id);
       return;
     }
@@ -1074,8 +1169,10 @@ window.addEventListener("keydown", (e) => {
     return;
   }
   if (tegner && e.key === "Enter" && !iFelt) { e.preventDefault(); fullforPil(); return; }
+  if (portModus && e.key === "Enter" && !iFelt) { const o = valgtGjerde(); if (o && lagPortNaa(o)) e.preventDefault(); return; }
   if (e.key !== "Escape") return;
   if (tegner) { avbrytPil(); return; }
+  if (portModus) { avsluttPortModus(); return; }
   if (merker) { avbrytMerker(); return; }
   if (skjotDrar) { const id = skjotDrar.id; skjotDrar = null; tegnEnRigg(hentO(id)); oppdaterHandtak(); return; }
   if (flytter) {
@@ -1324,4 +1421,6 @@ function tegnSkjema(o) {
 
 // Til testene og hjelpekortene: ingen logikk her.
 export const __rigg = { startPlassering, avbrytPlassering, leggTil, fjern, oppdater, velg, tegnPanel,
+  startPortModus, avsluttPortModus, portStegStatus, lagPortNaa, veksleStykke,
+  get portModus() { return portModus; }, get valgteStykker() { return valgteStykker.slice(); },
   get plasserer() { return plasserer; }, REF_ID };

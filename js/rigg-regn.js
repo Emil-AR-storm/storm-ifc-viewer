@@ -346,6 +346,58 @@ export function gjerdeStykker(o) {
   return ut;
 }
 
+// 🏷 Hvor navnelappen på byggegjerdet står (Emil 29.09, runde 15a). Den sto
+// over midtpunktet av alle skjøtene — midt på tomta, oppå bygget, langt fra
+// gjerdet den hører til. Nå står den PÅ gjerdet, etter en fast regel:
+//   1. Rette stykker som går samme vei etter hverandre er én side.
+//   2. Lappen står på den LENGSTE siden — der er det best plass, og den er
+//      lettest å se ovenfra.
+//   3. Er to sider like lange (det er de alltid i en firkant), vinner den
+//      SØRLIGSTE: den ligger nederst på riggplanen og nærmest den som ser på
+//      tomta fra sør, og valget flytter seg ikke når kameraet snur.
+//   4. Lappen står midt på siden, men aldri på en port: faller midten i en
+//      port, flyttes den til midten av nærmeste vanlige panel på samme side.
+// Svaret er i gjerdets EGNE koordinater (x, z i meter), som punktene.
+const LIK_RETNING = 2 * Math.PI / 180;   // 2°: en skjøt som «nesten» er rett, er fortsatt samme side
+const LIK_LENGDE = 0.05;                  // 5 cm: sider som er så like, er like lange
+export function gjerdeLappPunkt(o) {
+  const st = gjerdeStykker(o).filter(q => q.l > 1e-6);
+  if (!st.length) return null;
+  const vinkel = q => Math.atan2(q.b.z - q.a.z, q.b.x - q.a.x);
+  const lik = (u, v) => { let d = Math.abs(vinkel(u) - vinkel(v)) % (2 * Math.PI); return Math.min(d, 2 * Math.PI - d) < LIK_RETNING; };
+  // Ringen er lukket: start på et stykke som bøyer av fra det før, ellers
+  // blir én side delt i to der lista tilfeldigvis begynner.
+  let start = 0;
+  for (let i = 0; i < st.length; i++) if (!lik(st[i], st[(i - 1 + st.length) % st.length])) { start = i; break; }
+  const sider = [];
+  for (let k = 0; k < st.length; k++) {
+    const q = st[(start + k) % st.length];
+    const siste = sider[sider.length - 1];
+    if (siste && lik(siste[siste.length - 1], q)) siste.push(q); else sider.push([q]);
+  }
+  let best = null;
+  for (const side of sider) {
+    const vanlige = side.filter(q => !q.port);
+    if (!vanlige.length) continue;   // en side som bare er port, får ingen lapp
+    const lengde = side.reduce((a, q) => a + q.l, 0);
+    // midt på siden: gå halve lengden langs stykkene
+    let igjen = lengde / 2, midt = null, iPort = false;
+    for (const q of side) {
+      if (igjen <= q.l + 1e-9) { const t = igjen / q.l; midt = { x: q.a.x + (q.b.x - q.a.x) * t, z: q.a.z + (q.b.z - q.a.z) * t }; iPort = q.port; break; }
+      igjen -= q.l;
+    }
+    if (!midt || iPort) {
+      const m0 = midt || { x: side[0].a.x, z: side[0].a.z };
+      const sentrum = q => ({ x: (q.a.x + q.b.x) / 2, z: (q.a.z + q.b.z) / 2 });
+      midt = vanlige.map(sentrum).sort((u, v) => Math.hypot(u.x - m0.x, u.z - m0.z) - Math.hypot(v.x - m0.x, v.z - m0.z))[0];
+    }
+    const nord = lokalTilEN(o, midt.x, midt.z).N;
+    if (!best || lengde > best.lengde + LIK_LENGDE || (Math.abs(lengde - best.lengde) <= LIK_LENGDE && nord < best.nord))
+      best = { lengde, nord, x: midt.x, z: midt.z };
+  }
+  return best ? { x: best.x, z: best.z } : null;
+}
+
 export function gjerdeMengder(o) {
   const st = gjerdeStykker(o);
   const porter = st.filter(s => s.port).length;
