@@ -181,6 +181,7 @@ function skiltMat(nokkel) {
         if (tekst) tegnTekstskilt(x, c.width, c.height, tekst);
         else if (nokkel === "P") tegnParkering(x, c.width);
         else if (nokkel === "lager") tegnLager(x, c.width);
+        else if (nokkel.startsWith("avfall:")) { const [id, farge, ...t] = nokkel.slice(7).split("|"); tegnAvfall(x, c.width, id, farge, t.join("|")); }
         else tegnVaskebil(x, c.width);
         const tex = new THREE.CanvasTexture(c);
         if (THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
@@ -386,6 +387,103 @@ function soneSkilt(g, o, bilde, tekst, opts) {
   }
 }
 
+// 🪜 Utvendig ståltrapp med repos (brakkeriggen, Emil 29.09). Bygges i et
+// lokalt rom for én vegg med dører: u = ut fra veggen (0 = veggen), w = langs
+// veggen (wMin … wMax). f.u(u, w) gir { x, z } i brakkas rom.
+//   · repos (rist) utenfor dørene i hver etasje over bakken, 1,2 m dypt, med
+//     rekkverk ytterst og i endene
+//   · én trapp per etasje, fra bakken, i hver sin stripe utenfor reposet;
+//     toppen er 1 m fra wMax, og en bro fører inn til reposet
+// Trinnene er 18 cm høye og 25 cm dype {Source not found: typiske mål for
+// en midlertidig ståltrapp, ikke sjekket mot TEK17 eller leverandør}.
+const TRAPP_RIST = "#7d858c", TRAPP_STAL = "#9aa3aa", REPOS_D = 1.2, TRAPP_B = 1.0;
+function byggTrapp(g, f, e, H, enkel) {
+  // En boks i det lokale rommet: senter (u, y, w), mål du × h × dw
+  const b = (du, h, dw, farge, uu, y, w) => {
+    const p = f.u(uu, w);
+    return f.langs === "z" ? boks(g, du, h, dw, farge, p.x, y, p.z) : boks(g, dw, h, du, farge, p.x, y, p.z);
+  };
+  // En skrå bjelke fra (u1, y1, w1) til (u1, y2, w2): langs w, i planet u = u1
+  const skraa = (uu, y1, w1, y2, w2, tykk, farge) => {
+    const l = Math.hypot(w2 - w1, y2 - y1), p = f.u(uu, (w1 + w2) / 2);
+    const m = f.langs === "z" ? boks(g, tykk, tykk, l, farge, p.x, (y1 + y2) / 2, p.z) : boks(g, l, tykk, tykk, farge, p.x, (y1 + y2) / 2, p.z);
+    const v = Math.atan2(y2 - y1, w2 - w1);
+    if (f.langs === "z") m.rotation.x = f.speil ? v : -v; else m.rotation.z = f.speil ? -v : v;
+    return m;
+  };
+  const wLen = f.wMax - f.wMin;
+  for (let k = 1; k < e; k++) {
+    const yk = k * H;
+    // reposet langs hele veggen (eller rundt døra), med rekkverk
+    b(REPOS_D, 0.06, wLen, TRAPP_RIST, REPOS_D / 2, yk - 0.03, f.wMin + wLen / 2);
+    b(0.05, 0.05, wLen, TRAPP_STAL, REPOS_D - 0.03, yk + 1.0, f.wMin + wLen / 2);            // håndlist
+    if (!enkel) b(0.03, 0.03, wLen, TRAPP_STAL, REPOS_D - 0.03, yk + 0.5, f.wMin + wLen / 2); // knelist
+    const nStolper = Math.max(2, Math.ceil(wLen / 1.5) + 1);
+    for (let i = 0; i < nStolper; i++) b(0.05, 1.0, 0.05, TRAPP_STAL, REPOS_D - 0.03, yk + 0.5, f.wMin + 0.03 + (wLen - 0.06) * i / (nStolper - 1));
+    b(REPOS_D, 0.05, 0.05, TRAPP_STAL, REPOS_D / 2, yk + 1.0, f.wMin + 0.03);                  // rekkverk i enden
+    // stolpene som bærer reposet
+    for (const w of [f.wMin + 0.1, f.wMax - 0.1]) b(0.08, yk, 0.08, TRAPP_STAL, REPOS_D - 0.06, yk / 2, w);
+    // trappa: i stripe k utenfor reposet, fra bakken opp til etasjen
+    const u0 = REPOS_D + (k - 1) * (TRAPP_B + 0.05), uc = u0 + TRAPP_B / 2;
+    const nT = Math.ceil(yk / 0.18), stig = yk / nT, dyp = 0.25, lop = nT * dyp;
+    const wTopp = f.wMax - 1.0, wBunn = wTopp - lop;
+    for (let i = 0; i < nT; i++) b(TRAPP_B, 0.04, dyp, TRAPP_RIST, uc, stig * (i + 1) - 0.02, wBunn + dyp * (i + 0.5));
+    for (const su of [u0 + 0.03, u0 + TRAPP_B - 0.03]) {
+      skraa(su, 0, wBunn, yk, wTopp, 0.06, TRAPP_STAL);                       // vangene
+      skraa(su, 0.95, wBunn, yk + 0.95, wTopp, 0.04, TRAPP_STAL);             // håndlista
+      if (!enkel) for (const t of [0.15, 0.5, 0.85]) {
+        const w = wBunn + lop * t, y = yk * t;
+        b(0.04, 0.95, 0.04, TRAPP_STAL, su, y + 0.475, w);
+      }
+    }
+    // broa fra toppen av trappa inn til reposet
+    b(u0 + TRAPP_B - REPOS_D, 0.06, 1.0, TRAPP_RIST, REPOS_D + (u0 + TRAPP_B - REPOS_D) / 2, yk - 0.03, wTopp + 0.5);
+    b(0.05, 0.05, 1.0, TRAPP_STAL, u0 + TRAPP_B - 0.03, yk + 1.0, wTopp + 0.5);
+  }
+}
+
+// ♻ Avfallsskiltet på søppelcontaineren: fargefelt med piktogram og navnet på
+// avfallstypen under. Våre egne enkle tegninger, ikke offisielle symboler.
+function tegnAvfall(x, s, id, farge, tekst) {
+  const k = s / 512;
+  x.fillStyle = "#ffffff"; x.fillRect(0, 0, s, s);
+  x.fillStyle = farge; x.fillRect(12 * k, 12 * k, s - 24 * k, 340 * k);
+  x.strokeStyle = "#111111"; x.lineWidth = 8 * k; x.strokeRect(4 * k, 4 * k, s - 8 * k, s - 8 * k);
+  x.fillStyle = "#ffffff"; x.strokeStyle = "#ffffff"; x.lineWidth = 16 * k; x.lineCap = "round"; x.lineJoin = "round";
+  const cx = 256 * k, cy = 182 * k, R = (a, b, c, d) => x.fillRect(a * k, b * k, c * k, d * k);
+  const P = (pts, fyll = true) => { x.beginPath(); pts.forEach(([a, b], i) => i ? x.lineTo(a * k, b * k) : x.moveTo(a * k, b * k)); x.closePath(); fyll ? x.fill() : x.stroke(); };
+  if (id === "restavfall") {          // søppelsekk
+    x.beginPath(); x.ellipse(cx, cy + 25 * k, 105 * k, 100 * k, 0, 0, Math.PI * 2); x.fill();
+    P([[216, 95], [296, 95], [276, 60], [236, 60]]);
+  } else if (id === "trevirke") {     // tre planker
+    for (const dy of [-70, 0, 70]) { x.save(); x.translate(cx, cy + dy * k); x.rotate(-0.12); x.fillRect(-150 * k, -24 * k, 300 * k, 48 * k); x.restore(); }
+  } else if (id === "metall") {       // I-profil
+    R(146, 72, 220, 44); R(236, 116, 40, 132); R(146, 248, 220, 44);
+  } else if (id === "gips") {         // plater i stabel
+    for (const dy of [60, 0, -60]) P([[126, 250 + dy], [326, 250 + dy], [386, 190 + dy], [186, 190 + dy]]);
+  } else if (id === "betong") {       // murstein
+    for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) R(116 + c * 72 + (r % 2 ? 36 : 0) - (r % 2 && c === 3 ? 36 : 0), 92 + r * 48, 62, 38);
+  } else if (id === "papp") {         // pappeske med klaffer
+    R(156, 150, 200, 150); P([[156, 150], [110, 105], [206, 105], [236, 150]]); P([[356, 150], [402, 105], [306, 105], [276, 150]]);
+  } else if (id === "plast") {        // flaske
+    R(226, 60, 60, 36); P([[216, 110], [296, 110], [326, 160], [326, 300], [186, 300], [186, 160]]);
+  } else if (id === "isolasjon") {    // matte med bølger
+    x.beginPath();
+    for (const dy of [-60, 0, 60]) { x.moveTo(130 * k, cy + dy * k); for (let i = 0; i <= 8; i++) x.quadraticCurveTo((130 + i * 32 - 16) * k, cy + (dy + (i % 2 ? -26 : 26)) * k, (130 + i * 32) * k, cy + dy * k); }
+    x.stroke();
+  } else if (id === "ee") {           // støpsel
+    R(196, 150, 120, 110); R(216, 90, 22, 60); R(274, 90, 22, 60); R(246, 260, 20, 60);
+  } else if (id === "farlig") {       // varseltrekant med utropstegn
+    P([[256, 60], [376, 290], [136, 290]]);
+    x.fillStyle = farge; R(242, 130, 28, 100); R(242, 245, 28, 28);
+  }
+  x.fillStyle = "#111111"; x.textAlign = "center"; x.textBaseline = "middle";
+  let px = 76;
+  x.font = "bold " + px + "px Arial, Helvetica, sans-serif";
+  while (px > 26 && x.measureText && x.measureText(tekst).width > s - 50 * k) { px -= 4; x.font = "bold " + px + "px Arial, Helvetica, sans-serif"; }
+  x.fillText(tekst, s / 2, 430 * k);
+}
+
 const BYGG = {
   // Brakkerigg: moduler side om side (langs bredden) og 1–3 i høyden.
   // Kassen er 2 cm inne fra L på hver gavl og 1 cm fra B: der ligger dørene
@@ -394,6 +492,12 @@ const BYGG = {
     const { L, B, H } = o, n = o.moduler || 1, e = o.etasjer || 1, enkel = !!opts.enkel;
     const kant = toneFarge(o.farge, 0.72), ramme = toneFarge(o.farge, 0.6), bredTot = n * B;
     const Li = L - 0.04, zYtre = bredTot / 2 - 0.01;
+    // 🚪 Dørene (Emil 29.09): én per modul, på gavlen eller langsiden (valgt i
+    // skjemaet). På langsiden har bare de to ytterste modulene en fri vegg —
+    // modulene i midten får døra på gavlen. En enkelt modul får døra på +z.
+    const langside = o.dorSide === "langside";
+    const dorPaa = (m) => !langside ? "gavl" : (m === n - 1 ? "+z" : m === 0 ? "-z" : "gavl");
+    const DOR_X = Li / 2 - 0.8, dorH = Math.min(2.0, H * 0.78);
     for (let et = 0; et < e; et++) {
       const y0 = et * H;
       for (let m = 0; m < n; m++) {
@@ -401,18 +505,36 @@ const BYGG = {
         boks(g, Li, H - 0.012, B - 0.02, o.farge, 0, y0 + (H - 0.012) / 2, z, { r: enkel ? 0.03 : 0.06, seg: enkel ? 1 : 2 });
         takRing(g, L, B - 0.01, y0 + H, kant, 0, z);
         boks(g, L, 0.14, B - 0.01, ramme, 0, y0 + 0.07, z);          // bunnramme
-        // dør på gavlen, én per modul
-        dor(g, 0.9, Math.min(2.0, H * 0.78), Li / 2 + 0.001, y0 + 0.18, z + B * 0.2, "x", DOR, enkel);
+        const side = dorPaa(m);
+        if (side === "gavl") dor(g, 0.9, dorH, Li / 2 + 0.001, y0 + 0.18, z + B * 0.2, "x", DOR, enkel);
+        else dor(g, 0.9, dorH, DOR_X, y0 + 0.18, (side === "+z" ? 1 : -1) * (zYtre + 0.001), side === "+z" ? "z" : "-z", DOR, enkel);
       }
-      // vinduer på begge langsidene av hele riggen
-      vinduRekke(g, Li, 0, y0 + H * 0.58, zYtre + 0.001, "z", H * 0.3, enkel);
-      vinduRekke(g, Li, 0, y0 + H * 0.58, -zYtre - 0.001, "-z", H * 0.3, enkel);
+      // vinduer på begge langsidene av hele riggen — der det står en dør, er
+      // enden av rekka holdt fri for den
+      for (const sd of [1, -1]) {
+        const harDor = langside && (sd > 0 ? true : n >= 2);
+        const lengde = harDor ? Li - 1.8 : Li, x0 = harDor ? -0.9 : 0;
+        vinduRekke(g, lengde, x0, y0 + H * 0.58, sd * (zYtre + 0.001), sd > 0 ? "z" : "-z", H * 0.3, enkel);
+      }
       // sandwichpanel-fugene langs langsidene
       if (!enkel) {
         const nf = Math.round(Li / 1.2);
         for (let i = 1; i < nf; i++) for (const s of [1, -1])
           flat(g, 0.02, H - 0.3, toneFarge(o.farge, 0.8), -Li / 2 + Li * i / nf, y0 + H / 2, s * (zYtre + 0.0005), s > 0 ? "z" : "-z");
       }
+    }
+    // 🪜 Trappene (Emil 29.09): med 2 eller 3 etasjer får hver side med dører
+    // en utvendig ståltrapp med repos utenfor dørene i etasjene over bakken.
+    if (e >= 2) {
+      const flater = [];
+      const gavlDorer = [];
+      for (let m = 0; m < n; m++) if (dorPaa(m) === "gavl") gavlDorer.push(-bredTot / 2 + B * (m + 0.5) + B * 0.2);
+      if (gavlDorer.length) flater.push({ u: (uu, w) => ({ x: L / 2 + uu, z: w }), wMin: -bredTot / 2, wMax: bredTot / 2, dorer: gavlDorer, langs: "z" });
+      if (langside) {
+        flater.push({ u: (uu, w) => ({ x: w, z: bredTot / 2 + uu }), wMin: DOR_X - 0.9, wMax: L / 2, dorer: [DOR_X], langs: "x" });
+        if (n >= 2) flater.push({ u: (uu, w) => ({ x: w, z: -bredTot / 2 - uu }), wMin: DOR_X - 0.9, wMax: L / 2, dorer: [DOR_X], langs: "x", speil: true });
+      }
+      for (const f of flater) byggTrapp(g, f, e, H, enkel);
     }
     // logoen i feltet mellom vinduene og takkanten, øverste etasje, begge sider
     const yTopp = (e - 1) * H, fraY = yTopp + H * 0.75 + 0.04, tilY = yTopp + H - 0.16;
@@ -611,8 +733,11 @@ const BYGG = {
       panel.add(netting);
       deler.push(netting);
       if (st.port) {
-        // skråstagene som gjør porten til en port, og en midtstolpe (to fløyer)
-        deler.push(ror(panel, farge, x0, yb, 0, yt), ror(panel, farge, 0, yb, x1, yt), ror(panel, farge, 0, yb, 0, yt, r * 1.2));
+        // skråstagene som gjør porten til en port, og en midtstolpe (to fløyer).
+        // Emil 29.09 (skjermbilde): stagene gikk samme vei på begge fløyene.
+        // Nå er de speilvendt og møtes NEDE i midten (V), fra hver fløys
+        // øvre ytterhjørne ned mot midtstolpen.
+        deler.push(ror(panel, farge, x0, yt, 0, yb), ror(panel, farge, x1, yt, 0, yb), ror(panel, farge, 0, yb, 0, yt, r * 1.2));
       }
       for (const m of deler) m.userData.stykke = st.i;
       g.add(panel);
@@ -725,7 +850,50 @@ const BYGG = {
       boks(g, 0.08, H * 0.8, 0.03, kant, f * bunnL, H * 0.45, sd * (Bv / 2 + 0.015));
     // løfteørene: tapper på gavlene, innenfor B
     for (const s of [-1, 1]) sylinder(g, 0.06, B, "#37474f", s * (bunnL / 2 + inn * 0.6), H * 0.62, 0, "z");
-    for (const sd of [1, -1]) leggLogo(g, opts.logo, bunnL * 0.5, H * 0.3, 0, H * 0.55, sd * (Bv / 2 + 0.031), sd > 0 ? "z" : "-z");
+    // ♻ avfallstypen (Emil 29.09): et skilt på begge langsidene, til venstre;
+    // logoen flyttes da til høyre, så de ikke dekker hverandre
+    const avf = opts.avfall;
+    const sk = Math.min(H * 0.55, bunnL * 0.3), zS = Bv / 2 + 0.031;
+    if (avf) for (const sd of [1, -1]) {
+      const m = skiltMat("avfall:" + avf.id + "|" + avf.farge + "|" + (avf.tekst || avf.id));
+      if (!m) continue;
+      const pl = new THREE.Mesh(new THREE.PlaneGeometry(sk, sk), m);
+      pl.position.set(-sd * bunnL * 0.24, H * 0.52, sd * (zS + 0.003));
+      if (sd < 0) pl.rotation.y = Math.PI;
+      pl.userData.egen = true;
+      g.add(pl);
+    }
+    for (const sd of [1, -1]) leggLogo(g, opts.logo, avf ? bunnL * 0.32 : bunnL * 0.5, H * 0.3, avf ? sd * bunnL * 0.2 : 0, H * 0.55, sd * zS, sd > 0 ? "z" : "-z");
+  },
+
+  // 💡 Byggeplasslys (Emil 29.09): lyskaster på stativ — tre bein som
+  // spriker ut til L × B, en mast, en tverrbom og to lyskastere som lyser
+  // skrått ned. Glasset er ulyst (lyser opp), men riggen har ikke et ekte
+  // lys i scenen: det ville kostet mye på telefonene.
+  lys(g, o, _h, opts) {
+    const { L, B, H } = o, enkel = !!opts.enkel, r = Math.min(L, B) / 2 - 0.05;
+    const stal = "#4a5157", knute = 0.9;
+    sylinder(g, 0.03, H - 0.25, stal, 0, (H - 0.25) / 2, 0, null, 8);                 // masta
+    for (let i = 0; i < 3; i++) {                                                   // beina
+      const a = i * Math.PI * 2 / 3, fx = Math.cos(a) * r, fz = Math.sin(a) * r;
+      // foten 3 cm over bakken: det skrå rørets endeflate skal ikke stikke ned i den
+      const fy = 0.03, l = Math.hypot(r, knute - fy), m = sylinder(g, 0.02, l, stal, fx / 2, (knute + fy) / 2, fz / 2, null, 6);
+      // beinet går fra masta (høyde `knute`) ned til foten ute ved kanten
+      m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(-fx, knute - fy, -fz).normalize());
+      boks(g, 0.08, 0.02, 0.08, "#263238", fx, 0.01, fz);
+    }
+    const bom = Math.min(L * 0.7, 0.9), yB = H - 0.3;
+    boks(g, bom, 0.05, 0.05, stal, 0, yB, 0);                                      // tverrbommen
+    for (const sd of [-1, 1]) {
+      const hode = new THREE.Group();
+      hode.position.set(sd * bom * 0.38, yB + 0.12, 0);
+      hode.rotation.x = 0.45;                                   // vippet ned mot arbeidsområdet
+      boks(hode, 0.34, 0.26, 0.12, o.farge, 0, 0, 0, { r: enkel ? 0 : 0.015 });
+      flat(hode, 0.28, 0.2, "#fff6c4", 0, 0, 0.061, "z", true);                      // glasset
+      if (!enkel) for (let i = -2; i <= 2; i++) boks(hode, 0.015, 0.2, 0.04, toneFarge(o.farge, 0.6), i * 0.06, 0, -0.08);   // kjøleribber
+      g.add(hode);
+    }
+    if (!enkel) boks(g, 0.12, 0.16, 0.08, "#263238", 0, 1.2, 0.05);                  // koblingsboks
   },
 
   // 🚿 Vaskeområde (Emil 29.09): sonen på bakken som lagringsområdet (farge

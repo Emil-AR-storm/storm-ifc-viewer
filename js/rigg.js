@@ -35,12 +35,13 @@ import { flettPaaId, flettPaaNavn, spLes, spPaalogget, spSkriv } from "./sp-lage
 import { foldSeksjoner } from "./seksjoner.js";
 import { hentLogo, hentLogoer } from "./tegninger.js";
 import { ryddLogonavn } from "./rapport.js";
+import { riggIkon } from "./rigg-ikoner.js";
 import {
   MAKS_ETASJER, MAKS_MODULER, REF_ID, RIGG_FORKLARING, RIGG_REKKEFOLGE, RIGG_TYPER, ROT_STEG,
   byggTilRigg, enTilLokal, fjernSkjoter, flyttSkjoter, gjerdeFraRektangel, gjerdeMengder, gjerdeStykker,
   gjorOmTilPort, gjorTilbake, leggTilSkjot, naboStykker, nyRiggId, normVinkel, riggAntall, riggObjekter,
   riggTelling, trengerOpplasting, vaskRiggListe, vaskRiggObjekt, erGjerde, MALESTOKKER, riggplanDekning, vaskMalestokkValg, erPil, minPunkter, parkeringsPlasser, pilFraPunkter, pilLengde,
-  RIGGPLAN_NAVN_MAKS, riggFraLagret, riggOyeblikk, riggplanSammendrag
+  RIGGPLAN_NAVN_MAKS, riggFraLagret, riggOyeblikk, riggplanSammendrag, AVFALLSTYPER, avfallstype
 } from "./rigg-regn.js";
 import {
   aktivRef, byggRiggObjekt, finnRiggObjekt, gjerdeDelLabel, lappStorrelse, oppdaterRiggValgEffekt, riggBase, riggGroup,
@@ -1107,6 +1108,13 @@ function gjerdeTekst(o) {
     (m.forLange ? " · ⚠ " + t("{0} for lange", m.forLange) : "");
 }
 
+// 🎨 Ikonet for en objekttype (Emil 29.09) — det samme som i tegnforklaringen
+// på riggplan-PDF-en (js/rigg-ikoner.js). Uten lerret: fargeflisen.
+function ikonImg(type, farge) {
+  const data = riggIkon(type, farge, 64);
+  return data ? '<img src="' + data + '" alt="" width="22" height="22" style="vertical-align:middle;margin-right:6px;border-radius:5px">' : flis(farge);
+}
+
 // Liten fargeflis — samme som i materiell-panelet.
 function flis(farge) {
   return '<span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:' +
@@ -1132,7 +1140,7 @@ function tegnPanel() {
   html += '<h4 data-sek="rigg-katalog" style="margin:10px 0 4px">' + ikon("pluss") + " " + t("Legg til på tomta") + "</h4>" +
     '<div id="riggKatalog" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0">' +
     RIGG_REKKEFOLGE.map(k => '<button data-rigg-ny="' + k + '" title="' + esc(t(RIGG_FORKLARING[k])) + '" ' +
-      'style="text-align:left;padding:6px 8px">' + flis(RIGG_TYPER[k].farge) + esc(riggTypeLabel(k)) + "</button>").join("") +
+      'style="text-align:left;padding:6px 8px;display:flex;align-items:center">' + ikonImg(k, RIGG_TYPER[k].farge) + esc(riggTypeLabel(k)) + "</button>").join("") +
     "</div>";
 
   // Det som er plassert
@@ -1143,7 +1151,8 @@ function tegnPanel() {
   else html += liste.map(o => {
     const n = riggAntall(o);
     return '<div class="qty-row"' + (o.skjult ? ' style="opacity:.55"' : "") + '><div class="n" data-rigg-velg="' + esc(o.id) + '" style="cursor:pointer">' +
-      flis(o.farge) + esc(o.navn || riggTypeLabel(o.type)) +
+      ikonImg(o.type, o.farge) + esc(o.navn || riggTypeLabel(o.type)) +
+      (o.avfall && avfallstype(o.avfall) ? ' <span style="color:var(--muted);font-size:11px">· ' + esc(t(avfallstype(o.avfall).label)) + "</span>" : "") +
       ' <span style="color:var(--muted);font-size:11px">' + esc(riggTypeLabel(o.type)) +
       (erPil(o) ? " · " + (Math.round(pilLengde(o) * 10) / 10) + " m" : o.punkter ? " · " + gjerdeTekst(o) : " · " + o.L + " × " + o.B + " m" + (n > 1 ? " · ×" + n : "") +
         (RIGG_TYPER[o.type].parkering ? " · " + t("{0} plasser", parkeringsPlasser(o.L, o.B).totalt) : "")) + "</span></div>" +
@@ -1274,6 +1283,12 @@ function tegnSkjema(o) {
       felt("riggEt", "Etasjer", o.etasjer, 1, MAKS_ETASJER, 1) : "") +
     felt("riggRot", "Rotasjon (grader, med klokka)", o.rot, 0, 359.9, 1) +
     "<label>" + t("Farge") + '<input type="color" id="riggFarge" value="' + esc(o.farge) + '"></label>' +
+    (M.moduler ? "<label>" + t("Dører") + '<select id="riggDorSide">' +
+      '<option value="gavl"' + (o.dorSide !== "langside" ? " selected" : "") + ">" + t("På gavlen (én per modul)") + "</option>" +
+      '<option value="langside"' + (o.dorSide === "langside" ? " selected" : "") + ">" + t("På langsiden (modulene i midten får døra på gavlen)") + "</option></select></label>" : "") +
+    (M.avfall ? "<label>" + t("Avfallstype") + '<select id="riggAvfall"><option value="">' + t("Ikke valgt") + "</option>" +
+      AVFALLSTYPER.map(a => '<option value="' + a.id + '"' + (o.avfall === a.id ? " selected" : "") + ">" + esc(t(a.label)) + "</option>").join("") +
+      "</select></label>" : "") +
     (M.logo ? "<label>" + t("Logo") + '<select id="riggLogo"></select></label>' +
       "<p " + LITEN + ">" + t(spPaalogget() ? "Logoene hentes fra SharePoint-mappa Logoer (samme som rapportene)." : "Logg inn for å velge logo fra SharePoint-mappa Logoer.") + "</p>" : "") +
     "<p " + LITEN + ">" + t("Standardmål: {0} × {1} × {2} m", M.L, M.B, M.H) + "</p>" +
@@ -1288,6 +1303,8 @@ function tegnSkjema(o) {
       rot: $("riggRot").value, farge: $("riggFarge").value
     };
     if (M.logo) felter.logo = $("riggLogo") ? $("riggLogo").value : (o.logo || "");
+    if (M.moduler && $("riggDorSide")) felter.dorSide = $("riggDorSide").value;
+    if (M.avfall && $("riggAvfall")) felter.avfall = $("riggAvfall").value;
     if (M.moduler) { felter.moduler = $("riggMod").value; felter.etasjer = $("riggEt").value; }
     oppdater(o.id, felter, "Rigg endret");
     tegnPanel();
