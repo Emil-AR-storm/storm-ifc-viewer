@@ -22,7 +22,7 @@ import { LETT } from "./lett.js";
 import { LAPP_MAKS_M, LAPP_MIN_PX, camera, flyTil, frameHooks, grid, lappStorrelse, makeLabel, renderer, scene, skalerLapperMedTak } from "./scene.js";
 import { byggModell, riggValgEffekt, toneFarge } from "./rigg-modell.js";
 import {
-  GJERDE_DELER, P_PLASS_B, P_PLASS_D, RIGG_REKKEFOLGE, RIGG_TYPER, erPil, gjerdeStykker, parkeringsPlasser, lokalTilEN, riggAntall, riggFraByggeplass, riggForByggeplassFra, riggMengdeRader,
+  AVFALLSTYPER, avfallstype, GJERDE_DELER, P_PLASS_B, P_PLASS_D, RIGG_REKKEFOLGE, RIGG_TYPER, erPil, gjerdeStykker, parkeringsPlasser, lokalTilEN, riggAntall, riggFraByggeplass, riggForByggeplassFra, riggMengdeRader,
   riggFotavtrykk, riggObjekter, riggRef, riggTilBygg, tilUtm, vaskRef, REF_ID
 } from "./rigg-regn.js";
 
@@ -216,7 +216,11 @@ export function byggRiggObjekt(o, skala, hoyder) {
   // (o.logo, valgt i skjemaet — Emil 29.09); rigg.js henter bildet fra
   // SharePoint. Byggeplass-siden har ingen innlogging, og viser ingen logo.
   const logo = !LETT && o.logo && S.riggLogoFor ? S.riggLogoFor(o.logo) : null;
-  byggModell(modell, o, hoyder, { enkel: LETT, logo, mark: gjerdeMark, skiltTekster: { vaskeplass: t("Vaskeplass").toUpperCase(), lagring: t("Lagringsområde").toUpperCase() } });
+  // ♻ Avfallstypen på søppelcontaineren: skilt med piktogram og navnet (på
+  // brukerens språk). Vises også på byggeplass-siden — det er ingen bilder å hente.
+  const at = o.avfall ? avfallstype(o.avfall) : null;
+  const avfall = at ? { id: at.id, farge: at.farge, tekst: t(at.label).toUpperCase() } : null;
+  byggModell(modell, o, hoyder, { enkel: LETT, logo, avfall, mark: gjerdeMark, skiltTekster: { vaskeplass: t("Vaskeplass").toUpperCase(), lagring: t("Lagringsområde").toUpperCase() } });
   ytre.add(modell);
   const n = riggAntall(o);
   let tekst = (o.navn || riggTypeLabel(o.type)) + (n > 1 ? "  ×" + n : "");

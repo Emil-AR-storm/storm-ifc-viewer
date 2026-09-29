@@ -27,6 +27,7 @@ import { t } from "./i18n.js";
 import { grid, renderer, scene } from "./scene.js";
 import { hentJsPDF, lastNedFil, norskDato } from "./rapport.js";
 import { hentLogo, hentLogoer } from "./tegninger.js";
+import { riggIkon } from "./rigg-ikoner.js";
 import {
   MAKS_AVSTAND_M, OVERSIKTSBILDER, OVERSIKT_FOV, OVERSIKT_VINKEL, PORT_FARGE, RIGGPLAN, gjerdeStykker, nordOgOst,
   oversiktAvstand, riggplanNummer, riggObjekter, riggplanDekning, riggplanFilnavn, riggplanTegnforklaring,
@@ -370,8 +371,13 @@ function tegnArk(jsPDF, m) {
     d.circle(fx + 6.5, y, 2.6, "FD");
     d.setFontSize(7.5); d.setFont(undefined, "bold"); hex(d, SORT);
     d.text(String(r.nr), fx + 6.5, y + 1, { align: "center" });
-    // fargen: flis, eller strek for pilene (stiplet for gående)
-    if (r.pil) {
+    // 🎨 Ikonet (Emil 29.09): det SAMME som i rigg-panelet (js/rigg-ikoner.js).
+    // Uten lerret: fargeflis, eller strek for pilene (stiplet for gående).
+    const ikonData = riggIkon(r.type, r.farge, 96);
+    let ikonOk = false;
+    if (ikonData) { try { d.addImage(ikonData, "PNG", fx + 11, y - 3.6, 7.2, 7.2); ikonOk = true; } catch (_) { ikonOk = false; } }
+    if (ikonOk) { /* ikonet står */ }
+    else if (r.pil) {
       hex(d, r.farge, "strek"); d.setLineWidth(1.4);
       if (r.stiplet) d.setLineDashPattern([1.6, 1], 0);
       d.line(fx + 11, y, fx + 19, y);

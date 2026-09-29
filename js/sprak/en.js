@@ -1778,5 +1778,20 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Vaskeplass for betongbiler etter levering": "Wash-out area for concrete trucks after delivery",
   "Ingen logo": "No logo",
   "Logoene hentes fra SharePoint-mappa Logoer (samme som rapportene).": "Logos come from the SharePoint folder Logoer (same as the reports).",
-  "Logg inn for å velge logo fra SharePoint-mappa Logoer.": "Sign in to choose a logo from the SharePoint folder Logoer."
+  "Logg inn for å velge logo fra SharePoint-mappa Logoer.": "Sign in to choose a logo from the SharePoint folder Logoer.",
+  // ---------- 🏕 Rigg: lys, dører, avfallstype (29.09) ----------
+  "Byggeplasslys": "Site light",
+  "Lyskaster på stativ for belysning av arbeidsområdet": "Floodlight on a stand for lighting the work area",
+  "På gavlen (én per modul)": "On the gable end (one per module)",
+  "På langsiden (modulene i midten får døra på gavlen)": "On the long side (middle modules get the door on the gable end)",
+  "Avfallstype": "Waste type",
+  "Ikke valgt": "Not selected",
+  "Restavfall": "Residual waste",
+  "Trevirke": "Wood",
+  "Metall": "Metal",
+  "Betong og tegl": "Concrete and brick",
+  "Papp og papir": "Cardboard and paper",
+  "Plast": "Plastic",
+  "EE-avfall": "WEEE (electrical waste)",
+  "Farlig avfall": "Hazardous waste"
 };

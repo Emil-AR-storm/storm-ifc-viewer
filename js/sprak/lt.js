@@ -1778,5 +1778,20 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Vaskeplass for betongbiler etter levering": "Betonvežių plovimo vieta po pristatymo",
   "Ingen logo": "Be logotipo",
   "Logoene hentes fra SharePoint-mappa Logoer (samme som rapportene).": "Logotipai imami iš SharePoint aplanko Logoer (kaip ataskaitose).",
-  "Logg inn for å velge logo fra SharePoint-mappa Logoer.": "Prisijunkite, kad pasirinktumėte logotipą iš SharePoint aplanko Logoer."
+  "Logg inn for å velge logo fra SharePoint-mappa Logoer.": "Prisijunkite, kad pasirinktumėte logotipą iš SharePoint aplanko Logoer.",
+  // ---------- 🏕 Rigg: lys, dører, avfallstype (29.09) ----------
+  "Byggeplasslys": "Statybvietės šviestuvas",
+  "Lyskaster på stativ for belysning av arbeidsområdet": "Prožektorius ant stovo darbo zonai apšviesti",
+  "På gavlen (én per modul)": "Galiniame sienoje (po vienas moduliui)",
+  "På langsiden (modulene i midten får døra på gavlen)": "Ilgojoje pusėje (viduriniai moduliai – galinėje sienoje)",
+  "Avfallstype": "Atliekų rūšis",
+  "Ikke valgt": "Nepasirinkta",
+  "Restavfall": "Mišrios atliekos",
+  "Trevirke": "Mediena",
+  "Metall": "Metalas",
+  "Betong og tegl": "Betonas ir plytos",
+  "Papp og papir": "Kartonas ir popierius",
+  "Plast": "Plastikas",
+  "EE-avfall": "Elektros ir elektroninė įranga",
+  "Farlig avfall": "Pavojingos atliekos"
 };

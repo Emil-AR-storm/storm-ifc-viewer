@@ -33,9 +33,13 @@ export const RIGG_TYPER = {
   forstehjelp:{ label: "Førstehjelp", L: 0.7, B: 0.3, H: 2.2, farge: "#1e8e3e", logo: true },
   mote:       { label: "Møteområde", L: 3.0, B: 3.0, H: 2.5, farge: "#1f5fbf", logo: true },
   strom:      { label: "Strømskap", L: 0.6, B: 0.4, H: 1.4, farge: "#e67e22", logo: true },
+  // 💡 Byggeplasslys (Emil 29.09): lyskaster på stativ — tre bein, mast og
+  // to lyskastere på toppen. L × B er stativets fotavtrykk, H toppen av
+  // lyskasterne {Source not found: typiske mål, ikke sjekket mot leverandør}.
+  lys:        { label: "Byggeplasslys", L: 1.4, B: 1.4, H: 3.5, farge: "#fbc02d" },
   container:  { label: "Container 20 fot", L: 6.06, B: 2.44, H: 2.59, farge: "#2e6b4f", logo: true },
   hms:        { label: "HMS-kort-registrering", L: 0.8, B: 0.6, H: 1.5, farge: "#455a64", logo: true },
-  soppel:     { label: "Søppelcontainer", L: 3.5, B: 1.9, H: 1.5, farge: "#2c5f8a", logo: true },
+  soppel:     { label: "Søppelcontainer", L: 3.5, B: 1.9, H: 1.5, farge: "#2c5f8a", logo: true, avfall: true },
   // 🅿 Parkeringsområde (Emil 25.09): asfaltflate med oppmerkede plasser og
   // et P-skilt. L × B er hele området; plassene regnes ut av målene
   // (parkeringsPlasser), aldri skrives inn. H er skiltets høyde.
@@ -71,6 +75,24 @@ export const RIGG_TYPER = {
   pilGaende:   { label: "Pil: gående", L: 1, B: 0.8, H: 0.05, farge: "#43a047", pil: true, stiplet: true }
 };
 
+// ♻ Avfallstypene på søppelcontaineren (Emil 29.09). Fraksjonene er de
+// vanlige på en byggeplass; fargene er VÅRE EGNE for å skille skiltene fra
+// hverandre, ikke en standard {Source not found}. `id` lagres — endre aldri en
+// id, bare etiketten.
+export const AVFALLSTYPER = [
+  { id: "restavfall", label: "Restavfall", farge: "#37474f" },
+  { id: "trevirke", label: "Trevirke", farge: "#8d5a2b" },
+  { id: "metall", label: "Metall", farge: "#546e7a" },
+  { id: "gips", label: "Gips", farge: "#7b6fa8" },
+  { id: "betong", label: "Betong og tegl", farge: "#9e5b40" },
+  { id: "papp", label: "Papp og papir", farge: "#1e7fb8" },
+  { id: "plast", label: "Plast", farge: "#2e8b57" },
+  { id: "isolasjon", label: "Isolasjon", farge: "#c28a00" },
+  { id: "ee", label: "EE-avfall", farge: "#5e35b1" },
+  { id: "farlig", label: "Farlig avfall", farge: "#c62828" }
+];
+export function avfallstype(id) { return AVFALLSTYPER.find(a => a.id === id) || null; }
+
 // Objekter med skjøter ({ x, z }-punkter): gjerdet (lukket ring) og pilene
 // (åpen linje).
 export function harPunkter(type) { return !!(RIGG_TYPER[type] && (RIGG_TYPER[type].gjerde || RIGG_TYPER[type].pil)); }
@@ -81,7 +103,7 @@ export function minPunkter(o) { return erPil(o) ? 2 : 3; }
 
 // Rekkefølgen knappene står i panelet — det man rigger først, først.
 export const RIGG_REKKEFOLGE = ["gjerde", "pilKjoretoy", "pilGaende", "brakke", "hjulbrakke", "toalett", "forstehjelp", "mote",
-  "strom", "container", "hms", "soppel", "parkering", "lagring", "vaskeplass"];
+  "strom", "lys", "container", "hms", "soppel", "parkering", "lagring", "vaskeplass"];
 
 // Kort forklaring per type. Står i panelet nå, og blir teksten i
 // tegnforklaringen på riggplan-PDF-en (trinn 6).
@@ -92,6 +114,7 @@ export const RIGG_FORKLARING = {
   forstehjelp: "Førstehjelpsutstyr og båre",
   mote: "Møteplass ved alarm og for morgenmøte",
   strom: "Byggestrøm — tilkobling for verktøy og brakker",
+  lys: "Lyskaster på stativ for belysning av arbeidsområdet",
   container: "Lager for verktøy og materiell",
   hms: "Registrering av HMS-kort ved inngangen",
   soppel: "Avfall og kildesortering",
@@ -180,6 +203,12 @@ export function vaskRiggObjekt(p) {
   // som rapportlogoene) — tomt = ingen logo. Nytt felt: gamle lagrede rigger
   // har det ikke, og får tomt.
   if (M.logo) ut.logo = tekst(p.logo, 120);
+  // 🚪 Brakkeriggen: døra på gavlen eller langsiden (Emil 29.09: «det varierer
+  // fra brakke til brakke»). Gamle lagrede rigger har ikke feltet → gavl.
+  if (M.moduler) ut.dorSide = p.dorSide === "langside" ? "langside" : "gavl";
+  // ♻ Søppelcontaineren: avfallstypen (Emil 29.09) — kommer som et skilt på
+  // containeren. Ukjent eller tom → ikke valgt (intet skilt).
+  if (M.avfall) ut.avfall = AVFALLSTYPER.some(a => a.id === p.avfall) ? p.avfall : "";
   if (M.moduler) {
     ut.etasjer = heltall(p.etasjer, 1, MAKS_ETASJER, 1);
     ut.moduler = heltall(p.moduler, 1, MAKS_MODULER, 1);
