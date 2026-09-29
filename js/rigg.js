@@ -33,6 +33,7 @@ import { eierPunktet, registrerPeker } from "./pek-eier.js";
 import { pick, pickFlate } from "./elements.js";
 import { flettPaaId, flettPaaNavn, spLes, spPaalogget, spSkriv } from "./sp-lager.js";
 import { foldSeksjoner } from "./seksjoner.js";
+import { hentLogo, hentLogoer } from "./tegninger.js";
 import {
   MAKS_ETASJER, MAKS_MODULER, REF_ID, RIGG_FORKLARING, RIGG_REKKEFOLGE, RIGG_TYPER, ROT_STEG,
   byggTilRigg, enTilLokal, fjernSkjoter, flyttSkjoter, gjerdeFraRektangel, gjerdeMengder, gjerdeStykker,
@@ -126,6 +127,36 @@ function lagringsTekst() {
 function visLagring() {
   const el = $("riggLagringTekst");
   if (el) el.textContent = lagringsTekst();
+}
+
+// 🏷 LOGOEN PÅ BRAKKENE (Emil 28.09): samme logo som rapportene — den som er
+// valgt i rapportmenyen (S.settings.rapLogo), hentet som ORIGINALBILDET fra
+// SharePoint-mappa Logoer. Ingen logo valgt, eller ikke pålogget → ingen logo
+// (tomt felt, aldri en gjenskaping). Logoen kan velges tre steder
+// (rapportmenyen, sjekklista, skjemaene), derfor ser vi etter endringer her
+// én gang i sekundet i stedet for å kroke oss på hver av dem.
+let logoNokkel = null, logoSjekket = 0;
+frameHooks.push(() => {
+  const naa = performance.now();
+  if (naa - logoSjekket < 1000) return;
+  logoSjekket = naa;
+  const k = ((S.settings && S.settings.rapLogo) || "") + "|" + (spPaalogget() ? 1 : 0);
+  if (k !== logoNokkel) { logoNokkel = k; hentRiggLogo(k); }
+});
+async function hentRiggLogo(k) {
+  const fil = S.settings && S.settings.rapLogo;
+  let logo = null;
+  if (fil && spPaalogget()) {
+    try {
+      const l = (await hentLogoer()).find(x => x.fil === fil);
+      logo = l ? await hentLogo(l.itemId) : null;
+    } catch (_) { logo = null; }
+  }
+  if (k !== logoNokkel) return;          // valget endret seg mens vi hentet
+  const for_ = S.riggLogo ? S.riggLogo.data : null;
+  S.riggLogo = logo;
+  // Tegn på nytt bare når det finnes noe å sette logoen på
+  if ((logo ? logo.data : null) !== for_ && riggObjekter(S.rigg || []).some(o => o.type === "brakke" || o.type === "hjulbrakke")) tegnRigg();
 }
 
 // afterLoad (ifc.js): lokalt først, så SharePoint. Nyeste `endret` vinner per
