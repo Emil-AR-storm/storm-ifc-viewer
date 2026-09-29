@@ -751,7 +751,6 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Rampeløp": "Biegi ramp",
   "Rekkverk": "Balustrady",
   "Kledning": "Okładziny",
-  "Dører": "Drzwi",
   "Vinduer": "Okna",
   "Armering": "Zbrojenie",
   "Armeringsjern": "Pręty zbrojeniowe",
@@ -1782,8 +1781,6 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   // ---------- 🏕 Rigg: lys, dører, avfallstype (29.09) ----------
   "Byggeplasslys": "Oświetlenie budowy",
   "Lyskaster på stativ for belysning av arbeidsområdet": "Reflektor na statywie do oświetlenia strefy pracy",
-  "På gavlen (én per modul)": "Na ścianie szczytowej (jedne na moduł)",
-  "På langsiden (modulene i midten får døra på gavlen)": "Na dłuższym boku (moduły środkowe mają drzwi na ścianie szczytowej)",
   "Avfallstype": "Rodzaj odpadów",
   "Ikke valgt": "Nie wybrano",
   "Restavfall": "Odpady zmieszane",
@@ -1793,5 +1790,12 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Papp og papir": "Tektura i papier",
   "Plast": "Tworzywa sztuczne",
   "EE-avfall": "Zużyty sprzęt elektryczny",
-  "Farlig avfall": "Odpady niebezpieczne"
+  "Farlig avfall": "Odpady niebezpieczne",
+  "På gavlen": "Na ścianie szczytowej",
+  "Midt på langsiden": "Pośrodku dłuższego boku",
+  "Døra står på endemodulen": "Drzwi są w module końcowym",
+  "Til høyre": "Po prawej",
+  "Til venstre": "Po lewej",
+  "Én dør per etasje. Med 2–3 etasjer kommer trapp og repos utenfor døra.": "Jedne drzwi na kondygnację. Przy 2–3 kondygnacjach przed drzwiami pojawią się schody i podest.",
+  "Dører": "Drzwi"
 };

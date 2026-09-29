@@ -751,7 +751,6 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Rampeløp": "Ramp flights",
   "Rekkverk": "Railings",
   "Kledning": "Cladding",
-  "Dører": "Doors",
   "Vinduer": "Windows",
   "Armering": "Reinforcement",
   "Armeringsjern": "Rebar",
@@ -1782,8 +1781,6 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   // ---------- 🏕 Rigg: lys, dører, avfallstype (29.09) ----------
   "Byggeplasslys": "Site light",
   "Lyskaster på stativ for belysning av arbeidsområdet": "Floodlight on a stand for lighting the work area",
-  "På gavlen (én per modul)": "On the gable end (one per module)",
-  "På langsiden (modulene i midten får døra på gavlen)": "On the long side (middle modules get the door on the gable end)",
   "Avfallstype": "Waste type",
   "Ikke valgt": "Not selected",
   "Restavfall": "Residual waste",
@@ -1793,5 +1790,12 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Papp og papir": "Cardboard and paper",
   "Plast": "Plastic",
   "EE-avfall": "WEEE (electrical waste)",
-  "Farlig avfall": "Hazardous waste"
+  "Farlig avfall": "Hazardous waste",
+  "På gavlen": "On the gable end",
+  "Midt på langsiden": "Middle of the long side",
+  "Døra står på endemodulen": "The door is on the end module",
+  "Til høyre": "Right",
+  "Til venstre": "Left",
+  "Én dør per etasje. Med 2–3 etasjer kommer trapp og repos utenfor døra.": "One door per floor. With 2–3 floors a staircase and landing are added outside the door.",
+  "Dører": "Doors"
 };

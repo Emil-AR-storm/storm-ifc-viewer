@@ -751,7 +751,6 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Rampeløp": "Rampų takai",
   "Rekkverk": "Turėklai",
   "Kledning": "Apdaila",
-  "Dører": "Durys",
   "Vinduer": "Langai",
   "Armering": "Armatūra",
   "Armeringsjern": "Armatūros strypai",
@@ -1782,8 +1781,6 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   // ---------- 🏕 Rigg: lys, dører, avfallstype (29.09) ----------
   "Byggeplasslys": "Statybvietės šviestuvas",
   "Lyskaster på stativ for belysning av arbeidsområdet": "Prožektorius ant stovo darbo zonai apšviesti",
-  "På gavlen (én per modul)": "Galiniame sienoje (po vienas moduliui)",
-  "På langsiden (modulene i midten får døra på gavlen)": "Ilgojoje pusėje (viduriniai moduliai – galinėje sienoje)",
   "Avfallstype": "Atliekų rūšis",
   "Ikke valgt": "Nepasirinkta",
   "Restavfall": "Mišrios atliekos",
@@ -1793,5 +1790,12 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Papp og papir": "Kartonas ir popierius",
   "Plast": "Plastikas",
   "EE-avfall": "Elektros ir elektroninė įranga",
-  "Farlig avfall": "Pavojingos atliekos"
+  "Farlig avfall": "Pavojingos atliekos",
+  "På gavlen": "Galinėje sienoje",
+  "Midt på langsiden": "Ilgosios pusės viduryje",
+  "Døra står på endemodulen": "Durys yra galiniame modulyje",
+  "Til høyre": "Dešinėje",
+  "Til venstre": "Kairėje",
+  "Én dør per etasje. Med 2–3 etasjer kommer trapp og repos utenfor døra.": "Vienos durys kiekviename aukšte. Esant 2–3 aukštams, prie durų atsiranda laiptai ir aikštelė.",
+  "Dører": "Durys"
 };
