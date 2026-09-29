@@ -212,9 +212,11 @@ export function byggRiggObjekt(o, skala, hoyder) {
   const s = 1 / (skala || 1);
   modell.scale.set(s, s, s);
   // Selve modellen bygges i rigg-modell.js. Byggeplass-siden får det enkle
-  // nivået (Emil 28.09: raskere på telefonene), og logoen er den som er valgt
-  // i rapportmenyen — rigg.js henter den, byggeplass-siden har den ikke.
-  byggModell(modell, o, hoyder, { enkel: LETT, logo: LETT ? null : (S.riggLogo || null), mark: gjerdeMark });
+  // nivået (Emil 28.09: raskere på telefonene). Logoen er objektets EGEN
+  // (o.logo, valgt i skjemaet — Emil 29.09); rigg.js henter bildet fra
+  // SharePoint. Byggeplass-siden har ingen innlogging, og viser ingen logo.
+  const logo = !LETT && o.logo && S.riggLogoFor ? S.riggLogoFor(o.logo) : null;
+  byggModell(modell, o, hoyder, { enkel: LETT, logo, mark: gjerdeMark, skiltTekst: t("Vaskeplass").toUpperCase() });
   ytre.add(modell);
   const n = riggAntall(o);
   let tekst = (o.navn || riggTypeLabel(o.type)) + (n > 1 ? "  ×" + n : "");

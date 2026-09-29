@@ -1771,5 +1771,12 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Legg til på tomta": "Dodaj na działkę",
   "Riggplan (PDF)": "Plan placu budowy (PDF)",
   "Fjern rigg": "Usuń zaplecze",
-  "Rigg fjernet": "Usunięto zaplecze"
+  "Rigg fjernet": "Usunięto zaplecze",
+  // ---------- 🏷 Rigg: logo per objekt og vaskeområde (29.09) ----------
+  "Vaskeområde": "Strefa mycia",
+  "Vaskeplass": "Myjnia",
+  "Vaskeplass for betongbiler etter levering": "Miejsce mycia betonowozów po dostawie",
+  "Ingen logo": "Brak logo",
+  "Logoene hentes fra SharePoint-mappa Logoer (samme som rapportene).": "Logo pochodzą z folderu SharePoint Logoer (tak jak w raportach).",
+  "Logg inn for å velge logo fra SharePoint-mappa Logoer.": "Zaloguj się, aby wybrać logo z folderu SharePoint Logoer."
 };
