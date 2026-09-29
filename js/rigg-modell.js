@@ -551,6 +551,32 @@ function nettingMat(farge) {
   return m;
 }
 
+// ═══════════════════════ 🔵 VALGT ═══════════════════════
+// 🎨 FARGET, IKKE MALT OVER (Emil 29.09: «modellene er ikke» — en valgt brakke
+// ble én blå kloss). Materiellets effekt setter SAMME blåfarge og en sterk
+// blå glød på alle bitene; med stil C betyr det at vinduer, dører, takkant og
+// logo forsvinner i det øyeblikket man trykker på brakka, og det er jo da man
+// ser på den. Her blandes hver bits EGEN farge med blått i stedet, med en svak
+// glød: objektet er tydelig valgt, og detaljene synes fortsatt.
+const RIGG_SEL = new THREE.Color(0x3b82f6), RIGG_SEL_GLOD = new THREE.Color(0x0b2a66), RIGG_SEL_ANDEL = 0.45;
+export function riggValgEffekt(g, paa) {
+  g.traverse(m => {
+    if (m.isSprite || !m.isMesh || !m.material) return;
+    if (paa) {
+      if (!m.userData.matOrig) m.userData.matOrig = m.material;
+      if (!m.userData.matSel) {
+        const s = m.userData.matOrig.clone();
+        if (s.color) s.color.lerp(RIGG_SEL, RIGG_SEL_ANDEL);
+        if (s.emissive) s.emissive.copy(RIGG_SEL_GLOD);
+        m.userData.matSel = s;
+      }
+      m.material = m.userData.matSel;
+    } else if (m.userData.matOrig) {
+      m.material = m.userData.matOrig;
+    }
+  });
+}
+
 // ═══════════════════════ SAMMENSLÅING ═══════════════════════
 // Alle meshene med samme materiale blir ÉN mesh. En brakkerigg på 3 × 2
 // moduler er ellers over hundre tegnekall — på en svak telefon med ti objekter

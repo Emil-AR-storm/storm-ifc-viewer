@@ -20,8 +20,7 @@ import { $, S, esc, ikon, registrerEkstraGruppe } from "./state.js";
 import { t } from "./i18n.js";
 import { LETT } from "./lett.js";
 import { LAPP_MAKS_M, LAPP_MIN_PX, camera, flyTil, frameHooks, grid, lappStorrelse, makeLabel, renderer, scene, skalerLapperMedTak } from "./scene.js";
-import { settValgEffekt } from "./materiell-vis.js";
-import { byggModell, toneFarge } from "./rigg-modell.js";
+import { byggModell, riggValgEffekt, toneFarge } from "./rigg-modell.js";
 import {
   GJERDE_DELER, P_PLASS_B, P_PLASS_D, RIGG_REKKEFOLGE, RIGG_TYPER, erPil, gjerdeStykker, parkeringsPlasser, lokalTilEN, riggAntall, riggFraByggeplass, riggForByggeplassFra, riggMengdeRader,
   riggFotavtrykk, riggObjekter, riggRef, riggTilBygg, tilUtm, vaskRef, REF_ID
@@ -367,12 +366,15 @@ function likRefSmaa(a, b) {
 }
 
 // ═══════════════════════ 🔵 VALG ═══════════════════════
-// Samme blå som materiell og elementvalget (settValgEffekt i materiell-vis.js).
+// Samme blåtone som materiell og elementvalget, men blandet med objektets egne farger (se under).
 // 🚧 Gjerdet males IKKE blått når det er valgt: da ville det skjult det som
 // betyr noe på gjerdet — røde paneler (for lange), grønne (valgt til port) og
 // gule porter. Valget vises med skjøtene (prikkene) i stedet.
+// Selve fargingen (riggValgEffekt) bor i rigg-modell.js, så testen kan
+// sjekke den med ekte three.
 function valgEffekt(g, paa) {
-  settValgEffekt(g, paa && g.userData.riggType !== "gjerde" && !(RIGG_TYPER[g.userData.riggType] || {}).pil);
+  const utenMaling = g.userData.riggType === "gjerde" || (RIGG_TYPER[g.userData.riggType] || {}).pil;
+  riggValgEffekt(g, paa && !utenMaling);
 }
 
 export function oppdaterRiggValgEffekt() {
