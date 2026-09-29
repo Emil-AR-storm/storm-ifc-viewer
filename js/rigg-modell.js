@@ -387,58 +387,99 @@ function soneSkilt(g, o, bilde, tekst, opts) {
   }
 }
 
-// 🪜 Utvendig ståltrapp med repos (brakkeriggen, Emil 29.09). Bygges i et
-// lokalt rom for én vegg med dører: u = ut fra veggen (0 = veggen), w = langs
-// veggen (wMin … wMax). f.u(u, w) gir { x, z } i brakkas rom.
-//   · repos (rist) utenfor dørene i hver etasje over bakken, 1,2 m dypt, med
-//     rekkverk ytterst og i endene
-//   · én trapp per etasje, fra bakken, i hver sin stripe utenfor reposet;
-//     toppen er 1 m fra wMax, og en bro fører inn til reposet
+// 🪜 Utvendig ståltrapp med repos (brakkeriggen, Emil 29.09, runde 13b).
+// Riggen har ÉN dør per etasje (Emils skisse: midt på langsiden, eller på
+// gavlen til endemodulen til venstre eller høyre). Utenfor døra i hver etasje
+// over bakken står et repos, og hver etasje har sin trapp fra bakken.
+//
+// Alt bygges i et lokalt rom for veggen med døra: u = ut fra veggen
+// (0 = veggen), w = langs veggen. f.u(u, w) gir { x, z } i brakkas rom.
+//   · trappa går LANGS VEGGEN mot reposet når veggen er lang nok på innsiden
+//     av døra (f.plass), ellers RETT UT fra reposet — da stikker den aldri
+//     forbi enden av riggen og inn i naboen (runde 13: «trappesystemet
+//     knekker» med flere moduler)
+//   · rekkverk på alle frie kanter av reposet, med åpning bare der trappa
+//     kommer inn, og håndlist på begge sider av trappa
+// Skrå deler legges mellom to punkter med en kvaternion (ikke Euler-
+// vinkler per vegg) — det var fortegnet på vinkelen som gjorde rekkverket
+// skjevt på den ene langsiden (runde 13, bilde 2).
 // Trinnene er 18 cm høye og 25 cm dype {Source not found: typiske mål for
 // en midlertidig ståltrapp, ikke sjekket mot TEK17 eller leverandør}.
-const TRAPP_RIST = "#7d858c", TRAPP_STAL = "#9aa3aa", REPOS_D = 1.2, TRAPP_B = 1.0;
+const TRAPP_RIST = "#7d858c", TRAPP_STAL = "#9aa3aa", REPOS_D = 1.2, TRAPP_B = 1.0, TRAPP_MELLOM = 0.05;
+const REKK_H = 1.0, STIGNING = 0.18, INNTRINN = 0.25;
+export function trappLop(hoyde) { return Math.ceil(hoyde / STIGNING) * INNTRINN; }
 function byggTrapp(g, f, e, H, enkel) {
-  // En boks i det lokale rommet: senter (u, y, w), mål du × h × dw
+  const V = (uu, y, w) => { const p = f.u(uu, w); return new THREE.Vector3(p.x, y, p.z); };
+  // Aksefølgende boks i det lokale rommet: du langs u, dw langs w
   const b = (du, h, dw, farge, uu, y, w) => {
     const p = f.u(uu, w);
     return f.langs === "z" ? boks(g, du, h, dw, farge, p.x, y, p.z) : boks(g, dw, h, du, farge, p.x, y, p.z);
   };
-  // En skrå bjelke fra (u1, y1, w1) til (u1, y2, w2): langs w, i planet u = u1
-  const skraa = (uu, y1, w1, y2, w2, tykk, farge) => {
-    const l = Math.hypot(w2 - w1, y2 - y1), p = f.u(uu, (w1 + w2) / 2);
-    const m = f.langs === "z" ? boks(g, tykk, tykk, l, farge, p.x, (y1 + y2) / 2, p.z) : boks(g, l, tykk, tykk, farge, p.x, (y1 + y2) / 2, p.z);
-    const v = Math.atan2(y2 - y1, w2 - w1);
-    if (f.langs === "z") m.rotation.x = f.speil ? v : -v; else m.rotation.z = f.speil ? -v : v;
-    return m;
+  // Skrå eller rett stang mellom to punkter i det lokale rommet
+  const stang = (a, c, tykk, farge) => {
+    const A = V(a[0], a[1], a[2]), C = V(c[0], c[1], c[2]), l = A.distanceTo(C);
+    if (l < 1e-3) return;
+    const m = boks(g, l, tykk, tykk, farge, (A.x + C.x) / 2, (A.y + C.y) / 2, (A.z + C.z) / 2);
+    m.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), C.clone().sub(A).normalize());
   };
-  const wLen = f.wMax - f.wMin;
-  for (let k = 1; k < e; k++) {
-    const yk = k * H;
-    // reposet langs hele veggen (eller rundt døra), med rekkverk
-    b(REPOS_D, 0.06, wLen, TRAPP_RIST, REPOS_D / 2, yk - 0.03, f.wMin + wLen / 2);
-    b(0.05, 0.05, wLen, TRAPP_STAL, REPOS_D - 0.03, yk + 1.0, f.wMin + wLen / 2);            // håndlist
-    if (!enkel) b(0.03, 0.03, wLen, TRAPP_STAL, REPOS_D - 0.03, yk + 0.5, f.wMin + wLen / 2); // knelist
-    const nStolper = Math.max(2, Math.ceil(wLen / 1.5) + 1);
-    for (let i = 0; i < nStolper; i++) b(0.05, 1.0, 0.05, TRAPP_STAL, REPOS_D - 0.03, yk + 0.5, f.wMin + 0.03 + (wLen - 0.06) * i / (nStolper - 1));
-    b(REPOS_D, 0.05, 0.05, TRAPP_STAL, REPOS_D / 2, yk + 1.0, f.wMin + 0.03);                  // rekkverk i enden
-    // stolpene som bærer reposet
-    for (const w of [f.wMin + 0.1, f.wMax - 0.1]) b(0.08, yk, 0.08, TRAPP_STAL, REPOS_D - 0.06, yk / 2, w);
-    // trappa: i stripe k utenfor reposet, fra bakken opp til etasjen
-    const u0 = REPOS_D + (k - 1) * (TRAPP_B + 0.05), uc = u0 + TRAPP_B / 2;
-    const nT = Math.ceil(yk / 0.18), stig = yk / nT, dyp = 0.25, lop = nT * dyp;
-    const wTopp = f.wMax - 1.0, wBunn = wTopp - lop;
-    for (let i = 0; i < nT; i++) b(TRAPP_B, 0.04, dyp, TRAPP_RIST, uc, stig * (i + 1) - 0.02, wBunn + dyp * (i + 0.5));
-    for (const su of [u0 + 0.03, u0 + TRAPP_B - 0.03]) {
-      skraa(su, 0, wBunn, yk, wTopp, 0.06, TRAPP_STAL);                       // vangene
-      skraa(su, 0.95, wBunn, yk + 0.95, wTopp, 0.04, TRAPP_STAL);             // håndlista
-      if (!enkel) for (const t of [0.15, 0.5, 0.85]) {
-        const w = wBunn + lop * t, y = yk * t;
-        b(0.04, 0.95, 0.04, TRAPP_STAL, su, y + 0.475, w);
-      }
+  // Rekkverk langs en rett linje (håndlist, knelist og stolper)
+  const rekkverk = (a, c) => {
+    stang([a[0], a[1] + REKK_H, a[2]], [c[0], c[1] + REKK_H, c[2]], 0.05, TRAPP_STAL);
+    if (!enkel) stang([a[0], a[1] + REKK_H / 2, a[2]], [c[0], c[1] + REKK_H / 2, c[2]], 0.03, TRAPP_STAL);
+    const l = Math.hypot(c[0] - a[0], c[2] - a[2]), n = Math.max(1, Math.ceil(l / 1.5));
+    for (let i = 0; i <= n; i++) {
+      const t = i / n, uu = a[0] + (c[0] - a[0]) * t, y = a[1] + (c[1] - a[1]) * t, w = a[2] + (c[2] - a[2]) * t;
+      b(0.05, REKK_H, 0.05, TRAPP_STAL, uu, y + REKK_H / 2, w);
     }
-    // broa fra toppen av trappa inn til reposet
-    b(u0 + TRAPP_B - REPOS_D, 0.06, 1.0, TRAPP_RIST, REPOS_D + (u0 + TRAPP_B - REPOS_D) / 2, yk - 0.03, wTopp + 0.5);
-    b(0.05, 0.05, 1.0, TRAPP_STAL, u0 + TRAPP_B - 0.03, yk + 1.0, wTopp + 0.5);
+  };
+  const nTr = e - 1, dir = f.inn;                    // dir: siden trappa kommer fra (+1/−1 langs w)
+  const langsVegg = trappLop((e - 1) * H) <= f.plass;
+  const w0 = f.dorW - 0.9, w1 = f.dorW + 0.9;        // reposet foran døra
+  // Rett ut: trappene står side om side langs w, og reposet må romme alle
+  const reposW1 = langsVegg ? w1 : Math.max(w1, w0 + nTr * (TRAPP_B + TRAPP_MELLOM));
+  for (let k = 1; k < e; k++) {
+    const yk = k * H, lop = trappLop(yk), nT = Math.round(lop / INNTRINN), stig = yk / nT;
+    const dk = langsVegg ? REPOS_D + (k - 1) * (TRAPP_B + TRAPP_MELLOM) : REPOS_D;
+    // reposet, og stolpene som bærer det
+    b(dk, 0.06, reposW1 - w0, TRAPP_RIST, dk / 2, yk - 0.03, (w0 + reposW1) / 2);
+    for (const w of [w0 + 0.05, reposW1 - 0.05]) b(0.08, yk, 0.08, TRAPP_STAL, dk - 0.05, yk / 2, w);
+    // trappa k: stripe [a, a + TRAPP_B] på tvers av løpet
+    const a = (k - 1) * (TRAPP_B + TRAPP_MELLOM);
+    let inngang;                                          // hvor trappa kommer inn på reposet
+    if (langsVegg) {
+      // langs veggen: fra bakken ved wStart, opp til kanten av reposet på dir-siden
+      const wKant = dir > 0 ? reposW1 : w0, wStart = wKant + dir * lop;
+      for (let i = 0; i < nT; i++) b(TRAPP_B, 0.04, INNTRINN, TRAPP_RIST, a + TRAPP_B / 2, stig * (i + 1) - 0.02, wStart - dir * INNTRINN * (i + 0.5));
+      for (const uu of [a + 0.03, a + TRAPP_B - 0.03]) {
+        stang([uu, 0.03, wStart], [uu, yk, wKant], 0.06, TRAPP_STAL);                       // vangene
+        stang([uu, REKK_H, wStart], [uu, yk + REKK_H, wKant], 0.045, TRAPP_STAL);           // håndlista
+        for (const t of enkel ? [0] : [0, 0.5]) {
+          const w = wStart - dir * lop * t;
+          b(0.04, REKK_H, 0.04, TRAPP_STAL, uu, yk * t + REKK_H / 2, w);
+        }
+      }
+      inngang = { kant: "side", fra: a, til: a + TRAPP_B };
+    } else {
+      // rett ut fra reposets ytterkant, i stripe a langs w
+      const wa = w0 + a, uStart = dk + lop;
+      for (let i = 0; i < nT; i++) b(INNTRINN, 0.04, TRAPP_B, TRAPP_RIST, uStart - INNTRINN * (i + 0.5), stig * (i + 1) - 0.02, wa + TRAPP_B / 2);
+      for (const ww of [wa + 0.03, wa + TRAPP_B - 0.03]) {
+        stang([uStart, 0.03, ww], [dk, yk, ww], 0.06, TRAPP_STAL);
+        stang([uStart, REKK_H, ww], [dk, yk + REKK_H, ww], 0.045, TRAPP_STAL);
+        for (const t of enkel ? [0] : [0, 0.5]) b(0.04, REKK_H, 0.04, TRAPP_STAL, uStart - lop * t, yk * t + REKK_H / 2, ww);
+      }
+      inngang = { kant: "ytre", fra: wa, til: wa + TRAPP_B };
+    }
+    // rekkverket rundt reposet: ytterkanten og begge endene, med åpning der
+    // trappa kommer inn (veggsiden trenger ikke rekkverk)
+    const langsKant = (fra, til, fast) => {            // en kant, minus åpningen
+      const deler = fast ? [[fra, til]] : [[fra, Math.min(til, inngang.fra)], [Math.max(fra, inngang.til), til]];
+      return deler.filter(([x1, x2]) => x2 - x1 > 0.08);
+    };
+    for (const [x1, x2] of langsKant(w0, reposW1, inngang.kant !== "ytre")) rekkverk([dk, yk, x1], [dk, yk, x2]);
+    const sideInn = dir > 0 ? reposW1 : w0, sideUt = dir > 0 ? w0 : reposW1;
+    for (const [u1, u2] of langsKant(0.05, dk, inngang.kant !== "side")) rekkverk([u1, yk, sideInn], [u2, yk, sideInn]);
+    rekkverk([0.05, yk, sideUt], [dk, yk, sideUt]);
   }
 }
 
@@ -492,12 +533,15 @@ const BYGG = {
     const { L, B, H } = o, n = o.moduler || 1, e = o.etasjer || 1, enkel = !!opts.enkel;
     const kant = toneFarge(o.farge, 0.72), ramme = toneFarge(o.farge, 0.6), bredTot = n * B;
     const Li = L - 0.04, zYtre = bredTot / 2 - 0.01;
-    // 🚪 Dørene (Emil 29.09): én per modul, på gavlen eller langsiden (valgt i
-    // skjemaet). På langsiden har bare de to ytterste modulene en fri vegg —
-    // modulene i midten får døra på gavlen. En enkelt modul får døra på +z.
-    const langside = o.dorSide === "langside";
-    const dorPaa = (m) => !langside ? "gavl" : (m === n - 1 ? "+z" : m === 0 ? "-z" : "gavl");
-    const DOR_X = Li / 2 - 0.8, dorH = Math.min(2.0, H * 0.78);
+    // 🚪 DØRA (Emil 29.09, skisse): ÉN dør per etasje for hele riggen —
+    //   · langside: midt på langsiden til endemodulen (fri vegg)
+    //   · gavl: på gavlen til endemodulen
+    // og endemodulen er den til venstre (−z) eller høyre (+z), valgt i skjemaet.
+    const langside = o.dorSide === "langside", sd = o.dorEnde === "venstre" ? -1 : 1;
+    const dorH = Math.min(2.0, H * 0.78);
+    // nær ytterkanten av endemodulen, men så langt inn at reposet (1,8 m
+    // bredt) ikke stikker forbi riggens side
+    const zGavlDor = sd * Math.max(0, bredTot / 2 - 0.95);
     for (let et = 0; et < e; et++) {
       const y0 = et * H;
       for (let m = 0; m < n; m++) {
@@ -505,16 +549,17 @@ const BYGG = {
         boks(g, Li, H - 0.012, B - 0.02, o.farge, 0, y0 + (H - 0.012) / 2, z, { r: enkel ? 0.03 : 0.06, seg: enkel ? 1 : 2 });
         takRing(g, L, B - 0.01, y0 + H, kant, 0, z);
         boks(g, L, 0.14, B - 0.01, ramme, 0, y0 + 0.07, z);          // bunnramme
-        const side = dorPaa(m);
-        if (side === "gavl") dor(g, 0.9, dorH, Li / 2 + 0.001, y0 + 0.18, z + B * 0.2, "x", DOR, enkel);
-        else dor(g, 0.9, dorH, DOR_X, y0 + 0.18, (side === "+z" ? 1 : -1) * (zYtre + 0.001), side === "+z" ? "z" : "-z", DOR, enkel);
       }
-      // vinduer på begge langsidene av hele riggen — der det står en dør, er
-      // enden av rekka holdt fri for den
-      for (const sd of [1, -1]) {
-        const harDor = langside && (sd > 0 ? true : n >= 2);
-        const lengde = harDor ? Li - 1.8 : Li, x0 = harDor ? -0.9 : 0;
-        vinduRekke(g, lengde, x0, y0 + H * 0.58, sd * (zYtre + 0.001), sd > 0 ? "z" : "-z", H * 0.3, enkel);
+      if (langside) dor(g, 0.9, dorH, 0, y0 + 0.18, sd * (zYtre + 0.001), sd > 0 ? "z" : "-z", DOR, enkel);
+      else dor(g, 0.9, dorH, Li / 2 + 0.001, y0 + 0.18, zGavlDor, "x", DOR, enkel);
+      // vinduer på begge langsidene — der døra står, er midten holdt fri
+      for (const s2 of [1, -1]) {
+        const n2 = s2 > 0 ? "z" : "-z", zz = s2 * (zYtre + 0.001), yv = y0 + H * 0.58;
+        if (langside && s2 === sd) {
+          const halv = Li / 2 - 0.75;
+          vinduRekke(g, halv, -(0.75 + halv / 2), yv, zz, n2, H * 0.3, enkel);
+          vinduRekke(g, halv, 0.75 + halv / 2, yv, zz, n2, H * 0.3, enkel);
+        } else vinduRekke(g, Li, 0, yv, zz, n2, H * 0.3, enkel);
       }
       // sandwichpanel-fugene langs langsidene
       if (!enkel) {
@@ -523,18 +568,16 @@ const BYGG = {
           flat(g, 0.02, H - 0.3, toneFarge(o.farge, 0.8), -Li / 2 + Li * i / nf, y0 + H / 2, s * (zYtre + 0.0005), s > 0 ? "z" : "-z");
       }
     }
-    // 🪜 Trappene (Emil 29.09): med 2 eller 3 etasjer får hver side med dører
-    // en utvendig ståltrapp med repos utenfor dørene i etasjene over bakken.
+    // 🪜 Trapp og repos utenfor døra i etasjene over bakken (2–3 etasjer)
     if (e >= 2) {
-      const flater = [];
-      const gavlDorer = [];
-      for (let m = 0; m < n; m++) if (dorPaa(m) === "gavl") gavlDorer.push(-bredTot / 2 + B * (m + 0.5) + B * 0.2);
-      if (gavlDorer.length) flater.push({ u: (uu, w) => ({ x: L / 2 + uu, z: w }), wMin: -bredTot / 2, wMax: bredTot / 2, dorer: gavlDorer, langs: "z" });
       if (langside) {
-        flater.push({ u: (uu, w) => ({ x: w, z: bredTot / 2 + uu }), wMin: DOR_X - 0.9, wMax: L / 2, dorer: [DOR_X], langs: "x" });
-        if (n >= 2) flater.push({ u: (uu, w) => ({ x: w, z: -bredTot / 2 - uu }), wMin: DOR_X - 0.9, wMax: L / 2, dorer: [DOR_X], langs: "x", speil: true });
+        // veggen er langsiden (w = x), døra midt på; trappa kommer fra −x
+        byggTrapp(g, { u: (uu, w) => ({ x: w, z: sd * (bredTot / 2 + uu) }), langs: "x", dorW: 0, inn: -1, plass: L / 2 - 0.9 }, e, H, enkel);
+      } else {
+        // veggen er gavlen (w = z); trappa kommer fra innsiden av riggen
+        const plass = sd > 0 ? (zGavlDor - 0.9) + bredTot / 2 : bredTot / 2 - (zGavlDor + 0.9);
+        byggTrapp(g, { u: (uu, w) => ({ x: L / 2 + uu, z: w }), langs: "z", dorW: zGavlDor, inn: -sd, plass }, e, H, enkel);
       }
-      for (const f of flater) byggTrapp(g, f, e, H, enkel);
     }
     // logoen i feltet mellom vinduene og takkanten, øverste etasje, begge sider
     const yTopp = (e - 1) * H, fraY = yTopp + H * 0.75 + 0.04, tilY = yTopp + H - 0.16;

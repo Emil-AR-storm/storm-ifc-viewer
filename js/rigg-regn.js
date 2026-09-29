@@ -206,6 +206,9 @@ export function vaskRiggObjekt(p) {
   // 🚪 Brakkeriggen: døra på gavlen eller langsiden (Emil 29.09: «det varierer
   // fra brakke til brakke»). Gamle lagrede rigger har ikke feltet → gavl.
   if (M.moduler) ut.dorSide = p.dorSide === "langside" ? "langside" : "gavl";
+  // …og hvilken endemodul døra står på (Emils skisse 29.09): venstre (−z)
+  // eller høyre (+z). Riggen har ÉN dør per etasje.
+  if (M.moduler) ut.dorEnde = p.dorEnde === "venstre" ? "venstre" : "hoyre";
   // ♻ Søppelcontaineren: avfallstypen (Emil 29.09) — kommer som et skilt på
   // containeren. Ukjent eller tom → ikke valgt (intet skilt).
   if (M.avfall) ut.avfall = AVFALLSTYPER.some(a => a.id === p.avfall) ? p.avfall : "";

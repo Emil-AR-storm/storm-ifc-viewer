@@ -1283,9 +1283,13 @@ function tegnSkjema(o) {
       felt("riggEt", "Etasjer", o.etasjer, 1, MAKS_ETASJER, 1) : "") +
     felt("riggRot", "Rotasjon (grader, med klokka)", o.rot, 0, 359.9, 1) +
     "<label>" + t("Farge") + '<input type="color" id="riggFarge" value="' + esc(o.farge) + '"></label>' +
-    (M.moduler ? "<label>" + t("Dører") + '<select id="riggDorSide">' +
-      '<option value="gavl"' + (o.dorSide !== "langside" ? " selected" : "") + ">" + t("På gavlen (én per modul)") + "</option>" +
-      '<option value="langside"' + (o.dorSide === "langside" ? " selected" : "") + ">" + t("På langsiden (modulene i midten får døra på gavlen)") + "</option></select></label>" : "") +
+    (M.moduler ? "<label>" + t("Dør") + '<select id="riggDorSide">' +
+      '<option value="gavl"' + (o.dorSide !== "langside" ? " selected" : "") + ">" + t("På gavlen") + "</option>" +
+      '<option value="langside"' + (o.dorSide === "langside" ? " selected" : "") + ">" + t("Midt på langsiden") + "</option></select></label>" +
+      "<label>" + t("Døra står på endemodulen") + '<select id="riggDorEnde">' +
+      '<option value="hoyre"' + (o.dorEnde !== "venstre" ? " selected" : "") + ">" + t("Til høyre") + "</option>" +
+      '<option value="venstre"' + (o.dorEnde === "venstre" ? " selected" : "") + ">" + t("Til venstre") + "</option></select></label>" +
+      "<p " + LITEN + ">" + t("Én dør per etasje. Med 2–3 etasjer kommer trapp og repos utenfor døra.") + "</p>" : "") +
     (M.avfall ? "<label>" + t("Avfallstype") + '<select id="riggAvfall"><option value="">' + t("Ikke valgt") + "</option>" +
       AVFALLSTYPER.map(a => '<option value="' + a.id + '"' + (o.avfall === a.id ? " selected" : "") + ">" + esc(t(a.label)) + "</option>").join("") +
       "</select></label>" : "") +
@@ -1304,6 +1308,7 @@ function tegnSkjema(o) {
     };
     if (M.logo) felter.logo = $("riggLogo") ? $("riggLogo").value : (o.logo || "");
     if (M.moduler && $("riggDorSide")) felter.dorSide = $("riggDorSide").value;
+    if (M.moduler && $("riggDorEnde")) felter.dorEnde = $("riggDorEnde").value;
     if (M.avfall && $("riggAvfall")) felter.avfall = $("riggAvfall").value;
     if (M.moduler) { felter.moduler = $("riggMod").value; felter.etasjer = $("riggEt").value; }
     oppdater(o.id, felter, "Rigg endret");
