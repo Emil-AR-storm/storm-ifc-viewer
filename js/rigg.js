@@ -70,6 +70,7 @@ let valgteStykker = [];        // panelene som er valgt (maks to) — til port
 // panelet under pekeren lyser → etter to naboer kommer «Gjør om til port» som
 // hovedknapp. «Ferdig» er borte mens steget pågår; «Avbryt» går ut av det.
 let portModus = false;
+let sistSkjemaId = null;      // skjemaet sist vist for (logolista hentes på nytt bare ved bytte)
 let overStykke = null;         // panelet under pekeren i port-steget
 
 function hentO(id) { return riggObjekter(S.rigg || []).find(o => o.id === id) || null; }
@@ -190,7 +191,7 @@ frameHooks.push(() => {
 
 // Logovalget i skjemaet: «Ingen logo» + filene i Logoer-mappa. Det lagrede
 // valget vises selv om lista ikke er hentet ennå (eller man er logget ut).
-async function fyllRiggLogovalg(velg, valgt) {
+async function fyllRiggLogovalg(velg, valgt, paaNytt = true) {
   if (!velg) return;
   const opt = (verdi, tekst) => { const o = document.createElement("option"); o.value = verdi; o.textContent = tekst; return o; };
   velg.innerHTML = "";
@@ -198,7 +199,7 @@ async function fyllRiggLogovalg(velg, valgt) {
   if (valgt) velg.appendChild(opt(valgt, ryddLogonavn(valgt)));
   velg.value = valgt || "";
   if (!spPaalogget()) return;
-  const liste = await hentLogoListe(true);
+  const liste = await hentLogoListe(paaNytt);
   if (!velg.isConnected) return;
   for (const l of liste) if (l.fil !== valgt) velg.appendChild(opt(l.fil, ryddLogonavn(l.fil)));
   velg.value = valgt || "";
@@ -587,6 +588,29 @@ function velg(id) {
   oppdaterValgBar();
   oppdaterHandtak();
   if (S.riggModeBarTegn && S.mode === "rigg") S.riggModeBarTegn();
+  // 📝 Panelet til høyre viser skjemaet for det som er valgt (runde 15b) —
+  // og lista når ingenting er valgt. Er man i rigg-modus og velger noe, åpnes
+  // panelet: man skal ikke måtte lete etter en «Rediger»-knapp.
+  if (id && iModus() && !erApen()) apnePanel("riggPanel");
+  if (erApen()) tegnPanel();
+}
+
+// Velg et objekt og vis skjemaet for det (etter plassering, gjerde og pil).
+function visValgt(id) {
+  if (!iModus()) settRiggModus(true);
+  if (!erApen()) apnePanel("riggPanel");
+  if (!iModus()) settRiggModus(true);   // apnePanel kan ha avsluttet et annet klikkmodus
+  velg(id);
+  tegnPanel();
+}
+
+// Knapperaden hører hjemme ØVERST i panelet når det er åpent, og flyter
+// nederst på skjermen når det er lukket (da er det eneste stedet knappene finnes).
+function plasserValgBar() {
+  const el = valgBarEl();
+  const slot = erApen() ? $("riggValgSlot") : null;
+  if (slot) { if (el.parentNode !== slot) slot.appendChild(el); el.classList.add("i-panel"); }
+  else { if (el.parentNode !== document.body) document.body.appendChild(el); el.classList.remove("i-panel"); }
 }
 
 // tegnRigg() bygger objektene på nytt — effekten, knapperaden og skjøtene må på igjen
@@ -597,9 +621,7 @@ function valgBarEl() {
   if (!el) {
     el = document.createElement("div");
     el.id = "riggValgBar";
-    el.style.cssText = "position:fixed;left:50%;transform:translateX(-50%);bottom:64px;" +
-      "z-index:40;display:none;gap:6px;align-items:center;background:var(--panel);" +
-      "border:1px solid var(--border);border-radius:10px;padding:6px 10px;box-shadow:0 4px 18px rgba(0,0,0,.35)";
+    el.style.display = "none";   // resten av stilen står i storm.css (#riggValgBar)
     document.body.appendChild(el);
   }
   return el;
@@ -607,6 +629,7 @@ function valgBarEl() {
 
 function oppdaterValgBar() {
   const el = valgBarEl();
+  plasserValgBar();
   const o = valgtId ? hentO(valgtId) : null;
   if (!o || o.skjult) { el.style.display = "none"; el.innerHTML = ""; return; }
   const n = riggAntall(o);
@@ -617,7 +640,7 @@ function oppdaterValgBar() {
     return;
   }
   el.innerHTML =
-    '<span style="font-size:12px;font-weight:600;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
+    '<span class="rv-navn" style="font-size:12px;font-weight:600;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
     '<span style="display:inline-block;width:9px;height:9px;border-radius:3px;background:' + esc(o.farge) + ';margin-right:6px"></span>' +
     esc(o.navn || riggTypeLabel(o.type)) + (n > 1 ? " ×" + n : "") + "</span>" +
     '<button id="rvFlytt" class="btn" title="' + t("Flytt: objektet følger pekeren — trykk der det skal stå") + '" style="padding:3px 8px">✥ ' + t("Flytt") + "</button>" +
@@ -638,13 +661,7 @@ function oppdaterValgBar() {
   $("rvRotH").onclick = () => { const q = hentO(valgtId); if (q) oppdater(q.id, { rot: normVinkel(q.rot + ROT_STEG) }, "Rigg rotert"); };
   $("rvSkjul").onclick = () => { const q = hentO(valgtId); if (!q) return; oppdater(q.id, { skjult: true }, "Rigg skjult"); velg(null); };
   $("rvSlett").onclick = () => { const q = hentO(valgtId); if (q) fjern(q.id, true); velg(null); };
-  $("rvRediger").onclick = () => {
-    const q = hentO(valgtId);
-    if (!q) return;
-    apnePanel("riggPanel");
-    settRiggModus(true);
-    tegnSkjema(q);
-  };
+  $("rvRediger").onclick = () => { if (valgtId) visValgt(valgtId); };
   $("rvLukk").onclick = () => velg(null);
 }
 
@@ -772,7 +789,7 @@ function startPil(type) {
   if (!S.modelGroup || !RIGG_TYPER[type]) return;
   tegner = { type, punkter: [], linje: null };
   if (!iModus()) settRiggModus(true);
-  $("riggPanel").classList.remove("open");
+  tegnKatalog();
   if (S.riggModeBarTegn) S.riggModeBarTegn();
 }
 
@@ -780,6 +797,7 @@ function avbrytPil() {
   if (!tegner) return;
   if (tegner.linje) { scene.remove(tegner.linje); tegner.linje.geometry.dispose(); }
   tegner = null;
+  tegnKatalog();
   if (S.riggModeBarTegn && iModus()) S.riggModeBarTegn();
 }
 
@@ -815,7 +833,7 @@ function fullforPil() {
   const o = vaskRiggObjekt(Object.assign({ id: nyRiggId(), type, rot, punkter: f.punkter }, pos));
   if (!o) return;
   leggTil(o, true);
-  velg(o.id);
+  visValgt(o.id);   // skjemaet åpnes med en gang (Emil 29.09)
 }
 
 // ── Markeringsboksen ──
@@ -825,7 +843,7 @@ function startGjerde() {
   if (!S.modelGroup) return;
   merker = { start: null, linje: null };
   if (!iModus()) settRiggModus(true);
-  $("riggPanel").classList.remove("open");
+  tegnKatalog();
   if (S.riggModeBarTegn) S.riggModeBarTegn();
 }
 
@@ -833,6 +851,7 @@ function avbrytMerker() {
   if (!merker) return;
   if (merker.linje) { scene.remove(merker.linje); merker.linje.geometry.dispose(); }
   merker = null;
+  tegnKatalog();
   if (S.riggModeBarTegn && iModus()) S.riggModeBarTegn();
 }
 
@@ -864,7 +883,7 @@ function lagGjerde(a, b) {
   const o = vaskRiggObjekt(Object.assign({ id: nyRiggId(), type: "gjerde", rot, punkter }, pos));
   if (!o) return;
   leggTil(o, true);
-  velg(o.id);
+  visValgt(o.id);   // skjemaet åpnes med en gang (Emil 29.09)
 }
 
 // ═══════════════════════ MODUS ═══════════════════════
@@ -889,7 +908,7 @@ S.riggModeBar = (bar) => {
     const hint = merker
       ? t("Dra en boks på bakken der gjerdet skal stå — Esc avbryter")
       : plasserer
-      ? t("Trykk der objektet skal stå — Esc avbryter")
+      ? t("Trykk der objektet skal stå — eller velg en annen type til venstre · Esc avbryter")
       : valgtGjerde() && erPil(valgtGjerde())
       ? t("Dra i prikkene for å forme pila · shift-klikk for flere prikker")
       : valgtGjerde()
@@ -907,6 +926,7 @@ function settRiggModus(paa) {
   const b = $("btnRigg");
   if (b) b.classList.toggle("active", paa);
   if (!paa) { avbrytPlassering(); avbrytMerker(); avbrytPil(); }
+  visKatalog(paa);
   if (S.oppdaterModeBar) S.oppdaterModeBar();
   oppdaterHandtak();
 }
@@ -927,7 +947,10 @@ function startPlassering(type, mal) {
   riggGroup.add(gruppe);
   plasserer = { o, gruppe };
   if (!iModus()) settRiggModus(true);
-  $("riggPanel").classList.remove("open");
+  // Panelet og katalogen står ÅPNE (Emil 29.09): før lukket panelet seg, og
+  // man måtte trykke Rigg for hvert eneste objekt. Nå trykker man bare på
+  // neste type i katalogen for å bytte.
+  tegnKatalog();
   if (S.riggModeBarTegn) S.riggModeBarTegn();
 }
 
@@ -936,6 +959,7 @@ function avbrytPlassering() {
   riggGroup.remove(plasserer.gruppe);
   plasserer.gruppe.traverse(m => { if (m.geometry) m.geometry.dispose(); });
   plasserer = null;
+  tegnKatalog();
   if (S.riggModeBarTegn && iModus()) S.riggModeBarTegn();
 }
 
@@ -1083,7 +1107,7 @@ window.addEventListener("pointerup", (e) => {
     const o = Object.assign({}, plasserer.o, pos);
     avbrytPlassering();
     leggTil(o, true);
-    velg(o.id);
+    visValgt(o.id);   // 📝 skjemaet åpnes med en gang — ingen «trykk på den, så Rediger»
     return;
   }
   // ➜ pil under tegning: et KLIKK er et nytt punkt; et drag var kameraet
@@ -1223,9 +1247,22 @@ const LITEN = 'style="color:var(--muted);font-size:12px;margin:4px 0"';
 function tegnPanel() {
   const body = $("riggBody");
   if (!body) return;
+  // ⌨ Skjemaet lagrer ved hver endring (runde 15b), og da tegnes panelet på
+  // nytt. Uten dette mistet man markøren hver gang man tabbet til neste felt.
+  const aktivEl = document.activeElement;
+  const fokusId = aktivEl && body.contains(aktivEl) && aktivEl.id ? aktivEl.id : null;
+  // Knapperaden kan stå inne i panelet: ta den ut før innholdet byttes, ellers
+  // forsvinner den med det gamle innholdet.
+  const vb = $("riggValgBar");
+  if (vb && body.contains(vb)) document.body.appendChild(vb);
   const ref = aktivRef();
   const live = S.terrengRef ? S.terrengRef() : null;
-  let html = "<p " + LITEN + ">" + t("Trykk på et objekt og så der det skal stå. Objektene står på bakken.") + "</p>";
+  const valgt = valgtId ? hentO(valgtId) : null;
+  const tittel = $("riggTittel");
+  if (tittel) tittel.textContent = valgt ? (valgt.navn || riggTypeLabel(valgt.type)) + (riggAntall(valgt) > 1 ? " ×" + riggAntall(valgt) : "") : t("Rigg");
+  let html = "";
+  if (valgt) html += '<div id="riggValgSlot"></div>' + skjemaHtml(valgt);
+  else html += "<p " + LITEN + ">" + t("Velg en type i lista til venstre, og trykk der den skal stå. Trykk på et objekt på tomta for å endre det.") + "</p>";
   if (!live) html += "<p " + LITEN + ">" + ikon("advarsel") + " " +
     t(ref ? "Terrenget er ikke lastet. Riggen vises rundt bygget på gulvhøyde, der den sto sist."
           : "Uten terreng står riggen på gulvhøyde rundt bygget. Hentes et terreng i Terreng, flyttes den over på tomta.") + "</p>";
@@ -1233,12 +1270,7 @@ function tegnPanel() {
   // 📂 Seksjonene foldes som i SW-generator og Blikk & Tak (Emil 28.09):
   // hver <h4 data-sek> blir en <details>. Katalogen og lista står åpne første
   // gang — det er dem man trenger for å komme i gang.
-  // Katalogen: én knapp per type
-  html += '<h4 data-sek="rigg-katalog" style="margin:10px 0 4px">' + ikon("pluss") + " " + t("Legg til på tomta") + "</h4>" +
-    '<div id="riggKatalog" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0">' +
-    RIGG_REKKEFOLGE.map(k => '<button data-rigg-ny="' + k + '" title="' + esc(t(RIGG_FORKLARING[k])) + '" ' +
-      'style="text-align:left;padding:6px 8px;display:flex;align-items:center">' + ikonImg(k, RIGG_TYPER[k].farge) + esc(riggTypeLabel(k)) + "</button>").join("") +
-    "</div>";
+  // Katalogen står i sin egen stripe til venstre (tegnKatalog, runde 15b).
 
   // Det som er plassert
   const liste = riggObjekter(S.rigg || []);
@@ -1309,7 +1341,14 @@ function tegnPanel() {
       : "<p " + LITEN + ">" + t("Ingen lagrede riggplaner ennå.") + "</p>");
 
   body.innerHTML = html;
-  foldSeksjoner(body, { nokkel: "storm-rigg-seksjoner-apne", standard: ["rigg-katalog", "rigg-plassert"] });
+  foldSeksjoner(body, { nokkel: "storm-rigg-seksjoner-apne", standard: ["rigg-plassert"] });
+  if (valgt) koblSkjema(valgt);
+  plasserValgBar();
+  oppdaterValgBar();
+  if (fokusId && $(fokusId)) {
+    const f = $(fokusId);
+    try { f.focus({ preventScroll: true }); if (f.type === "text") f.setSelectionRange(f.value.length, f.value.length); } catch (_) {}
+  }
   if ($("riggFjernAlle")) $("riggFjernAlle").onclick = fjernAllRigg;
   // Lastes først når knappen trykkes: PDF-koden og jsPDF skal ikke koste noe
   // for den som aldri laster ned en riggplan.
@@ -1327,10 +1366,6 @@ function tegnPanel() {
     catch (err) { alert(t("Klarte ikke å lage riggplanen: {0}", err.message)); }
     finally { if ($("riggPdf")) $("riggPdf").disabled = false; }
   };
-  body.querySelectorAll("button[data-rigg-ny]").forEach(b => b.onclick = () =>
-    b.dataset.riggNy === "gjerde" ? startGjerde()
-      : RIGG_TYPER[b.dataset.riggNy].pil ? startPil(b.dataset.riggNy)
-      : startPlassering(b.dataset.riggNy));
   // Trykk på navnet: velg objektet og fly dit
   body.querySelectorAll("[data-rigg-velg]").forEach(d => d.onclick = () => {
     const g = finnRiggObjekt(d.dataset.riggVelg);
@@ -1354,15 +1389,18 @@ function tegnPanel() {
 S.tegnRiggPanel = () => { if (erApen()) tegnPanel(); };
 
 // ═══════════════════════ SKJEMAET (rediger) ═══════════════════════
-function tegnSkjema(o) {
-  const body = $("riggBody");
-  if (!body || !o) return;
+// 📝 Runde 15b: skjemaet er ØVERST i høyrepanelet når noe er valgt, og hver
+// endring lagres med en gang (change: når feltet forlates eller Enter, og med
+// en gang for nedtrekkslister og farge). Før var det et eget vindu man måtte
+// åpne med «Rediger» og lukke med «Lagre endringer» — nå ser man endringen på
+// tomta mens man jobber, og Angre tar den tilbake.
+function skjemaHtml(o) {
   const M = RIGG_TYPER[o.type];
   const felt = (id, navn, verdi, min, maks, steg) =>
     "<label>" + t(navn) + '<input type="number" id="' + id + '" min="' + min + '" max="' + maks +
     '" step="' + steg + '" value="' + verdi + '"></label>';
-  body.innerHTML =
-    '<h4 style="margin:0 0 6px">' + t("Rediger rigg-objekt") + " — " + esc(riggTypeLabel(o.type)) + "</h4>" +
+  return '<div id="riggSkjema">' +
+    '<p ' + LITEN + '>' + esc(riggTypeLabel(o.type)) + " · " + t("endringene vises med en gang på tomta") + "</p>" +
     "<label>" + t("Navn på objektet") + '<input type="text" id="riggNavn" maxlength="80" placeholder="' +
     esc(riggTypeLabel(o.type)) + '" value="' + esc(o.navn) + '"></label>' +
     // 🚧 Gjerdet: L er panellengden og H panelhøyden. Et panel som er lengre
@@ -1393,11 +1431,14 @@ function tegnSkjema(o) {
     (M.logo ? "<label>" + t("Logo") + '<select id="riggLogo"></select></label>' +
       "<p " + LITEN + ">" + t(spPaalogget() ? "Logoene hentes fra SharePoint-mappa Logoer (samme som rapportene)." : "Logg inn for å velge logo fra SharePoint-mappa Logoer.") + "</p>" : "") +
     "<p " + LITEN + ">" + t("Standardmål: {0} × {1} × {2} m", M.L, M.B, M.H) + "</p>" +
-    '<div class="prop-actions" style="margin-top:10px">' +
-    '<button id="riggLagre" class="primary">' + t("Lagre endringer") + "</button>" +
-    '<button id="riggStd">' + t("Standardmål") + "</button>" +
-    '<button id="riggAvbryt">' + t("Avbryt") + "</button></div>";
-  $("riggLagre").onclick = () => {
+    '<div class="prop-actions" style="margin-top:6px">' +
+    '<button id="riggStd">' + t("Standardmål") + "</button></div></div>";
+}
+
+function koblSkjema(o) {
+  const M = RIGG_TYPER[o.type];
+  if (!$("riggSkjema")) return;
+  const lagre = () => {
     const felter = {
       navn: $("riggNavn").value.trim(),
       L: $("riggL").value, B: $("riggB").value, H: $("riggH").value,
@@ -1408,19 +1449,87 @@ function tegnSkjema(o) {
     if (M.moduler && $("riggDorEnde")) felter.dorEnde = $("riggDorEnde").value;
     if (M.avfall && $("riggAvfall")) felter.avfall = $("riggAvfall").value;
     if (M.moduler) { felter.moduler = $("riggMod").value; felter.etasjer = $("riggEt").value; }
+    // Bare når noe faktisk er endret — ellers ble hvert fokusbytte en angrepost.
+    const for_ = hentO(o.id);
+    const ny = for_ && vaskRiggObjekt(Object.assign({}, for_, felter));
+    if (!ny || JSON.stringify(Object.assign({}, ny, { endret: "" })) === JSON.stringify(Object.assign({}, for_, { endret: "" }))) return;
     oppdater(o.id, felter, "Rigg endret");
-    tegnPanel();
-    velg(o.id);
   };
+  // Lagres i NESTE runde av hendelsesløkka: med Tab fyrer change før markøren
+  // har flyttet seg. Tegnes panelet på nytt der og da, landet markøren i
+  // ingenting (nettleserprøven 29.09). Litt etter står den i neste felt, og
+  // tegnPanel setter den tilbake dit.
+  const lagreSnart = () => setTimeout(lagre, 0);
+  $("riggSkjema").querySelectorAll("input, select").forEach(f => { f.onchange = lagreSnart; });
+  // Enter i et felt: lagre (change fyrer ikke alltid på Enter i tallfelt)
+  $("riggSkjema").querySelectorAll("input").forEach(f => {
+    f.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); lagre(); } };
+  });
   $("riggStd").onclick = () => {
     $("riggL").value = M.L; $("riggB").value = M.B; $("riggH").value = M.H; $("riggFarge").value = M.farge;
+    lagre();
   };
-  $("riggAvbryt").onclick = () => tegnPanel();
-  if (M.logo) fyllRiggLogovalg($("riggLogo"), o.logo || "");
+  // Lista hentes på nytt fra SharePoint bare første gang skjemaet vises for
+  // objektet — panelet tegnes på nytt ved hver endring, og det skal ikke bli
+  // ett nettkall per tastetrykk.
+  if (M.logo) fyllRiggLogovalg($("riggLogo"), o.logo || "", sistSkjemaId !== o.id);
+  sistSkjemaId = o.id;
 }
+
+// ═══════════════════════ 🏕 KATALOGEN (til venstre) ═══════════════════════
+// Hvilken type er «i hånda» akkurat nå? Den får blå ramme i katalogen.
+function aktivType() {
+  if (plasserer) return plasserer.o.type;
+  if (merker) return "gjerde";
+  if (tegner) return tegner.type;
+  return null;
+}
+
+function startType(k) {
+  if (!RIGG_TYPER[k]) return;
+  // Samme type en gang til: legg den fra deg (som Esc).
+  if (aktivType() === k) { avbrytPlassering(); avbrytMerker(); avbrytPil(); return; }
+  avbrytPlassering(); avbrytMerker(); avbrytPil();
+  if (k === "gjerde") startGjerde();
+  else if (RIGG_TYPER[k].pil) startPil(k);
+  else startPlassering(k);
+}
+
+function tegnKatalog() {
+  const body = $("riggKatalogBody");
+  if (!body) return;
+  const aktiv = aktivType();
+  body.innerHTML = RIGG_REKKEFOLGE.map(k => '<button class="rigg-type' + (k === aktiv ? " aktiv" : "") + '" data-rigg-ny="' + k +
+      '" title="' + esc(t(RIGG_FORKLARING[k])) + '" aria-pressed="' + (k === aktiv) + '">' +
+      ikonImg(k, RIGG_TYPER[k].farge).replace(/ style="[^"]*"/, "") + "<span>" + esc(riggTypeLabel(k)) + "</span></button>").join("");
+  body.querySelectorAll("button[data-rigg-ny]").forEach(b => b.onclick = () => startType(b.dataset.riggNy));
+}
+
+// Katalogen står under verktøylinja, som kan brekke over to rader.
+function plasserKatalog() {
+  const el = $("riggKatalog"), tb = $("toolbar");
+  if (!el) return;
+  const r = tb && tb.getBoundingClientRect ? tb.getBoundingClientRect() : null;
+  if (r && r.bottom > 0) el.style.top = Math.round(r.bottom + 8) + "px";
+  // Nederst til venstre står andre ting (kartet i Terreng o.l.) — katalogen
+  // slutter godt over dem og ruller heller.
+  if (window.innerWidth > 640) el.style.maxHeight = Math.max(200, window.innerHeight - (parseInt(el.style.top, 10) || 100) - 150) + "px";
+}
+
+function visKatalog(paa) {
+  const el = $("riggKatalog");
+  if (!el) return;
+  el.classList.toggle("open", !!paa);
+  if (paa) { tegnKatalog(); plasserKatalog(); }
+}
+window.addEventListener("resize", () => { if (iModus()) plasserKatalog(); });
+på("riggKatalogLukk", "click", () => { settRiggModus(false); $("riggPanel").classList.remove("open"); });
+// Lukkes høyrepanelet med krysset, må knapperaden ut av det og flyte igjen.
+på("riggPanelLukk", "click", () => setTimeout(() => { plasserValgBar(); oppdaterValgBar(); }, 0));
 
 // Til testene og hjelpekortene: ingen logikk her.
 export const __rigg = { startPlassering, avbrytPlassering, leggTil, fjern, oppdater, velg, tegnPanel,
+  startType, aktivType, tegnKatalog, visValgt,
   startPortModus, avsluttPortModus, portStegStatus, lagPortNaa, veksleStykke,
   get portModus() { return portModus; }, get valgteStykker() { return valgteStykker.slice(); },
   get plasserer() { return plasserer; }, REF_ID };
