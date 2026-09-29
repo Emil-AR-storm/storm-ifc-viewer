@@ -100,7 +100,7 @@ function tegnOvenfra(senter, nord, bredde, hoyde, toppY, bunnY, pxB, pxH, skala,
   kam.lookAt(senter.x, bunnY, senter.z);
   kam.updateProjectionMatrix();
   kam.updateMatrixWorld(true);
-  return { data: tegnMedKamera(kam, pxB, pxH, skygge), kamera: kam };
+  return { data: tegnMedKamera(kam, pxB, pxH, { skygge, kontur: true, kvalitet: 0.94 }), kamera: kam };
 }
 
 // ☀ Sola: fra nordvest, høyt på himmelen. Nordvest er kartkonvensjonen —
@@ -206,76 +206,343 @@ function medSkygger(sk) {
   };
 }
 
-// Tegner scenen med et hvilket som helst kamera til et JPEG-bilde (data-URL).
-// skygge: medSkygger-oppsettet, og valgfritt taake: [nær, fjern] (sceneenheter).
-function tegnMedKamera(kam, pxB, pxH, skygge) {
+// ═══════════════════════ 🎞 BILDEMOTOREN (runde 14b) ═══════════════════════
+// Emil 29.09 bestilte alle fem: (1) ambient occlusion, (2) konturer i planen,
+// (3) fotografisk fargekurve, (4) skarpere bilder og tettere utsnitt, (5)
+// himmel og overflater. Alt skjer BARE her, for ett PDF-bilde av gangen —
+// skjermen og telefonene tegnes som før.
+//
+// Tallene står samlet så de kan justeres ett sted (og prøves i testene).
+export const RIGGPLAN_BILDE = {
+  // (4) Bildet tegnes større og skaleres ned: tynne gjerder, piler og
+  // skilttekst blir skarpere enn med kantutjevning alene. Taket (piksler på
+  // den lengste siden) holder minnet på grafikkortet nede — et planbilde på
+  // 2072 × 1708 ganger 2 ville vært over 300 MB i mellomlagre.
+  overSampling: 2, maksPx: 3072,
+  // (3) Fargekurven: ACES, som i film og spillmotorer. Høylys (hvite
+  // brakker, lyse tak) mettes mykt i stedet for å brenne ut. Prøvd mot AgX
+  // (29.09): AgX bleket fargene så den oransje pila ble fersken og ikke
+  // lenger stemte med tegnforklaringen. ACES med eksponering 0,9 holdt
+  // fargene nærmest skjermen.
+  tone: "aces", eksponering: 0.9,
+  // (1) Ambient occlusion: radius og tykkelse i METER (regnes om til
+  // modellens enhet). Prøvd 29.09 med 1,6 / 3 / 5 m: 1,6 m synes nesten ikke
+  // på A3, 5 m ga en lys glorie på bakken rundt hallen. 3 m med styrke 1,8
+  // gir mørke kroker der vegg møter bakke og mellom modulene. Regnes i halv
+  // oppløsning: skyggen er myk uansett, og det sparer tre fjerdedeler av minnet.
+  aoRadiusM: 3, aoTykkelseM: 3, aoSkala: 1.8, aoStyrke: 1.0, aoOpplosning: 0.5,
+  // (2) Konturene i planbildet: kanter skarpere enn 35° får en tynn, halvmørk
+  // strek. Modellen får strek bare opp til en viss størrelse — kantene regnes
+  // ut på maskinen, og på en stor IFC-modell ville det tatt for lang tid.
+  konturVinkel: 35, konturFarge: 0x2a3138, konturStyrke: 0.55, konturMaksTrekanter: 300000,
+  // (5) Himmel og dis i skråbildene
+  himmelTopp: "#c6d7e8", himmelBunn: "#eef2f5", disFarge: 0xe9eef3,
+  glassRefleks: 0.35
+};
+
+// three.js-tilleggene lastes først når det lages en riggplan (dynamisk
+// import): de trengs ikke for å se på modellen. Feiler de, tegnes bildene
+// som i runde 14a (uten AO og fargekurve) — riggplanen skal komme uansett.
+let etter = null;
+async function lastEtterbehandling() {
+  if (etter !== null) return etter;
+  try {
+    const [c, r, g, o] = await Promise.all([
+      import("three/addons/postprocessing/EffectComposer.js"),
+      import("three/addons/postprocessing/RenderPass.js"),
+      import("three/addons/postprocessing/GTAOPass.js"),
+      import("three/addons/postprocessing/OutputPass.js")
+    ]);
+    etter = { EffectComposer: c.EffectComposer, RenderPass: r.RenderPass, GTAOPass: g.GTAOPass, OutputPass: o.OutputPass };
+  } catch (err) {
+    console.warn("Riggplan: etterbehandlingen lastet ikke, bildene tegnes uten:", err && err.message);
+    etter = false;
+  }
+  return etter;
+}
+
+// (5) Himmelen: en loddrett toning bak det som er langt unna. Skråbildene
+// ser 35° ned, så selve horisonten er utenfor bildet — det man ser øverst er
+// der terrenget slutter, og der skal det gli over i dis, ikke i hvitt papir.
+let himmelTekstur = null, speilTekstur = null, kornTekstur = null;
+function himmel() {
+  if (himmelTekstur) return himmelTekstur;
+  const c = document.createElement("canvas"); c.width = 4; c.height = 256;
+  const x = c.getContext("2d");
+  const g = x.createLinearGradient(0, 0, 0, 256);
+  g.addColorStop(0, RIGGPLAN_BILDE.himmelTopp); g.addColorStop(0.6, RIGGPLAN_BILDE.himmelBunn); g.addColorStop(1, RIGGPLAN_BILDE.himmelBunn);
+  x.fillStyle = g; x.fillRect(0, 0, 4, 256);
+  himmelTekstur = new THREE.CanvasTexture(c);
+  himmelTekstur.colorSpace = THREE.SRGBColorSpace;
+  return himmelTekstur;
+}
+// Det vinduene speiler: himmel over, bakke under (et «rundbilde» på 2:1).
+function speil() {
+  if (speilTekstur) return speilTekstur;
+  const c = document.createElement("canvas"); c.width = 64; c.height = 32;
+  const x = c.getContext("2d");
+  const g = x.createLinearGradient(0, 0, 0, 32);
+  g.addColorStop(0, "#8fb3d6"); g.addColorStop(0.48, "#e6eef5"); g.addColorStop(0.52, "#8d8676"); g.addColorStop(1, "#5d574c");
+  x.fillStyle = g; x.fillRect(0, 0, 64, 32);
+  speilTekstur = new THREE.CanvasTexture(c);
+  speilTekstur.mapping = THREE.EquirectangularReflectionMapping;
+  speilTekstur.colorSpace = THREE.SRGBColorSpace;
+  return speilTekstur;
+}
+// Korn på asfalt, grus og flater: små, tilfeldige lyse og mørke flekker som
+// ganges med flatens egen farge (0,82–1,0), så fargen i snitt er den samme.
+// Fast frø: samme riggplan ser lik ut hver gang den lages.
+function korn() {
+  if (kornTekstur) return kornTekstur;
+  const n = 512, c = document.createElement("canvas"); c.width = c.height = n;
+  const x = c.getContext("2d"), img = x.createImageData(n, n);
+  let s = 12345;
+  const tilf = () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
+  for (let i = 0; i < n * n; i++) {
+    const v = Math.round(255 * (0.82 + 0.18 * (0.6 * tilf() + 0.4 * tilf())));
+    img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = v; img.data[i * 4 + 3] = 255;
+  }
+  x.putImageData(img, 0, 0);
+  kornTekstur = new THREE.CanvasTexture(c);
+  kornTekstur.colorSpace = THREE.SRGBColorSpace;
+  kornTekstur.anisotropy = 4;
+  return kornTekstur;
+}
+
+// Byttes ut for ett bilde og settes tilbake: flatene får korn, glasset
+// speiler himmelen, og (i planen) alle kanter får en tynn strek. Materialene
+// i rigg-modell.js er delt mellom objektene, så de ENDRES ikke — hver bit får
+// en kopi, og originalen settes tilbake i ryddingen.
+const GLASS = 0x1f2a33;    // MORK i rigg-modell.js: glass og dørskiller
+function leggPynt(medKontur) {
+  const P = RIGGPLAN_BILDE;
+  const byttet = [], kopier = new Map(), streker = [];
+  const kopi = (m, lag) => {
+    const k = m.uuid + "|" + lag;
+    if (!kopier.has(k)) {
+      const n = m.clone();
+      if (lag === "korn") { n.map = korn(); }
+      else { n.envMap = speil(); n.combine = THREE.MixOperation; n.reflectivity = P.glassRefleks; }
+      n.needsUpdate = true;
+      kopier.set(k, n);
+    }
+    return kopier.get(k);
+  };
+  for (const g of riggGroup.children) {
+    const M = RIGG_TYPER[g.userData.riggType] || {};
+    g.traverse(o => {
+      if (!o.isMesh || o.isSprite || !o.material || Array.isArray(o.material) || !o.material.isMeshLambertMaterial) return;
+      const m = o.material;
+      if (M.flate && !m.map && o.geometry && o.geometry.attributes.uv) { byttet.push([o, m]); o.material = kopi(m, "korn"); }
+      else if (m.color && m.color.getHex() === new THREE.Color(GLASS).getHex()) { byttet.push([o, m]); o.material = kopi(m, "glass"); }
+    });
+  }
+  if (medKontur) {
+    const strekMat = new THREE.LineBasicMaterial({ color: P.konturFarge, transparent: true, opacity: P.konturStyrke, depthWrite: false });
+    const leggStrek = (o) => {
+      const e = new THREE.LineSegments(new THREE.EdgesGeometry(o.geometry, P.konturVinkel), strekMat);
+      e.name = "riggplan-kontur";
+      o.add(e); streker.push(e);
+    };
+    const kanStrekes = (o) => o.isMesh && !o.isSprite && !o.isInstancedMesh && !o.isLineSegments2 && o.visible && o.geometry &&
+      o.geometry.attributes.position && !(o.material && o.material.transparent);
+    // Bare VOLUMER får strek (brakker, containere, bygget). Pilene, gjerdet og
+    // flatene på bakken ble «risete» med strek på hver skjøt i båndet
+    // (prøven 29.09), og flatene har allerede sin mørke kant.
+    for (const g of riggGroup.children) {
+      const M = RIGG_TYPER[g.userData.riggType] || {};
+      if (M.pil || M.gjerde || M.flate) continue;
+      g.traverse(o => { if (kanStrekes(o)) leggStrek(o); });
+    }
+    if (S.modelGroup) {
+      let tr = 0; const kand = [];
+      S.modelGroup.traverse(o => {
+        if (!kanStrekes(o)) return;
+        kand.push(o);
+        tr += (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3;
+      });
+      if (tr <= P.konturMaksTrekanter) kand.forEach(leggStrek);
+    }
+    streker.mat = strekMat;
+  }
+  return () => {
+    for (const [o, m] of byttet) o.material = m;
+    for (const n of kopier.values()) n.dispose();
+    for (const e of streker) { if (e.parent) e.parent.remove(e); e.geometry.dispose(); }
+    if (streker.mat) streker.mat.dispose();
+  };
+}
+
+const TONER = { agx: THREE.AgXToneMapping, aces: THREE.ACESFilmicToneMapping, ingen: THREE.NoToneMapping };
+
+// (1)+(3) Rendring med etterbehandling: scenen → ambient occlusion →
+// fargekurve og sRGB (OutputPass) → et vanlig 8-bits bilde vi kan lese ut.
+// W × H er den STORE størrelsen (med oversampling).
+function renderMedEtterbehandling(E, kam, W, H, skala) {
+  const P = RIGGPLAN_BILDE;
+  const deler = [];
+  const gammelTone = renderer.toneMapping, gammelEks = renderer.toneMappingExposure;
+  try {
+    const rt = new THREE.WebGLRenderTarget(W, H, { type: THREE.HalfFloatType });
+    deler.push(rt);
+    const komp = new E.EffectComposer(renderer, rt);
+    deler.push(komp);
+    komp.setPixelRatio(1);
+    komp.setSize(W, H);
+    komp.renderToScreen = false;
+    komp.addPass(new E.RenderPass(scene, kam));
+    const aoB = Math.max(64, Math.round(W * P.aoOpplosning)), aoH = Math.max(64, Math.round(H * P.aoOpplosning));
+    const ao = new E.GTAOPass(scene, kam, aoB, aoH);
+    // Rettelse av en skrivefeil i three r160 (GTAOPass.js linje 64 setter
+    // «definesPERSPECTIVE_CAMERA» i stedet for defines.PERSPECTIVE_CAMERA).
+    // Uten dette regnes dybden i planbildet — som er ortografisk — som om
+    // kameraet var et perspektiv, og hele bakken ble grå. Vendor-fila er
+    // urørt, så den kan byttes mot en nyere three uten å huske en lapp.
+    const persp = kam.isPerspectiveCamera ? 1 : 0;
+    ao.gtaoMaterial.defines.PERSPECTIVE_CAMERA = persp; ao.gtaoMaterial.needsUpdate = true;
+    ao.depthRenderMaterial.defines.PERSPECTIVE_CAMERA = persp; ao.depthRenderMaterial.needsUpdate = true;
+    ao.updateGtaoMaterial({ radius: P.aoRadiusM / (skala || 1), thickness: P.aoTykkelseM / (skala || 1), distanceExponent: 1, scale: P.aoSkala, samples: 16 });
+    ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 16 });
+    ao.blendIntensity = P.aoStyrke;
+    komp.addPass(ao);
+    deler.push(ao);
+    komp.render();
+    // Fargekurven og sRGB til et 8-bits mål: OutputPass gjør begge i
+    // skyggeleggeren, også når målet ikke er skjermen.
+    renderer.toneMapping = TONER[P.tone] != null ? TONER[P.tone] : THREE.AgXToneMapping;
+    renderer.toneMappingExposure = P.eksponering;
+    const ut = new E.OutputPass();
+    deler.push(ut);
+    const mål = new THREE.WebGLRenderTarget(W, H);
+    deler.push(mål);
+    ut.render(renderer, mål, komp.readBuffer);
+    const px = new Uint8Array(W * H * 4);
+    renderer.readRenderTargetPixels(mål, 0, 0, W, H, px);
+    return px;
+  } finally {
+    renderer.toneMapping = gammelTone; renderer.toneMappingExposure = gammelEks;
+    for (const d of deler) { try { d.dispose(); } catch (_) {} }
+  }
+}
+
+// Uten etterbehandling (tilleggene lastet ikke): som i runde 14a —
+// kantutjevning i målet og sRGB-omregning i JS.
+function renderEnkel(kam, W, H) {
+  const rt = new THREE.WebGLRenderTarget(W, H, { samples: 4 });
+  try {
+    renderer.setRenderTarget(rt);
+    renderer.render(scene, kam);
+    const px = new Uint8Array(W * H * 4);
+    renderer.readRenderTargetPixels(rt, 0, 0, W, H, px);
+    for (let i = 0; i < px.length; i++) if ((i & 3) !== 3) px[i] = SRGB_TABELL[px[i]];
+    return px;
+  } finally { rt.dispose(); }
+}
+
+// Tegner scenen med et hvilket som helst kamera til et bilde (data-URL).
+// oppsett: { skygge (medSkygger), kontur, himmel, taake: [nær, fjern], format }
+function tegnMedKamera(kam, pxB, pxH, oppsett) {
+  const v = oppsett || {};
+  const P = RIGGPLAN_BILDE;
   // Alt som hører skjermen til, skjules for bildet: navnelapper (sprites),
   // skjøteprikker og håndtak. Settes tilbake i finally, uansett hva som skjer.
   const skjult = [];
   scene.traverse(o => {
     if (o.visible && (o.isSprite || o.name === "rigg-skjoter")) { skjult.push(o); o.visible = false; }
   });
-  const gammelBg = scene.background ? scene.background.clone() : null;
+  const gammelBg = scene.background;
   const gammeltRutenett = grid.visible;
   const gammelt = renderer.getRenderTarget();
   const gammelTaake = scene.fog;
-  let rt = null, rydd = null;
+  // (4) Oversampling: størst mulig opp til taket, aldri under 1
+  const maks = Math.min(P.maksPx, (renderer.capabilities && renderer.capabilities.maxTextureSize) || 4096);
+  const ss = Math.max(1, Math.min(P.overSampling, maks / Math.max(pxB, pxH)));
+  const W = Math.round(pxB * ss), H = Math.round(pxH * ss);
+  let rydd = null, ryddPynt = null;
   try {
-    if (scene.background) scene.background.set(0xffffff);
+    scene.background = v.himmel ? himmel() : new THREE.Color(0xffffff);
     grid.visible = false;
-    if (S.outlineOpplosning) S.outlineOpplosning(pxB, pxH);
+    if (S.outlineOpplosning) S.outlineOpplosning(W, H);
     // Går skyggene galt (et gammelt grafikkort), kommer bildet uten dem —
     // riggplanen skal komme uansett.
-    if (skygge) { try { rydd = medSkygger(skygge); } catch (err) { console.warn("Riggplan: uten skygger:", err && err.message); rydd = null; } }
+    if (v.skygge) { try { rydd = medSkygger(v.skygge); } catch (err) { console.warn("Riggplan: uten skygger:", err && err.message); rydd = null; } }
+    try { ryddPynt = leggPynt(!!v.kontur); } catch (err) { console.warn("Riggplan: uten pynt:", err && err.message); ryddPynt = null; }
     // 🌫 Dis i skråbildene: det som er langt unna blir lysere, som i
-    // virkeligheten — gir dybde, og kanten av terrenget glir ut i det hvite.
-    if (skygge && skygge.taake) scene.fog = new THREE.Fog(0xffffff, skygge.taake[0], skygge.taake[1]);
-    // samples: 4 = kantutjevning. Uten den ble gjerder og piler tagget.
-    rt = new THREE.WebGLRenderTarget(pxB, pxH, { samples: 4 });
-    renderer.setRenderTarget(rt);
-    renderer.render(scene, kam);
-    const px = new Uint8Array(pxB * pxH * 4);
-    renderer.readRenderTargetPixels(rt, 0, 0, pxB, pxH, px);
-    // Lineært → sRGB (se SRGB_TABELL): samme farger som på skjermen
-    for (let i = 0; i < px.length; i++) if ((i & 3) !== 3) px[i] = SRGB_TABELL[px[i]];
-    const c = document.createElement("canvas");
-    c.width = pxB; c.height = pxH;
-    const ctx = c.getContext("2d");
-    const img = ctx.createImageData(pxB, pxH);
-    for (let y = 0; y < pxH; y++) img.data.set(px.subarray((pxH - 1 - y) * pxB * 4, (pxH - y) * pxB * 4), y * pxB * 4);
-    ctx.putImageData(img, 0, 0);
-    return c.toDataURL("image/jpeg", 0.9);
+    // virkeligheten — gir dybde, og kanten av terrenget glir ut i disen.
+    if (v.taake) scene.fog = new THREE.Fog(v.himmel ? P.disFarge : 0xffffff, v.taake[0], v.taake[1]);
+    let px = null;
+    if (etter) { try { px = renderMedEtterbehandling(etter, kam, W, H, v.skygge && v.skygge.skala); } catch (err) { console.warn("Riggplan: etterbehandlingen feilet, tegner enkelt:", err && err.message); px = null; } }
+    if (!px) px = renderEnkel(kam, W, H);
+    // Stort bilde (radene snudd: WebGL leser nedenfra) → skalert ned
+    const stor = document.createElement("canvas");
+    stor.width = W; stor.height = H;
+    const sctx = stor.getContext("2d");
+    const img = sctx.createImageData(W, H);
+    for (let y = 0; y < H; y++) img.data.set(px.subarray((H - 1 - y) * W * 4, (H - y) * W * 4), y * W * 4);
+    sctx.putImageData(img, 0, 0);
+    let c = stor;
+    if (W !== pxB || H !== pxH) {
+      c = document.createElement("canvas");
+      c.width = pxB; c.height = pxH;
+      const ctx = c.getContext("2d");
+      ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(stor, 0, 0, pxB, pxH);
+    }
+    return c.toDataURL("image/jpeg", v.kvalitet || 0.92);
   } finally {
     renderer.setRenderTarget(gammelt);
+    if (ryddPynt) ryddPynt();
     if (rydd) rydd();
     scene.fog = gammelTaake;
-    if (rt) rt.dispose();
-    if (gammelBg && scene.background) scene.background.copy(gammelBg);
+    scene.background = gammelBg;
     grid.visible = gammeltRutenett;
     for (const o of skjult) o.visible = true;
   }
 }
 
+// (4) Tettere utsnitt: hvor langt unna kameraet må stå for at alle punktene
+// (hjørnene av riggen) akkurat får plass, med litt luft. Før ble riggen lagt
+// i en sirkel, og en avlang tomt fikk da mye tomt terreng rundt seg — plassen
+// fylte en tredjedel av bildet. Halvering: avstanden er monoton (lenger unna
+// = mindre), så 30 steg gir millimeterpresisjon.
+export const UTSNITT_FYLL = 0.9;          // andel av bildet riggen skal fylle
+function passInn(mål, retning, punkter, fov, aspekt, dMin, dMaks) {
+  const kam = new THREE.PerspectiveCamera(fov, aspekt, 0.01, 1e7);
+  const q = new THREE.Vector3();
+  const storst = (d) => {
+    kam.position.copy(mål).addScaledVector(retning, d);
+    kam.lookAt(mål); kam.updateMatrixWorld(true); kam.updateProjectionMatrix();
+    let m = 0;
+    for (const p of punkter) { q.copy(p).project(kam); if (q.z > 1 || q.z < -1) return Infinity; m = Math.max(m, Math.abs(q.x), Math.abs(q.y)); }
+    return m;
+  };
+  let a = dMin, b = dMaks;
+  for (let i = 0; i < 30; i++) { const m = (a + b) / 2; if (storst(m) > UTSNITT_FYLL) a = m; else b = m; }
+  return b;
+}
+
 // 📷 Fire skrå bilder mot byggeplassen (Emil 25.09: «et bilde fra sør, vest,
 // øst og nord som ser ned over byggeplassen fra en skrå vinkel»). Kameraet
 // står i den himmelretningen bildet heter etter, OVERSIKT_VINKEL grader over
-// bakken, og så langt unna at hele riggen (radius rM meter) får plass.
-function tegnOversikt(base, senter, nord, ost, rM, bunnY, flisB, flisH) {
+// bakken, og så nær at riggen (hjørnene i `punkter`) akkurat får plass.
+function tegnOversikt(base, senter, nord, ost, rM, bunnY, flisB, flisH, punkter) {
   const aspekt = flisB / flisH;
   const pxB = Math.round(flisB * 5), pxH = Math.round(flisH * 5);
-  const avstand = oversiktAvstand(rM, OVERSIKT_FOV, aspekt) / base.skala;
+  const maksAvstand = oversiktAvstand(rM, OVERSIKT_FOV, aspekt) / base.skala;
   const v = OVERSIKT_VINKEL * Math.PI / 180;
   const mål = new THREE.Vector3(senter.x, bunnY, senter.z);
-  const skygge = { senter: mål, radius: rM * 1.2 / base.skala, skala: base.skala, nord, ost, taake: [avstand * 0.7, avstand * 2.6] };
   return OVERSIKTSBILDER.map(b => {
     // retningen kameraet står i, i scenen
     const dx = b.fra.e * ost.x + b.fra.n * nord.x, dz = b.fra.e * ost.z + b.fra.n * nord.z;
+    const retning = new THREE.Vector3(dx * Math.cos(v), Math.sin(v), dz * Math.cos(v)).normalize();
+    const avstand = punkter && punkter.length ? passInn(mål, retning, punkter, OVERSIKT_FOV, aspekt, maksAvstand * 0.05, maksAvstand * 1.5) : maksAvstand;
     const kam = new THREE.PerspectiveCamera(OVERSIKT_FOV, aspekt, avstand / 1000, avstand * 20);
-    kam.position.set(mål.x + dx * avstand * Math.cos(v), mål.y + avstand * Math.sin(v), mål.z + dz * avstand * Math.cos(v));
+    kam.position.copy(mål).addScaledVector(retning, avstand);
     kam.lookAt(mål);
     kam.updateProjectionMatrix();
     kam.updateMatrixWorld(true);
-    return { navn: t(b.navn), data: tegnMedKamera(kam, pxB, pxH, skygge) };
+    const skygge = { senter: mål, radius: rM * 1.2 / base.skala, skala: base.skala, nord, ost };
+    return { navn: t(b.navn), data: tegnMedKamera(kam, pxB, pxH, { skygge, himmel: true, taake: [avstand * 0.8, avstand * 2.8] }) };
   });
 }
 
@@ -290,6 +557,7 @@ export async function lastNedRiggplan(valg) {
   if (loadingEl) loadingEl.classList.add("open");
   try {
     vis(t("Lager riggplan …"));
+    await lastEtterbehandling();
     // Nord: fra terrenget (levende), ellers siste kjente plassering. Uten
     // noen av dem finnes ingen ekte nordretning — da står modellens −Z opp,
     // og arket sier fra.
@@ -397,7 +665,12 @@ export async function lastNedRiggplan(valg) {
     // 📷 Fire skrå oversiktsbilder (side 2), ett fra hver himmelretning.
     vis(t("Tegner oversiktsbilder …"));
     const { flisB, flisH } = side2Fliser();
-    const oversikt = tegnOversikt(base, senter, nord, ost, Math.max(maxE - minE, maxN - minN) / 2 + marg, bunnY, flisB, flisH);
+    // Hjørnene av riggen (øst/nord-boksen, bunn og topp) — utsnittet legges
+    // rundt dem, ikke rundt en sirkel
+    const punkter = [];
+    for (const e of [minE, maxE]) for (const n of [minN, maxN]) for (const y of [bunnY, toppY])
+      punkter.push(new THREE.Vector3(base.c.x + (e * ost.x + n * nord.x) / base.skala, y, base.c.z + (e * ost.z + n * nord.z) / base.skala));
+    const oversikt = tegnOversikt(base, senter, nord, ost, Math.max(maxE - minE, maxN - minN) / 2 + marg, bunnY, flisB, flisH, punkter);
 
     const logo = await finnLogo();
     vis(t("Henter PDF-biblioteket …"));
