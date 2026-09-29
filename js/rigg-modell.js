@@ -734,6 +734,9 @@ const BYGG = {
   // porter er gule med skråstag. Rørene er innenfor panelets L × H.
   gjerde(g, o, hoyder, opts) {
     const gm = opts && opts.mark, H = o.H, mark = gm && gm.id === o.id ? gm.stykker : null;
+    // 🚪 I port-steget (runde 15a) lyser panelet under pekeren lysegrønt, så man
+    // ser HVOR man trykker før man trykker. Valgte er mørkegrønne som før.
+    const over = gm && gm.id === o.id && gm.over != null ? gm.over : null;
     const enkel = !!(opts && opts.enkel), r = 0.021;
     const hv = (k) => (hoyder && hoyder[k]) || 0;
     // Et rør mellom to punkter i panelets plan (x, y); boks på telefonen.
@@ -745,7 +748,7 @@ const BYGG = {
       return m;
     };
     for (const st of gjerdeStykker(o)) {
-      const farge = mark && mark.has(st.i) ? "#2e7d32" : st.forLang ? "#e53935" : st.port ? "#f2b705" : o.farge;
+      const farge = mark && mark.has(st.i) ? "#2e7d32" : over === st.i ? "#81c784" : st.forLang ? "#e53935" : st.port ? "#f2b705" : o.farge;
       const dx = st.b.x - st.a.x, dz = st.b.z - st.a.z, l = Math.max(0.05, st.l);
       const panel = new THREE.Group();
       panel.position.set((st.a.x + st.b.x) / 2, (hv(st.i) + hv(st.j)) / 2, (st.a.z + st.b.z) / 2);
@@ -1045,14 +1048,20 @@ function nettingMat(farge) {
 // ser på den. Her blandes hver bits EGEN farge med blått i stedet, med en svak
 // glød: objektet er tydelig valgt, og detaljene synes fortsatt.
 const RIGG_SEL = new THREE.Color(0x3b82f6), RIGG_SEL_GLOD = new THREE.Color(0x0b2a66), RIGG_SEL_ANDEL = 0.45;
-export function riggValgEffekt(g, paa) {
+// ➜ Pilene (Emil 29.09, runde 15a: «pilene får ikke den mørkeblå markeringen»)
+// har ingen detaljer som kan forsvinne — et flatt bånd i én farge. Med 45 %
+// blått ble en oransje pil brunlilla og en grønn pil blågrønn: det så ut som en
+// annen farge, ikke som «valgt». Derfor blandes pilene mye sterkere.
+export const RIGG_SEL_ANDEL_PIL = 0.8;
+export function riggValgEffekt(g, paa, andel) {
+  const a = andel == null ? RIGG_SEL_ANDEL : andel;
   g.traverse(m => {
     if (m.isSprite || !m.isMesh || !m.material) return;
     if (paa) {
       if (!m.userData.matOrig) m.userData.matOrig = m.material;
       if (!m.userData.matSel) {
         const s = m.userData.matOrig.clone();
-        if (s.color) s.color.lerp(RIGG_SEL, RIGG_SEL_ANDEL);
+        if (s.color) s.color.lerp(RIGG_SEL, a);
         if (s.emissive) s.emissive.copy(RIGG_SEL_GLOD);
         m.userData.matSel = s;
       }

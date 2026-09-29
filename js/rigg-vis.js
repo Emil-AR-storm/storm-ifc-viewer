@@ -20,9 +20,9 @@ import { $, S, esc, ikon, registrerEkstraGruppe } from "./state.js";
 import { t } from "./i18n.js";
 import { LETT } from "./lett.js";
 import { LAPP_MAKS_M, LAPP_MIN_PX, camera, flyTil, frameHooks, grid, lappStorrelse, makeLabel, renderer, scene, skalerLapperMedTak } from "./scene.js";
-import { byggModell, riggValgEffekt, toneFarge } from "./rigg-modell.js";
+import { RIGG_SEL_ANDEL_PIL, byggModell, riggValgEffekt, toneFarge } from "./rigg-modell.js";
 import {
-  AVFALLSTYPER, avfallstype, GJERDE_DELER, P_PLASS_B, P_PLASS_D, RIGG_REKKEFOLGE, RIGG_TYPER, erPil, gjerdeStykker, parkeringsPlasser, lokalTilEN, riggAntall, riggFraByggeplass, riggForByggeplassFra, riggMengdeRader,
+  AVFALLSTYPER, avfallstype, GJERDE_DELER, P_PLASS_B, P_PLASS_D, RIGG_REKKEFOLGE, RIGG_TYPER, erPil, gjerdeLappPunkt, gjerdeStykker, parkeringsPlasser, lokalTilEN, riggAntall, riggFraByggeplass, riggForByggeplassFra, riggMengdeRader,
   riggFotavtrykk, riggObjekter, riggRef, riggTilBygg, tilUtm, vaskRef, REF_ID
 } from "./rigg-regn.js";
 
@@ -192,10 +192,11 @@ export function leggRiggIMengder(groups, rows) {
 export { toneFarge };
 
 // Hvilket gjerde og hvilke paneler som er valgt til port (rigg.js setter det).
-const gjerdeMark = { id: null, stykker: new Set() };
-export function settGjerdeMarkering(id, stykker) {
+const gjerdeMark = { id: null, stykker: new Set(), over: null };
+export function settGjerdeMarkering(id, stykker, over) {
   gjerdeMark.id = id || null;
   gjerdeMark.stykker = new Set(stykker || []);
+  gjerdeMark.over = over == null ? null : over;
 }
 
 // Høyden på det ferdige objektet (til navnelappen): brakken i etasjer.
@@ -241,11 +242,15 @@ export function byggRiggObjekt(o, skala, hoyder) {
   lapp.userData.aspect = lapp.scale.x / lapp.scale.y;
   lapp.position.y = (riggTotalHoyde(o) + 0.8) * s;
   if (o.punkter) {
-    // gjerdets lapp står midt i ringen, over det høyeste punktet
-    const cx = o.punkter.reduce((a, q) => a + q.x, 0) / o.punkter.length;
-    const cz = o.punkter.reduce((a, q) => a + q.z, 0) / o.punkter.length;
+    // 🏷 Gjerdets lapp står PÅ gjerdet (runde 15a): midt på den lengste siden,
+    // den sørligste ved likhet — regelen står i gjerdeLappPunkt (rigg-regn.js).
+    // Står det bare én skjøt (en kladd), faller den tilbake til midtpunktet.
+    const pk = gjerdeLappPunkt(o) || {
+      x: o.punkter.reduce((a, q) => a + q.x, 0) / o.punkter.length,
+      z: o.punkter.reduce((a, q) => a + q.z, 0) / o.punkter.length
+    };
     const hm = Math.max(0, ...(hoyder || [0]));
-    lapp.position.set(cx * s, (o.H + hm + 0.8) * s, cz * s);
+    lapp.position.set(pk.x * s, (o.H + hm + 0.8) * s, pk.z * s);
   }
   ytre.add(lapp);
   ytre.userData.hoyder = hoyder || null;
@@ -376,11 +381,14 @@ function likRefSmaa(a, b) {
 // 🚧 Gjerdet males IKKE blått når det er valgt: da ville det skjult det som
 // betyr noe på gjerdet — røde paneler (for lange), grønne (valgt til port) og
 // gule porter. Valget vises med skjøtene (prikkene) i stedet.
+// ➜ Pilene males blått som alt annet (runde 15a) — de har ingen panelfarger å
+// skjule — men sterkere, se RIGG_SEL_ANDEL_PIL.
 // Selve fargingen (riggValgEffekt) bor i rigg-modell.js, så testen kan
 // sjekke den med ekte three.
 function valgEffekt(g, paa) {
-  const utenMaling = g.userData.riggType === "gjerde" || (RIGG_TYPER[g.userData.riggType] || {}).pil;
-  riggValgEffekt(g, paa && !utenMaling);
+  const type = g.userData.riggType;
+  const pil = !!(RIGG_TYPER[type] || {}).pil;
+  riggValgEffekt(g, paa && type !== "gjerde", pil ? RIGG_SEL_ANDEL_PIL : undefined);
 }
 
 export function oppdaterRiggValgEffekt() {
