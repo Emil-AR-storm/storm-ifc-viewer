@@ -178,7 +178,9 @@ function skiltMat(nokkel) {
       c.width = 512; c.height = tekst ? 146 : 512;
       const x = c.getContext("2d");
       if (x && typeof x.fillRect === "function") {
-        if (tekst) tegnTekstskilt(x, c.width, c.height, tekst); else tegnVaskebil(x, c.width);
+        if (tekst) tegnTekstskilt(x, c.width, c.height, tekst);
+        else if (nokkel === "P") tegnParkering(x, c.width);
+        else tegnVaskebil(x, c.width);
         const tex = new THREE.CanvasTexture(c);
         if (THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
         tex.anisotropy = 4;
@@ -207,6 +209,15 @@ function tegnTekstskilt(x, b, h, tekst) {
   while (px > 30 && x.measureText && x.measureText(tekst).width > b - 50) { px -= 4; x.font = "bold " + px + "px Arial, Helvetica, sans-serif"; }
   x.fillText(tekst, b / 2, h / 2 + 4);
 }
+// Parkeringsskiltet (som skilt 552 «Parkering»): hvit P på blått, hvit kant.
+function tegnParkering(x, s) {
+  x.fillStyle = "#1f5fbf"; x.fillRect(0, 0, s, s);
+  x.strokeStyle = "#ffffff"; x.lineWidth = s * 0.03; x.strokeRect(s * 0.04, s * 0.04, s * 0.92, s * 0.92);
+  x.fillStyle = "#ffffff"; x.textAlign = "center"; x.textBaseline = "middle";
+  x.font = "bold " + Math.round(s * 0.72) + "px Arial, Helvetica, sans-serif";
+  x.fillText("P", s / 2, s * 0.54);
+}
+
 // Betongbil sett fra siden (førerhus til høyre, trommel på skrå), en
 // spyleslange oppe til venstre og vannstråler mot trommelen. Hvitt på blått,
 // som et informasjonsskilt.
@@ -492,83 +503,115 @@ const BYGG = {
     if (tilY - fraY > 0.05) for (const sd of [1, -1]) leggLogo(g, opts.logo, L * 0.7, tilY - fraY, 0, (fraY + tilY) / 2, sd * zf, sd > 0 ? "z" : "-z");
   },
 
-  // 🚧 Byggegjerde: nettingpanel i stålrør mellom hver skjøt, fot og klemme
-  // i skjøten (Emils bilder 2 og 3). For lange paneler er RØDE (varsel), valgte
-  // er GRØNNE (som på skissen), porter er gule med skråstag.
+  // 🚧 Byggegjerde (stil C, runde 12): nettingpanel i runde stålrør mellom
+  // hver skjøt, betongfot og klemme i skjøten (Emils bilder 2 og 3).
+  // Nettingen er et gjennomsiktig RUTEMØNSTER (tekstur fra lerret) i stedet
+  // for en halvgjennomsiktig plate: man ser gjennom den, som i virkeligheten.
+  // For lange paneler er RØDE (varsel), valgte er GRØNNE (som på skissen),
+  // porter er gule med skråstag. Rørene er innenfor panelets L × H.
   gjerde(g, o, hoyder, opts) {
     const gm = opts && opts.mark, H = o.H, mark = gm && gm.id === o.id ? gm.stykker : null;
+    const enkel = !!(opts && opts.enkel), r = 0.021;
     const hv = (k) => (hoyder && hoyder[k]) || 0;
+    // Et rør mellom to punkter i panelets plan (x, y); boks på telefonen.
+    const ror = (panel, farge, x1, y1, x2, y2, rr) => {
+      const l = Math.hypot(x2 - x1, y2 - y1), rad = rr || r;
+      const m = enkel ? boks(panel, 2 * rad, l, 2 * rad, farge, 0, 0, 0) : sylinder(panel, rad, l, farge, 0, 0, 0, null, 8);
+      m.position.set((x1 + x2) / 2, (y1 + y2) / 2, 0);
+      m.rotation.z = -Math.atan2(x2 - x1, y2 - y1);
+      return m;
+    };
     for (const st of gjerdeStykker(o)) {
       const farge = mark && mark.has(st.i) ? "#2e7d32" : st.forLang ? "#e53935" : st.port ? "#f2b705" : o.farge;
       const dx = st.b.x - st.a.x, dz = st.b.z - st.a.z, l = Math.max(0.05, st.l);
       const panel = new THREE.Group();
       panel.position.set((st.a.x + st.b.x) / 2, (hv(st.i) + hv(st.j)) / 2, (st.a.z + st.b.z) / 2);
       panel.rotation.y = Math.atan2(-dz, dx);
-      const rammer = [
-        boks(panel, l, 0.045, 0.045, farge, 0, H - 0.02, 0),
-        boks(panel, l, 0.045, 0.045, farge, 0, 0.12, 0),
-        boks(panel, 0.045, H - 0.1, 0.045, farge, -l / 2 + 0.03, H / 2 + 0.05, 0),
-        boks(panel, 0.045, H - 0.1, 0.045, farge, l / 2 - 0.03, H / 2 + 0.05, 0)
+      const x0 = -l / 2 + 0.03, x1 = l / 2 - 0.03, yb = 0.12, yt = H - r;
+      const deler = [
+        ror(panel, farge, x0, yt, x1, yt), ror(panel, farge, x0, yb, x1, yb),
+        ror(panel, farge, x0, 0.02, x0, yt), ror(panel, farge, x1, 0.02, x1, yt)
       ];
-      const netting = new THREE.Mesh(new THREE.BoxGeometry(l, H - 0.16, 0.01), nettingMat(farge));
-      netting.position.set(0, H / 2 + 0.05, 0);
+      // nettingen: rutene er 10 × 20 cm uansett panelets størrelse (uv-ene
+      // skaleres, så teksturen kan deles av alle panelene)
+      const nh = yt - yb, ng = new THREE.PlaneGeometry(x1 - x0, nh);
+      const uv = ng.attributes.uv;
+      for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * (x1 - x0) / 0.1, uv.getY(i) * nh / 0.2);
+      const netting = new THREE.Mesh(ng, nettingMat(farge));
+      netting.position.set(0, (yb + yt) / 2, 0);
       panel.add(netting);
-      rammer.push(netting);
+      deler.push(netting);
       if (st.port) {
-        // skråstaget som gjør porten til en port, og en midtstolpe (to fløyer)
-        const diag = Math.hypot(l / 2, H - 0.2);
-        for (const side of [-1, 1]) {
-          const d = boks(panel, 0.04, diag, 0.04, farge, side * l / 4, H / 2 + 0.05, 0);
-          d.rotation.z = side * Math.atan2(l / 2, H - 0.2);
-          rammer.push(d);
-        }
-        rammer.push(boks(panel, 0.05, H - 0.1, 0.05, farge, 0, H / 2 + 0.05, 0));
+        // skråstagene som gjør porten til en port, og en midtstolpe (to fløyer)
+        deler.push(ror(panel, farge, x0, yb, 0, yt), ror(panel, farge, 0, yb, x1, yt), ror(panel, farge, 0, yb, 0, yt, r * 1.2));
       }
-      for (const m of rammer) m.userData.stykke = st.i;
+      for (const m of deler) m.userData.stykke = st.i;
       g.add(panel);
     }
-    // føttene og klemmene, én per skjøt
+    // føttene (betongklosser med fas) og klemmene, én per skjøt
     o.punkter.forEach((q, k) => {
-      const fot = boks(g, o.B, 0.15, 0.22, "#9e9e9e", q.x, hv(k) + 0.075, q.z);
+      const fot = boks(g, o.B, 0.15, 0.22, "#a7a39b", q.x, hv(k) + 0.075, q.z, { r: enkel ? 0 : 0.025 });
       const neste = o.punkter[(k + 1) % o.punkter.length];
       fot.rotation.y = Math.atan2(-(neste.z - q.z), neste.x - q.x);
-      boks(g, 0.08, 0.12, 0.08, "#37474f", q.x, hv(k) + H * 0.55, q.z);
+      for (const y of enkel ? [H * 0.55] : [H * 0.3, H * 0.75]) sylinder(g, 0.035, 0.1, "#37474f", q.x, hv(k) + y, q.z, null, 8);
     });
   },
 
   // ➜ Piler for trafikkflyt: et flatt bånd på bakken med pilhode i enden.
   // Kjøretøy er heltrukket, gående stiplet — de skal kunne skilles også uten
   // farge (utskrift av riggplanen i svart-hvitt).
-  pilKjoretoy(g, o, hoyder) { byggPil(g, o, hoyder); },
-  pilGaende(g, o, hoyder) { byggPil(g, o, hoyder); },
+  pilKjoretoy(g, o, hoyder, opts) { byggPil(g, o, hoyder, opts); },
+  pilGaende(g, o, hoyder, opts) { byggPil(g, o, hoyder, opts); },
 
-  // 🅿 Parkeringsområde: asfalt, hvite oppmerkingsstreker mellom plassene og
-  // et blått P-skilt i hjørnet. Plassene regnes ut av målene
+  // 🅿 Parkeringsområde (stil C, runde 12): asfalt med kantstein rundt,
+  // malte hvite oppmerkingsstreker (flate, ikke klosser) og et blått P-skilt
+  // (lerret, som vaskeplass-skiltet) i hjørnet. Plassene regnes ut av målene
   // (parkeringsPlasser i rigg-regn.js) — to rader med kjørebane i midten når
-  // området er dypt nok.
-  parkering(g, o) {
-    const { L, B, H } = o, asfalt = 0.04, loft = asfalt + 0.006;
-    boks(g, L, asfalt, B, o.farge, 0, asfalt / 2, 0);
+  // området er dypt nok. Alt innenfor L × B; H er skiltets høyde.
+  parkering(g, o, _h, opts) {
+    const { L, B, H } = o, enkel = !!opts.enkel, asfalt = 0.04, loft = asfalt + 0.001;
+    const ks = Math.min(0.15, Math.min(L, B) * 0.03);        // kantsteinen
+    boks(g, L - 2 * ks, asfalt, B - 2 * ks, o.farge, 0, asfalt / 2, 0);
+    if (ks > 0.02) {
+      const kf = "#c4c1b8", kh = asfalt + 0.08;
+      boks(g, L, kh, ks, kf, 0, kh / 2, -B / 2 + ks / 2);
+      boks(g, L, kh, ks, kf, 0, kh / 2, B / 2 - ks / 2);
+      boks(g, ks, kh, B - 2 * ks, kf, -L / 2 + ks / 2, kh / 2, 0);
+      boks(g, ks, kh, B - 2 * ks, kf, L / 2 - ks / 2, kh / 2, 0);
+    }
     const pl = parkeringsPlasser(L, B);
     const start = -L / 2 + (L - pl.perRad * P_PLASS_B) / 2;
     const radZ = pl.rader === 2 ? [-B / 2 + P_PLASS_D / 2, B / 2 - P_PLASS_D / 2] : pl.rader === 1 ? [-B / 2 + P_PLASS_D / 2] : [];
     for (const z of radZ) {
+      // Strekene holdes innenfor kantsteinen: fyller plassene hele lengden,
+      // ville ytterstrekene ellers ligge oppå (og utenfor) kanten
+      const xMaks = L / 2 - ks - 0.06;
       for (let i = 0; i <= pl.perRad; i++)
-        boks(g, 0.12, 0.012, P_PLASS_D - 0.2, HVIT, start + i * P_PLASS_B, loft, z);
+        flat(g, 0.12, P_PLASS_D - 0.2, HVIT, Math.max(-xMaks, Math.min(xMaks, start + i * P_PLASS_B)), loft, z, "y");
       // bakkant av raden
-      boks(g, pl.perRad * P_PLASS_B, 0.012, 0.12, HVIT, start + pl.perRad * P_PLASS_B / 2, loft, z < 0 ? -B / 2 + 0.15 : B / 2 - 0.15);
+      flat(g, Math.min(pl.perRad * P_PLASS_B, 2 * xMaks + 0.12), 0.12, HVIT, start + pl.perRad * P_PLASS_B / 2, loft, z < 0 ? -B / 2 + ks + 0.15 : B / 2 - ks - 0.15, "y");
     }
-    // P-skiltet: stolpe og blått skilt med hvit P (fire staver, ingen tekstur)
-    const sx = L / 2 - 0.5, sz = -B / 2 + 0.5, side = 0.6, topp = Math.max(1.2, H);
+    // P-skiltet: stolpe og blått skilt med hvit P, lesbart fra begge sider
+    const sx = L / 2 - ks - 0.4, sz = -B / 2 + ks + 0.4, side = 0.6, topp = Math.max(1.2, H);
     boks(g, 0.08, topp, 0.08, "#9e9e9e", sx, topp / 2, sz);
-    for (const r of [1, -1]) {
-      const zf = sz + r * 0.03;
-      boks(g, side, side, 0.02, "#1f5fbf", sx, topp - side / 2, sz);
-      const y0 = topp - side / 2, st = side * 0.13, hs = side * 0.62;
-      boks(g, st, hs, 0.01, HVIT, sx - side * 0.15, y0, zf + r * 0.006);                     // stammen
-      boks(g, side * 0.32, st, 0.01, HVIT, sx - side * 0.02, y0 + hs / 2 - st / 2, zf + r * 0.006);   // toppen av bøyen
-      boks(g, side * 0.32, st, 0.01, HVIT, sx - side * 0.02, y0 + st / 2 - hs * 0.02, zf + r * 0.006); // bunnen av bøyen
-      boks(g, st, hs * 0.45, 0.01, HVIT, sx + side * 0.13, y0 + hs * 0.24, zf + r * 0.006);   // bøyens høyre side
+    boks(g, side, side, 0.03, "#1f5fbf", sx, topp - side / 2, sz + 0.055, { r: enkel ? 0 : 0.008 });
+    if (skiltMat("P")) {
+      for (const r of [1, -1]) {
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(side, side), skiltMat("P"));
+        m.position.set(sx, topp - side / 2, sz + 0.055 + r * 0.0151);
+        if (r < 0) m.rotation.y = Math.PI;
+        m.userData.egen = true;
+        g.add(m);
+      }
+    } else {
+      // uten lerret: P-en av fire staver, som før
+      for (const r of [1, -1]) {
+        const zf = sz + 0.055 + r * 0.016, y0 = topp - side / 2, st = side * 0.13, hs = side * 0.62, n = r > 0 ? "z" : "-z";
+        flat(g, st, hs, HVIT, sx - side * 0.15, y0, zf, n);
+        flat(g, side * 0.32, st, HVIT, sx - side * 0.02, y0 + hs / 2 - st / 2, zf, n);
+        flat(g, side * 0.32, st, HVIT, sx - side * 0.02, y0 + st / 2 - hs * 0.02, zf, n);
+        flat(g, st, hs * 0.45, HVIT, sx + side * 0.13, y0 + hs * 0.24, zf, n);
+      }
     }
   },
 
@@ -654,9 +697,14 @@ const BYGG = {
 // Pilens mål: tykkelse, hodets lengde og bredde (i forhold til båndet) og
 // stiplene for gående. Løftet litt over bakken så båndet ikke flimrer i
 // terrenget (z-fighting).
-const PIL_TYKK = 0.06, PIL_LOFT = 0.08, PIL_STIPPEL = 1.0, PIL_MELLOM = 0.6;
-function byggPil(g, o, hoyder) {
-  const B = o.B, hodeL = Math.max(1.5, B * 2.5), hodeB = B * 2.8;
+const PIL_TYKK = 0.06, PIL_LOFT = 0.08, PIL_STIPPEL = 1.0, PIL_MELLOM = 0.6, PIL_KANT = 0.06;
+// Stil C (runde 12): skarpere hode (lengre og smalere) og en tynn MØRK KANT
+// rundt båndet og hodet — pila skiller seg fra bakken både i 3D og på den
+// svart-hvite riggplanen. Kanten er et litt bredere bånd 1 cm lavere, så de
+// to flatene aldri ligger i samme plan (flimmer).
+function byggPil(g, o, hoyder, opts) {
+  const B = o.B, hodeL = Math.max(1.8, B * 3), hodeB = B * 2.4, enkel = !!(opts && opts.enkel);
+  const kantFarge = toneFarge(o.farge, 0.45), kK = enkel ? 0 : PIL_KANT;
   const st = gjerdeStykker(o);
   const stiplet = !!(RIGG_TYPER[o.type] && RIGG_TYPER[o.type].stiplet);
   const hv = (k) => (hoyder && hoyder[k]) || 0;
@@ -673,9 +721,13 @@ function byggPil(g, o, hoyder) {
     const bit = (fra, til) => {
       const m = (fra + til) / 2, len = til - fra;
       if (len <= 1e-3) return;
-      const b = boks(g, len, PIL_TYKK, B, o.farge, s.a.x + ux * m, y0 + (y1 - y0) * (m / l) + PIL_LOFT, s.a.z + uz * m);
-      b.rotation.y = vinkel;
-      b.userData.stykke = s.i;
+      const y = y0 + (y1 - y0) * (m / l) + PIL_LOFT, x = s.a.x + ux * m, z = s.a.z + uz * m;
+      const b = boks(g, len, PIL_TYKK, B, o.farge, x, y, z);
+      b.rotation.y = vinkel; b.userData.stykke = s.i;
+      if (kK) {
+        const k = boks(g, len + 2 * kK, PIL_TYKK, B + 2 * kK, kantFarge, x, y - 0.01, z);
+        k.rotation.y = vinkel; k.userData.stykke = s.i;
+      }
     };
     if (stiplet) {
       for (let t = 0; t < brukL; t += PIL_STIPPEL + PIL_MELLOM) bit(t, Math.min(brukL, t + PIL_STIPPEL));
@@ -684,32 +736,58 @@ function byggPil(g, o, hoyder) {
     if (!siste && !stiplet) {
       const r = sylinder(g, B / 2, PIL_TYKK, o.farge, s.b.x, y1 + PIL_LOFT, s.b.z);
       r.userData.stykke = s.i;
+      if (kK) { const rk = sylinder(g, B / 2 + kK, PIL_TYKK, kantFarge, s.b.x, y1 + PIL_LOFT - 0.01, s.b.z); rk.userData.stykke = s.i; }
     }
     if (siste) {
-      const form = new THREE.Shape();
-      form.moveTo(0, -hodeB / 2); form.lineTo(hodeL, 0); form.lineTo(0, hodeB / 2); form.lineTo(0, -hodeB / 2);
-      const hode = new THREE.Mesh(new THREE.ExtrudeGeometry(form, { depth: PIL_TYKK, bevelEnabled: false }), mat(o.farge));
-      // Formen ligger i xy; lagt ned i xz med spissen langs stykket
-      const holder = new THREE.Group();
-      hode.rotation.x = -Math.PI / 2;
-      hode.position.y = -PIL_TYKK / 2;
-      holder.add(hode);
-      holder.position.set(s.a.x + ux * brukL, y1 + PIL_LOFT, s.a.z + uz * brukL);
-      holder.rotation.y = vinkel;
-      hode.userData.stykke = s.i;
-      g.add(holder);
+      const hode = (L, Bh, farge, bak, dy) => {
+        const form = new THREE.Shape();
+        form.moveTo(-bak, -Bh / 2); form.lineTo(L, 0); form.lineTo(-bak, Bh / 2); form.lineTo(-bak, -Bh / 2);
+        const m = new THREE.Mesh(new THREE.ExtrudeGeometry(form, { depth: PIL_TYKK, bevelEnabled: false }), mat(farge));
+        // Formen ligger i xy; lagt ned i xz med spissen langs stykket
+        const holder = new THREE.Group();
+        m.rotation.x = -Math.PI / 2;
+        m.position.y = -PIL_TYKK / 2 + dy;
+        m.userData.stykke = s.i;
+        holder.add(m);
+        holder.position.set(s.a.x + ux * brukL, y1 + PIL_LOFT, s.a.z + uz * brukL);
+        holder.rotation.y = vinkel;
+        g.add(holder);
+      };
+      hode(hodeL, hodeB, o.farge, 0, 0);
+      // kanten rundt hodet: samme spiss (så pila ikke blir lengre enn
+      // sluttpunktet), litt bredere og litt lenger bak
+      if (kK) hode(hodeL, hodeB + 2 * kK * 2.2, kantFarge, kK, -0.01);
     }
   });
 }
 
-// Nettingen er halvgjennomsiktig: gjerdet skal ikke skjule det som står bak.
+// Nettingen: et RUTEMØNSTER tegnet på et lerret (tråder, gjennomsiktig
+// mellom), gjentatt over panelet. Én tekstur per farge, delt av alle
+// panelene. Uten lerret (Node-testene): halvgjennomsiktig plate, som før.
 const nettCache = new Map();
 function nettingMat(farge) {
   let m = nettCache.get(farge);
-  if (!m) {
-    m = new THREE.MeshLambertMaterial({ color: farge, transparent: true, opacity: 0.28, depthWrite: false, side: THREE.DoubleSide });
-    nettCache.set(farge, m);
-  }
+  if (m) return m;
+  let tex = null;
+  try {
+    if (typeof document !== "undefined" && THREE.CanvasTexture) {
+      const c = document.createElement("canvas"); c.width = 64; c.height = 64;
+      const x = c.getContext("2d");
+      if (x && typeof x.fillRect === "function") {
+        x.clearRect(0, 0, 64, 64);
+        x.fillStyle = farge;
+        x.fillRect(0, 0, 64, 7); x.fillRect(0, 0, 7, 64);       // én rute: tråd oppe og til venstre
+        tex = new THREE.CanvasTexture(c);
+        tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+        tex.anisotropy = 4;
+        if (THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
+      }
+    }
+  } catch (_) { tex = null; }
+  m = tex
+    ? new THREE.MeshLambertMaterial({ map: tex, transparent: true, alphaTest: 0.25, side: THREE.DoubleSide, depthWrite: true })
+    : new THREE.MeshLambertMaterial({ color: farge, transparent: true, opacity: 0.28, depthWrite: false, side: THREE.DoubleSide });
+  nettCache.set(farge, m);
   return m;
 }
 
@@ -749,21 +827,28 @@ function slaaSammen(g) {
   try {
     g.updateMatrixWorld(true);
     const inv = new THREE.Matrix4().copy(g.matrixWorld).invert();
+    // Nøkkelen er materialet OG stykket: gjerdet og pilene slås sammen per
+    // panel/stykke, så rigg.js fortsatt vet hvilket panel man klikket på
+    // (userData.stykke står på den sammenslåtte meshen).
     const grupper = new Map();
     g.traverse(c => {
       if (!c.isMesh || c.userData.egen || !c.material || !c.geometry || !c.geometry.attributes || !c.geometry.attributes.position) return;
-      if (!grupper.has(c.material)) grupper.set(c.material, []);
-      grupper.get(c.material).push(c);
+      const k = c.material.uuid + "|" + (c.userData.stykke != null ? c.userData.stykke : "");
+      if (!grupper.has(k)) grupper.set(k, []);
+      grupper.get(k).push(c);
     });
-    for (const [materiale, liste] of grupper) {
+    for (const liste of grupper.values()) {
       if (liste.length < 2) continue;
-      const pos = [], nor = [];
+      const materiale = liste[0].material, stykke = liste[0].userData.stykke;
+      const pos = [], nor = [], uv = [];
+      let medUv = true;
       for (const c of liste) {
         let geo = c.geometry.index ? c.geometry.toNonIndexed() : c.geometry.clone();
         geo.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, c.matrixWorld));
         if (!geo.attributes.normal) geo.computeVertexNormals();
         pos.push(geo.attributes.position.array);
         nor.push(geo.attributes.normal.array);
+        if (geo.attributes.uv) uv.push(geo.attributes.uv.array); else medUv = false;
         geo.dispose();
       }
       const slaa = (deler) => {
@@ -775,12 +860,17 @@ function slaaSammen(g) {
       const geo = new THREE.BufferGeometry();
       geo.setAttribute("position", new THREE.BufferAttribute(slaa(pos), 3));
       geo.setAttribute("normal", new THREE.BufferAttribute(slaa(nor), 3));
+      // Teksturen (nettingen) trenger uv — tas med når alle bitene har det
+      if (medUv) geo.setAttribute("uv", new THREE.BufferAttribute(slaa(uv), 2));
       geo.computeBoundingSphere();
       for (const c of liste) { c.parent.remove(c); c.geometry.dispose(); }
-      g.add(new THREE.Mesh(geo, materiale));
+      const m = new THREE.Mesh(geo, materiale);
+      if (stykke != null) m.userData.stykke = stykke;
+      g.add(m);
     }
-    // Tomme grupper (mBokstav) etter sammenslåingen
-    g.children.slice().forEach(c => { if (c.isGroup && !c.children.length) g.remove(c); });
+    // Tomme grupper (mBokstav, panelene) etter sammenslåingen
+    const rydd = (gr) => gr.children.slice().forEach(c => { if (c.isGroup) { rydd(c); if (!c.children.length) gr.remove(c); } });
+    rydd(g);
   } catch (err) {
     console.warn("Rigg: sammenslåingen feilet, bitene står som de var:", err && err.message);
   }
@@ -790,13 +880,14 @@ function slaaSammen(g) {
 //   enkel — byggeplass-siden (uten småbitene)
 //   logo  — { data, b, h }: firmalogoen på brakkene (ingen → ingen logo)
 //   mark  — { id, stykker }: gjerdepanelene som er valgt til port
-// Gjerdet og pilene slås IKKE sammen: bitene deres bærer `userData.stykke`,
-// som rigg.js bruker til å finne panelet eller stykket man klikket på.
+// Gjerdet og pilene slås sammen PER PANEL/STYKKE (runde 12): bitene bærer
+// `userData.stykke`, som rigg.js bruker til å finne panelet eller stykket man
+// klikket på, og sammenslåingen tar det med.
 export function byggModell(g, o, hoyder, opts) {
   const f = BYGG[o.type];
   if (!f) return;
   f(g, o, hoyder, opts || {});
-  if (!o.punkter) slaaSammen(g);
+  slaaSammen(g);
 }
 
 // Til testen: hvilke typer som har en byggefunksjon.
