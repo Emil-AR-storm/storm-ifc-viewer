@@ -23,19 +23,19 @@
 // senere). De er IKKE UI-farger, derfor ikke CSS-variabler.
 export const RIGG_TYPER = {
   brakke: {
-    label: "Brakkerigg", L: 6.0, B: 2.4, H: 2.6, farge: "#dfe3e8",
+    label: "Brakkerigg", L: 6.0, B: 2.4, H: 2.6, farge: "#dfe3e8", logo: true,
     // En brakkerigg er moduler: side om side (moduler) og oppå hverandre
     // (etasjer, 1–3). Antallet er det man bestiller, så det telles i Mengder.
     moduler: true
   },
-  hjulbrakke: { label: "Hjulbrakke", L: 5.0, B: 2.3, H: 2.6, farge: "#e8e2cf" },
-  toalett:    { label: "Toalett", L: 1.1, B: 1.2, H: 2.3, farge: "#2f6fb3" },
-  forstehjelp:{ label: "Førstehjelp", L: 0.7, B: 0.3, H: 2.2, farge: "#1e8e3e" },
-  mote:       { label: "Møteområde", L: 3.0, B: 3.0, H: 2.5, farge: "#1f5fbf" },
-  strom:      { label: "Strømskap", L: 0.6, B: 0.4, H: 1.4, farge: "#e67e22" },
-  container:  { label: "Container 20 fot", L: 6.06, B: 2.44, H: 2.59, farge: "#2e6b4f" },
-  hms:        { label: "HMS-kort-registrering", L: 0.8, B: 0.6, H: 1.5, farge: "#455a64" },
-  soppel:     { label: "Søppelcontainer", L: 3.5, B: 1.9, H: 1.5, farge: "#2c5f8a" },
+  hjulbrakke: { label: "Hjulbrakke", L: 5.0, B: 2.3, H: 2.6, farge: "#e8e2cf", logo: true },
+  toalett:    { label: "Toalett", L: 1.1, B: 1.2, H: 2.3, farge: "#2f6fb3", logo: true },
+  forstehjelp:{ label: "Førstehjelp", L: 0.7, B: 0.3, H: 2.2, farge: "#1e8e3e", logo: true },
+  mote:       { label: "Møteområde", L: 3.0, B: 3.0, H: 2.5, farge: "#1f5fbf", logo: true },
+  strom:      { label: "Strømskap", L: 0.6, B: 0.4, H: 1.4, farge: "#e67e22", logo: true },
+  container:  { label: "Container 20 fot", L: 6.06, B: 2.44, H: 2.59, farge: "#2e6b4f", logo: true },
+  hms:        { label: "HMS-kort-registrering", L: 0.8, B: 0.6, H: 1.5, farge: "#455a64", logo: true },
+  soppel:     { label: "Søppelcontainer", L: 3.5, B: 1.9, H: 1.5, farge: "#2c5f8a", logo: true },
   // 🅿 Parkeringsområde (Emil 25.09): asfaltflate med oppmerkede plasser og
   // et P-skilt. L × B er hele området; plassene regnes ut av målene
   // (parkeringsPlasser), aldri skrives inn. H er skiltets høyde.
@@ -45,6 +45,13 @@ export const RIGG_TYPER = {
   // mørkere utgave av den (toneFarge i rigg-vis.js), så flere områder i hver
   // sin farge kan bety hver sin ting (stål, betong, avfall …).
   lagring:    { label: "Lagringsområde", L: 10, B: 6, H: 0.05, farge: "#8ec5ff", flate: true },
+  // 🚿 Vaskeområde (Emil 29.09): sonen der betongbilene vasker seg etter
+  // levering. Settes ut som lagringsområdet (flate på bakken, valgfri farge,
+  // mørkere kant), med et skilt i den ene enden: bilde av en betongbil som
+  // vaskes og en tekstplate «VASKEPLASS» under. H er skiltets høyde, samme
+  // som førstehjelpsskiltet. Målene er et forslag: en betongbil er ca. 10 m
+  // lang {Source not found: ikke sjekket mot leverandør}.
+  vaskeplass: { label: "Vaskeområde", L: 10, B: 4.5, H: 2.2, farge: "#b0b6bc", flate: true, kant: true },
   // 🚧 Byggegjerdet (trinn 3–4). L = PANELLENGDEN og H = panelhøyden — samme
   // felt som de andre objektene, så skjema, vasking og lagring er de samme.
   // B er foten (betongklossen) og brukes bare til tegningen.
@@ -70,7 +77,7 @@ export function minPunkter(o) { return erPil(o) ? 2 : 3; }
 
 // Rekkefølgen knappene står i panelet — det man rigger først, først.
 export const RIGG_REKKEFOLGE = ["gjerde", "pilKjoretoy", "pilGaende", "brakke", "hjulbrakke", "toalett", "forstehjelp", "mote",
-  "strom", "container", "hms", "soppel", "parkering", "lagring"];
+  "strom", "container", "hms", "soppel", "parkering", "lagring", "vaskeplass"];
 
 // Kort forklaring per type. Står i panelet nå, og blir teksten i
 // tegnforklaringen på riggplan-PDF-en (trinn 6).
@@ -86,6 +93,7 @@ export const RIGG_FORKLARING = {
   soppel: "Avfall og kildesortering",
   parkering: "Parkering for ansatte og besøkende",
   lagring: "Område for lagring av materiell og utstyr",
+  vaskeplass: "Vaskeplass for betongbiler etter levering",
   gjerde: "Byggegjerde rundt byggeplassen, med port for kjøretøy",
   pilKjoretoy: "Kjørevei for biler, lastebiler og maskiner",
   pilGaende: "Gangvei for de som går på byggeplassen"
@@ -163,6 +171,11 @@ export function vaskRiggObjekt(p) {
     av: tekst(p.av, 60),
     endret: tekst(p.endret, 40)
   };
+  // 🏷 Logoen (Emil 29.09): per objekt, fordi brakkene på en byggeplass kan
+  // tilhøre flere bedrifter. Filnavnet i SharePoint-mappa Logoer (samme mappe
+  // som rapportlogoene) — tomt = ingen logo. Nytt felt: gamle lagrede rigger
+  // har det ikke, og får tomt.
+  if (M.logo) ut.logo = tekst(p.logo, 120);
   if (M.moduler) {
     ut.etasjer = heltall(p.etasjer, 1, MAKS_ETASJER, 1);
     ut.moduler = heltall(p.moduler, 1, MAKS_MODULER, 1);
@@ -771,7 +784,7 @@ export function riggplanTegnforklaring(liste, tr) {
     } else {
       antall = av.reduce((a, o) => a + riggAntall(o), 0) + " " + lab("stk");
     }
-    rad({ type: k, label: lab(M.label), farge, stiplet: !!M.stiplet, pil: !!M.pil, antall,
+    rad({ type: k, label: lab(M.label), farge, stiplet: !!M.stiplet, pil: !!M.pil, kant: !!M.kant, antall,
       forklaring: lab(RIGG_FORKLARING[k] || "") });
   }
   return ut;

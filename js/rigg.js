@@ -34,6 +34,7 @@ import { pick, pickFlate } from "./elements.js";
 import { flettPaaId, flettPaaNavn, spLes, spPaalogget, spSkriv } from "./sp-lager.js";
 import { foldSeksjoner } from "./seksjoner.js";
 import { hentLogo, hentLogoer } from "./tegninger.js";
+import { ryddLogonavn } from "./rapport.js";
 import {
   MAKS_ETASJER, MAKS_MODULER, REF_ID, RIGG_FORKLARING, RIGG_REKKEFOLGE, RIGG_TYPER, ROT_STEG,
   byggTilRigg, enTilLokal, fjernSkjoter, flyttSkjoter, gjerdeFraRektangel, gjerdeMengder, gjerdeStykker,
@@ -129,34 +130,68 @@ function visLagring() {
   if (el) el.textContent = lagringsTekst();
 }
 
-// 🏷 LOGOEN PÅ BRAKKENE (Emil 28.09): samme logo som rapportene — den som er
-// valgt i rapportmenyen (S.settings.rapLogo), hentet som ORIGINALBILDET fra
-// SharePoint-mappa Logoer. Ingen logo valgt, eller ikke pålogget → ingen logo
-// (tomt felt, aldri en gjenskaping). Logoen kan velges tre steder
-// (rapportmenyen, sjekklista, skjemaene), derfor ser vi etter endringer her
-// én gang i sekundet i stedet for å kroke oss på hver av dem.
-let logoNokkel = null, logoSjekket = 0;
+// 🏷 LOGOEN PER OBJEKT (Emil 29.09): hvert rigg-objekt har sitt eget logovalg
+// i skjemaet (o.logo = filnavnet i SharePoint-mappa Logoer), fordi brakkene
+// på en byggeplass kan tilhøre flere bedrifter. Samme mappe og samme
+// oppsett som rapportene, men valget i rapportmenyen påvirker IKKE riggen.
+// Bildet er ORIGINALEN fra SharePoint (hentLogo), aldri en gjenskaping.
+//   logoBilder: filnavn → { data, b, h } | null (fantes ikke)
+//   onsket:     filnavn som trengs, men ikke er hentet (f.eks. før innlogging)
+const logoBilder = new Map(), onsket = new Set();
+let logoListe = null;          // Promise<[{ fil, itemId }]>, hentes én gang
+function hentLogoListe(paaNytt) {
+  if (!logoListe || paaNytt) logoListe = hentLogoer().catch(() => []);
+  return logoListe;
+}
+S.riggLogoFor = (fil) => {
+  if (!fil) return null;
+  if (logoBilder.has(fil)) return logoBilder.get(fil);
+  onsket.add(fil);
+  return null;
+};
+let henter = false, logoSjekket = 0;
+async function hentOnskedeLogoer() {
+  if (henter || !onsket.size || !spPaalogget()) return;
+  henter = true;
+  try {
+    let liste = await hentLogoListe();
+    if (!liste.length) liste = await hentLogoListe(true);
+    let noe = false;
+    for (const fil of [...onsket]) {
+      const l = liste.find(x => x.fil === fil);
+      let bilde = null;
+      if (l) { try { bilde = await hentLogo(l.itemId); } catch (_) { bilde = null; } }
+      // Ikke funnet: husk det som «ingen», så vi ikke spør SharePoint hvert sekund
+      logoBilder.set(fil, bilde);
+      onsket.delete(fil);
+      if (bilde) noe = true;
+    }
+    if (noe) tegnRigg();
+  } finally { henter = false; }
+}
+// Én gang i sekundet: er det logoer som venter (f.eks. fordi brukeren ikke
+// var logget inn da riggen ble tegnet), hentes de nå.
 frameHooks.push(() => {
   const naa = performance.now();
   if (naa - logoSjekket < 1000) return;
   logoSjekket = naa;
-  const k = ((S.settings && S.settings.rapLogo) || "") + "|" + (spPaalogget() ? 1 : 0);
-  if (k !== logoNokkel) { logoNokkel = k; hentRiggLogo(k); }
+  if (onsket.size) hentOnskedeLogoer();
 });
-async function hentRiggLogo(k) {
-  const fil = S.settings && S.settings.rapLogo;
-  let logo = null;
-  if (fil && spPaalogget()) {
-    try {
-      const l = (await hentLogoer()).find(x => x.fil === fil);
-      logo = l ? await hentLogo(l.itemId) : null;
-    } catch (_) { logo = null; }
-  }
-  if (k !== logoNokkel) return;          // valget endret seg mens vi hentet
-  const for_ = S.riggLogo ? S.riggLogo.data : null;
-  S.riggLogo = logo;
-  // Tegn på nytt bare når det finnes noe å sette logoen på
-  if ((logo ? logo.data : null) !== for_ && riggObjekter(S.rigg || []).some(o => o.type === "brakke" || o.type === "hjulbrakke")) tegnRigg();
+
+// Logovalget i skjemaet: «Ingen logo» + filene i Logoer-mappa. Det lagrede
+// valget vises selv om lista ikke er hentet ennå (eller man er logget ut).
+async function fyllRiggLogovalg(velg, valgt) {
+  if (!velg) return;
+  const opt = (verdi, tekst) => { const o = document.createElement("option"); o.value = verdi; o.textContent = tekst; return o; };
+  velg.innerHTML = "";
+  velg.appendChild(opt("", t("Ingen logo")));
+  if (valgt) velg.appendChild(opt(valgt, ryddLogonavn(valgt)));
+  velg.value = valgt || "";
+  if (!spPaalogget()) return;
+  const liste = await hentLogoListe(true);
+  if (!velg.isConnected) return;
+  for (const l of liste) if (l.fil !== valgt) velg.appendChild(opt(l.fil, ryddLogonavn(l.fil)));
+  velg.value = valgt || "";
 }
 
 // afterLoad (ifc.js): lokalt først, så SharePoint. Nyeste `endret` vinner per
@@ -1239,6 +1274,8 @@ function tegnSkjema(o) {
       felt("riggEt", "Etasjer", o.etasjer, 1, MAKS_ETASJER, 1) : "") +
     felt("riggRot", "Rotasjon (grader, med klokka)", o.rot, 0, 359.9, 1) +
     "<label>" + t("Farge") + '<input type="color" id="riggFarge" value="' + esc(o.farge) + '"></label>' +
+    (M.logo ? "<label>" + t("Logo") + '<select id="riggLogo"></select></label>' +
+      "<p " + LITEN + ">" + t(spPaalogget() ? "Logoene hentes fra SharePoint-mappa Logoer (samme som rapportene)." : "Logg inn for å velge logo fra SharePoint-mappa Logoer.") + "</p>" : "") +
     "<p " + LITEN + ">" + t("Standardmål: {0} × {1} × {2} m", M.L, M.B, M.H) + "</p>" +
     '<div class="prop-actions" style="margin-top:10px">' +
     '<button id="riggLagre" class="primary">' + t("Lagre endringer") + "</button>" +
@@ -1250,6 +1287,7 @@ function tegnSkjema(o) {
       L: $("riggL").value, B: $("riggB").value, H: $("riggH").value,
       rot: $("riggRot").value, farge: $("riggFarge").value
     };
+    if (M.logo) felter.logo = $("riggLogo") ? $("riggLogo").value : (o.logo || "");
     if (M.moduler) { felter.moduler = $("riggMod").value; felter.etasjer = $("riggEt").value; }
     oppdater(o.id, felter, "Rigg endret");
     tegnPanel();
@@ -1259,6 +1297,7 @@ function tegnSkjema(o) {
     $("riggL").value = M.L; $("riggB").value = M.B; $("riggH").value = M.H; $("riggFarge").value = M.farge;
   };
   $("riggAvbryt").onclick = () => tegnPanel();
+  if (M.logo) fyllRiggLogovalg($("riggLogo"), o.logo || "");
 }
 
 // Til testene og hjelpekortene: ingen logikk her.

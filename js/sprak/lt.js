@@ -1771,5 +1771,12 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Legg til på tomta": "Pridėti į sklypą",
   "Riggplan (PDF)": "Aikštelės planas (PDF)",
   "Fjern rigg": "Pašalinti aikštelės įrangą",
-  "Rigg fjernet": "Aikštelės įranga pašalinta"
+  "Rigg fjernet": "Aikštelės įranga pašalinta",
+  // ---------- 🏷 Rigg: logo per objekt og vaskeområde (29.09) ----------
+  "Vaskeområde": "Plovimo aikštelė",
+  "Vaskeplass": "Plovykla",
+  "Vaskeplass for betongbiler etter levering": "Betonvežių plovimo vieta po pristatymo",
+  "Ingen logo": "Be logotipo",
+  "Logoene hentes fra SharePoint-mappa Logoer (samme som rapportene).": "Logotipai imami iš SharePoint aplanko Logoer (kaip ataskaitose).",
+  "Logg inn for å velge logo fra SharePoint-mappa Logoer.": "Prisijunkite, kad pasirinktumėte logotipą iš SharePoint aplanko Logoer."
 };

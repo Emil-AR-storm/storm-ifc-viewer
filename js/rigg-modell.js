@@ -126,11 +126,12 @@ function dor(g, b, h, x, y0, z, n, farge, enkel) {
   boks(g, 0.02, 0.04, 0.02, "#c9ced3", x + u.x + sideX, y0 + h * 0.5, z + u.z + sideZ);
 }
 
-// Firmalogoen på langsiden (Emil 28.09): SAMME logo som rapportene — det
-// originale bildet som er valgt i rapportmenyen (S.settings.rapLogo), lagt på
-// som tekstur, aldri gjenskapt. Ikke valgt → ingen logo. `logo` er
-// { data, b, h } fra tegninger.js (hentet av rigg.js); byggeplass-siden har
-// den ikke, og viser ingen logo.
+// Firmalogoen (Emil 29.09): valgt PER OBJEKT i skjemaet — brakkene på en
+// byggeplass kan tilhøre flere bedrifter. Samme logomappe og samme oppsett
+// som rapportene (SharePoint-mappa Logoer, originalbildet lagt på som
+// tekstur, aldri gjenskapt), men valget i rapportmenyen påvirker IKKE riggen.
+// Ikke valgt → ingen logo. `logo` er { data, b, h } fra tegninger.js (hentet
+// av rigg.js); byggeplass-siden har den ikke, og viser ingen logo.
 const logoCache = new Map();
 function logoMat(logo) {
   let m = logoCache.get(logo.data);
@@ -155,9 +156,99 @@ function leggLogo(g, logo, maksB, maksH, x, y, z, n) {
   const u = ut(n, 0.003);
   m.position.set(x + u.x, y, z + u.z);
   if (n === "-z") m.rotation.y = Math.PI;
+  if (n === "x") m.rotation.y = Math.PI / 2;
+  if (n === "-x") m.rotation.y = -Math.PI / 2;
   m.userData.egen = true;       // slås ikke sammen: eget materiale med tekstur
   m.userData.logo = true;
   g.add(m);
+}
+
+// 🚿 SKILTENE (vaskeplassen): tegnet på et lerret, lagt på som ULYST tekstur
+// (som førstehjelpskorset: lesbart fra alle kanter). Bildet er vår egen
+// enkle tegning av en betongbil med vannstråle — ikke noe offisielt skilt.
+// Uten lerret (Node-testene) blir flaten bare blå/hvit, uten bilde.
+const skiltCache = new Map();
+function skiltMat(nokkel) {
+  if (skiltCache.has(nokkel)) return skiltCache.get(nokkel);
+  let m = null;
+  try {
+    if (typeof document !== "undefined" && THREE.CanvasTexture) {
+      const tekst = nokkel.startsWith("tekst:") ? nokkel.slice(6) : null;
+      const c = document.createElement("canvas");
+      c.width = 512; c.height = tekst ? 146 : 512;
+      const x = c.getContext("2d");
+      if (x && typeof x.fillRect === "function") {
+        if (tekst) tegnTekstskilt(x, c.width, c.height, tekst); else tegnVaskebil(x, c.width);
+        const tex = new THREE.CanvasTexture(c);
+        if (THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
+        tex.anisotropy = 4;
+        m = new THREE.MeshBasicMaterial({ map: tex, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
+      }
+    }
+  } catch (_) { m = null; }
+  skiltCache.set(nokkel, m);
+  return m;
+}
+function skiltFlate(g, nokkel, b, h, x, y, z, n) {
+  const m = skiltMat(nokkel);
+  if (!m) return;
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(b, h), m);
+  mesh.position.set(x, y, z);
+  mesh.rotation.y = n === "x" ? Math.PI / 2 : -Math.PI / 2;
+  mesh.userData.egen = true;       // eget materiale med tekstur, slås ikke sammen
+  g.add(mesh);
+}
+function tegnTekstskilt(x, b, h, tekst) {
+  x.fillStyle = "#ffffff"; x.fillRect(0, 0, b, h);
+  x.strokeStyle = "#111111"; x.lineWidth = 10; x.strokeRect(5, 5, b - 10, h - 10);
+  x.fillStyle = "#111111"; x.textAlign = "center"; x.textBaseline = "middle";
+  let px = 84;
+  x.font = "bold " + px + "px Arial, Helvetica, sans-serif";
+  while (px > 30 && x.measureText && x.measureText(tekst).width > b - 50) { px -= 4; x.font = "bold " + px + "px Arial, Helvetica, sans-serif"; }
+  x.fillText(tekst, b / 2, h / 2 + 4);
+}
+// Betongbil sett fra siden (førerhus til høyre, trommel på skrå), en
+// spyleslange oppe til venstre og vannstråler mot trommelen. Hvitt på blått,
+// som et informasjonsskilt.
+function tegnVaskebil(x, s) {
+  const k = s / 512;
+  x.fillStyle = "#1f5fbf"; x.fillRect(0, 0, s, s);
+  x.strokeStyle = "#ffffff"; x.lineWidth = 14 * k; x.strokeRect(16 * k, 16 * k, s - 32 * k, s - 32 * k);
+  x.fillStyle = "#ffffff"; x.strokeStyle = "#ffffff"; x.lineCap = "round"; x.lineJoin = "round";
+  // chassis
+  x.fillRect(70 * k, 330 * k, 380 * k, 26 * k);
+  // førerhuset
+  x.beginPath(); x.moveTo(360 * k, 330 * k); x.lineTo(360 * k, 225 * k); x.lineTo(420 * k, 225 * k);
+  x.lineTo(450 * k, 275 * k); x.lineTo(450 * k, 330 * k); x.closePath(); x.fill();
+  x.fillStyle = "#1f5fbf";
+  x.beginPath(); x.moveTo(375 * k, 240 * k); x.lineTo(413 * k, 240 * k); x.lineTo(433 * k, 275 * k); x.lineTo(375 * k, 275 * k); x.closePath(); x.fill();
+  x.fillStyle = "#ffffff";
+  // trommelen: en skrå ellipse med striper
+  x.save(); x.translate(215 * k, 270 * k); x.rotate(-0.28);
+  x.beginPath(); x.ellipse(0, 0, 130 * k, 62 * k, 0, 0, Math.PI * 2); x.fill();
+  x.strokeStyle = "#1f5fbf"; x.lineWidth = 9 * k;
+  for (const d of [-60, -10, 40]) { x.beginPath(); x.moveTo(d * k, -58 * k); x.lineTo((d + 30) * k, 58 * k); x.stroke(); }
+  x.restore();
+  // traktene bak
+  x.beginPath(); x.moveTo(78 * k, 305 * k); x.lineTo(60 * k, 255 * k); x.lineTo(100 * k, 262 * k); x.closePath(); x.fill();
+  // hjulene
+  for (const hx of [130, 200, 400]) {
+    x.fillStyle = "#ffffff"; x.beginPath(); x.arc(hx * k, 370 * k, 32 * k, 0, Math.PI * 2); x.fill();
+    x.fillStyle = "#1f5fbf"; x.beginPath(); x.arc(hx * k, 370 * k, 12 * k, 0, Math.PI * 2); x.fill();
+  }
+  x.fillStyle = "#ffffff";
+  // spyleslangen og strålene
+  x.lineWidth = 12 * k; x.strokeStyle = "#ffffff";
+  x.beginPath(); x.moveTo(40 * k, 70 * k); x.lineTo(110 * k, 110 * k); x.stroke();
+  x.lineWidth = 7 * k;
+  for (const [ex, ey] of [[190, 185], [230, 175], [155, 205]]) {
+    x.beginPath(); x.moveTo(115 * k, 113 * k); x.quadraticCurveTo(((115 + ex) / 2) * k, 95 * k, ex * k, ey * k); x.stroke();
+  }
+  // dråper
+  for (const [dx, dy] of [[260, 150], [290, 185], [150, 160], [320, 140]]) {
+    x.beginPath(); x.moveTo(dx * k, (dy - 16) * k); x.quadraticCurveTo((dx + 11) * k, dy * k, dx * k, (dy + 8) * k);
+    x.quadraticCurveTo((dx - 11) * k, dy * k, dx * k, (dy - 16) * k); x.fill();
+  }
 }
 
 // En hvit «M» i et plan — laget av fire staver, ikke en tekstur, så den er
@@ -285,6 +376,8 @@ const BYGG = {
       flat(g, 0.14, 0.05, "#d32f2f", Li / 2 + 0.002, (H - tak) * 0.62, Bi * 0.26, "x");     // opptatt/ledig
       flat(g, Bi * 0.4, 0.18, toneFarge(o.farge, 0.6), -Li / 2 - 0.001, H - tak - 0.2, 0, "-x");   // lufterist
     }
+    // logoen høyt oppe på begge sideveggene
+    for (const sd of [1, -1]) leggLogo(g, opts.logo, Li * 0.75, 0.3, 0, (H - tak) * 0.8, sd * (Bi / 2 + 0.001), sd > 0 ? "z" : "-z");
   },
 
   // Førstehjelp: stolpe med skilt (hvitt kors på grønt), skap med skiltet på.
@@ -298,18 +391,28 @@ const BYGG = {
     boks(g, L * 0.8, 0.7, skapD, toneFarge(o.farge, 1.2), 0, 1.0, skapZ, { r: 0.02 });
     flat(g, L * 0.24, L * 0.08, HVIT, 0, 1.0, front, "z", true);
     flat(g, L * 0.08, L * 0.24, HVIT, 0, 1.0, front, "z", true);
+    leggLogo(g, opts.logo, L * 0.6, 0.25, 0, 1.0, skapZ - skapD / 2 - 0.001, "-z");   // bak på skapet
   },
 
-  // Møteområde: blå boks med hvit M på alle sider og på toppen.
-  mote(g, o) {
-    const { L, B, H } = o;
-    boks(g, L, H, B, o.farge, 0, H / 2, 0);
-    const s = Math.min(L, B, H) * 0.6;
-    const topp = mBokstav(s, HVIT); topp.rotation.x = -Math.PI / 2; topp.position.set(0, H + 0.011, 0); g.add(topp);
-    const fram = mBokstav(s, HVIT); fram.position.set(0, H / 2, B / 2 + 0.011); g.add(fram);
-    const bak = mBokstav(s, HVIT); bak.rotation.y = Math.PI; bak.position.set(0, H / 2, -B / 2 - 0.011); g.add(bak);
-    const sv = mBokstav(s, HVIT); sv.rotation.y = Math.PI / 2; sv.position.set(L / 2 + 0.011, H / 2, 0); g.add(sv);
-    const sh = mBokstav(s, HVIT); sh.rotation.y = -Math.PI / 2; sh.position.set(-L / 2 - 0.011, H / 2, 0); g.add(sh);
+  // Møteområde: blå kasse med fasede kanter og hvit M på alle sider og på
+  // toppen. Kassen er 2 cm inne på alle sider: der ligger M-ene, så de verken
+  // stikker ut av L × B × H eller flimrer. Med logo valgt står logoen på de
+  // to langsidene (±z) i stedet for M-en.
+  mote(g, o, _h, opts) {
+    const { L, B, H } = o, enkel = !!opts.enkel, Li = L - 0.04, Bi = B - 0.04, Hi = H - 0.02;
+    boks(g, Li, Hi, Bi, o.farge, 0, Hi / 2, 0, { r: enkel ? 0.03 : 0.06, seg: enkel ? 1 : 2 });
+    if (!enkel) boks(g, L, 0.1, B, toneFarge(o.farge, 0.6), 0, 0.05, 0);        // sokkel
+    const s = Math.min(L, B, H) * 0.6, d = 0.01;
+    const m = (rx, ry, x, y, z) => { const b = mBokstav(s, HVIT); b.rotation.set(rx, ry, 0); b.position.set(x, y, z); g.add(b); };
+    m(-Math.PI / 2, 0, 0, Hi + d, 0);
+    m(0, Math.PI / 2, Li / 2 + d, H / 2, 0);
+    m(0, -Math.PI / 2, -Li / 2 - d, H / 2, 0);
+    if (opts.logo) {
+      for (const sd of [1, -1]) leggLogo(g, opts.logo, Li * 0.75, H * 0.4, 0, H * 0.55, sd * (Bi / 2 + 0.001), sd > 0 ? "z" : "-z");
+    } else {
+      m(0, 0, 0, H / 2, Bi / 2 + d);
+      m(0, Math.PI, 0, H / 2, -Bi / 2 - d);
+    }
   },
 
   // Strømskap: skap på fot, dørskille, varseltrekant (gul med svart kant,
@@ -336,26 +439,41 @@ const BYGG = {
     trekant(s * 0.78, "#fdd835", 0.001);
     const nk = enkel ? 1 : 3;
     for (let i = 0; i < nk; i++) boks(g, 0.02, 0.08, 0.08, "#263238", Li / 2 + 0.005, fot + 0.2 + i * 0.14, 0);
+    // logoen på den andre sideveggen (stikkontaktene sitter på denne)
+    leggLogo(g, opts.logo, (B - 0.02) * 0.85, 0.2, -Li / 2 - 0.001, fot + (H - fot) * 0.72, 0, "-x");
   },
 
-  // 20 fots container: korrugerte sider, hjørnestolper og dører på gavlen.
-  container(g, o) {
-    const { L, B, H } = o, kant = toneFarge(o.farge, 0.7);
-    boks(g, L - 0.02, H - 0.02, B - 0.02, o.farge, 0, H / 2, 0);
-    for (const x of [-1, 1]) for (const z of [-1, 1])
-      boks(g, 0.16, H, 0.16, kant, x * (L / 2 - 0.08), H / 2, z * (B / 2 - 0.08));
-    boks(g, L, 0.12, B, kant, 0, H - 0.06, 0);
-    boks(g, L, 0.12, B, kant, 0, 0.06, 0);
-    // bølgene i sideveggene
-    const n = Math.max(4, Math.round(L / 0.3));
-    for (let i = 1; i < n; i++) {
-      const x = -L / 2 + (L / n) * i;
-      boks(g, 0.06, H - 0.3, 0.03, kant, x, H / 2, B / 2 + 0.01);
-      boks(g, 0.06, H - 0.3, 0.03, kant, x, H / 2, -B / 2 - 0.01);
+  // 20 fots container (ISO 668): stålramme med hjørnestolper og -beslag,
+  // korrugerte sidevegger, dører med låsestenger på gavlen. Veggene står
+  // 3 cm inne fra rammen, så bølgene ligger INNENFOR B (før stod de 1 cm
+  // utenpå), og låsestengene innenfor L.
+  container(g, o, _h, opts) {
+    const { L, B, H } = o, enkel = !!opts.enkel, kant = toneFarge(o.farge, 0.7), mork = toneFarge(o.farge, 0.55);
+    const Li = L - 0.04, Bi = B - 0.06, Hi = H - 0.02;
+    boks(g, Li, Hi, Bi, o.farge, 0, Hi / 2 + 0.01, 0);
+    // rammen: fire hjørnestolper, overkant og underkant som ringer
+    for (const x of [-1, 1]) for (const z of [-1, 1]) {
+      boks(g, 0.16, H, 0.16, kant, x * (L / 2 - 0.08), H / 2, z * (B / 2 - 0.08), { r: enkel ? 0 : 0.01 });
+      if (!enkel) for (const y of [0.06, H - 0.06])       // hjørnebeslagene
+        boks(g, 0.17, 0.12, 0.17, "#5f676e", x * (L / 2 - 0.085), y, z * (B / 2 - 0.085));
     }
-    // dørene: skillet på midten og fire låsestenger
-    boks(g, 0.03, H - 0.3, 0.02, MORK, -L / 2 - 0.01, H / 2, 0);
-    for (const z of [-0.35, -0.15, 0.15, 0.35]) boks(g, 0.04, H - 0.4, 0.04, "#9e9e9e", -L / 2 - 0.03, H / 2, z * B);
+    takRing(g, L, B, H, kant, 0, 0);
+    boks(g, L, 0.14, B, kant, 0, 0.07, 0);
+    // bølgene i sideveggene: ribber på veggflaten, innenfor B
+    if (!enkel) {
+      const n = Math.max(4, Math.round(Li / 0.28));
+      for (let i = 1; i < n; i++) {
+        const x = -Li / 2 + (Li / n) * i;
+        for (const sd of [1, -1]) boks(g, 0.08, H - 0.32, 0.024, mork, x, H / 2, sd * (Bi / 2 + 0.012));
+      }
+    }
+    // dørene på gavlen (−x): to fløyer, skillet og fire låsestenger
+    const gx = -Li / 2 - 0.001;
+    flat(g, B - 0.34, H - 0.34, toneFarge(o.farge, 0.9), gx, H / 2, 0, "-x");
+    flat(g, 0.02, H - 0.34, MORK, gx - 0.001, H / 2, 0, "-x");
+    for (const z of [-0.35, -0.15, 0.15, 0.35]) boks(g, 0.018, H - 0.4, 0.03, "#9e9e9e", -Li / 2 - 0.009, H / 2, z * B);
+    // logoen høyt oppe på begge langsidene, foran bølgene
+    for (const sd of [1, -1]) leggLogo(g, opts.logo, Li * 0.45, H * 0.28, 0, H * 0.7, sd * (Bi / 2 + 0.026), sd > 0 ? "z" : "-z");
   },
 
   // HMS-kort-registrering: terminal på fot, med et generisk kort-ikon på
@@ -369,6 +487,9 @@ const BYGG = {
     idKort(g, kortB, y, zf, 1, "#1f5fbf", enkel);
     idKort(g, kortB, y, -zf, -1, "#1f5fbf", enkel);
     flat(g, L * 0.4, 0.08, "#26c6da", 0, fot + (H - fot) * 0.25, zf, "z");     // leseren
+    // logoen i feltet over kortet, begge sider
+    const fraY = y + kortB * 0.63 / 2 + 0.03, tilY = H - 0.04;
+    if (tilY - fraY > 0.05) for (const sd of [1, -1]) leggLogo(g, opts.logo, L * 0.7, tilY - fraY, 0, (fraY + tilY) / 2, sd * zf, sd > 0 ? "z" : "-z");
   },
 
   // 🚧 Byggegjerde: nettingpanel i stålrør mellom hver skjøt, fot og klemme
@@ -463,29 +584,70 @@ const BYGG = {
     boks(g, kant, tykk + 0.01, B - 2 * kant, mork, L / 2 - kant / 2, (tykk + 0.01) / 2, 0);
   },
 
-  // Søppelcontainer (liftcontainer, åpen): skrå gavler, åpen topp, løfteører.
-  soppel(g, o) {
-    const { L, B, H } = o, t = 0.05, inn = Math.min(0.5, L * 0.15);
-    const bunnL = L - 2 * inn, kant = toneFarge(o.farge, 0.7);
-    boks(g, bunnL, t, B, o.farge, 0, t / 2, 0);                            // bunn
+  // Søppelcontainer (liftcontainer, åpen): skrå gavler, åpen topp, kantlist,
+  // forsterkningsribber og løfteører. Løfteørene stod før 15 cm utenfor B på
+  // hver side; nå ligger de innenfor (advarsel 2 i handoffen).
+  soppel(g, o, _h, opts) {
+    const { L, B, H } = o, enkel = !!opts.enkel, t = 0.05, inn = Math.min(0.5, L * 0.15);
+    const bunnL = L - 2 * inn, kant = toneFarge(o.farge, 0.7), Bv = B - 0.1;
+    boks(g, bunnL, t, Bv, o.farge, 0, t / 2, 0);                            // bunn
     // langsidene som trapeser
     const form = new THREE.Shape();
     form.moveTo(-bunnL / 2, 0); form.lineTo(bunnL / 2, 0); form.lineTo(L / 2, H); form.lineTo(-L / 2, H); form.lineTo(-bunnL / 2, 0);
     for (const s of [-1, 1]) {
       const vegg = new THREE.Mesh(new THREE.ExtrudeGeometry(form, { depth: t, bevelEnabled: false }), mat(o.farge));
-      vegg.position.set(0, 0, s > 0 ? B / 2 - t : -B / 2);
+      vegg.position.set(0, 0, s > 0 ? Bv / 2 - t : -Bv / 2);
       g.add(vegg);
     }
-    // skrå gavler
+    // skrå gavler: platas YTRE flate ligger på linja fra bunnen til
+    // overkanten (flyttet t/2 innover, og 4 cm kortere), så hjørnene ikke
+    // stikker ut av L × H når plata dreies
     const skraa = Math.hypot(inn, H), vinkel = Math.atan2(inn, H);
+    const nx = H / skraa, ny = -inn / skraa;
     for (const s of [-1, 1]) {
-      const gavl = boks(g, t, skraa, B, o.farge, s * (bunnL / 2 + inn / 2), H / 2, 0);
+      const gavl = boks(g, t, skraa - 0.04, Bv, o.farge, s * (bunnL / 2 + inn / 2 - nx * t / 2), H / 2 - ny * t / 2, 0);
       gavl.rotation.z = -s * vinkel;
     }
-    // kantlist rundt åpningen og løfteørene
-    boks(g, L, 0.08, 0.08, kant, 0, H - 0.04, B / 2 - 0.04);
-    boks(g, L, 0.08, 0.08, kant, 0, H - 0.04, -B / 2 + 0.04);
-    for (const s of [-1, 1]) sylinder(g, 0.06, B + 0.3, "#37474f", s * (bunnL / 2 + inn * 0.6), H * 0.62, 0, "z");
+    // kantlist rundt åpningen
+    boks(g, L, 0.08, 0.08, kant, 0, H - 0.04, Bv / 2 - 0.04);
+    boks(g, L, 0.08, 0.08, kant, 0, H - 0.04, -Bv / 2 + 0.04);
+    // forsterkningsribber på langsidene
+    if (!enkel) for (const sd of [1, -1]) for (const f of [-0.3, 0, 0.3])
+      boks(g, 0.08, H * 0.8, 0.03, kant, f * bunnL, H * 0.45, sd * (Bv / 2 + 0.015));
+    // løfteørene: tapper på gavlene, innenfor B
+    for (const s of [-1, 1]) sylinder(g, 0.06, B, "#37474f", s * (bunnL / 2 + inn * 0.6), H * 0.62, 0, "z");
+    for (const sd of [1, -1]) leggLogo(g, opts.logo, bunnL * 0.5, H * 0.3, 0, H * 0.55, sd * (Bv / 2 + 0.031), sd > 0 ? "z" : "-z");
+  },
+
+  // 🚿 Vaskeområde (Emil 29.09): sonen på bakken som lagringsområdet (farge
+  // inni, mørkere kant), et sluk i midten, og et skilt i den ene enden —
+  // samme størrelse som førstehjelpsskiltet — med bilde av en betongbil som
+  // vaskes og en tekstplate «VASKEPLASS» under. Skiltet står innenfor sonen,
+  // i hjørnet av +x-enden, og vender langs sonen (mot bilene som kjører inn).
+  vaskeplass(g, o, _h, opts) {
+    const { L, B, H } = o, enkel = !!opts.enkel, tykk = 0.03, kant = Math.min(0.3, Math.min(L, B) * 0.06);
+    const mork = toneFarge(o.farge, 0.45);
+    boks(g, L - 2 * kant, tykk, B - 2 * kant, o.farge, 0, tykk / 2, 0);
+    boks(g, L, tykk + 0.01, kant, mork, 0, (tykk + 0.01) / 2, -B / 2 + kant / 2);
+    boks(g, L, tykk + 0.01, kant, mork, 0, (tykk + 0.01) / 2, B / 2 - kant / 2);
+    boks(g, kant, tykk + 0.01, B - 2 * kant, mork, -L / 2 + kant / 2, (tykk + 0.01) / 2, 0);
+    boks(g, kant, tykk + 0.01, B - 2 * kant, mork, L / 2 - kant / 2, (tykk + 0.01) / 2, 0);
+    if (!enkel) flat(g, 0.6, 0.6, "#3a4046", 0, tykk + 0.001, 0, "y");            // sluket
+    // skiltet
+    const side = 0.7, sx = L / 2 - kant - 0.3, sz = B / 2 - kant - 0.25;
+    const yBilde = H - side / 2 - 0.05, tekstH = 0.2, yTekst = yBilde - side / 2 - 0.04 - tekstH / 2;
+    boks(g, 0.08, H, 0.08, "#9e9e9e", sx, H / 2, sz);
+    boks(g, 0.3, 0.04, 0.5, "#9e9e9e", sx, 0.02, sz);                          // fotplate
+    // skiltplata sitter på UTSIDEN av stolpen (+x), så bilene som kjører inn
+    // mot enden ser skiltet uten stolpen foran; bildet står på begge sider
+    const px = sx + 0.055;
+    boks(g, 0.03, side, side, "#1f5fbf", px, yBilde, sz, { r: enkel ? 0 : 0.008 });
+    boks(g, 0.03, tekstH, side, HVIT, px, yTekst, sz);
+    for (const sd of [1, -1]) {
+      const n = sd > 0 ? "x" : "-x", x = px + sd * 0.0151;
+      skiltFlate(g, "vaskebil", side, side, x, yBilde, sz, n);
+      skiltFlate(g, "tekst:" + (opts.skiltTekst || "VASKEPLASS"), side, tekstH, x, yTekst, sz, n);
+    }
   }
 };
 
