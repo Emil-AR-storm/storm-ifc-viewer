@@ -1797,5 +1797,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Til høyre": "Dešinėje",
   "Til venstre": "Kairėje",
   "Én dør per etasje. Med 2–3 etasjer kommer trapp og repos utenfor døra.": "Vienos durys kiekviename aukšte. Esant 2–3 aukštams, prie durų atsiranda laiptai ir aikštelė.",
-  "Dører": "Durys"
+  "Dører": "Durys",
+  "Hva er hva": "Kas yra kas",
+  "Slik ser det ut": "Kaip tai atrodo"
 };

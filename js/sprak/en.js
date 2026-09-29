@@ -1797,5 +1797,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Til høyre": "Right",
   "Til venstre": "Left",
   "Én dør per etasje. Med 2–3 etasjer kommer trapp og repos utenfor døra.": "One door per floor. With 2–3 floors a staircase and landing are added outside the door.",
-  "Dører": "Doors"
+  "Dører": "Doors",
+  "Hva er hva": "What is what",
+  "Slik ser det ut": "What it looks like"
 };
