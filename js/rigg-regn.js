@@ -44,7 +44,11 @@ export const RIGG_TYPER = {
   // mørkeblå kant. Fargen kan endres i Rediger — kanten blir alltid en
   // mørkere utgave av den (toneFarge i rigg-vis.js), så flere områder i hver
   // sin farge kan bety hver sin ting (stål, betong, avfall …).
-  lagring:    { label: "Lagringsområde", L: 10, B: 6, H: 0.05, farge: "#8ec5ff", flate: true },
+  // Emil 29.09: skilt i enden (bilde av lagret materiell + «LAGRINGSOMRÅDE»),
+  // som vaskeplassen. H er nå SKILTETS høyde, som for vaskeplass og parkering.
+  // Eldre lagrede områder har H = 0,05 (bare flaten) — de får skiltets
+  // vanlige høyde i 3D (soneSkilt i rigg-modell.js), ingen ting må lagres om.
+  lagring:    { label: "Lagringsområde", L: 10, B: 6, H: 2.2, farge: "#8ec5ff", flate: true },
   // 🚿 Vaskeområde (Emil 29.09): sonen der betongbilene vasker seg etter
   // levering. Settes ut som lagringsområdet (flate på bakken, valgfri farge,
   // mørkere kant), med et skilt i den ene enden: bilde av en betongbil som
