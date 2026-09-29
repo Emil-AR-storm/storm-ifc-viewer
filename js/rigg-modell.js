@@ -394,10 +394,8 @@ function soneSkilt(g, o, bilde, tekst, opts) {
 //
 // Alt bygges i et lokalt rom for veggen med døra: u = ut fra veggen
 // (0 = veggen), w = langs veggen. f.u(u, w) gir { x, z } i brakkas rom.
-//   · trappa går LANGS VEGGEN mot reposet når veggen er lang nok på innsiden
-//     av døra (f.plass), ellers RETT UT fra reposet — da stikker den aldri
-//     forbi enden av riggen og inn i naboen (runde 13: «trappesystemet
-//     knekker» med flere moduler)
+//   · trappa går ALLTID LANGS VEGGEN mot reposet (Emil 29.09, runde 13c:
+//     «gjelder for alle genererte trapper»), i stripe k for etasje k
 //   · rekkverk på alle frie kanter av reposet, med åpning bare der trappa
 //     kommer inn, og håndlist på begge sider av trappa
 // Skrå deler legges mellom to punkter med en kvaternion (ikke Euler-
@@ -432,21 +430,22 @@ function byggTrapp(g, f, e, H, enkel) {
       b(0.05, REKK_H, 0.05, TRAPP_STAL, uu, y + REKK_H / 2, w);
     }
   };
-  const nTr = e - 1, dir = f.inn;                    // dir: siden trappa kommer fra (+1/−1 langs w)
-  const langsVegg = trappLop((e - 1) * H) <= f.plass;
+  const dir = f.inn;                                 // dir: siden trappa kommer fra (+1/−1 langs w)
+  // Emil 29.09 (runde 13c): REGELEN FOR ALLE TRAPPENE — de følger veggen
+  // ned, og stikker aldri rett ut. Er løpet lengre enn veggen på innsiden av
+  // døra, fortsetter trappa langs veggen forbi enden av riggen.
   const w0 = f.dorW - 0.9, w1 = f.dorW + 0.9;        // reposet foran døra
-  // Rett ut: trappene står side om side langs w, og reposet må romme alle
-  const reposW1 = langsVegg ? w1 : Math.max(w1, w0 + nTr * (TRAPP_B + TRAPP_MELLOM));
+  const reposW1 = w1;
   for (let k = 1; k < e; k++) {
     const yk = k * H, lop = trappLop(yk), nT = Math.round(lop / INNTRINN), stig = yk / nT;
-    const dk = langsVegg ? REPOS_D + (k - 1) * (TRAPP_B + TRAPP_MELLOM) : REPOS_D;
+    const dk = REPOS_D + (k - 1) * (TRAPP_B + TRAPP_MELLOM);
     // reposet, og stolpene som bærer det
     b(dk, 0.06, reposW1 - w0, TRAPP_RIST, dk / 2, yk - 0.03, (w0 + reposW1) / 2);
     for (const w of [w0 + 0.05, reposW1 - 0.05]) b(0.08, yk, 0.08, TRAPP_STAL, dk - 0.05, yk / 2, w);
     // trappa k: stripe [a, a + TRAPP_B] på tvers av løpet
     const a = (k - 1) * (TRAPP_B + TRAPP_MELLOM);
     let inngang;                                          // hvor trappa kommer inn på reposet
-    if (langsVegg) {
+    {
       // langs veggen: fra bakken ved wStart, opp til kanten av reposet på dir-siden
       const wKant = dir > 0 ? reposW1 : w0, wStart = wKant + dir * lop;
       for (let i = 0; i < nT; i++) b(TRAPP_B, 0.04, INNTRINN, TRAPP_RIST, a + TRAPP_B / 2, stig * (i + 1) - 0.02, wStart - dir * INNTRINN * (i + 0.5));
@@ -459,16 +458,6 @@ function byggTrapp(g, f, e, H, enkel) {
         }
       }
       inngang = { kant: "side", fra: a, til: a + TRAPP_B };
-    } else {
-      // rett ut fra reposets ytterkant, i stripe a langs w
-      const wa = w0 + a, uStart = dk + lop;
-      for (let i = 0; i < nT; i++) b(INNTRINN, 0.04, TRAPP_B, TRAPP_RIST, uStart - INNTRINN * (i + 0.5), stig * (i + 1) - 0.02, wa + TRAPP_B / 2);
-      for (const ww of [wa + 0.03, wa + TRAPP_B - 0.03]) {
-        stang([uStart, 0.03, ww], [dk, yk, ww], 0.06, TRAPP_STAL);
-        stang([uStart, REKK_H, ww], [dk, yk + REKK_H, ww], 0.045, TRAPP_STAL);
-        for (const t of enkel ? [0] : [0, 0.5]) b(0.04, REKK_H, 0.04, TRAPP_STAL, uStart - lop * t, yk * t + REKK_H / 2, ww);
-      }
-      inngang = { kant: "ytre", fra: wa, til: wa + TRAPP_B };
     }
     // rekkverket rundt reposet: ytterkanten og begge endene, med åpning der
     // trappa kommer inn (veggsiden trenger ikke rekkverk)
