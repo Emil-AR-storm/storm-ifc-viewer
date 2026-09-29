@@ -70,7 +70,8 @@ let valgteStykker = [];        // panelene som er valgt (maks to) — til port
 // panelet under pekeren lyser → etter to naboer kommer «Gjør om til port» som
 // hovedknapp. «Ferdig» er borte mens steget pågår; «Avbryt» går ut av det.
 let portModus = false;
-let sistSkjemaId = null;      // skjemaet sist vist for (logolista hentes på nytt bare ved bytte)
+let sistSkjemaId = null;
+let sistValgBarHtml = "";      // knapperaden slik den sist ble bygd (se oppdaterValgBar)      // skjemaet sist vist for (logolista hentes på nytt bare ved bytte)
 let overStykke = null;         // panelet under pekeren i port-steget
 
 function hentO(id) { return riggObjekter(S.rigg || []).find(o => o.id === id) || null; }
@@ -365,7 +366,9 @@ function fjern(id, medAngre) {
   if (medAngre) post("Rigg slettet", () => leggTil(o, false), () => fjern(id, false));
 }
 
-function oppdater(id, felter, angreTekst) {
+// utenPanel: skjemaet lagrer selv (runde 15c) — da skal panelet IKKE tegnes
+// på nytt, for det er det man står og trykker i.
+function oppdater(id, felter, angreTekst, utenPanel) {
   const o = hentO(id);
   if (!o) return;
   const for_ = Object.assign({}, o);
@@ -375,7 +378,7 @@ function oppdater(id, felter, angreTekst) {
   tegnRigg();
   planLagring();
   if (S.oppdaterVisAlle) S.oppdaterVisAlle();
-  if (erApen()) tegnPanel();
+  if (erApen() && !utenPanel) tegnPanel();
   if (angreTekst) {
     const etter = Object.assign({}, ny);
     post(angreTekst, () => oppdater(id, for_, null), () => oppdater(id, etter, null));
@@ -631,15 +634,20 @@ function oppdaterValgBar() {
   const el = valgBarEl();
   plasserValgBar();
   const o = valgtId ? hentO(valgtId) : null;
-  if (!o || o.skjult) { el.style.display = "none"; el.innerHTML = ""; return; }
+  if (!o || o.skjult) { el.style.display = "none"; el.innerHTML = ""; sistValgBarHtml = ""; return; }
   const n = riggAntall(o);
   el.style.display = "flex";
+  // 🖱 Knappene byttes BARE når innholdet er endret (Emil 29.09, runde 15c):
+  // man endret et felt og trykket «Ferdig» — musetrykket forlot feltet, det
+  // lagret, og raden ble bygd på nytt MIDT i klikket. Knappen man trykket på
+  // fantes ikke lenger da museknappen ble sluppet, så det måtte to trykk til.
+  // Lik HTML → de samme knappene står, med de samme lytterne.
+  const bytt = (html) => { if (html === sistValgBarHtml && el.firstChild) return false; el.innerHTML = html; sistValgBarHtml = html; return true; };
   if (portModus && erGjerde(o)) {
-    el.innerHTML = '<span style="font-size:12px;font-weight:600">' + ikon("pluss") + " " + t("Lag port") + "</span>" + portStegKnapper(o);
-    koblPortSteg(o);
+    if (bytt('<span style="font-size:12px;font-weight:600">' + ikon("pluss") + " " + t("Lag port") + "</span>" + portStegKnapper(o))) koblPortSteg(o);
     return;
   }
-  el.innerHTML =
+  const html =
     '<span class="rv-navn" style="font-size:12px;font-weight:600;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
     '<span style="display:inline-block;width:9px;height:9px;border-radius:3px;background:' + esc(o.farge) + ';margin-right:6px"></span>' +
     esc(o.navn || riggTypeLabel(o.type)) + (n > 1 ? " ×" + n : "") + "</span>" +
@@ -651,6 +659,7 @@ function oppdaterValgBar() {
     '<button id="rvRediger" class="btn" title="' + t("Rediger") + '" style="padding:3px 8px">' + ikon("rediger") + "</button>" +
     gjerdeKnapper(o) +
     '<button id="rvLukk" class="btn" title="' + t("Ferdig") + '" style="padding:3px 8px">' + t("Ferdig") + "</button>";
+  if (!bytt(html)) return;
   koblGjerdeKnapper(o);
   $("rvFlytt").onclick = () => {
     const g = valgtId && finnRiggObjekt(valgtId);
@@ -1438,7 +1447,8 @@ function skjemaHtml(o) {
 function koblSkjema(o) {
   const M = RIGG_TYPER[o.type];
   if (!$("riggSkjema")) return;
-  const lagre = () => {
+  const lesFelter = () => {
+    if (!$("riggSkjema") || !$("riggNavn")) return null;
     const felter = {
       navn: $("riggNavn").value.trim(),
       L: $("riggL").value, B: $("riggB").value, H: $("riggH").value,
@@ -1449,25 +1459,40 @@ function koblSkjema(o) {
     if (M.moduler && $("riggDorEnde")) felter.dorEnde = $("riggDorEnde").value;
     if (M.avfall && $("riggAvfall")) felter.avfall = $("riggAvfall").value;
     if (M.moduler) { felter.moduler = $("riggMod").value; felter.etasjer = $("riggEt").value; }
+    return felter;
+  };
+  const lagre = (felter) => {
+    if (!felter) return;
     // Bare når noe faktisk er endret — ellers ble hvert fokusbytte en angrepost.
     const for_ = hentO(o.id);
     const ny = for_ && vaskRiggObjekt(Object.assign({}, for_, felter));
     if (!ny || JSON.stringify(Object.assign({}, ny, { endret: "" })) === JSON.stringify(Object.assign({}, for_, { endret: "" }))) return;
-    oppdater(o.id, felter, "Rigg endret");
+    oppdater(o.id, felter, "Rigg endret", true);
+    // Panelet står (det er der man trykker) — det som kan ha endret seg,
+    // settes rett inn: overskriften, og tall som ble rundet eller klemt.
+    const etter = hentO(o.id);
+    if (!etter) return;
+    const tittel = $("riggTittel");
+    if (tittel && valgtId === o.id) tittel.textContent = (etter.navn || riggTypeLabel(etter.type)) + (riggAntall(etter) > 1 ? " ×" + riggAntall(etter) : "");
+    const sett = (id, v) => { const f = $(id); if (f && f !== document.activeElement && v != null && String(f.value) !== String(v)) f.value = v; };
+    sett("riggL", etter.L); sett("riggB", etter.B); sett("riggH", etter.H); sett("riggRot", etter.rot);
+    if (M.moduler) { sett("riggMod", etter.moduler); sett("riggEt", etter.etasjer); }
   };
   // Lagres i NESTE runde av hendelsesløkka: med Tab fyrer change før markøren
   // har flyttet seg. Tegnes panelet på nytt der og da, landet markøren i
   // ingenting (nettleserprøven 29.09). Litt etter står den i neste felt, og
   // tegnPanel setter den tilbake dit.
-  const lagreSnart = () => setTimeout(lagre, 0);
+  // Feltene leses MED EN GANG (de kan være borte om et øyeblikk — «Ferdig»
+  // velger bort objektet), og lagres like etter.
+  const lagreSnart = () => { const f = lesFelter(); setTimeout(() => lagre(f), 0); };
   $("riggSkjema").querySelectorAll("input, select").forEach(f => { f.onchange = lagreSnart; });
   // Enter i et felt: lagre (change fyrer ikke alltid på Enter i tallfelt)
   $("riggSkjema").querySelectorAll("input").forEach(f => {
-    f.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); lagre(); } };
+    f.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); lagre(lesFelter()); } };
   });
   $("riggStd").onclick = () => {
     $("riggL").value = M.L; $("riggB").value = M.B; $("riggH").value = M.H; $("riggFarge").value = M.farge;
-    lagre();
+    lagre(lesFelter());
   };
   // Lista hentes på nytt fra SharePoint bare første gang skjemaet vises for
   // objektet — panelet tegnes på nytt ved hver endring, og det skal ikke bli
