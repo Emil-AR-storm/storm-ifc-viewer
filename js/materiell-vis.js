@@ -14,10 +14,10 @@
 // Geometrien bygges som rene tallfunksjoner (trpProfil, ribbonPosisjoner …)
 // uten three.js, så mønsterreglene kan testes i Node uten skjerm.
 import * as THREE from "three";
-import { $, S, esc, ikon, registrerEkstraGruppe } from "./state.js";
+import { $, EKSTRA_LAG, S, apnePanel, esc, ikon, registrerEkstraGruppe } from "./state.js";
 import { t } from "./i18n.js";
 import { LETT } from "./lett.js";
-import { flyTil, frameHooks, makeLabel, scene, skalerLapperMedTak } from "./scene.js";
+import { camera, canvas, flyTil, frameHooks, makeLabel, raycaster, scene, skalerLapperMedTak } from "./scene.js";
 
 // ---------- Objektmalene ----------
 // Alle mål i MILLIMETER i lagret form; regnes om til sceneenheter ved bygging.
@@ -432,10 +432,67 @@ registrerEkstraGruppe(materiellGroup, {
   }
 });
 
+// ═══════════ 📱 BYGGEPLASS: TRYKK PÅ EN BUNKE FOR Å SE HVA DET ER ═══════════
+//
+// Emil 30.09: bunkene fra SW-, blikk- og tak-generatoren «går ikke an å trykke
+// på for å se info i storm byggeplass». På kontoret eier materiell.js valget
+// (egne lyttere), men den lastes ikke på byggeplassen — der hadde laget ingen
+// «plukk» i det hele tatt. Nå får det det, BARE på byggeplassen: lett-main.js
+// spør pickEkstra, og da vinner det som ligger nærmest fingeren (modell,
+// SW-element, takplate eller bunke). Kontorets kontrakt er urørt.
+const _mNdc = new THREE.Vector2();
+function materiellLag() { return EKSTRA_LAG.find(l => l.gruppe === materiellGroup); }
+if (LETT) Object.assign(materiellLag() || {}, {
+  plukk(cx, cy) {
+    if (!materiellGroup.visible || !materiellGroup.children.length) return null;
+    const r = canvas.getBoundingClientRect();
+    _mNdc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+    raycaster.setFromCamera(_mNdc, camera);
+    const treff = raycaster.intersectObjects(materiellGroup.children, true);
+    for (const h of treff) {
+      if (h.object.isSprite) continue;           // navnelappen er ikke bunken
+      let o = h.object;
+      while (o && o.userData.materiellId === undefined) o = o.parent;
+      if (o) return { id: o.userData.materiellId, avstand: h.distance };
+    }
+    return null;
+  },
+  velg(ider) {
+    S.materiellValgtId = (ider && ider[0]) || null;
+    oppdaterMateriellValgEffekt();
+  },
+  valgte: () => (S.materiellValgtId ? [S.materiellValgtId] : []),
+  // «Skjul» fra flervalget: bare i denne visningen (dataene eies av Workeren).
+  skjul(ider) {
+    const sett = new Set((ider || []).map(String));
+    for (const p of (S.materiell || [])) if (p && sett.has(String(p.id))) p.skjult = true;
+    tegnMateriell();
+    if ($("propPanel")) $("propPanel").classList.remove("open");
+  },
+  visEgenskaper(id) {
+    const p = vaskMateriellListe(S.materiell).find(x => x.id === id);
+    if (!p || !$("propTitle")) return;
+    const rad = (k, v, navn) => '<div class="prop-row"' + (navn ? " data-navn" : "") + '><div class="k">' + esc(k) +
+      '</div><div class="v">' + esc(String(v)) + '</div></div>';
+    $("propTitle").textContent = materiellTypeLabel(p);
+    $("propBody").innerHTML =
+      rad(t("Navn"), p.navn || materiellTypeLabel(p), true) +
+      rad(t("Antall"), p.antall + t(" stk")) +
+      rad(t("Lengde"), p.lengde + " mm") +
+      rad(t("Bredde"), p.bredde + " mm") +
+      (p.maltype === "sandwich" || p.maltype === "beslag" ? rad(t("Tykkelse"), p.tykkelse + " mm") : "");
+    apnePanel("propPanel");
+  }
+});
+
 // Navnelappene: konstant størrelse på skjermen nært, men med TAK langt unna
 // (maks 0.9 m i virkeligheten, skjult under 7 px) — samme regel som riggen.
 // Emil 25.09: uten taket vokste lappene når man zoomet ut og dekket bygget.
-frameHooks.push(() => skalerLapperMedTak(materiellGroup));
+// 📱 Byggeplassen (Emil 30.09: «viser ikke navn med tekstboks»): med taket på
+// 0,9 m ble lappene 7–10 px høye på en telefon et stykke unna — eller skjult
+// helt. Der får de dobbelt så høyt tak (1,8 m). Kontoret er som før.
+export const LAPP_MAKS_BYGG_M = 1.8;
+frameHooks.push(() => skalerLapperMedTak(materiellGroup, LETT ? LAPP_MAKS_BYGG_M : undefined));
 
 function lambert(farge) {
   return new THREE.MeshLambertMaterial({ color: farge, side: THREE.DoubleSide });

@@ -464,11 +464,13 @@ export function lappStorrelse(px, pxPerEnhet, maksEnheter) {
 
 // Skalerer alle sprites med userData.px i gruppa etter regelen over.
 // S.enhetSkala: modeller i mm har 1 sceneenhet = 1 mm, ikke 1 m.
-export function skalerLapperMedTak(group) {
+// maksM: eget tak i meter for denne gruppa (materiellet på byggeplassen);
+// uten det gjelder LAPP_MAKS_M.
+export function skalerLapperMedTak(group, maksM) {
   if (!group.children.length) return;
   const h = renderer.domElement.clientHeight || 1;
   const k = 2 * Math.tan(camera.fov * Math.PI / 360) / h;     // sceneenheter per px per avstand
-  const maks = LAPP_MAKS_M / (S.enhetSkala || 1);
+  const maks = (maksM > 0 ? maksM : LAPP_MAKS_M) / (S.enhetSkala || 1);
   group.traverse(o => {
     if (!o.isSprite || !o.userData.px) return;
     o.getWorldPosition(_lappV);

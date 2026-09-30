@@ -14,7 +14,7 @@ import { riggForByggeplass } from "./rigg-vis.js";
 import { grupperForEksport } from "./grupper.js";
 // 🏗 SW-elementene ut som MONTERINGSINSTRUKS — en ferdig beskrivelse, ikke
 // generatoren. Se swForByggeplass i js/veggelement.js for hvorfor.
-import { swForByggeplass } from "./veggelement.js";
+import { swForByggeplass, takForByggeplass } from "./veggelement.js";
 import { FRISTER, TJENESTER } from "./config.js";
 
 // Adressen til Workeren står i config.js, og kan overstyres av oppsett.json i
@@ -221,6 +221,8 @@ if (btn) btn.addEventListener("click", async () => {
         // 🏗 SW-oppsettet: hvor hvert veggelement skal stå, med SW-nummeret.
         // Gamle lesere ser bort fra feltet; bygg.html tegner det (js/sw-lett.js).
         sw: swForByggeplass(),
+        // 🏠 Takplatene fra tak-generatoren, som omriss (tak-lett.js tegner dem)
+        tak: (() => { try { return takForByggeplass(); } catch (err) { console.warn("Takplatene ble ikke med ut:", err); return null; } })(),
         // 🏕 Riggen: objektene og hvor bygget sto på tomta sist (referansen),
         // så bygg.html kan tegne dem rundt bygget uten terrenget.
         rigg: riggForByggeplass(),

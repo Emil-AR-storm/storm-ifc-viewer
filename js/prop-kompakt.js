@@ -34,6 +34,9 @@ export function kortNavn(navn) {
 // flervalg), er tittelen alene nok: der ER tittelen navnet («SW-03»).
 export function navnFraPanel(body) {
   if (!body) return "";
+  // En rad merket data-navn (materiell, takplater) ER navnet — ingen forkorting.
+  const merket = body.querySelector(".prop-row[data-navn] .v");
+  if (merket) return merket.textContent.trim();
   for (const r of body.querySelectorAll(".prop-row")) {
     const k = r.querySelector(".k"), v = r.querySelector(".v");
     if (k && v && k.textContent.trim() === "Name") return kortNavn(v.textContent);

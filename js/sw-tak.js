@@ -2836,3 +2836,81 @@ export function platePunkter(prof, vs, starten, enden) {
   }
   return ut;
 }
+
+// ═══════════════════ 🏗 TAKPLATENE UT TIL BYGGEPLASSEN ═══════════════════
+//
+// Emil 30.09: «takplater kommer ikke opp i storm byggeplass» — platene som
+// generatoren legger PÅ TAKET ble aldri sendt ut; bare veggelementene og
+// bunkene på bakken. Nå sendes hver plate som sitt OMRISS i takflata (4–6
+// hjørner) i stedet for hele bølgeprofilen: ett omriss er ~20 tall, profilen
+// er flere tusen, og på en telefon på 30 m avstand ser en flat plate med
+// kant og riktig farge ut som en takplate.
+//
+// Omrisset er den konvekse innhyllingen av platas punkter projisert inn i
+// takflatas plan (U, V), lagt på midten av profilhøyden (N). Skråkappet og
+// knekkene kommer da med av seg selv — hjørnene ER punkter i profilen.
+// pos: flat liste [x,y,z, x,y,z, …] i scenekoordinater. Svar: [[x,y,z], …].
+export function omrissIPlanet(pos, U, V, N) {
+  if (!pos || pos.length < 9 || !U || !V || !N) return [];
+  const pkt = [];
+  let nMin = Infinity, nMax = -Infinity;
+  for (let i = 0; i + 2 < pos.length; i += 3) {
+    const x = pos[i], y = pos[i + 1], z = pos[i + 2];
+    const u = x * U.x + y * U.y + z * U.z, v = x * V.x + y * V.y + z * V.z;
+    const n = x * N.x + y * N.y + z * N.z;
+    if (n < nMin) nMin = n;
+    if (n > nMax) nMax = n;
+    pkt.push([u, v]);
+  }
+  // Andrews monotone kjede
+  pkt.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  // Toleransen følger platas størrelse: punkter på en rett kant skal falle
+  // bort selv med flyttallsstøy fra Float32-posisjonene.
+  const sp = Math.max(1e-9, (pkt[pkt.length - 1][0] - pkt[0][0]) ** 2);
+  const eps = sp * 1e-6;
+  const kryss = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const ned = [], opp = [];
+  for (const p of pkt) {
+    while (ned.length >= 2 && kryss(ned[ned.length - 2], ned[ned.length - 1], p) <= eps) ned.pop();
+    ned.push(p);
+  }
+  for (let i = pkt.length - 1; i >= 0; i--) {
+    const p = pkt[i];
+    while (opp.length >= 2 && kryss(opp[opp.length - 2], opp[opp.length - 1], p) <= eps) opp.pop();
+    opp.push(p);
+  }
+  const hull = ned.slice(0, -1).concat(opp.slice(0, -1));
+  if (hull.length < 3) return [];
+  const n = (nMin + nMax) / 2;
+  // Tilbake til scenen. U, V, N er ortonormale i takflata (se flatene i
+  // tak.js), så punktet er summen av de tre komponentene.
+  return hull.map(([u, v]) => [
+    u * U.x + v * V.x + n * N.x,
+    u * U.y + v * V.y + n * N.y,
+    u * U.z + v * V.z + n * N.z
+  ]);
+}
+
+// Byggeplassen ← markeringer.json. Alt vaskes. Svar: { farge, plater } eller null.
+export const TAK_LETT_MAKS = 3000;
+export function vaskTakLett(d) {
+  if (!d || typeof d !== "object" || !Array.isArray(d.plater)) return null;
+  const hex = (f, std) => (typeof f === "string" && /^#[0-9a-fA-F]{6}$/.test(f)) ? f.toLowerCase() : std;
+  const tall = (v) => typeof v === "number" && Number.isFinite(v) && Math.abs(v) < 1e7;
+  const plater = [];
+  for (const p of d.plater.slice(0, TAK_LETT_MAKS)) {
+    if (!p || !Array.isArray(p.p) || p.p.length < 9 || p.p.length > 60 || p.p.length % 3) continue;
+    if (!p.p.every(tall)) continue;
+    const pts = [];
+    for (let i = 0; i < p.p.length; i += 3) pts.push([p.p[i], p.p[i + 1], p.p[i + 2]]);
+    plater.push({
+      id: String(p.id || "").slice(0, 60) || ("tak-" + plater.length),
+      p: pts,
+      farge: hex(p.f, hex(d.farge, "#8fa3b8")),
+      kode: typeof p.k === "string" ? p.k.slice(0, 20) : "",
+      l: tall(p.l) && p.l > 0 ? Math.round(p.l) : 0,
+      b: tall(p.b) && p.b > 0 ? Math.round(p.b) : 0
+    });
+  }
+  return plater.length ? { farge: hex(d.farge, "#8fa3b8"), plater } : null;
+}

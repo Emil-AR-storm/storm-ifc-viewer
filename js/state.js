@@ -235,6 +235,7 @@ export function nullstillModellState() {
   if (S.ryddTerreng) S.ryddTerreng();
   // 🏕 Riggen hører til modellen (og tomta) som ble lukket.
   if (S.ryddRigg) S.ryddRigg();
+  if (S.ryddTakLett) S.ryddTakLett();   // 🏠 takplatene på byggeplass-siden
 }
 
 Object.assign(S, modellStartverdier());
@@ -288,6 +289,7 @@ S.terrengRef = null;            // rigg-vis.js: hvor bygget står på tomta + ba
 S.lastRigg = null;              // ifc.js afterLoad: les riggen for denne modellen (kontor)
 S.settRiggFraLett = null;       // markers.js: riggen fra Workerens JSON (bygg)
 S.settTerrengFraLett = null;   // markers.js: terrenget fra Workerens JSON (bygg, terreng-vis.js)
+S.settTakFraLett = null;       // markers.js: takplatene fra Workerens JSON (bygg, tak-lett.js)
 S.ryddRigg = null;              // modellbytte: tøm gruppa
 S.riggOmplasser = null;         // terreng.js: bygget er flyttet på tomta, eller terrenget kom/gikk
 S.riggModeBar = null;           // modes.js: kontrollinja i rigg-modus

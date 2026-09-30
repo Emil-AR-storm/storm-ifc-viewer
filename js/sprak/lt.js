@@ -1851,5 +1851,12 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Vis terreng": "Rodyti reljefą",
   "Terrenget og kartet rundt bygget, slik prosjektlederen satte det opp på kontoret. Slå det av hvis telefonen blir treg.": "Reljefas ir žemėlapis aplink pastatą, kaip projekto vadovas nustatė biure. Išjunkite, jei telefonas ima lėtėti.",
   "Terrenget rundt bygget": "Reljefas aplink pastatą",
-  "Terrenget og kartet rundt bygget er det prosjektlederen satte opp på kontoret. Brakker og gjerde står på bakken. Blir telefonen treg, slår du av Vis terreng under Innstillinger.": "Reljefą ir žemėlapį aplink pastatą biure nustatė projekto vadovas. Vagonėliai ir tvora stovi ant žemės. Jei telefonas ima lėtėti, Nustatymuose išjunkite Rodyti reljefą."
+  "Terrenget og kartet rundt bygget er det prosjektlederen satte opp på kontoret. Brakker og gjerde står på bakken. Blir telefonen treg, slår du av Vis terreng under Innstillinger.": "Reljefą ir žemėlapį aplink pastatą biure nustatė projekto vadovas. Vagonėliai ir tvora stovi ant žemės. Jei telefonas ima lėtėti, Nustatymuose išjunkite Rodyti reljefą.",
+  "Vis alle egenskaper": "Rodyti visas savybes",
+  "Vis mindre": "Rodyti mažiau",
+  "TRP-takplate": "TRP stogo lakštas",
+  "Skjul denne plata": "Slėpti šį lakštą",
+  "Kode": "Kodas",
+  "Takplater": "Stogo lakštai",
+  "Bredde": "Plotis"
 };
