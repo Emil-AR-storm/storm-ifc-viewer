@@ -549,6 +549,11 @@ function settMarkering() {
 
 function startPortModus() {
   if (!valgtGjerde()) return;
+  // 🚪 Port-steget trenger rigg-modus (runde 15d, Emils skjermbilde 30.09):
+  // gjerdet kan velges uten at Rigg er åpent, og da gikk klikkene på panelene
+  // videre til det vanlige elementvalget («358 elementer valgt») — bare
+  // lyset under pekeren virket. Nå åpnes Rigg (katalog + panel) med gjerdet valgt.
+  if (!iModus() || !erApen()) visValgt(valgtId);
   portModus = true; overStykke = null;
   valgteStykker = []; valgteSkjoter = [];
   settMarkering();
@@ -900,6 +905,9 @@ function iModus() { return S.mode === "rigg"; }
 
 S.riggModeBar = (bar) => {
   S.riggModeBarTegn = () => {
+    // Kroken lever videre etter at rigg-modus er avsluttet — da er linja
+    // nederst et annet verktøys (eller ingens), og den skal ikke røres.
+    if (!iModus()) return;
     if (tegner) {
       bar.innerHTML = '<span class="lbl">' + t("Klikk på bakken for hvert punkt i pila — dobbeltklikk eller Enter for å avslutte, Esc avbryter") +
         '</span><button id="mbPilFerdig"' + (tegner.punkter.length < 2 ? " disabled" : "") + ">" + t("Ferdig pil") + "</button>";
@@ -907,11 +915,11 @@ S.riggModeBar = (bar) => {
       bar.classList.add("open");
       return;
     }
+    // 🚪 I port-steget står alt i knapperaden («+ Lag port … Avbryt»). En
+    // rad til nederst med samme tekst var bare dobbelt (Emil 30.09).
     if (portModus && valgtGjerde()) {
-      bar.innerHTML = '<span class="lbl">' + t("Lag port: trykk på to paneler som står ved siden av hverandre — Esc avbryter") +
-        '</span><button id="mbPortAvbryt">' + t("Avbryt") + "</button>";
-      $("mbPortAvbryt").onclick = () => avsluttPortModus();
-      bar.classList.add("open");
+      bar.innerHTML = "";
+      bar.classList.remove("open");
       return;
     }
     const hint = merker
@@ -934,7 +942,7 @@ function settRiggModus(paa) {
   S.mode = paa ? "rigg" : (S.mode === "rigg" ? null : S.mode);
   const b = $("btnRigg");
   if (b) b.classList.toggle("active", paa);
-  if (!paa) { avbrytPlassering(); avbrytMerker(); avbrytPil(); }
+  if (!paa) { avbrytPlassering(); avbrytMerker(); avbrytPil(); avsluttPortModus(); }
   visKatalog(paa);
   if (S.oppdaterModeBar) S.oppdaterModeBar();
   oppdaterHandtak();

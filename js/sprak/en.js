@@ -1699,7 +1699,6 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "En port kan ikke bli en del av en ny port — trykk på et vanlig panel": "A gate cannot be part of a new gate — tap an ordinary panel",
   "Gjerdet er for lite til en port": "The fence is too small for a gate",
   "Panelene står ikke ved siden av hverandre — trykk på et annet panel": "The panels are not next to each other — tap another panel",
-  "Lag port: trykk på to paneler som står ved siden av hverandre — Esc avbryter": "Make gate: tap two panels next to each other — Esc cancels",
   "Dra i prikkene for å forme gjerdet · shift-klikk for flere prikker · dobbeltklikk på et panel for ny skjøt · «Lag port» for å lage en port": "Drag the dots to shape the fence · shift-click for more dots · double-click a panel for a new joint · «Make gate» to make a gate",
   "Gjør tilbake til paneler": "Turn back into panels",
   "Fjern skjøt": "Remove joint",
