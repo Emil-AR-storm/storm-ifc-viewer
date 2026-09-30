@@ -71,6 +71,11 @@ export const KORT = [
     tekst: "Brakker, toalett, container, byggegjerde, porter og piler for kjøretøy og gående viser hvordan riggen er planlagt. Navnelappen på hvert objekt sier hva det er. Riggen kan bare endres på kontoret."
   },
   {
+    hvor: "bygg", ikonNavn: "kote",
+    tittel: "Terrenget rundt bygget",
+    tekst: "Terrenget og kartet rundt bygget er det prosjektlederen satte opp på kontoret. Brakker og gjerde står på bakken. Blir telefonen treg, slår du av Vis terreng under Innstillinger."
+  },
+  {
     hvor: "bygg", ikonNavn: "sok",
     tittel: "Verktøyene ligger i grupper",
     tekst: "Knappene øverst — Måleverktøy, Bygg Info, Visning og Storm-Byggeplass — bytter hvilke verktøy verktøylinja viser. Er et verktøy borte, ligger det i en annen gruppe."
@@ -104,13 +109,13 @@ export const KORT = [
   },
   {
     hvor: "kontor", ikonNavn: "sok",
-    tittel: "Verktøyene ligger i fire grupper",
-    tekst: "Måleverktøy, Bygg Info, Visning og Storm-Byggeplass øverst bytter hvilke verktøy verktøylinja viser. Hold musepekeren over en knapp, så står det hva den gjør."
+    tittel: "Verktøyene ligger i fem grupper",
+    tekst: "Måleverktøy, Bygg Info, Visning, Storm-Byggeplass og Dokumentasjon øverst bytter hvilke verktøy verktøylinja viser. Hold musepekeren over en knapp, så står det hva den gjør."
   },
   {
     hvor: "kontor", ikonNavn: "markering",
     tittel: "Markeringene er arbeidslista",
-    tekst: "En markering kan få ansvarlig, frist og en oppgave i Planner. Ringen rundt skifter farge etter hvor nær fristen er. Arbeidstegninger fra SharePoint og sjekklister festes til markeringen, og sjekklista kan lastes ned som PDF."
+    tekst: "En markering kan få ansvarlig, frist og en oppgave i Planner. Ringen rundt skifter farge etter hvor nær fristen er — eller velg Egendefinert under Farge og gi den en egen farge. Arbeidstegninger fra SharePoint og sjekklister festes til markeringen, og sjekklista kan lastes ned som PDF."
   },
   {
     hvor: "begge", ikonNavn: "skjul",
@@ -165,7 +170,7 @@ export const KORT = [
   {
     hvor: "kontor", ikonNavn: "kote",
     tittel: "Terrenget rundt bygget",
-    tekst: "Terreng (i Bygg Info) henter høydedata og kart fra Kartverket for en adresse. Flytt og roter bygget på plass, skriv gulvkoten fra tegningen og trykk Lagre terreng — da kommer terrenget av seg selv neste gang modellen åpnes, også hos kollegaene. Plasseringen er omtrentlig og skal aldri brukes til utstikking."
+    tekst: "Terreng (i Bygg Info) henter høydedata og kart fra Kartverket for en adresse. Flytt og roter bygget på plass, skriv gulvkoten fra tegningen og trykk Lagre terreng — da kommer terrenget av seg selv neste gang modellen åpnes, også hos kollegaene. Publiser Byggeplass tar terrenget og kartet med ut til byggeplass-lenka. Plasseringen er omtrentlig og skal aldri brukes til utstikking."
   },
   {
     hvor: "kontor", ikonNavn: "markering",
@@ -195,7 +200,7 @@ export const KORT = [
   {
     hvor: "kontor", ikonNavn: "tegning",
     tittel: "Ta arbeidet ut igjen",
-    tekst: "Rapport gir en PDF med bilder og status. BCF-eksport gir en fil som Solibri, Dalux og Revit kan åpne. Del lager en lenke som gjenskaper akkurat denne visningen hos andre."
+    tekst: "Alt som lager en fil ligger i Dokumentasjon. Rapport gir en PDF med bilder og status. Riggplan og SW-tegning laster ned PDF-ene fra Rigg og SW-generator med valgene du har satt der. BCF-eksport gir en fil som Solibri, Dalux og Revit kan åpne. Del visning (i Storm-Byggeplass) lager en lenke som gjenskaper akkurat denne visningen hos andre."
   },
   {
     hvor: "kontor", ikonNavn: "innstillinger",

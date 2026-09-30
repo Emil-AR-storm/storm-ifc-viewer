@@ -28,6 +28,9 @@ export const DEFAULT_SETTINGS = {
   // scene.js). AV som standard: den som ikke har bedt om det, skal ikke
   // plutselig fly tvers gjennom stålet.
   evigZoom: false,
+  // ⛰ Terrenget på byggeplass-siden (Emil 30.09). PÅ som standard — Emil valgte
+  // kartet og hele utsnittet. Kan slås av i Innstillinger på en treg telefon.
+  terrengBygg: true,
   // 👁 Tegneavstand (Emil 30.09: «objektene blir skraverte når du zoomer langt
   // ut»). Styrer hvor langt kameraet tegner, og hvor stor dybdepresisjon det
   // får på avstand — se TEGNEAVSTAND i scene.js. «normal» retter skraveringen
@@ -284,6 +287,7 @@ S.terrengRef = null;            // rigg-vis.js: hvor bygget står på tomta + ba
 // 🏕 Rigg. Krokene settes av rigg-vis.js / rigg.js; null når modulen ikke er lastet.
 S.lastRigg = null;              // ifc.js afterLoad: les riggen for denne modellen (kontor)
 S.settRiggFraLett = null;       // markers.js: riggen fra Workerens JSON (bygg)
+S.settTerrengFraLett = null;   // markers.js: terrenget fra Workerens JSON (bygg, terreng-vis.js)
 S.ryddRigg = null;              // modellbytte: tøm gruppa
 S.riggOmplasser = null;         // terreng.js: bygget er flyttet på tomta, eller terrenget kom/gikk
 S.riggModeBar = null;           // modes.js: kontrollinja i rigg-modus

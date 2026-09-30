@@ -3,6 +3,9 @@
 //
 // DENNE FILA LASTES AV BÅDE main.js OG lett-main.js: montøren på byggeplassen
 // skal SE riggen, men ikke kunne endre den (Emil 25.09.2026, som Materiell).
+// ⛰ Siden 30.09 har byggeplassen også terrenget (js/terreng-vis.js), og den
+// setter S.terrengRef der også — da står riggen på bakken på telefonen også,
+// ikke på gulvhøyde. Uten terreng er S.terrengRef ikke satt, og alt er som før.
 // Selve verktøyet (panel, plassering, flytt, lagring) ligger i js/rigg.js og
 // lastes kun av main.js.
 //
@@ -288,7 +291,7 @@ export function tegnEnRigg(o) {
   if (!base || !o) return null;
   const gammel = finnRiggObjekt(o.id);
   if (gammel) { gammel.traverse(m => { if (m.geometry) m.geometry.dispose(); }); riggGroup.remove(gammel); }
-  const g = byggPlassert(o, base, aktivRef(), !LETT && S.terrengRef ? S.terrengRef() : null);
+  const g = byggPlassert(o, base, aktivRef(), S.terrengRef ? S.terrengRef() : null);
   if (g) { riggGroup.add(g); valgEffekt(g, o.id === S.riggValgtId); }
   return g;
 }
@@ -298,7 +301,7 @@ export function tegnRigg() {
   const base = riggBase();
   if (base) {
     const ref = aktivRef();
-    const live = !LETT && S.terrengRef ? S.terrengRef() : null;
+    const live = S.terrengRef ? S.terrengRef() : null;
     for (const o of riggListe()) {
       if (o.skjult || skjulteTyper.has(o.type)) continue;
       const g = byggPlassert(o, base, ref, live);
@@ -316,7 +319,7 @@ export function plasserRigg() {
   const base = riggBase();
   if (!base) return;
   const ref = aktivRef();
-  const live = !LETT && S.terrengRef ? S.terrengRef() : null;
+  const live = S.terrengRef ? S.terrengRef() : null;
   const alle = new Map(riggListe().map(o => [o.id, o]));
   const gjerder = [];
   for (const g of riggGroup.children.slice()) {

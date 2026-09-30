@@ -41,8 +41,16 @@ export const GRUPPER = [
     hjelp: "Snitt, etasjer, gjennomsiktig og farger",
     knapper: ["btnClip", "btnStorey", "btnGhost", "btnColors"] },
   { id: "bygg",     navn: "Storm-Byggeplass", ikonNavn: "lastned",
-    hjelp: "Ut til byggeplassen: QR-lenke, rapport, lett kopi og deling",
-    knapper: ["btnByggeplass", "btnMateriell", "btnSW", "btnBlikk", "btnRapport", "btnSaveLite", "btnShare", "btnHistorikk"] }
+    hjelp: "Ut til byggeplassen: QR-lenke, materiell, SW-generator og deling",
+    knapper: ["btnByggeplass", "btnMateriell", "btnSW", "btnBlikk", "btnShare", "btnHistorikk"] },
+  // 📄 Alt som lager en fil å sende videre (Emil 02.09 og 04.09, valgt 30.09:
+  // «flytt + snarveier»). Rapport og Lett kopi er FLYTTET hit fra
+  // Storm-Byggeplass. Riggplan, SW-tegning og BCF er SNARVEIER: de åpner
+  // panelet sitt og trykker den samme knappen der (js/dokumentasjon.js), så
+  // målestokk, tittelfelt og sjekkene før nedlasting er de samme.
+  { id: "dok",      navn: "Dokumentasjon",    ikonNavn: "tegning",
+    hjelp: "Dokumentasjon: rapport, riggplan, SW-tegning, BCF og lett kopi",
+    knapper: ["btnRapport", "btnDokRigg", "btnDokSW", "btnDokBcf", "btnSaveLite"] }
 ];
 
 // Knapper som står uansett hvilken gruppe som er valgt. Angre, Gjenopprett og

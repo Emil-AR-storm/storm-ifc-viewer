@@ -160,6 +160,8 @@ if (btn) btn.addEventListener("click", async () => {
       // ferdig utfylt og ble stoppet på veien ut. Uten den ser byggeplassen
       // grå ringer på alt.
       due: c.due || "",
+      // 🎨 Egen farge følger med: montøren skal se samme farge som kontoret.
+      farge: c.farge || "",
       status: c.status || "Åpen", x: c.x, y: c.y, z: c.z,
       bilder: c.bilder || [], bilderEtter: c.bilderEtter || [], lyd: c.lyd || [],
       // kommentartråden og tegnings-HENVISNINGENE er med nå (trinn 5b) —
@@ -178,6 +180,33 @@ if (btn) btn.addEventListener("click", async () => {
     // All lesing tåler begge former (se lastLettMarkeringer i markers.js).
     // Rull ALLTID ut lesingen før skrivingen — ellers står byggeplassen med en
     // fil den ikke forstår til neste push.
+    // ⛰ Terrenget (Emil 30.09): krympet grid i JSON-en, kartet som eget bilde.
+    // Kartet får et navn etter innholdet (SHA-256), så en uendret tomt gir
+    // samme navn — telefonen har det allerede i hurtigbufferen og henter
+    // ingenting. Feiler noe her, publiseres alt annet likevel.
+    let terrengUt = null;
+    try {
+      const ter = S.terrengForByggeplass ? await S.terrengForByggeplass() : null;
+      if (ter && ter.data) {
+        terrengUt = ter.data;
+        if (ter.kartBlob) {
+          const bytes = await ter.kartBlob.arrayBuffer();
+          const h = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)))
+            .slice(0, 8).map(b => b.toString(16).padStart(2, "0")).join("");
+          const kartNavn = "terreng-" + h + ".jpg";
+          const kr = await fetch(TJENESTER.worker + "/last-opp?fil=" + encodeURIComponent(kartNavn) + "&mappe=bilder", {
+            method: "PUT",
+            headers: { "content-type": "image/jpeg", "x-prosjekt": prosjekt, "x-token": token },
+            body: ter.kartBlob
+          });
+          if (kr.ok) terrengUt.kart = kartNavn;
+        }
+      }
+    } catch (err) {
+      console.warn("Terrenget ble ikke med ut:", err);
+      terrengUt = null;
+    }
+
     await fetch(TJENESTER.worker + "/last-opp?fil=" + encodeURIComponent(fil + ".markeringer.json"), {
       method: "PUT",
       headers: { "content-type": "application/json", "x-prosjekt": prosjekt, "x-token": token },
@@ -194,7 +223,10 @@ if (btn) btn.addEventListener("click", async () => {
         sw: swForByggeplass(),
         // 🏕 Riggen: objektene og hvor bygget sto på tomta sist (referansen),
         // så bygg.html kan tegne dem rundt bygget uten terrenget.
-        rigg: riggForByggeplass()
+        rigg: riggForByggeplass(),
+        // ⛰ Terrenget: null når det ikke er hentet (eller er skjult) på
+        // kontoret. Gamle lesere ser bort fra feltet.
+        terreng: terrengUt
       })
     });
 

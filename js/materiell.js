@@ -644,7 +644,7 @@ async function hentBibliotek() {
 
 async function lagreIBibliotek(p) {
   const token = await spTokenSilent();
-  if (!token) throw new Error(t("Logg inn (åpne Biblioteket) først."));
+  if (!token) throw new Error(t("Logg inn først (den røde prikken øverst til høyre)."));
   await sikreSiteId(token);
   const eksisterende = (await hentBibliotek()) || [];
   // samme navn + type erstatter den gamle malen i stedet for å doble den
@@ -667,7 +667,7 @@ async function tegnBibliotek() {
   catch (_) { el.innerHTML = '<p style="color:var(--muted);font-size:12px">' + t("Fikk ikke hentet biblioteket. Prøv igjen.") + "</p>"; return; }
   if (!$("matBib")) return;   // panelet er tegnet om i mellomtiden
   if (liste === null) {
-    el.innerHTML = '<p style="color:var(--muted);font-size:12px">' + t("Logg inn (åpne Biblioteket) for å hente lagrede maler.") + "</p>";
+    el.innerHTML = '<p style="color:var(--muted);font-size:12px">' + t("Logg inn (den røde prikken øverst til høyre) for å hente lagrede maler.") + "</p>";
     return;
   }
   if (!liste.length) {

@@ -86,7 +86,7 @@ function keyLabel(k) {
 // Forteller om oppsettet følger brukeren (SharePoint) eller bare denne nettleseren
 function syncStatusText() {
   const acc = S.msalApp && S.msalApp.getActiveAccount();
-  if (!acc) return '<span style="color:var(--muted)">' + t("Lagres bare i denne nettleseren. Logg inn via Biblioteket for at oppsettet skal følge deg på alle maskiner.") + '</span>';
+  if (!acc) return '<span style="color:var(--muted)">' + t("Lagres bare i denne nettleseren. Trykk på den røde prikken øverst til høyre og logg inn, så følger oppsettet deg på alle maskiner.") + '</span>';
   if (S.prefsCloudOK) return '<span style="color:var(--ok)">' + ikon("hake") + ' ' + t("Følger kontoen din ({0})", esc(acc.username || "")) + '</span>';
   return '<span style="color:var(--accent2)">' + t("Prøver å lagre til SharePoint …") + '</span>';
 }
@@ -200,6 +200,12 @@ function renderSettings() {
     '<div class="set-row"><span class="n">' + t("Skriftstørrelse akser") + '</span>' +
     '<input type="range" id="stAxFont" min="40" max="250" step="10" value="' + Math.round(S.axisFontF * 100) + '"></div>';
 
+  // ⛰ Terrenget på byggeplass-siden (terreng-vis.js). Bare der: på kontoret
+  // har Terreng-panelet sin egen «Skjul terrenget».
+  if (LETT) html += '<div class="set-row"><span class="n">' + t("Vis terreng") + '</span>' +
+    '<input type="checkbox" id="stTerreng"' + (S.settings.terrengBygg !== false ? " checked" : "") + '></div>' +
+    '<p class="set-hjelp">' + t("Terrenget og kartet rundt bygget, slik prosjektlederen satte det opp på kontoret. Slå det av hvis telefonen blir treg.") + '</p>';
+
   html += '<h4>' + t("Minikart") + '</h4>' +
     '<div class="set-row"><span class="n">' + t("Vis minikart") + '</span>' +
     '<input type="checkbox" id="stMini"' + (S.miniOn ? " checked" : "") + '></div>' +
@@ -290,6 +296,10 @@ function renderSettings() {
   $("stZoom").oninput = (e) => { S.settings.zoomSpeed = Number(e.target.value); saveSettings(); };
   $("stInv").onchange = (e) => { S.settings.invertZoom = e.target.checked; saveSettings(); };
   $("stEvig").onchange = (e) => { S.settings.evigZoom = e.target.checked; saveSettings(); };
+  if ($("stTerreng")) $("stTerreng").onchange = (e) => {
+    S.settings.terrengBygg = e.target.checked; saveSettings();
+    if (S.oppdaterTerrengBygg) S.oppdaterTerrengBygg();
+  };
   // Tas i bruk i neste bilde (rammekroken i scene.js) — ingen omlasting.
   $("stTegne").onchange = (e) => { S.settings.tegneavstand = e.target.value; saveSettings(); };
   $("stUnit").onchange = (e) => {

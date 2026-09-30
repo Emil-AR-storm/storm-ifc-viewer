@@ -206,6 +206,10 @@ async function lastLettMarkeringer() {
       // 🏗 SW-elementene: montøren ser hvor hvert panel skal stå
       if (S.settSwFraLett)
         S.settSwFraLett(d && !Array.isArray(d) ? d.sw : null);
+      // ⛰ Terrenget (terreng-vis.js) FØR riggen: riggen skal stå på bakken,
+      // og da må bakken finnes når den tegnes. Gamle filer har ikke feltet.
+      if (S.settTerrengFraLett)
+        S.settTerrengFraLett(d && !Array.isArray(d) ? d.terreng : null);
       // 🏕 Riggen på tomta (rigg-vis.js). Gamle filer har ikke feltet.
       if (S.settRiggFraLett)
         S.settRiggFraLett(d && !Array.isArray(d) ? d.rigg : null);
@@ -429,6 +433,8 @@ export function vaskMarkering(r) {
   for (const k of ["x", "y", "z"]) c[k] = Number(r[k]) || 0;
   // frist skal være en ren dato – alt annet forkastes
   if (c.due && !/^\d{4}-\d{2}-\d{2}$/.test(c.due)) c.due = "";
+  // 🎨 egen farge: bare en gyldig #rrggbb slipper gjennom (se vaskFarge)
+  { const f = vaskFarge(r.farge); if (f) c.farge = f; }
   // oppgavelenka åpnes med window.open – slipp bare gjennom https
   if (c.taskUrl && !/^https:\/\//i.test(c.taskUrl)) delete c.taskUrl;
   if (Array.isArray(r.bilder)) c.bilder = r.bilder.filter(b => typeof b === "string");
@@ -600,7 +606,30 @@ export const hastegradFor = (c) => hastegrad(c, FRISTER, iDag);
 // Minikartet trenger fargen, men skal ikke importere markers.js (den er 70 kB
 // og trekker inn halve verktøyet). Én funksjon på S er nok, og den settes her
 // slik at minimap.js virker uendret om markeringene aldri lastes.
-S.hastegradFarge = (c) => HASTEGRAD[hastegrad(c, FRISTER, iDag)].ring;
+S.hastegradFarge = (c) => ringFor(c);
+
+// 🎨 EGEN FARGE (Emil 21.09, bygget 30.09): under Status velger man «Frist»
+// (som før — ringen følger fristen) eller «Egendefinert» og en farge. Da
+// bruker ringen på bobla, området og prikken i minikartet den fargen i stedet.
+// Fristen forsvinner IKKE: teksten «2 dager igjen» under feltene og prikken i
+// lista står der fortsatt med fristfargen — de handler om tid, ikke om hva
+// markeringen er.
+//
+// Lagres som c.farge = "#rrggbb", eller tom/mangler = «Frist». Alt annet enn
+// en gyldig sekssifret hex-farge regnes som tomt: feltet kommer fra SharePoint
+// og fra telefoner, og en ødelagt verdi skal gi fristfargen, ikke en svart ring.
+export function vaskFarge(v) {
+  const s = String(v == null ? "" : v).trim().toLowerCase();
+  return /^#[0-9a-f]{6}$/.test(s) ? s : "";
+}
+export function ringFor(c) {
+  return vaskFarge(c && c.farge) || HASTEGRAD[hastegradFor(c)].ring;
+}
+// Standardfargen når man bytter til «Egendefinert»: dagens fristfarge, så
+// ingenting skifter farge før brukeren faktisk velger en.
+export function startFarge(c) {
+  return vaskFarge(c && c.farge) || vaskFarge(HASTEGRAD[hastegradFor(c)].ring) || "#3b82f6";
+}
 export const fristTekstFor = (c) => fristTekst(c, FRISTER, iDag);
 export const dagensDato = () => iDag;
 
@@ -620,12 +649,15 @@ function makeMarkerTexture(col, glyph, ringFarge) {
 }
 
 const markerTextures = {};
-function textureFor(status, hast) {
+function textureFor(status, hast, egen) {
   const st = STATUS[status] || STATUS["Åpen"];
   const h = HASTEGRAD[hast] ? hast : "ukjent";
-  const nokkel = status + "|" + h;
+  // Egen farge er en del av nøkkelen: to markeringer med samme status og
+  // frist, men ulik egen farge, skal ikke dele tekstur.
+  const farge = vaskFarge(egen);
+  const nokkel = status + "|" + h + "|" + farge;
   if (!markerTextures[nokkel])
-    markerTextures[nokkel] = makeMarkerTexture(st.col, st.glyph, HASTEGRAD[h].ring);
+    markerTextures[nokkel] = makeMarkerTexture(st.col, st.glyph, farge || HASTEGRAD[h].ring);
   return markerTextures[nokkel];
 }
 
@@ -657,7 +689,7 @@ frameHooks.push(skalerMarkeringer);
 
 function addMarkerSprite(comment) {
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: textureFor(statusOf(comment), hastegradFor(comment)), depthTest: false }));
+    map: textureFor(statusOf(comment), hastegradFor(comment), comment.farge), depthTest: false }));
   // J5: en markering som ikke kom fram tegnes blass, så den ikke ser ut som meldt
   if (comment.usendt) { sprite.material.transparent = true; sprite.material.opacity = 0.4; }
   sprite.position.set(comment.x, comment.y, comment.z);
@@ -679,7 +711,7 @@ function addMarkerSprite(comment) {
 // FRISTSYSTEMET — samme hastegradsring som bobla (frist.js), så rødt volum =
 // det haster, uten å åpne noe. Løst har ingen ring (null) → statusgrønn.
 function omradeFarge(c) {
-  return HASTEGRAD[hastegradFor(c)].ring || STATUS["Løst"].col;
+  return ringFor(c) || STATUS["Løst"].col;
 }
 
 // Konturen på BOKSEN er kantene, tegnet med three-ens «fat lines» — vanlig
@@ -836,7 +868,7 @@ export function ryddOmrader() { fjernOmrader(null); }
 // står uendret til siden lastes på nytt. Ingenting krasjer. Det er bare feil.
 //
 // Legges det til noe nytt som påvirker teksturen, MÅ det inn i denne lista.
-const TEGNEFELT = ["status", "due"];
+const TEGNEFELT = ["status", "due", "farge"];
 
 // Endrer et felt på en markering og oppdaterer alt som viser den
 function updateComment(c, patch) {
@@ -1106,7 +1138,7 @@ async function taOppTil(c, knapp) {
         : t("Talemeldingen er sendt. Den blir synlig for prosjektlederen neste gang han åpner modellen."));
     } catch (err) {
       alert(err.message === "IKKE_INNLOGGET"
-        ? t("Talemeldinger lagres i SharePoint, så du må være innlogget. Åpne Biblioteket og logg inn, så prøv igjen.")
+        ? t("Talemeldinger lagres i SharePoint, så du må være innlogget. Trykk på den røde prikken øverst til høyre for å logge inn, og prøv igjen.")
         : t("Klarte ikke å sende talemeldingen: ") + err.message);
     } finally {
       loadingEl.classList.remove("open");
@@ -1230,7 +1262,7 @@ async function apneTegningVelger(c) {
 
   if (svar.feil) {
     kropp.innerHTML = '<p style="color:var(--muted)">' + (svar.feil === "IKKE_INNLOGGET"
-      ? t("Tegningene ligger i SharePoint, så du må være innlogget. Åpne Biblioteket og logg inn.")
+      ? t("Tegningene ligger i SharePoint, så du må være innlogget. Trykk på den røde prikken øverst til høyre for å logge inn.")
       : esc(svar.feil)) + '</p>';
     return;
   }
@@ -1607,7 +1639,7 @@ async function taImotFiler(c, filer, seksjon, etterpa) {
       : t("Bildet er sendt. Det blir synlig for prosjektlederen neste gang han åpner modellen."));
   } catch (err) {
     alert(err.message === "IKKE_INNLOGGET"
-      ? t("Bilder lagres i SharePoint, så du må være innlogget. Åpne Biblioteket og logg inn, så prøv igjen.")
+      ? t("Bilder lagres i SharePoint, så du må være innlogget. Trykk på den røde prikken øverst til høyre for å logge inn, og prøv igjen.")
       : t("Klarte ikke å legge ved bildet: ") + err.message);
   } finally {
     loadingEl.classList.remove("open");
@@ -1782,6 +1814,14 @@ export function openMarkerPopup(c) {
           ? '<option value="' + esc(c.owner) + '" selected>' + esc(c.owner) + '</option>' : "") +
       '</select></label>' +
       '<label>' + t("Frist") + '<input type="date" class="mp-due" value="' + esc(c.due || "") + '"></label>' +
+      // 🎨 Farge: Frist (som før) eller Egendefinert med fargevelger
+      '<label>' + t("Farge") + '<select class="mp-fargevalg">' +
+        '<option value="frist"' + (vaskFarge(c.farge) ? "" : " selected") + '>' + t("Frist") + '</option>' +
+        '<option value="egen"' + (vaskFarge(c.farge) ? " selected" : "") + '>' + t("Egendefinert") + '</option>' +
+      '</select></label>' +
+      (vaskFarge(c.farge)
+        ? '<label>' + t("Egen farge") + '<input type="color" class="mp-farge" value="' + esc(vaskFarge(c.farge)) + '"></label>'
+        : "") +
     '</div>' +
     // Hastegraden i klartekst under feltene. Vises OGSÅ på byggeplassen:
     // .mp-fields skjules i lettmodus, men .mp-frist gjør det ikke — frist er
@@ -1810,6 +1850,14 @@ export function openMarkerPopup(c) {
   el.querySelector(".mp-st").onchange = (e) => updateComment(c, { status: e.target.value });
   el.querySelector(".mp-ow").onchange = (e) => updateComment(c, { owner: e.target.value });
   el.querySelector(".mp-due").onchange = (e) => updateComment(c, { due: e.target.value });
+  // Bytte til Egendefinert gir dagens fristfarge som start, så bobla ikke
+  // skifter farge før brukeren har valgt. Tilbake til Frist tømmer feltet.
+  el.querySelector(".mp-fargevalg").onchange = (e) =>
+    updateComment(c, { farge: e.target.value === "egen" ? startFarge(c) : "" });
+  const fargeFelt = el.querySelector(".mp-farge");
+  // «change», ikke «input»: input fyrer for hvert musetrekk i fargehjulet, og
+  // hver gang skrives markeringene til SharePoint.
+  if (fargeFelt) fargeFelt.onchange = (e) => updateComment(c, { farge: vaskFarge(e.target.value) });
   if (el.querySelector(".mp-task")) el.querySelector(".mp-task").onclick = () => sendTilPlanner([c]);
   if (el.querySelector(".mp-open")) el.querySelector(".mp-open").onclick = () => window.open(c.taskUrl || planUrl(), "_blank");
   el.querySelector(".mp-del").onclick = () => { deleteComment(c.id); closeMarkerPopup(); };
@@ -2363,7 +2411,7 @@ export function renderCommentList() {
   const body = $("commentBody");
   const status = S.sharedOK
     ? '<p style="color:var(--ok); font-size:11px; margin:0 0 8px">' + ikon("hake") + ' ' + t("Delt via SharePoint – alle med tilgang ser disse") + '</p>'
-    : '<p style="color:var(--muted); font-size:11px; margin:0 0 8px">' + ikon("laas") + ' ' + t("Kun lagret på denne enheten – logg inn i Biblioteket for å dele") + '</p>';
+    : '<p style="color:var(--muted); font-size:11px; margin:0 0 8px">' + ikon("laas") + ' ' + t("Kun lagret på denne enheten – trykk på den røde prikken øverst til høyre og logg inn for å dele") + '</p>';
   if (!S.comments.length) {
     body.innerHTML = status + '<p style="color:var(--muted)">' + t("Ingen markeringer ennå. Trykk på Markering og deretter på modellen.") + '</p>';
     return;
@@ -2427,6 +2475,9 @@ export function renderCommentList() {
       '<div>' + esc(c.text) + '</div>' +
       '<div class="meta" style="margin-top:4px"><span>' +
         '<span style="color:' + STATUS[st].col + '">●</span> ' + t(st) +
+        (vaskFarge(c.farge)
+          ? ' <span title="' + esc(t("Egen farge")) + '" style="display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:-1px;background:' + vaskFarge(c.farge) + '"></span>'
+          : "") +
         (c.owner ? ' · ' + esc(c.owner) : "") +
         (c.due ? ' ' + t("· frist ") + esc(c.due.split("-").reverse().join(".")) : "") +
         // Hastegraden: farget prikk + tekst som sier hvor lenge det er igjen.

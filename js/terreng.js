@@ -31,7 +31,7 @@ import {
   padFlagg, padHandtak, padMeter, padStandard, pikselSenter, punktFraE, punktFraN, snapVinkel, tolkKoordinat,
   tolkKote, vaskAdresseSvar, wcsUrl,
   binTilGrid, gridTilBin, navneforslag, nyTerrengId, vaskPlassering, vaskTerrengListe,
-  planumKote, vaskPlanum,
+  planumKote, vaskPlanum, terrengForByggeplass,
   KOORDSYS, SIDER, dzFarger, ferdigGrid, masseRader, sideRetning, festEttPunkt, festSjekk, festToPunkt, masseFelt, vaskFest, vaskSkraning
 } from "./terreng-regn.js";
 import { lastNedXlsx, pick } from "./elements.js";
@@ -215,6 +215,42 @@ S.terrengRef = () => {
       return h == null ? null : yFraMoh(h, mr);
     }
   };
+};
+
+// 🏗 BYGGEPLASS-LENKA (Emil 30.09, prøvebilde A): byggeplass.js spør her når
+// den publiserer. Svar: { data, kartBlob } eller null uten terreng.
+//   data     — krympet grid og plassering (terrengForByggeplass i terreng-regn.js)
+//   kartBlob — kartet som JPEG, beskåret til samme utsnitt, høyst 1024 px.
+//              null når «Høydefarger» er valgt eller kartet ikke kom.
+// Kartet tegnes om på et lerret: bildet fra Kartverket er PNG på opptil
+// 2048 px (flere MB). Som JPEG på 1024 px er det ~0,3 MB, og på en telefon
+// på 50 m avstand ser det likt ut.
+const BYGG_KART_PX = 1024;
+S.terrengForByggeplass = async () => {
+  if (!terreng || skjult) return null;
+  const ut = terrengForByggeplass(terreng);
+  if (!ut) return null;
+  let kartBlob = null;
+  const img = kartValg === "topo" && terreng.kart && terreng.kart.tex && terreng.kart.tex.image;
+  if (img && img.width && img.height) {
+    try {
+      const u = ut.kartUtsnitt;
+      const sx = u.u0 * img.width, sw = (u.u1 - u.u0) * img.width;
+      const sy = u.v0 * img.height, sh = (u.v1 - u.v0) * img.height;
+      const k = Math.min(1, BYGG_KART_PX / Math.max(sw, sh));
+      const lerret = document.createElement("canvas");
+      lerret.width = Math.max(1, Math.round(sw * k));
+      lerret.height = Math.max(1, Math.round(sh * k));
+      lerret.getContext("2d").drawImage(img, sx, sy, sw, sh, 0, 0, lerret.width, lerret.height);
+      kartBlob = await new Promise(ok => lerret.toBlob(ok, "image/jpeg", 0.82));
+    } catch (err) {
+      // Et kart som ikke kan tegnes om, skal ikke stoppe publiseringen —
+      // da får byggeplassen høydefarger i stedet.
+      console.warn("Kartet kunne ikke gjøres om til JPEG:", err);
+      kartBlob = null;
+    }
+  }
+  return { data: ut.data, kartBlob };
 };
 
 // ═══════════════════════ TREFF (Mål og Kote) ═══════════════════════
@@ -1252,7 +1288,7 @@ function mittNavn() {
 function lagringsTekst() {
   if (spStatus === "ok") return t("Lagres i SharePoint — alle med tilgang ser det samme.");
   if (spStatus === "feil") return t("Får ikke kontakt med SharePoint. Lagres bare på denne maskinen inntil videre.");
-  return t("Lagres bare på denne maskinen. Logg inn i Biblioteket for å dele med de andre.");
+  return t("Lagres bare på denne maskinen. Trykk på den røde prikken øverst til høyre og logg inn for å dele med de andre.");
 }
 
 function synligKatalog() { return katalog.filter(p => !p.slettet); }

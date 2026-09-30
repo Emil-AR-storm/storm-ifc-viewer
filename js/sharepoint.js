@@ -306,7 +306,7 @@ if (!LETT) {
 // den som står der. Vi stopper før det, sier hva som mangler, og logger hvilken
 // forespørsel det gjaldt.
 export const IKKE_INNLOGGET =
-  t("Du er ikke innlogget mot SharePoint (eller innloggingen er utløpt). Åpne Biblioteket og logg inn, så prøv igjen.");
+  t("Du er ikke innlogget mot SharePoint (eller innloggingen er utløpt). Trykk på den røde prikken øverst til høyre for å logge inn, og prøv igjen.");
 
 export function authHeaders(token, ekstra, hva) {
   if (!token || !String(token).trim()) {
