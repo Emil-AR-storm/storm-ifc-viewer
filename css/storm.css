@@ -1445,7 +1445,10 @@ body:not(.har-modell) #btnFit { display: none !important; }
 #toolbar[data-gruppe="mal"]      button[data-gruppe="mal"],
 #toolbar[data-gruppe="info"]     button[data-gruppe="info"],
 #toolbar[data-gruppe="utseende"] button[data-gruppe="utseende"],
-#toolbar[data-gruppe="bygg"]     button[data-gruppe="bygg"] { display: inline-flex; }
+#toolbar[data-gruppe="bygg"]     button[data-gruppe="bygg"],
+#toolbar[data-gruppe="dok"]      button[data-gruppe="dok"] { display: inline-flex; }
+/* ↑ NY GRUPPE I js/verktoygrupper.js = NY LINJE HER. Uten den er gruppa tom på
+   skjermen, men full i koden — test-verktoygrupper sjekker nå hver gruppe-id. */
 
 /* Lettmodus skal fortsatt vinne. Reglene i bygg.html bruker !important, så
    dette er bare et sikkerhetsnett hvis noen fjerner det. */
