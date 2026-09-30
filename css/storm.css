@@ -1758,3 +1758,6 @@ body:not(.har-modell) #btnFit { display: none !important; }
 html[data-tema="lys"] .st-etappe input[type="text"],
 html[data-tema="lys"] .st-etappe input[type="date"],
 html[data-tema="lys"] .st-etappe select { color-scheme: light; }
+.st-knapper { margin: 6px 0 0; flex-wrap: wrap; }
+.st-knapper button { padding: 4px 9px; font-size: 12px; }
+.st-knapper .st-oye { margin-left: auto; }
