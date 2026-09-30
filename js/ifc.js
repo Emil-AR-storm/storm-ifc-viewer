@@ -178,6 +178,7 @@ export function afterLoad() {
   loadComments();
   if (S.lastMateriell) S.lastMateriell(); // 📦 materiell plassert i denne modellen
   if (S.lastGrupper) S.lastGrupper();     // 🎯 objektgrupper lagret for denne modellen
+  if (S.lastStopeplan) S.lastStopeplan(); // 🧱 støpeplanen for denne modellen
   if (S.lastTerreng) S.lastTerreng();     // ⛰ terrenget denne modellen er plassert i
   if (S.lastRigg) S.lastRigg();           // 🏕 riggen på tomta (tegnes om når terrenget kommer)
   if (S.lastSW) S.lastSW();               // 🧱 genererte veggelementer for denne modellen

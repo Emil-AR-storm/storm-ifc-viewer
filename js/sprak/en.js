@@ -1858,5 +1858,19 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Skjul denne plata": "Hide this sheet",
   "Kode": "Code",
   "Takplater": "Roof sheets",
-  "Bredde": "Width"
+  "Bredde": "Width",
+  "Støpeplan": "Pour plan",
+  "Støpeplan: del støpene i etapper med dato, felt på plata og elementer": "Pour plan: split the pours into stages with dates, slab areas and elements",
+  "Del støpene i etapper. Gi hver etappe en dato, og merk den som støpt når den er ferdig. Felt på plata og elementer legges til etappen i neste trinn.": "Split the pours into stages. Give each stage a date and mark it as poured when it is done. Slab areas and elements are added to the stage in the next step.",
+  "Ingen etapper ennå.": "No stages yet.",
+  "{0} elementer": "{0} elements",
+  "{0} felt": "{0} areas",
+  "Slett etappen": "Delete the stage",
+  "Ikke støpt": "Not poured",
+  "Støpt": "Poured",
+  "Denne uka": "This week",
+  "Forsinket": "Delayed",
+  "Planlagt": "Planned",
+  "Ny etappe": "New stage",
+  "Slette {0}?": "Delete {0}?"
 };

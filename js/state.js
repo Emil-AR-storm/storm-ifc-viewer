@@ -235,6 +235,7 @@ export function nullstillModellState() {
   if (S.ryddTerreng) S.ryddTerreng();
   // 🏕 Riggen hører til modellen (og tomta) som ble lukket.
   if (S.ryddRigg) S.ryddRigg();
+  if (S.ryddStopeplan) S.ryddStopeplan();   // 🧱 støpeplanen hørte til modellen som ble lukket
   if (S.ryddTakLett) S.ryddTakLett();   // 🏠 takplatene på byggeplass-siden
 }
 
@@ -277,6 +278,10 @@ S.etterTegnMateriell = null;    // materiell-vis.js → materiell.js: legg valg-
 
 // 🎯 Objektgrupper. Krokene settes av grupper.js; null når modulen ikke er lastet.
 S.lastGrupper = null;           // ifc.js: les lagrede grupper når modellen åpnes
+S.lastStopeplan = null;        // ifc.js: les støpeplanen når modellen åpnes (stopeplan.js)
+S.ryddStopeplan = null;        // modellbytte
+S.tegnStopeplan = null;        // trinn 2/3: tegn fargene og feltene på nytt
+S.stopeplan = [];
 S.settGrupperFraLett = null;    // markers.js: grupper fra Workerens JSON (bygg)
 
 // ⛰ Terreng. Kroken settes av terreng.js (kun kontor).
