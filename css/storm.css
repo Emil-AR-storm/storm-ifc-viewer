@@ -141,6 +141,35 @@ button.primary:hover { background: var(--accent-hover); border-color: var(--acce
 button.active { background: var(--aktiv-bg); border-color: var(--aktiv-bg); color: var(--aktiv-tekst); font-weight: 600; }
 #fileInput { display: none; }
 #status { font-size: 12px; color: var(--muted); margin-left: auto; }
+
+/* 🟢/🔴 Innloggingsprikken (js/sharepoint.js). Rødt er ellers forbeholdt
+   hovedhandlingen — her er det en STATUS Emil ba om (30.09): rød = ikke
+   logget inn, grønn = logget inn. Grå mens MSAL sjekker, så den ikke blinker
+   rødt ved hver sidelasting. Fargene er de samme --ok/--danger som resten. */
+.innlogging-knapp {
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; padding: 0; border-radius: 50%;
+  background: transparent; border: 1px solid transparent;
+}
+.innlogging-knapp:hover { background: var(--panel2); border-color: var(--border); }
+.innlogging-prikk {
+  display: inline-block; flex: 0 0 auto; width: 12px; height: 12px; border-radius: 50%;
+  background: var(--muted);
+  box-shadow: 0 0 0 2px var(--panel);
+}
+[data-tilstand="inne"] > .innlogging-prikk, .innlogging-prikk[data-tilstand="inne"] { background: var(--ok); }
+[data-tilstand="ute"] > .innlogging-prikk, .innlogging-prikk[data-tilstand="ute"],
+[data-tilstand="utlopt"] > .innlogging-prikk, .innlogging-prikk[data-tilstand="utlopt"],
+[data-tilstand="feil"] > .innlogging-prikk, .innlogging-prikk[data-tilstand="feil"] { background: var(--danger); }
+#innloggingInfo {
+  display: none; position: fixed; top: 52px; right: 10px; z-index: 30;
+  max-width: min(340px, calc(100vw - 20px));
+  padding: 10px 12px; gap: 10px; align-items: flex-start;
+  background: var(--panel); color: var(--text); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--skygge); font-size: 13px; line-height: 1.4;
+}
+#innloggingInfo.open { display: flex; }
+#innloggingInfo .innlogging-prikk { margin-top: 3px; }
 /* Nettstatus på byggeplassen (bare bygg.html).
    NEDERST, IKKE I TOPPBAREN. Første forsøk lå inne i #topbar med
    flex-basis: 100 %. Det virket på PC og var ubrukelig på telefon: på smal
@@ -844,6 +873,11 @@ body:not(.har-modell) #btnFit { display: none !important; }
   #topbar::-webkit-scrollbar { display: none; }
   #topbar .logo { font-size: 13px; }
   #status { display: none; }        /* antall elementer står i Mengder */
+  /* 🟢/🔴 Innloggingsprikken er sist i toppbaren, og med modell åpen er
+     toppbaren bredere enn telefonen — da havnet prikken utenfor skjermen og
+     måtte rulles fram. sticky right: 0 holder den i høyre kant, og bakgrunnen
+     dekker knappene som rulles inn under den. */
+  .innlogging-knapp { position: sticky; right: 0; z-index: 1; background: var(--panel); border-color: var(--border); }
   button, label.btn { padding: 7px 9px; font-size: 12px; }
   .panel { width: 100vw; border-radius: var(--radius-stor) var(--radius-stor) 0 0; max-height: 55vh; }
   #hint { display: none !important; }
