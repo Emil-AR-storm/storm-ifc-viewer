@@ -140,7 +140,9 @@ function oppdaterRutenett() {
 let trengerFar = 0;
 frameHooks.push(() => {
   if (!trengerFar || !terrengGroup.visible) return;
-  if (camera.far < trengerFar) { camera.far = trengerFar; camera.updateProjectionMatrix(); }
+  // 👁 …men aldri forbi tegneavstanden brukeren har valgt (scene.js)
+  const mål = Math.min(trengerFar, S.tegneFarTak || Infinity);
+  if (camera.far < mål) { camera.far = mål; camera.updateProjectionMatrix(); }
 });
 
 // ═══════════════════════ MODELLEN SOM REFERANSE ═══════════════════════

@@ -77,6 +77,46 @@ export function settNaerplan(kam, avstand) {
   kam.updateProjectionMatrix();
 }
 
+// 👁 TEGNEAVSTAND (Emil 30.09, skjermbilde: vinduer og gjerder «skraverte»
+// når man zoomer ut). Årsaken er dybdebufferen, ikke teksturene: nær-planet
+// settes av fitToModel til 1/1000 av modellen (noen cm), og dybdepresisjonen
+// faller med AVSTANDEN I ANNEN delt på nær-planet. På 60 m er den da et par
+// mm — mindre enn avstanden mellom vindusglass og karm — og skjermkortet
+// velger annenhver piksel feil: skråstriper. Presisjonen hentes tilbake ved å
+// løfte nær-planet i takt med hvor langt unna man står (en brøkdel av
+// avstanden til blikkpunktet). Ingenting man ser på, er så nær kameraet.
+//
+// Valget i Innstillinger bestemmer brøken OG hvor langt det tegnes (far):
+//   kort   — 1 km, størst løft: skarpest, men terrenget langt ute kuttes
+//   normal — tegner like langt som før, løfter nok til at skraveringen går bort
+//   lang   — 5 km, mindre løft
+//   svartLang — 20 km, minst løft (mest skravering igjen på store avstander)
+// farM 0 = som før (fitToModel og terrenget bestemmer).
+export const TEGNEAVSTAND = {
+  kort:      { farM: 1000,  andel: 0.03 },
+  normal:    { farM: 0,     andel: 0.015 },
+  lang:      { farM: 5000,  andel: 0.008 },
+  svartLang: { farM: 20000, andel: 0.004 }
+};
+
+// Ren regning (testes i Node): nær- og fjernplan for en avstand d (i scenens
+// enheter) til blikkpunktet. basis = nær-planet fitToModel satte; farBasis =
+// fjernplanet fitToModel satte; skala = meter per enhet. far null = ikke rør.
+// Nær-planet SENKES aldri her — evig zoom (settNaerplan) eier alt under basis.
+export function tegneplan(valg, d, basis, farBasis, skala, naerNaa) {
+  const p = TEGNEAVSTAND[valg] || TEGNEAVSTAND.normal;
+  const s = Number(skala) > 0 ? Number(skala) : 1;
+  const b = Number(basis) > 0 ? Number(basis) : 0.1;
+  const dd = Number(d) > 0 ? Number(d) : 0;
+  const far = p.farM > 0 ? Math.max(p.farM / s, dd * 4) : (Number(farBasis) > 0 ? Number(farBasis) : null);
+  const hevet = dd * p.andel;
+  let near = Number(naerNaa) > 0 ? Number(naerNaa) : b;
+  if (hevet > b) near = hevet;                 // langt unna: løft
+  else if (near > b) near = b;                 // kommet nærmere igjen: tilbake til basis
+  if (far && near > far / 50) near = far / 50; // aldri et nærplan som spiser utsikten
+  return { near, far };
+}
+
 // Egen enkel kamera-kontroll (mus + touch) – ingen eksterne avhengigheter
 class SimpleControls {
   constructor(camera, dom) {
@@ -247,6 +287,19 @@ resize();
 // Moduler melder seg på hver frame via frameHooks – da slipper scene.js
 // å kjenne til verktøyene, og vi unngår sirkulære importer.
 export const frameHooks = [];
+// 👁 Tegneavstanden først — terrenget (terreng.js) strekker fjernplanet etterpå,
+// men aldri forbi taket valget setter (S.tegneFarTak).
+frameHooks.push(() => {
+  const valg = (S.settings && S.settings.tegneavstand) || "normal";
+  const d = camera.position.distanceTo(controls.target);
+  const pl = tegneplan(valg, d, S.naerBasis, S.farBasis, S.enhetSkala, camera.near);
+  const p = TEGNEAVSTAND[valg] || TEGNEAVSTAND.normal;
+  S.tegneFarTak = p.farM > 0 ? pl.far : Infinity;
+  let endret = false;
+  if (Math.abs(pl.near - camera.near) > camera.near * 0.02) { camera.near = pl.near; endret = true; }
+  if (pl.far && Math.abs(pl.far - camera.far) > 1e-6 && (p.farM > 0 || camera.far < pl.far)) { camera.far = pl.far; endret = true; }
+  if (endret) camera.updateProjectionMatrix();
+});
 renderer.setAnimationLoop(() => {
   controls.update();
   for (const fn of frameHooks) { try { fn(); } catch (err) { console.warn(err); } }
@@ -344,6 +397,7 @@ export function fitToModel() {
   camera.near = size / 1000;
   S.naerBasis = camera.near;   // taket settNaerplan aldri går over
   camera.far = size * 10 + 100;
+  S.farBasis = camera.far;     // «normal» tegneavstand går tilbake hit
   camera.updateProjectionMatrix();
   grid.position.y = box.min.y;
 }

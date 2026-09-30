@@ -28,6 +28,11 @@ export const DEFAULT_SETTINGS = {
   // scene.js). AV som standard: den som ikke har bedt om det, skal ikke
   // plutselig fly tvers gjennom stålet.
   evigZoom: false,
+  // 👁 Tegneavstand (Emil 30.09: «objektene blir skraverte når du zoomer langt
+  // ut»). Styrer hvor langt kameraet tegner, og hvor stor dybdepresisjon det
+  // får på avstand — se TEGNEAVSTAND i scene.js. «normal» retter skraveringen
+  // uten å kutte noe; de andre er for den som vil bytte.
+  tegneavstand: "normal",
   // ▣ Kantlinjer: en strek langs kantene på geometrien, så to objekt som ligger
   // inntil hverandre lar seg skille fra hverandre når man ser på detaljer.
   // AV som standard – den koster én tegneoperasjon per element, og den som ikke
