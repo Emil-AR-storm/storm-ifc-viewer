@@ -284,7 +284,8 @@ button.active { background: var(--aktiv-bg); border-color: var(--aktiv-bg); colo
    navn (js/prop-kompakt.js). Pila åpner resten, som da er strammere og tar
    høyst 45 % av skjermen (Emil 30.09: «tar opp halve skjermen»). */
 .prop-hode { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
-#propPanel.kompakt header { cursor: pointer; gap: 6px; padding: 8px 10px 8px 14px; }
+#propPanel.kompakt header { gap: 6px; padding: 8px 10px 8px 14px; }
+#propPanel.kompakt .prop-utvid { display: none !important; }   /* 1h: lista står alltid åpen */
 #propPanel.kompakt #propTitle { font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: .2px; }
 #propPanel.kompakt #propNavn { font-size: 15px; font-weight: 700; color: var(--text);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
