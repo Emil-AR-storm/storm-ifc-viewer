@@ -27,12 +27,18 @@ const matCache = new Map();
 // `lys`: skiltflater (førstehjelpskorset, ID-kortet) er ULYSTE, så det hvite
 // er hvitt fra alle kanter — som et refleksskilt. Med vanlig lys ble korset
 // grått på skyggesiden og vanskelig å lese (prøvebildene 28.09).
+// `detalj` kan også være et LAG (2, 3): en detalj oppå en detalj (glasset på
+// karmen, midtposten på glasset) får ett hakk mer forskyvning, så rekkefølgen
+// er bestemt av materialet og ikke av en millimeter i geometrien. Med samme
+// forskyvning på begge valgte skjermkortet annenhver piksel på avstand —
+// skråstripene i vinduene (Emil 30.09).
 function mat(farge, detalj, lys) {
-  const key = farge + (detalj ? "|d" : "") + (lys ? "|l" : "");
+  const lag = detalj === true ? 1 : Number(detalj) || 0;
+  const key = farge + (lag ? "|d" + lag : "") + (lys ? "|l" : "");
   let m = matCache.get(key);
   if (!m) {
     const o = { color: farge };
-    if (detalj) Object.assign(o, { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    if (lag) Object.assign(o, { polygonOffset: true, polygonOffsetFactor: -1 - lag, polygonOffsetUnits: -1 - lag });
     m = lys ? new THREE.MeshBasicMaterial(o) : new THREE.MeshLambertMaterial(o);
     matCache.set(key, m);
   }
@@ -87,8 +93,8 @@ function sylinder(g, r, h, farge, x, y, z, akse, seg) {
 
 // En flat detalj (vindu, dør, skilt) som LIGGER på en flate. `n` er hvilken
 // vei flaten vender: "x", "-x", "z", "-z" eller "y" (opp).
-function flat(g, bredde, hoyde, farge, x, y, z, n, lys) {
-  const m = new THREE.Mesh(new THREE.PlaneGeometry(bredde, hoyde), mat(farge, true, lys));
+function flat(g, bredde, hoyde, farge, x, y, z, n, lys, lag) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(bredde, hoyde), mat(farge, lag || true, lys));
   m.position.set(x, y, z);
   if (n === "x") m.rotation.y = Math.PI / 2;
   if (n === "-x") m.rotation.y = -Math.PI / 2;
@@ -107,8 +113,8 @@ function ut(n, d) {
 function vindu(g, b, h, x, y, z, n, enkel) {
   if (!enkel) flat(g, b + 0.1, h + 0.1, KARM, x, y, z, n);
   const u = ut(n, 0.001), u2 = ut(n, 0.002);
-  flat(g, b, h, MORK, x + u.x, y, z + u.z, n);
-  if (!enkel) flat(g, 0.03, h, KARM, x + u2.x, y, z + u2.z, n);
+  flat(g, b, h, MORK, x + u.x, y, z + u.z, n, false, 2);            // glasset over karmen
+  if (!enkel) flat(g, 0.03, h, KARM, x + u2.x, y, z + u2.z, n, false, 3);   // midtposten over glasset
 }
 
 // Vinduer jevnt fordelt langs x, aldri helt i kanten.

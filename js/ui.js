@@ -157,7 +157,12 @@ function renderSettings() {
     '<input type="checkbox" id="stInv"' + (S.settings.invertZoom ? " checked" : "") + '></div>' +
     '<div class="set-row"><span class="n">' + t("Evig zoom") + '</span>' +
     '<input type="checkbox" id="stEvig"' + (S.settings.evigZoom ? " checked" : "") + '></div>' +
-    '<p class="set-hjelp">' + t("Zoomen stopper normalt 20 cm fra punktet du ser på. Med evig zoom fortsetter du framover i stedet — helt inn i og gjennom modellen.") + '</p>';
+    '<p class="set-hjelp">' + t("Zoomen stopper normalt 20 cm fra punktet du ser på. Med evig zoom fortsetter du framover i stedet — helt inn i og gjennom modellen.") + '</p>' +
+    // 👁 Tegneavstand (Emil 30.09) — regelen står ved TEGNEAVSTAND i scene.js
+    '<div class="set-row"><span class="n">' + t("Tegneavstand") + '</span>' +
+    '<select id="stTegne">' + [["kort", "Kort (1 km) — skarpest"], ["normal", "Normal (anbefalt)"], ["lang", "Lang (5 km)"], ["svartLang", "Svært lang (20 km)"]].map(([k, navn]) =>
+      '<option value="' + k + '"' + ((S.settings.tegneavstand || "normal") === k ? " selected" : "") + '>' + t(navn) + '</option>').join("") + '</select></div>' +
+    '<p class="set-hjelp">' + t("Hvor langt unna modellen, riggen og terrenget tegnes. Kortere tegneavstand gir skarpere vinduer, gjerder og kanter når du zoomer ut, men terreng og kart langt ute blir kuttet. Ser noe skravert eller stripete ut på avstand, velg en kortere avstand.") + '</p>';
 
   html += '<h4>' + t("Visning") + '</h4>' +
     '<div class="set-row"><span class="n">' + t("Språk") + '</span>' +
@@ -285,6 +290,8 @@ function renderSettings() {
   $("stZoom").oninput = (e) => { S.settings.zoomSpeed = Number(e.target.value); saveSettings(); };
   $("stInv").onchange = (e) => { S.settings.invertZoom = e.target.checked; saveSettings(); };
   $("stEvig").onchange = (e) => { S.settings.evigZoom = e.target.checked; saveSettings(); };
+  // Tas i bruk i neste bilde (rammekroken i scene.js) — ingen omlasting.
+  $("stTegne").onchange = (e) => { S.settings.tegneavstand = e.target.value; saveSettings(); };
   $("stUnit").onchange = (e) => {
     S.settings.unit = e.target.value; saveSettings();
     if (S.syncPrefs) S.syncPrefs();
