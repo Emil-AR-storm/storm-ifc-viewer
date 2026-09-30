@@ -222,6 +222,12 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
   <button id="btnGrupper"><svg class="ikon"><use href="#i-fokus"/></svg><span class="btn-t" data-i18n>Grupper</span></button>
   <button id="btnMateriell"><svg class="ikon"><use href="#i-materiell"/></svg><span class="btn-t" data-i18n>Materiell</span></button>
   <button id="btnRapport" title="Last ned statusrapport som PDF" data-i18n-title><svg class="ikon"><use href="#i-tegning"/></svg><span class="btn-t" data-i18n>Rapport</span></button>
+  <!-- 📄 Skjult her: byggeplass-siden har verken Rigg-verktøyet, SW-generatoren eller BCF.
+       Snarveier i gruppa Dokumentasjon (js/dokumentasjon.js). De åpner
+       panelet sitt og trykker samme knapp der — knappene i panelene står igjen. -->
+  <button id="btnDokRigg" style="display:none"><svg class="ikon"><use href="#i-rigg"/></svg><span class="btn-t" data-i18n>Riggplan (PDF)</span></button>
+  <button id="btnDokSW" style="display:none"><svg class="ikon"><use href="#i-sw"/></svg><span class="btn-t" data-i18n>SW-tegning (PDF)</span></button>
+  <button id="btnDokBcf" style="display:none"><svg class="ikon"><use href="#i-markeringer"/></svg><span class="btn-t" data-i18n>BCF-eksport</span></button>
   <button id="btnHjul" title="Navigasjonshjul – naviger uten mus" data-i18n-title><svg class="ikon"><use href="#i-hjul"/></svg><span class="btn-t" data-i18n>Navigasjon</span></button>
   <button id="btnSettings" title="Innstillinger og hurtigtaster (høyreklikk i modellen)" data-i18n-title><svg class="ikon"><use href="#i-innstillinger"/></svg><span class="btn-t" data-i18n>Innstillinger</span></button>
   <button id="btnAngre" style="display:none" title="Angre siste handling (Ctrl+Z)" data-i18n-title><svg class="ikon"><use href="#i-angre"/></svg><span class="btn-t" data-i18n>Angre</span></button>
