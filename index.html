@@ -149,7 +149,15 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
   <button id="btnHjelp" title="Kom i gang – bla gjennom hjelpekortene" data-i18n-title><svg class="ikon"><use href="#i-hjelp"/></svg><span class="btn-t" data-i18n>Hjelp</span></button>
   <button id="btnTema" title="Bytt mellom lyst og mørkt tema" data-i18n-title><svg class="ikon"><use href="#i-tema"/></svg></button>
   <div id="status"></div>
+  <!-- 🟢/🔴 Innlogget mot SharePoint? Tilstand, title og klikk: js/sharepoint.js.
+       INGEN data-i18n-title: teksten har navnet på brukeren i seg og bygges i
+       JS. oversettDom ville skrevet den norske standardteksten tilbake over. -->
+  <button id="btnInnlogging" class="innlogging-knapp" data-tilstand="sjekker" title="Sjekker innloggingen …" aria-label="Sjekker innloggingen …"><span class="innlogging-prikk"></span></button>
 </div>
+<!-- Boksen med hvem som er logget inn. Står UTENFOR #topbar: på telefon har
+     toppbaren overflow-x: auto, og da ville en absolutt boks inni den blitt
+     klippet bort. -->
+<div id="innloggingInfo" role="status"></div>
 
 <div id="toolbar">
   <button id="btnMarker" title="Sett en markering i modellen – avvik, spørsmål eller beskjed" data-i18n-title><svg class="ikon"><use href="#i-markering"/></svg><span class="btn-t" data-i18n>Markering</span></button>

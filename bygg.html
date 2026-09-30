@@ -172,6 +172,7 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
   <symbol id="i-fortsett" viewBox="0 0 24 24"><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z" /></symbol>
   <symbol id="i-hjelp" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><path d="M12 17h.01" /></symbol>
   <symbol id="i-advarsel" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /><path d="M12 9v4" /><path d="M12 17h.01" /></symbol>
+  <symbol id="i-rigg" viewBox="0 0 24 24"><rect x="2" y="9" width="13" height="9" rx="1" /><path d="M5 9v9M8.5 9v9M12 9v9" /><path d="M15 12h4l3 3v3h-7" /><circle cx="6" cy="19.5" r="1.5" /><circle cx="18" cy="19.5" r="1.5" /></symbol>
   <symbol id="i-hake" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5" /></symbol>
   <symbol id="i-snu" viewBox="0 0 24 24"><path d="M8 3 4 7l4 4" /><path d="M4 7h16" /><path d="m16 21 4-4-4-4" /><path d="M20 17H4" /></symbol>
   <symbol id="i-mer" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /><circle cx="5" cy="12" r="1" /></symbol>
@@ -199,6 +200,9 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
   <button id="btnHjelp"><svg class="ikon"><use href="#i-hjelp"/></svg><span class="btn-t" data-i18n>Hjelp</span></button>
   <button id="btnTema" title="Bytt mellom lyst og mørkt tema" data-i18n-title><svg class="ikon"><use href="#i-tema"/></svg></button>
   <div id="status"></div>
+  <!-- 🟢/🔴 Innloggingsprikken finnes her også (knapper skjules, fjernes aldri),
+       men er skjult: byggeplass-siden logger aldri inn (se LETT i js/lett.js). -->
+  <button id="btnInnlogging" class="innlogging-knapp" data-tilstand="ute" style="display:none"><span class="innlogging-prikk"></span></button>
 </div>
 
 <div id="toolbar">
