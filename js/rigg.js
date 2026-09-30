@@ -66,7 +66,7 @@ let valgteStykker = [];        // panelene som er valgt (maks to) — til port
 // som helst, og «Gjør om til port» var en grå knapp som ikke gjorde noe — man
 // så ikke at man var i et eget steg, ikke hvor man skulle trykke, og «Ferdig»
 // i knapperaden så ut som «lagre», men lukket raden og kastet utvalget. Nå er
-// det et tydelig steg: «Lag port» → raden sier «trykk på 2 paneler (0 av 2)»,
+// det et tydelig steg: «Port» (Emil 30.09: het «Lag port») → raden sier «trykk på 2 paneler (0 av 2)»,
 // panelet under pekeren lyser → etter to naboer kommer «Gjør om til port» som
 // hovedknapp. «Ferdig» er borte mens steget pågår; «Avbryt» går ut av det.
 let portModus = false;
@@ -649,7 +649,7 @@ function oppdaterValgBar() {
   // Lik HTML → de samme knappene står, med de samme lytterne.
   const bytt = (html) => { if (html === sistValgBarHtml && el.firstChild) return false; el.innerHTML = html; sistValgBarHtml = html; return true; };
   if (portModus && erGjerde(o)) {
-    if (bytt('<span style="font-size:12px;font-weight:600">' + ikon("pluss") + " " + t("Lag port") + "</span>" + portStegKnapper(o))) koblPortSteg(o);
+    if (bytt('<span style="font-size:12px;font-weight:600">' + ikon("pluss") + " " + t("Port") + "</span>" + portStegKnapper(o))) koblPortSteg(o);
     return;
   }
   const html =
@@ -706,7 +706,7 @@ function gjerdeKnapper(o) {
   return '<span style="font-size:11px;color:var(--muted)">' + t("{0} paneler · {1} porter", m.paneler, m.porter) +
     (m.forLange ? ' · <span style="color:var(--danger, #e53935)">' + t("{0} for lange", m.forLange) + "</span>" : "") + "</span>" +
     '<button id="rvPort" class="btn" style="padding:3px 8px"' +
-    ' title="' + t("Gjør to paneler ved siden av hverandre om til én port — eller en port tilbake til paneler") + '">' + t("Lag port") + "</button>" +
+    ' title="' + t("Gjør to paneler ved siden av hverandre om til én port — eller en port tilbake til paneler") + '">' + t("Port") + "</button>" +
     fjernSkjotKnapp(o);
 }
 
@@ -717,7 +717,7 @@ function portStegStatus(o) {
   const v = portValg(o);
   const n = valgteStykker.length;
   if (v.portI != null) return { tekst: t("Du har valgt en port"), kan: "tilbake" };
-  if (n < 2) return { tekst: t("Trykk på 2 paneler som står ved siden av hverandre ({0} av 2)", n), kan: null };
+  if (n < 2) return { tekst: t("Trykk på 2 paneler som står ved siden av hverandre ({0} av 2) — eller på en port for å gjøre den tilbake til paneler", n), kan: null };
   if (v.kanPort) return { tekst: t("2 av 2 valgt"), kan: "port" };
   if (valgteStykker.some(i => st[i] && st[i].port)) return { tekst: t("En port kan ikke bli en del av en ny port — trykk på et vanlig panel"), kan: null };
   if (st.length - 1 < 3) return { tekst: t("Gjerdet er for lite til en port"), kan: null };
@@ -915,7 +915,7 @@ S.riggModeBar = (bar) => {
       bar.classList.add("open");
       return;
     }
-    // 🚪 I port-steget står alt i knapperaden («+ Lag port … Avbryt»). En
+    // 🚪 I port-steget står alt i knapperaden («+ Port … Avbryt»). En
     // rad til nederst med samme tekst var bare dobbelt (Emil 30.09).
     if (portModus && valgtGjerde()) {
       bar.innerHTML = "";
@@ -929,7 +929,7 @@ S.riggModeBar = (bar) => {
       : valgtGjerde() && erPil(valgtGjerde())
       ? t("Dra i prikkene for å forme pila · shift-klikk for flere prikker")
       : valgtGjerde()
-      ? t("Dra i prikkene for å forme gjerdet · shift-klikk for flere prikker · dobbeltklikk på et panel for ny skjøt · «Lag port» for å lage en port")
+      ? t("Dra i prikkene for å forme gjerdet · shift-klikk for flere prikker · dobbeltklikk på et panel for ny skjøt · «Port» for å lage en port eller gjøre en port tilbake til paneler")
       : t("Trykk på et rigg-objekt for å flytte, rotere eller slette det");
     bar.innerHTML = '<span class="lbl">' + hint + '</span><button id="mbRiggFerdig">' + t("Ferdig") + "</button>";
     $("mbRiggFerdig").onclick = () => { settRiggModus(false); $("riggPanel").classList.remove("open"); };
