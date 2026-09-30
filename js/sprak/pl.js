@@ -1858,5 +1858,19 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Skjul denne plata": "Ukryj ten arkusz",
   "Kode": "Kod",
   "Takplater": "Blachy dachowe",
-  "Bredde": "Szerokość"
+  "Bredde": "Szerokość",
+  "Støpeplan": "Plan betonowania",
+  "Støpeplan: del støpene i etapper med dato, felt på plata og elementer": "Plan betonowania: podziel betonowanie na etapy z datą, polami na płycie i elementami",
+  "Del støpene i etapper. Gi hver etappe en dato, og merk den som støpt når den er ferdig. Felt på plata og elementer legges til etappen i neste trinn.": "Podziel betonowanie na etapy. Nadaj każdemu etapowi datę i oznacz go jako zabetonowany, gdy jest gotowy. Pola na płycie i elementy dodaje się do etapu w następnym kroku.",
+  "Ingen etapper ennå.": "Brak etapów.",
+  "{0} elementer": "{0} elementów",
+  "{0} felt": "{0} pól",
+  "Slett etappen": "Usuń etap",
+  "Ikke støpt": "Nie zabetonowano",
+  "Støpt": "Zabetonowano",
+  "Denne uka": "W tym tygodniu",
+  "Forsinket": "Opóźniony",
+  "Planlagt": "Zaplanowany",
+  "Ny etappe": "Nowy etap",
+  "Slette {0}?": "Usunąć {0}?"
 };

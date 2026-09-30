@@ -1858,5 +1858,19 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Skjul denne plata": "Slėpti šį lakštą",
   "Kode": "Kodas",
   "Takplater": "Stogo lakštai",
-  "Bredde": "Plotis"
+  "Bredde": "Plotis",
+  "Støpeplan": "Betonavimo planas",
+  "Støpeplan: del støpene i etapper med dato, felt på plata og elementer": "Betonavimo planas: padalykite betonavimą į etapus su datomis, plokštės laukais ir elementais",
+  "Del støpene i etapper. Gi hver etappe en dato, og merk den som støpt når den er ferdig. Felt på plata og elementer legges til etappen i neste trinn.": "Padalykite betonavimą į etapus. Kiekvienam etapui nurodykite datą ir pažymėkite kaip išbetonuotą, kai jis baigtas. Plokštės laukai ir elementai pridedami prie etapo kitame žingsnyje.",
+  "Ingen etapper ennå.": "Etapų dar nėra.",
+  "{0} elementer": "{0} elementų",
+  "{0} felt": "{0} laukų",
+  "Slett etappen": "Ištrinti etapą",
+  "Ikke støpt": "Neišbetonuota",
+  "Støpt": "Išbetonuota",
+  "Denne uka": "Šią savaitę",
+  "Forsinket": "Vėluoja",
+  "Planlagt": "Suplanuota",
+  "Ny etappe": "Naujas etapas",
+  "Slette {0}?": "Ištrinti {0}?"
 };

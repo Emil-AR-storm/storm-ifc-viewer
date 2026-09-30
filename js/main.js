@@ -21,6 +21,7 @@ import "./terreng.js";     // ⛰ terreng fra Kartverket (kun kontor — IKKE i 
 import "./rigg-vis.js";    // 🏕 rigg: visningen (lastes av begge sider) — ETTER terreng.js
 import "./rigg.js";        // 🏕 rigg: verktøyet (kun kontor)
 import "./veggelement.js";   // 🧱 SW-generator: veggelementer på stålmodeller (kun kontor)         // 🎯 objektgrupper: lagre og hente fram flervalg
+import "./stopeplan.js";      // 🧱 støpeplan i 3D (kun kontor)
 import "./dokumentasjon.js";  // 📄 snarveiene i gruppa Dokumentasjon (kun kontor)
 import "./markers.js";
 import "./minimap.js";
