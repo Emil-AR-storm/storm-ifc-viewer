@@ -88,7 +88,10 @@ export function settUtvidet(panel, paa) {
 
 // ExpressID er et internt løpenummer i IFC-fila. Montøren har ingen bruk for
 // det, og det er én rad mindre å lese forbi på en liten skjerm.
-const SKJUL_RADER = ["ExpressID"];
+// «Name» står allerede øverst (kortnavnet i stripa) — Emil 30.09 (1i): ta den
+// bort fra lista. Raden blir liggende skjult, for navnFraPanel leser navnet
+// derfra.
+const SKJUL_RADER = ["ExpressID", "Name"];
 
 function legg(panel) {
   const body = $("propBody");
