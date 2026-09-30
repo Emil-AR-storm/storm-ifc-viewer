@@ -280,6 +280,35 @@ button.active { background: var(--aktiv-bg); border-color: var(--aktiv-bg); colo
 .pset-navn { margin-top: 10px; margin-bottom: 2px; font-size: 12px; font-weight: 600; color: var(--accent2); overflow-wrap: anywhere; }
 .prop-actions { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
 
+/* 📋 Byggeplass-siden: egenskapspanelet starter som en stripe med type og
+   navn (js/prop-kompakt.js). Pila åpner resten, som da er strammere og tar
+   høyst 45 % av skjermen (Emil 30.09: «tar opp halve skjermen»). */
+.prop-hode { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+#propPanel.kompakt header { cursor: pointer; gap: 6px; padding: 8px 10px 8px 14px; }
+#propPanel.kompakt #propTitle { font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: .2px; }
+#propPanel.kompakt #propNavn { font-size: 15px; font-weight: 700; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#propPanel.kompakt #propNavn:empty { display: none; }
+#propPanel.kompakt .prop-utvid { flex: 0 0 auto; width: 40px; height: 40px; display: inline-flex;
+  align-items: center; justify-content: center; border-radius: 50%;
+  background: var(--panel) !important; border: 1px solid var(--border) !important; color: var(--text) !important; }
+#propPanel.kompakt .prop-utvid .ikon { width: 18px; height: 18px; transform: rotate(-90deg); transition: transform .15s; }
+#propPanel.kompakt.utvidet .prop-utvid .ikon { transform: rotate(90deg); }
+#propPanel.kompakt:not(.utvidet) .body { display: none; }
+#propPanel.kompakt { max-height: 45vh; }
+#propPanel.kompakt .body { padding: 8px 12px; font-size: 12.5px; }
+#propPanel.kompakt .prop-row { padding: 3px 0; gap: 8px; }
+#propPanel.kompakt .prop-row.skjult-bygg { display: none; }
+/* Tre rader om gangen (prop-kompakt.js setter max-height). Et svakt fall mot
+   bunnen viser at det finnes mer å rulle til — iOS skjuler rullefeltet. */
+#propPanel.kompakt .body { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+#propPanel.kompakt .body.kan-rulle {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent);
+          mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent); }
+#propPanel.kompakt .prop-row .k { min-width: 92px; }
+#propPanel.kompakt .prop-actions { gap: 6px; margin-bottom: 6px; }
+#propPanel.kompakt .prop-actions button { padding: 5px 9px; font-size: 12px; }
+
 /* Mengder: navn til venstre, tall til høyre.
    RADEN MÅ KUNNE BRYTE. Tallkolonnen hadde white-space: nowrap på hele
    strengen. Det gikk bra så lenge den var «24 stk · 82,6 m · 0,19 m³», men da
