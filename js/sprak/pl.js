@@ -1872,5 +1872,14 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Forsinket": "Opóźniony",
   "Planlagt": "Zaplanowany",
   "Ny etappe": "Nowy etap",
-  "Slette {0}?": "Usunąć {0}?"
+  "Slette {0}?": "Usunąć {0}?",
+  "Del støpene i etapper. Gi hver etappe en dato, og merk den som støpt når den er ferdig. Velg elementer i modellen (shift-klikk eller shift-dra) og trykk «Legg til valgte» på etappen.": "Podziel betonowanie na etapy. Nadaj każdemu etapowi datę i oznacz go jako zabetonowany, gdy jest gotowy. Zaznacz elementy w modelu (shift+klik lub shift+przeciągnij) i naciśnij „Dodaj zaznaczone” przy etapie.",
+  "{0} elementer lagt i {1}. {2} av dem er flyttet fra en annen etappe.": "Dodano {0} elementów do {1}. {2} z nich przeniesiono z innego etapu.",
+  "{0} elementer lagt i {1}.": "Dodano {0} elementów do {1}.",
+  "ca {0}": "ok. {0}",
+  "+ Legg til valgte ({0})": "+ Dodaj zaznaczone ({0})",
+  "+ Legg til valgte": "+ Dodaj zaznaczone",
+  "Vis etappen i modellen": "Pokaż etap w modelu",
+  "Skjul etappen i modellen": "Ukryj etap w modelu",
+  "Ta alle elementene ut av etappen?": "Usunąć wszystkie elementy z etapu?"
 };

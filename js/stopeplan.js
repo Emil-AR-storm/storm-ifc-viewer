@@ -16,8 +16,11 @@ import { t } from "./i18n.js";
 import { iDagISO } from "./frist.js";
 import { flettPaaId, spLes, spPaalogget, spSkriv } from "./sp-lager.js";
 import {
-  STATUS_TEKST, nyEtappe, sortert, statusFor, synlige, vaskEtappe, vaskEtappeListe
+  STATUS_TEKST, fjernElementer, leggTilElementer, nyEtappe, sortert, statusFor, synlige, vaskEtappe, vaskEtappeListe
 } from "./stopeplan-regn.js";
+import { etappeSkjult, settEtappeSkjult, tegnStopeplan } from "./stopeplan-vis.js";
+import { quantitiesForSet } from "./elements.js";
+import { metaFor } from "./ifcrpc.js";
 
 const SP_MAPPE = "Stopeplan";
 let spStatus = "av";          // "av" | "ok" | "feil" — vises nederst i panelet
@@ -70,7 +73,7 @@ async function hentFraSp() {
     lagreLokalt();
   }
   if (erApen()) tegnPanel();
-  if (S.tegnStopeplan) S.tegnStopeplan();
+  tegnStopeplan();
 }
 
 function lagringsTekst() {
@@ -89,7 +92,7 @@ export function endreEtappe(id, endring) {
   S.stopeplan = vaskEtappeListe(S.stopeplan).map(e =>
     e.id === id ? vaskEtappe(Object.assign({}, e, endring, { endret: naa, av: mittNavn() })) : e);
   lagre();
-  if (S.tegnStopeplan) S.tegnStopeplan();
+  tegnStopeplan();
 }
 
 export function leggTilEtappe() {
@@ -106,8 +109,73 @@ export function slettEtappe(id) {
   S.stopeplan = vaskEtappeListe(S.stopeplan).map(e => e.id === id ? { id, slettet: true, endret: naa } : e);
   lagre();
   tegnPanel();
-  if (S.tegnStopeplan) S.tegnStopeplan();
+  tegnStopeplan();
 }
+
+// ═══════════════════ TRINN 2: ELEMENTER ═══════════════════
+// Utvalget er det samme som Grupper bruker: shift-klikk / shift-dra
+// (S.multiSel), eller det ene elementet som er trykket på.
+export function valgteIder() {
+  if (S.multiSel && S.multiSel.size) return [...S.multiSel.keys()].map(Number).filter(n => n > 0);
+  if (S.currentPropID != null) return [Number(S.currentPropID)].filter(n => n > 0);
+  return [];
+}
+
+let sisteMelding = "";
+export function leggValgteTil(id) {
+  const ider = valgteIder();
+  if (!ider.length) return 0;
+  const naa = new Date().toISOString();
+  const nye = ider.map(n => { const m = metaFor(n); return { id: n, gid: (m && m.globalId) || "" }; });
+  const r = leggTilElementer(S.stopeplan, id, nye, naa);
+  S.stopeplan = r.liste.map(e => e.id === id ? Object.assign(e, { av: mittNavn() }) : e);
+  const e = synlige(S.stopeplan).find(x => x.id === id);
+  sisteMelding = r.flyttet
+    ? t("{0} elementer lagt i {1}. {2} av dem er flyttet fra en annen etappe.", r.lagtTil, e ? e.navn : "", r.flyttet)
+    : t("{0} elementer lagt i {1}.", r.lagtTil, e ? e.navn : "");
+  lagre();
+  tegnStopeplan();
+  tegnPanel();
+  return r.lagtTil;
+}
+
+export function tomElementer(id) {
+  S.stopeplan = fjernElementer(S.stopeplan, id, null, new Date().toISOString());
+  sisteMelding = "";
+  lagre();
+  tegnStopeplan();
+  tegnPanel();
+}
+
+// Volumet (ca) regnes av mengdeuttaket — samme tall som i Mengder.
+const volumBuffer = new Map();
+export function volumFor(e) {
+  const ider = (e.elementer || []).map(x => Number(x.id));
+  if (!ider.length) return 0;
+  const nokkel = e.id + "|" + ider.join(",");
+  if (volumBuffer.has(nokkel)) return volumBuffer.get(nokkel);
+  let v = 0;
+  try {
+    const q = quantitiesForSet(new Set(ider));
+    for (const id of ider) { const x = q.get(id); if (x && Number.isFinite(x.vol)) v += x.vol; }
+  } catch (_) { v = 0; }
+  volumBuffer.set(nokkel, v);
+  return v;
+}
+const m3 = (v) => (Math.round(v * 10) / 10).toLocaleString("no-NO") + " m³";
+
+// Tellerne på «Legg til valgte» følger utvalget uten at hele panelet tegnes
+// på nytt (det ville tatt fokus fra et felt du skriver i).
+function oppdaterValgKnapper() {
+  if (!erApen()) return;
+  const n = valgteIder().length;
+  document.querySelectorAll("#stopeBody .st-legg").forEach(b => {
+    b.disabled = n === 0;
+    b.textContent = n ? t("+ Legg til valgte ({0})", n) : t("+ Legg til valgte");
+  });
+}
+window.addEventListener("pointerup", () => setTimeout(oppdaterValgKnapper, 0));
+window.addEventListener("keyup", () => setTimeout(oppdaterValgKnapper, 0));
 
 // ═══════════════════════ PANELET ═══════════════════════
 function erApen() { const p = $("stopePanel"); return !!(p && p.classList.contains("open")); }
@@ -119,13 +187,16 @@ export function tegnPanel() {
   if (!body) return;
   const iDag = iDagISO();
   const liste = sortert(S.stopeplan);
+  const nValgt = valgteIder().length;
   let html = '<p class="set-hjelp" style="margin-top:0">' +
-    esc(t("Del støpene i etapper. Gi hver etappe en dato, og merk den som støpt når den er ferdig. Felt på plata og elementer legges til etappen i neste trinn.")) + "</p>";
+    esc(t("Del støpene i etapper. Gi hver etappe en dato, og merk den som støpt når den er ferdig. Velg elementer i modellen (shift-klikk eller shift-dra) og trykk «Legg til valgte» på etappen.")) + "</p>" +
+    (sisteMelding ? '<p class="set-hjelp" style="color:var(--text)">' + esc(sisteMelding) + "</p>" : "");
   if (!liste.length) html += '<p class="hint">' + esc(t("Ingen etapper ennå.")) + "</p>";
   for (const e of liste) {
     const st = statusFor(e, iDag);
+    const vol = volumFor(e);
     const innhold = [
-      t("{0} elementer", e.elementer.length),
+      t("{0} elementer", e.elementer.length) + (vol > 0 ? " · " + t("ca {0}", m3(vol)) : ""),
       t("{0} felt", e.felt.length)
     ].join(" · ");
     html += '<div class="st-etappe" data-id="' + esc(e.id) + '" style="border-left:4px solid ' + esc(e.farge) + '">' +
@@ -144,6 +215,13 @@ export function tegnPanel() {
         '<span class="st-merke" style="color:' + STATUS_FARGE[st] + '">' + esc(t(STATUS_TEKST[st])) + "</span>" +
       "</div>" +
       '<div class="st-innhold">' + esc(innhold) + "</div>" +
+      '<div class="st-rad st-knapper">' +
+        '<button class="st-legg"' + (nValgt ? "" : " disabled") + ">" +
+          esc(nValgt ? t("+ Legg til valgte ({0})", nValgt) : t("+ Legg til valgte")) + "</button>" +
+        (e.elementer.length ? '<button class="st-tom">' + esc(t("Tøm")) + "</button>" : "") +
+        '<button class="st-oye" title="' + esc(etappeSkjult(e.id) ? t("Vis etappen i modellen") : t("Skjul etappen i modellen")) + '">' +
+          ikon(etappeSkjult(e.id) ? "skjul" : "vis") + "</button>" +
+      "</div>" +
     "</div>";
   }
   html += '<div class="prop-actions" style="margin-top:10px"><button id="stNy" class="primary">' + ikon("pluss") + " " + esc(t("Ny etappe")) + "</button></div>" +
@@ -158,6 +236,10 @@ export function tegnPanel() {
     rad.querySelector(".st-status").onchange = (ev) => { endreEtappe(id, { status: ev.target.value }); tegnPanel(); };
     // «change», ikke «input»: input fyrer for hvert musetrekk i fargehjulet
     rad.querySelector(".st-farge").onchange = (ev) => { endreEtappe(id, { farge: ev.target.value }); tegnPanel(); };
+    rad.querySelector(".st-legg").onclick = () => leggValgteTil(id);
+    const tom = rad.querySelector(".st-tom");
+    if (tom) tom.onclick = () => { if (confirm(t("Ta alle elementene ut av etappen?"))) tomElementer(id); };
+    rad.querySelector(".st-oye").onclick = () => { settEtappeSkjult(id, !etappeSkjult(id)); tegnPanel(); };
     rad.querySelector(".st-slett").onclick = () => {
       const e = synlige(S.stopeplan).find(x => x.id === id);
       if (e && confirm(t("Slette {0}?", e.navn))) slettEtappe(id);
@@ -168,10 +250,13 @@ export function tegnPanel() {
 // ═══════════════════════ KROKER ═══════════════════════
 S.lastStopeplan = () => {
   S.stopeplan = lesLokalt();
+  volumBuffer.clear();
+  sisteMelding = "";
+  tegnStopeplan();
   if (erApen()) tegnPanel();
   hentFraSp();          // i bakgrunnen
 };
-S.ryddStopeplan = () => { S.stopeplan = []; };
+S.ryddStopeplan = () => { S.stopeplan = []; volumBuffer.clear(); tegnStopeplan([]); };
 
 på("btnStopeplan", "click", () => {
   const panel = $("stopePanel");

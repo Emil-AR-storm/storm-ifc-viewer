@@ -1872,5 +1872,14 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Forsinket": "Vėluoja",
   "Planlagt": "Suplanuota",
   "Ny etappe": "Naujas etapas",
-  "Slette {0}?": "Ištrinti {0}?"
+  "Slette {0}?": "Ištrinti {0}?",
+  "Del støpene i etapper. Gi hver etappe en dato, og merk den som støpt når den er ferdig. Velg elementer i modellen (shift-klikk eller shift-dra) og trykk «Legg til valgte» på etappen.": "Padalykite betonavimą į etapus. Kiekvienam etapui nurodykite datą ir pažymėkite kaip išbetonuotą, kai baigtas. Pasirinkite elementus modelyje (shift+spustelėjimas arba shift+tempimas) ir etape paspauskite „Pridėti pasirinktus“.",
+  "{0} elementer lagt i {1}. {2} av dem er flyttet fra en annen etappe.": "{0} elementų pridėta į {1}. {2} iš jų perkelti iš kito etapo.",
+  "{0} elementer lagt i {1}.": "{0} elementų pridėta į {1}.",
+  "ca {0}": "apie {0}",
+  "+ Legg til valgte ({0})": "+ Pridėti pasirinktus ({0})",
+  "+ Legg til valgte": "+ Pridėti pasirinktus",
+  "Vis etappen i modellen": "Rodyti etapą modelyje",
+  "Skjul etappen i modellen": "Slėpti etapą modelyje",
+  "Ta alle elementene ut av etappen?": "Pašalinti visus elementus iš etapo?"
 };

@@ -1872,5 +1872,14 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Forsinket": "Delayed",
   "Planlagt": "Planned",
   "Ny etappe": "New stage",
-  "Slette {0}?": "Delete {0}?"
+  "Slette {0}?": "Delete {0}?",
+  "Del støpene i etapper. Gi hver etappe en dato, og merk den som støpt når den er ferdig. Velg elementer i modellen (shift-klikk eller shift-dra) og trykk «Legg til valgte» på etappen.": "Split the pours into stages. Give each stage a date and mark it as poured when it is done. Select elements in the model (shift-click or shift-drag) and press “Add selected” on the stage.",
+  "{0} elementer lagt i {1}. {2} av dem er flyttet fra en annen etappe.": "{0} elements added to {1}. {2} of them were moved from another stage.",
+  "{0} elementer lagt i {1}.": "{0} elements added to {1}.",
+  "ca {0}": "approx. {0}",
+  "+ Legg til valgte ({0})": "+ Add selected ({0})",
+  "+ Legg til valgte": "+ Add selected",
+  "Vis etappen i modellen": "Show the stage in the model",
+  "Skjul etappen i modellen": "Hide the stage in the model",
+  "Ta alle elementene ut av etappen?": "Remove all elements from the stage?"
 };
