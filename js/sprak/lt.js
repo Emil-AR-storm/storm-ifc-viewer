@@ -1699,7 +1699,6 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "En port kan ikke bli en del av en ny port — trykk på et vanlig panel": "Vartai negali būti naujų vartų dalis — spustelėkite įprastą skydą",
   "Gjerdet er for lite til en port": "Tvora per maža vartams",
   "Panelene står ikke ved siden av hverandre — trykk på et annet panel": "Skydai nėra greta — spustelėkite kitą skydą",
-  "Lag port: trykk på to paneler som står ved siden av hverandre — Esc avbryter": "Sukurti vartus: spustelėkite du gretimus skydus — Esc atšaukia",
   "Dra i prikkene for å forme gjerdet · shift-klikk for flere prikker · dobbeltklikk på et panel for ny skjøt · «Lag port» for å lage en port": "Tempkite taškus tvorai formuoti · shift-spustelėjimas daugiau taškų · dukart spustelėkite skydą naujai jungčiai · «Sukurti vartus» vartams sukurti",
   "Gjør tilbake til paneler": "Grąžinti į plokštes",
   "Fjern skjøt": "Pašalinti jungtį",

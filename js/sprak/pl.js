@@ -1699,7 +1699,6 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "En port kan ikke bli en del av en ny port — trykk på et vanlig panel": "Brama nie może być częścią nowej bramy — kliknij zwykły panel",
   "Gjerdet er for lite til en port": "Ogrodzenie jest za małe na bramę",
   "Panelene står ikke ved siden av hverandre — trykk på et annet panel": "Panele nie sąsiadują ze sobą — kliknij inny panel",
-  "Lag port: trykk på to paneler som står ved siden av hverandre — Esc avbryter": "Utwórz bramę: kliknij dwa sąsiednie panele — Esc anuluje",
   "Dra i prikkene for å forme gjerdet · shift-klikk for flere prikker · dobbeltklikk på et panel for ny skjøt · «Lag port» for å lage en port": "Przeciągnij kropki, aby ukształtować ogrodzenie · shift-klik dla wielu kropek · dwuklik na panelu dla nowego złącza · «Utwórz bramę», aby utworzyć bramę",
   "Gjør tilbake til paneler": "Przywróć panele",
   "Fjern skjøt": "Usuń łącznik",
