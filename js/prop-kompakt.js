@@ -3,9 +3,9 @@
 // Emil 30.09.2026 (skjermbilde fra telefonen): et trykk på en bjelke åpnet
 // panelet over halve skjermen med ExpressID, arealer og volum — montøren
 // mistet modellen han sto og så på, og det han ville vite var bare hva det
-// var. Nå kommer panelet som en smal stripe nederst med type og navn, og en
-// pil ved siden av åpner hele lista. Den åpne lista er også strammere og
-// tar høyst ~45 % av skjermen.
+// var. Nå kommer panelet med type og navn øverst og en stram liste under som
+// viser tre rader om gangen og rulles inni vinduet. (Først var lista lagt
+// sammen bak en pil — Emil ba om å fjerne det i runde 1h.)
 //
 // HVORFOR EN VAKT PÅ PANELET, OG IKKE ENDRINGER I HVER SOM ÅPNER DET:
 // propPanel fylles fra tre steder (elements.js for modellen, sw-lett.js for
@@ -98,7 +98,10 @@ function legg(panel) {
     const k = r.querySelector(".k");
     if (k && SKJUL_RADER.includes(k.textContent.trim())) r.classList.add("skjult-bygg");
   });
-  settUtvidet(panel, false);
+  // 1h (Emil 30.09): «fjern at vinduet må trykkes på for å åpne og lukke —
+  // det går fint at det kommer opp nå som vinduet er så lite». Med tre rader
+  // og rulling (1f) er lista liten nok til å stå åpen med en gang.
+  settUtvidet(panel, true);
 }
 
 export function start() {
@@ -120,11 +123,8 @@ export function start() {
     .observe(body, { childList: true });
   // Pila — og hele stripa, som er et større mål for en tommel med hanske.
   // Krysset lukker som før (egen onclick i HTML-en); det skal ikke også vekse.
-  const hode = panel.querySelector("header");
-  if (hode) hode.addEventListener("click", (e) => {
-    if (e.target.closest && e.target.closest("button") && !e.target.closest("#propUtvid")) return;
-    settUtvidet(panel, !panel.classList.contains("utvidet"));
-  });
+  // Ingen pil og ingen trykk på stripa lenger (1h): lista står alltid åpen.
+  // Pila står i HTML-en (knapper skjules, fjernes aldri) og skjules i CSS.
   return true;
 }
 
