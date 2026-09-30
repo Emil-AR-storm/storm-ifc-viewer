@@ -19,6 +19,7 @@ import { $, esc, ikon, S } from "../state.js";
 import { t } from "../i18n.js";
 import * as THREE from "three";
 import { MALTYPER, trpProfil } from "../materiell-vis.js";
+import { omrissIPlanet } from "../sw-tak.js";
 import { TAK_RADER, TAK_STD, bjelkeLinje, fallRetningFraBjelker, justerPlater, plateId,
          platerPaFlate, roterFlater, skjotBjelker, aserVerden, radBjelker, takFlater, takRamme, takRektangel,
          takflaterFraBjelker, platerPaTaket, tilUV, fraUV, trpListe, takTotaler,
@@ -639,8 +640,10 @@ export function tegnTak() {
           vinkel: p.vinkel,
           // rammen følger med, så «Juster tak» kan regne seg tilbake til u
           U: f.U, V: f.V, N: f.N, origo: f.origo };
-        tegnPlate(data, f, rad.vFra, rad.breddeMm, ua, ub,
-          p.kort ? "#c05a5a" : (p.lagtTil ? "#7fae7f" : farge), legg, naa);
+        // 🏗 koden og fargen følger plata ut til byggeplassen (takForByggeplass)
+        naa.kode = koder.get(plateNokkel(p.lengdeMm, rad.breddeMm, p)) || "";
+        naa.farge = p.kort ? "#c05a5a" : (p.lagtTil ? "#7fae7f" : farge);
+        tegnPlate(data, f, rad.vFra, rad.breddeMm, ua, ub, naa.farge, legg, naa);
         if (!sk.merking && data.auto)
           merkPlate(data, f, naa, koder.get(plateNokkel(p.lengdeMm, rad.breddeMm, p)), legg);
         naa = null;
@@ -650,6 +653,44 @@ export function tegnTak() {
   }
 }
 
+
+// ───────────────── 🏗 TAKPLATENE PÅ BYGGEPLASS-LENKA ─────────────────
+//
+// byggeplass.js kaller denne ved publisering. Platene leses rett fra det som
+// er TEGNET på taket (swGroup), ikke regnes på nytt: da får montøren nøyaktig
+// de platene prosjektlederen ser — også etter «Juster tak». Er taket skjult
+// eller slått av på kontoret, sendes det ikke. Se omrissIPlanet i sw-tak.js.
+const r3 = (v) => Math.round(v * 1000) / 1000;
+export function takForByggeplass() {
+  const plater = [];
+  swGroup.updateMatrixWorld(true);
+  const v = new THREE.Vector3();
+  swGroup.traverse(m => {
+    const meta = m.isMesh && m.userData && m.userData.takPlate;
+    if (!meta || !meta.U || !meta.V || !meta.N || !m.geometry) return;
+    const a = m.geometry.getAttribute("position");
+    if (!a) return;
+    const pos = new Float32Array(a.count * 3);
+    for (let i = 0; i < a.count; i++) {
+      v.fromBufferAttribute(a, i).applyMatrix4(m.matrixWorld);
+      pos[i * 3] = v.x; pos[i * 3 + 1] = v.y; pos[i * 3 + 2] = v.z;
+    }
+    const omr = omrissIPlanet(pos, meta.U, meta.V, meta.N);
+    if (omr.length < 3) return;
+    plater.push({
+      id: String(meta.id || ""),
+      p: omr.flat().map(r3),
+      f: meta.farge || "",
+      k: meta.kode || "",
+      l: Math.round(Number(meta.lengdeMm) || 0),
+      b: Math.round(Number(meta.breddeMm) || 0)
+    });
+  });
+  if (!plater.length) return null;
+  let data = null;
+  try { data = takData(); } catch (_) { data = null; }
+  return { farge: (data && data.o && data.o.farge) || "#8fa3b8", plater };
+}
 
 // ───────────────── 📦 TRP-BUNKENE RUNDT BYGGET ─────────────────
 //
