@@ -1,5 +1,6 @@
 // Valg, egenskaper, søk, mengder og markeringsboks.
 import * as THREE from "three";
+import { LETT } from "./lett.js";
 import { $, ekstraLagSom, på, S, apnePanel, dec, esc, ikon, loadingEl, loadingText } from "./state.js";
 import { t } from "./i18n.js";
 import { TETTHET } from "./config.js";
@@ -176,7 +177,9 @@ export async function showProperties(expressID) {
     armeringRader(expressID, { typeName: p && p[2], navn: p && p[0],
       objektType: p && p[1], materiale: p && p[3] }).forEach(r => rows.push(r));
     try { maalRader(expressID).forEach(r => rows.push(r)); } catch(_){}
-    rows.push([t("Merk"), t("Lett kopi – åpne original-IFC-en for full egenskapsliste")]);
+    // Byggeplass-siden har ingen original-IFC å åpne — raden er bare støy der
+    // (Emil 30.09). På kontoret er den en nyttig påminnelse.
+    if (!LETT) rows.push([t("Merk"), t("Lett kopi – åpne original-IFC-en for full egenskapsliste")]);
   } else {
     // IFC-tråden svarer med hele egenskapslista i én runde
     let p = null;
@@ -263,7 +266,7 @@ function psetHtml(psets) {
 // ---------- Målradene i egenskapspanelet ----------
 //
 // Rekkefølgen er tenkt: det du bestiller etter kommer først.
-//   1. Mål L×B×T – rettet etter største flate (se retteMaal). Faller tilbake
+//   1. Mål L×B×H – rettet etter største flate (se retteMaal), H = høyden (lbh). Faller tilbake
 //      til den akse-justerte boksen hvis elementet ikke har noen flate å rette
 //      seg etter (buede flater, punktskyer).
 //   2. Areal, største flate – vegglivet på en vegg, oversida på et dekke.
@@ -272,18 +275,51 @@ function psetHtml(psets) {
 //      hverandre, og da skal begge stå der, slik at ingen tror den ene er den
 //      andre.
 //   4. Volum, og et varsko når elementet er et åpent skall.
+// 📐 L × B × H der H ER HØYDEN (Emil 30.09: «den viser lengde × bredde ×
+// tykkelse, så det er ingenting som nevner høyde»). De tre målene kommer fra
+// rammen rundt elementet (retteMaal, eller boksen), men de sier ikke hvilket
+// av dem som står loddrett. Det gjør elementets utstrekning i scenens Y: målet
+// som ligger nærmest den, er høyden. De to andre er lengde og bredde, største
+// først. Da blir en liggende bjelke 6,89 × 0,10 × 0,10 og en søyle
+// 0,10 × 0,10 × 6,89 — og en vegg 8 × 0,25 × 3, ikke 8 × 3 × 0,25.
+export function lbh(tre, hoydeY) {
+  const d = (tre || []).map(v => Number(v) || 0);
+  while (d.length < 3) d.push(0);
+  const h = Number(hoydeY);
+  if (!Number.isFinite(h) || h <= 0) {
+    // Uten høyde å gå etter: største først, som før
+    return d.slice(0, 3).sort((a, b) => b - a);
+  }
+  let k = 0;
+  for (let i = 1; i < 3; i++) if (Math.abs(d[i] - h) < Math.abs(d[k] - h)) k = i;
+  const rest = d.filter((_, i) => i !== k).sort((a, b) => b - a);
+  return [rest[0], rest[1], d[k]];
+}
+
+// Elementets loddrette utstrekning i meter (scenens Y), eller null.
+function hoydeY(id) {
+  let lo = Infinity, hi = -Infinity;
+  const a = new THREE.Vector3();
+  forHverTrekant(new Set([id]), (p, i0, i1, i2, mtx) => {
+    for (const i of [i0, i1, i2]) {
+      a.fromBufferAttribute(p, i);
+      if (mtx) a.applyMatrix4(mtx);
+      if (a.y < lo) lo = a.y;
+      if (a.y > hi) hi = a.y;
+    }
+  });
+  return hi > lo ? (hi - lo) * (S.enhetSkala || 1) : null;
+}
+
 function maalRader(id) {
   const rows = [];
   const q = elementQuantities(id);
   let r = null;
   try { r = retteMaal(id); } catch (_) {}
+  let hy = null;
+  try { hy = hoydeY(id); } catch (_) {}
   if (r) {
-    // Største mål først, så raden leses likt uansett hvilken vei rammen rundt
-    // flata tilfeldigvis falt. Tykkelsen står alltid sist – den er den ene av
-    // de tre som betyr noe bestemt.
-    const lb = [r.lengde, r.bredde].sort((a, b) => b - a);
-    rows.push([t("Mål L×B×T (ca)"),
-      [lb[0], lb[1], r.tykkelse].map(fmtDim).join(" × ") + " m"]);
+    rows.push([t("Mål L×B×H (ca)"), lbh([r.lengde, r.bredde, r.tykkelse], hy).map(fmtDim).join(" × ") + " m"]);
     // Arealet tas fra mengdeuttaket (q.storsteFlate), ikke fra retteMaal, slik
     // at panelet og Mengder-tabellen ALLTID viser samme tall for samme element.
     // retteMaal gjør sin egen gjennomgang for å kunne tegne flata, og to
@@ -293,7 +329,7 @@ function maalRader(id) {
     if (Math.abs(q.storsteFlate - q.area) > Math.max(q.storsteFlate, q.area) * 0.02)
       rows.push([t("Areal, fotavtrykk (ca)"), fmtArea(q.area)]);
   } else {
-    rows.push([t("Mål L×B×H (ca)"), q.dims.map(fmtDim).join(" × ") + " m"]);
+    rows.push([t("Mål L×B×H (ca)"), lbh(q.dims, hy).map(fmtDim).join(" × ") + " m"]);
     rows.push([t("Areal, fotavtrykk (ca)"), fmtArea(q.area)]);
   }
   rows.push([t("Overflate i alt (ca)"), fmtArea(q.overflate)]);
