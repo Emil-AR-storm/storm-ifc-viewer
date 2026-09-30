@@ -1170,3 +1170,123 @@ export function masseRader(inn) {
   rader.push(["Kilde", "Høydedata: © Kartverket (CC BY 4.0)"]);
   return rader;
 }
+
+// ═══════════════════════ 🏗 TERRENGET PÅ BYGGEPLASS-SIDEN ═══════════════════════
+//
+// Emil 30.09.2026: terrenget skal med ut til byggeplass-lenka, med kartet og
+// hele utsnittet (prøvebilde A, «kart, 400 m»). Montøren står på en telefon
+// med mobildekning, så det som sendes er KRYMPET:
+//   · annethvert punkt (2 m ruter i stedet for 1 m) — et 400 m-utsnitt går fra
+//     160 000 til 40 000 punkt. Terrenget er bakgrunn på plassen, ikke
+//     måleunderlag; ingen ser forskjell på 1 og 2 m ruter fra 50 m avstand.
+//   · høydene som hele centimeter over laveste punkt (Uint16), ikke 32-bits
+//     flyttall: 80 kB i stedet for 640 kB.
+//   · bare det som er innenfor beskjæringen brukeren har satt på kontoret.
+// Kartet sendes for seg som JPEG (se terreng.js) — det er det største.
+//
+// HVORFOR GRIDET LIGGER I markeringer.json OG IKKE I EN EGEN FIL: Workeren tar
+// bare imot glb/json/jpg/pdf/html, og leser bare .markeringer.json og bilder
+// tilbake. En egen .bin-fil ville krevd en ny Worker-rute og ny utrulling. Som
+// base64 i JSON blir gridet ~110 kB, og fila hentes uansett ved hver åpning.
+export const BYGG_STEG = 2;            // hvert 2. punkt
+export const BYGG_MAKS_PUNKT = 360000; // vakt mot en fil noen har tuklet med (600 × 600)
+const NODATA16 = 65535;
+
+function tilBase64(u8) {
+  let s = "";
+  for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+function fraBase64(b64) {
+  const s = atob(b64);
+  const u8 = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) u8[i] = s.charCodeAt(i);
+  return u8;
+}
+
+// Kontoret → byggeplassen. `t` er terrenget slik terreng.js har det:
+// { grid, klipp, E0, N0, h0, plass, gulv, pad }. Svarer med
+// { data, kartUtsnitt } — data er det som legges i markeringer.json,
+// kartUtsnitt er hvilken del av kartbildet (0–1) som hører til gridet.
+export function terrengForByggeplass(t, steg) {
+  if (!t || !t.grid || !t.grid.data) return null;
+  const g = t.grid, st = Math.max(1, Math.round(steg || BYGG_STEG));
+  const k = t.klipp || fulltKlipp(g);
+  const i0 = Math.max(0, k.i0), i1 = Math.min(g.w - 1, k.i1);
+  const j0 = Math.max(0, k.j0), j1 = Math.min(g.h - 1, k.j1);
+  // Hvert nye punkt er SNITTET av en st × st-blokk. Da dekker det nye gridet
+  // nøyaktig samme flate som beskjæringen (en rest på én rute i kanten
+  // droppes), og kartet kan beskjæres med de samme kantene. Å plukke hvert
+  // 2. punkt i stedet flyttet hele gridet en halv meter i forhold til kartet.
+  const w = Math.floor((i1 - i0 + 1) / st), h = Math.floor((j1 - j0 + 1) / st);
+  if (w < 2 || h < 2) return null;
+  const snitt = new Float64Array(w * h);
+  let lo = Infinity;
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+    let sum = 0, n = 0;
+    for (let b = 0; b < st; b++) for (let a = 0; a < st; a++) {
+      const v = g.data[(j0 + j * st + b) * g.w + (i0 + i * st + a)];
+      if (gyldigHoyde(v, g.nodata)) { sum += v; n++; }
+    }
+    const v = n ? sum / n : NaN;
+    snitt[j * w + i] = v;
+    if (n && v < lo) lo = v;
+  }
+  if (!Number.isFinite(lo)) return null;
+  const hMin = Math.floor(lo * 100) / 100;
+  const u16 = new Uint16Array(w * h);
+  for (let q = 0; q < w * h; q++) {
+    const v = snitt[q];
+    u16[q] = Number.isFinite(v) ? Math.min(NODATA16 - 1, Math.max(0, Math.round((v - hMin) * 100))) : NODATA16;
+  }
+  const dx = g.dx * st, dy = g.dy * st;
+  const x0 = g.x0 + i0 * g.dx, y0 = g.y0 - j0 * g.dy;
+  const fullB = g.w * g.dx, fullH = g.h * g.dy;
+  const klem = (v) => Math.max(0, Math.min(1, v));
+  const kartUtsnitt = {
+    u0: klem((x0 - g.x0) / fullB), u1: klem((x0 + w * dx - g.x0) / fullB),
+    v0: klem((g.y0 - y0) / fullH), v1: klem((g.y0 - (y0 - h * dy)) / fullH)
+  };
+  const p = t.plass || {};
+  return {
+    kartUtsnitt,
+    data: {
+      v: 1,
+      E0: t.E0, N0: t.N0, h0: t.h0,
+      plass: { pE: p.pE || 0, pN: p.pN || 0, rot: p.rot || 0 },
+      gulv: t.gulv ? { kote: t.gulv.kote } : null,
+      pad: t.pad && t.pad.paa ? { paa: true, x0: t.pad.x0, x1: t.pad.x1, z0: t.pad.z0, z1: t.pad.z1 } : null,
+      grid: { w, h, x0, y0, dx, dy, hMin, data: tilBase64(new Uint8Array(u16.buffer)) },
+      kart: ""   // fylles av byggeplass.js med navnet på JPEG-en
+    }
+  };
+}
+
+// Byggeplassen ← markeringer.json. Alt vaskes: fila kommer utenfra. Svarer med
+// et terreng i samme form som kontoret bruker (grid med Float32Array), eller null.
+export function terrengFraByggeplass(d) {
+  if (!d || typeof d !== "object" || d.v !== 1) return null;
+  const n = (v) => (typeof v === "number" && Number.isFinite(v)) ? v : null;
+  const E0 = n(d.E0), N0 = n(d.N0), h0 = n(d.h0);
+  if (E0 == null || N0 == null || h0 == null || h0 <= MIN_HOYDE || h0 >= MAKS_HOYDE) return null;
+  const q = d.grid || {};
+  const w = n(q.w), h = n(q.h), x0 = n(q.x0), y0 = n(q.y0), dx = n(q.dx), dy = n(q.dy), hMin = n(q.hMin);
+  if ([w, h, x0, y0, dx, dy, hMin].some(v => v == null)) return null;
+  if (!Number.isInteger(w) || !Number.isInteger(h) || w < 2 || h < 2 || w * h > BYGG_MAKS_PUNKT) return null;
+  if (!(dx > 0 && dx <= 20 && dy > 0 && dy <= 20) || hMin <= MIN_HOYDE || hMin >= MAKS_HOYDE) return null;
+  if (typeof q.data !== "string") return null;
+  let u8;
+  try { u8 = fraBase64(q.data); } catch (_) { return null; }
+  if (u8.length !== w * h * 2) return null;
+  const u16 = new Uint16Array(u8.buffer, u8.byteOffset, w * h);
+  const data = new Float32Array(w * h);
+  for (let k = 0; k < w * h; k++) data[k] = u16[k] === NODATA16 ? NaN : hMin + u16[k] / 100;
+  const pl = vaskPlassering({ id: "plassering", terreng: "bygg", plass: d.plass, gulv: d.gulv, pad: d.pad });
+  if (!pl) return null;
+  const kart = typeof d.kart === "string" && /^[0-9a-zA-Z_-]+\.jpg$/.test(d.kart) ? d.kart : "";
+  return {
+    E0, N0, h0,
+    grid: { w, h, x0, y0, dx, dy, data, nodata: null },
+    plass: pl.plass, gulv: pl.gulv, pad: pl.pad, kart
+  };
+}
