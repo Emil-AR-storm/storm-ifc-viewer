@@ -1851,5 +1851,12 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Vis terreng": "Pokaż teren",
   "Terrenget og kartet rundt bygget, slik prosjektlederen satte det opp på kontoret. Slå det av hvis telefonen blir treg.": "Teren i mapa wokół budynku, tak jak kierownik projektu ustawił je w biurze. Wyłącz, jeśli telefon zwalnia.",
   "Terrenget rundt bygget": "Teren wokół budynku",
-  "Terrenget og kartet rundt bygget er det prosjektlederen satte opp på kontoret. Brakker og gjerde står på bakken. Blir telefonen treg, slår du av Vis terreng under Innstillinger.": "Teren i mapa wokół budynku zostały ustawione przez kierownika projektu w biurze. Kontenery i ogrodzenie stoją na ziemi. Jeśli telefon zwalnia, wyłącz Pokaż teren w Ustawieniach."
+  "Terrenget og kartet rundt bygget er det prosjektlederen satte opp på kontoret. Brakker og gjerde står på bakken. Blir telefonen treg, slår du av Vis terreng under Innstillinger.": "Teren i mapa wokół budynku zostały ustawione przez kierownika projektu w biurze. Kontenery i ogrodzenie stoją na ziemi. Jeśli telefon zwalnia, wyłącz Pokaż teren w Ustawieniach.",
+  "Vis alle egenskaper": "Pokaż wszystkie właściwości",
+  "Vis mindre": "Pokaż mniej",
+  "TRP-takplate": "Blacha trapezowa dachowa",
+  "Skjul denne plata": "Ukryj ten arkusz",
+  "Kode": "Kod",
+  "Takplater": "Blachy dachowe",
+  "Bredde": "Szerokość"
 };

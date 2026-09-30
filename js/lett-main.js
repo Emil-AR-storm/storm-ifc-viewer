@@ -22,6 +22,7 @@ import "./display.js";
 import "./outline.js";
 import "./hjelp.js";
 import "./materiell-vis.js";   // 📦 materiell: montøren SER objektene (verktøyet er kontor-bare)
+import "./tak-lett.js";        // 🏠 takplatene på taket (fra tak-generatoren på kontoret)
 import "./prop-kompakt.js";    // 📋 egenskapspanelet: bare navnet først, pil for resten
 import "./terreng-vis.js";     // ⛰ terrenget: montøren SER det (verktøyet er kontor-bare) — FØR rigg-vis
 import "./rigg-vis.js";        // 🏕 rigg: montøren SER riggen på gulvhøyde (verktøyet er kontor-bare)

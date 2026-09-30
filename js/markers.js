@@ -210,6 +210,9 @@ async function lastLettMarkeringer() {
       // og da må bakken finnes når den tegnes. Gamle filer har ikke feltet.
       if (S.settTerrengFraLett)
         S.settTerrengFraLett(d && !Array.isArray(d) ? d.terreng : null);
+      // 🏠 Takplatene på taket (tak-lett.js). Gamle filer har ikke feltet.
+      if (S.settTakFraLett)
+        S.settTakFraLett(d && !Array.isArray(d) ? d.tak : null);
       // 🏕 Riggen på tomta (rigg-vis.js). Gamle filer har ikke feltet.
       if (S.settRiggFraLett)
         S.settRiggFraLett(d && !Array.isArray(d) ? d.rigg : null);

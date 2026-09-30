@@ -1851,5 +1851,12 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Vis terreng": "Show terrain",
   "Terrenget og kartet rundt bygget, slik prosjektlederen satte det opp på kontoret. Slå det av hvis telefonen blir treg.": "The terrain and map around the building, as the project manager set it up at the office. Turn it off if the phone gets slow.",
   "Terrenget rundt bygget": "The terrain around the building",
-  "Terrenget og kartet rundt bygget er det prosjektlederen satte opp på kontoret. Brakker og gjerde står på bakken. Blir telefonen treg, slår du av Vis terreng under Innstillinger.": "The terrain and map around the building are what the project manager set up at the office. Cabins and fencing stand on the ground. If the phone gets slow, turn off Show terrain under Settings."
+  "Terrenget og kartet rundt bygget er det prosjektlederen satte opp på kontoret. Brakker og gjerde står på bakken. Blir telefonen treg, slår du av Vis terreng under Innstillinger.": "The terrain and map around the building are what the project manager set up at the office. Cabins and fencing stand on the ground. If the phone gets slow, turn off Show terrain under Settings.",
+  "Vis alle egenskaper": "Show all properties",
+  "Vis mindre": "Show less",
+  "TRP-takplate": "TRP roof sheet",
+  "Skjul denne plata": "Hide this sheet",
+  "Kode": "Code",
+  "Takplater": "Roof sheets",
+  "Bredde": "Width"
 };
