@@ -141,7 +141,7 @@ export async function hentBlikkLagredeFraSp(etterpa) {
 export function blikkLagringsTekst() {
   if (blikkSpStatus === "ok") return t("Lagres i SharePoint — alle med tilgang ser det samme.");
   if (blikkSpStatus === "feil") return t("Får ikke kontakt med SharePoint. Lagres bare på denne maskinen inntil videre.");
-  return t("Lagres bare på denne maskinen. Logg inn i Biblioteket for å dele med de andre.");
+  return t("Lagres bare på denne maskinen. Trykk på den røde prikken øverst til høyre og logg inn for å dele med de andre.");
 }
 
 export function blikkMittNavn() {

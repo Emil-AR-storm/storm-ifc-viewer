@@ -359,7 +359,7 @@ export async function hentTakLagredeFraSp(etterpa) {
 export function takLagringsTekst() {
   if (takSpStatus === "ok") return t("Lagres i SharePoint — alle med tilgang ser det samme.");
   if (takSpStatus === "feil") return t("Får ikke kontakt med SharePoint. Lagres bare på denne maskinen inntil videre.");
-  return t("Lagres bare på denne maskinen. Logg inn i Biblioteket for å dele med de andre.");
+  return t("Lagres bare på denne maskinen. Trykk på den røde prikken øverst til høyre og logg inn for å dele med de andre.");
 }
 function mittNavn() {
   try {
