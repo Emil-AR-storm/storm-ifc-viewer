@@ -1740,3 +1740,21 @@ body:not(.har-modell) #btnFit { display: none !important; }
   .rigg-katalog .rigg-type { flex: none; width: 74px; flex-direction: column; text-align: center; font-size: 10.5px; margin: 0; padding: 4px; }
   .rigg-katalog .tips { display: none; }
 }
+
+/* 🧱 Støpeplan (js/stopeplan.js) — én boks per etappe, fargen i venstrekanten */
+.st-etappe { padding: 8px 8px 8px 10px; margin: 0 0 8px; background: var(--panel2); border-radius: var(--radius); }
+.st-rad { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.st-rad input[type="text"] { flex: 1 1 auto; min-width: 0; }
+.st-rad input[type="date"] { flex: 0 1 auto; }
+.st-farge { width: 30px; height: 26px; padding: 0; border: 1px solid var(--border); border-radius: 6px; background: none; flex: 0 0 auto; }
+.st-nr { min-width: 18px; text-align: center; }
+.st-slett { padding: 4px 7px; flex: 0 0 auto; }
+.st-merke { font-size: 12px; font-weight: 600; margin-left: auto; }
+.st-innhold { font-size: 12px; color: var(--muted); }
+.st-etappe input[type="text"], .st-etappe input[type="date"], .st-etappe select {
+  background: var(--panel); color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 4px 6px; font: inherit; font-size: 13px; color-scheme: dark;
+}
+html[data-tema="lys"] .st-etappe input[type="text"],
+html[data-tema="lys"] .st-etappe input[type="date"],
+html[data-tema="lys"] .st-etappe select { color-scheme: light; }
