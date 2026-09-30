@@ -57,6 +57,8 @@ export async function setLang(kode) {
   // «Ferdig», og en data-i18n der ville blitt overskrevet). Derfor må det
   // tegnes på nytt her, ikke av oversettDom.
   if (S.rebuildHjelp) S.rebuildHjelp();
+  // Innloggingsprikken: title bygges i JS (navnet står i teksten), se sharepoint.js
+  if (S.rebuildInnlogging) S.rebuildInnlogging();
 }
 
 // Oversetter alt som er merket i index.html. Originalteksten (norsk) lagres i

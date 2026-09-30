@@ -66,6 +66,11 @@ export const KORT = [
     tekst: "De fargede stablene med navnelapp er materiell som skal ligge akkurat der — plater, panel, kassetter og veggelementer. Kommer det en leveranse, ser du her hvor den skal. Lappen sier hva det er og hvor mange."
   },
   {
+    hvor: "bygg", ikonNavn: "rigg",
+    tittel: "Riggen på tomta",
+    tekst: "Brakker, toalett, container, byggegjerde, porter og piler for kjøretøy og gående viser hvordan riggen er planlagt. Navnelappen på hvert objekt sier hva det er. Riggen kan bare endres på kontoret."
+  },
+  {
     hvor: "bygg", ikonNavn: "sok",
     tittel: "Verktøyene ligger i grupper",
     tekst: "Knappene øverst — Måleverktøy, Bygg Info, Visning og Storm-Byggeplass — bytter hvilke verktøy verktøylinja viser. Er et verktøy borte, ligger det i en annen gruppe."
@@ -91,6 +96,11 @@ export const KORT = [
     hvor: "kontor", ikonNavn: "apne",
     tittel: "Åpne en modell",
     tekst: "Åpne henter en IFC fra maskinen din, Bibliotek henter den fra SharePoint. Du kan også dra fila rett inn i vinduet."
+  },
+  {
+    hvor: "kontor", ikonNavn: "hake",
+    tittel: "Grønn prikk: du er logget inn",
+    tekst: "Prikken øverst til høyre viser om du er logget inn med Microsoft-kontoen. Grønn betyr logget inn, rød betyr ikke logget inn. Trykk på den røde for å logge inn. Bibliotek, delte markeringer, Planner og lagring av terreng og rigg i SharePoint virker bare når den er grønn."
   },
   {
     hvor: "kontor", ikonNavn: "sok",
@@ -166,6 +176,21 @@ export const KORT = [
     hvor: "kontor", ikonNavn: "mengder",
     tittel: "Skjæring og fylling",
     tekst: "Under Masser under plata i Terreng-panelet står hvor mye som må graves bort og fylles inn ned til planum — gulvkote minus oppbygging, eller en planumkote du skriver selv. Kryss av for å se det i rødt og blått i terrenget. Skråningene rundt plata er med (1:1,5 i skjæring og 1:2 i fylling som standard — endre dem etter massene). Tallene er et overslag: terrenget er skannet før graving. Helningen kan settes ulikt per side, og Last ned masser gir et Excel-ark til kalkylen."
+  },
+  {
+    hvor: "kontor", ikonNavn: "rigg",
+    tittel: "Rigg: planlegg riggen på tomta",
+    tekst: "Rigg (i Bygg Info) setter brakker, toalett, container, strømskap, søppelcontainer, lys, parkering, lagrings- og vaskeområde på tomta. Trykk på en type i katalogen, og så der den skal stå. Trykk på et objekt for å flytte, rotere, redigere eller slette det. Endringene lagres med en gang i SharePoint, så alle med tilgang ser det samme."
+  },
+  {
+    hvor: "kontor", ikonNavn: "rigg",
+    tittel: "Byggegjerde, port og piler",
+    tekst: "Velg Byggegjerde og dra en boks på bakken, så legger gjerdet seg langs omrisset. Dra i prikkene for å forme det, og dobbeltklikk på et panel for en ny skjøt. Trykk på to paneler ved siden av hverandre og velg Gjør om til port. Pilene for kjøretøy og gående tegnes punkt for punkt: klikk for hvert knekkpunkt, og dobbeltklikk eller trykk Ferdig pil for å avslutte."
+  },
+  {
+    hvor: "kontor", ikonNavn: "tegning",
+    tittel: "Riggplanen ut av huset",
+    tekst: "Last ned riggplan (PDF) gir et A3-ark med planen sett ovenfra, nummererte objekter, Hva er hva og bilder fra fire sider. Velg målestokk, eller la den stå på Automatisk så hele riggen får plass. Til bestilling teller opp det som skal leies. Lagrede riggplaner tar vare på en versjon med navn. Riggen følger med til byggeplass-lenka, der montøren ser den, men ikke kan endre den."
   },
   {
     hvor: "kontor", ikonNavn: "tegning",

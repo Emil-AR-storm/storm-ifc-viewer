@@ -49,13 +49,18 @@ async function msalInit() {
   }
   // Er vi logget inn? Hent brukerens personlige oppsett fra SharePoint.
   if (S.msalApp.getActiveAccount() && S.onSignedIn) S.onSignedIn();
+  // 🟢/🔴 Prikken i toppbaren. Ikke await: den skal ikke holde igjen
+  // biblioteket eller markeringene som venter på msalInit.
+  sjekkInnlogging();
   // Kom vi nettopp tilbake fra innlogging? Fortsett der brukeren var.
   if (S.msalApp.getActiveAccount()) {
     const after = sessionStorage.getItem("storm-ifc-open-lib");
     if (after) {
       sessionStorage.removeItem("storm-ifc-open-lib");
       if (after === "markeringer") $("commentPanel").classList.add("open");
-      else openLibrary();
+      // «ingen»: innloggingen ble startet fra prikken i toppbaren. Da var det
+      // bare innloggingen hun ville ha — ikke å få Biblioteket i fanget.
+      else if (after !== "ingen") openLibrary();
     }
   }
   return S.msalApp;
@@ -99,6 +104,7 @@ async function loggInn(scopes, o, metode) {
         : await S.msalApp.acquireTokenPopup({ scopes, account: S.msalApp.getActiveAccount() });
       if (r && r.account) S.msalApp.setActiveAccount(r.account);
       if (metode === "login" && S.onSignedIn) S.onSignedIn();
+      if (r && r.account) visInnlogging("inne", r.account);
       const tk = r && r.accessToken;
       if (tk && String(tk).trim()) return tk;      // ← kalleren fortsetter med én gang
     } catch (err) {
@@ -131,7 +137,7 @@ export async function graphToken(scopes, opts) {
     const t = (await S.msalApp.acquireTokenSilent({ scopes, account })).accessToken;
     // MSAL kan svare med tom streng når en hurtigbufret oppføring er utløpt.
     // Da må vi be om nytt token, ikke sende et tomt.
-    if (t && String(t).trim()) return t;
+    if (t && String(t).trim()) { visInnlogging("inne", account); return t; }
     console.warn("MSAL ga tomt token for " + scopes.join(", ") + " – ber om nytt");
     if (o.silent) return null;
     return loggInn(scopes, o, "token");
@@ -143,7 +149,7 @@ export async function graphToken(scopes, opts) {
 
 // LETTMODUS (bygg.html): aldri start innlogging. Dette er den ENESTE linja
 // i hele kodebasen som starter MSAL av seg selv – den gates, ikke fjernes.
-if (!LETT && !SP.clientId.startsWith("FYLL")) msalInit().catch(() => {});
+if (!LETT && !SP.clientId.startsWith("FYLL")) msalInit().catch(() => { visInnlogging("feil"); });
 
 async function spToken() {
   return graphToken(SP_SCOPES, { after: "lib" });
@@ -153,6 +159,146 @@ async function spToken() {
 // Sender ALDRI brukeren til innlogging – gir null hvis vi ikke er logget inn.
 export async function spTokenSilent() {
   return graphToken(SP_SCOPES, { silent: true });
+}
+
+// ═══════════════ 🟢/🔴 INNLOGGINGSPRIKKEN I TOPPBAREN ═══════════════
+// Biblioteket, delte markeringer, Planner og lagring av terreng og rigg virker
+// bare når brukeren er logget inn mot SharePoint. Før dette sto det ingen
+// steder om hun var det — hun fant det ut først når noe ikke ble lagret
+// (Emil 30.09.2026). Prikken svarer på det med ett blikk: grønn = logget inn,
+// rød = ikke logget inn. Trykk på rød logger inn, trykk på grønn viser hvem.
+//
+// HVORFOR EN GRÅ TILSTAND I TILLEGG: MSAL trenger et øyeblikk på å lese
+// innloggingen fra nettleseren. Startet prikken rød, ville den blinket rødt →
+// grønt på hver eneste sidelasting for alle som ER logget inn — og rødt betyr
+// «noe er galt». Grå betyr «sjekker», og varer til MSAL har svart.
+//
+// HVORFOR BARE SP-SCOPENE AVGJØR RØDT: et Planner-token kan mangle fordi
+// brukeren ikke har gitt Planner-tillatelse ennå. Det er ikke det samme som å
+// være logget ut, og skal ikke gjøre prikken rød. Et token som KOM, uansett
+// scope, beviser derimot at hun er innlogget — derfor grønt fra graphToken.
+
+// Ren logikk (testes uten nettleser).
+//   msalLastet: false når innloggings-biblioteket ikke kom (nett, blokkert CDN)
+//   konto:      aktiv MSAL-konto eller null
+//   tokenOk:    true/false fra et stille SP-token, null = ikke sjekket ennå
+export function innloggingTilstand(o) {
+  const v = o || {};
+  if (v.msalLastet === false) return "feil";
+  if (!v.konto) return "ute";
+  if (v.tokenOk === false) return "utlopt";
+  if (v.tokenOk === true) return "inne";
+  return "sjekker";
+}
+
+// Er prikken grønn? Bare «inne» — alt annet betyr at SharePoint-funksjonene
+// ikke vil virke nå.
+export function erInnlogget(tilstand) { return tilstand === "inne"; }
+
+export function kontoNavn(konto) {
+  if (!konto) return "";
+  const navn = String(konto.name || "").trim();
+  const bruker = String(konto.username || "").trim();
+  if (navn && bruker && navn !== bruker) return navn + " (" + bruker + ")";
+  return navn || bruker;
+}
+
+export function innloggingTekst(tilstand, konto) {
+  switch (tilstand) {
+    case "inne": return t("Logget inn som {0}. Bibliotek, delte markeringer og lagring i SharePoint virker.", kontoNavn(konto));
+    case "utlopt": return t("Innloggingen er utløpt. Trykk for å logge inn igjen — ellers blir ingenting lagret i SharePoint.");
+    case "feil": return t("Innloggingen kunne ikke startes (sjekk nettforbindelsen). Bibliotek, delte markeringer og lagring i SharePoint virker ikke nå.");
+    case "sjekker": return t("Sjekker innloggingen …");
+    default: return t("Ikke logget inn. Trykk for å logge inn med Microsoft-kontoen — Bibliotek, delte markeringer og lagring i SharePoint krever det.");
+  }
+}
+
+let innNå = "sjekker";
+let innKonto = null;
+
+export function innloggingNå() { return { tilstand: innNå, konto: innKonto }; }
+
+export function visInnlogging(tilstand, konto) {
+  innNå = tilstand || "ute";
+  innKonto = konto || null;
+  S.innlogging = innNå;
+  const k = $("btnInnlogging");
+  if (!k) return;
+  k.dataset.tilstand = innNå;
+  const tekst = innloggingTekst(innNå, innKonto);
+  k.title = tekst;
+  k.setAttribute("aria-label", tekst);
+  const info = $("innloggingInfo");
+  if (info && info.classList.contains("open")) tegnInfo();
+}
+
+// Stille sjekk: leser innloggingen uten å sende brukeren noe sted.
+export async function sjekkInnlogging() {
+  if (LETT) return innNå;
+  if (!window.msal) { visInnlogging("feil"); return innNå; }
+  const konto = S.msalApp && S.msalApp.getActiveAccount();
+  if (!konto) { visInnlogging("ute"); return innNå; }
+  let tokenOk = false;
+  try { tokenOk = !!(await spTokenSilent()); } catch (_) { tokenOk = false; }
+  visInnlogging(innloggingTilstand({ msalLastet: true, konto, tokenOk }), konto);
+  return innNå;
+}
+
+function tegnInfo() {
+  const info = $("innloggingInfo");
+  if (!info) return;
+  info.innerHTML = '<span class="innlogging-prikk" data-tilstand="' + esc(innNå) + '"></span>' +
+    '<span>' + esc(innloggingTekst(innNå, innKonto)) + '</span>';
+}
+
+function lukkInfo() {
+  const info = $("innloggingInfo");
+  if (info) info.classList.remove("open");
+}
+
+async function trykkPrikk(e) {
+  if (e) e.stopPropagation();
+  const info = $("innloggingInfo");
+  if (erInnlogget(innNå)) {
+    // Grønn: vis hvem som er logget inn. Ingen utlogging her — det er ikke
+    // bedt om, og en knapp som logger ut ved et feiltrykk er verre enn ingen.
+    if (!info) return;
+    const åpen = info.classList.toggle("open");
+    if (åpen) tegnInfo();
+    return;
+  }
+  lukkInfo();
+  // Rød eller grå: logg inn. graphToken velger popup på PC og omdirigering på
+  // telefon (se brukPopup), akkurat som Biblioteket.
+  try {
+    const tk = await graphToken(SP_SCOPES, {
+      after: "ingen",
+      confirmFirst: () => t("Du sendes til Microsoft for å logge inn og kommer tilbake hit etterpå. En modell som er åpen, må åpnes på nytt.")
+    });
+    if (tk) visInnlogging("inne", S.msalApp.getActiveAccount());
+    else await sjekkInnlogging();
+  } catch (_) {
+    visInnlogging(window.msal ? "ute" : "feil");
+  }
+}
+
+if (!LETT) {
+  på("btnInnlogging", "click", trykkPrikk);
+  // Trykk utenfor lukker boksen med navnet.
+  document.addEventListener("click", (e) => {
+    const info = $("innloggingInfo");
+    if (!info || !info.classList.contains("open")) return;
+    if (info.contains(e.target)) return;
+    lukkInfo();
+  });
+  // Kommer brukeren tilbake til fanen etter en natt, kan innloggingen ha gått
+  // ut. Sjekken er stille og bruker MSAL sin hurtigbuffer, så den koster lite.
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && S.msalApp) sjekkInnlogging();
+  });
+  // Språkbytte: title-teksten er bygd i JS og må bygges på nytt.
+  const forrigeSprak = S.rebuildInnlogging;
+  S.rebuildInnlogging = () => { if (forrigeSprak) forrigeSprak(); visInnlogging(innNå, innKonto); };
 }
 
 // Alle Graph-kall skal gå gjennom denne. Sender vi et tomt token, svarer Graph
@@ -176,6 +322,7 @@ export async function graphGet(path, token) {
     const kropp = (await r.text()).slice(0, 200);
     if (r.status === 401 || /InvalidAuthenticationToken/.test(kropp)) {
       console.warn("Graph 401 på " + path);
+      visInnlogging("utlopt", S.msalApp && S.msalApp.getActiveAccount());
       throw new Error(IKKE_INNLOGGET);
     }
     throw new Error("Graph " + r.status + ": " + kropp);
