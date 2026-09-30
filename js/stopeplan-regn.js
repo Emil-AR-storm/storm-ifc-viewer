@@ -40,7 +40,11 @@ export function vaskEtappe(e) {
     status: e.status === "stopt" ? "stopt" : "planlagt",
     notat: tekst(e.notat, 500),
     // Kommer i trinn 2/3/6 — tas vare på allerede nå (se toppen av fila)
-    elementer: Array.isArray(e.elementer) ? e.elementer.slice(0, 20000) : [],
+    // [{ id: ExpressID, gid: GlobalId }] — gid gjør at planen kan finne
+    // elementet igjen i en ny revisjon av modellen (samme grep som Sammenlign)
+    elementer: Array.isArray(e.elementer) ? e.elementer
+      .map(x => (x && typeof x === "object") ? { id: Number(x.id), gid: typeof x.gid === "string" ? x.gid.slice(0, 40) : "" } : null)
+      .filter(x => x && Number.isFinite(x.id) && x.id > 0).slice(0, 20000) : [],
     felt: Array.isArray(e.felt) ? e.felt.slice(0, 200) : [],
     vanntetting: Array.isArray(e.vanntetting) ? e.vanntetting.slice(0, 500) : [],
     endret, av: tekst(e.av, 60)
@@ -111,4 +115,34 @@ export function stopeplanForByggeplass(liste) {
     id: e.id, nr: e.nr, navn: e.navn, farge: e.farge, dato: e.dato, status: e.status,
     elementer: e.elementer, felt: e.felt, vanntetting: e.vanntetting
   }));
+}
+
+// ═══════════════ TRINN 2: ELEMENTER I EN ETAPPE ═══════════════
+// Et element hører til ÉN etappe — støpes det i etappe 2, er det ikke også i
+// etappe 3. Legges det til en ny etappe, flyttes det dit. Svaret sier hvor
+// mange som ble flyttet fra andre etapper, så panelet kan si fra.
+export const MAKS_ELEMENTER = 20000;
+export function leggTilElementer(liste, etappeId, nye, naa) {
+  const inn = (nye || []).map(x => ({ id: Number(x.id), gid: typeof x.gid === "string" ? x.gid.slice(0, 40) : "" }))
+    .filter(x => Number.isFinite(x.id) && x.id > 0);
+  const ider = new Set(inn.map(x => x.id));
+  let flyttet = 0;
+  const ut = vaskEtappeListe(liste).map(e => {
+    if (e.slettet) return e;
+    if (e.id === etappeId) {
+      const fra = (e.elementer || []).filter(x => !ider.has(Number(x.id)));
+      return Object.assign({}, e, { elementer: fra.concat(inn).slice(0, MAKS_ELEMENTER), endret: naa || e.endret });
+    }
+    const for_ = (e.elementer || []).length;
+    const rest = (e.elementer || []).filter(x => !ider.has(Number(x.id)));
+    if (rest.length !== for_) { flyttet += for_ - rest.length; return Object.assign({}, e, { elementer: rest, endret: naa || e.endret }); }
+    return e;
+  });
+  return { liste: ut, lagtTil: inn.length, flyttet };
+}
+
+export function fjernElementer(liste, etappeId, ider, naa) {
+  const sett = ider ? new Set(ider.map(Number)) : null;
+  return vaskEtappeListe(liste).map(e => (e.slettet || e.id !== etappeId) ? e
+    : Object.assign({}, e, { elementer: sett ? e.elementer.filter(x => !sett.has(Number(x.id))) : [], endret: naa || e.endret }));
 }
