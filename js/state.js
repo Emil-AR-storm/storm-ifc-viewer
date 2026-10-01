@@ -59,6 +59,7 @@ export const DEFAULT_SETTINGS = {
   rapLogo: "",        // valgt logo (filnavn i SharePoint-mappa Logoer)
   stopeLogo: null,    // 🧱 logo på støpeplan-PDF-en (filnavn); null = samme som rapporten, "" = ingen
   riggLogo: null,     // 🚧 logo på riggplan-PDF-en (filnavn); null = samme som rapporten, "" = ingen
+  framdriftLogo: null, // 📅 logo på framdriftsplan-PDF-en (filnavn); null = samme som rapporten, "" = ingen
   verktoygruppe: "",  // 🧰 valgt gruppe i verktøylinja (mal | info | utseende | bygg)
   // ❓ Hjelpekortene er vist én gang på denne maskinen. Står den false på
   // byggeplass-siden, kommer gjennomgangen av seg selv når modellen er lastet.
@@ -239,6 +240,7 @@ export function nullstillModellState() {
   // 🏕 Riggen hører til modellen (og tomta) som ble lukket.
   if (S.ryddRigg) S.ryddRigg();
   if (S.ryddStopeplan) S.ryddStopeplan();   // 🧱 støpeplanen hørte til modellen som ble lukket
+  if (S.ryddFramdrift) S.ryddFramdrift();   // 📅 framdriftsplanen likeså
   if (S.ryddTakLett) S.ryddTakLett();   // 🏠 takplatene på byggeplass-siden
 }
 
@@ -283,6 +285,8 @@ S.etterTegnMateriell = null;    // materiell-vis.js → materiell.js: legg valg-
 S.lastGrupper = null;           // ifc.js: les lagrede grupper når modellen åpnes
 S.lastStopeplan = null;        // ifc.js: les støpeplanen når modellen åpnes (stopeplan.js)
 S.ryddStopeplan = null;        // modellbytte
+S.lastFramdrift = null;        // 📅 ifc.js: les framdriftsplanen når modellen åpnes (framdrift.js)
+S.ryddFramdrift = null;
 S.tegnStopeplan = null;        // trinn 2/3: tegn fargene og feltene på nytt
 S.stopeplan = [];
 S.settGrupperFraLett = null;    // markers.js: grupper fra Workerens JSON (bygg)

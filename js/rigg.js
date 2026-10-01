@@ -1295,6 +1295,9 @@ window.addEventListener("pointerup", (e) => {
   const klikk = ned && Math.hypot(e.clientX - ned.x, e.clientY - ned.y) <= KLIKK_PX;
   if (!klikk) return;
   const g = pekRigg(e.clientX, e.clientY);
+  // 📅 Framdriftsplanens velgemodus: trykket legger rigg-objektet til / tar
+  // det bort i utvalget der (framdrift.js), i stedet for å åpne riggen.
+  if (g && S.velgModusAktiv && S.riggIVelgModus) { e.stopPropagation(); slippKamera(e); S.riggIVelgModus(g.userData.riggId); return; }
   if (g) { e.stopPropagation(); slippKamera(e); velg(g.userData.riggId); return; }
   // klikk utenfor: velg bort, men IKKE stopp hendelsen — main.js skal få sitt
   if (valgtId) velg(null);

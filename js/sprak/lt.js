@@ -2018,5 +2018,22 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Stålbunker laget": "Plieno rietuvės sukurtos",
   "Stålbunker fjernet": "Plieno rietuvės pašalintos",
   "Fagverk halvdel": "Santvaros pusė",
-  "Fagverk kjennes igjen av seg selv (to korder med stag imellom) og legges som halvdeler, delt midt på, flatt på strøer.": "Santvaros atpažįstamos automatiškai (dvi juostos su statramsčiais tarp jų) ir dedamos kaip pusės, padalytos per vidurį, gulsčios ant tarpinių."
+  "Fagverk kjennes igjen av seg selv (to korder med stag imellom) og legges som halvdeler, delt midt på, flatt på strøer.": "Santvaros atpažįstamos automatiškai (dvi juostos su statramsčiais tarp jų) ir dedamos kaip pusės, padalytos per vidurį, gulsčios ant tarpinių.",
+  "Trykk på det som skal med — elementer, SW, takplater, rigg og materiell. Shift + dra for mange på en gang.": "Spustelėkite tai, kas turi būti įtraukta — elementus, SW, stogo lakštus, statybvietės įrangą ir medžiagas. Shift + vilkite, kad pažymėtumėte daug iš karto.",
+  "Ingenting lagt til ennå": "Dar nieko nepridėta",
+  "Del arbeidet i etapper med dato. Trykk «Legg til» på etappen og velg det som utføres da — elementer, SW-elementer, takplater, rigg og materiell. Trykk «Ferdig» når du er ferdig.": "Padalykite darbą į etapus su datomis. Paspauskite „Pridėti“ prie etapo ir pasirinkite, kas tada atliekama — elementus, SW elementus, stogo lakštus, statybvietės įrangą ir medžiagas. Baigę paspauskite „Baigta“.",
+  "Fra": "Nuo",
+  "Til": "Iki",
+  "Ta alt ut av etappen?": "Pašalinti viską iš etapo?",
+  "Framdriftsplan": "Darbų grafikas",
+  "Framdriftsplan: etapper med dato for alt som skal utføres — elementer, SW, takplater, rigg og materiell": "Darbų grafikas: etapai su datomis viskam, kas turi būti atlikta — elementai, SW, stogo lakštai, statybvietės įranga ir medžiagos",
+  "Elementer": "Elementai",
+  "{0} objekt lagt i {1}.": "{0} objektas pridėtas prie {1}.",
+  "{0} objekt lagt i {1}. Det er flyttet fra en annen etappe.": "{0} objektas pridėtas prie {1}. Jis perkeltas iš kito etapo.",
+  "{0} objekter lagt i {1}.": "{0} objektų pridėta prie {1}.",
+  "{0} objekter lagt i {1}.|one": "{0} objektas pridėtas prie {1}.",
+  "{0} objekter lagt i {1}.|few": "{0} objektai pridėti prie {1}.",
+  "{0} objekter lagt i {1}. {2} av dem er flyttet fra en annen etappe.": "{0} objektų pridėta prie {1}. {2} iš jų perkelti iš kito etapo.",
+  "{0} objekter lagt i {1}. {2} av dem er flyttet fra en annen etappe.|one": "{0} objektas pridėtas prie {1}. Jis perkeltas iš kito etapo.",
+  "{0} objekter lagt i {1}. {2} av dem er flyttet fra en annen etappe.|few": "{0} objektai pridėti prie {1}. {2} iš jų perkelti iš kito etapo."
 };

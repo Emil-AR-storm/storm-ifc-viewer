@@ -2018,5 +2018,22 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Stålbunker laget": "Steel stacks created",
   "Stålbunker fjernet": "Steel stacks removed",
   "Fagverk halvdel": "Truss half",
-  "Fagverk kjennes igjen av seg selv (to korder med stag imellom) og legges som halvdeler, delt midt på, flatt på strøer.": "Trusses are recognised automatically (two chords with bracing between them) and placed as halves, split in the middle, lying flat on battens."
+  "Fagverk kjennes igjen av seg selv (to korder med stag imellom) og legges som halvdeler, delt midt på, flatt på strøer.": "Trusses are recognised automatically (two chords with bracing between them) and placed as halves, split in the middle, lying flat on battens.",
+  "Trykk på det som skal med — elementer, SW, takplater, rigg og materiell. Shift + dra for mange på en gang.": "Click what should be included — elements, SW, roof sheets, site facilities and materials. Shift + drag for many at once.",
+  "Ingenting lagt til ennå": "Nothing added yet",
+  "Del arbeidet i etapper med dato. Trykk «Legg til» på etappen og velg det som utføres da — elementer, SW-elementer, takplater, rigg og materiell. Trykk «Ferdig» når du er ferdig.": "Divide the work into stages with dates. Press “Add” on the stage and select what is done then — elements, SW elements, roof sheets, site facilities and materials. Press “Done” when finished.",
+  "Fra": "From",
+  "Til": "To",
+  "Ta alt ut av etappen?": "Remove everything from the stage?",
+  "Framdriftsplan": "Progress plan",
+  "Framdriftsplan: etapper med dato for alt som skal utføres — elementer, SW, takplater, rigg og materiell": "Progress plan: dated stages for everything to be done — elements, SW, roof sheets, site facilities and materials",
+  "Elementer": "Elements",
+  "{0} objekt lagt i {1}.": "{0} object added to {1}.",
+  "{0} objekt lagt i {1}. Det er flyttet fra en annen etappe.": "{0} object added to {1}. It was moved from another stage.",
+  "{0} objekter lagt i {1}.": "{0} objects added to {1}.",
+  "{0} objekter lagt i {1}.|one": "{0} object added to {1}.",
+  "{0} objekter lagt i {1}.|few": "{0} objects added to {1}.",
+  "{0} objekter lagt i {1}. {2} av dem er flyttet fra en annen etappe.": "{0} objects added to {1}. {2} of them were moved from another stage.",
+  "{0} objekter lagt i {1}. {2} av dem er flyttet fra en annen etappe.|one": "{0} object added to {1}. It was moved from another stage.",
+  "{0} objekter lagt i {1}. {2} av dem er flyttet fra en annen etappe.|few": "{0} objects added to {1}. {2} of them were moved from another stage."
 };
