@@ -1903,5 +1903,14 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Kanter (m):": "Edges (m):",
   "Dra de hvite prikkene (hjørner) eller de gule (kanter). Dra inne i feltet for å flytte det. Dobbeltklikk på en kant gir et nytt hjørne. Delete sletter. Ctrl+Z angrer.": "Drag the white dots (corners) or the yellow ones (edges). Drag inside the area to move it. Double-click an edge for a new corner. Delete removes. Ctrl+Z undoes.",
   "Tegner …": "Drawing …",
-  "+ Felt": "+ Area"
+  "+ Felt": "+ Area",
+  "Vist per": "Shown as of",
+  "— slik det var": "— as it was",
+  "— slik det skal bli": "— as planned",
+  "I dag": "Today",
+  "Vis etappeplan": "Show stage plan",
+  "farger betongen etter støpeplanen": "colours the concrete by the pour plan",
+  "Støpt {0}": "Poured {0}",
+  "Angre «støpt»": "Undo “poured”",
+  "Merk som støpt": "Mark as poured"
 };

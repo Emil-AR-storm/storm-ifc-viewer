@@ -19,7 +19,7 @@ import { S, registrerEkstraGruppe } from "./state.js";
 import { flyTil, scene } from "./scene.js";
 import { forHverTrekant } from "./elements.js";
 import { iDagISO } from "./frist.js";
-import { elementNokkel, erGenerert, statusFor, synlige } from "./stopeplan-regn.js";
+import { elementNokkel, erGenerert, statusPer, synlige } from "./stopeplan-regn.js";
 import { riggBase } from "./rigg-vis.js";
 
 export const stopeGroup = new THREE.Group();
@@ -28,8 +28,20 @@ scene.add(stopeGroup);
 
 export const OPASITET = { stopt: 0.92, uke: 0.8, forsinket: 0.8, planlagt: 0.38 };
 
-let skjult = false;
-const skjulteEtapper = new Set();
+// 👁 «Vis etappeplan» (Emil 01.10): ÉN bryter for hele fargingen, i stedet for
+// skjul/vis på hver etappe. Valget huskes på denne maskinen (per bruker —
+// det er en visning, ikke en del av planen).
+const VIS_NOKKEL = "storm-ifc-stopeplan-vis";
+let skjult = (() => { try { return localStorage.getItem(VIS_NOKKEL) === "av"; } catch (_) { return false; } })();
+export const visEtappeplan = () => !skjult;
+export function settVisEtappeplan(paa) {
+  skjult = !paa;
+  try { localStorage.setItem(VIS_NOKKEL, paa ? "paa" : "av"); } catch (_) {}
+  tegnStopeplan();
+  if (S.oppdaterVisAlle) S.oppdaterVisAlle();
+}
+// 📅 Tidslinjen (trinn 4): hvilken dag modellen viser. null = i dag.
+export const vistPer = () => S.stopeVistPer || null;
 
 function rydd() {
   while (stopeGroup.children.length) {
@@ -131,11 +143,10 @@ export function tegnStopeplan(liste) {
   const iDag = iDagISO();
   feltBase();
   for (const e of synlige(liste === undefined ? S.stopeplan : liste)) {
-    if (skjulteEtapper.has(e.id)) continue;
     // Feltene først — de skal tegnes også om etappen ikke har elementer
     if (base) for (const f of e.felt || []) {
       try {
-        const m = feltMesh(f, e.farge, FELT_OPASITET[statusFor(e, iDag)]);
+        const m = feltMesh(f, e.farge, FELT_OPASITET[statusPer(e, vistPer(), iDag)]);
         m.userData.feltId = f.id; m.userData.etappeId = e.id;
         stopeGroup.add(m);
         feltMeshes.push(m);
@@ -144,12 +155,12 @@ export function tegnStopeplan(liste) {
     const ider = (e.elementer || []).filter(x => !erGenerert(x)).map(x => Number(x && x.id)).filter(n => n > 0);
     const gen = (e.elementer || []).filter(erGenerert).map(x => x.sw);
     if (!ider.length && !gen.length) {
-      if ((e.felt || []).length) tegnet.push({ id: e.id, antallElementer: 0, antallGenererte: 0, antallFelt: e.felt.length, status: statusFor(e, iDag) });
+      if ((e.felt || []).length) tegnet.push({ id: e.id, antallElementer: 0, antallGenererte: 0, antallFelt: e.felt.length, status: statusPer(e, vistPer(), iDag) });
       continue;
     }
     const geo = elementGeometri(ider, gen);
     if (!geo) continue;
-    const st = statusFor(e, iDag);
+    const st = statusPer(e, vistPer(), iDag);
     const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({
       color: e.farge, side: THREE.DoubleSide,
       transparent: OPASITET[st] < 1, opacity: OPASITET[st], depthWrite: OPASITET[st] >= 0.9,
@@ -180,15 +191,10 @@ S.tegnStopeplan = () => tegnStopeplan();
 registrerEkstraGruppe(stopeGroup, {
   id: "stopeplan",
   navn: "Støpeplan",
-  noeSkjult: () => skjult || skjulteEtapper.size > 0,
-  visAlt() { skjult = false; skjulteEtapper.clear(); tegnStopeplan(); },
-  skjulTilstand: () => ({ skjult, ider: [...skjulteEtapper] }),
-  settSkjulTilstand(v) {
-    skjult = !!(v && v.skjult);
-    skjulteEtapper.clear();
-    for (const id of ((v && v.ider) || [])) skjulteEtapper.add(String(id));
-    tegnStopeplan();
-  },
+  noeSkjult: () => skjult,
+  visAlt() { if (skjult) settVisEtappeplan(true); },
+  skjulTilstand: () => ({ skjult }),
+  settSkjulTilstand(v) { settVisEtappeplan(!(v && v.skjult)); },
   mengder: () => {},
   sokRader: () => [],
   // Fra søket (kontrakten i test-ekstralag): fly til etappen
@@ -201,8 +207,3 @@ registrerEkstraGruppe(stopeGroup, {
   }
 });
 
-export function settEtappeSkjult(id, paa) {
-  if (paa) skjulteEtapper.add(id); else skjulteEtapper.delete(id);
-  tegnStopeplan();
-}
-export function etappeSkjult(id) { return skjulteEtapper.has(id); }
