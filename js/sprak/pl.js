@@ -1903,5 +1903,14 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Kanter (m):": "Krawędzie (m):",
   "Dra de hvite prikkene (hjørner) eller de gule (kanter). Dra inne i feltet for å flytte det. Dobbeltklikk på en kant gir et nytt hjørne. Delete sletter. Ctrl+Z angrer.": "Przeciągaj białe kropki (narożniki) lub żółte (krawędzie). Przeciągnij wewnątrz pola, aby je przesunąć. Dwukrotne kliknięcie krawędzi dodaje narożnik. Delete usuwa. Ctrl+Z cofa.",
   "Tegner …": "Rysowanie …",
-  "+ Felt": "+ Pole"
+  "+ Felt": "+ Pole",
+  "Vist per": "Stan na",
+  "— slik det var": "— tak było",
+  "— slik det skal bli": "— zgodnie z planem",
+  "I dag": "Dziś",
+  "Vis etappeplan": "Pokaż plan etapów",
+  "farger betongen etter støpeplanen": "koloruje beton według planu betonowania",
+  "Støpt {0}": "Zabetonowano {0}",
+  "Angre «støpt»": "Cofnij „zabetonowano”",
+  "Merk som støpt": "Oznacz jako zabetonowane"
 };

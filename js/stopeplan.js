@@ -16,9 +16,9 @@ import { t } from "./i18n.js";
 import { iDagISO } from "./frist.js";
 import { flettPaaId, spLes, spPaalogget, spSkriv } from "./sp-lager.js";
 import {
-  STATUS_TEKST, erGenerert, feltAreal, feltSummer, feltVolum, fjernElementer, kantLengder, leggTilElementer, nyEtappe, sortert, statusFor, synlige, vaskEtappe, vaskEtappeListe
+  STATUS_TEKST, dagerMellom, mandag, erGenerert, plussDager, statusPer, tidslinjeSpenn, feltAreal, feltSummer, feltVolum, fjernElementer, kantLengder, leggTilElementer, nyEtappe, sortert, statusFor, synlige, vaskEtappe, vaskEtappeListe
 } from "./stopeplan-regn.js";
-import { etappeSkjult, settEtappeSkjult, tegnStopeplan } from "./stopeplan-vis.js";
+import { settVisEtappeplan, tegnStopeplan, visEtappeplan } from "./stopeplan-vis.js";
 import { clearSelection, quantitiesForSet } from "./elements.js";
 import { metaFor } from "./ifcrpc.js";
 
@@ -260,6 +260,103 @@ function oppdaterValgKnapper() {
 window.addEventListener("pointerup", () => setTimeout(oppdaterValgKnapper, 0));
 window.addEventListener("keyup", () => setTimeout(oppdaterValgKnapper, 0));
 
+// ═══════════ TRINN 4: «MERK SOM STØPT» OG TIDSLINJEN ═══════════
+const datoKort = (iso) => { const d = String(iso || "").split("-"); return d.length === 3 ? d[2] + "." + d[1] : iso; };
+const datoLang = (iso) => { const d = String(iso || "").split("-"); return d.length === 3 ? d[2] + "." + d[1] + "." + d[0] : iso; };
+
+export function merkStopt(id, stopt) {
+  const e = synlige(S.stopeplan).find(x => x.id === id);
+  if (!e) return;
+  const forrige = vaskEtappeListe(S.stopeplan);
+  endreEtappe(id, stopt ? { status: "stopt", stoptDato: e.stoptDato || iDagISO() } : { status: "planlagt", stoptDato: "" });
+  const etter = vaskEtappeListe(S.stopeplan);
+  if (S.pushAngre) S.pushAngre({
+    tekst: stopt ? "Merket som støpt" : "Ikke støpt",
+    angre: () => { S.stopeplan = forrige; lagre(); tegnStopeplan(); tegnPanel(); },
+    gjenopprett: () => { S.stopeplan = etter; lagre(); tegnStopeplan(); tegnPanel(); }
+  });
+  tegnPanel();
+}
+
+// Tidslinjen nederst: én stolpe per etappe på datoen, en glider for «Vist
+// per» og «I dag». Vises når panelet er åpent, fargingen er på og minst én
+// etappe har en dato. Dras glideren, viser modellen planen den dagen:
+// bakover hva som faktisk var støpt, framover hva som SKAL være støpt.
+export function settVistPer(dato) {
+  const iDag = iDagISO();
+  S.stopeVistPer = dato && dato !== iDag ? dato : null;
+  tegnStopeplan();
+  tegnTidslinje();
+}
+
+function tidEl() {
+  let el = $("stTidslinje");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "stTidslinje";
+    el.className = "st-tid";
+    document.body.appendChild(el);
+  }
+  return el;
+}
+
+export function tegnTidslinje() {
+  const el = tidEl();
+  const iDag = iDagISO();
+  const spenn = tidslinjeSpenn(S.stopeplan, iDag);
+  const vis = erApen() && visEtappeplan() && !!spenn;
+  document.body.classList.toggle("st-tid-paa", vis);
+  if (!vis) {
+    el.style.display = "none"; el.innerHTML = "";
+    if (S.stopeVistPer) { S.stopeVistPer = null; tegnStopeplan(); }
+    return;
+  }
+  const n = Math.max(1, dagerMellom(spenn.fra, spenn.til));
+  const per = S.stopeVistPer || iDag;
+  const pos = (d) => Math.max(0, Math.min(100, dagerMellom(spenn.fra, d) / n * 100));
+  let stolper = "";
+  for (const e of sortert(S.stopeplan)) {
+    const d = e.stoptDato || e.dato;
+    if (!d) continue;
+    const st = statusPer(e, per, iDag);
+    stolper += '<button class="st-stolpe ' + st + '" data-dato="' + esc(d) + '" style="left:' + pos(d).toFixed(2) + "%;--f:" + esc(e.farge) + '" title="' +
+      esc(e.nr + " " + e.navn + " · " + datoLang(d) + " · " + t(STATUS_TEKST[st])) + '"><span>' + e.nr + "</span></button>";
+  }
+  // Akse: én merkelapp per mandag (eller hver 4. uke når spennet er langt)
+  let akse = "";
+  const uker = Math.ceil(n / 7), steg = uker > 16 ? 4 : uker > 8 ? 2 : 1;
+  for (let d = mandagEtter(spenn.fra), k = 0; d <= spenn.til; d = plussDager(d, 7), k++) {
+    if (k % steg) continue;
+    akse += '<span style="left:' + pos(d).toFixed(2) + '%">' + esc(datoKort(d)) + "</span>";
+  }
+  el.style.display = "block";
+  el.innerHTML =
+    '<div class="st-tid-topp"><span>' + esc(t("Vist per")) + " <b>" + esc(datoLang(per)) + "</b>" +
+      (per !== iDag ? ' <span class="st-tid-merk">' + esc(per < iDag ? t("— slik det var") : t("— slik det skal bli")) + "</span>" : "") +
+      '</span><button id="stTidIdag"' + (per === iDag ? " disabled" : "") + ">" + esc(t("I dag")) + "</button></div>" +
+    '<div class="st-tid-bane">' +
+      '<span class="st-tid-idag" style="left:' + pos(iDag).toFixed(2) + '%" title="' + esc(t("I dag")) + '"></span>' +
+      stolper +
+      '<input type="range" id="stTidGlider" min="0" max="' + n + '" step="1" value="' + dagerMellom(spenn.fra, per) + '" aria-label="' + esc(t("Vist per")) + '">' +
+    "</div>" +
+    '<div class="st-tid-akse">' + akse + "</div>";
+  $("stTidIdag").onclick = () => settVistPer(null);
+  const g = $("stTidGlider");
+  g.oninput = () => {
+    S.stopeVistPer = plussDager(spenn.fra, Number(g.value));
+    if (S.stopeVistPer === iDag) S.stopeVistPer = null;
+    tegnStopeplan();
+    const b = el.querySelector(".st-tid-topp b");
+    if (b) b.textContent = datoLang(S.stopeVistPer || iDag);
+  };
+  g.onchange = () => tegnTidslinje();
+  el.querySelectorAll(".st-stolpe").forEach(b => b.onclick = () => settVistPer(b.dataset.dato));
+}
+function mandagEtter(iso) {
+  const m = mandag(iso);
+  return m < iso ? plussDager(m, 7) : m;
+}
+
 // ═══════════════════════ PANELET ═══════════════════════
 function erApen() { const p = $("stopePanel"); return !!(p && p.classList.contains("open")); }
 
@@ -270,7 +367,10 @@ export function tegnPanel() {
   if (!body) return;
   const iDag = iDagISO();
   const liste = sortert(S.stopeplan);
-  let html = '<p class="set-hjelp" style="margin-top:0">' +
+  // 👁 Én bryter for hele fargingen (Emil 01.10), øverst i panelet
+  let html = '<label class="st-vis"><input type="checkbox" id="stVis"' + (visEtappeplan() ? " checked" : "") + "> " +
+      esc(t("Vis etappeplan")) + '<span class="set-hjelp"> — ' + esc(t("farger betongen etter støpeplanen")) + "</span></label>" +
+    '<p class="set-hjelp" style="margin-top:0">' +
     esc(t("Del støpene i etapper. Gi hver etappe en dato, og merk den som støpt når den er ferdig. Trykk «Legg til» på etappen og velg elementene i modellen — også generert betonggulv og ringmur. Trykk «Ferdig» når du er ferdig. «+ Felt» tegner et felt på plata.")) + "</p>" +
     (sisteMelding ? '<p class="set-hjelp" style="color:var(--text)">' + esc(sisteMelding) + "</p>" : "");
   if (!liste.length) html += '<p class="hint">' + esc(t("Ingen etapper ennå.")) + "</p>";
@@ -307,11 +407,13 @@ export function tegnPanel() {
       "</div>" +
       '<div class="st-rad">' +
         '<input type="date" class="st-dato" value="' + esc(e.dato) + '">' +
-        '<select class="st-status">' +
-          '<option value="planlagt"' + (e.status !== "stopt" ? " selected" : "") + ">" + esc(t("Ikke støpt")) + "</option>" +
-          '<option value="stopt"' + (e.status === "stopt" ? " selected" : "") + ">" + esc(t("Støpt")) + "</option>" +
-        "</select>" +
-        '<span class="st-merke" style="color:' + STATUS_FARGE[st] + '">' + esc(t(STATUS_TEKST[st])) + "</span>" +
+        // 📅 Trinn 4: BARE knappen merker støpt — datoen alene gjør det aldri
+        (e.status === "stopt"
+          ? '<span class="st-merke" style="color:' + STATUS_FARGE.stopt + '">' + ikon("hake") + " " +
+              esc(e.stoptDato ? t("Støpt {0}", datoKort(e.stoptDato)) : t("Støpt")) + "</span>" +
+            '<button class="st-ikke-stopt" title="' + esc(t("Angre «støpt»")) + '">' + esc(t("Angre")) + "</button>"
+          : '<button class="st-stopt">' + esc(t("Merk som støpt")) + "</button>" +
+            '<span class="st-merke" style="color:' + STATUS_FARGE[st] + '">' + esc(t(STATUS_TEKST[st])) + "</span>") +
       "</div>" +
       '<div class="st-innhold">' + esc(innhold) + "</div>" + feltHtml +
       '<div class="st-rad st-knapper">' +
@@ -319,8 +421,6 @@ export function tegnPanel() {
           esc(velgerEtappe() === e.id ? t("Velger …") : t("+ Legg til")) + "</button>" +
         '<button class="st-nyfelt' + (tegnerI === e.id ? " aktiv" : "") + '">' + esc(tegnerI === e.id ? t("Tegner …") : t("+ Felt")) + "</button>" +
         (e.elementer.length ? '<button class="st-tom">' + esc(t("Tøm")) + "</button>" : "") +
-        '<button class="st-oye" title="' + esc(etappeSkjult(e.id) ? t("Vis etappen i modellen") : t("Skjul etappen i modellen")) + '">' +
-          ikon(etappeSkjult(e.id) ? "skjul" : "vis") + "</button>" +
       "</div>" +
     "</div>";
   }
@@ -329,11 +429,15 @@ export function tegnPanel() {
   body.innerHTML = html;
 
   $("stNy").onclick = () => leggTilEtappe();
+  $("stVis").onchange = (ev) => { settVisEtappeplan(ev.target.checked); tegnTidslinje(); };
+  tegnTidslinje();
   body.querySelectorAll(".st-etappe").forEach(rad => {
     const id = rad.dataset.id;
     rad.querySelector(".st-navn").onchange = (ev) => endreEtappe(id, { navn: ev.target.value });
     rad.querySelector(".st-dato").onchange = (ev) => { endreEtappe(id, { dato: ev.target.value }); tegnPanel(); };
-    rad.querySelector(".st-status").onchange = (ev) => { endreEtappe(id, { status: ev.target.value }); tegnPanel(); };
+    const stB = rad.querySelector(".st-stopt"), ikB = rad.querySelector(".st-ikke-stopt");
+    if (stB) stB.onclick = () => merkStopt(id, true);
+    if (ikB) ikB.onclick = () => merkStopt(id, false);
     // «change», ikke «input»: input fyrer for hvert musetrekk i fargehjulet
     rad.querySelector(".st-farge").onchange = (ev) => { endreEtappe(id, { farge: ev.target.value }); tegnPanel(); };
     rad.querySelector(".st-legg").onclick = () => { if (velgerEtappe() === id) avsluttVelg(true); else startVelg(id); };
@@ -350,7 +454,6 @@ export function tegnPanel() {
     });
     const tom = rad.querySelector(".st-tom");
     if (tom) tom.onclick = () => { if (confirm(t("Ta alle elementene ut av etappen?"))) tomElementer(id); };
-    rad.querySelector(".st-oye").onclick = () => { settEtappeSkjult(id, !etappeSkjult(id)); tegnPanel(); };
     rad.querySelector(".st-slett").onclick = () => {
       const e = synlige(S.stopeplan).find(x => x.id === id);
       if (e && confirm(t("Slette {0}?", e.navn))) slettEtappe(id);
@@ -379,4 +482,25 @@ på("btnStopeplan", "click", () => {
   if (!S.modelGroup) { alert(t("Åpne en modell først.")); return; }
   tegnPanel();
   apnePanel("stopePanel");
+  tegnTidslinje();
 });
+
+// Panelet lukkes på flere måter (krysset, et annet panel som åpnes, Esc).
+// Da skal tidslinjen, en halvferdig tegning og håndtakene bort — og modellen
+// tilbake til i dag. Derfor følges klassen, ikke bare knappen vår.
+(() => {
+  const p = $("stopePanel");
+  const MO = (typeof window !== "undefined" && window.MutationObserver) || null;
+  if (!p || !MO) return;
+  let varApen = p.classList.contains("open");
+  new MO(() => {
+    const naa = p.classList.contains("open");
+    if (naa === varApen) return;
+    varApen = naa;
+    if (!naa) {
+      if (velger) avsluttVelg(false);
+      if (S.ryddStopeFelt) S.ryddStopeFelt();
+    }
+    tegnTidslinje();
+  }).observe(p, { attributes: true, attributeFilter: ["class"] });
+})();

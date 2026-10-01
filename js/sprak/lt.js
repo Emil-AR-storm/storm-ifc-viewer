@@ -1903,5 +1903,14 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Kanter (m):": "Kraštinės (m):",
   "Dra de hvite prikkene (hjørner) eller de gule (kanter). Dra inne i feltet for å flytte det. Dobbeltklikk på en kant gir et nytt hjørne. Delete sletter. Ctrl+Z angrer.": "Tempkite baltus taškus (kampus) arba geltonus (kraštines). Tempkite lauko viduje, kad jį perkeltumėte. Dukart spustelėkite kraštinę – naujas kampas. Delete ištrina. Ctrl+Z atšaukia.",
   "Tegner …": "Braižoma …",
-  "+ Felt": "+ Laukas"
+  "+ Felt": "+ Laukas",
+  "Vist per": "Rodoma",
+  "— slik det var": "— kaip buvo",
+  "— slik det skal bli": "— pagal planą",
+  "I dag": "Šiandien",
+  "Vis etappeplan": "Rodyti etapų planą",
+  "farger betongen etter støpeplanen": "nuspalvina betoną pagal betonavimo planą",
+  "Støpt {0}": "Išbetonuota {0}",
+  "Angre «støpt»": "Atšaukti „išbetonuota“",
+  "Merk som støpt": "Pažymėti kaip išbetonuotą"
 };

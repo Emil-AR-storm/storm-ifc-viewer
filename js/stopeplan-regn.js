@@ -56,6 +56,9 @@ export function vaskEtappe(e) {
     farge: hex(e.farge) || fargeFor(nr),
     dato: dato(e.dato),
     status: e.status === "stopt" ? "stopt" : "planlagt",
+    // 📅 Når den FAKTISK ble støpt (trinn 4). Settes av «Merk som støpt» —
+    // tidslinjen trenger den for å vise hvordan det sto på en dag bakover.
+    stoptDato: e.status === "stopt" ? dato(e.stoptDato) : "",
     notat: tekst(e.notat, 500),
     // Kommer i trinn 2/3/6 — tas vare på allerede nå (se toppen av fila)
     // [{ id: ExpressID, gid: GlobalId }] — gid gjør at planen kan finne
@@ -131,7 +134,7 @@ export function sortert(liste) {
 // Det byggeplassen skal ha (trinn 5): bare synlige etapper, uten synkfelt.
 export function stopeplanForByggeplass(liste) {
   return synlige(liste).map(e => ({
-    id: e.id, nr: e.nr, navn: e.navn, farge: e.farge, dato: e.dato, status: e.status,
+    id: e.id, nr: e.nr, navn: e.navn, farge: e.farge, dato: e.dato, status: e.status, stoptDato: e.stoptDato,
     elementer: e.elementer, felt: e.felt, vanntetting: e.vanntetting
   }));
 }
@@ -367,4 +370,46 @@ export function feltSummer(e) {
   let areal = 0, volum = 0;
   for (const f of (e && e.felt) || []) { areal += feltAreal(f); volum += feltVolum(f); }
   return { areal, volum };
+}
+
+// ═══════════════ TRINN 4: STATUS OG TIDSLINJE (4D) ═══════════════
+// Hvordan etappen sto (eller er PLANLAGT å stå) på en valgt dag `per`.
+//   · Bakover (per ≤ i dag): fasiten. Støpt bare om den er merket støpt, og
+//     støpedatoen (stoptDato, ellers plandatoen) ikke er etter `per`.
+//   · Framover (per > i dag): planen. Det som etter planen er støpt innen
+//     `per`, vises som støpt — slik ser bygget ut om planen holder.
+// Uten `per` (eller per = i dag) er svaret det samme som statusFor.
+export function statusPer(e, per, iDag) {
+  if (!per || per === iDag) return statusFor(e, iDag);
+  if (per < iDag) {
+    const nar = e.stoptDato || e.dato || "";
+    if (e.status === "stopt" && nar && nar <= per) return "stopt";
+    return statusFor(Object.assign({}, e, { status: "planlagt" }), per);
+  }
+  if (e.status === "stopt") return "stopt";
+  if (e.dato && e.dato <= per) return "stopt";
+  return statusFor(e, per);
+}
+
+// Dager mellom to «ÅÅÅÅ-MM-DD» (b − a). NaN for ugyldige datoer.
+export function dagerMellom(a, b) {
+  const t = (x) => { const d = String(x || "").split("-").map(Number); return d.length === 3 ? Date.UTC(d[0], d[1] - 1, d[2]) : NaN; };
+  return Math.round((t(b) - t(a)) / 86400000);
+}
+export function plussDager(iso, n) {
+  const d = String(iso || "").split("-").map(Number);
+  if (d.length !== 3) return "";
+  const x = new Date(Date.UTC(d[0], d[1] - 1, d[2] + n));
+  return x.toISOString().slice(0, 10);
+}
+
+// Tidslinjens spenn: fra første til siste dato (planlagt eller støpt), med en
+// uke luft på hver side og i dag alltid med. Ingen datoer → null.
+export function tidslinjeSpenn(liste, iDag) {
+  const d = [];
+  for (const e of synlige(liste)) { if (e.dato) d.push(e.dato); if (e.stoptDato) d.push(e.stoptDato); }
+  if (!d.length) return null;
+  d.push(iDag);
+  d.sort();
+  return { fra: plussDager(d[0], -7), til: plussDager(d[d.length - 1], 7) };
 }
