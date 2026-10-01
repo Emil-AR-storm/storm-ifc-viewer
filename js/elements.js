@@ -1153,10 +1153,23 @@ export function velgVedPunkt(x, y) { shiftClickAt(x, y); }
 // 📅 Materiell i velgemodus (framdriftsplanen): legg til / ta bort ett objekt
 export function veksleMateriellIUtvalg(id) { if (id) { toggleMateriellValg(id); visUtvalg(); } }
 
+// 📅 Velgemodusen kan sperre objekter (framdriftsplanen: det som allerede
+// ligger i et trinn). Et sperret treff regnes som bom, så det som ligger bak
+// kan treffes i stedet. Nøkkelen er «slag:id» som i framdrift-regn.js.
+function sperret(k) {
+  return !!(k && S.velgModusAktiv && typeof S.velgModusBlokkert === "function" && S.velgModusBlokkert(k));
+}
+function ekNokkel(ek) {
+  const id = String(ek.id);
+  if (ek.lag.id === "sw" || ek.lag.id === "tak") return ek.lag.id + ":" + id;
+  return id.includes(":") ? id : (ek.lag.id + ":" + id);
+}
 function shiftClickAt(x, y) {
   const hit = pick(x, y);
-  const mHit = pickMateriell(x, y);
-  const ek = flervalgLag().length ? pickEkstra(x, y) : null;
+  let mHit = pickMateriell(x, y);
+  let ek = flervalgLag().length ? pickEkstra(x, y) : null;
+  if (ek && sperret(ekNokkel(ek))) ek = null;
+  if (mHit && sperret("mat:" + mHit.id)) mHit = null;
   if (ek && ek.lag.flervalg && (!hit || ek.avstand < hit.distance) && (!mHit || ek.avstand < mHit.distance)) {
     // Et enkeltvalgt IFC-element blir med i utvalget, som ved shift-klikk på
     // et nytt element — ellers forsvant det første du hadde trykket på.

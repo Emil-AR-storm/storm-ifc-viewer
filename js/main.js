@@ -80,7 +80,15 @@ canvas.addEventListener("pointerup", (e) => {
   if (e.button > 0) return;
   // 🧱 Støpeplanens velgemodus: et vanlig trykk legger til / tar bort, som
   // shift-klikk. Shift + dra og shift-klikk går sin vanlige vei (elements.js).
-  if (S.velgModusAktiv && !S.mode && !e.shiftKey) { velgVedPunkt(e.clientX, e.clientY); return; }
+  if (S.velgModusAktiv && !S.mode && !e.shiftKey) {
+    // 📅 Framdriftsplanen tar også markeringene (Emil 01.10): bobla ligger
+    // over modellen, så den går først — som ellers i programmet.
+    if (S.markeringIVelgModus) {
+      const mc = pickMarker(e.clientX, e.clientY);
+      if (mc) { S.markeringIVelgModus(mc.id); return; }
+    }
+    velgVedPunkt(e.clientX, e.clientY); return;
+  }
   // 📐 Fra flate: neste trykk setter snittplanet (ignorer gjeldende snitt så flaten kan treffes)
   if (S.clipPickFace) {
     const fh = pick(e.clientX, e.clientY, true);

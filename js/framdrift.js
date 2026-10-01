@@ -18,14 +18,16 @@
 //
 // Importeres BARE fra main.js.
 import { $, S, apnePanel, ekstraLagSom, esc, ikon, på, writePrefs } from "./state.js";
+import { markerGroup } from "./scene.js";
 import { hentLogoer } from "./tegninger.js";
 import { ryddLogonavn } from "./rapport.js";
 import { t, tn } from "./i18n.js";
 import { flettPaaId, spLes, spPaalogget, spSkriv } from "./sp-lager.js";
 import { clearSelection, veksleMateriellIUtvalg } from "./elements.js";
 import { metaFor } from "./ifcrpc.js";
-import { SLAG_NAVN, fjern, leggTil, nokkel, nyEtappe, sortert, synlige, tellingPerSlag, tidsSpenn, vaskEtappe, vaskEtappeListe } from "./framdrift-regn.js";
-import { ryddFramdriftVis, stoppAvspilling, tegnFramdrift, tegnTidslinje } from "./framdrift-vis.js";
+import { SLAG_NAVN, etappeForNokkel, fjern, leggTil, nokkel, nyEtappe, sortert, synlige, tellingPerSlag, tidsSpenn, vaskEtappe, vaskEtappeListe } from "./framdrift-regn.js";
+import { ryddFramdriftVis, settSkjulTildelte, stoppAvspilling, tegnFramdrift, tegnTidslinje } from "./framdrift-vis.js";
+import { LAG_ID as TRP_BLIKK_LAG } from "./framdrift-plukk.js";
 
 const SP_MAPPE = "Framdriftsplan";
 let spStatus = "av", lagreTid = 0;
@@ -104,6 +106,24 @@ export function tomEtappe(id) {
 // ═══════════════════════ UTVALGET ═══════════════════════
 // Rigg har ikke flervalg i resten av appen — det holdes her mens modusen er på.
 const riggUtvalg = new Set();
+// 📌 Markeringer valgt i «Legg til» (comment-id). Uthevet med blå boble.
+const markUtvalg = new Set();
+function markEffekt() {
+  const m = new Set([...markUtvalg].map(String));
+  for (const s of markerGroup.children) {
+    const paa = m.has(String(s.userData.commentId));
+    if (paa && !s.userData.fpValgMat) {
+      s.userData.fpValgOrig = s.material;
+      s.userData.fpValgMat = s.material.clone();
+      s.userData.fpValgMat.color.set(0x3b82f6);
+      s.material = s.userData.fpValgMat;
+    } else if (!paa && s.userData.fpValgMat) {
+      if (s.material === s.userData.fpValgMat) s.material = s.userData.fpValgOrig;
+      s.userData.fpValgMat.dispose();
+      delete s.userData.fpValgMat; delete s.userData.fpValgOrig;
+    }
+  }
+}
 S.riggFlervalg = riggUtvalg;          // rigg-vis.js maler dem blå (valgt)
 // Alt som er valgt akkurat nå, som nøkler { k, gid? }.
 export function valgteObjekter() {
@@ -116,17 +136,42 @@ export function valgteObjekter() {
     ut.push(o);
   }
   for (const l of ekstraLagSom("valgte")) {
-    if (!l.flervalg || (l.id !== "sw" && l.id !== "tak")) continue;
+    if (!l.flervalg) continue;
+    // Generert blikk og TRP-plater (framdrift-plukk.js): id-ene er hele nøkler
+    if (l.id === TRP_BLIKK_LAG) { for (const k of l.valgte()) if (/^(tak|blikk):/.test(k)) ut.push({ k }); continue; }
+    if (l.id !== "sw" && l.id !== "tak") continue;
     for (const id of l.valgte()) { const k = nokkel(l.id, id); if (k) ut.push({ k }); }
   }
   const mat = new Set([...(S.multiSelMat || [])]);
   if (S.materiellValgtId) mat.add(S.materiellValgtId);
   for (const id of mat) { const k = nokkel("mat", id); if (k) ut.push({ k }); }
   for (const id of riggUtvalg) { const k = nokkel("rigg", id); if (k) ut.push({ k }); }
-  return ut.filter(o => o.k);
+  for (const id of markUtvalg) { const k = nokkel("mark", id); if (k) ut.push({ k }); }
+  // «Legg til»: det som allerede ligger i et trinn, kan ikke legges inn på
+  // nytt. «Fjern»: bare det som ligger i DETTE trinnet kan tas ut (Emil 01.10).
+  const sett = new Set();
+  return ut.filter(o => o.k && !sett.has(o.k) && sett.add(o.k) && tillatt(o.k));
 }
+// Hva velgemodusen kan ta med akkurat nå
+function tillatt(k) {
+  if (velger && velger.fjern) { const e = etappeForNokkel(S.framdrift, k); return !!e && e.id === velger.etappeId; }
+  return !tildelt(k);
+}
+// Ligger objektet allerede i et trinn?
+export function tildelt(k) { return !!etappeForNokkel(S.framdrift, k); }
 
 let sisteMelding = "";
+// «Fjern»: ta utvalget ut av trinnet igjen (feiltrykk, eller det hører til et annet trinn)
+export function fjernValgteFra(id) {
+  const ut = valgteObjekter().map(o => o.k);
+  if (!ut.length) return 0;
+  S.framdrift = fjern(S.framdrift, id, ut, new Date().toISOString())
+    .map(e => e.id === id ? Object.assign(e, { av: mittNavn() }) : e);
+  const e = synlige(S.framdrift).find(x => x.id === id);
+  sisteMelding = tn(ut.length, "{0} objekt tatt ut av {1}.", "{0} objekter tatt ut av {1}.", e ? e.navn : "");
+  lagre();
+  return ut.length;
+}
 export function leggValgteTil(id) {
   const nye = valgteObjekter();
   if (!nye.length) return 0;
@@ -147,6 +192,8 @@ export function leggValgteTil(id) {
 let velger = null;
 let forrigeKroker = null;     // støpeplanens kroker, tilbake når modusen avsluttes
 export const velgerEtappe = () => (velger ? velger.etappeId : null);
+export const velgerFjerner = () => !!(velger && velger.fjern);
+S.framdriftVelger = () => !!velger;
 S.riggIVelgModus = null;
 S.materiellIVelgModus = null;
 
@@ -163,22 +210,32 @@ function tegnVelgBar() {
   el.style.display = "flex";
   el.innerHTML =
     '<span class="st-velg-farge" style="background:' + esc(e ? e.farge : "#888") + '"></span>' +
-    '<span class="st-velg-tekst"><b>' + esc(t("Legg til i {0}", e ? e.navn : "")) + "</b><br>" +
-      esc(t("Trykk på det som skal med — elementer, SW, takplater, rigg og materiell. Shift + dra for mange på en gang.")) + "</span>" +
+    '<span class="st-velg-tekst"><b>' + esc(velger.fjern ? t("Ta ut av {0}", e ? e.navn : "") : t("Legg til i {0}", e ? e.navn : "")) + "</b><br>" +
+      esc(velger.fjern
+        ? t("Trykk på det som skal ut av trinnet. Bare det som ligger i trinnet kan velges; det som ligger i andre trinn er skjult. Shift + dra for mange på en gang.")
+        : t("Trykk på det som skal med — elementer, SW, takplater, blikk, rigg, materiell og markeringer. Det som allerede ligger i et trinn, er skjult. Shift + dra for mange på en gang.")) + "</span>" +
     '<span class="st-velg-ant">' + esc(t("{0} valgt", n)) + "</span>" +
-    '<button id="fpVelgFerdig" class="primary"' + (n ? "" : " disabled") + ">" + esc(t("Ferdig")) + "</button>" +
+    '<button id="fpVelgFerdig" class="primary"' + (n ? "" : " disabled") + ">" + esc(velger.fjern ? t("Ta ut") : t("Ferdig")) + "</button>" +
     '<button id="fpVelgAvbryt">' + esc(t("Avbryt")) + "</button>";
   $("fpVelgFerdig").onclick = () => avsluttVelg(true);
   $("fpVelgAvbryt").onclick = () => avsluttVelg(false);
 }
-export function startVelg(etappeId) {
+export function startVelg(etappeId, fjernModus) {
   if (velger) avsluttVelg(false);
   if (S.avsluttVelgModus && S.velgModusAktiv) S.avsluttVelgModus();     // støpeplanens modus
-  velger = { etappeId };
+  velger = { etappeId, fjern: !!fjernModus };
   S.velgModusAktiv = true;
   riggUtvalg.clear();
-  S.materiellIVelgModus = (id) => { veksleMateriellIUtvalg(id); tegnVelgBar(); };
+  S.materiellIVelgModus = (id) => { if (!tillatt(nokkel("mat", id))) return; veksleMateriellIUtvalg(id); tegnVelgBar(); };
+  S.velgModusBlokkert = (k) => !tillatt(k);
+  markUtvalg.clear();
+  S.markeringIVelgModus = (id) => {
+    if (!tillatt(nokkel("mark", id))) return;
+    if (markUtvalg.has(id)) markUtvalg.delete(id); else markUtvalg.add(id);
+    markEffekt(); tegnVelgBar();
+  };
   S.riggIVelgModus = (riggId) => {
+    if (!tillatt(nokkel("rigg", riggId))) return;
     if (riggUtvalg.has(riggId)) riggUtvalg.delete(riggId); else riggUtvalg.add(riggId);
     if (S.oppdaterRiggValg) S.oppdaterRiggValg();
     tegnVelgBar();
@@ -194,11 +251,14 @@ export function startVelg(etappeId) {
 export function avsluttVelg(medTil) {
   if (!velger) return 0;
   const id = velger.etappeId;
-  const n = medTil ? leggValgteTil(id) : 0;
+  const n = !medTil ? 0 : velger.fjern ? fjernValgteFra(id) : leggValgteTil(id);
   velger = null;
   S.velgModusAktiv = false;
   S.riggIVelgModus = null;
   S.materiellIVelgModus = null;
+  S.velgModusBlokkert = null;
+  S.markeringIVelgModus = null;
+  markUtvalg.clear(); markEffekt();
   if (forrigeKroker) { S.velgModusOppdater = forrigeKroker.o; S.avsluttVelgModus = forrigeKroker.a; forrigeKroker = null; }
   riggUtvalg.clear();
   if (S.oppdaterRiggValg) S.oppdaterRiggValg();
@@ -249,8 +309,10 @@ const ANTALL = {
   id: (n) => tn(n, "{0} element", "{0} elementer"),
   sw: (n) => tn(n, "{0} SW-element", "{0} SW-elementer"),
   tak: (n) => tn(n, "{0} takplate", "{0} takplater"),
+  blikk: (n) => t("{0} blikk", n),
   mat: (n) => t("{0} materiell", n),
-  rigg: (n) => t("{0} rigg", n)
+  rigg: (n) => t("{0} rigg", n),
+  mark: (n) => tn(n, "{0} markering", "{0} markeringer")
 };
 export function innholdTekst(e) {
   const deler = tellingPerSlag(e).map(x => ANTALL[x.slag] ? ANTALL[x.slag](x.antall) : x.antall + " " + t(SLAG_NAVN[x.slag]).toLowerCase());
@@ -262,7 +324,7 @@ export function tegnPanel() {
   if (!body) return;
   const liste = sortert(S.framdrift);
   let html = '<p class="set-hjelp" style="margin-top:0">' +
-    esc(t("Del arbeidet i trinn med dato. Trykk «Legg til» på trinnet og velg det som utføres da — elementer, SW-elementer, takplater, rigg og materiell. Trykk «Ferdig» når du er ferdig.")) + "</p>" +
+    esc(t("Del arbeidet i trinn med dato. Trykk «Legg til» på trinnet og velg det som utføres da — elementer, SW-elementer, takplater, blikk, rigg, materiell og markeringer. Trykk «Ferdig» når du er ferdig. Kom noe med ved en feil, tar «− Fjern» det ut igjen.")) + "</p>" +
     (sisteMelding ? '<p class="set-hjelp" style="color:var(--text)">' + esc(sisteMelding) + "</p>" : "");
   if (liste.length) html += '<label class="set-hjelp fp-vis"><input type="checkbox" id="fpVis"' + (S.framdriftVis !== false ? " checked" : "") + "> " +
     esc(t("Vis framdriften i modellen — dra glideren nederst")) + "</label>" +
@@ -283,7 +345,9 @@ export function tegnPanel() {
       "</div>" +
       '<div class="st-innhold">' + esc(innholdTekst(e)) + "</div>" +
       '<div class="st-rad st-knapper">' +
-        '<button class="st-legg' + (velgerHer ? " aktiv" : "") + '">' + esc(velgerHer ? t("Velger …") : t("+ Legg til")) + "</button>" +
+        '<button class="st-legg' + (velgerHer && !velgerFjerner() ? " aktiv" : "") + '">' + esc(velgerHer && !velgerFjerner() ? t("Velger …") : t("+ Legg til")) + "</button>" +
+        (e.objekter.length ? '<button class="st-fjern' + (velgerHer && velgerFjerner() ? " aktiv" : "") + '" title="' + esc(t("Ta enkeltobjekter ut av trinnet igjen")) + '">' +
+          esc(velgerHer && velgerFjerner() ? t("Velger …") : t("− Fjern")) + "</button>" : "") +
         (e.objekter.length ? '<button class="st-tom">' + esc(t("Tøm")) + "</button>" : "") +
       "</div></div>";
   }
@@ -302,7 +366,9 @@ export function tegnPanel() {
     rad.querySelector(".fp-fra").onchange = (ev) => { endreEtappe(id, { dato: ev.target.value }); tegnPanel(); };
     rad.querySelector(".fp-til").onchange = (ev) => { endreEtappe(id, { slutt: ev.target.value }); tegnPanel(); };
     rad.querySelector(".st-farge").onchange = (ev) => { endreEtappe(id, { farge: ev.target.value }); tegnPanel(); };
-    rad.querySelector(".st-legg").onclick = () => { if (velgerEtappe() === id) avsluttVelg(true); else startVelg(id); };
+    rad.querySelector(".st-legg").onclick = () => { if (velgerEtappe() === id && !velgerFjerner()) avsluttVelg(true); else startVelg(id); };
+    const fj = rad.querySelector(".st-fjern");
+    if (fj) fj.onclick = () => { if (velgerEtappe() === id && velgerFjerner()) avsluttVelg(true); else startVelg(id, true); };
     const tom = rad.querySelector(".st-tom");
     if (tom) tom.onclick = () => { if (confirm(t("Ta alt ut av trinnet?"))) tomEtappe(id); };
     rad.querySelector(".st-slett").onclick = () => {
@@ -317,6 +383,16 @@ export function tegnPanel() {
 // avkrysset — men AV mens du velger, ellers kunne du ikke trykke på det som
 // ennå ikke er bygget.
 function oppdaterVis() {
+  // «Legg til»: alt som allerede ligger i et trinn skjules, så det ikke kan
+  // markeres på nytt — glideren og tidslinja er av så lenge (Emil 01.10)
+  if (velger && erApen()) {
+    stoppAvspilling();
+    settSkjulTildelte(true, velger.fjern ? velger.etappeId : null);
+    tegnFramdrift(true);
+    tegnTidslinje(false);
+    return;
+  }
+  settSkjulTildelte(false);
   const paa = erApen() && S.framdriftVis !== false && !velger;
   if (!paa) stoppAvspilling();
   tegnFramdrift(paa);

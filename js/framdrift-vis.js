@@ -15,7 +15,7 @@
 import * as THREE from "three";
 import { $, EKSTRA_LAG, S, esc } from "./state.js";
 import { t } from "./i18n.js";
-import { frameHooks, scene } from "./scene.js";
+import { frameHooks, markerGroup, omradeGroup, scene } from "./scene.js";
 import { iDagISO } from "./frist.js";
 import { allElementBoxes } from "./elements.js";
 import { framdriftSkjult, hiddenIDs, synkMergedSkjuling } from "./display.js";
@@ -30,10 +30,10 @@ scene.add(framdriftGroup);
 
 // Hvilke lag som har hvilke objekter, og hvor id-en står på objektet.
 const LAG_SLAG = {
-  sw: ["sw", ["swId", "swLettId"]],
-  tak: ["tak", ["takLettId"]],
-  materiell: ["mat", ["materiellId"]],
-  rigg: ["rigg", ["riggId"]]
+  sw: [["swId", "sw"], ["swLettId", "sw"], ["trpId", "tak"], ["blikkId", "blikk"]],
+  tak: [["takLettId", "tak"]],
+  materiell: [["materiellId", "mat"]],
+  rigg: [["riggId", "rigg"]]
 };
 function finnObjekter() {
   const map = new Map();
@@ -41,15 +41,23 @@ function finnObjekter() {
     const d = LAG_SLAG[l.id];
     if (!d || !l.gruppe) continue;
     for (const o of l.gruppe.children) {
-      for (const f of d[1]) {
+      for (const [f, slag] of d) {
         const id = o.userData[f];
         if (id === undefined || id === null || id === "") continue;
-        const k = d[0] + ":" + String(id);
+        const k = slag + ":" + String(id);
         if (!map.has(k)) map.set(k, []);
         map.get(k).push(o);
         break;
       }
     }
+  }
+  // 📌 Markeringene: bobla (markerGroup) og et eventuelt område (omradeGroup)
+  for (const g of [markerGroup, omradeGroup]) for (const o of g.children) {
+    const id = o.userData.commentId;
+    if (id === undefined || id === null || id === "") continue;
+    const k = "mark:" + String(id);
+    if (!map.has(k)) map.set(k, []);
+    map.get(k).push(o);
   }
   return map;
 }
@@ -178,6 +186,11 @@ export function framdriftTid() {
   return Math.max(sp.a, Math.min(sp.b, v));
 }
 export const framdriftAktiv = () => aktiv;
+// 📅 «Legg til»-modusen (Emil 01.10): alt som allerede ligger i et trinn
+// skjules, så det ikke kan markeres og legges inn på nytt.
+// I «Fjern» står trinnet du tar ut av, fram (`unntak`); de andre skjules.
+let skjulTildelte = false, skjulUnntak = null;
+export function settSkjulTildelte(paa, unntak) { skjulTildelte = !!paa; skjulUnntak = paa ? (unntak || null) : null; }
 
 // Hva som tegnes nå (testene leser dette): skjulte IFC, tonede steg og objekter.
 let status = { skjulteIfc: 0, steg: [], tonet: 0, skjult: 0 };
@@ -187,7 +200,7 @@ export function tegnFramdrift(paa) {
   if (paa !== undefined) aktiv = !!paa;
   sistTegnet = Date.now();
   const sp = tidsSpenn(S.framdrift);
-  if (!aktiv || !sp) { gjenopprettAlt(); return; }
+  if (!aktiv || (!sp && !skjulTildelte)) { gjenopprettAlt(); return; }
   const tid = framdriftTid();
   const objMap = finnObjekter();
   const ifc = new Set();
@@ -195,7 +208,7 @@ export function tegnFramdrift(paa) {
   const steg = [];
   const behold = new Set();
   for (const e of synlige(S.framdrift)) {
-    const p = trinnAndel(e, tid);
+    const p = skjulTildelte ? (e.id === skjulUnntak ? 1 : 0) : trinnAndel(e, tid);
     if (p >= 1) continue;
     const rekke = rekkefolge(e, objMap);
     const n = rekke.length, K = antallSteg(n);
