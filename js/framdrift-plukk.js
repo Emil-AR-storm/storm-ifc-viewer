@@ -74,9 +74,10 @@ registrerEkstraGruppe(gruppe, {
   },
   flervalg: true,
   iRekt(x0, y0, x1, y1) {
-    if (!aktiv()) return [];
+    if (!aktiv()) return new Set();
     const minX = Math.min(x0, x1), maxX = Math.max(x0, x1), minY = Math.min(y0, y1), maxY = Math.max(y0, y1);
-    const ut = [];
+    // Et Set, som SW-lagets iRekt — finishBoxSelect i elements.js leser .size
+    const ut = new Set();
     swGroup.updateMatrixWorld(true);
     camera.updateMatrixWorld(true);
     for (const [k, liste] of meshPerNokkel()) {
@@ -86,7 +87,7 @@ registrerEkstraGruppe(gruppe, {
       _b.getCenter(_v).project(camera);
       if (_v.z > 1) continue;
       const px = (_v.x + 1) / 2 * innerWidth, py = (1 - _v.y) / 2 * innerHeight;
-      if (px >= minX && px <= maxX && py >= minY && py <= maxY) ut.push(k);
+      if (px >= minX && px <= maxX && py >= minY && py <= maxY) ut.add(k);
     }
     return ut;
   },
