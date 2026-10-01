@@ -1150,6 +1150,8 @@ function visUtvalg() {
 // Velgemodusen bruker samme veksling som shift-klikket — vanlig trykk legger
 // til eller tar bort, uten at shift må holdes inne.
 export function velgVedPunkt(x, y) { shiftClickAt(x, y); }
+// 📅 Materiell i velgemodus (framdriftsplanen): legg til / ta bort ett objekt
+export function veksleMateriellIUtvalg(id) { if (id) { toggleMateriellValg(id); visUtvalg(); } }
 
 function shiftClickAt(x, y) {
   const hit = pick(x, y);
