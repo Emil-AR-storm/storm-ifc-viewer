@@ -144,6 +144,9 @@ export function tegnRingmurBiter(biter, visMerking) {
         (r.lengde || 1) * 0.7);
       dim.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), nv);
       dim.position.set(r.x + nv.x * utD, r.y, r.z + nv.z * utD);
+      // 📅 Målet hører til ringmurbiten: framdriftsplanen skjuler det sammen
+      // med biten (Emil 01.10). Ikke swId — da ville lappen blitt plukkbar.
+      dim.userData.fpEiere = ["sw:" + r.id];
       swGroup.add(dim);
     }
   }
@@ -320,6 +323,7 @@ export function tegnVeggElementer(vegger, o, visMerking) {
         v.x - ex * L * 0.32 + nv.x * utD,
         v.y + H * 0.24,
         v.z - ez * L * 0.32 + nv.z * utD);
+      sw.userData.fpEiere = ["sw:" + v.id];     // 📅 følger elementet i framdriftsplanen
       swGroup.add(sw);
       // Skråkapp merkes med BEGGE endehøydene OG VINKELEN —
       // «5980×1100/460MM 6,1°» — for det er de tre målene verkstedet trenger
@@ -330,6 +334,7 @@ export function tegnVeggElementer(vegger, o, visMerking) {
       const dim = tekstDekal(v.lengdeMm + "×" + hTekst + "MM" + vTekst, 150, L * 0.6);
       dim.quaternion.copy(sw.quaternion);
       dim.position.set(v.x + nv.x * utD, v.y - H * 0.1, v.z + nv.z * utD);
+      dim.userData.fpEiere = ["sw:" + v.id];
       swGroup.add(dim);
     }
   }
@@ -477,7 +482,12 @@ export function tegnUtspMerkingFor(apninger, fasader, vegger, baseY, tykkelseMm)
       h0, h1, h1, t1, t1, t0, t0, h0,     // rammen
       h0, t1, h1, t0                      // krysset
     ]);
-    const linje = new THREE.LineSegments(geo, strekMat);
+    // 📅 Merkingen hører til elementene åpningen går gjennom (Emil 01.10):
+    // framdriftsplanen skjuler den når alle de elementene er skjult.
+    const eiere = (vegger || []).filter(v => !v.skjult && v.fi === a.fi && v.fraMm !== undefined &&
+      Math.min(v.tilMm, a.tilMm_) - Math.max(v.fraMm, a.fraMm) > 10).map(v => "sw:" + v.id);
+    const merk = (o) => { if (eiere.length) o.userData.fpEiere = eiere; return o; };
+    const linje = merk(new THREE.LineSegments(geo, strekMat));
     linje.computeLineDistances();          // MÅ til, ellers blir streken hel
     linje.raycast = () => {};
     swGroup.add(linje);
@@ -491,14 +501,14 @@ export function tegnUtspMerkingFor(apninger, fasader, vegger, baseY, tykkelseMm)
     tot.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), nv);
     tot.position.copy(pkt(midtMm, (y0 + y1) / 2));
     tot.raycast = () => {};
-    swGroup.add(tot);
+    swGroup.add(merk(tot));
     // 🚪 navnet («Port 1», «Vindu 3») rett over målet (punkt 1)
     if (a.navn) {
       const navnLapp = tekstDekal(String(a.navn).toUpperCase(), 260, tilScene(Math.max(bredde * 0.8, 600)));
       navnLapp.quaternion.copy(tot.quaternion);
       navnLapp.position.copy(pkt(midtMm, (y0 + y1) / 2 + tilScene(320)));
       navnLapp.raycast = () => {};
-      swGroup.add(navnLapp);
+      swGroup.add(merk(navnLapp));
     }
     // KAPPDYBDEN per element som går gjennom området
     for (const v of vegger || []) {
@@ -512,6 +522,7 @@ export function tegnUtspMerkingFor(apninger, fasader, vegger, baseY, tykkelseMm)
       lapp.quaternion.copy(tot.quaternion);
       lapp.position.copy(pkt((x0 + x1) / 2, baseY + tilScene((b0 + b1) / 2)));
       lapp.raycast = () => {};
+      lapp.userData.fpEiere = ["sw:" + v.id];
       swGroup.add(lapp);
     }
   }
