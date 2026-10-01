@@ -174,6 +174,7 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
   <symbol id="i-advarsel" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /><path d="M12 9v4" /><path d="M12 17h.01" /></symbol>
   <symbol id="i-rigg" viewBox="0 0 24 24"><rect x="2" y="9" width="13" height="9" rx="1" /><path d="M5 9v9M8.5 9v9M12 9v9" /><path d="M15 12h4l3 3v3h-7" /><circle cx="6" cy="19.5" r="1.5" /><circle cx="18" cy="19.5" r="1.5" /></symbol>
   <symbol id="i-stope" viewBox="0 0 24 24"><rect x="3" y="14" width="18" height="6" rx="1" /><path d="M9 14v6M15 14v6" /><path d="M7 10h10l-2-6H9z" /></symbol>
+  <symbol id="i-framdrift" viewBox="0 0 24 24"><path d="M3 3v16a2 2 0 0 0 2 2h16" /><path d="M7 7h8" /><path d="M11 12h7" /><path d="M9 17h5" /></symbol>
   <symbol id="i-hake" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5" /></symbol>
   <symbol id="i-snu" viewBox="0 0 24 24"><path d="M8 3 4 7l4 4" /><path d="M4 7h16" /><path d="m16 21 4-4-4-4" /><path d="M20 17H4" /></symbol>
   <symbol id="i-mer" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /><circle cx="5" cy="12" r="1" /></symbol>
@@ -222,6 +223,7 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
   <button id="btnSaveLite" title="Eksporter forenklet modell (.glb) som funker på mobil" data-i18n-title><svg class="ikon"><use href="#i-lagre"/></svg><span class="btn-t" data-i18n>Lett kopi</span></button>
   <!-- 🧱 Støpeplan: verktøyet er kontor-bare; byggeplassen får visningen i trinn 5 -->
   <button id="btnStopeplan" style="display:none"><svg class="ikon"><use href="#i-stope"/></svg><span class="btn-t" data-i18n>Støpeplan</span></button>
+  <button id="btnFramdrift" style="display:none"><svg class="ikon"><use href="#i-framdrift"/></svg><span class="btn-t" data-i18n>Framdriftsplan</span></button>
   <button id="btnGrupper"><svg class="ikon"><use href="#i-fokus"/></svg><span class="btn-t" data-i18n>Grupper</span></button>
   <button id="btnMateriell"><svg class="ikon"><use href="#i-materiell"/></svg><span class="btn-t" data-i18n>Materiell</span></button>
   <button id="btnRapport" title="Last ned statusrapport som PDF" data-i18n-title><svg class="ikon"><use href="#i-tegning"/></svg><span class="btn-t" data-i18n>Rapport</span></button>
@@ -295,6 +297,11 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
 <div class="panel" id="commentPanel">
   <header><span data-i18n>Markeringer</span><button onclick="document.getElementById('commentPanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="commentBody"></div>
+</div>
+
+<div class="panel" id="framdriftPanel">
+  <header><span data-i18n>Framdriftsplan</span><button onclick="document.getElementById('framdriftPanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <div class="body" id="framdriftBody"></div>
 </div>
 
 <div class="panel" id="stopePanel">
