@@ -2069,5 +2069,18 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "{0} objekt tatt ut av {1}.": "{0} object removed from {1}.",
   "{0} objekter tatt ut av {1}.": "{0} objects removed from {1}.",
   "{0} objekter tatt ut av {1}.|one": "{0} object removed from {1}.",
-  "{0} objekter tatt ut av {1}.|few": "{0} objects removed from {1}."
+  "{0} objekter tatt ut av {1}.|few": "{0} objects removed from {1}.",
+  "Objekter": "Objects",
+  "Legg noe i et trinn først — planen er tom.": "Add something to a step first — the plan is empty.",
+  "Lager framdriftsplan …": "Creating progress plan …",
+  "Tegner trinn {0} av {1} …": "Drawing step {0} of {1} …",
+  "Klarte ikke å lage framdriftsplanen: {0}": "Could not create the progress plan: {0}",
+  "Uten dato": "No date",
+  "Trinn {0} av {1}": "Step {0} of {1}",
+  "Trinn": "Step",
+  "Nytt i dette trinnet (sett fra sør)": "New in this step (seen from the south)",
+  "… og {0} til": "… and {0} more",
+  "Laget av: {0}": "Made by: {0}",
+  "Farget: nytt i trinn {0} · Vanlige farger: utført i tidligere trinn": "Coloured: new in step {0} · Normal colours: done in earlier steps",
+  "Én side per trinn: bygget sett fra nord, sør, øst og vest, og det som er nytt i trinnet": "One page per step: the building seen from north, south, east and west, and what is new in the step"
 };

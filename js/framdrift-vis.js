@@ -35,7 +35,7 @@ const LAG_SLAG = {
   materiell: [["materiellId", "mat"]],
   rigg: [["riggId", "rigg"]]
 };
-function finnObjekter() {
+export function finnObjekter() {
   const map = new Map();
   for (const l of EKSTRA_LAG) {
     const d = LAG_SLAG[l.id];
@@ -127,7 +127,7 @@ function typeSkjulteMeshes() {
   if (S.typeInfo) for (const [, g] of S.typeInfo) if (g.hidden) g.meshes.forEach(m => s.add(m));
   return s;
 }
-function settIfcSkjult(nye) {
+export function settIfcSkjult(nye) {
   const endret = nye.size !== framdriftSkjult.size || [...nye].some(id => !framdriftSkjult.has(id));
   const fram = [...framdriftSkjult].filter(id => !nye.has(id));
   framdriftSkjult.clear();

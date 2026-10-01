@@ -214,3 +214,54 @@ export function stegAndel(p, j, K) {
 export function iArbeid(liste, tid) {
   return sortert(liste).filter(e => { const p = trinnAndel(e, tid); return p > 0 && p < 1; });
 }
+
+// ═══════════════════════ PDF-EN (trinn 4) ═══════════════════════
+//
+// Oppsett B (Emil 01.10, «framdrift-prove-B.png» i Ideer): én side per
+// trinn, fire skråbilder (nord, sør, øst, vest) der bygget vokser trinn for
+// trinn, og en kolonne til høyre med trinnlinja, datoene, et bilde av BARE det
+// som er nytt i trinnet (sett fra sør) og lista over hva som er lagt til.
+
+// Trinnene som får en side: de som har noe i seg, i planrekkefølge.
+export function pdfTrinn(liste) { return sortert(liste).filter(e => e.objekter.length); }
+
+export function framdriftFilnavn(modell, iso) {
+  const navn = String(modell || "modell").replace(/\.(ifc|glb)$/i, "").replace(/[\\/:*?"<>|]/g, "_").trim() || "modell";
+  return "Framdriftsplan " + navn + " " + (iso || "") + ".pdf";
+}
+
+// IFC-klassen på norsk, i flertall — «Søyler CFSHS300x6 · 20 stk»
+export const IFC_GRUPPE = {
+  IfcColumn: "Søyler", IfcBeam: "Bjelker", IfcMember: "Staver", IfcPlate: "Plater",
+  IfcSlab: "Dekker", IfcWall: "Vegger", IfcWallStandardCase: "Vegger", IfcFooting: "Fundamenter",
+  IfcRoof: "Tak", IfcStair: "Trapper", IfcStairFlight: "Trapper", IfcRailing: "Rekkverk",
+  IfcDoor: "Dører", IfcWindow: "Vinduer", IfcCovering: "Kledning", IfcPile: "Peler",
+  IfcReinforcingBar: "Armering", IfcReinforcingMesh: "Armering", IfcBuildingElementProxy: "Objekter"
+};
+// Profilen/typen ut av IFC-navnet: «HE-A:HEA200:12345» → «HEA200»,
+// «CFSHS (EN 10219-2) Column:CFSHS100x6» → «CFSHS100x6». Uten kolon: hele navnet.
+export function ifcUnder(navn) {
+  const deler = String(navn || "").split(":").map(x => x.trim()).filter(Boolean);
+  while (deler.length > 1 && /^\d+$/.test(deler[deler.length - 1])) deler.pop();
+  return (deler.length > 1 ? deler[deler.length - 1] : deler[0] || "").slice(0, 60);
+}
+// Lista i høyrekolonnen: like ting samles på én rad med antall.
+// inn: [{ gruppe, under?, antall? }] → [{ tekst, antall }], størst først.
+export function infoRader(poster) {
+  const m = new Map();
+  for (const p of poster || []) {
+    if (!p || !p.gruppe) continue;
+    const tekst = (p.gruppe + (p.under ? " " + p.under : "")).trim();
+    m.set(tekst, (m.get(tekst) || 0) + (Number(p.antall) > 0 ? Number(p.antall) : 1));
+  }
+  return [...m].map(([tekst, antall]) => ({ tekst, antall }))
+    .sort((a, b) => b.antall - a.antall || (a.tekst < b.tekst ? -1 : a.tekst > b.tekst ? 1 : 0));
+}
+// Overskriften i kolonnen: «Trinn 2 · Stålmontasje» — men står det bare
+// «Trinn 2» i navnet, blir det ikke «Trinn 2 · Trinn 2».
+export function trinnTittel(e, ordTrinn) {
+  const ord = ordTrinn || "Trinn";
+  const navn = String((e && e.navn) || "").trim();
+  if (!navn || navn === ord + " " + e.nr) return ord + " " + e.nr;
+  return ord + " " + e.nr + " · " + navn;
+}

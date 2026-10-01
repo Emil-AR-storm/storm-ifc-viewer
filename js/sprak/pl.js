@@ -2069,5 +2069,18 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "{0} objekt tatt ut av {1}.": "Usunięto {0} obiekt z {1}.",
   "{0} objekter tatt ut av {1}.": "Usunięto {0} obiektów z {1}.",
   "{0} objekter tatt ut av {1}.|one": "Usunięto {0} obiekt z {1}.",
-  "{0} objekter tatt ut av {1}.|few": "Usunięto {0} obiekty z {1}."
+  "{0} objekter tatt ut av {1}.|few": "Usunięto {0} obiekty z {1}.",
+  "Objekter": "Obiekty",
+  "Legg noe i et trinn først — planen er tom.": "Najpierw dodaj coś do kroku — plan jest pusty.",
+  "Lager framdriftsplan …": "Tworzenie harmonogramu …",
+  "Tegner trinn {0} av {1} …": "Rysowanie kroku {0} z {1} …",
+  "Klarte ikke å lage framdriftsplanen: {0}": "Nie udało się utworzyć harmonogramu: {0}",
+  "Uten dato": "Bez daty",
+  "Trinn {0} av {1}": "Krok {0} z {1}",
+  "Trinn": "Krok",
+  "Nytt i dette trinnet (sett fra sør)": "Nowe w tym kroku (widok od południa)",
+  "… og {0} til": "… i {0} więcej",
+  "Laget av: {0}": "Autor: {0}",
+  "Farget: nytt i trinn {0} · Vanlige farger: utført i tidligere trinn": "Kolorowe: nowe w kroku {0} · Zwykłe kolory: wykonane we wcześniejszych krokach",
+  "Én side per trinn: bygget sett fra nord, sør, øst og vest, og det som er nytt i trinnet": "Jedna strona na krok: budynek widziany z północy, południa, wschodu i zachodu oraz to, co nowe w kroku"
 };

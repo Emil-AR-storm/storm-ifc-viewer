@@ -2069,5 +2069,18 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "{0} objekt tatt ut av {1}.": "{0} objektas pašalintas iš {1}.",
   "{0} objekter tatt ut av {1}.": "{0} objektų pašalinta iš {1}.",
   "{0} objekter tatt ut av {1}.|one": "{0} objektas pašalintas iš {1}.",
-  "{0} objekter tatt ut av {1}.|few": "{0} objektai pašalinti iš {1}."
+  "{0} objekter tatt ut av {1}.|few": "{0} objektai pašalinti iš {1}.",
+  "Objekter": "Objektai",
+  "Legg noe i et trinn først — planen er tom.": "Pirmiausia ką nors įtraukite į žingsnį — planas tuščias.",
+  "Lager framdriftsplan …": "Kuriamas darbų grafikas …",
+  "Tegner trinn {0} av {1} …": "Piešiamas žingsnis {0} iš {1} …",
+  "Klarte ikke å lage framdriftsplanen: {0}": "Nepavyko sukurti darbų grafiko: {0}",
+  "Uten dato": "Be datos",
+  "Trinn {0} av {1}": "Žingsnis {0} iš {1}",
+  "Trinn": "Žingsnis",
+  "Nytt i dette trinnet (sett fra sør)": "Nauja šiame žingsnyje (vaizdas iš pietų)",
+  "… og {0} til": "… ir dar {0}",
+  "Laget av: {0}": "Sudarė: {0}",
+  "Farget: nytt i trinn {0} · Vanlige farger: utført i tidligere trinn": "Spalvota: nauja žingsnyje {0} · Įprastos spalvos: atlikta ankstesniuose žingsniuose",
+  "Én side per trinn: bygget sett fra nord, sør, øst og vest, og det som er nytt i trinnet": "Vienas puslapis žingsniui: pastatas iš šiaurės, pietų, rytų ir vakarų bei tai, kas nauja žingsnyje"
 };

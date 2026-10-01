@@ -41,7 +41,7 @@ const GRÅ = "#6b7280", SORT = "#14161a", LINJE = "#c9ced6", KORT = "#f4f5f7";
 // ikke skjermen, så CSS-variablene kan ikke brukes her.
 const STORM_ROD = "#d22b34";
 
-function hex(d, farge, felt) {
+export function hex(d, farge, felt) {
   const n = parseInt(String(farge).slice(1), 16);
   const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
   if (felt === "fyll") d.setFillColor(r, g, b);
@@ -54,7 +54,7 @@ function hex(d, farge, felt) {
 // `utenSone`: uten kranens svingsirkel (kranSone) — sirkelen skal være med
 // når utsnittet velges, men ikke regnes som objektets fotavtrykk (da ville
 // ingen nål fått stå innenfor 40 m fra kranen).
-function boksUtenLapper(rot, utenSone) {
+export function boksUtenLapper(rot, utenSone) {
   const boks = new THREE.Box3(), b = new THREE.Box3();
   rot.updateMatrixWorld(true);
   rot.traverse(o => {
@@ -67,7 +67,7 @@ function boksUtenLapper(rot, utenSone) {
   return boks;
 }
 
-function hjorner(boks) {
+export function hjorner(boks) {
   const ut = [];
   for (const x of [boks.min.x, boks.max.x]) for (const z of [boks.min.z, boks.max.z]) ut.push({ x, z });
   return ut;
@@ -250,7 +250,7 @@ export const RIGGPLAN_BILDE = {
 // import): de trengs ikke for å se på modellen. Feiler de, tegnes bildene
 // som i runde 14a (uten AO og fargekurve) — riggplanen skal komme uansett.
 let etter = null;
-async function lastEtterbehandling() {
+export async function lastEtterbehandling() {
   if (etter !== null) return etter;
   try {
     const [c, r, g, o] = await Promise.all([
@@ -537,8 +537,14 @@ function passInn(mål, retning, punkter, fov, aspekt, dMin, dMaks) {
 // står i den himmelretningen bildet heter etter, OVERSIKT_VINKEL grader over
 // bakken, og så nær at riggen (hjørnene i `punkter`) akkurat får plass.
 function tegnOversikt(base, senter, nord, ost, rM, bunnY, flisB, flisH, punkter) {
-  const aspekt = flisB / flisH;
   const pxB = Math.round(flisB * 5), pxH = Math.round(flisH * 5);
+  return oversiktKameraer(base, senter, nord, ost, rM, bunnY, flisB / flisH, punkter)
+    .map(o => ({ navn: o.navn, data: tegnOversiktBilde(o, pxB, pxH) }));
+}
+// 📅 Kameraene og tegningen hver for seg, så framdriftsplanen (js/framdrift-pdf.js)
+// kan bruke NØYAKTIG de samme skråbildene: samme vinkel, utsnitt, sol og dis.
+// Returnerer [{ id, navn, kam, skygge, taake }] i OVERSIKTSBILDER-rekkefølge.
+export function oversiktKameraer(base, senter, nord, ost, rM, bunnY, aspekt, punkter) {
   const maksAvstand = oversiktAvstand(rM, OVERSIKT_FOV, aspekt) / base.skala;
   const v = OVERSIKT_VINKEL * Math.PI / 180;
   const mål = new THREE.Vector3(senter.x, bunnY, senter.z);
@@ -553,8 +559,11 @@ function tegnOversikt(base, senter, nord, ost, rM, bunnY, flisB, flisH, punkter)
     kam.updateProjectionMatrix();
     kam.updateMatrixWorld(true);
     const skygge = { senter: mål, radius: rM * 1.2 / base.skala, skala: base.skala, nord, ost };
-    return { navn: t(b.navn), data: tegnMedKamera(kam, pxB, pxH, { skygge, himmel: true, taake: [avstand * 0.8, avstand * 2.8] }) };
+    return { id: b.id, navn: t(b.navn), kam, skygge, taake: [avstand * 0.8, avstand * 2.8] };
   });
+}
+export function tegnOversiktBilde(o, pxB, pxH) {
+  return tegnMedKamera(o.kam, pxB, pxH, { skygge: o.skygge, himmel: true, taake: o.taake });
 }
 
 // ═══════════════════════ HOVEDINNGANGEN ═══════════════════════
@@ -728,7 +737,7 @@ function lyshet(farge) {
 // Toppbåndet, likt på begge sider: logo, tittel og undertittel, og (side 1)
 // dato, målestokk og laget av helt til høyre. Rød strek under — Storms farge,
 // og den eneste rødfargen på arket, så den ikke konkurrerer med objektene.
-function toppbaand(d, m, tittel, under, info) {
+export function toppbaand(d, m, tittel, under, info) {
   const R = RIGGPLAN, x0 = R.marg, y0 = R.marg;
   const lb = 46, lh = 16;
   if (m.logo) {
