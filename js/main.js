@@ -24,6 +24,7 @@ import "./rigg.js";        // 🏕 rigg: verktøyet (kun kontor)
 import "./veggelement.js";   // 🧱 SW-generator: veggelementer på stålmodeller (kun kontor)         // 🎯 objektgrupper: lagre og hente fram flervalg
 import "./stopeplan.js";      // 🧱 støpeplan i 3D (kun kontor)
 import "./stopeplan-felt.js"; // 🧱 trinn 3: felt på plata — tegne og dra (kun kontor)
+import "./framdrift.js";      // 📅 framdriftsplan: etapper med alle slags objekter (kun kontor)
 import "./dokumentasjon.js";  // 📄 snarveiene i gruppa Dokumentasjon (kun kontor)
 import "./markers.js";
 import "./minimap.js";

@@ -2018,5 +2018,22 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Stålbunker laget": "Utworzono stosy stali",
   "Stålbunker fjernet": "Usunięto stosy stali",
   "Fagverk halvdel": "Połowa kratownicy",
-  "Fagverk kjennes igjen av seg selv (to korder med stag imellom) og legges som halvdeler, delt midt på, flatt på strøer.": "Kratownice są rozpoznawane automatycznie (dwa pasy ze skratowaniem pomiędzy) i układane jako połowy, podzielone w środku, płasko na przekładkach."
+  "Fagverk kjennes igjen av seg selv (to korder med stag imellom) og legges som halvdeler, delt midt på, flatt på strøer.": "Kratownice są rozpoznawane automatycznie (dwa pasy ze skratowaniem pomiędzy) i układane jako połowy, podzielone w środku, płasko na przekładkach.",
+  "Trykk på det som skal med — elementer, SW, takplater, rigg og materiell. Shift + dra for mange på en gang.": "Kliknij to, co ma być uwzględnione — elementy, SW, blachy dachowe, zaplecze i materiały. Shift + przeciągnij, aby wybrać wiele naraz.",
+  "Ingenting lagt til ennå": "Jeszcze nic nie dodano",
+  "Del arbeidet i etapper med dato. Trykk «Legg til» på etappen og velg det som utføres da — elementer, SW-elementer, takplater, rigg og materiell. Trykk «Ferdig» når du er ferdig.": "Podziel pracę na etapy z datami. Naciśnij „Dodaj” przy etapie i wybierz, co jest wtedy wykonywane — elementy, elementy SW, blachy dachowe, zaplecze i materiały. Naciśnij „Gotowe”, gdy skończysz.",
+  "Fra": "Od",
+  "Til": "Do",
+  "Ta alt ut av etappen?": "Usunąć wszystko z etapu?",
+  "Framdriftsplan": "Harmonogram",
+  "Framdriftsplan: etapper med dato for alt som skal utføres — elementer, SW, takplater, rigg og materiell": "Harmonogram: etapy z datami dla wszystkiego, co ma być wykonane — elementy, SW, blachy dachowe, zaplecze i materiały",
+  "Elementer": "Elementy",
+  "{0} objekt lagt i {1}.": "Dodano {0} obiekt do {1}.",
+  "{0} objekt lagt i {1}. Det er flyttet fra en annen etappe.": "Dodano {0} obiekt do {1}. Został przeniesiony z innego etapu.",
+  "{0} objekter lagt i {1}.": "Dodano {0} obiektów do {1}.",
+  "{0} objekter lagt i {1}.|one": "Dodano {0} obiekt do {1}.",
+  "{0} objekter lagt i {1}.|few": "Dodano {0} obiekty do {1}.",
+  "{0} objekter lagt i {1}. {2} av dem er flyttet fra en annen etappe.": "Dodano {0} obiektów do {1}. {2} z nich przeniesiono z innego etapu.",
+  "{0} objekter lagt i {1}. {2} av dem er flyttet fra en annen etappe.|one": "Dodano {0} obiekt do {1}. Został przeniesiony z innego etapu.",
+  "{0} objekter lagt i {1}. {2} av dem er flyttet fra en annen etappe.|few": "Dodano {0} obiekty do {1}. {2} z nich przeniesiono z innego etapu."
 };

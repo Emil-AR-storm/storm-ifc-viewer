@@ -425,8 +425,11 @@ function valgEffekt(g, paa) {
 }
 
 export function oppdaterRiggValgEffekt() {
-  riggGroup.children.forEach(o => valgEffekt(o, o.userData.riggId === S.riggValgtId));
+  // 📅 S.riggFlervalg: utvalget i framdriftsplanens velgemodus (framdrift.js)
+  riggGroup.children.forEach(o => valgEffekt(o, o.userData.riggId === S.riggValgtId ||
+    !!(S.riggFlervalg && S.riggFlervalg.has(o.userData.riggId))));
 }
+S.oppdaterRiggValg = oppdaterRiggValgEffekt;
 
 // ═══════════════════════ BYGGEPLASSEN ═══════════════════════
 
