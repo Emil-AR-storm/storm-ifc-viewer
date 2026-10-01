@@ -76,11 +76,12 @@ function mittNavn() {
   } catch (_) { return ""; }
 }
 
-// Samme logo som rapportene (valgt i rapportmenyen) — originalbildet fra
-// SharePoint, aldri en gjenskaping. Uten innlogging: tekst.
+// Logoen valgt i Rigg-panelet (S.riggLogoFil faller tilbake på rapportens
+// valg når riggplanen ikke har fått sitt eget ennå). Originalbildet fra
+// SharePoint, aldri en gjenskaping. Uten innlogging eller «Ingen logo»: tekst.
 async function finnLogo() {
   try {
-    const husket = S.settings && S.settings.rapLogo;
+    const husket = S.riggLogoFil ? S.riggLogoFil() : (S.settings && S.settings.rapLogo);
     if (!husket) return null;
     const liste = await hentLogoer();
     const l = liste.find(x => x.fil === husket);

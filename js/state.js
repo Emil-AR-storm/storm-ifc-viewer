@@ -58,6 +58,7 @@ export const DEFAULT_SETTINGS = {
   rapCsv: false,      // «Ta med CSV» i rapportmenyen
   rapLogo: "",        // valgt logo (filnavn i SharePoint-mappa Logoer)
   stopeLogo: null,    // 🧱 logo på støpeplan-PDF-en (filnavn); null = samme som rapporten, "" = ingen
+  riggLogo: null,     // 🚧 logo på riggplan-PDF-en (filnavn); null = samme som rapporten, "" = ingen
   verktoygruppe: "",  // 🧰 valgt gruppe i verktøylinja (mal | info | utseende | bygg)
   // ❓ Hjelpekortene er vist én gang på denne maskinen. Står den false på
   // byggeplass-siden, kommer gjennomgangen av seg selv når modellen er lastet.
