@@ -64,7 +64,7 @@ export function vaskEtappe(e) {
     // Emil 30.09) er ikke i IFC-fila og har ingen ExpressID. De lagres som
     // { sw: "gulv" | "r3" | "ir2" } — SW-generatorens egne id-er.
     elementer: Array.isArray(e.elementer) ? e.elementer.map(vaskElement).filter(Boolean).slice(0, 20000) : [],
-    felt: Array.isArray(e.felt) ? e.felt.slice(0, 200) : [],
+    felt: Array.isArray(e.felt) ? e.felt.slice(0, 200).map(vaskFelt).filter(Boolean) : [],
     vanntetting: Array.isArray(e.vanntetting) ? e.vanntetting.slice(0, 500) : [],
     endret, av: tekst(e.av, 60)
   };
@@ -165,4 +165,206 @@ export function fjernElementer(liste, etappeId, ider, naa) {
   const sett = ider ? new Set(ider.map(elementNokkel)) : null;
   return vaskEtappeListe(liste).map(e => (e.slettet || e.id !== etappeId) ? e
     : Object.assign({}, e, { elementer: sett ? e.elementer.filter(x => !sett.has(elementNokkel(x))) : [], endret: naa || e.endret }));
+}
+
+// ═══════════════ TRINN 3: FELT PÅ PLATA (variant C, Emil 30.09) ═══════════════
+// Et felt er en flate på plata, tegnet som et rektangel eller et polygon:
+//   { id, punkter: [[bx, bz], …], by, tykkelseM }
+// Punktene ligger i BYGGRAMMEN — meter fra modellens senter (bx = x, bz = z),
+// samme ramme som riggen bruker før terrenget finnes. `by` er toppen av feltet
+// (meter fra modellens senter, oppover), og tykkelsen er platetykkelsen der
+// feltet ble tegnet. Arealet og volumet regnes ALLTID ut av punktene, aldri
+// lagret — da kan de ikke bli stående gamle etter at et hjørne er dratt.
+export const FELT_MIN_TYKKELSE = 0.05, FELT_MAKS_TYKKELSE = 3;
+export const FELT_MAKS_PUNKTER = 64;
+// To hjørner nærmere enn dette regnes som SAMME hjørne (fugen mellom to felt).
+export const FELT_TOL_M = 0.02;
+
+const tall = (v) => (Number.isFinite(Number(v)) ? Number(v) : NaN);
+const r3 = (v) => Math.round(v * 1000) / 1000;
+
+export function vaskFelt(f) {
+  if (!f || typeof f !== "object") return null;
+  const punkter = (Array.isArray(f.punkter) ? f.punkter : [])
+    .slice(0, FELT_MAKS_PUNKTER)
+    .map(p => Array.isArray(p) ? [tall(p[0]), tall(p[1])] : null)
+    .filter(p => p && Number.isFinite(p[0]) && Number.isFinite(p[1]) && Math.abs(p[0]) < 1e5 && Math.abs(p[1]) < 1e5)
+    .map(p => [r3(p[0]), r3(p[1])]);
+  if (punkter.length < 3) return null;
+  const by = Number.isFinite(tall(f.by)) ? r3(tall(f.by)) : 0;
+  const tk = tall(f.tykkelseM);
+  return {
+    id: typeof f.id === "string" && f.id ? f.id.slice(0, 40) : "F-" + Math.random().toString(36).slice(2, 8),
+    punkter, by,
+    tykkelseM: Number.isFinite(tk) ? Math.min(FELT_MAKS_TYKKELSE, Math.max(FELT_MIN_TYKKELSE, r3(tk))) : 0.25
+  };
+}
+
+// Skolisseformelen. Uavhengig av omløpsretningen.
+export function feltAreal(f) {
+  const p = (f && f.punkter) || [];
+  let a = 0;
+  for (let i = 0; i < p.length; i++) {
+    const [x1, z1] = p[i], [x2, z2] = p[(i + 1) % p.length];
+    a += x1 * z2 - x2 * z1;
+  }
+  return Math.abs(a) / 2;
+}
+export const feltVolum = (f) => feltAreal(f) * ((f && f.tykkelseM) || 0);
+
+export function kantLengde(f, i) {
+  const p = f.punkter, a = p[i], b = p[(i + 1) % p.length];
+  return Math.hypot(b[0] - a[0], b[1] - a[1]);
+}
+export function kantLengder(f) { return ((f && f.punkter) || []).map((_, i) => kantLengde(f, i)); }
+
+export function rektangel(a, b) {
+  const x0 = Math.min(a[0], b[0]), x1 = Math.max(a[0], b[0]);
+  const z0 = Math.min(a[1], b[1]), z1 = Math.max(a[1], b[1]);
+  return [[x0, z0], [x1, z0], [x1, z1], [x0, z1]];
+}
+
+export function nyttFelt(punkter, by, tykkelseM, id) {
+  return vaskFelt({ id: id || ("F-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6)), punkter, by, tykkelseM });
+}
+
+const samme = (a, b, tol) => Math.abs(a[0] - b[0]) <= tol && Math.abs(a[1] - b[1]) <= tol;
+
+// ✥ FLYTT PUNKTER — og naboene følger med (Emil 30.09: «ingen glipe, ingen
+// overlapp»). `flytt` er [{ fra: [bx, bz], til: [bx, bz] }]. Hvert hjørne i
+// HVERT felt i HELE planen som ligger på et «fra»-punkt, flyttes til «til».
+// Et hjørne to felt deler, er dermed ett hjørne — dras det, drar det begge.
+// `bare` (valgfritt): et felt-id — da flyttes bare det feltet (dra hele
+// feltet skal ikke dra naboene skjeve).
+export function flyttPunkter(liste, flytt, naa, bare) {
+  const tol = FELT_TOL_M;
+  return vaskEtappeListe(liste).map(e => {
+    if (e.slettet || !(e.felt || []).length) return e;
+    let endret = false;
+    const felt = e.felt.map(f => {
+      if (bare && f.id !== bare) return f;
+      let fEndret = false;
+      const punkter = f.punkter.map(p => {
+        for (const m of flytt) if (samme(p, m.fra, tol)) { fEndret = true; return [r3(m.til[0]), r3(m.til[1])]; }
+        return p;
+      });
+      if (!fEndret) return f;
+      endret = true;
+      return Object.assign({}, f, { punkter });
+    });
+    return endret ? Object.assign({}, e, { felt, endret: naa || e.endret }) : e;
+  });
+}
+
+// Et nytt hjørne midt på (eller i `punkt` på) kant i. Har nabofeltet den SAMME
+// kanten, får det hjørnet også — ellers ville et senere drag i det nye hjørnet
+// åpnet en glipe mellom dem.
+export function leggTilHjorne(liste, feltId, i, punkt, naa) {
+  let a = null, b = null, ny = null;
+  for (const e of synlige(liste)) for (const f of e.felt || []) if (f.id === feltId) {
+    a = f.punkter[i]; b = f.punkter[(i + 1) % f.punkter.length];
+    ny = punkt ? [r3(punkt[0]), r3(punkt[1])] : [r3((a[0] + b[0]) / 2), r3((a[1] + b[1]) / 2)];
+  }
+  if (!ny) return vaskEtappeListe(liste);
+  const tol = FELT_TOL_M;
+  return vaskEtappeListe(liste).map(e => {
+    if (e.slettet || !(e.felt || []).length) return e;
+    let endret = false;
+    const felt = e.felt.map(f => {
+      if (f.punkter.length >= FELT_MAKS_PUNKTER) return f;
+      const p = f.punkter;
+      for (let k = 0; k < p.length; k++) {
+        const p1 = p[k], p2 = p[(k + 1) % p.length];
+        const lik = f.id === feltId ? k === i : ((samme(p1, a, tol) && samme(p2, b, tol)) || (samme(p1, b, tol) && samme(p2, a, tol)));
+        if (lik) { endret = true; return Object.assign({}, f, { punkter: p.slice(0, k + 1).concat([ny], p.slice(k + 1)) }); }
+      }
+      return f;
+    });
+    return endret ? Object.assign({}, e, { felt, endret: naa || e.endret }) : e;
+  });
+}
+
+export function fjernHjorne(liste, feltId, i, naa) {
+  return endreFelt(liste, feltId, f => f.punkter.length <= 3 ? f
+    : Object.assign({}, f, { punkter: f.punkter.filter((_, k) => k !== i) }), naa);
+}
+
+// Kant i satt til en ny lengde: ENDEPUNKTET (i+1) flyttes langs kanten, og
+// naboene som deler det, følger med (flyttPunkter).
+export function settKantLengde(liste, feltId, i, lengde, naa) {
+  const L = Number(lengde);
+  if (!(L > 0.01)) return vaskEtappeListe(liste);
+  for (const e of synlige(liste)) for (const f of e.felt || []) if (f.id === feltId) {
+    const p = f.punkter, a = p[i], b = p[(i + 1) % p.length];
+    const d = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (!(d > 1e-6)) return vaskEtappeListe(liste);
+    const til = [a[0] + (b[0] - a[0]) / d * L, a[1] + (b[1] - a[1]) / d * L];
+    return flyttPunkter(liste, [{ fra: b, til }], naa);
+  }
+  return vaskEtappeListe(liste);
+}
+
+export function endreFelt(liste, feltId, fn, naa) {
+  return vaskEtappeListe(liste).map(e => {
+    if (e.slettet || !(e.felt || []).some(f => f.id === feltId)) return e;
+    const felt = e.felt.map(f => f.id === feltId ? vaskFelt(fn(f)) : f).filter(Boolean);
+    return Object.assign({}, e, { felt, endret: naa || e.endret });
+  });
+}
+export function fjernFelt(liste, feltId, naa) {
+  return vaskEtappeListe(liste).map(e => {
+    if (e.slettet || !(e.felt || []).some(f => f.id === feltId)) return e;
+    return Object.assign({}, e, { felt: e.felt.filter(f => f.id !== feltId), endret: naa || e.endret });
+  });
+}
+export function leggTilFelt(liste, etappeId, felt, naa) {
+  const f = vaskFelt(felt);
+  if (!f) return vaskEtappeListe(liste);
+  return vaskEtappeListe(liste).map(e => (e.slettet || e.id !== etappeId) ? e
+    : Object.assign({}, e, { felt: (e.felt || []).concat([f]).slice(0, 200), endret: naa || e.endret }));
+}
+export function finnFelt(liste, feltId) {
+  for (const e of synlige(liste)) for (const f of e.felt || []) if (f.id === feltId) return { etappe: e, felt: f };
+  return null;
+}
+
+// 🧲 SNAPP mot hjørnene og kantene til de ANDRE feltene, så to felt deler fuge
+// uten glipe. Hjørner går foran kanter. `tol` i meter (kallstedet regner om
+// fra piksler). `unntak`: feltet som dras (skal ikke snappe til seg selv).
+// `ignorer`: punkter som er i bevegelse (hjørnet som dras). Et nabohjørne som
+// ligger på samme sted flytter seg med — å snappe til det ville låst hjørnet
+// fast der det startet.
+export function snappFelt(liste, p, tol, unntak, ignorer) {
+  let best = null, bestD = tol;
+  const alle = [];
+  const ign = ignorer || [];
+  const ignorert = (q) => ign.some(r => samme(q, r, FELT_TOL_M));
+  for (const e of synlige(liste)) for (const f of e.felt || []) if (f.id !== unntak) alle.push(f);
+  for (const f of alle) for (const q of f.punkter) {
+    if (ignorert(q)) continue;
+    const d = Math.hypot(q[0] - p[0], q[1] - p[1]);
+    if (d <= bestD) { bestD = d; best = [q[0], q[1]]; }
+  }
+  if (best) return { punkt: best, type: "hjorne" };
+  for (const f of alle) {
+    const P = f.punkter;
+    for (let i = 0; i < P.length; i++) {
+      const a = P[i], b = P[(i + 1) % P.length];
+      if (ignorert(a) || ignorert(b)) continue;
+      const dx = b[0] - a[0], dz = b[1] - a[1], L2 = dx * dx + dz * dz;
+      if (L2 < 1e-9) continue;
+      const u = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dz) / L2));
+      const q = [a[0] + u * dx, a[1] + u * dz];
+      const d = Math.hypot(q[0] - p[0], q[1] - p[1]);
+      if (d <= bestD) { bestD = d; best = q; }
+    }
+  }
+  return best ? { punkt: best, type: "kant" } : { punkt: p, type: null };
+}
+
+// Summene for en etappe: areal og volum av feltene (ca).
+export function feltSummer(e) {
+  let areal = 0, volum = 0;
+  for (const f of (e && e.felt) || []) { areal += feltAreal(f); volum += feltVolum(f); }
+  return { areal, volum };
 }

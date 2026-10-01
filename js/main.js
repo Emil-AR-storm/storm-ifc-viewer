@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { $, S, fmtLen, loadingEl, loadingText, tilM } from "./state.js";
 import { lastSprak, oversettDom, setLang, t } from "./i18n.js";
 import { setClipFromFace } from "./clip.js";
-import { clearSelection, hitID, pick, pickEkstra, pickFlate, selectElement, showProperties } from "./elements.js";
+import { clearSelection, hitID, pick, pickEkstra, pickFlate, selectElement, showProperties, velgVedPunkt } from "./elements.js";
 import { afterLoad, ifcReady, loadModel } from "./ifc.js";
 import { closeMarkerPopup, forberedNyMarkering, openMarkerPopup, pickMarker } from "./markers.js";
 import { addMeasure, koteValue, rettPunkt, snapPoint } from "./measure.js";
@@ -22,6 +22,7 @@ import "./rigg-vis.js";    // 🏕 rigg: visningen (lastes av begge sider) — E
 import "./rigg.js";        // 🏕 rigg: verktøyet (kun kontor)
 import "./veggelement.js";   // 🧱 SW-generator: veggelementer på stålmodeller (kun kontor)         // 🎯 objektgrupper: lagre og hente fram flervalg
 import "./stopeplan.js";      // 🧱 støpeplan i 3D (kun kontor)
+import "./stopeplan-felt.js"; // 🧱 trinn 3: felt på plata — tegne og dra (kun kontor)
 import "./dokumentasjon.js";  // 📄 snarveiene i gruppa Dokumentasjon (kun kontor)
 import "./markers.js";
 import "./minimap.js";
@@ -75,6 +76,9 @@ canvas.addEventListener("pointerup", (e) => {
   // (1) panorerer i SimpleControls og skal ikke sette markering eller målepunkt
   // når draget er under 8 px. Høyre (2) gir innstillingsmenyen.
   if (e.button > 0) return;
+  // 🧱 Støpeplanens velgemodus: et vanlig trykk legger til / tar bort, som
+  // shift-klikk. Shift + dra og shift-klikk går sin vanlige vei (elements.js).
+  if (S.velgModusAktiv && !S.mode && !e.shiftKey) { velgVedPunkt(e.clientX, e.clientY); return; }
   // 📐 Fra flate: neste trykk setter snittplanet (ignorer gjeldende snitt så flaten kan treffes)
   if (S.clipPickFace) {
     const fh = pick(e.clientX, e.clientY, true);
