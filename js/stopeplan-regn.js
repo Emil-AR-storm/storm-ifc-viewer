@@ -25,6 +25,24 @@ const tekst = (v, n) => String(v == null ? "" : v).slice(0, n);
 const hex = (f) => (typeof f === "string" && /^#[0-9a-fA-F]{6}$/.test(f)) ? f.toLowerCase() : "";
 const dato = (d) => (typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d)) ? d : "";
 
+// Ett element i en etappe: et IFC-element { id, gid } eller generert betong { sw }.
+export function vaskElement(x) {
+  if (!x || typeof x !== "object") return null;
+  if (typeof x.sw === "string" && x.sw) return { sw: x.sw.slice(0, 40) };
+  const id = Number(x.id);
+  if (!Number.isFinite(id) || id <= 0) return null;
+  return { id, gid: typeof x.gid === "string" ? x.gid.slice(0, 40) : "" };
+}
+// Nøkkelen et element kjennes igjen på. «sw:» og «id:» holder de to slagene
+// fra hverandre, så ExpressID 3 og ringmurbit «3» aldri kan forveksles.
+export function elementNokkel(x) {
+  if (typeof x === "number") return "id:" + x;
+  if (typeof x === "string") return /^(sw|id):/.test(x) ? x : "sw:" + x;
+  if (!x) return "";
+  return x.sw ? "sw:" + x.sw : "id:" + Number(x.id);
+}
+export const erGenerert = (x) => !!(x && x.sw);
+
 export function vaskEtappe(e) {
   if (!e || typeof e !== "object" || typeof e.id !== "string" || !e.id) return null;
   const id = e.id.slice(0, 40);
@@ -42,9 +60,10 @@ export function vaskEtappe(e) {
     // Kommer i trinn 2/3/6 — tas vare på allerede nå (se toppen av fila)
     // [{ id: ExpressID, gid: GlobalId }] — gid gjør at planen kan finne
     // elementet igjen i en ny revisjon av modellen (samme grep som Sammenlign)
-    elementer: Array.isArray(e.elementer) ? e.elementer
-      .map(x => (x && typeof x === "object") ? { id: Number(x.id), gid: typeof x.gid === "string" ? x.gid.slice(0, 40) : "" } : null)
-      .filter(x => x && Number.isFinite(x.id) && x.id > 0).slice(0, 20000) : [],
+    // 🧱 Generert betong (betonggulvet og ringmurbitene fra SW-generatoren,
+    // Emil 30.09) er ikke i IFC-fila og har ingen ExpressID. De lagres som
+    // { sw: "gulv" | "r3" | "ir2" } — SW-generatorens egne id-er.
+    elementer: Array.isArray(e.elementer) ? e.elementer.map(vaskElement).filter(Boolean).slice(0, 20000) : [],
     felt: Array.isArray(e.felt) ? e.felt.slice(0, 200) : [],
     vanntetting: Array.isArray(e.vanntetting) ? e.vanntetting.slice(0, 500) : [],
     endret, av: tekst(e.av, 60)
@@ -123,26 +142,27 @@ export function stopeplanForByggeplass(liste) {
 // mange som ble flyttet fra andre etapper, så panelet kan si fra.
 export const MAKS_ELEMENTER = 20000;
 export function leggTilElementer(liste, etappeId, nye, naa) {
-  const inn = (nye || []).map(x => ({ id: Number(x.id), gid: typeof x.gid === "string" ? x.gid.slice(0, 40) : "" }))
-    .filter(x => Number.isFinite(x.id) && x.id > 0);
-  const ider = new Set(inn.map(x => x.id));
+  const inn = (nye || []).map(vaskElement).filter(Boolean);
+  const nokler = new Set(inn.map(elementNokkel));
+  const har = (x) => nokler.has(elementNokkel(x));
   let flyttet = 0;
   const ut = vaskEtappeListe(liste).map(e => {
     if (e.slettet) return e;
     if (e.id === etappeId) {
-      const fra = (e.elementer || []).filter(x => !ider.has(Number(x.id)));
+      const fra = (e.elementer || []).filter(x => !har(x));
       return Object.assign({}, e, { elementer: fra.concat(inn).slice(0, MAKS_ELEMENTER), endret: naa || e.endret });
     }
     const for_ = (e.elementer || []).length;
-    const rest = (e.elementer || []).filter(x => !ider.has(Number(x.id)));
+    const rest = (e.elementer || []).filter(x => !har(x));
     if (rest.length !== for_) { flyttet += for_ - rest.length; return Object.assign({}, e, { elementer: rest, endret: naa || e.endret }); }
     return e;
   });
   return { liste: ut, lagtTil: inn.length, flyttet };
 }
 
+// `ider`: null = alle, ellers ExpressID-er (tall) og/eller nøkler («sw:gulv»).
 export function fjernElementer(liste, etappeId, ider, naa) {
-  const sett = ider ? new Set(ider.map(Number)) : null;
+  const sett = ider ? new Set(ider.map(elementNokkel)) : null;
   return vaskEtappeListe(liste).map(e => (e.slettet || e.id !== etappeId) ? e
-    : Object.assign({}, e, { elementer: sett ? e.elementer.filter(x => !sett.has(Number(x.id))) : [], endret: naa || e.endret }));
+    : Object.assign({}, e, { elementer: sett ? e.elementer.filter(x => !sett.has(elementNokkel(x))) : [], endret: naa || e.endret }));
 }

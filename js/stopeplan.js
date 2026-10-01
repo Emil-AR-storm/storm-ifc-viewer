@@ -11,12 +11,12 @@
 // slettet etappe blir en gravstein, så slettingen også når kollegaene.
 //
 // Importeres BARE fra main.js. Byggeplass-siden får egen visning (trinn 5).
-import { $, S, apnePanel, esc, ikon, på } from "./state.js";
+import { $, S, apnePanel, ekstraLagSom, esc, ikon, på } from "./state.js";
 import { t } from "./i18n.js";
 import { iDagISO } from "./frist.js";
 import { flettPaaId, spLes, spPaalogget, spSkriv } from "./sp-lager.js";
 import {
-  STATUS_TEKST, fjernElementer, leggTilElementer, nyEtappe, sortert, statusFor, synlige, vaskEtappe, vaskEtappeListe
+  STATUS_TEKST, erGenerert, fjernElementer, leggTilElementer, nyEtappe, sortert, statusFor, synlige, vaskEtappe, vaskEtappeListe
 } from "./stopeplan-regn.js";
 import { etappeSkjult, settEtappeSkjult, tegnStopeplan } from "./stopeplan-vis.js";
 import { quantitiesForSet } from "./elements.js";
@@ -121,12 +121,24 @@ export function valgteIder() {
   return [];
 }
 
+// 🧱 Generert betong i utvalget: betonggulvet og ringmurbitene fra
+// SW-generatoren (Emil 30.09). Sandwichveggene er ikke betong og støpes ikke —
+// de blir ikke med selv om de er valgt sammen med ringmuren.
+export function valgteGenererte() {
+  const lag = ekstraLagSom("valgte").find(l => l.id === "sw");
+  if (!lag || !S.swBetong) return [];
+  return lag.valgte().filter(id => { const b = S.swBetong(id); return !!(b && b.betong); });
+}
+function antallValgte() { return valgteIder().length + valgteGenererte().length; }
+
 let sisteMelding = "";
 export function leggValgteTil(id) {
   const ider = valgteIder();
-  if (!ider.length) return 0;
+  const gen = valgteGenererte();
+  if (!ider.length && !gen.length) return 0;
   const naa = new Date().toISOString();
-  const nye = ider.map(n => { const m = metaFor(n); return { id: n, gid: (m && m.globalId) || "" }; });
+  const nye = ider.map(n => { const m = metaFor(n); return { id: n, gid: (m && m.globalId) || "" }; })
+    .concat(gen.map(sw => ({ sw })));
   const r = leggTilElementer(S.stopeplan, id, nye, naa);
   S.stopeplan = r.liste.map(e => e.id === id ? Object.assign(e, { av: mittNavn() }) : e);
   const e = synlige(S.stopeplan).find(x => x.id === id);
@@ -150,17 +162,25 @@ export function tomElementer(id) {
 // Volumet (ca) regnes av mengdeuttaket — samme tall som i Mengder.
 const volumBuffer = new Map();
 export function volumFor(e) {
-  const ider = (e.elementer || []).map(x => Number(x.id));
-  if (!ider.length) return 0;
+  const ider = (e.elementer || []).filter(x => !erGenerert(x)).map(x => Number(x.id));
+  // Generert betong regnes hver gang (billig, og målene endres når ringmuren
+  // dras eller bygget genereres på nytt — et buffer ville vist gamle tall)
+  let gen = 0;
+  for (const x of e.elementer || []) {
+    if (!erGenerert(x) || !S.swBetong) continue;
+    const b = S.swBetong(x.sw);
+    if (b && Number.isFinite(b.volM3)) gen += b.volM3;
+  }
+  if (!ider.length) return gen;
   const nokkel = e.id + "|" + ider.join(",");
-  if (volumBuffer.has(nokkel)) return volumBuffer.get(nokkel);
+  if (volumBuffer.has(nokkel)) return volumBuffer.get(nokkel) + gen;
   let v = 0;
   try {
     const q = quantitiesForSet(new Set(ider));
     for (const id of ider) { const x = q.get(id); if (x && Number.isFinite(x.vol)) v += x.vol; }
   } catch (_) { v = 0; }
   volumBuffer.set(nokkel, v);
-  return v;
+  return v + gen;
 }
 const m3 = (v) => (Math.round(v * 10) / 10).toLocaleString("no-NO") + " m³";
 
@@ -168,7 +188,7 @@ const m3 = (v) => (Math.round(v * 10) / 10).toLocaleString("no-NO") + " m³";
 // på nytt (det ville tatt fokus fra et felt du skriver i).
 function oppdaterValgKnapper() {
   if (!erApen()) return;
-  const n = valgteIder().length;
+  const n = antallValgte();
   document.querySelectorAll("#stopeBody .st-legg").forEach(b => {
     b.disabled = n === 0;
     b.textContent = n ? t("+ Legg til valgte ({0})", n) : t("+ Legg til valgte");
@@ -187,9 +207,9 @@ export function tegnPanel() {
   if (!body) return;
   const iDag = iDagISO();
   const liste = sortert(S.stopeplan);
-  const nValgt = valgteIder().length;
+  const nValgt = antallValgte();
   let html = '<p class="set-hjelp" style="margin-top:0">' +
-    esc(t("Del støpene i etapper. Gi hver etappe en dato, og merk den som støpt når den er ferdig. Velg elementer i modellen (shift-klikk eller shift-dra) og trykk «Legg til valgte» på etappen.")) + "</p>" +
+    esc(t("Del støpene i etapper. Gi hver etappe en dato, og merk den som støpt når den er ferdig. Velg elementer i modellen (shift-klikk eller shift-dra) og trykk «Legg til valgte» på etappen. Generert betonggulv og ringmur kan også legges inn.")) + "</p>" +
     (sisteMelding ? '<p class="set-hjelp" style="color:var(--text)">' + esc(sisteMelding) + "</p>" : "");
   if (!liste.length) html += '<p class="hint">' + esc(t("Ingen etapper ennå.")) + "</p>";
   for (const e of liste) {

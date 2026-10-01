@@ -19,7 +19,7 @@ import { S, registrerEkstraGruppe } from "./state.js";
 import { flyTil, scene } from "./scene.js";
 import { forHverTrekant } from "./elements.js";
 import { iDagISO } from "./frist.js";
-import { statusFor, synlige } from "./stopeplan-regn.js";
+import { elementNokkel, erGenerert, statusFor, synlige } from "./stopeplan-regn.js";
 
 export const stopeGroup = new THREE.Group();
 stopeGroup.name = "stopeplan";
@@ -39,18 +39,24 @@ function rydd() {
 }
 
 // Trekantene til en mengde elementer som én geometri (verdenskoordinater).
-export function elementGeometri(ider) {
+// `genererte`: SW-id-er (betonggulvet, ringmurbiter) — trekantene kommer fra
+// SW-laget selv (S.swTrekanter), siden de ikke finnes i modellen.
+export function elementGeometri(ider, genererte) {
   const sett = new Set((ider || []).map(Number));
   const pos = [];
   const v = new THREE.Vector3();
-  if (!S.modelGroup || !sett.size) return null;
-  forHverTrekant(sett, (p, a, b, c, mtx) => {
+  if (!S.modelGroup || (!sett.size && !(genererte || []).length)) return null;
+  if (sett.size) forHverTrekant(sett, (p, a, b, c, mtx) => {
     for (const i of [a, b, c]) {
       v.fromBufferAttribute(p, i);
       if (mtx) v.applyMatrix4(mtx);
       pos.push(v.x, v.y, v.z);
     }
   });
+  if ((genererte || []).length && S.swTrekanter) {
+    const g = S.swTrekanter(genererte);
+    for (let i = 0; i < g.length; i++) pos.push(g[i]);
+  }
   if (!pos.length) return null;
   const g = new THREE.BufferGeometry();
   g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(pos), 3));
@@ -70,9 +76,10 @@ export function tegnStopeplan(liste) {
   const iDag = iDagISO();
   for (const e of synlige(liste === undefined ? S.stopeplan : liste)) {
     if (skjulteEtapper.has(e.id)) continue;
-    const ider = (e.elementer || []).map(x => Number(x && x.id)).filter(n => n > 0);
-    if (!ider.length) continue;
-    const geo = elementGeometri(ider);
+    const ider = (e.elementer || []).filter(x => !erGenerert(x)).map(x => Number(x && x.id)).filter(n => n > 0);
+    const gen = (e.elementer || []).filter(erGenerert).map(x => x.sw);
+    if (!ider.length && !gen.length) continue;
+    const geo = elementGeometri(ider, gen);
     if (!geo) continue;
     const st = statusFor(e, iDag);
     const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({
@@ -85,15 +92,16 @@ export function tegnStopeplan(liste) {
     mesh.userData.etappeId = e.id;
     mesh.raycast = () => {};          // trykk går til modellen under (egenskaper som før)
     stopeGroup.add(mesh);
-    tegnet.push({ id: e.id, antallElementer: ider.length, status: st });
+    tegnet.push({ id: e.id, antallElementer: ider.length + gen.length, antallGenererte: gen.length, status: st });
   }
 }
 
 // Hvilken etappe et element ligger i (eller null).
-export function etappeFor(expressID, liste) {
-  const id = Number(expressID);
+// Tall = ExpressID; tekst = SW-id («gulv», «r3») eller en nøkkel («sw:r3»).
+export function etappeFor(element, liste) {
+  const k = elementNokkel(element);
   for (const e of synlige(liste === undefined ? S.stopeplan : liste))
-    if ((e.elementer || []).some(x => Number(x && x.id) === id)) return e;
+    if ((e.elementer || []).some(x => elementNokkel(x) === k)) return e;
   return null;
 }
 
