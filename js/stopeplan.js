@@ -11,7 +11,9 @@
 // slettet etappe blir en gravstein, så slettingen også når kollegaene.
 //
 // Importeres BARE fra main.js. Byggeplass-siden får egen visning (trinn 5).
-import { $, S, apnePanel, ekstraLagSom, esc, ikon, på } from "./state.js";
+import { $, S, apnePanel, ekstraLagSom, esc, ikon, på, writePrefs } from "./state.js";
+import { hentLogoer } from "./tegninger.js";
+import { ryddLogonavn } from "./rapport.js";
 import { t } from "./i18n.js";
 import { iDagISO } from "./frist.js";
 import { flettPaaId, spLes, spPaalogget, spSkriv } from "./sp-lager.js";
@@ -329,6 +331,34 @@ function erApen() { const p = $("stopePanel"); return !!(p && p.classList.contai
 
 const STATUS_FARGE = { stopt: "var(--ok)", uke: "var(--warn)", forsinket: "var(--danger)", planlagt: "var(--muted)" };
 
+// Valgt logofil for støpeplanen. Ikke valgt ennå (null): det brukeren har
+// valgt i rapportmenyen, så de som alt har satt logo der slipper å gjøre det
+// på nytt.
+export function stopeLogoFil() {
+  const v = S.settings && S.settings.stopeLogo;
+  if (v === null || v === undefined) return (S.settings && S.settings.rapLogo) || "";
+  return String(v);
+}
+S.stopeLogoFil = stopeLogoFil;
+// Lista hentes én gang per økt (SharePoint), ikke hver gang panelet tegnes
+let logoListe = null;
+async function fyllStopeLogo(velg) {
+  if (!velg) return;
+  const valgt = stopeLogoFil();
+  const opt = (verdi, tekst) => { const o = document.createElement("option"); o.value = verdi; o.textContent = tekst; return o; };
+  velg.innerHTML = "";
+  velg.appendChild(opt("", t("Ingen logo")));
+  if (valgt) velg.appendChild(opt(valgt, ryddLogonavn(valgt)));
+  velg.value = valgt;
+  if (!spPaalogget()) return;
+  if (!logoListe) logoListe = hentLogoer().catch(() => []);
+  let liste = await logoListe;
+  if (!liste.length) { logoListe = null; return; }   // prøv igjen neste gang (innlogging kan komme senere)
+  if (!velg.isConnected) return;
+  for (const l of liste) if (l.fil !== valgt) velg.appendChild(opt(l.fil, ryddLogonavn(l.fil)));
+  velg.value = valgt;
+}
+
 export function tegnPanel() {
   const body = $("stopeBody");
   if (!body) return;
@@ -396,6 +426,11 @@ export function tegnPanel() {
       "</div>" +
     "</div>";
   }
+  // 🏷 Logoen på PDF-en: samme SharePoint-mappe (Logoer) og samme originalbilde
+  // som rapporten og rigg-objektene, men eget valg — støpeplanen kan gå til en
+  // annen byggherre enn rapportene. Står i panelet, rett over PDF-knappen, så
+  // brukeren ser hva som kommer med FØR han trykker.
+  html += '<label class="set-hjelp st-logo">' + esc(t("Logo på PDF")) + ' <select id="stLogo"></select></label>';
   html += '<div class="prop-actions" style="margin-top:10px"><button id="stNy" class="primary">' + ikon("pluss") + " " + esc(t("Ny etappe")) + "</button>" +
       // 📄 Trinn 7: PDF (oppsett D) og Excel
       '<button id="stPdf"' + (liste.length ? "" : " disabled") + ">" + ikon("lastned") + " " + esc(t("Støpeplan (PDF)")) + "</button>" +
@@ -408,6 +443,8 @@ export function tegnPanel() {
   $("stXlsx").onclick = async () => { const P = await import("./stopeplan-pdf.js"); return P.lagStopeplanXlsx(volumFor); };
   $("stVis").onchange = (ev) => { settVisEtappeplan(ev.target.checked); tegnTidslinje(); };
   $("stVisVann").onchange = (ev) => settVisVanntetting(ev.target.checked);
+  fyllStopeLogo($("stLogo"));
+  $("stLogo").onchange = (ev) => { S.settings.stopeLogo = ev.target.value || ""; writePrefs(); };
   const pl = $("stPlateM");
   if (pl) pl.onchange = () => { settPlateM(pl.value); tegnPanel(); };
   tegnTidslinje();
