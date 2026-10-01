@@ -2016,5 +2016,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Lag stålbunker på nytt": "Recreate steel stacks",
   "Stålprofil": "Steel profile",
   "Stålbunker laget": "Steel stacks created",
-  "Stålbunker fjernet": "Steel stacks removed"
+  "Stålbunker fjernet": "Steel stacks removed",
+  "Fagverk halvdel": "Truss half",
+  "Fagverk kjennes igjen av seg selv (to korder med stag imellom) og legges som halvdeler, delt midt på, flatt på strøer.": "Trusses are recognised automatically (two chords with bracing between them) and placed as halves, split in the middle, lying flat on battens."
 };

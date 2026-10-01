@@ -148,6 +148,16 @@ export function plasserBunker(grupper, bygg) {
       rekkeDybde = Math.max(rekkeDybde, D);
     }
   }
+  // Fagverkhalvdelene på østsiden (+x), med lengden langs siden (nord–sør):
+  // de er lange og brede, og skal ikke stå i veien for søyle- og bjelkerekkene.
+  let z = bygg.minZ, ut0 = AVSTAND_M, rekkeDybde = 0;
+  for (const g of grupper.filter(g => g.del === "fagverk")) {
+    const L = g.lengdeMm / 1000, D = fagverkBunkeDybde(g.antall, g.hoydeMm) / 1000;
+    if (z > bygg.minZ && z + L > bygg.maxZ + REKKE_FORBI_M) { z = bygg.minZ; ut0 += rekkeDybde + REKKE_MELLOM_M; rekkeDybde = 0; }
+    ut.push({ nokkel: g.nokkel, x: bygg.maxX + ut0 + D / 2, z: z + L / 2, rot: Math.PI / 2 });
+    z += L + BUNKE_MELLOM_M;
+    rekkeDybde = Math.max(rekkeDybde, D);
+  }
   return ut;
 }
 
@@ -157,11 +167,183 @@ export function plasserBunker(grupper, bygg) {
 export function stalMengder(grupper) {
   return grupper.map(g => {
     const lm = g.antall * g.lengdeMm / 1000;
-    return { del: g.del, profil: g.profil, lengdeMm: g.lengdeMm, antall: g.antall,
-      lm: Math.round(lm * 100) / 100, kg: g.kgPerM > 0 ? Math.round(g.kgPerM * lm * 10) / 10 : null };
+    // Fagverket: vekten er summen av stavene i halvdelen (kgHalv), ikke kg/m
+    const kg = g.del === "fagverk" ? (g.kgHalv > 0 ? Math.round(g.kgHalv * g.antall * 10) / 10 : null)
+      : (g.kgPerM > 0 ? Math.round(g.kgPerM * lm * 10) / 10 : null);
+    return { del: g.del, profil: g.profil, lengdeMm: g.lengdeMm, antall: g.antall, hoydeMm: g.hoydeMm || 0,
+      lm: Math.round(lm * 100) / 100, kg };
   });
 }
 export function stalSum(rader) {
   return rader.reduce((a, r) => ({ antall: a.antall + r.antall, lm: Math.round((a.lm + r.lm) * 100) / 100,
     kg: a.kg + (r.kg || 0), utenVekt: a.utenVekt + (r.kg == null ? r.antall : 0) }), { antall: 0, lm: 0, kg: 0, utenVekt: 0 });
+}
+
+// ═══════════════════════ 🔺 FAGVERK ═══════════════════════
+//
+// Emil 01.10 (bilder fra Hegdalringen): på større bygg kommer fagverkene
+// NESTEN FERDIG SAMMENSATT, delt i to på midten. Da er ikke korder og stag
+// løse profiler i en bunke — det er to fagverkhalvdeler som løftes av bilen.
+// Valgt 01.10: halvdelene ligger FLATE på strøer (prøvebilde A), BEGGE
+// kordene deles, og delingen er ALLTID MIDT PÅ spennet.
+//
+// IFC-en sier ikke at noe er et fagverk (ingen IfcElementAssembly i Storms
+// modeller — sjekket på seks), så det finnes ut av geometrien, med faste
+// regler og ingen fasit fra én modell:
+//   1. Alle bjelker i SAMME LODDRETTE PLAN (begge endene innenfor PLAN_TOL_M
+//      fra planet til en lang, vannrett bjelke) er kandidater.
+//   2. I planet: to NIVÅER av vannrette bjelker (helning under 10°) med
+//      FV_MIN_H_M–FV_MAKS_H_M mellom seg, som overlapper minst 60 %.
+//   3. Mellom nivåene: minst FV_MIN_STAG skrå eller loddrette stag med begge
+//      endene innenfor høyden og spennet.
+//   4. Spennet er der stagene står (+ 0,6 m): en takbjelke i neste felt som
+//      ligger på samme høyde som overkorda, er IKKE en del av fagverket.
+// Prøvd 01.10: Hegdalringen 5 fagverk og Sundland 7 fagverk (2 overkorder,
+// 1 underkorde, 20 stag hver); Geithus, Norsjø, Valle og Arendal 0 — riktig.
+export const PLAN_TOL_M = 0.15, FV_MIN_H_M = 0.3, FV_MAKS_H_M = 4, FV_MIN_STAG = 4, FV_SKRA = 0.17;
+const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const len3 = (v) => Math.hypot(v[0], v[1], v[2]);
+
+// elementer: { id, del, profil, a: [x, y, z], b: [x, y, z] (meter, y opp), bMm, kgPerM }
+// Svar: [{ ider: [id …], staver: [{ e, u0, v0, u1, v1 }], u0, u1, lo, hi }]
+export function finnFagverk(elementer) {
+  const bj = (elementer || []).filter(e => e && e.del === "bjelke" && e.a && e.b);
+  for (const e of bj) { const d = sub(e.b, e.a), l = len3(d); e._l = l; e._skra = l > 0 ? Math.abs(d[1]) / l : 0; }
+  const brukt = new Set(), ut = [];
+  const zMidt = (e) => (e.a[1] + e.b[1]) / 2;
+  const kandidater = bj.filter(e => e._skra < FV_SKRA && e._l > 3).sort((p, q) => q._l - p._l);
+  for (const k of kandidater) {
+    if (brukt.has(k.id)) continue;
+    const dx = k.b[0] - k.a[0], dz = k.b[2] - k.a[2], dl = Math.hypot(dx, dz);
+    if (!(dl > 0)) continue;
+    const d = [dx / dl, dz / dl], n = [-d[1], d[0]], off = k.a[0] * n[0] + k.a[2] * n[1];
+    const iPlan = (p) => Math.abs(p[0] * n[0] + p[2] * n[1] - off) < PLAN_TOL_M;
+    const u = (p) => p[0] * d[0] + p[2] * d[1];
+    const plan = bj.filter(e => !brukt.has(e.id) && iPlan(e.a) && iPlan(e.b));
+    const vannrett = plan.filter(e => e._skra < FV_SKRA && e._l > 1.5);
+    const nivaa = [...new Set(vannrett.map(e => Math.round(zMidt(e) * 10) / 10))].sort((p, q) => p - q);
+    let best = null;
+    for (let i = 0; i < nivaa.length; i++) for (let j = i + 1; j < nivaa.length; j++) {
+      const lo = nivaa[i], hi = nivaa[j];
+      if (hi - lo < FV_MIN_H_M || hi - lo > FV_MAKS_H_M) continue;
+      const lav = vannrett.filter(e => Math.abs(zMidt(e) - lo) < 0.15), hoy = vannrett.filter(e => Math.abs(zMidt(e) - hi) < 0.15);
+      const spenn = (L) => [Math.min(...L.map(e => Math.min(u(e.a), u(e.b)))), Math.max(...L.map(e => Math.max(u(e.a), u(e.b))))];
+      const [a0, a1] = spenn(lav), [b0, b1] = spenn(hoy);
+      if (Math.min(a1, b1) - Math.max(a0, b0) < 0.6 * Math.max(a1 - a0, b1 - b0)) continue;
+      const s0 = Math.min(a0, b0), s1 = Math.max(a1, b1);
+      const stag = plan.filter(e => e._skra >= FV_SKRA && Math.min(e.a[1], e.b[1]) >= lo - 0.3 && Math.max(e.a[1], e.b[1]) <= hi + 0.3 &&
+        Math.min(u(e.a), u(e.b)) >= s0 - 0.3 && Math.max(u(e.a), u(e.b)) <= s1 + 0.3);
+      if (stag.length < FV_MIN_STAG) continue;
+      const t0 = Math.min(...stag.map(e => Math.min(u(e.a), u(e.b)))) - 0.6, t1 = Math.max(...stag.map(e => Math.max(u(e.a), u(e.b)))) + 0.6;
+      const inn = (e) => Math.min(Math.max(u(e.a), u(e.b)), t1) - Math.max(Math.min(u(e.a), u(e.b)), t0) >= 0.5 * e._l;
+      const lav2 = lav.filter(inn), hoy2 = hoy.filter(inn);
+      if (!lav2.length || !hoy2.length) continue;
+      if (!best || stag.length > best.stag.length) best = { lav: lav2, hoy: hoy2, stag, lo, hi };
+    }
+    if (!best) continue;
+    const alle = best.lav.concat(best.hoy, best.stag);
+    if (alle.some(e => brukt.has(e.id))) continue;
+    alle.forEach(e => brukt.add(e.id));
+    const U = best.lav.concat(best.hoy).flatMap(e => [u(e.a), u(e.b)]);
+    const u0 = Math.min(...U), u1 = Math.max(...U);
+    // stavene i fagverkets eget plan: u langs spennet fra u0, v opp fra underkorda
+    const vBunn = Math.min(...best.lav.flatMap(e => [e.a[1], e.b[1]]));
+    const staver = alle.map(e => ({ e, u0: u(e.a) - u0, v0: e.a[1] - vBunn, u1: u(e.b) - u0, v1: e.b[1] - vBunn }));
+    ut.push({ ider: alle.map(e => e.id), staver, spenn: u1 - u0, lo: best.lo, hi: best.hi });
+  }
+  for (const e of bj) { delete e._l; delete e._skra; }
+  return ut;
+}
+
+// Ett fagverk → to halvdeler, delt MIDT PÅ spennet. En stav som krysser
+// midten kuttes der (korden blir to stykker). Halvdel 2 speiles, så begge
+// halvdelene beskrives fra den ytre enden — da er de LIKE når fagverket er
+// symmetrisk, og havner i samme bunke.
+// Svar: [{ staver: [[u0, v0, u1, v1, bMm, profil]], lengdeMm, hoydeMm, tykkMm, kg }] (mm)
+export function delFagverk(fv) {
+  const midt = fv.spenn / 2;
+  const halv = [[], []];
+  for (const s of fv.staver) {
+    let a = [s.u0, s.v0], b = [s.u1, s.v1];
+    if (a[0] > b[0]) [a, b] = [b, a];
+    const leggTil = (h, p, q) => { if (Math.hypot(q[0] - p[0], q[1] - p[1]) > 0.02) halv[h].push([p, q, s.e]); };
+    if (b[0] <= midt + 1e-6) leggTil(0, a, b);
+    else if (a[0] >= midt - 1e-6) leggTil(1, a, b);
+    else { const t = (midt - a[0]) / (b[0] - a[0]), m = [midt, a[1] + (b[1] - a[1]) * t]; leggTil(0, a, m); leggTil(1, m, b); }
+  }
+  return halv.map((liste, h) => {
+    const mm = (x) => Math.round(x * 1000);
+    const staver = liste.map(([p, q, e]) => {
+      let u0 = p[0], u1 = q[0];
+      if (h === 1) { u0 = fv.spenn - u0; u1 = fv.spenn - u1; }
+      const [ua, va, ub, vb] = u0 <= u1 ? [u0, p[1], u1, q[1]] : [u1, q[1], u0, p[1]];
+      return [mm(ua), mm(va), mm(ub), mm(vb), Math.round(Number(e.bMm) || 100), String(e.profil || "")];
+    }).sort((x, y) => x[0] - y[0] || x[1] - y[1] || x[2] - y[2]);
+    const kg = liste.reduce((sum, [p, q, e]) => sum + (Number(e.kgPerM) || 0) * Math.hypot(q[0] - p[0], q[1] - p[1]), 0);
+    const vs = staver.flatMap(s => [s[1], s[3]]);
+    return { staver, lengdeMm: mm(midt), hoydeMm: Math.max(...vs) - Math.min(0, ...vs), tykkMm: Math.max(...staver.map(s => s[4])), kg: Math.round(kg * 10) / 10,
+      utenVekt: liste.some(([, , e]) => !(Number(e.kgPerM) > 0)) };
+  });
+}
+
+// Halvdelene → bunker. Like halvdeler (samme staver innenfor 20 mm, samme
+// profiler) ligger i samme bunke — signaturen er stavene selv, ikke navnet.
+export const FV_SIGNATUR_MM = 20;
+export function fagverkSignatur(h) {
+  const r = (x) => Math.round(x / FV_SIGNATUR_MM);
+  return r(h.lengdeMm) + "x" + r(h.hoydeMm) + ":" + h.staver.map(s => [r(s[0]), r(s[1]), r(s[2]), r(s[3]), s[5]].join(",")).join(";");
+}
+// Nøkkelen en flyttet bunke huskes på: mål, antall staver og profilene.
+export function fagverkNokkel(lengdeMm, hoydeMm, antallStaver, staver) {
+  const prof = [...new Set((staver || []).map(s => s[5]))].sort().join("+");
+  return "fagverk|" + lengdeMm + "|" + hoydeMm + "|" + antallStaver + "|" + prof;
+}
+// Profilene i en halvdel, kordene (de lengste) først — til navn og mengdeliste.
+export function fagverkProfiler(staver) {
+  const lengde = new Map();
+  for (const s of staver || []) lengde.set(s[5], (lengde.get(s[5]) || 0) + Math.hypot(s[2] - s[0], s[3] - s[1]));
+  return [...lengde.entries()].sort((a, b) => b[1] - a[1]).map(([p]) => p);
+}
+// To halvdeler er LIKE når de har like mange staver av hver profil, og hver
+// stav i den ene har en stav av samme profil i den andre innenfor
+// FV_LIK_TOL_MM i begge ender. Toleranse og ikke avrunding: en avrunding til
+// 20 mm satte ett av fem like fagverk i egen bunke fordi ett tall lå på
+// grensen (nettleserprøven 01.10).
+export const FV_LIK_TOL_MM = 40;
+export function likeHalvdeler(h1, h2) {
+  if (h1.staver.length !== h2.staver.length || Math.abs(h1.lengdeMm - h2.lengdeMm) > FV_LIK_TOL_MM || Math.abs(h1.hoydeMm - h2.hoydeMm) > FV_LIK_TOL_MM) return false;
+  const brukt = new Set();
+  const naer = (s, q) => Math.max(Math.abs(s[0] - q[0]), Math.abs(s[1] - q[1]), Math.abs(s[2] - q[2]), Math.abs(s[3] - q[3])) <= FV_LIK_TOL_MM;
+  for (const s of h1.staver) {
+    const j = h2.staver.findIndex((q, k) => !brukt.has(k) && q[5] === s[5] && naer(s, q));
+    if (j < 0) return false;
+    brukt.add(j);
+  }
+  return true;
+}
+export function grupperFagverk(fagverk) {
+  const m = new Map();
+  for (const fv of fagverk || []) for (const h of delFagverk(fv)) {
+    let sig = null;
+    for (const [k, g] of m) if (likeHalvdeler(g.halv, h)) { sig = k; break; }
+    if (!sig) sig = fagverkSignatur(h) + "#" + m.size;
+    if (!m.has(sig)) m.set(sig, { nokkel: fagverkNokkel(rundLengde(h.lengdeMm), rundLengde(h.hoydeMm), h.staver.length, h.staver), sig, del: "fagverk",
+      profil: "Fagverk", lengdeMm: rundLengde(h.lengdeMm), hoydeMm: rundLengde(h.hoydeMm), tykkMm: h.tykkMm, staver: h.staver,
+      kgHalv: h.utenVekt ? 0 : h.kg, antall: 0, halv: h, snitt: { form: "fagverk", b: h.hoydeMm, h: h.tykkMm, t: 0 } });
+    m.get(sig).antall++;
+  }
+  return [...m.values()].sort((a, b) => b.lengdeMm - a.lengdeMm);
+}
+
+// Stablingen: FV_PER_STABEL halvdeler flatt oppå hverandre med strøer
+// imellom (FV_STRO_MM — tykkere enn under løse profiler, fagverket er tungt
+// og spriker), så en ny stabel ved siden av med FV_MELLOM_MM luft.
+export const FV_PER_STABEL = 5, FV_STRO_MM = 100, FV_MELLOM_MM = 500;
+export function fagverkOffset(antall, hoydeMm, tykkMm, i) {
+  const stabler = Math.max(1, Math.ceil((Number(antall) || 1) / FV_PER_STABEL)), st = Math.floor(i / FV_PER_STABEL), lag = i % FV_PER_STABEL;
+  return [FV_STRO_MM + lag * (tykkMm + FV_STRO_MM), (st - (stabler - 1) / 2) * (hoydeMm + FV_MELLOM_MM)];
+}
+export function fagverkBunkeDybde(antall, hoydeMm) {
+  const stabler = Math.max(1, Math.ceil((Number(antall) || 1) / FV_PER_STABEL));
+  return stabler * hoydeMm + (stabler - 1) * FV_MELLOM_MM;
 }

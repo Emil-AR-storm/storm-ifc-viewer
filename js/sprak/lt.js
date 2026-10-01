@@ -2016,5 +2016,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Lag stålbunker på nytt": "Sukurti plieno rietuves iš naujo",
   "Stålprofil": "Plieno profilis",
   "Stålbunker laget": "Plieno rietuvės sukurtos",
-  "Stålbunker fjernet": "Plieno rietuvės pašalintos"
+  "Stålbunker fjernet": "Plieno rietuvės pašalintos",
+  "Fagverk halvdel": "Santvaros pusė",
+  "Fagverk kjennes igjen av seg selv (to korder med stag imellom) og legges som halvdeler, delt midt på, flatt på strøer.": "Santvaros atpažįstamos automatiškai (dvi juostos su statramsčiais tarp jų) ir dedamos kaip pusės, padalytos per vidurį, gulsčios ant tarpinių."
 };

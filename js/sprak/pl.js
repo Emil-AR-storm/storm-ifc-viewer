@@ -2016,5 +2016,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Lag stålbunker på nytt": "Utwórz stosy stali ponownie",
   "Stålprofil": "Profil stalowy",
   "Stålbunker laget": "Utworzono stosy stali",
-  "Stålbunker fjernet": "Usunięto stosy stali"
+  "Stålbunker fjernet": "Usunięto stosy stali",
+  "Fagverk halvdel": "Połowa kratownicy",
+  "Fagverk kjennes igjen av seg selv (to korder med stag imellom) og legges som halvdeler, delt midt på, flatt på strøer.": "Kratownice są rozpoznawane automatycznie (dwa pasy ze skratowaniem pomiędzy) i układane jako połowy, podzielone w środku, płasko na przekładkach."
 };

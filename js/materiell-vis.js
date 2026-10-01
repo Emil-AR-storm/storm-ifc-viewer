@@ -18,7 +18,7 @@ import { $, EKSTRA_LAG, S, apnePanel, esc, ikon, registrerEkstraGruppe } from ".
 import { t } from "./i18n.js";
 import { LETT } from "./lett.js";
 import { camera, canvas, flyTil, frameHooks, makeLabel, raycaster, scene, skalerLapperMedTak } from "./scene.js";
-import { STRO_MM, perLag, stalBunkeDybde, stalOffset } from "./stalbunker-regn.js";
+import { FV_PER_STABEL, FV_STRO_MM, STRO_MM, fagverkBunkeDybde, fagverkOffset, perLag, stalBunkeDybde, stalOffset } from "./stalbunker-regn.js";
 
 // ---------- Objektmalene ----------
 // Alle mål i MILLIMETER i lagret form; regnes om til sceneenheter ved bygging.
@@ -79,6 +79,18 @@ export const MALTYPER = {
     stabling: STRO_MM,
     standard: { lengde: 6000, bredde: 100, tykkelse: 200, farge: "#6f7b85" }
   },
+  // 🔺 FAGVERKHALVDEL (Emil 01.10): et fagverk fra modellen, delt midt på og
+  // levert nesten ferdig sammensatt. `staver` er [u0, v0, u1, v1, bMm, profil]
+  // i mm i fagverkets eget plan; `lengde` er halvdelens lengde, `bredde` dens
+  // høyde (ligger flatt — høyden blir bredden i bunken) og `tykkelse` den
+  // tykkeste staven. Lages bare av stalbunker.js.
+  fagverk: {
+    label: "Fagverk halvdel",
+    fast: false, generert: true,
+    tykkelse: 220,
+    stabling: FV_STRO_MM,
+    standard: { lengde: 9000, bredde: 1800, tykkelse: 220, farge: "#6f7b85" }
+  },
   kassett: {
     label: "Kassett forskaling",
     fast: true,                  // fast mål: 600 mm × 3000 mm
@@ -92,6 +104,7 @@ export const MALTYPER = {
 
 export const MATERIELL_MAKS_ANTALL = 500;
 export const STAL_FORMER = ["I", "RHS", "CHS", "U", "L", "T", "rekt"];
+export const FV_MAKS_STAVER = 200;
 
 // 🩻 Armering: de to underkategoriene. Ø-dimensjonene er stangdiameter i mm
 // (Ø12 = 12 mm tykk stang) — bare de handelsvanlige dimensjonene godtas.
@@ -125,6 +138,7 @@ export function materiellTypeLabel(p) {
   if (p.maltype === "beslag")
     return t((BESLAG_TYPER[p.beslagType] || BESLAG_TYPER.l).label);
   if (p.maltype === "stal") return t(p.del === "soyle" ? "Søyle" : "Bjelke") + " " + (p.profil || "");
+  if (p.maltype === "fagverk") return t("Fagverk halvdel");
   return t(MALTYPER[p.maltype].label);
 }
 
@@ -183,6 +197,19 @@ export function vaskMateriell(p) {
     ut.del = p.del === "soyle" ? "soyle" : "bjelke";
     ut.form = STAL_FORMER.includes(p.form) ? p.form : "rekt";
     ut.godstykkelse = Math.max(0, Math.min(200, Number(p.godstykkelse) || 0));
+  }
+  if (p.maltype === "fagverk") {
+    ut.bredde = tall(p.bredde, 100, 6000, mal.standard.bredde);
+    ut.tykkelse = tall(p.tykkelse, 10, 1000, mal.standard.tykkelse);
+    // Stavene: bare tall innenfor halvdelen, og maks FV_MAKS_STAVER
+    ut.staver = (Array.isArray(p.staver) ? p.staver : []).slice(0, FV_MAKS_STAVER).map(q => {
+      if (!Array.isArray(q)) return null;
+      const n = q.slice(0, 5).map(Number);
+      if (!n.every(Number.isFinite) || n.slice(0, 4).some(x => Math.abs(x) > 40000)) return null;
+      return [n[0], n[1], n[2], n[3], Math.max(10, Math.min(1000, n[4])), String(q[5] || "").slice(0, 40)];
+    }).filter(Boolean);
+    ut.kgHalv = Math.max(0, Number(p.kgHalv) || 0);
+    if (!ut.staver.length) return null;
   }
   if (p.maltype === "armering") {
     ut.armType = ARM_TYPER[p.armType] ? p.armType : "nett";
@@ -354,7 +381,7 @@ export function materiellMengdeRader() {
     // 🔩 Stålbunkene er stålet I MODELLEN, pakket om. Det står allerede i
     // Mengder (fra IFC-en) — telles det her også, bestilles det to ganger.
     // Mengdelista for bunkene ligger i Materiell-panelet.
-    if (p.maltype === "stal") continue;
+    if (p.maltype === "stal" || p.maltype === "fagverk") continue;
     const label = materiellTypeLabel(p);
     const L = p.lengde / 1000, B = p.bredde / 1000, H = p.tykkelse / 1000;
     const key = (p.navn || label) + " · " + label;
@@ -622,6 +649,20 @@ function stalStroer(gruppe, p) {
   }
 }
 
+// Strøene under hver halvdel i fagverkbunken: tre på tvers, i hver stabel.
+function fagverkStroer(gruppe, p) {
+  const stabler = Math.ceil(p.antall / FV_PER_STABEL);
+  for (let st = 0; st < stabler; st++) {
+    const iSt = Math.min(FV_PER_STABEL, p.antall - st * FV_PER_STABEL);
+    const [, side] = fagverkOffset(p.antall, p.bredde, p.tykkelse, st * FV_PER_STABEL);
+    for (let l = 0; l < iSt; l++) for (const f of [-0.4, 0, 0.4]) {
+      const s = boks(FV_STRO_MM, FV_STRO_MM, p.bredde + 200, "#a0784a");
+      s.position.set(mmTilScene(f * p.lengde), mmTilScene(l * (p.tykkelse + FV_STRO_MM) + FV_STRO_MM / 2), mmTilScene(side));
+      gruppe.add(s);
+    }
+  }
+}
+
 function byggEnhet(p) {
   const g = new THREE.Group();
   const mal = MALTYPER[p.maltype];
@@ -651,6 +692,19 @@ function byggEnhet(p) {
       g.add(stang3D(a, b, p.diameter, p.farge));
   } else if (p.maltype === "stal") {
     g.add(stalMesh(p));
+  } else if (p.maltype === "fagverk") {
+    // Liggende halvdel: u langs lengden (x), v på tvers (z), staven så tykk
+    // som profilet er bredt. Midt i (0, 0) som de andre enhetene.
+    for (const [u0, v0, u1, v1, b] of p.staver) {
+      const a = new THREE.Vector3(mmTilScene(u0 - p.lengde / 2), mmTilScene(b / 2), mmTilScene(v0 - p.bredde / 2));
+      const c = new THREE.Vector3(mmTilScene(u1 - p.lengde / 2), mmTilScene(b / 2), mmTilScene(v1 - p.bredde / 2));
+      const v = new THREE.Vector3().subVectors(c, a), l = v.length();
+      if (!(l > 0)) continue;
+      const m = new THREE.Mesh(new THREE.BoxGeometry(mmTilScene(b), mmTilScene(b), l), lambert(p.farge));
+      m.position.copy(a).addScaledVector(v, 0.5);
+      m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), v.normalize());
+      g.add(m);
+    }
   } else if (p.maltype === "kassett") {
     // ligger med plankesiden ned: planker 98 mm + plate 21 mm øverst
     const plankeH = 98, plateH = 21;
@@ -685,7 +739,7 @@ export const MAKS_DETALJLAG = 50;
 export function lagTykkelseMm(maltype, tykkelseMm) {
   const mal = MALTYPER[maltype];
   if (!mal) return 0;
-  return (maltype === "sandwich" || maltype === "armering" || maltype === "stal")
+  return (maltype === "sandwich" || maltype === "armering" || maltype === "stal" || maltype === "fagverk")
     ? (Number(tykkelseMm) || mal.tykkelse) + mal.stabling
     : mal.stabling;
 }
@@ -704,6 +758,7 @@ export const BUNKE_KLARING = 50;   // mm luft mellom to bunker
 // «Sideveis» er på tvers av lengderetningen (z før rotasjon).
 export function stabelOffset(p, i) {
   if (p.maltype === "stal") return stalOffset(p.antall, p.bredde, p.tykkelse, i);
+  if (p.maltype === "fagverk") return fagverkOffset(p.antall, p.bredde, p.tykkelse, i);
   const lag = lagTykkelseMm(p.maltype, p.tykkelse);
   if (p.maltype === "trp") return [i * lag, 0];
   if (p.maltype === "armering" && p.armType === "stang") {
@@ -721,6 +776,7 @@ export function stabelOffset(p, i) {
 // (lengde 800 > bredde 200) og U-bøylene langt fra hverandre.
 export function bunkeDybdeMm(p) {
   if (p.maltype === "stal") return stalBunkeDybde(p.antall, p.bredde);
+  if (p.maltype === "fagverk") return fagverkBunkeDybde(p.antall, p.bredde);
   if (p.maltype === "armering" && (p.armType === "ubojle" || p.armType === "ukrok"))
     return p.lengde;
   // Hatprofilen er bredere enn `bredde`: flensene stikker ut på begge sider.
@@ -740,7 +796,7 @@ export function byggMateriellObjekt(p) {
   const gruppe = new THREE.Group();
   // Stål tegnes alltid profil for profil (som stengene): en bunke er sjelden
   // mer enn 50, og en sokkelboks ville skjult hvilket profil det er.
-  const stang = (p.maltype === "armering" && p.armType === "stang") || p.maltype === "stal";
+  const stang = (p.maltype === "armering" && p.armType === "stang") || p.maltype === "stal" || p.maltype === "fagverk";
   const lag = lagTykkelseMm(p.maltype, p.tykkelse);
   let toppUnderkantMm = 0;
   if (stang || p.antall <= MAKS_DETALJLAG) {
@@ -775,6 +831,7 @@ export function byggMateriellObjekt(p) {
   }
   const sokkelMm = toppUnderkantMm;   // navnelappen står over øverste enhet
   if (p.maltype === "stal") stalStroer(gruppe, p);
+  if (p.maltype === "fagverk") fagverkStroer(gruppe, p);
 
   // Navnelappen — samme utseende som aksesystemets etiketter, i objektets
   // farge, med antallet når det er en stabel.
