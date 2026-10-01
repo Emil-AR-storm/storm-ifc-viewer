@@ -1,6 +1,7 @@
 // «Byggeplass-lenke»: bygger en lett kopi og laster den opp til Storms
 // Cloudflare-lager (R2) gjennom Workeren. Importeres BARE fra main.js –
 // bygg.html (lettmodus) laster aldri denne fila.
+import { hentQRCode } from "./qr.js";
 import { $, S, esc, loadingEl, loadingText } from "./state.js";
 import { t } from "./i18n.js";
 import { byggLettKopi, lettNavn, lettParametre } from "./lite.js";
@@ -543,22 +544,8 @@ async function lastOppTegninger(prosjekt, token) {
 // Koden er IKKE i QR-en — montøren skal skrive den selv. Last ned som PNG
 // og lim inn i en arbeidstegning eller heng på brakkeveggen.
 async function visQr(prosjekt, fil, antall, antMark, antBilder, antInn, antTegninger, uendret, antGrupper) {
-  if (!window.QRCode) {
-    await new Promise((res, rej) => {
-      const s = document.createElement("script");
-      // Flyttet fra cdnjs til jsDelivr. Samme bibliotek (davidshimjs/qrcodejs
-      // 1.0.0), men jsDelivr serverer npm-pakken uendret – og da kan hashen
-      // regnes ut fra npm og verifiseres. cdnjs har ingen slik kilde vi kan
-      // sjekke mot. Det gir dessuten én CDN mindre å stole på.
-      //   npm pack qrcodejs@1.0.0 && tar xf *.tgz
-      //   openssl dgst -sha384 -binary package/qrcode.min.js | openssl base64 -A
-      s.src = "https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js";
-      s.integrity = "sha384-3zSEDfvllQohrq0PHL1fOXJuC/jSOO34H46t6UQfobFOmxE5BpjjaIJY5F2/bMnU";
-      s.crossOrigin = "anonymous";
-      s.onload = res; s.onerror = () => rej(new Error("Fikk ikke lastet QR-biblioteket"));
-      document.head.appendChild(s);
-    });
-  }
+  // Biblioteket hentes av js/qr.js (samme fil og hash som før, nå på ett sted)
+  await hentQRCode();
   const adresse = TJENESTER.worker + "/" + prosjekt;
   const bak = document.createElement("div");
   bak.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:99;display:flex;align-items:center;justify-content:center";

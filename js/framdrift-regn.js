@@ -265,3 +265,35 @@ export function trinnTittel(e, ordTrinn) {
   if (!navn || navn === ord + " " + e.nr) return ord + " " + e.nr;
   return ord + " " + e.nr + " · " + navn;
 }
+
+// ═══════════════════════ VIDEOEN (trinn 5) ═══════════════════════
+// 1280 × 720 i 30 bilder/s, tegnet 1,5 ganger større og skalert ned (skarpere
+// kanter). Hvert trinn får like lang tid — datoene står i teksten, men et
+// trinn på én dag skal ikke blinke forbi mens et på tre uker tar et minutt.
+export const VIDEO = { b: 1280, h: 720, fps: 30, overSampling: 1.5, bitrate: 6e6, avstand: 1.6, intro: 1, perTrinn: 3, outro: 2.5 };
+export function videoFilnavn(modell, iso, ext) {
+  return framdriftFilnavn(modell, iso).replace(/\.pdf$/, "." + (ext || "mp4"));
+}
+// Tidsplanen: hvilket bilde viser hva. `liste` = trinnene med innhold (pdfTrinn).
+export function videoPlan(liste, V) {
+  const o = Object.assign({}, VIDEO, V || {});
+  const n = (liste || []).length;
+  const sek = o.intro + n * o.perTrinn + o.outro;
+  const bilder = Math.max(1, Math.round(sek * o.fps));
+  const indeks = new Map((liste || []).map((e, i) => [e.id, i]));
+  const tid = (f) => f / o.fps;
+  const andel = (e, f) => {
+    const i = indeks.has(e.id) ? indeks.get(e.id) : -1;
+    if (i < 0) return 1;
+    return Math.max(0, Math.min(1, (tid(f) - o.intro - i * o.perTrinn) / o.perTrinn));
+  };
+  const trinnVed = (f) => {
+    if (!n) return null;
+    const x = tid(f) - o.intro;
+    if (x < 0) return null;
+    return liste[Math.min(n - 1, Math.floor(x / o.perTrinn))];
+  };
+  // Én hel runde: rolig inn og ut, så første og siste bilde står nesten stille
+  const vinkel = (f) => { const u = f / bilder; return 2 * Math.PI * (u - Math.sin(2 * Math.PI * u) / (2 * Math.PI) * 0.15); };
+  return { bilder, sekunder: sek, andel, trinnVed, vinkel, fps: o.fps };
+}

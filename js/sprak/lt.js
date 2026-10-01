@@ -2082,5 +2082,16 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "… og {0} til": "… ir dar {0}",
   "Laget av: {0}": "Sudarė: {0}",
   "Farget: nytt i trinn {0} · Vanlige farger: utført i tidligere trinn": "Spalvota: nauja žingsnyje {0} · Įprastos spalvos: atlikta ankstesniuose žingsniuose",
-  "Én side per trinn: bygget sett fra nord, sør, øst og vest, og det som er nytt i trinnet": "Vienas puslapis žingsniui: pastatas iš šiaurės, pietų, rytų ir vakarų bei tai, kas nauja žingsnyje"
+  "Én side per trinn: bygget sett fra nord, sør, øst og vest, og det som er nytt i trinnet": "Vienas puslapis žingsniui: pastatas iš šiaurės, pietų, rytų ir vakarų bei tai, kas nauja žingsnyje",
+  "Se videoen av hele framdriften": "Žiūrėkite viso grafiko vaizdo įrašą",
+  "Skann med mobilen (SharePoint, Storm-innlogging)": "Nuskenuokite telefonu (SharePoint, Storm prisijungimas)",
+  "Lager video …": "Kuriamas vaizdo įrašas …",
+  "Lager video … {0} %": "Kuriamas vaizdo įrašas … {0} %",
+  "Nettleseren kan ikke lage video.": "Naršyklė negali sukurti vaizdo įrašo.",
+  "Lagrer videoen i SharePoint …": "Vaizdo įrašas išsaugomas SharePoint …",
+  "Klarte ikke å lage videoen: {0}": "Nepavyko sukurti vaizdo įrašo: {0}",
+  "Kameraet går én gang rundt bygget mens trinnene bygges opp. Lagres i SharePoint, så PDF-en får en QR-kode til videoen.": "Kamera vieną kartą apsuka pastatą, kol statomi žingsniai. Išsaugoma SharePoint, kad PDF gautų QR kodą į vaizdo įrašą.",
+  "Lag video": "Kurti vaizdo įrašą",
+  "Videoen er lastet ned og lagret i SharePoint. PDF-en får nå en QR-kode til den.": "Vaizdo įrašas atsisiųstas ir išsaugotas SharePoint. PDF dabar gaus QR kodą į jį.",
+  "Videoen er lastet ned. Logg inn (den røde prikken øverst til høyre) og lag den på nytt for å lagre den i SharePoint — da får PDF-en en QR-kode til den.": "Vaizdo įrašas atsisiųstas. Prisijunkite (raudonas taškas viršuje dešinėje) ir sukurkite jį iš naujo, kad išsaugotumėte SharePoint — tada PDF gaus QR kodą."
 };

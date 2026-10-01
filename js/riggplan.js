@@ -383,11 +383,14 @@ const TONER = { agx: THREE.AgXToneMapping, aces: THREE.ACESFilmicToneMapping, in
 
 // (1)+(3) Rendring med etterbehandling: scenen → ambient occlusion →
 // fargekurve og sRGB (OutputPass) → et vanlig 8-bits bilde vi kan lese ut.
-// W × H er den STORE størrelsen (med oversampling).
-function renderMedEtterbehandling(E, kam, W, H, skala) {
+// W × H er den STORE størrelsen (med oversampling). Røret lages én gang per
+// bildeøkt og brukes på hvert bilde i den (videoen tegner hundrevis).
+function lagRor(E, kam0, W, H, skala) {
   const P = RIGGPLAN_BILDE;
   const deler = [];
-  const gammelTone = renderer.toneMapping, gammelEks = renderer.toneMappingExposure;
+  // Ett kamera for hele økta: bildene kopierer sitt kamera inn i dette, så
+  // AO-passet og RenderPass alltid ser samme objekt.
+  const kam = kam0.clone();
   try {
     const rt = new THREE.WebGLRenderTarget(W, H, { type: THREE.HalfFloatType });
     deler.push(rt);
@@ -410,24 +413,43 @@ function renderMedEtterbehandling(E, kam, W, H, skala) {
     ao.updateGtaoMaterial({ radius: P.aoRadiusM / (skala || 1), thickness: P.aoTykkelseM / (skala || 1), distanceExponent: 1, scale: P.aoSkala, samples: 16 });
     ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 16 });
     ao.blendIntensity = P.aoStyrke;
+    // 🐞 Himmelen (en tekstur som bakgrunn) tegnes av three som en flate på
+    // 2 × 2 enheter i origo. Når AO-passet tegner normaler med sitt eget
+    // materiale, kommer den flata med som et ekte objekt — og ble en svart
+    // firkant midt i tomta (Emils «plate som ikke finnes», 01.10). Bakgrunnen
+    // tas bort mens AO-passet tegner sine hjelpebilder.
+    const egen = ao.renderOverride.bind(ao);
+    ao.renderOverride = (...a) => { const bg = scene.background; scene.background = null; try { return egen(...a); } finally { scene.background = bg; } };
     komp.addPass(ao);
     deler.push(ao);
-    komp.render();
-    // Fargekurven og sRGB til et 8-bits mål: OutputPass gjør begge i
-    // skyggeleggeren, også når målet ikke er skjermen.
-    renderer.toneMapping = TONER[P.tone] != null ? TONER[P.tone] : THREE.AgXToneMapping;
-    renderer.toneMappingExposure = P.eksponering;
     const ut = new E.OutputPass();
     deler.push(ut);
     const mål = new THREE.WebGLRenderTarget(W, H);
     deler.push(mål);
-    ut.render(renderer, mål, komp.readBuffer);
     const px = new Uint8Array(W * H * 4);
-    renderer.readRenderTargetPixels(mål, 0, 0, W, H, px);
-    return px;
-  } finally {
-    renderer.toneMapping = gammelTone; renderer.toneMappingExposure = gammelEks;
+    return {
+      render(k) {
+        kam.position.copy(k.position); kam.quaternion.copy(k.quaternion);
+        kam.fov = k.fov; kam.aspect = k.aspect; kam.near = k.near; kam.far = k.far;
+        if (k.isOrthographicCamera) { kam.left = k.left; kam.right = k.right; kam.top = k.top; kam.bottom = k.bottom; }
+        kam.updateProjectionMatrix(); kam.updateMatrixWorld(true);
+        const gammelTone = renderer.toneMapping, gammelEks = renderer.toneMappingExposure;
+        try {
+          komp.render();
+          // Fargekurven og sRGB til et 8-bits mål: OutputPass gjør begge i
+          // skyggeleggeren, også når målet ikke er skjermen.
+          renderer.toneMapping = TONER[P.tone] != null ? TONER[P.tone] : THREE.AgXToneMapping;
+          renderer.toneMappingExposure = P.eksponering;
+          ut.render(renderer, mål, komp.readBuffer);
+          renderer.readRenderTargetPixels(mål, 0, 0, W, H, px);
+          return px;
+        } finally { renderer.toneMapping = gammelTone; renderer.toneMappingExposure = gammelEks; }
+      },
+      dispose() { for (const d of deler) { try { d.dispose(); } catch (_) {} } }
+    };
+  } catch (err) {
     for (const d of deler) { try { d.dispose(); } catch (_) {} }
+    throw err;
   }
 }
 
@@ -450,39 +472,13 @@ function renderEnkel(kam, W, H) {
 function tegnMedKamera(kam, pxB, pxH, oppsett) {
   const v = oppsett || {};
   const P = RIGGPLAN_BILDE;
-  // Alt som hører skjermen til, skjules for bildet: navnelapper (sprites),
-  // skjøteprikker og håndtak. Settes tilbake i finally, uansett hva som skjer.
-  const skjult = [];
-  scene.traverse(o => {
-    if (o.visible && (o.isSprite || o.name === "rigg-skjoter" || o.userData.sektorHandtak)) { skjult.push(o); o.visible = false; }
-  });
-  // 🏗 Kranens stiplede sirkel er hvit — den synes på skjermen, men ikke på
-  // lyst papir og lyst terreng. I PDF-bildene blir den mørk grå.
-  const stiplet = [];
-  scene.traverse(o => { if (o.isMesh && o.userData.kranStiplet && o.material && o.material.color) { stiplet.push([o, o.material.color.getHex()]); o.material.color.setHex(KRAN_STIPLET_PDF); } });
-  const gammelBg = scene.background;
-  const gammeltRutenett = grid.visible;
-  const gammelt = renderer.getRenderTarget();
-  const gammelTaake = scene.fog;
   // (4) Oversampling: størst mulig opp til taket, aldri under 1
   const maks = Math.min(P.maksPx, (renderer.capabilities && renderer.capabilities.maxTextureSize) || 4096);
   const ss = Math.max(1, Math.min(P.overSampling, maks / Math.max(pxB, pxH)));
   const W = Math.round(pxB * ss), H = Math.round(pxH * ss);
-  let rydd = null, ryddPynt = null;
+  const okt = bildeOkt(v, W, H);
   try {
-    scene.background = v.himmel ? himmel() : new THREE.Color(0xffffff);
-    grid.visible = false;
-    if (S.outlineOpplosning) S.outlineOpplosning(W, H);
-    // Går skyggene galt (et gammelt grafikkort), kommer bildet uten dem —
-    // riggplanen skal komme uansett.
-    if (v.skygge) { try { rydd = medSkygger(v.skygge); } catch (err) { console.warn("Riggplan: uten skygger:", err && err.message); rydd = null; } }
-    try { ryddPynt = leggPynt(!!v.kontur); } catch (err) { console.warn("Riggplan: uten pynt:", err && err.message); ryddPynt = null; }
-    // 🌫 Dis i skråbildene: det som er langt unna blir lysere, som i
-    // virkeligheten — gir dybde, og kanten av terrenget glir ut i disen.
-    if (v.taake) scene.fog = new THREE.Fog(v.himmel ? P.disFarge : 0xffffff, v.taake[0], v.taake[1]);
-    let px = null;
-    if (etter) { try { px = renderMedEtterbehandling(etter, kam, W, H, v.skygge && v.skygge.skala); } catch (err) { console.warn("Riggplan: etterbehandlingen feilet, tegner enkelt:", err && err.message); px = null; } }
-    if (!px) px = renderEnkel(kam, W, H);
+    const px = okt.tegn(kam);
     // Stort bilde (radene snudd: WebGL leser nedenfra) → skalert ned
     const stor = document.createElement("canvas");
     stor.width = W; stor.height = H;
@@ -499,7 +495,35 @@ function tegnMedKamera(kam, pxB, pxH, oppsett) {
       ctx.drawImage(stor, 0, 0, pxB, pxH);
     }
     return c.toDataURL("image/jpeg", v.kvalitet || 0.92);
-  } finally {
+  } finally { okt.slutt(); }
+}
+
+// 🎞 En «bildeøkt»: oppsettet (bakgrunn, skygger, pynt, dis, skjulte lapper)
+// gjøres ÉN gang, så kan mange bilder tegnes med samme oppsett — det
+// framdriftsvideoen trenger (js/framdrift-video.js: hundrevis av bilder fra et
+// kamera som går rundt). Et enkelt PDF-bilde er en økt med ett bilde.
+// tegn(kam) → piksler (RGBA, nedenfra og opp, som WebGL leser dem).
+// Kall alltid slutt() — i finally — så skjermen får alt tilbake.
+export function bildeOkt(oppsett, W, H) {
+  const v = oppsett || {};
+  const P = RIGGPLAN_BILDE;
+  // Alt som hører skjermen til, skjules for bildet: navnelapper (sprites),
+  // skjøteprikker og håndtak. Settes tilbake i slutt(), uansett hva som skjer.
+  const skjult = [];
+  scene.traverse(o => {
+    if (o.visible && (o.isSprite || o.name === "rigg-skjoter" || o.userData.sektorHandtak)) { skjult.push(o); o.visible = false; }
+  });
+  // 🏗 Kranens stiplede sirkel er hvit — den synes på skjermen, men ikke på
+  // lyst papir og lyst terreng. I PDF-bildene blir den mørk grå.
+  const stiplet = [];
+  scene.traverse(o => { if (o.isMesh && o.userData.kranStiplet && o.material && o.material.color) { stiplet.push([o, o.material.color.getHex()]); o.material.color.setHex(KRAN_STIPLET_PDF); } });
+  const gammelBg = scene.background;
+  const gammeltRutenett = grid.visible;
+  const gammelt = renderer.getRenderTarget();
+  const gammelTaake = scene.fog;
+  let rydd = null, ryddPynt = null, ror = null;
+  const slutt = () => {
+    if (ror) { try { ror.dispose(); } catch (_) {} ror = null; }
     for (const [o, f] of stiplet) o.material.color.setHex(f);
     renderer.setRenderTarget(gammelt);
     if (ryddPynt) ryddPynt();
@@ -508,7 +532,38 @@ function tegnMedKamera(kam, pxB, pxH, oppsett) {
     scene.background = gammelBg;
     grid.visible = gammeltRutenett;
     for (const o of skjult) o.visible = true;
-  }
+  };
+  try {
+    scene.background = v.himmel ? himmel() : new THREE.Color(0xffffff);
+    grid.visible = false;
+    if (S.outlineOpplosning) S.outlineOpplosning(W, H);
+    // Går skyggene galt (et gammelt grafikkort), kommer bildet uten dem —
+    // riggplanen skal komme uansett.
+    if (v.skygge) { try { rydd = medSkygger(v.skygge); } catch (err) { console.warn("Riggplan: uten skygger:", err && err.message); rydd = null; } }
+    try { ryddPynt = leggPynt(!!v.kontur); } catch (err) { console.warn("Riggplan: uten pynt:", err && err.message); ryddPynt = null; }
+    // 🌫 Dis i skråbildene: det som er langt unna blir lysere, som i
+    // virkeligheten — gir dybde, og kanten av terrenget glir ut i disen.
+    if (v.taake) scene.fog = new THREE.Fog(v.himmel ? P.disFarge : 0xffffff, v.taake[0], v.taake[1]);
+  } catch (err) { slutt(); throw err; }
+  return {
+    tegn(kam) {
+      // Mellom bildene i en video kan skjermens rammekroker ha slått på
+      // navnelappene igjen (skalerLapperMedTak) — de skjules for hvert bilde
+      scene.traverse(o => { if (o.visible && o.isSprite) { skjult.push(o); o.visible = false; } });
+      if (etter && ror !== false) {
+        try {
+          if (!ror) ror = lagRor(etter, kam, W, H, v.skygge && v.skygge.skala);
+          return ror.render(kam);
+        } catch (err) {
+          console.warn("Riggplan: etterbehandlingen feilet, tegner enkelt:", err && err.message);
+          if (ror && ror.dispose) { try { ror.dispose(); } catch (_) {} }
+          ror = false;
+        }
+      }
+      return renderEnkel(kam, W, H);
+    },
+    slutt
+  };
 }
 
 // (4) Tettere utsnitt: hvor langt unna kameraet må stå for at alle punktene

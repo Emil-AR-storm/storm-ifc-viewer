@@ -191,6 +191,11 @@ export const framdriftAktiv = () => aktiv;
 // I «Fjern» står trinnet du tar ut av, fram (`unntak`); de andre skjules.
 let skjulTildelte = false, skjulUnntak = null;
 export function settSkjulTildelte(paa, unntak) { skjulTildelte = !!paa; skjulUnntak = paa ? (unntak || null) : null; }
+// 🎞 Videoen (trinn 5, js/framdrift-video.js): andelen per trinn kommer fra
+// videoens egen klokke (like lang tid per trinn), og det som ikke ligger i
+// noe trinn skjules (Emil 01.10). null = vanlig glider.
+let andelOverstyring = null, skjulUtenTrinn = false;
+export function settVideoModus(fn) { andelOverstyring = typeof fn === "function" ? fn : null; skjulUtenTrinn = !!andelOverstyring; }
 
 // Hva som tegnes nå (testene leser dette): skjulte IFC, tonede steg og objekter.
 let status = { skjulteIfc: 0, steg: [], tonet: 0, skjult: 0 };
@@ -200,7 +205,7 @@ export function tegnFramdrift(paa) {
   if (paa !== undefined) aktiv = !!paa;
   sistTegnet = Date.now();
   const sp = tidsSpenn(S.framdrift);
-  if (!aktiv || (!sp && !skjulTildelte)) { gjenopprettAlt(); return; }
+  if (!aktiv || (!sp && !skjulTildelte && !andelOverstyring)) { gjenopprettAlt(); return; }
   const tid = framdriftTid();
   const objMap = finnObjekter();
   const ifc = new Set();
@@ -209,7 +214,7 @@ export function tegnFramdrift(paa) {
   const steg = [];
   const behold = new Set();
   for (const e of synlige(S.framdrift)) {
-    const p = skjulTildelte ? (e.id === skjulUnntak ? 1 : 0) : trinnAndel(e, tid);
+    const p = andelOverstyring ? andelOverstyring(e) : skjulTildelte ? (e.id === skjulUnntak ? 1 : 0) : trinnAndel(e, tid);
     if (p >= 1) continue;
     const rekke = rekkefolge(e, objMap);
     const n = rekke.length, K = antallSteg(n);
@@ -238,13 +243,32 @@ export function tegnFramdrift(paa) {
   // 🏷 Lapper og utsparingsmerking som hører til SW-elementer (userData.fpEiere,
   // satt i veggelement/tegning.js): like synlige som den mest synlige eieren.
   // Skjules alle elementene en åpning går gjennom, forsvinner merkingen også.
-  if (andelK.size) for (const l of EKSTRA_LAG) {
+  // Videoen: det som ikke ligger i noe trinn, er ikke med
+  let tildeltK = null;
+  if (skjulUtenTrinn) {
+    tildeltK = new Set();
+    for (const e of synlige(S.framdrift)) for (const o of e.objekter) tildeltK.add(o.k);
+    for (const m of (S.modelGroup && S.modelGroup.children) || []) {
+      if (m.userData.merged) { for (const r of m.userData.ranges || []) if (!tildeltK.has("id:" + r.id)) ifc.add(r.id); }
+      else if (m.userData.expressID !== undefined && !tildeltK.has("id:" + m.userData.expressID)) ifc.add(m.userData.expressID);
+    }
+    for (const [k, os] of objMap) if (!tildeltK.has(k)) for (const o of os) fade.set(o, 0);
+    const kjent = new Set(); for (const os of objMap.values()) for (const o of os) kjent.add(o);
+    for (const l of EKSTRA_LAG) {
+      if (!l.gruppe || l.id === "terreng" || l.id === "stopeplan") continue;
+      for (const o of l.gruppe.children) if (!kjent.has(o) && !(o.userData.fpEiere && o.userData.fpEiere.length)) fade.set(o, 0);
+    }
+  }
+  if (andelK.size || tildeltK) for (const l of EKSTRA_LAG) {
     if (l.id !== "sw" || !l.gruppe) continue;
     for (const o of l.gruppe.children) {
       const eiere = o.userData.fpEiere;
       if (!eiere || !eiere.length) continue;
       let a = 0;
-      for (const k of eiere) { const x = andelK.has(k) ? andelK.get(k) : 1; if (x > a) a = x; }
+      for (const k of eiere) {
+        const x = andelK.has(k) ? andelK.get(k) : (tildeltK && !tildeltK.has(k) ? 0 : 1);
+        if (x > a) a = x;
+      }
       if (a < 1) fade.set(o, a);
     }
   }

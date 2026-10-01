@@ -2082,5 +2082,16 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "… og {0} til": "… and {0} more",
   "Laget av: {0}": "Made by: {0}",
   "Farget: nytt i trinn {0} · Vanlige farger: utført i tidligere trinn": "Coloured: new in step {0} · Normal colours: done in earlier steps",
-  "Én side per trinn: bygget sett fra nord, sør, øst og vest, og det som er nytt i trinnet": "One page per step: the building seen from north, south, east and west, and what is new in the step"
+  "Én side per trinn: bygget sett fra nord, sør, øst og vest, og det som er nytt i trinnet": "One page per step: the building seen from north, south, east and west, and what is new in the step",
+  "Se videoen av hele framdriften": "Watch the video of the whole plan",
+  "Skann med mobilen (SharePoint, Storm-innlogging)": "Scan with your phone (SharePoint, Storm sign-in)",
+  "Lager video …": "Creating video …",
+  "Lager video … {0} %": "Creating video … {0} %",
+  "Nettleseren kan ikke lage video.": "The browser cannot create video.",
+  "Lagrer videoen i SharePoint …": "Saving the video to SharePoint …",
+  "Klarte ikke å lage videoen: {0}": "Could not create the video: {0}",
+  "Kameraet går én gang rundt bygget mens trinnene bygges opp. Lagres i SharePoint, så PDF-en får en QR-kode til videoen.": "The camera circles the building once while the steps are built up. Saved to SharePoint so the PDF gets a QR code to the video.",
+  "Lag video": "Create video",
+  "Videoen er lastet ned og lagret i SharePoint. PDF-en får nå en QR-kode til den.": "The video has been downloaded and saved to SharePoint. The PDF now gets a QR code to it.",
+  "Videoen er lastet ned. Logg inn (den røde prikken øverst til høyre) og lag den på nytt for å lagre den i SharePoint — da får PDF-en en QR-kode til den.": "The video has been downloaded. Sign in (the red dot top right) and create it again to save it to SharePoint — then the PDF gets a QR code to it."
 };
