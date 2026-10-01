@@ -398,6 +398,14 @@ window.addEventListener("pointerup", (e) => {
   const klikk = ned && Math.hypot(e.clientX - ned.x, e.clientY - ned.y) <= KLIKK_PX;
   if (!klikk) return;
   const o = pekMateriell(e.clientX, e.clientY);
+  if (o && S.velgModusAktiv && S.materiellIVelgModus) {
+    // 📅 Framdriftsplanens «Legg til»: trykket legger objektet til i utvalget
+    // eller tar det bort igjen (som shift-klikk) — ikke enkeltvalg, som
+    // ellers ville byttet ut forrige objekt for hvert trykk (Emil 01.10).
+    e.stopPropagation(); slippKamera(e);
+    S.materiellIVelgModus(o.userData.materiellId);
+    return;
+  }
   if (o) {
     // valg virker i ALLE moduser — også uten materiell-verktøyet åpent
     e.stopPropagation(); slippKamera(e);

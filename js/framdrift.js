@@ -22,7 +22,7 @@ import { hentLogoer } from "./tegninger.js";
 import { ryddLogonavn } from "./rapport.js";
 import { t, tn } from "./i18n.js";
 import { flettPaaId, spLes, spPaalogget, spSkriv } from "./sp-lager.js";
-import { clearSelection } from "./elements.js";
+import { clearSelection, veksleMateriellIUtvalg } from "./elements.js";
 import { metaFor } from "./ifcrpc.js";
 import { SLAG_NAVN, fjern, leggTil, nokkel, nyEtappe, sortert, synlige, tellingPerSlag, tidsSpenn, vaskEtappe, vaskEtappeListe } from "./framdrift-regn.js";
 import { ryddFramdriftVis, stoppAvspilling, tegnFramdrift, tegnTidslinje } from "./framdrift-vis.js";
@@ -148,6 +148,7 @@ let velger = null;
 let forrigeKroker = null;     // støpeplanens kroker, tilbake når modusen avsluttes
 export const velgerEtappe = () => (velger ? velger.etappeId : null);
 S.riggIVelgModus = null;
+S.materiellIVelgModus = null;
 
 function velgBar() {
   let el = $("fpVelgBar");
@@ -176,6 +177,7 @@ export function startVelg(etappeId) {
   velger = { etappeId };
   S.velgModusAktiv = true;
   riggUtvalg.clear();
+  S.materiellIVelgModus = (id) => { veksleMateriellIUtvalg(id); tegnVelgBar(); };
   S.riggIVelgModus = (riggId) => {
     if (riggUtvalg.has(riggId)) riggUtvalg.delete(riggId); else riggUtvalg.add(riggId);
     if (S.oppdaterRiggValg) S.oppdaterRiggValg();
@@ -196,6 +198,7 @@ export function avsluttVelg(medTil) {
   velger = null;
   S.velgModusAktiv = false;
   S.riggIVelgModus = null;
+  S.materiellIVelgModus = null;
   if (forrigeKroker) { S.velgModusOppdater = forrigeKroker.o; S.avsluttVelgModus = forrigeKroker.a; forrigeKroker = null; }
   riggUtvalg.clear();
   if (S.oppdaterRiggValg) S.oppdaterRiggValg();
