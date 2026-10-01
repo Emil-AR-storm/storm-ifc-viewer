@@ -3,12 +3,17 @@
 // etappe på datoen, en glider for «Vist per» og «I dag». Bakover viser
 // modellen hva som faktisk var støpt, framover hva som SKAL være støpt.
 import { $, S, esc } from "./state.js";
-import { t } from "./i18n.js";
+import { t, tn } from "./i18n.js";
 import { iDagISO } from "./frist.js";
 import { STATUS_TEKST, dagerMellom, mandag, plussDager, sortert, statusPer, tidslinjeSpenn } from "./stopeplan-regn.js";
 import { tegnStopeplan, visEtappeplan } from "./stopeplan-vis.js";
 
 export const datoKort = (iso) => { const d = String(iso || "").split("-"); return d.length === 3 ? d[2] + "." + d[1] : iso; };
+// Antall med riktig entall/flertall på alle språk («1 felt», «1 area», «2 pola»)
+export const antallElementer = (n) => tn(n, "{0} element", "{0} elementer");
+export const antallFelt = (n) => tn(n, "{0} felt", "{0} felt");
+// Innhold-kolonnen i PDF og Excel: «14 elementer · 1 felt», tomme deler utelatt
+export const innholdTekst = (nEl, nF) => [nEl ? antallElementer(nEl) : "", nF ? antallFelt(nF) : ""].filter(Boolean).join(" · ") || "–";
 export const datoLang = (iso) => { const d = String(iso || "").split("-"); return d.length === 3 ? d[2] + "." + d[1] + "." + d[0] : iso; };
 
 // Tidslinjen nederst: én stolpe per etappe på datoen, en glider for «Vist

@@ -39,6 +39,12 @@ const ACTIONS = {
   sw:       { label: "SW-generator", run: () => $("btnSW")?.click() },
   materiell:{ label: "Materiell",  run: () => $("btnMateriell")?.click() },
   grupper:  { label: "Grupper",    run: () => $("btnGrupper")?.click() },
+  // 🧱 Støpeplanen: B åpner/lukker panelet, N lager en ny etappe (og åpner
+  // panelet først om det er lukket, så etappen synes med en gang). På
+  // byggeplass-siden er knappen skjult når prosjektet ikke har støpeplan —
+  // da gjør tasten ingenting, i stedet for å åpne et tomt panel.
+  stope:    { label: "Støpeplan",  run: () => { const b = $("btnStopeplan"); if (b && !(LETT && b.style.display === "none")) b.click(); } },
+  nyEtappe: { label: "Ny etappe",  run: () => { if (!LETT && S.stopeNyEtappe) S.stopeNyEtappe(); } },
   settings: { label: "Innstillinger", run: () => openSettings() }
 };
 

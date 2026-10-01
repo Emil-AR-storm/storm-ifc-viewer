@@ -14,14 +14,14 @@
 import { $, S, apnePanel, ekstraLagSom, esc, ikon, på, writePrefs } from "./state.js";
 import { hentLogoer } from "./tegninger.js";
 import { ryddLogonavn } from "./rapport.js";
-import { t } from "./i18n.js";
+import { t, tn } from "./i18n.js";
 import { iDagISO } from "./frist.js";
 import { flettPaaId, spLes, spPaalogget, spSkriv } from "./sp-lager.js";
 import {
   STATUS_TEKST, CEMFLEX_OMLEGG_M, cemflexPlan, vannLengde, vannSummer, dagerMellom, mandag, erGenerert, plussDager, statusPer, tidslinjeSpenn, feltAreal, feltSummer, feltVolum, fjernElementer, kantLengder, leggTilElementer, nyEtappe, sortert, statusFor, synlige, vaskEtappe, vaskEtappeListe
 } from "./stopeplan-regn.js";
 import { settVisEtappeplan, settVisVanntetting, tegnStopeplan, visEtappeplan, visVanntetting } from "./stopeplan-vis.js";
-import { settVistPer as settVist, tegnTidslinje as tegnTid } from "./stopeplan-tid.js";
+import { antallElementer, antallFelt, settVistPer as settVist, tegnTidslinje as tegnTid } from "./stopeplan-tid.js";
 import { clearSelection, quantitiesForSet } from "./elements.js";
 import { metaFor } from "./ifcrpc.js";
 
@@ -146,8 +146,8 @@ export function leggValgteTil(id) {
   S.stopeplan = r.liste.map(e => e.id === id ? Object.assign(e, { av: mittNavn() }) : e);
   const e = synlige(S.stopeplan).find(x => x.id === id);
   sisteMelding = r.flyttet
-    ? t("{0} elementer lagt i {1}. {2} av dem er flyttet fra en annen etappe.", r.lagtTil, e ? e.navn : "", r.flyttet)
-    : t("{0} elementer lagt i {1}.", r.lagtTil, e ? e.navn : "");
+    ? tn(r.lagtTil, "{0} element lagt i {1}. Det er flyttet fra en annen etappe.", "{0} elementer lagt i {1}. {2} av dem er flyttet fra en annen etappe.", e ? e.navn : "", r.flyttet)
+    : tn(r.lagtTil, "{0} element lagt i {1}.", "{0} elementer lagt i {1}.", e ? e.navn : "");
   lagre();
   tegnStopeplan();
   tegnPanel();
@@ -381,8 +381,8 @@ export function tegnPanel() {
     const fs = feltSummer(e);
     const vol = volumFor(e) + fs.volum;
     const innhold = [
-      t("{0} elementer", e.elementer.length),
-      t("{0} felt", e.felt.length) + (fs.areal > 0 ? " (" + m2(fs.areal) + ")" : "")
+      antallElementer(e.elementer.length),
+      antallFelt(e.felt.length) + (fs.areal > 0 ? " (" + m2(fs.areal) + ")" : "")
     ].join(" · ") + (vol > 0 ? " · " + m3(vol) : "");
     // 🧱 Feltene (trinn 3): én linje per felt, og målene på det som er valgt
     let feltHtml = "";
@@ -490,6 +490,16 @@ S.lastStopeplan = () => {
   hentFraSp();          // i bakgrunnen
 };
 S.ryddStopeplan = () => { if (velger) avsluttVelg(false); if (S.ryddStopeFelt) S.ryddStopeFelt(); S.stopeplan = []; volumBuffer.clear(); tegnStopeplan([]); };
+
+// ⌨ Hurtigtasten «Ny etappe» (N): åpner panelet om det er lukket
+S.stopeNyEtappe = () => {
+  if (!S.modelGroup) return null;
+  if (!$("stopePanel").classList.contains("open")) $("btnStopeplan").click();
+  const e = leggTilEtappe();
+  const felt = document.querySelector('.st-etappe[data-id="' + e.id + '"] .st-navn');
+  if (felt) { if (felt.scrollIntoView) felt.scrollIntoView({ block: "nearest" }); felt.focus(); felt.select(); }
+  return e;
+};
 
 på("btnStopeplan", "click", () => {
   const panel = $("stopePanel");
