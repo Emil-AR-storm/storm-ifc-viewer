@@ -61,6 +61,13 @@ export function vaskObjekt(x) {
 // { id, nr, navn, farge, dato (start), slutt, objekter: [{ k, gid? }], av, endret }
 // En slettet etappe blir en gravstein (som støpeplanen), så slettingen også
 // når kollegaene gjennom SharePoint-flettingen.
+// Emil 01.10: i framdriftsplanen heter etappene «Trinn» (støpeplanen beholder
+// «Etappe»). Et lagret standardnavn fra trinn 1–2 («Etappe 3») blir «Trinn 3»;
+// navn noen har skrevet selv, står urørt.
+export function standardNavn(n) {
+  const m = /^Etappe (\d+)$/.exec(n || "");
+  return m ? "Trinn " + m[1] : (n || "");
+}
 export function vaskEtappe(e) {
   if (!e || typeof e !== "object" || typeof e.id !== "string" || !e.id) return null;
   const id = e.id.slice(0, 40), endret = tekst(e.endret, 40);
@@ -78,7 +85,7 @@ export function vaskEtappe(e) {
   if (slutt && start && slutt < start) slutt = start;     // slutten kan ikke komme før starten
   return {
     id, nr,
-    navn: tekst(e.navn, 80).trim() || ("Etappe " + nr),
+    navn: standardNavn(tekst(e.navn, 80).trim()) || ("Trinn " + nr),
     farge: hex(e.farge) || fargeFor(nr),
     dato: start, slutt,
     objekter,
@@ -95,7 +102,7 @@ export function nyEtappe(liste, naa, id) {
   const nr = nesteNr(liste);
   return vaskEtappe({
     id: id || ("F-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6)),
-    nr, navn: "Etappe " + nr, farge: fargeFor(nr), dato: "", endret: naa || new Date().toISOString()
+    nr, navn: "Trinn " + nr, farge: fargeFor(nr), dato: "", endret: naa || new Date().toISOString()
   });
 }
 // Rekkefølgen i planen: etter startdato, så nummer. Uten dato sist.
@@ -139,4 +146,69 @@ export function tellingPerSlag(e) {
   const m = new Map();
   for (const o of (e && e.objekter) || []) { const s = slagFor(o.k); m.set(s, (m.get(s) || 0) + 1); }
   return SLAG.filter(s => m.has(s)).map(s => ({ slag: s, antall: m.get(s) }));
+}
+
+// ═══════════════════════ TIDEN (trinn 3: glideren) ═══════════════════════
+//
+// Emil 01.10: «en slider der objektene går fra skjult til gradvis synlig».
+// Tiden måles i DAGER (desimaltall, så glideren kan stå midt i en dag). Et
+// trinn varer fra startdatoen kl. 00 til dagen ETTER sluttdatoen kl. 00 —
+// «Fra 06.10 Til 06.10» er altså én hel dag, ikke null.
+//
+// Innen trinnet bygges det nedenfra og opp: objektene sorteres etter
+// underkant og deles i STEG (høyst STEG_MAKS). Steg j toner inn i sin del av
+// trinnet, så modellen vokser i stedet for at alt blinker fram samtidig.
+export const STEG_MAKS = 10;
+export function dagNr(iso) {
+  const d = dato(iso);
+  if (!d) return NaN;
+  const [y, m, dd] = d.split("-").map(Number);
+  return Date.UTC(y, m - 1, dd) / 86400000;
+}
+export function isoFraDag(n) {
+  if (!Number.isFinite(n)) return "";
+  return new Date(Math.floor(n) * 86400000).toISOString().slice(0, 10);
+}
+// [start, slutt) i dager, eller null når trinnet mangler startdato.
+export function trinnTid(e) {
+  if (!e || !e.dato) return null;
+  const a = dagNr(e.dato);
+  const b = dagNr(e.slutt || e.dato);
+  if (!Number.isFinite(a)) return null;
+  return { a, b: Math.max(a, Number.isFinite(b) ? b : a) + 1 };
+}
+// Spennet glideren går over: fra første start til siste slutt. null uten datoer.
+export function tidsSpenn(liste) {
+  let a = Infinity, b = -Infinity;
+  for (const e of synlige(liste)) {
+    const tt = trinnTid(e);
+    if (!tt) continue;
+    a = Math.min(a, tt.a); b = Math.max(b, tt.b);
+  }
+  return Number.isFinite(a) ? { a, b, dager: b - a } : null;
+}
+// Hvor langt trinnet er kommet ved tiden `tid` (dager): 0 før, 1 etter.
+// Trinn uten dato regnes som ferdig — de står i modellen som før.
+export function trinnAndel(e, tid) {
+  const tt = trinnTid(e);
+  if (!tt) return 1;
+  if (!Number.isFinite(tid) || tid >= tt.b) return 1;
+  if (tid <= tt.a) return 0;
+  return (tid - tt.a) / (tt.b - tt.a);
+}
+export const antallSteg = (n) => Math.max(1, Math.min(STEG_MAKS, Math.round(Number(n) || 0)));
+// Objekt nr. i (0-basert, sortert nedenfra) av n havner i steg ⌊i·K/n⌋.
+export function stegFor(i, n) {
+  const K = antallSteg(n);
+  return Math.min(K - 1, Math.floor(i * K / Math.max(1, n)));
+}
+// Hvor synlig steg j av K er når trinnet er kommet `p` (0–1).
+export function stegAndel(p, j, K) {
+  if (p >= 1) return 1;
+  if (p <= 0) return 0;
+  return Math.max(0, Math.min(1, p * K - j));
+}
+// Trinnene som er i arbeid ved `tid` (andel mellom 0 og 1), i planrekkefølge.
+export function iArbeid(liste, tid) {
+  return sortert(liste).filter(e => { const p = trinnAndel(e, tid); return p > 0 && p < 1; });
 }

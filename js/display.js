@@ -125,6 +125,10 @@ export const hiddenIDs = new Set();
 // 🎨 Id-er skjult via TYPE-raden i lav kvalitet. Egen mengde, ikke hiddenIDs:
 // da kan «vis type» aldri dra med seg elementer noen har skjult enkeltvis.
 export const typeSkjultLett = new Set();
+// 📅 Skjult av framdriftsglideren (js/framdrift-vis.js). Egen mengde, ikke
+// hiddenIDs: glideren skal ikke slå på «Vis alle», havne i angre eller bli
+// med i Del visning — den viser bare hvor langt bygget er kommet.
+export const framdriftSkjult = new Set();
 
 // Skjuler et helt sett i ÉN gjennomgang av meshene. Å kalle hideElement per
 // element ville gått gjennom hele modellen én gang per id – med noen hundre
@@ -166,7 +170,7 @@ export function synkMergedSkjuling() {
     const ranges = m.userData.ranges || [];
     const idx = m.geometry.getIndex();
     if (!idx) return;
-    const erSkjult = (id) => hiddenIDs.has(id) || typeSkjultLett.has(id);
+    const erSkjult = (id) => hiddenIDs.has(id) || typeSkjultLett.has(id) || framdriftSkjult.has(id);
     const harSkjulte = ranges.some(r => erSkjult(r.id));
     if (!harSkjulte && !m.userData.origIndex) return;   // aldri rørt — ingenting å gjøre
     if (!m.userData.origIndex) m.userData.origIndex = idx.array.slice();
