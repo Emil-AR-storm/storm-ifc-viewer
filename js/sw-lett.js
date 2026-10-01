@@ -91,7 +91,7 @@ export function swLettElementer(data) {
     // skal det heller ikke tegnes som en hel kasse.
     if (Array.isArray(e.b) && !e.b.length) continue;
     ut.push(Object.assign({}, e, {
-      farge: e.k === "r" ? FARGER.r : (e.k === "i" ? FARGER.i : grunnfarge),
+      farge: (e.k === "r" || e.k === "g") ? FARGER.r : (e.k === "i" ? FARGER.i : grunnfarge),
       trapes: e.hv !== undefined && e.hh !== undefined && Number(e.hv) !== Number(e.hh)
     }));
   }
@@ -417,7 +417,18 @@ registrerEkstraGruppe(swLettGroup, {
     if (!e || !$("propTitle")) return;
     const rad = (k, v) => '<div class="prop-row"><div class="k">' + esc(k) +
       '</div><div class="v">' + esc(String(v)) + '</div></div>';
-    const erRm = e.k === "r";
+    const erRm = e.k === "r", erGulv = e.k === "g";
+    if (erGulv) {
+      $("propTitle").textContent = t("Betonggulv");
+      $("propBody").innerHTML =
+        '<div class="prop-actions"><button id="paSkjulSwLett">' + ikon("skjul") + ' ' + t("Skjul dette elementet") + '</button></div>' +
+        rad(t("Type"), t("Betonggulv")) +
+        rad(t("Mål L×B×H (ca)"), Math.max(e.l, e.t) + " × " + Math.min(e.l, e.t) + " × " + e.h + " mm") +
+        rad(t("Volum (ca)"), (Math.round(e.l * e.t * e.h / 1e8) / 10).toLocaleString("no-NO") + " m³");
+      $("paSkjulSwLett").onclick = () => this.skjul([id]);
+      apnePanel("propPanel");
+      return;
+    }
     $("propTitle").textContent = erRm ? t("Ringmur") : (e.sw || t("Veggelement"));
     $("propBody").innerHTML =
       '<div class="prop-actions"><button id="paSkjulSwLett">' + ikon("skjul") + ' ' +
@@ -472,5 +483,31 @@ function tegnPaaNytt() { tegnSwLett(sisteData); }
 // markers.js kaller denne med `sw`-feltet fra <fil>.markeringer.json når
 // modellen er lastet. Gamle filer har ikke feltet — da tegnes ingenting, og
 // det er riktig: byggeplassen skal ikke gjette.
-S.settSwFraLett = (data) => { sisteData = data; tegnSwLett(data); };
+S.settSwFraLett = (data) => { sisteData = data; tegnSwLett(data); if (S.tegnStopeplan) S.tegnStopeplan(); };
+
+// 🧱 Støpeplanen på byggeplassen (trinn 5) farger generert betong — gulvet
+// og ringmurbitene — med kopier av trekantene herfra. Samme kontrakt som
+// S.swTrekanter på kontoret (veggelement/tilstand.js).
+S.swTrekanter = (ider) => {
+  const sett = new Set((ider || []).map(String));
+  const pos = [];
+  if (!sett.size) return pos;
+  swLettGroup.updateMatrixWorld(true);
+  const v = new THREE.Vector3();
+  for (const o of swLettGroup.children) {
+    if (!sett.has(String(o.userData.swLettId || "")) || !o.userData.swLett) continue;
+    o.traverse(m => {
+      if (!m.isMesh || !m.geometry) return;
+      const p = m.geometry.getAttribute("position");
+      if (!p) return;
+      const ix = m.geometry.getIndex();
+      const n = ix ? ix.count : p.count;
+      for (let i = 0; i < n; i++) {
+        v.fromBufferAttribute(p, ix ? ix.getX(i) : i).applyMatrix4(m.matrixWorld);
+        pos.push(v.x, v.y, v.z);
+      }
+    });
+  }
+  return pos;
+};
 S.ryddSwLett = () => { sisteData = null; tegnSwLett(null); };

@@ -16,6 +16,7 @@ import { grupperForEksport } from "./grupper.js";
 // generatoren. Se swForByggeplass i js/veggelement.js for hvorfor.
 import { swForByggeplass, takForByggeplass } from "./veggelement.js";
 import { FRISTER, TJENESTER } from "./config.js";
+import { stopeplanForByggeplass } from "./stopeplan-regn.js";
 
 // Adressen til Workeren står i config.js, og kan overstyres av oppsett.json i
 // SharePoint. Leses gjennom TJENESTER hver gang – verdien kan komme etter at
@@ -228,7 +229,10 @@ if (btn) btn.addEventListener("click", async () => {
         rigg: riggForByggeplass(),
         // ⛰ Terrenget: null når det ikke er hentet (eller er skjult) på
         // kontoret. Gamle lesere ser bort fra feltet.
-        terreng: terrengUt
+        terreng: terrengUt,
+        // 🧱 Støpeplanen (trinn 5): etappene med elementer, felt og datoer.
+        // bygg.html farger betongen og viser tidslinjen (stopeplan-lett.js).
+        stopeplan: stopeplanForByggeplass(S.stopeplan || [])
       })
     });
 

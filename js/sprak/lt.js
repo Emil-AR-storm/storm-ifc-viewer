@@ -1912,5 +1912,12 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "farger betongen etter støpeplanen": "nuspalvina betoną pagal betonavimo planą",
   "Støpt {0}": "Išbetonuota {0}",
   "Angre «støpt»": "Atšaukti „išbetonuota“",
-  "Merk som støpt": "Pažymėti kaip išbetonuotą"
+  "Merk som støpt": "Pažymėti kaip išbetonuotą",
+  "Ingen dato": "Nėra datos",
+  "Etappe {0}": "Etapas {0}",
+  "Areal (ca)": "Plotas (apie)",
+  "Støpeplanen": "Betonavimo planas",
+  "Har prosjektlederen laget en støpeplan, står knappen Støpeplan i Bygg Info. Betongen er farget etter etappen den støpes i: full farge er støpt, svakere farge kommer senere. Tidslinjen nederst viser datoene — dra i den for å se hvordan det skal se ut en annen dag, og trykk I dag for å komme tilbake. Trykk på et felt på plata for etappe, dato og mengde.": "Jei projekto vadovas sudarė betonavimo planą, mygtukas Betonavimo planas yra skiltyje Pastato info. Betonas nuspalvintas pagal etapą, kuriame jis betonuojamas: ryški spalva – išbetonuota, blyškesnė – bus vėliau. Laiko juosta apačioje rodo datas — tempkite ją, kad pamatytumėte, kaip turi atrodyti kitą dieną, ir paspauskite Šiandien, kad grįžtumėte. Spustelėkite lauką ant plokštės – matysite etapą, datą ir kiekį.",
+  "Støpeplan: etapper, felt og tidslinje": "Betonavimo planas: etapai, laukai ir laiko juosta",
+  "Støpeplan (i Bygg Info) deler støpene i etapper. Trykk + Legg til på etappen og velg elementene i modellen, eller + Felt for å tegne et felt på plata — dra hjørner og kanter for å justere. Merk som støpt når etappen er ferdig. Tidslinjen nederst viser planen på en valgt dag, og Vis etappeplan skrur fargingen av og på. Planen følger med ut til byggeplassen når du trykker Storm-Byggeplass.": "Betonavimo planas (skiltyje Pastato info) padalija betonavimą į etapus. Paspauskite + Pridėti prie etapo ir pasirinkite elementus modelyje arba + Laukas, kad nubraižytumėte lauką ant plokštės — tempkite kampus ir kraštines, kad pakoreguotumėte. Pažymėkite kaip išbetonuotą, kai etapas baigtas. Laiko juosta apačioje rodo planą pasirinktą dieną, o Rodyti etapų planą įjungia ir išjungia spalvinimą. Planas perduodamas į statybvietę, kai paspaudžiate Storm-Byggeplass."
 };

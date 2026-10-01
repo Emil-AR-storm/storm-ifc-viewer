@@ -183,6 +183,16 @@ export const KORT = [
     tekst: "Under Masser under plata i Terreng-panelet står hvor mye som må graves bort og fylles inn ned til planum — gulvkote minus oppbygging, eller en planumkote du skriver selv. Kryss av for å se det i rødt og blått i terrenget. Skråningene rundt plata er med (1:1,5 i skjæring og 1:2 i fylling som standard — endre dem etter massene). Tallene er et overslag: terrenget er skannet før graving. Helningen kan settes ulikt per side, og Last ned masser gir et Excel-ark til kalkylen."
   },
   {
+    hvor: "bygg", ikonNavn: "stope",
+    tittel: "Støpeplanen",
+    tekst: "Har prosjektlederen laget en støpeplan, står knappen Støpeplan i Bygg Info. Betongen er farget etter etappen den støpes i: full farge er støpt, svakere farge kommer senere. Tidslinjen nederst viser datoene — dra i den for å se hvordan det skal se ut en annen dag, og trykk I dag for å komme tilbake. Trykk på et felt på plata for etappe, dato og mengde."
+  },
+  {
+    hvor: "kontor", ikonNavn: "stope",
+    tittel: "Støpeplan: etapper, felt og tidslinje",
+    tekst: "Støpeplan (i Bygg Info) deler støpene i etapper. Trykk + Legg til på etappen og velg elementene i modellen, eller + Felt for å tegne et felt på plata — dra hjørner og kanter for å justere. Merk som støpt når etappen er ferdig. Tidslinjen nederst viser planen på en valgt dag, og Vis etappeplan skrur fargingen av og på. Planen følger med ut til byggeplassen når du trykker Storm-Byggeplass."
+  },
+  {
     hvor: "kontor", ikonNavn: "rigg",
     tittel: "Rigg: planlegg riggen på tomta",
     tekst: "Rigg (i Bygg Info) setter brakker, toalett, container, strømskap, søppelcontainer, lys, parkering, lagrings- og vaskeområde på tomta. Trykk på en type i katalogen, og så der den skal stå. Trykk på et objekt for å flytte, rotere, redigere eller slette det. Endringene lagres med en gang i SharePoint, så alle med tilgang ser det samme."
