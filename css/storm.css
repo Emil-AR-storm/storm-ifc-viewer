@@ -1751,13 +1751,21 @@ body:not(.har-modell) #btnFit { display: none !important; }
 .st-slett { padding: 4px 7px; flex: 0 0 auto; }
 .st-merke { font-size: 12px; font-weight: 600; margin-left: auto; }
 .st-innhold { font-size: 12px; color: var(--muted); }
-.st-etappe input[type="text"], .st-etappe input[type="date"], .st-etappe select {
+/* Alle felt i støpeplanpanelet i samme mørke stil — også logovalget og
+   tallfeltene (tykkelse, kantlengder, platelengde), som før var hvite */
+.st-etappe input[type="text"], .st-etappe input[type="date"], .st-etappe select,
+.st-etappe input[type="number"], .st-logo select, .st-vann-sum input[type="number"] {
   background: var(--panel); color: var(--text); border: 1px solid var(--border);
   border-radius: 6px; padding: 4px 6px; font: inherit; font-size: 13px; color-scheme: dark;
 }
 html[data-tema="lys"] .st-etappe input[type="text"],
 html[data-tema="lys"] .st-etappe input[type="date"],
-html[data-tema="lys"] .st-etappe select { color-scheme: light; }
+html[data-tema="lys"] .st-etappe select,
+html[data-tema="lys"] .st-etappe input[type="number"],
+html[data-tema="lys"] .st-logo select,
+html[data-tema="lys"] .st-vann-sum input[type="number"] { color-scheme: light; }
+.st-logo { display: flex; align-items: center; gap: 8px; margin: 8px 0 0; }
+.st-logo select { flex: 1; min-width: 0; }
 .st-knapper { margin: 6px 0 0; flex-wrap: wrap; }
 .st-knapper button { padding: 4px 9px; font-size: 12px; }
 .st-knapper .st-oye { margin-left: auto; }
