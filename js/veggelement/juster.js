@@ -17,7 +17,7 @@ import { t } from "../i18n.js";
 import { camera, canvas, raycaster } from "../scene.js";
 import { allElementBoxes, hitID, pick } from "../elements.js";
 import { SW_KLARING_MM, SW_MIN_BIT_MM, grupperFlater, sikreUtspTyper, snappKant, tilMm, tilScene, utspTypeNavn, utsparingFraFlater } from "./regler.js";
-import { STD_OPPSETT, finnMark, just, lagret, okBetongNaa, oppsett, settFinnMark, settJust, skrivLagret, swGroup } from "./tilstand.js";
+import { STD_OPPSETT, finnMark, just, lagret, okBetongNaa, oppsett, settFinnMark, settJust, skrivLagret, swGroup, GULV_ID } from "./tilstand.js";
 import { baseYNaa, boks, tegnAlt, tekstDekal, utspPaFasader } from "./tegning.js";
 import { byggAlleStabler, byggInnerStabler, generer, loesAlleJusteringer, snappPunkter } from "./generer.js";
 import { finnUtsparingKandidater, kandidatTilUtsparing, stalPaFasader } from "./stal.js";
@@ -94,6 +94,21 @@ export function pekVeggEn(cx, cy) {
     }
   }
   return null;
+}
+
+// 🧱 Betonggulvet under pekeren (eller null). Egen funksjon og ikke en del av
+// pekVeggEn med vilje: pekVegg brukes også av «Juster elementer», og gulvet
+// skal ikke kunne dras som en vegg. Gulvet er stort, så én stråle holder.
+export function pekGulv(cx, cy) {
+  const r = canvas.getBoundingClientRect();
+  const ndc = new THREE.Vector2(((cx - r.left) / r.width) * 2 - 1,
+                                -((cy - r.top) / r.height) * 2 + 1);
+  swGroup.updateMatrixWorld(true);
+  raycaster.setFromCamera(ndc, camera);
+  const gulv = swGroup.children.filter(o => o.userData.swId === GULV_ID);
+  if (!gulv.length) return null;
+  const h = raycaster.intersectObjects(gulv, false)[0];
+  return h ? { punkt: h.point, avstand: h.distance } : null;
 }
 
 // Treffer ikke midt på, prøves en liten ring rundt pekeren. Et element sett

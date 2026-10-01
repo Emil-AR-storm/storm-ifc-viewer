@@ -18,10 +18,10 @@ import { allElementBoxes } from "../elements.js";
 import { camera, flyTil, scene } from "../scene.js";
 import { settValgEffekt } from "../materiell-vis.js";
 import { flettPaaNavn, spLes, spPaalogget, spSkriv } from "../sp-lager.js";
-import { SW_KLARING_MM, SW_MIN_FELT_MM, SW_MIN_SKRA_MM, rektMinusHull, sikreUtspTyper, skraVinkel, soyleTypeNavn, tilScene, vinkelTekst } from "./regler.js";
+import { tilMm, SW_KLARING_MM, SW_MIN_FELT_MM, SW_MIN_SKRA_MM, rektMinusHull, sikreUtspTyper, skraVinkel, soyleTypeNavn, tilScene, vinkelTekst } from "./regler.js";
 import { baseYNaa, tegnAlt, utspPaFasader } from "./tegning.js";
 import { byggAlleStabler, fjernGenerertMateriell, loesAlleJusteringer } from "./generer.js";
-import { pekVegg, veggMedId } from "./juster.js";
+import { pekGulv, pekVegg, veggMedId } from "./juster.js";
 import { INNER_STD, lagretInner, skrivInner, tegnPanel } from "./panel.js";
 import { innerBaseY, innerMark } from "./innervegg.js";
 import { blikkJust } from "./blikk-just.js";
@@ -30,6 +30,9 @@ import { takJust } from "./tak-just.js";
 // per modellfil — da kan det tegnes opp igjen uten å regne på nytt.
 export const swGroup = new THREE.Group();
 scene.add(swGroup);
+// 🧱 Id-en til betonggulvet (del A har ett gulv). Står sammen med veggenes
+// «r0», «iv3» osv. i valg, skjuling og støpeplanen.
+export const GULV_ID = "gulv";
 // Laget melder inn hva det kan (se EKSTRA_LAG i js/state.js). SW har to
 // skjulinger på samme form: `lagret.skjul` for det ytre bygget og
 // `lagretInner.skjul` for innerveggene. Begge hentes fram av «Vis alle», og
@@ -77,9 +80,20 @@ registrerEkstraGruppe(swGroup, {
   plukk(cx, cy) {
     if (!swGroup.children.length) return null;
     const tr = pekVegg(cx, cy);
+    const g = pekGulv(cx, cy);
+    const vA = tr ? camera.position.distanceTo(tr.punkt) : Infinity;
+    // 🧱 Gulvet er med (Emil 01.10). Nærmeste vinner, som ellers — står du
+    // inne i bygget og trykker på veggen, er det veggen; på gulvet, gulvet.
+    if (g && g.avstand < vA) return { id: GULV_ID, navn: t("Betonggulv"), avstand: g.avstand };
     if (!tr) return null;
-    return { id: tr.v.id, navn: tr.v.sw || "", avstand: camera.position.distanceTo(tr.punkt) };
+    return { id: tr.v.id, navn: tr.v.sw || "", avstand: vA };
   },
+  // ⇧ Shift-klikk og shift-dra virker på SW-elementene også (Emil 01.10):
+  // flere ringmurbiter, veggelementer og gulvet i ett utvalg. Evnen leses av
+  // shiftClickAt og finishBoxSelect i elements.js.
+  flervalg: true,
+  iRekt(x0, y0, x1, y1, bareSynlige) { return swIRekt(x0, y0, x1, y1, bareSynlige); },
+  flervalgRader(ider) { return swFlervalgRader(ider); },
   velg(ider) {
     const nye = new Set(ider || []);
     // Ingen endring? Ikke mal om. oppdaterSwValgEffekt går gjennom hele
@@ -105,6 +119,7 @@ registrerEkstraGruppe(swGroup, {
   // det er SW-tallene som skal stå der — og fordi «Skjul dette elementet» må
   // treffe dette lagets skjuling, ikke modellens hiddenIDs.
   visEgenskaper(id) {
+    if (id === GULV_ID) { visGulvEgenskaper(() => this.skjul([GULV_ID])); return; }
     const v = veggMedId(id);
     if (!v) return;
     const rad = (k, val) => '<div class="prop-row"><div class="k">' + esc(k) +
@@ -146,6 +161,131 @@ registrerEkstraGruppe(swGroup, {
     this.visEgenskaper(id);
   }
 });
+
+// ---------- 🧱 Betonggulvet som element ----------
+// Målene i mm. Gulvet ligger i lagret.gulv i SCENEENHETER (bredde langs x,
+// dybde langs z); tykkelsen er betongMm fra oppsettet.
+export function gulvMaal() {
+  if (!lagret || !lagret.gulv) return null;
+  const o = lagret.oppsett || STD_OPPSETT;
+  const g = lagret.gulv;
+  const L = Math.round(tilMm(Math.max(g.bredde, g.dybde)));
+  const B = Math.round(tilMm(Math.min(g.bredde, g.dybde)));
+  const T = Math.round(o.betongMm || 0);
+  return { L, B, T, isoMm: Math.round(o.isoMm || 0), volM3: (L / 1000) * (B / 1000) * (T / 1000) };
+}
+
+function visGulvEgenskaper(skjul) {
+  const m = gulvMaal();
+  if (!m) return;
+  const rad = (k, val) => '<div class="prop-row"><div class="k">' + esc(k) +
+    '</div><div class="v">' + esc(String(val)) + '</div></div>';
+  $("propTitle").textContent = t("Betonggulv");
+  $("propBody").innerHTML =
+    '<div class="prop-actions"><button id="paSkjulSw">' + ikon("skjul") + ' ' +
+    t("Skjul dette elementet") + '</button></div>' +
+    rad(t("Type"), t("Betonggulv")) +
+    rad(t("Mål L×B×H (ca)"), m.L + " × " + m.B + " × " + m.T + " mm") +
+    rad(t("Volum (ca)"), (Math.round(m.volM3 * 10) / 10).toLocaleString("no-NO") + " m³") +
+    (m.isoMm ? rad(t("Isolasjon under"), m.isoMm + " mm") : "") +
+    '<p style="color:var(--muted); font-size:11px; margin-top:8px">' +
+    t("Skjulte SW-elementer hentes fram igjen med «Vis alle».") + '</p>';
+  $("paSkjulSw").onclick = skjul;
+  apnePanel("propPanel");
+}
+
+// Ett SW-objekt som rad i flervalget: samme tall som Mengder (swMengdeRad).
+export function swRadFor(id) {
+  if (id === GULV_ID) {
+    const m = gulvMaal();
+    if (!m) return null;
+    const L = m.L / 1000, B = m.B / 1000;
+    return { key: t("Betonggulv") + " · " + t("Betong"), type: "SW",
+             len: L, area: L * B, vol: m.volM3, betong: true, navn: t("Betonggulv") };
+  }
+  const v = veggMedId(id);
+  if (!v) return null;
+  const erRm = !!v.ringmur;
+  const r = swMengdeRad(v, erRm, t);
+  return { key: r.key, type: "SW", len: r.len, area: r.area, vol: r.vol, betong: erRm, navn: r.name };
+}
+
+export function swFlervalgRader(ider) {
+  const ut = [];
+  for (const id of ider || []) { const r = swRadFor(id); if (r) ut.push(r); }
+  return ut;
+}
+
+// ⇧ Markeringsboksen. Mot høyre (bare synlige): midten av objektet må ligge
+// i boksen — ellers ville det store gulvet bli med i hver eneste boks. Mot
+// venstre (alt i boksen): det holder at objektet er borti boksen, som for
+// modellen.
+const _rBoks = new THREE.Box3(), _rV = new THREE.Vector3();
+export function swIRekt(x0, y0, x1, y1, bareSynlige) {
+  const ut = new Set();
+  const minX = Math.min(x0, x1), maxX = Math.max(x0, x1);
+  const minY = Math.min(y0, y1), maxY = Math.max(y0, y1);
+  const proj = (v) => { v.project(camera); return [(v.x + 1) / 2 * innerWidth, (1 - v.y) / 2 * innerHeight, v.z]; };
+  swGroup.updateMatrixWorld(true);
+  camera.updateMatrixWorld(true);
+  const bokser = new Map();
+  for (const o of swGroup.children) {
+    const id = o.userData.swId;
+    if (id === undefined || !o.visible) continue;
+    _rBoks.setFromObject(o);
+    if (_rBoks.isEmpty()) continue;
+    const b = bokser.get(id);
+    if (b) b.union(_rBoks); else bokser.set(id, _rBoks.clone());
+  }
+  for (const [id, b] of bokser) {
+    b.getCenter(_rV);
+    const [cx, cy, cz] = proj(_rV.clone());
+    if (cz > 1) continue;                          // bak kameraet
+    if (bareSynlige) {
+      if (cx >= minX && cx <= maxX && cy >= minY && cy <= maxY) ut.add(id);
+      continue;
+    }
+    let sMinX = Infinity, sMaxX = -Infinity, sMinY = Infinity, sMaxY = -Infinity;
+    for (let ci = 0; ci < 8; ci++) {
+      _rV.set(ci & 1 ? b.max.x : b.min.x, ci & 2 ? b.max.y : b.min.y, ci & 4 ? b.max.z : b.min.z);
+      const [px, py] = proj(_rV);
+      if (px < sMinX) sMinX = px; if (px > sMaxX) sMaxX = px;
+      if (py < sMinY) sMinY = py; if (py > sMaxY) sMaxY = py;
+    }
+    if (sMaxX >= minX && sMinX <= maxX && sMaxY >= minY && sMinY <= maxY) ut.add(id);
+  }
+  return ut;
+}
+
+// 🧱 Støpeplanen spør her (via S, så stopeplan.js ikke må laste hele
+// SW-generatoren): er dette generert BETONG, og hvor mye er det?
+S.swBetong = (id) => {
+  const r = swRadFor(id);
+  return r ? { navn: r.navn, betong: !!r.betong, volM3: r.vol || 0 } : null;
+};
+// …og trekantene til objektene, i verdenskoordinater, til etappefargen.
+S.swTrekanter = (ider) => {
+  const sett = new Set(ider || []);
+  const pos = [];
+  if (!sett.size) return pos;
+  swGroup.updateMatrixWorld(true);
+  const v = new THREE.Vector3();
+  for (const o of swGroup.children) {
+    if (!sett.has(o.userData.swId)) continue;
+    o.traverse(m => {
+      if (!m.isMesh || !m.geometry || m.userData.dekal) return;
+      const p = m.geometry.getAttribute("position");
+      if (!p) return;
+      const ix = m.geometry.getIndex();
+      const n = ix ? ix.count : p.count;
+      for (let i = 0; i < n; i++) {
+        v.fromBufferAttribute(p, ix ? ix.getX(i) : i).applyMatrix4(m.matrixWorld);
+        pos.push(v.x, v.y, v.z);
+      }
+    });
+  }
+  return pos;
+};
 
 // ---------- Mengder og søk: de genererte elementene som rader ----------
 // HVORFOR DE MÅ VÆRE MED. SW-elementene er ikke i IFC-fila — de er generert

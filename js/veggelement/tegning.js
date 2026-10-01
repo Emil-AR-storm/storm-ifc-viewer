@@ -17,7 +17,7 @@ import { t } from "../i18n.js";
 import { allElementBoxes, forHverTrekant } from "../elements.js";
 import { MALTYPER, mmTilScene, ribbonPosisjoner, trpProfil } from "../materiell-vis.js";
 import { APN_REGEL, APN_SLARK, SW_MAKS_LAPPER, eierUtsparing, profilUtsnitt, rektMinusHull, skraBiter, ribbonSkraPos, skraVinkel, soyleTypeNavn, tilMm, tilScene, vinkelTekst } from "./regler.js";
-import { STD_OPPSETT, hentLagredeFraSp, just, lagret, lesLagret, lesSkjulteIder, oppdaterSwValgEffekt, ryddTegning, settLagret, skrivLagret, swGroup, swSkjultId } from "./tilstand.js";
+import { STD_OPPSETT, hentLagredeFraSp, just, lagret, lesLagret, lesSkjulteIder, oppdaterSwValgEffekt, ryddTegning, settLagret, skrivLagret, swGroup, swSkjultId, GULV_ID } from "./tilstand.js";
 import { loesAlleJusteringer } from "./generer.js";
 import { STAL_TYPER } from "./stal.js";
 import { avsluttJuster } from "./juster.js";
@@ -357,17 +357,25 @@ export function tegnAlt() {
   // var på ut solide midt i en gjennomsiktig modell.
   if (S.ghostPaaNytt) S.ghostPaaNytt();
   oppdaterSwValgEffekt();
+  // 🧱 Støpeplanen farger gulv og ringmur med kopier av meshene her. Er de
+  // tegnet på nytt (ny generering, dratt ringmurbit), må fargen følge med.
+  if (S.tegnStopeplan) S.tegnStopeplan();
 }
 
 export function tegnDelA() {
   if (!lagret) return;
   const o = lagret.oppsett || STD_OPPSETT;
   const sk = lagret.skjul || {};
-  if (lagret.gulv && !sk.gulv) {
+  if (lagret.gulv && !sk.gulv && !swSkjultId.has(GULV_ID)) {
     const g = lagret.gulv;
     const betong = boks("#9aa3ad", 1);
     betong.scale.set(g.bredde, tilScene(o.betongMm), g.dybde);
     betong.position.set(g.x, g.topp - tilScene(o.betongMm) / 2, g.z);
+    // 🧱 Betonggulvet er et ELEMENT som veggene (Emil 01.10): det kan trykkes
+    // på, få egenskaper med mål, shift-velges og legges i en støpeplan-etappe.
+    // Før hadde det ingen swId, så trykket gikk rett gjennom til det bak.
+    // Isolasjonen under får ingen id — den støpes ikke og bestilles for seg.
+    betong.userData.swId = GULV_ID;
     swGroup.add(betong);
     if (o.isoMm > 0) {
       const iso = boks("#e8e4da", 1);
