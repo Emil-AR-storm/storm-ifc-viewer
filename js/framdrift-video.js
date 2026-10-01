@@ -134,8 +134,15 @@ export async function lagFramdriftVideo() {
     };
     const kodek = await velgKodek(W, H, Vo);
     let blob, type, ext;
+    // MP4-pakkeren hentes først nå. Mangler fila på nettsiden (Emil 01.10:
+    // den var ikke lastet opp til GitHub), lages videoen likevel — som WebM
+    // i sanntid — i stedet for at alt stopper med en feilmelding.
+    let M = null;
     if (kodek) {
-      const M = await import("../vendor/mp4-muxer-5.2.2.mjs");
+      try { M = await import("../vendor/mp4-muxer-5.2.2.mjs"); }
+      catch (err) { console.warn("Framdriftsvideo: MP4-pakkeren lastet ikke, bruker reserven:", err && err.message); M = null; }
+    }
+    if (kodek && M) {
       const muxer = new M.Muxer({ target: new M.ArrayBufferTarget(), video: { codec: kodek.muxer, width: W, height: H, frameRate: Vo.fps }, fastStart: "in-memory" });
       let feil = null;
       const enc = new VideoEncoder({ output: (chunk, meta) => muxer.addVideoChunk(chunk, meta), error: (e) => { feil = e; } });
