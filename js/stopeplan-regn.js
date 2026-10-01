@@ -68,7 +68,7 @@ export function vaskEtappe(e) {
     // { sw: "gulv" | "r3" | "ir2" } — SW-generatorens egne id-er.
     elementer: Array.isArray(e.elementer) ? e.elementer.map(vaskElement).filter(Boolean).slice(0, 20000) : [],
     felt: Array.isArray(e.felt) ? e.felt.slice(0, 200).map(vaskFelt).filter(Boolean) : [],
-    vanntetting: Array.isArray(e.vanntetting) ? e.vanntetting.slice(0, 500) : [],
+    vanntetting: Array.isArray(e.vanntetting) ? e.vanntetting.slice(0, 500).map(vaskVann).filter(Boolean) : [],
     endret, av: tekst(e.av, 60)
   };
   return ut;
@@ -412,4 +412,90 @@ export function tidslinjeSpenn(liste, iDag) {
   d.push(iDag);
   d.sort();
   return { fra: plussDager(d[0], -7), til: plussDager(d[d.length - 1], 7) };
+}
+
+// ═══════════════ TRINN 6: VANNTETTING (Emil 30.09 / 01.10) ═══════════════
+// To typer, begge langs kanten av betongen, inne i armeringen:
+//   · injeksjon — injeksjonsslange. Går i FULL LENGDE rundt, uten skjøt
+//     eller omlegg (Emil 01.10).
+//   · cemflex   — Cemflex-plater (fugeblikk). Skjøtes med MINST 5 cm omlegg
+//     (Emil 01.10). Platene er 2 m lange og 150 mm høye (CEMflex VB 150,
+//     produktbladet / forhandlerne) — lengden kan endres i panelet.
+// En vanntetting er en kjede av strekninger i byggrammen:
+//   { id, type, kanter: [[bx1, bz1, bx2, bz2], …], by, lukket, feltId }
+// `lukket` = hele omkretsen (en ring) — da er det én skjøt mer for Cemflex.
+export const VANN_TYPER = ["injeksjon", "cemflex"];
+export const CEMFLEX_OMLEGG_M = 0.05;
+export const CEMFLEX_PLATE_M = 2.0;
+
+export function vaskVann(v) {
+  if (!v || typeof v !== "object" || !VANN_TYPER.includes(v.type)) return null;
+  const kanter = (Array.isArray(v.kanter) ? v.kanter : []).slice(0, 500)
+    .map(k => Array.isArray(k) && k.length === 4 ? k.map(Number) : null)
+    .filter(k => k && k.every(Number.isFinite) && Math.hypot(k[2] - k[0], k[3] - k[1]) > 0.01)
+    .map(k => k.map(x => Math.round(x * 1000) / 1000));
+  if (!kanter.length) return null;
+  return {
+    id: typeof v.id === "string" && v.id ? v.id.slice(0, 40) : "V-" + Math.random().toString(36).slice(2, 8),
+    type: v.type, kanter,
+    by: Number.isFinite(Number(v.by)) ? Math.round(Number(v.by) * 1000) / 1000 : 0,
+    lukket: v.lukket === true,
+    feltId: typeof v.feltId === "string" ? v.feltId.slice(0, 40) : ""
+  };
+}
+
+export function vannLengde(v) {
+  let L = 0;
+  for (const k of (v && v.kanter) || []) L += Math.hypot(k[2] - k[0], k[3] - k[1]);
+  return L;
+}
+
+// Cemflex: hvor mange plater, hvor mange skjøter, og løpemeteren MED omlegg.
+// Åpen linje: n plater dekker n·P − (n−1)·o ≥ L. Lukket ring: hver plate
+// overlapper den neste, også den siste med den første — n·(P − o) ≥ L.
+export function cemflexPlan(L, lukket, plateM, omleggM) {
+  const P = Number(plateM) > 0.2 ? Number(plateM) : CEMFLEX_PLATE_M;
+  const o = Number(omleggM) >= 0 ? Number(omleggM) : CEMFLEX_OMLEGG_M;
+  if (!(L > 0)) return { plater: 0, skjoter: 0, lmMedOmlegg: 0, platelengde: P };
+  const plater = lukket ? Math.max(1, Math.ceil(L / (P - o) - 1e-9)) : Math.max(1, Math.ceil((L - o) / (P - o) - 1e-9));
+  const skjoter = lukket ? plater : plater - 1;
+  return { plater, skjoter, lmMedOmlegg: L + skjoter * o, platelengde: P };
+}
+
+// Summene for en etappe, per type: { injeksjon: { lm }, cemflex: { lm, lmMedOmlegg, plater, skjoter } }
+export function vannSummer(e, plateM) {
+  const ut = { injeksjon: { lm: 0 }, cemflex: { lm: 0, lmMedOmlegg: 0, plater: 0, skjoter: 0 } };
+  for (const v of (e && e.vanntetting) || []) {
+    const L = vannLengde(v);
+    if (v.type === "injeksjon") ut.injeksjon.lm += L;
+    else {
+      const p = cemflexPlan(L, v.lukket, plateM);
+      ut.cemflex.lm += L; ut.cemflex.lmMedOmlegg += p.lmMedOmlegg;
+      ut.cemflex.plater += p.plater; ut.cemflex.skjoter += p.skjoter;
+    }
+  }
+  return ut;
+}
+
+// Kantene i et felt som strekninger. `ider` = kantnumre (null = hele omkretsen).
+export function feltKanter(f, ider) {
+  const P = (f && f.punkter) || [];
+  const ut = [];
+  for (let i = 0; i < P.length; i++) {
+    if (ider && !ider.includes(i)) continue;
+    const a = P[i], b = P[(i + 1) % P.length];
+    ut.push([a[0], a[1], b[0], b[1]]);
+  }
+  return ut;
+}
+
+export function leggTilVann(liste, etappeId, v, naa) {
+  const r = vaskVann(v);
+  if (!r) return vaskEtappeListe(liste);
+  return vaskEtappeListe(liste).map(e => (e.slettet || e.id !== etappeId) ? e
+    : Object.assign({}, e, { vanntetting: (e.vanntetting || []).concat([r]).slice(0, 500), endret: naa || e.endret }));
+}
+export function fjernVann(liste, vannId, naa) {
+  return vaskEtappeListe(liste).map(e => (e.slettet || !(e.vanntetting || []).some(v => v.id === vannId)) ? e
+    : Object.assign({}, e, { vanntetting: e.vanntetting.filter(v => v.id !== vannId), endret: naa || e.endret }));
 }

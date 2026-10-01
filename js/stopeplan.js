@@ -16,9 +16,9 @@ import { t } from "./i18n.js";
 import { iDagISO } from "./frist.js";
 import { flettPaaId, spLes, spPaalogget, spSkriv } from "./sp-lager.js";
 import {
-  STATUS_TEKST, dagerMellom, mandag, erGenerert, plussDager, statusPer, tidslinjeSpenn, feltAreal, feltSummer, feltVolum, fjernElementer, kantLengder, leggTilElementer, nyEtappe, sortert, statusFor, synlige, vaskEtappe, vaskEtappeListe
+  STATUS_TEKST, CEMFLEX_OMLEGG_M, cemflexPlan, vannLengde, vannSummer, dagerMellom, mandag, erGenerert, plussDager, statusPer, tidslinjeSpenn, feltAreal, feltSummer, feltVolum, fjernElementer, kantLengder, leggTilElementer, nyEtappe, sortert, statusFor, synlige, vaskEtappe, vaskEtappeListe
 } from "./stopeplan-regn.js";
-import { settVisEtappeplan, tegnStopeplan, visEtappeplan } from "./stopeplan-vis.js";
+import { settVisEtappeplan, settVisVanntetting, tegnStopeplan, visEtappeplan, visVanntetting } from "./stopeplan-vis.js";
 import { settVistPer as settVist, tegnTidslinje as tegnTid } from "./stopeplan-tid.js";
 import { clearSelection, quantitiesForSet } from "./elements.js";
 import { metaFor } from "./ifcrpc.js";
@@ -283,6 +283,47 @@ export function merkStopt(id, stopt) {
 export function tegnTidslinje() { tegnTid(erApen()); }
 export function settVistPer(dato) { settVist(dato, erApen()); }
 
+// ═══════════ 💧 TRINN 6: VANNTETTINGEN I PANELET ═══════════
+// Platelengden for Cemflex (standard 2 m — CEMflex VB 150). Huskes på
+// maskinen; den er en egenskap ved produktet som bestilles, ikke ved planen.
+const PLATE_NOKKEL = "storm-ifc-stopeplan-cemflex-m";
+S.stopePlateM = (() => { try { const v = Number(localStorage.getItem(PLATE_NOKKEL)); return v > 0.2 ? v : 2; } catch (_) { return 2; } })();
+function settPlateM(v) {
+  const n = Number(String(v).replace(",", "."));
+  if (!(n > 0.2 && n < 20)) return;
+  S.stopePlateM = n;
+  try { localStorage.setItem(PLATE_NOKKEL, String(n)); } catch (_) {}
+}
+const lm = (v) => (Math.round(v * 10) / 10).toLocaleString("no-NO") + " lm";
+export function cemflexTekst(c, plateM) {
+  return lm(c.lmMedOmlegg) + " " + t("({0} plater à {1} m, {2} skjøter à 5 cm)", c.plater, String(plateM).replace(".", ","), c.skjoter);
+}
+function vannTotalHtml() {
+  let inj = 0; const c = { lm: 0, lmMedOmlegg: 0, plater: 0, skjoter: 0 };
+  for (const e of synlige(S.stopeplan)) {
+    const v = vannSummer(e, S.stopePlateM);
+    inj += v.injeksjon.lm; c.lm += v.cemflex.lm; c.lmMedOmlegg += v.cemflex.lmMedOmlegg; c.plater += v.cemflex.plater; c.skjoter += v.cemflex.skjoter;
+  }
+  if (!inj && !c.lm) return '<p class="set-hjelp">' + esc(t("Vanntetting: trykk «+ Injeksjon» eller «+ Cemflex» på et felt.")) + "</p>";
+  return '<div class="st-vann-sum">' +
+    (inj ? '<div><span class="st-vann-prikk" style="background:#f5b800"></span>' + esc(t("Injeksjonsslange")) + ": <b>" + esc(lm(inj)) + "</b></div>" : "") +
+    (c.lm ? '<div><span class="st-vann-prikk" style="background:#b8c2cc"></span>' + esc(t("Cemflex-plater")) + ": <b>" + esc(cemflexTekst(c, S.stopePlateM)) + "</b></div>" : "") +
+    '<label class="set-hjelp">' + esc(t("Platelengde Cemflex")) + ' <input type="number" id="stPlateM" min="0.5" max="6" step="0.1" value="' + S.stopePlateM + '"> m</label>' +
+  "</div>";
+}
+function vannHtml(e) {
+  if (!(e.vanntetting || []).length) return "";
+  return e.vanntetting.map(v => {
+    const L = vannLengde(v);
+    const tekst = v.type === "cemflex"
+      ? t("Cemflex-plater") + " · " + cemflexTekst(cemflexPlan(L, v.lukket, S.stopePlateM, CEMFLEX_OMLEGG_M), S.stopePlateM)
+      : t("Injeksjonsslange") + " · " + lm(L) + (v.lukket ? " · " + t("hele omkretsen") : "");
+    return '<div class="st-vann"><span class="st-vann-prikk" style="background:' + (v.type === "cemflex" ? "#b8c2cc" : "#f5b800") + '"></span>' +
+      '<span class="st-vann-tekst">' + esc(tekst) + "</span>" +
+      '<button class="st-vann-slett" data-vann="' + esc(v.id) + '" title="' + esc(t("Slett")) + '">' + ikon("slett") + "</button></div>";
+  }).join("");
+}
+
 // ═══════════════════════ PANELET ═══════════════════════
 function erApen() { const p = $("stopePanel"); return !!(p && p.classList.contains("open")); }
 
@@ -296,6 +337,9 @@ export function tegnPanel() {
   // 👁 Én bryter for hele fargingen (Emil 01.10), øverst i panelet
   let html = '<label class="st-vis"><input type="checkbox" id="stVis"' + (visEtappeplan() ? " checked" : "") + "> " +
       esc(t("Vis etappeplan")) + '<span class="set-hjelp"> — ' + esc(t("farger betongen etter støpeplanen")) + "</span></label>" +
+    // 💧 Trinn 6: vanntettingen kan skrus av for seg, og summen står øverst
+    '<label class="st-vis"><input type="checkbox" id="stVisVann"' + (visVanntetting() ? " checked" : "") + "> " +
+      esc(t("Vis vanntetting")) + "</label>" + vannTotalHtml() +
     '<p class="set-hjelp" style="margin-top:0">' +
     esc(t("Del støpene i etapper. Gi hver etappe en dato, og merk den som støpt når den er ferdig. Trykk «Legg til» på etappen og velg elementene i modellen — også generert betonggulv og ringmur. Trykk «Ferdig» når du er ferdig. «+ Felt» tegner et felt på plata.")) + "</p>" +
     (sisteMelding ? '<p class="set-hjelp" style="color:var(--text)">' + esc(sisteMelding) + "</p>" : "");
@@ -319,6 +363,8 @@ export function tegnPanel() {
         '<span class="st-felt-tall">' + esc(t("ca {0}", m2(feltAreal(f))) + " · " + t("ca {0}", m3(feltVolum(f)))) + "</span>" +
         '<label class="st-felt-tk">' + '<input type="number" class="st-tk" min="50" max="3000" step="10" value="' + Math.round(f.tykkelseM * 1000) + '"> mm</label>' +
         '<button class="st-felt-slett" title="' + esc(t("Slett feltet")) + '">' + ikon("slett") + "</button>" +
+        '<span class="st-felt-vann"><button class="st-vann-ny" data-type="injeksjon">' + esc(t("+ Injeksjon")) + "</button>" +
+          '<button class="st-vann-ny" data-type="cemflex">' + esc(t("+ Cemflex")) + "</button></span>" +
         (erValgt ? '<div class="st-kanter">' + esc(t("Kanter (m):")) + " " +
           kantLengder(f).map((L, i) => '<input type="number" class="st-kant" data-i="' + i + '" step="0.01" min="0.05" value="' + (Math.round(L * 100) / 100) + '">').join("") +
           '<div class="set-hjelp">' + esc(t("Dra de hvite prikkene (hjørner) eller de gule (kanter). Dra inne i feltet for å flytte det. Dobbeltklikk på en kant gir et nytt hjørne. Delete sletter. Ctrl+Z angrer.")) + "</div></div>" : "") +
@@ -341,7 +387,7 @@ export function tegnPanel() {
           : '<button class="st-stopt">' + esc(t("Merk som støpt")) + "</button>" +
             '<span class="st-merke" style="color:' + STATUS_FARGE[st] + '">' + esc(t(STATUS_TEKST[st])) + "</span>") +
       "</div>" +
-      '<div class="st-innhold">' + esc(innhold) + "</div>" + feltHtml +
+      '<div class="st-innhold">' + esc(innhold) + "</div>" + feltHtml + vannHtml(e) +
       '<div class="st-rad st-knapper">' +
         '<button class="st-legg' + (velgerEtappe() === e.id ? " aktiv" : "") + '">' +
           esc(velgerEtappe() === e.id ? t("Velger …") : t("+ Legg til")) + "</button>" +
@@ -356,6 +402,9 @@ export function tegnPanel() {
 
   $("stNy").onclick = () => leggTilEtappe();
   $("stVis").onchange = (ev) => { settVisEtappeplan(ev.target.checked); tegnTidslinje(); };
+  $("stVisVann").onchange = (ev) => settVisVanntetting(ev.target.checked);
+  const pl = $("stPlateM");
+  if (pl) pl.onchange = () => { settPlateM(pl.value); tegnPanel(); };
   tegnTidslinje();
   body.querySelectorAll(".st-etappe").forEach(rad => {
     const id = rad.dataset.id;
@@ -375,9 +424,11 @@ export function tegnPanel() {
       const fid = fr.dataset.felt;
       fr.querySelector(".st-felt-navn").onclick = () => SF && SF.velgFelt(SF.valgt() === fid ? null : fid);
       fr.querySelector(".st-felt-slett").onclick = () => SF && SF.slettFelt(fid);
+      fr.querySelectorAll(".st-vann-ny").forEach(b => b.onclick = () => SF && SF.startVann(fid, b.dataset.type));
       fr.querySelector(".st-tk").onchange = (ev) => SF && SF.settTykkelse(fid, ev.target.value);
       fr.querySelectorAll(".st-kant").forEach(inp => inp.onchange = (ev) => SF && SF.settKantLengde(fid, Number(inp.dataset.i), Number(ev.target.value)));
     });
+    rad.querySelectorAll(".st-vann-slett").forEach(b => b.onclick = () => SF && SF.slettVann(b.dataset.vann));
     const tom = rad.querySelector(".st-tom");
     if (tom) tom.onclick = () => { if (confirm(t("Ta alle elementene ut av etappen?"))) tomElementer(id); };
     rad.querySelector(".st-slett").onclick = () => {
