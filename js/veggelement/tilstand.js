@@ -259,6 +259,10 @@ export function swIRekt(x0, y0, x1, y1, bareSynlige) {
 
 // 🧱 Støpeplanen spør her (via S, så stopeplan.js ikke må laste hele
 // SW-generatoren): er dette generert BETONG, og hvor mye er det?
+// 📄 Støpeplan-PDF-en tegner bygget med de genererte elementene (gulv,
+// ringmur, vegger, tak) — men uten rutenett, mål og markeringer.
+S.ekstraGrupperForPdf = () => [swGroup];
+
 S.swBetong = (id) => {
   const r = swRadFor(id);
   return r ? { navn: r.navn, betong: !!r.betong, volM3: r.vol || 0 } : null;
