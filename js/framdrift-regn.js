@@ -30,13 +30,15 @@ const dato = (d) => (typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d)) ? d
 //   id:123        IFC-element (ExpressID) — `gid` (GlobalId) følger med, så
 //                 elementet kan kjennes igjen når modellen lastes på nytt
 //   sw:<id>       generert SW-element eller betong fra SW-generatoren
-//   tak:<id>      takplate
+//   tak:<id>      takplate (TRP — fra SW-generatoren på kontoret, tak-lett på byggeplassen)
+//   blikk:<id>    generert blikk/beslag fra SW-generatoren (Emil 01.10)
 //   mat:<id>      materiell-objekt (også stålbunker og fagverk)
 //   rigg:<id>     rigg-objekt
+//   mark:<id>     markering (📌 kommentar, også med område) — Emil 01.10
 // Slaget holder slagene fra hverandre: ExpressID 3 og rigg-objekt «3» kan
 // aldri forveksles.
-export const SLAG = ["id", "sw", "tak", "mat", "rigg"];
-export const SLAG_NAVN = { id: "Elementer", sw: "SW-elementer", tak: "Takplater", mat: "Materiell", rigg: "Rigg" };
+export const SLAG = ["id", "sw", "tak", "blikk", "mat", "rigg", "mark"];
+export const SLAG_NAVN = { id: "Elementer", sw: "SW-elementer", tak: "Takplater", blikk: "Blikk", mat: "Materiell", rigg: "Rigg", mark: "Markeringer" };
 export function nokkel(slag, id) {
   if (!SLAG.includes(slag)) return "";
   const s = tekst(id, 60).trim();
