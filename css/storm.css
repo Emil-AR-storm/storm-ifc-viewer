@@ -1836,3 +1836,11 @@ body.st-tid-paa .st-velgbar { bottom: 112px; }
 @media (min-width: 900px) {
   body:has(#framdriftPanel.open) .st-velgbar { left: 16px; right: 400px; transform: none; margin: 0 auto; width: max-content; }
 }
+/* 📅 Framdriftsplan — glideren (trinn 3): ett felt per trinn fra start til slutt */
+.fp-tid .fp-bar { position: absolute; bottom: 14px; height: 16px; padding: 0; border: 0; border-radius: 3px;
+  background: var(--f); color: #fff; font-size: 10px; line-height: 16px; overflow: hidden; cursor: pointer; min-width: 6px; }
+.fp-tid .fp-bar.kommer { background: color-mix(in srgb, var(--f) 35%, transparent); }
+.fp-tid .fp-bar.arbeid { outline: 2px solid var(--text); }
+.fp-tid .fp-tid-knapper { display: flex; gap: 6px; flex-shrink: 0; }
+.fp-tid .st-tid-topp > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fp-vis { display: flex; align-items: center; gap: 6px; }
