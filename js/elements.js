@@ -2104,11 +2104,15 @@ function finishBoxSelect(b) {
   const skjult = skjulteIder();
   for (const id of skjult) ids.delete(id);
   const matIds = materiellIRect(b.x0, b.y0, b.x1, b.y1);
+  // 📅 Det velgemodusen sperrer (framdriftsplanen), tas ikke med i boksen heller
+  for (const id of [...ids]) if (sperret("id:" + id)) ids.delete(id);
+  for (const id of [...matIds]) if (sperret("mat:" + id)) matIds.delete(id);
   // ⇧ SW-elementene i boksen (Emil 01.10) — laget svarer selv
   let ekNye = 0;
   for (const l of flervalgLag()) {
     if (typeof l.iRekt !== "function") continue;
-    const nye = l.iRekt(b.x0, b.y0, b.x1, b.y1, visibleOnly);
+    const nye = new Set(l.iRekt(b.x0, b.y0, b.x1, b.y1, visibleOnly) || []);
+    for (const id of [...nye]) if (sperret(ekNokkel({ lag: l, id }))) nye.delete(id);
     if (!nye.size) continue;
     ekNye += nye.size;
     l.velg([...new Set([...l.valgte(), ...nye])]);

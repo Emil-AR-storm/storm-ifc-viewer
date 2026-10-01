@@ -205,6 +205,7 @@ export function tegnFramdrift(paa) {
   const objMap = finnObjekter();
   const ifc = new Set();
   const fade = new Map();
+  const andelK = new Map();      // nøkkel → andel, for det som ikke står fullt
   const steg = [];
   const behold = new Set();
   for (const e of synlige(S.framdrift)) {
@@ -224,6 +225,7 @@ export function tegnFramdrift(paa) {
         if (a > 0) { if (!delIfc.has(j)) delIfc.set(j, { a, ider: [] }); delIfc.get(j).ider.push(id); }
       } else {
         for (const o of objMap.get(k) || []) fade.set(o, a);
+        andelK.set(k, a);
       }
     });
     for (const [j, d] of delIfc) {
@@ -231,6 +233,19 @@ export function tegnFramdrift(paa) {
       const m = stegMesh(nk, d.ider, e.farge);
       if (m) { m.material.opacity = 0.15 + 0.7 * d.a; m.material.color.set(e.farge); m.visible = true; behold.add(nk); }
       steg.push({ trinn: e.id, steg: j, andel: d.a, elementer: d.ider.length });
+    }
+  }
+  // 🏷 Lapper og utsparingsmerking som hører til SW-elementer (userData.fpEiere,
+  // satt i veggelement/tegning.js): like synlige som den mest synlige eieren.
+  // Skjules alle elementene en åpning går gjennom, forsvinner merkingen også.
+  if (andelK.size) for (const l of EKSTRA_LAG) {
+    if (l.id !== "sw" || !l.gruppe) continue;
+    for (const o of l.gruppe.children) {
+      const eiere = o.userData.fpEiere;
+      if (!eiere || !eiere.length) continue;
+      let a = 0;
+      for (const k of eiere) { const x = andelK.has(k) ? andelK.get(k) : 1; if (x > a) a = x; }
+      if (a < 1) fade.set(o, a);
     }
   }
   settIfcSkjult(ifc);
