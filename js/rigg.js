@@ -190,6 +190,18 @@ frameHooks.push(() => {
   if (onsket.size) hentOnskedeLogoer();
 });
 
+// 🖼 LOGOEN PÅ RIGGPLAN-PDF-EN (Emil 01.10): eget valg, som i støpeplanen.
+// Før fulgte PDF-en stille valget i rapportmenyen, så den som ville ha
+// byggherrens logo på riggplanen måtte bytte logo på alle rapportene også.
+// Ikke valgt ennå (null): rapportens valg, så de som alt har satt logo der
+// får den samme som før. "" = ingen logo.
+export function riggLogoFil() {
+  const v = S.settings && S.settings.riggLogo;
+  if (v === null || v === undefined) return (S.settings && S.settings.rapLogo) || "";
+  return String(v);
+}
+S.riggLogoFil = riggLogoFil;
+
 // Logovalget i skjemaet: «Ingen logo» + filene i Logoer-mappa. Det lagrede
 // valget vises selv om lista ikke er hentet ennå (eller man er logget ut).
 async function fyllRiggLogovalg(velg, valgt, paaNytt = true) {
@@ -1329,7 +1341,9 @@ function tegnPanel() {
         return '<option value="' + m + '"' + (valgt === m ? " selected" : "") + ">1:" + m.toLocaleString("nb-NO") +
           " — " + t("{0} × {1} m", Math.round(dk.b), Math.round(dk.h)) + "</option>";
       }).join("") + "</select></label>" +
-      "<p " + LITEN + ">" + t("A3 liggende: tomta sett ovenfra med nord opp, tegnforklaring og tittelfelt. Tallet bak målestokken er hvor mye av tomta arket dekker.") + "</p>";
+      "<p " + LITEN + ">" + t("A3 liggende: tomta sett ovenfra med nord opp, tegnforklaring og tittelfelt. Tallet bak målestokken er hvor mye av tomta arket dekker.") + "</p>" +
+      // Samme «Ingen logo» + Logoer-mappa som i skjemaet til hvert objekt
+      "<label>" + t("Logo på PDF") + ' <select id="riggPdfLogo"></select></label>';
   }
   // Handlingsknappene står UTENFOR seksjonene (data-sw-fast), som Generer og
   // Fjern i SW-generator: de skal aldri gjemmes bak en overskrift.
@@ -1374,6 +1388,14 @@ function tegnPanel() {
     S.settings.riggMalestokk = e.target.value;
     writePrefs();
   };
+  if ($("riggPdfLogo")) {
+    fyllRiggLogovalg($("riggPdfLogo"), riggLogoFil(), false);
+    $("riggPdfLogo").onchange = (e) => {
+      if (!S.settings) return;
+      S.settings.riggLogo = e.target.value || "";
+      writePrefs();
+    };
+  }
   if ($("riggPdf")) $("riggPdf").onclick = async () => {
     const b = $("riggPdf"); b.disabled = true;
     try {
