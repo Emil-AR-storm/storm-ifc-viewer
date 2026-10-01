@@ -209,6 +209,8 @@ export function vaskMateriell(p) {
       return [n[0], n[1], n[2], n[3], Math.max(10, Math.min(1000, n[4])), String(q[5] || "").slice(0, 40)];
     }).filter(Boolean);
     ut.kgHalv = Math.max(0, Number(p.kgHalv) || 0);
+    // Bunkens nøkkel (stalbunker-regn.js): en flyttet bunke finner plassen sin igjen
+    ut.nokkel = String(p.nokkel || "").slice(0, 200);
     if (!ut.staver.length) return null;
   }
   if (p.maltype === "armering") {

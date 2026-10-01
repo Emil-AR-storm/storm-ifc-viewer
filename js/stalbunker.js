@@ -24,7 +24,7 @@ const ID_PREFIKS = "STAL-";
 function stalliste() { return (S.materiell || []).filter(p => p && (p.maltype === "stal" || p.maltype === "fagverk")); }
 // Nøkkelen en bunke huskes på (samme som gruppenes `nokkel`)
 function bunkeNokkel(p) {
-  return p.maltype === "fagverk" ? fagverkNokkel(p.lengde, p.bredde, p.staver.length, p.staver) : stalNokkel(p.del, p.profil, p.lengde);
+  return p.maltype === "fagverk" ? (p.nokkel || fagverkNokkel(p.lengde, p.bredde, p.staver.length, p.staver)) : stalNokkel(p.del, p.profil, p.lengde);
 }
 
 // 🔺 Endepunktene til hver bjelke (meter, scenens akser): de to punktene på
@@ -155,7 +155,7 @@ export async function lagStalbunker() {
     if (g.del === "fagverk") {
       const p = vaskMateriell(Object.assign(felles, { maltype: "fagverk",
         navn: t("Fagverk halvdel") + " · " + g.lengdeMm + " × " + g.hoydeMm + " mm",
-        lengde: g.lengdeMm, bredde: g.hoydeMm, tykkelse: g.tykkMm, staver: g.staver, kgHalv: g.kgHalv }));
+        lengde: g.lengdeMm, bredde: g.hoydeMm, tykkelse: g.tykkMm, staver: g.staver, kgHalv: g.kgHalv, nokkel: g.nokkel }));
       if (p) nye.push(p);
       continue;
     }
