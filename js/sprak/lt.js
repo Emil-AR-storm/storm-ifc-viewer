@@ -1962,5 +1962,6 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "per {0}": "{0}",
   "uke {0}–{1}": "{0}–{1} sav.",
   "Legg inn minst én etappe først — støpeplanen er tom.": "Pirmiausia pridėkite bent vieną etapą — betonavimo planas tuščias.",
-  "Last ned støpeplanen som PDF (åpner Støpeplan-panelet)": "Atsisiųsti betonavimo planą PDF formatu (atidaro Betonavimo plano skydelį)"
+  "Last ned støpeplanen som PDF (åpner Støpeplan-panelet)": "Atsisiųsti betonavimo planą PDF formatu (atidaro Betonavimo plano skydelį)",
+  "Logo på PDF": "Logotipas PDF"
 };

@@ -57,11 +57,12 @@ function mittNavn() {
     return (acc && (acc.name || acc.username)) || "";
   } catch (_) { return ""; }
 }
-// Samme logo som rapportene — originalbildet fra SharePoint, aldri en
-// gjenskaping. Uten innlogging eller uten valgt logo: Storm-navnet som tekst.
+// Logoen valgt i støpeplanpanelet (stopeLogoFil: faller tilbake på
+// rapportens valg) — originalbildet fra SharePoint, aldri en gjenskaping.
+// Uten innlogging eller uten valgt logo: Storm-navnet som tekst.
 async function finnLogo() {
   try {
-    const husket = S.settings && S.settings.rapLogo;
+    const husket = S.stopeLogoFil ? S.stopeLogoFil() : (S.settings && S.settings.rapLogo);
     if (!husket) return null;
     const liste = await hentLogoer();
     const l = liste.find(x => x.fil === husket);
@@ -70,21 +71,49 @@ async function finnLogo() {
 }
 
 // ═══════════════════════ BILDENE ═══════════════════════
-// Bare modellen, den genererte betongen og støpeplanen kommer med — ikke
-// rutenett, markeringer, mål, valgmarkering eller riggen.
+// 🧱 Emil 01.10: BARE det som skal støpes kommer med — ikke veggelementer,
+// tak, resten av modellen, rutenett, markeringer, mål eller riggen. Den som
+// leser støpeplanen skal se ringmuren og dekket, ikke lete etter dem bak
+// veggene. Etappefargene tegnes ugjennomsiktige (på hvitt ark ville 38 %
+// gjennomsiktighet bli nesten borte); planlagte etapper blir i stedet en
+// lysere utgave av fargen, og alle får en tynn mørk kontur så kantene leses.
+export const PDF_LYSNING = { stopt: 0, uke: 0.15, forsinket: 0.15, planlagt: 0.5 };
 function medBareBygget(fn) {
   const synlig = [];
-  const behold = new Set([S.modelGroup, stopeGroup]);
-  for (const g of (S.ekstraGrupperForPdf ? S.ekstraGrupperForPdf() : [])) behold.add(g);
   for (const o of scene.children) {
-    if (o.isLight || behold.has(o)) continue;
+    if (o.isLight || o === stopeGroup) continue;
     synlig.push([o, o.visible]);
     o.visible = false;
+  }
+  const varVis = stopeGroup.visible;
+  stopeGroup.visible = true;
+  const mat = [], ekstra = [];
+  const hvit = new THREE.Color(0xffffff);
+  for (const m of stopeGroup.children) {
+    if (!m.isMesh || !m.material || m.userData.etappeId == null || m.material.depthTest === false) continue;
+    const e = (S.stopeplan || []).find(x => x.id === m.userData.etappeId);
+    const lys = PDF_LYSNING[e ? statusFor(e, iDagISO()) : "planlagt"] || 0;
+    const M = m.material;
+    mat.push([M, { transparent: M.transparent, opacity: M.opacity, depthWrite: M.depthWrite, color: M.color.clone() }]);
+    M.transparent = false; M.opacity = 1; M.depthWrite = true;
+    M.color.lerp(hvit, lys);
+    M.needsUpdate = true;
+    if (m.userData.feltId == null) {
+      try {
+        const k = new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry, 25),
+          new THREE.LineBasicMaterial({ color: 0x333333 }));
+        k.renderOrder = 3;
+        stopeGroup.add(k); ekstra.push(k);
+      } catch (_) {}
+    }
   }
   const bak = scene.background;
   scene.background = new THREE.Color(0xffffff);
   try { return fn(); }
   finally {
+    for (const k of ekstra) { stopeGroup.remove(k); k.geometry.dispose(); k.material.dispose(); }
+    for (const [M, v] of mat) { M.transparent = v.transparent; M.opacity = v.opacity; M.depthWrite = v.depthWrite; M.color.copy(v.color); M.needsUpdate = true; }
+    stopeGroup.visible = varVis;
     for (const [o, v] of synlig) o.visible = v;
     scene.background = bak;
     renderer.setRenderTarget(null);
@@ -113,13 +142,12 @@ function render(kam, W, H) {
   } finally { rt.dispose(); }
 }
 
+// Rammen er det som skal støpes (ikke hele bygget), så ringmuren fyller
+// bildet. Tom støpeplan: hele modellen, så arket ikke blir et punkt.
 function byggBoks() {
-  const b = new THREE.Box3();
+  const b = new THREE.Box3().setFromObject(stopeGroup);
+  if (!b.isEmpty()) return b;
   if (S.modelGroup) b.setFromObject(S.modelGroup);
-  for (const g of [stopeGroup, ...(S.ekstraGrupperForPdf ? S.ekstraGrupperForPdf() : [])]) {
-    const x = new THREE.Box3().setFromObject(g);
-    if (!x.isEmpty()) b.union(x);
-  }
   return b;
 }
 
@@ -146,6 +174,14 @@ function kamera3D(boks, aspekt) {
   return kam;
 }
 
+function swBoks(sw) {
+  const tr = S.swTrekanter ? S.swTrekanter([sw]) : null;
+  if (!tr || !tr.length) return null;
+  const b = new THREE.Box3(), v = new THREE.Vector3();
+  for (let i = 0; i + 2 < tr.length; i += 3) b.expandByPoint(v.set(tr[i], tr[i + 1], tr[i + 2]));
+  return b;
+}
+
 // Hvor etappens nummerbrikke skal stå i planen (verdenskoordinater): midten
 // av hvert felt, ellers midten av elementene.
 function brikkePunkter(e) {
@@ -162,8 +198,9 @@ function brikkePunkter(e) {
     // L har sin felles midte ute på plata, oppå et annet felt.
     let best = null, bestV = -1;
     for (const x of e.elementer || []) {
-      if (erGenerert(x)) continue;
-      const eb = elementBoxById(Number(x.id));
+      // Generert betong (ringmur, gulv) finnes ikke i modellen — boksen
+      // regnes av trekantene fra SW-laget
+      const eb = erGenerert(x) ? swBoks(x.sw) : elementBoxById(Number(x.id));
       if (!eb || eb.isEmpty()) continue;
       const sz = eb.getSize(new THREE.Vector3()), v = sz.x * sz.z + sz.y * 0.01;
       if (v > bestV) { bestV = v; best = eb; }

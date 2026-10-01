@@ -1962,5 +1962,6 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "per {0}": "as of {0}",
   "uke {0}–{1}": "weeks {0}–{1}",
   "Legg inn minst én etappe først — støpeplanen er tom.": "Add at least one stage first — the pour plan is empty.",
-  "Last ned støpeplanen som PDF (åpner Støpeplan-panelet)": "Download the pour plan as PDF (opens the Pour plan panel)"
+  "Last ned støpeplanen som PDF (åpner Støpeplan-panelet)": "Download the pour plan as PDF (opens the Pour plan panel)",
+  "Logo på PDF": "Logo on PDF"
 };

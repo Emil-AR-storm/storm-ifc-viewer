@@ -1962,5 +1962,6 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "per {0}": "stan na {0}",
   "uke {0}–{1}": "tygodnie {0}–{1}",
   "Legg inn minst én etappe først — støpeplanen er tom.": "Najpierw dodaj co najmniej jeden etap — plan betonowania jest pusty.",
-  "Last ned støpeplanen som PDF (åpner Støpeplan-panelet)": "Pobierz plan betonowania jako PDF (otwiera panel Plan betonowania)"
+  "Last ned støpeplanen som PDF (åpner Støpeplan-panelet)": "Pobierz plan betonowania jako PDF (otwiera panel Plan betonowania)",
+  "Logo på PDF": "Logo w PDF"
 };
