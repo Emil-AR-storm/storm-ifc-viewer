@@ -36,7 +36,7 @@
 
 // ---- GENERERT BLOKK START (verktoy/lag-sw-liste.mjs) ----
 // IKKE REDIGER FOR HÅND. Kjør: node "verktoy/lag-sw-liste.mjs"
-const SW_VERSJON = "4d2174f0be0a";
+const SW_VERSJON = "69743d5ccdb2";
 const SKALL = [
   "/bygg.html",
   "/css/storm.css",
@@ -147,7 +147,21 @@ self.addEventListener("install", (e) => {
     // cache: "reload" hopper over nettleserens egen HTTP-cache. Uten den kunne
     // vi forhåndslagret en fem minutter gammel kopi av vår egen kode (proxyen
     // setter max-age=300) og låst den inne for hele versjonen.
-    await c.addAll(SKALL.map(u => new Request(u, { cache: "reload" })));
+    //
+    // IKONENE (/img/) ER IKKE KRITISKE og hentes hver for seg (Emils funn
+    // 01.10): proxyen slapp ikke gjennom /img/, så addAll() feilet på
+    // favicon-en — og da feilet HELE installasjonen. Den nye versjonen ble
+    // aldri tatt i bruk, og PC-en som hadde den gamle (fra 25.08) sto fast på
+    // den: byggeplass-siden viste verken SW-elementer, tak, terreng eller rigg.
+    // Telefonen hadde ingen gammel service worker og hentet alt fra nett.
+    // Ett manglende ikon skal aldri kunne stoppe koden.
+    const kritisk = SKALL.filter(u => !/^\/img\//.test(u));
+    await c.addAll(kritisk.map(u => new Request(u, { cache: "reload" })));
+    for (const u of SKALL) {
+      if (kritisk.indexOf(u) !== -1) continue;
+      try { await c.add(new Request(u, { cache: "reload" })); }
+      catch (err) { console.warn("Fikk ikke forhåndslagret " + u, err); }
+    }
 
     // SPRÅKET TELEFONEN STÅR I — og bare det. De tre ordbøkene er ~105 kB hver,
     // og montøren som leser norsk skal ikke betale for polsk og litauisk han
