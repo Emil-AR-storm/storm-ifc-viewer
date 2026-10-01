@@ -1812,3 +1812,11 @@ html[data-tema="lys"] .st-etappe select { color-scheme: light; }
 .st-tid .st-tid-akse { position: relative; height: 14px; margin: 0 6px; color: var(--muted); font-size: 10px; }
 .st-tid .st-tid-akse span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
 body.st-tid-paa .st-velgbar { bottom: 112px; }
+/* 💧 Støpeplan trinn 6: vanntettingen */
+.st-vann-sum { margin: 0 0 8px; padding: 6px 8px; background: var(--panel2); border-radius: var(--radius); font-size: 12px; line-height: 1.6; }
+.st-vann-sum input { width: 56px; }
+.st-vann { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 2px 0 2px 6px; }
+.st-vann .st-vann-tekst { flex: 1; min-width: 0; }
+.st-vann-prikk { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+.st-felt .st-felt-vann { flex-basis: 100%; display: flex; gap: 4px; }
+.st-felt .st-felt-vann button { padding: 2px 8px; font-size: 11px; }
