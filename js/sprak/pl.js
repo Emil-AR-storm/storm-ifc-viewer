@@ -2082,5 +2082,16 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "… og {0} til": "… i {0} więcej",
   "Laget av: {0}": "Autor: {0}",
   "Farget: nytt i trinn {0} · Vanlige farger: utført i tidligere trinn": "Kolorowe: nowe w kroku {0} · Zwykłe kolory: wykonane we wcześniejszych krokach",
-  "Én side per trinn: bygget sett fra nord, sør, øst og vest, og det som er nytt i trinnet": "Jedna strona na krok: budynek widziany z północy, południa, wschodu i zachodu oraz to, co nowe w kroku"
+  "Én side per trinn: bygget sett fra nord, sør, øst og vest, og det som er nytt i trinnet": "Jedna strona na krok: budynek widziany z północy, południa, wschodu i zachodu oraz to, co nowe w kroku",
+  "Se videoen av hele framdriften": "Obejrzyj film z całego harmonogramu",
+  "Skann med mobilen (SharePoint, Storm-innlogging)": "Zeskanuj telefonem (SharePoint, logowanie Storm)",
+  "Lager video …": "Tworzenie filmu …",
+  "Lager video … {0} %": "Tworzenie filmu … {0} %",
+  "Nettleseren kan ikke lage video.": "Przeglądarka nie może utworzyć filmu.",
+  "Lagrer videoen i SharePoint …": "Zapisywanie filmu w SharePoint …",
+  "Klarte ikke å lage videoen: {0}": "Nie udało się utworzyć filmu: {0}",
+  "Kameraet går én gang rundt bygget mens trinnene bygges opp. Lagres i SharePoint, så PDF-en får en QR-kode til videoen.": "Kamera okrąża budynek raz, gdy kroki są budowane. Zapisywany w SharePoint, aby PDF otrzymał kod QR do filmu.",
+  "Lag video": "Utwórz film",
+  "Videoen er lastet ned og lagret i SharePoint. PDF-en får nå en QR-kode til den.": "Film został pobrany i zapisany w SharePoint. PDF otrzyma teraz kod QR do niego.",
+  "Videoen er lastet ned. Logg inn (den røde prikken øverst til høyre) og lag den på nytt for å lagre den i SharePoint — da får PDF-en en QR-kode til den.": "Film został pobrany. Zaloguj się (czerwona kropka w prawym górnym rogu) i utwórz go ponownie, aby zapisać w SharePoint — wtedy PDF otrzyma kod QR."
 };

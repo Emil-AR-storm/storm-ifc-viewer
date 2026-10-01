@@ -12,7 +12,7 @@
 //   • logoen velges som i rapporten og riggplanen
 // Det som er nytt i trinnet tegnes i trinnets farge; det som ble gjort i
 // tidligere trinn står i sine vanlige farger. Objekter som ikke ligger i noe
-// trinn står på alle sidene, som på glideren.
+// trinn er ikke med (Emil 01.10).
 //
 // Bildene lages med NØYAKTIG samme kamera, sol og dis som riggplanens
 // skråbilder (oversiktKameraer i riggplan.js), og alle sidene bruker samme
@@ -32,6 +32,8 @@ import { allElementBoxes } from "./elements.js";
 import { metaFor, sikreMeta } from "./ifcrpc.js";
 import { materiellTypeLabel } from "./materiell-vis.js";
 import { veggMedId } from "./veggelement/juster.js";
+import { spFilInfo, spPaalogget } from "./sp-lager.js";
+import { qrDataUrl } from "./qr.js";
 import { GULV_ID } from "./veggelement/tilstand.js";
 import { IFC_GRUPPE, framdriftFilnavn, idFor, ifcUnder, infoRader, pdfTrinn, slagFor, trinnTittel } from "./framdrift-regn.js";
 
@@ -114,58 +116,110 @@ function farg(o, farge, ut) {
     });
   });
 }
-function settSide(liste, i, bareNytt, geoCache) {
+// Alle IFC-elementene i modellen (også de sammenslåtte i lav kvalitet)
+export function alleIfcIder() {
+  const ut = new Set();
+  for (const m of (S.modelGroup && S.modelGroup.children) || []) {
+    if (m.userData.merged) { for (const r of m.userData.ranges || []) ut.add(r.id); }
+    else if (m.userData.expressID !== undefined) ut.add(m.userData.expressID);
+  }
+  return ut;
+}
+// Det som SKAL være med i et bilde: modellen, lagene (SW, tak, materiell,
+// rigg, terreng) og markeringene. Alt annet i scenen — utvalgsmarkeringen,
+// mål, akser, sammenligning, håndtak — skjules (Emil 01.10: «en plate i
+// stålmodellen som ikke finnes» var utvalgsmarkeringen fra skjermen).
+function innholdsGrupper() {
+  const g = new Set([markerGroup, omradeGroup]);
+  if (S.modelGroup) g.add(S.modelGroup);
+  for (const l of EKSTRA_LAG) if (l.gruppe && l.gruppe !== stopeGroup) g.add(l.gruppe);
+  return g;
+}
+// Skjuler alt i scenen som ikke er innhold (se innholdsGrupper) — også for
+// videoen. `ogsa`: grupper som skal stå likevel (videoens overgangskopier).
+// Returnerer rydde-funksjonen.
+// Kan kalles igjen for hvert bilde (videoen): skjermens rammekroker slår av
+// og til ting på igjen mellom bildene. Første gang huskes hva som var synlig.
+export function skjulIkkeInnhold(ogsa) {
+  const innhold = innholdsGrupper();
+  for (const g of ogsa || []) innhold.add(g);
+  const husket = new Map();
+  const haand = () => {
+    for (const o of scene.children) {
+      if (innhold.has(o) || o.isLight || o.isCamera) continue;
+      if (!husket.has(o)) husket.set(o, o.visible);
+      o.visible = false;
+    }
+  };
+  haand();
+  const rydd = () => { for (const [o, v] of husket) o.visible = v; };
+  rydd.igjen = haand;
+  return rydd;
+}
+// `vis(o)`/`skjul(o)` med husk, så alt settes tilbake nøyaktig som det var
+function husk(rydd) {
+  return (o, synlig) => {
+    if (o.visible === synlig) return;
+    const v = o.visible; o.visible = synlig;
+    rydd.push(() => { o.visible = v; });
+  };
+}
+// Emil 01.10: objekter som ikke ligger i noe trinn skjules i PDF-en og
+// videoen — planen viser bare det som utføres. Bildet av det som er nytt i
+// trinnet har objektenes egne farger; i de fire store bildene står det nye i
+// trinnets farge.
+export function settSide(liste, i, bareNytt, geoCache) {
   const naa = liste[i];
-  const senereK = new Set(), naaK = new Set(naa.objekter.map(o => o.k));
-  liste.slice(i + 1).forEach(e => e.objekter.forEach(o => senereK.add(o.k)));
+  const naaK = new Set(naa.objekter.map(o => o.k));
+  const synligK = new Set(naaK);
+  if (!bareNytt) liste.slice(0, i).forEach(e => e.objekter.forEach(o => synligK.add(o.k)));
   const objMap = finnObjekter();
   const nokkelFor = new Map();
   for (const [k, os] of objMap) for (const o of os) nokkelFor.set(o, k);
   const rydd = [];
-  const skjul = (o) => { if (!o.visible) return; o.visible = false; rydd.push(() => { o.visible = true; }); };
+  const sett = husk(rydd);
+  const fargIfc = !bareNytt;
 
-  // IFC: senere trinn og dette trinnets originaler skjules; dette trinnet
-  // tegnes som én kopi i trinnets farge
-  const ifc = new Set();
-  for (const k of senereK) if (slagFor(k) === "id") ifc.add(Number(idFor(k)));
+  // IFC: alt som ikke skal synes, skjules. Dette trinnets elementer tegnes i
+  // de store bildene som én kopi i trinnets farge (originalene skjult).
   const naaIfc = [...naaK].filter(k => slagFor(k) === "id").map(k => Number(idFor(k)));
-  naaIfc.forEach(id => ifc.add(id));
+  const synligIfc = new Set([...synligK].filter(k => slagFor(k) === "id").map(k => Number(idFor(k))));
   // Kopien lages FØR skjulingen: i lav kvalitet er elementene slått sammen,
   // og et skjult element har ingen trekanter igjen å kopiere
-  let g = naaIfc.length ? geoCache.get(naa.id) : null;
+  let g = (fargIfc && naaIfc.length) ? geoCache.get(naa.id) : null;
   if (g === undefined) { try { g = elementGeometri(naaIfc) || null; } catch (_) { g = null; } geoCache.set(naa.id, g); }
-  settIfcSkjult(ifc);
+  const skjulIfc = new Set();
+  for (const id of alleIfcIder()) if (!synligIfc.has(id) || (fargIfc && naaIfc.includes(id))) skjulIfc.add(id);
+  settIfcSkjult(skjulIfc);
   rydd.push(() => settIfcSkjult(new Set()));
-  {
-    if (g) {
-      const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: naa.farge, side: THREE.DoubleSide }));
-      m.userData.ikkeValg = true;
-      scene.add(m);
-      rydd.push(() => { scene.remove(m); m.material.dispose(); });
-    }
+  // Det som ikke er innhold, ut av bildet
+  const innhold = innholdsGrupper();
+  for (const o of scene.children) {
+    if (innhold.has(o) || o.isLight || o.isCamera) continue;
+    sett(o, false);
   }
-  if (bareNytt && S.modelGroup) skjul(S.modelGroup);
-  if (stopeGroup) skjul(stopeGroup);
-
+  // …og kopien inn ETTER den runden, ellers skjulte den seg selv
+  if (g) {
+    const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: naa.farge, side: THREE.DoubleSide }));
+    m.userData.ikkeValg = true;
+    scene.add(m);
+    rydd.push(() => { scene.remove(m); m.material.dispose(); });
+  }
   // Lagene (SW, takplater, blikk, materiell, rigg) og markeringene
-  const grupper = EKSTRA_LAG.filter(l => l.gruppe && l.id !== "terreng").map(l => l.gruppe).concat([markerGroup, omradeGroup]);
-  for (const g of new Set(grupper)) {
-    if (g === stopeGroup) continue;
-    for (const o of g.children) {
+  const grupper = EKSTRA_LAG.filter(l => l.gruppe && l.id !== "terreng" && l.gruppe !== stopeGroup).map(l => l.gruppe).concat([markerGroup, omradeGroup]);
+  for (const gr of new Set(grupper)) {
+    for (const o of gr.children) {
       const k = nokkelFor.get(o);
       if (k) {
-        if (senereK.has(k) || (bareNytt && !naaK.has(k))) skjul(o);
-        else if (naaK.has(k)) farg(o, naa.farge, rydd);
+        if (!synligK.has(k)) sett(o, false);
+        else if (!bareNytt && naaK.has(k)) farg(o, naa.farge, rydd);
         continue;
       }
       // Lapper og utsparingsmerking følger eierne sine (fpEiere)
       const eiere = o.userData.fpEiere;
-      if (eiere && eiere.length) {
-        const synlig = bareNytt ? eiere.some(x => naaK.has(x)) : !eiere.every(x => senereK.has(x));
-        if (!synlig) skjul(o);
-        continue;
-      }
-      if (bareNytt) skjul(o);
+      if (eiere && eiere.length) { if (!eiere.some(x => synligK.has(x))) sett(o, false); continue; }
+      // Uten eier og uten trinn: ikke med (Emil: det som ikke ligger i et trinn, skjules)
+      sett(o, false);
     }
   }
   return () => { for (let j = rydd.length - 1; j >= 0; j--) { try { rydd[j](); } catch (_) {} } };
@@ -174,7 +228,7 @@ function settSide(liste, i, bareNytt, geoCache) {
 // ═══════════ UTSNITTET: ALT, MED ALLE TRINNENE ═══════════
 // `nokler`: bare disse objektene (bildet av det som er nytt i trinnet) —
 // uten: alt i modellen, så alle sidene får samme kamera.
-function utsnitt(nokler) {
+export function utsnitt(nokler) {
   const base = riggBase();
   if (!base) return null;
   const ref = aktivRef();
@@ -217,7 +271,7 @@ function utsnitt(nokler) {
   for (const e of [minE, maxE]) for (const n of [minN, maxN]) for (const y of [bunnY, toppY])
     punkter.push(new THREE.Vector3(base.c.x + (e * ost.x + n * nord.x) / base.skala, y, base.c.z + (e * ost.z + n * nord.z) / base.skala));
   const rM = Math.max(maxE - minE, maxN - minN) / 2 + marg;
-  return { base, nord, ost, senter, bunnY, punkter, rM };
+  return { base, nord, ost, senter, bunnY, toppY, punkter, rM };
 }
 
 // ═══════════════════════ HOVEDINNGANGEN ═══════════════════════
@@ -232,7 +286,8 @@ export async function lagFramdriftPdf() {
     vis(t("Lager framdriftsplan …"));
     await lastEtterbehandling();
     try { await sikreMeta(); } catch (_) {}
-    const u = utsnitt();
+    // Samme kamera på alle sidene, rundt alt som ligger i et trinn
+    const u = utsnitt([...new Set(liste.flatMap(e => e.objekter.map(o => o.k)))]) || utsnitt();
     if (!u) throw new Error(t("Fant ingenting å tegne."));
     const A = FRAMDRIFT_ARK;
     const kamFlis = oversiktKameraer(u.base, u.senter, u.nord, u.ost, u.rM, u.bunnY, A.flisB / A.flisH, u.punkter);
@@ -257,12 +312,15 @@ export async function lagFramdriftPdf() {
       sider.push({ e: liste[i], bilder: RETNINGER.map(r => bilder[r]).filter(Boolean), nytt, rader: radeneFor(liste[i]) });
     }
     const logo = await finnLogo();
+    // ▦ QR til videoen (trinn 5) — finnes den i SharePoint, kommer den på hver side
+    const video = await finnVideo();
+    const qr = video ? await qrDataUrl(video, 512) : null;
     vis(t("Henter PDF-biblioteket …"));
     const jsPDF = await hentJsPDF();
     const iDag = new Date().toISOString().slice(0, 10);
     const live = S.terrengRef ? S.terrengRef() : null;
     const d = tegnArk(jsPDF, {
-      sider, logo, iDag, av: mittNavn(), alle: sortert0(),
+      sider, logo, iDag, av: mittNavn(), alle: sortert0(), qr,
       under: [S.lettProsjekt || "", (live && live.adresse) || "", String(S.fileName || "").replace(/\.(ifc|glb)$/i, "")].filter(Boolean).join("  ·  ")
     });
     lastNedFil(d.output("blob"), framdriftFilnavn(S.fileName, iDag));
@@ -275,6 +333,17 @@ export async function lagFramdriftPdf() {
     for (const g of geoCache.values()) if (g && g.dispose) g.dispose();
     if (loadingEl) loadingEl.classList.remove("open");
   }
+}
+// Videoen i SharePoint (lagret av «Lag video»): lenken, eller null
+async function finnVideo() {
+  if (!spPaalogget()) return null;
+  for (const ext of ["mp4", "webm"]) {
+    try {
+      const r = await spFilInfo("Framdriftsplan", String(S.fileName || "modell") + ".framdrift." + ext);
+      if (r && r.status === "ok" && r.webUrl) return r.webUrl;
+    } catch (_) {}
+  }
+  return null;
 }
 // Trinnlinja viser ALLE trinnene med side, så nummereringen stemmer med sidene
 function sortert0() { return pdfTrinn(S.framdrift); }
@@ -351,7 +420,8 @@ export function tegnArk(jsPDF, m) {
     hex(d, LINJE, "strek"); d.setLineWidth(0.25); d.rect(ix, y, A.nyttB, A.nyttH);
     y += A.nyttH + 8;
     // Lista: punkt i trinnets farge, teksten, antallet til høyre
-    const bunnListe = A.bunn - 18;
+    const QR_MM = 24;
+    const bunnListe = A.bunn - 18 - (m.qr ? QR_MM + 4 : 0);
     d.setFontSize(8.5);
     for (let r = 0; r < side.rader.length; r++) {
       if (y > bunnListe) {
@@ -367,6 +437,15 @@ export function tegnArk(jsPDF, m) {
       d.text(d.splitTextToSize(rad.tekst, tw)[0], ix + 4, y);
       d.text(antTekst, ix + ib, y, { align: "right" });
       y += 5.4;
+    }
+    // ▦ QR-koden til videoen, rett over «Laget av»
+    if (m.qr) {
+      const qy = A.bunn - 13 - QR_MM;
+      try { d.addImage(m.qr, "PNG", ix, qy, QR_MM, QR_MM); } catch (_) {}
+      d.setFontSize(8.5); d.setFont(undefined, "bold"); hex(d, SORT);
+      d.text(t("Se videoen av hele framdriften"), ix + QR_MM + 4, qy + 9);
+      d.setFont(undefined, "normal"); d.setFontSize(7.5); hex(d, GRÅ);
+      d.text(t("Skann med mobilen (SharePoint, Storm-innlogging)"), ix + QR_MM + 4, qy + 14);
     }
     // Helt nederst: hvem som har laget planen
     hex(d, LINJE, "strek"); d.setLineWidth(0.25); d.line(ix, A.bunn - 11, ix + ib, A.bunn - 11);

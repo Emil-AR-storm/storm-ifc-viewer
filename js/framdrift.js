@@ -354,12 +354,15 @@ export function tegnPanel() {
   html += '<label class="set-hjelp st-logo">' + esc(t("Logo på PDF")) + ' <select id="fpLogo"></select></label>' +
     '<div class="prop-actions" style="margin-top:10px"><button id="fpNy" class="primary">' + ikon("pluss") + " " + esc(t("Nytt trinn")) + "</button>" +
       '<button id="fpPdf"' + (pdfTrinn(S.framdrift).length ? "" : " disabled") + ' title="' + esc(t("Én side per trinn: bygget sett fra nord, sør, øst og vest, og det som er nytt i trinnet")) + '">' +
-      ikon("lastned") + " " + esc(t("Last ned PDF")) + "</button></div>" +
+      ikon("lastned") + " " + esc(t("Last ned PDF")) + "</button>" +
+      '<button id="fpVideo"' + (pdfTrinn(S.framdrift).length ? "" : " disabled") + ' title="' + esc(t("Kameraet går én gang rundt bygget mens trinnene bygges opp. Lagres i SharePoint, så PDF-en får en QR-kode til videoen.")) + '">' +
+      ikon("lastned") + " " + esc(t("Lag video")) + "</button></div>" +
     '<p class="set-hjelp" id="fpLagring">' + esc(lagringsTekst()) + "</p>";
   body.innerHTML = html;
 
   $("fpNy").onclick = () => leggTilEtappe();
   $("fpPdf").onclick = () => lastNedPdf();
+  $("fpVideo").onclick = () => lagVideo();
   if ($("fpVis")) $("fpVis").onchange = (ev) => { S.framdriftVis = ev.target.checked; oppdaterVis(); };
   fyllLogo($("fpLogo"));
   $("fpLogo").onchange = (ev) => { S.settings.framdriftLogo = ev.target.value || ""; writePrefs(); };
@@ -419,6 +422,28 @@ export async function lastNedPdf() {
     lagerPdf = false;
     oppdaterVis();
   }
+}
+
+// 🎞 Videoen (trinn 5, js/framdrift-video.js — lastes først ved trykk)
+export async function lagVideo() {
+  if (lagerPdf) return null;
+  lagerPdf = true;
+  if (velger) avsluttVelg(false);
+  stoppAvspilling();
+  settSkjulTildelte(false);
+  tegnFramdrift(false);
+  let r = null;
+  try {
+    const V = await import("./framdrift-video.js");
+    r = await V.lagFramdriftVideo();
+  } finally {
+    lagerPdf = false;
+    if (r) sisteMelding = r.url
+      ? t("Videoen er lastet ned og lagret i SharePoint. PDF-en får nå en QR-kode til den.")
+      : t("Videoen er lastet ned. Logg inn (den røde prikken øverst til høyre) og lag den på nytt for å lagre den i SharePoint — da får PDF-en en QR-kode til den.");
+    if (erApen()) tegnPanel(); else oppdaterVis();
+  }
+  return r;
 }
 
 // ═══════════════════════ KROKER ═══════════════════════

@@ -178,4 +178,46 @@ export async function spLesBin(mappe, fil) {
   }
 }
 
+// 🎞 Stor fil som SKAL erstatte den forrige (framdriftsvideoen, Emil 01.10).
+// Ulik spSkrivBin, som aldri overskriver. Svarer med webUrl — lenken
+// SharePoint selv viser fila på, den QR-koden på PDF-en peker til.
+// Enkel opplasting tåler filer opp til 250 MB i Graph; en video på et par
+// minutter i 720p er 20–60 MB.
+export async function spLastOpp(mappe, fil, data, type) {
+  const token = await spTokenSilent();
+  if (!token) return { ok: false, grunn: "av" };
+  try {
+    const sid = await omradeId(token);
+    const put = () => fetch(GRAPH + "/sites/" + sid + filSti(mappe, fil) + ":/content?@microsoft.graph.conflictBehavior=replace", {
+      method: "PUT",
+      headers: authHeaders(token, { "Content-Type": type || "application/octet-stream" }, "sp-lager-opplast"),
+      body: data
+    });
+    let r = await put();
+    if (r.status === 404) { await sikreMappe(token, sid, mappe); r = await put(); }
+    if (!r.ok) throw new Error("Graph " + r.status);
+    const j = await r.json().catch(() => ({}));
+    return { ok: true, webUrl: j.webUrl || "" };
+  } catch (err) {
+    console.warn("Kunne ikke laste opp " + mappe + "/" + fil + ":", err.message);
+    return { ok: false, grunn: "feil" };
+  }
+}
+// Finnes fila, og hva er lenken? { status: "ok"|"tom"|"av"|"feil", webUrl, endret }
+export async function spFilInfo(mappe, fil) {
+  const token = await spTokenSilent();
+  if (!token) return { status: "av", webUrl: "" };
+  try {
+    const sid = await omradeId(token);
+    const r = await fetch(GRAPH + "/sites/" + sid + filSti(mappe, fil), { headers: authHeaders(token, null, "sp-lager-info") });
+    if (r.status === 404) return { status: "tom", webUrl: "" };
+    if (!r.ok) throw new Error("Graph " + r.status);
+    const j = await r.json();
+    return { status: "ok", webUrl: j.webUrl || "", endret: j.lastModifiedDateTime || "" };
+  } catch (err) {
+    console.warn("Kunne ikke slå opp " + mappe + "/" + fil + ":", err.message);
+    return { status: "feil", webUrl: "" };
+  }
+}
+
 export { flett, flettPaaId, flettPaaNavn, ryddGravsteiner } from "./sp-flett.js";
