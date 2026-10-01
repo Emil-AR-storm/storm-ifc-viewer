@@ -16,6 +16,7 @@ import "./outline.js";
 import "./hjelp.js";
 import "./materiell-vis.js";   // 📦 materiell: visningen (lastes av begge sider)
 import "./materiell.js";       // 📦 materiell: verktøyet (kun kontor)
+import "./stalbunker.js";     // 🔩 stålbunker fra stålmodellen (kun kontor, en seksjon i Materiell)
 import "./grupper.js";
 import "./terreng.js";     // ⛰ terreng fra Kartverket (kun kontor — IKKE i lett-main.js)
 import "./rigg-vis.js";    // 🏕 rigg: visningen (lastes av begge sider) — ETTER terreng.js

@@ -39,7 +39,7 @@ export function riggIkon(type, farge, px) {
 
 // Til testene: typene som har en egen tegning (resten får et fargemerke).
 export const IKON_TYPER = ["brakke", "hjulbrakke", "toalett", "forstehjelp", "mote", "strom", "lys", "container", "hms",
-  "soppel", "parkering", "lagring", "vaskeplass", "gjerde", "gjerdePort", "pilKjoretoy", "pilGaende"];
+  "soppel", "parkering", "lagring", "vaskeplass", "gjerde", "gjerdePort", "pilKjoretoy", "pilGaende", "taarnkran", "royk", "hmstavle"];
 
 function tone(hex, f) {
   const n = parseInt(String(hex).slice(1), 16);
@@ -160,6 +160,32 @@ function tegn(x, s, type, farge) {
       pil(kf, 2.5); pil(farge, 0);
       break;
     }
+    case "taarnkran": {
+      // svingsirkelen (grønn sektor) bak, masta og bommen foran
+      x.beginPath(); x.moveTo(48, 50); x.arc(48, 50, 38, Math.PI * 0.75, Math.PI * 1.9); x.closePath(); f("rgba(46,157,74,0.35)"); x.fill();
+      st("#2e9d4a", 2); x.beginPath(); x.arc(48, 50, 38, Math.PI * 0.75, Math.PI * 1.9); x.stroke();
+      st(farge, 4); x.beginPath(); x.moveTo(40, 86); x.lineTo(40, 26); x.moveTo(52, 86); x.lineTo(52, 26); x.stroke();
+      st(farge, 2); for (let y = 30; y < 86; y += 10) { x.beginPath(); x.moveTo(40, y); x.lineTo(52, y + 10); x.stroke(); }
+      st(farge, 4); x.beginPath(); x.moveTo(10, 26); x.lineTo(88, 26); x.stroke();
+      R(68, 20, 16, 12, "#7d858c");                                  // motvekten
+      st("#3a3f46", 1.5); x.beginPath(); x.moveTo(46, 12); x.lineTo(14, 26); x.moveTo(46, 12); x.lineTo(80, 26); x.moveTo(46, 12); x.lineTo(46, 26); x.stroke();
+      st("#3a3f46", 1.5); x.beginPath(); x.moveTo(22, 26); x.lineTo(22, 52); x.stroke(); R(19, 52, 6, 6, "#f2b705");
+      R(34, 84, 24, 6, "#9a9a96");
+      break;
+    }
+    case "royk":
+      R(12, 16, 72, 64, tone(farge, 0.45)); R(18, 22, 60, 52, farge);
+      R(24, 56, 40, 8, "#ffffff"); R(64, 56, 8, 8, "#f57c00");
+      st("#ffffff", 3);
+      for (const sx of [34, 46]) { x.beginPath(); x.moveTo(sx, 52); x.bezierCurveTo(sx + 6, 44, sx - 6, 38, sx, 28); x.stroke(); }
+      break;
+    case "hmstavle":
+      R(16, 34, 4, 50, "#5f666d"); R(76, 34, 4, 50, "#5f666d");
+      R(12, 18, 72, 44, farge); R(16, 28, 64, 30, "#f7f8f9");
+      f("#ffffff"); x.font = "bold 9px Arial, sans-serif"; x.textAlign = "center"; x.fillText("HMS", 48, 26);
+      for (const ax of [20, 36, 52, 66]) { R(ax, 31, 11, 24, "#ffffff"); R(ax + 2, 34, 7, 2, "#37474f"); R(ax + 2, 39, 7, 1.5, "#9aa4ad"); R(ax + 2, 43, 7, 1.5, "#9aa4ad"); }
+      R(10, 14, 76, 5, tone(farge, 0.6));
+      break;
     default:
       rund(x, 22, 22, 52, 52, 8); f(farge); x.fill();
   }

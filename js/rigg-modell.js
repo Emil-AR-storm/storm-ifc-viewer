@@ -20,7 +20,7 @@
 // `enkel` (byggeplass-siden, Emil 28.09): samme form og farger, men uten
 // småbitene (fuger, karmer, håndtak) — raskere på svake telefoner.
 import * as THREE from "three";
-import { P_PLASS_B, P_PLASS_D, RIGG_TYPER, gjerdeStykker, parkeringsPlasser } from "./rigg-regn.js";
+import { P_PLASS_B, P_PLASS_D, RIGG_TYPER, gjerdeStykker, kranSektor, parkeringsPlasser } from "./rigg-regn.js";
 
 const matCache = new Map();
 // `detalj`: flaten ligger oppå en annen flate og skal vinne dybdetesten.
@@ -187,6 +187,7 @@ function skiltMat(nokkel) {
         if (tekst) tegnTekstskilt(x, c.width, c.height, tekst);
         else if (nokkel === "P") tegnParkering(x, c.width);
         else if (nokkel === "lager") tegnLager(x, c.width);
+        else if (nokkel === "royk") tegnRoyk(x, c.width);
         else if (nokkel.startsWith("avfall:")) { const [id, farge, ...t] = nokkel.slice(7).split("|"); tegnAvfall(x, c.width, id, farge, t.join("|")); }
         else tegnVaskebil(x, c.width);
         const tex = new THREE.CanvasTexture(c);
@@ -224,6 +225,68 @@ function tegnParkering(x, s) {
   x.fillStyle = "#ffffff"; x.textAlign = "center"; x.textBaseline = "middle";
   x.font = "bold " + Math.round(s * 0.72) + "px Arial, Helvetica, sans-serif";
   x.fillText("P", s / 2, s * 0.54);
+}
+
+// 🚬 Røykeområdet: en sigarett med glo og røyk som stiger. Hvitt på blått,
+// som de andre informasjonsskiltene — et informasjonsskilt, ikke et forbud.
+function tegnRoyk(x, s) {
+  const k = s / 512;
+  x.fillStyle = "#1f5fbf"; x.fillRect(0, 0, s, s);
+  x.strokeStyle = "#ffffff"; x.lineWidth = 14 * k; x.strokeRect(16 * k, 16 * k, s - 32 * k, s - 32 * k);
+  x.fillStyle = "#ffffff";
+  x.fillRect(70 * k, 330 * k, 300 * k, 56 * k);                 // sigaretten
+  x.fillStyle = "#1f5fbf"; x.fillRect(300 * k, 330 * k, 8 * k, 56 * k);   // filterkanten
+  x.fillStyle = "#ffffff"; x.fillRect(385 * k, 330 * k, 56 * k, 56 * k);  // gloa
+  x.strokeStyle = "#ffffff"; x.lineWidth = 14 * k; x.lineCap = "round";
+  for (const [x0, a] of [[150, 1], [230, -1]]) {
+    x.beginPath(); x.moveTo(x0 * k, 300 * k);
+    x.bezierCurveTo((x0 + 40 * a) * k, 250 * k, (x0 - 40 * a) * k, 190 * k, x0 * k, 140 * k);
+    x.bezierCurveTo((x0 + 30 * a) * k, 110 * k, (x0 - 10 * a) * k, 90 * k, x0 * k, 70 * k);
+    x.stroke();
+  }
+}
+
+// 📋 HMS-tavla: overskrift i et blått bånd, og ark som henger på tavla.
+// Teksten på arkene er streker, ikke ord: det er tavla som skal kjennes
+// igjen, ikke innholdet (det står på papiret på byggeplassen).
+function tegnTavle(x, b, h, tekst, farge) {
+  x.fillStyle = "#f7f8f9"; x.fillRect(0, 0, b, h);
+  x.fillStyle = farge || "#1f5fbf"; x.fillRect(0, 0, b, h * 0.2);
+  x.fillStyle = "#ffffff"; x.textAlign = "center"; x.textBaseline = "middle";
+  let px = Math.round(h * 0.13);
+  x.font = "bold " + px + "px Arial, Helvetica, sans-serif";
+  while (px > 12 && x.measureText && x.measureText(tekst).width > b - 40) { px -= 2; x.font = "bold " + px + "px Arial, Helvetica, sans-serif"; }
+  x.fillText(tekst, b / 2, h * 0.105);
+  const kol = 5, ab = (b - 40) / kol - 16, ah = h * 0.62;
+  for (let i = 0; i < kol; i++) {
+    const ax = 20 + i * (ab + 16) + 8, ay = h * 0.28 + (i % 2) * h * 0.03;
+    x.fillStyle = "#ffffff"; x.fillRect(ax, ay, ab, ah);
+    x.strokeStyle = "#c9d0d6"; x.lineWidth = 2; x.strokeRect(ax, ay, ab, ah);
+    x.fillStyle = "#37474f"; x.fillRect(ax + ab * 0.12, ay + ah * 0.08, ab * 0.76, ah * 0.07);
+    x.fillStyle = "#9aa4ad";
+    for (let l = 0; l < 7; l++) x.fillRect(ax + ab * 0.12, ay + ah * (0.25 + l * 0.095), ab * (l % 3 === 2 ? 0.5 : 0.76), ah * 0.035);
+    x.fillStyle = "#c62828"; x.beginPath(); x.arc(ax + ab / 2, ay + 6, 6, 0, Math.PI * 2); x.fill();   // tegnestiften
+  }
+}
+function tavleMat(tekst, farge) {
+  const nokkel = "tavle:" + tekst + "|" + farge;
+  if (skiltCache.has(nokkel)) return skiltCache.get(nokkel);
+  let m = null;
+  try {
+    if (typeof document !== "undefined" && THREE.CanvasTexture) {
+      const c = document.createElement("canvas"); c.width = 1024; c.height = 512;
+      const x = c.getContext("2d");
+      if (x && typeof x.fillRect === "function") {
+        tegnTavle(x, c.width, c.height, tekst, farge);
+        const tex = new THREE.CanvasTexture(c);
+        if (THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
+        tex.anisotropy = 4;
+        m = new THREE.MeshBasicMaterial({ map: tex, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
+      }
+    }
+  } catch (_) { m = null; }
+  skiltCache.set(nokkel, m);
+  return m;
 }
 
 // Lagret materiell: en pall med tre kasser (to nederst, én oppå) og en bunt
@@ -518,6 +581,172 @@ function tegnAvfall(x, s, id, farge, tekst) {
   x.font = "bold " + px + "px Arial, Helvetica, sans-serif";
   while (px > 26 && x.measureText && x.measureText(tekst).width > s - 50 * k) { px -= 4; x.font = "bold " + px + "px Arial, Helvetica, sans-serif"; }
   x.fillText(tekst, s / 2, 430 * k);
+}
+
+// ═══════════════════════ 🏗 TÅRNKRANEN ═══════════════════════
+// Emil 01.10 valgte fra tre prøvebilder: A (ren: stiplet hvit sirkel der
+// kranen IKKE får svinge, grønn sektor med kant) + bomhøyden og gradene fra C
+// + de hvite pilene fra B ved håndtakene, som viser at de kan dras.
+//
+// Vinklene er grader med klokka fra objektets nord (lokal −z): retningen til g
+// er (sin g, −cos g). Bommen peker mot midten av den tillatte sektoren.
+// Sonen på bakken er GJENNOMSIKTIG og kan ikke trykkes på (raycast av): ellers
+// ville et klikk hvor som helst innenfor 40 m valgt kranen og dratt den med seg.
+export const KRAN_GRONN = "#2e9d4a", KRAN_STIPLET = "#e9ecef", KRAN_HANDTAK = "#ffffff";
+const ingenPek = () => {};
+// Et stag (rett stålprofil) mellom to punkter, i gruppas eget rom
+function stag(g, a, b, t, farge) {
+  const v = new THREE.Vector3().subVectors(b, a), l = v.length();
+  if (!(l > 1e-6)) return null;
+  const m = new THREE.Mesh(new THREE.BoxGeometry(t, t, l), mat(farge));
+  m.position.copy(a).addScaledVector(v, 0.5);
+  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), v.normalize());
+  g.add(m);
+  return m;
+}
+const V = (x, y, z) => new THREE.Vector3(x, y, z);
+const retning = (g) => { const r = g * Math.PI / 180; return { x: Math.sin(r), z: -Math.cos(r) }; };
+// En bue/ring som ligger flatt: grader g0 → g1 med klokka. RingGeometry og
+// CircleGeometry tegner i xy-planet med vinkel θ fra +x mot klokka; lagt ned
+// (rotateX −90°) står θ for kompassvinkelen 90° − g.
+function flatBue(r0, r1, g0, g1, seg) {
+  const lengde = Math.max(0.5, g1 - g0) * Math.PI / 180;
+  const geo = r0 > 0 ? new THREE.RingGeometry(r0, r1, seg, 1, (90 - g1) * Math.PI / 180, lengde)
+    : new THREE.CircleGeometry(r1, seg, (90 - g1) * Math.PI / 180, lengde);
+  geo.rotateX(-Math.PI / 2);
+  return geo;
+}
+// Bakkesonen: egen gjennomsiktig farge, ikke valgfarge, ikke trykkbar
+function soneMesh(g, geo, farge, op, y, lag) {
+  const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: farge, transparent: op < 1, opacity: op, depthWrite: false,
+    side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 - (lag || 0), polygonOffsetUnits: -2 - (lag || 0) }));
+  m.position.y = y;
+  m.renderOrder = 2 + (lag || 0);
+  m.userData.egen = true; m.userData.ikkeValg = true; m.userData.kranSone = true;
+  m.raycast = ingenPek;
+  g.add(m);
+  return m;
+}
+// Strekbredden på bakken: synlig fra høyt over en kran med 40 m radius, men
+// ikke tykkere enn en vei på en liten kran
+export function kranStrek(R) { return Math.max(0.15, Math.min(0.5, R * 0.007)); }
+export function kranHandtakR(R) { return Math.max(0.8, Math.min(2.2, R * 0.032)); }
+
+function byggKranSone(g, o, opts) {
+  const R = o.radius || 40, s = kranSektor(o), w = kranStrek(R), y = 0.06;
+  const seg = (grader) => Math.max(8, Math.ceil(grader / 2));
+  // Grønt fyll + grønn kant langs den tillatte delen
+  soneMesh(g, flatBue(0, R, s.fra, s.fra + s.bredde, seg(s.bredde)), KRAN_GRONN, 0.3, y, 0);
+  soneMesh(g, flatBue(R - w / 2, R + w / 2, s.fra, s.fra + s.bredde, seg(s.bredde)), KRAN_GRONN, 1, y, 1);
+  if (!s.full) {
+    // de to rette kantene fra masta ut til sirkelen
+    for (const v of [s.fra, s.til]) {
+      const d = retning(v), geo = new THREE.PlaneGeometry(w, R);
+      geo.rotateX(-Math.PI / 2); geo.translate(0, 0, -R / 2); geo.rotateY(-v * Math.PI / 180);
+      soneMesh(g, geo, KRAN_GRONN, 1, y, 1);
+      void d;
+    }
+    // Stiplet hvit sirkel der kranen IKKE får svinge (A). Stiplene er like
+    // lange i meter uansett radius: ca. 2 m strek, 2 m luft.
+    const rest = 360 - s.bredde, steg = Math.max(1.5, 4 / (2 * Math.PI * R) * 360);
+    for (let a = 0; a + steg / 2 <= rest + 1e-6; a += steg) {
+      const g0 = s.til + a, g1 = Math.min(s.til + a + steg / 2, s.til + rest);
+      soneMesh(g, flatBue(R - w / 3, R + w / 3, g0, g1, 3), KRAN_STIPLET, 1, y, 1).userData.kranStiplet = true;
+    }
+  }
+  // Bomhøyden (C): den samme tillatte buen oppe i lufta, der bommen går.
+  if (!opts.enkel) {
+    const yB = kranBomY(o), pkt = [];
+    const n = seg(s.bredde);
+    for (let i = 0; i <= n; i++) { const d = retning(s.fra + s.bredde * i / n); pkt.push(V(d.x * R, yB, d.z * R)); }
+    const geo = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pkt, s.full), n, Math.max(0.06, w * 0.35), 4, s.full);
+    soneMesh(g, geo, KRAN_GRONN, 0.85, 0, 0);
+  }
+  // Håndtakene og pilene (bare mens sektoren stilles inn). Begge håndtakene
+  // står i samme punkt på en hel sirkel — det er der man begynner å dra.
+  if (opts.kran && opts.kran.rediger) {
+    const hr = kranHandtakR(R);
+    for (const hvem of ["fra", "til"]) {
+      const v = hvem === "fra" ? s.fra : s.til, d = retning(v);
+      const p = V(d.x * R, 0, d.z * R);
+      const merk = (m) => { m.userData.egen = true; m.userData.ikkeValg = true; m.userData.sektorHandtak = hvem; m.renderOrder = 5; g.add(m); return m; };
+      const ring = merk(new THREE.Mesh(new THREE.CylinderGeometry(hr * 1.45, hr * 1.45, 0.25, 32), new THREE.MeshBasicMaterial({ color: "#1b5e20" })));
+      ring.position.set(p.x, 0.15, p.z);
+      const knott = merk(new THREE.Mesh(new THREE.CylinderGeometry(hr, hr, 0.32, 32), new THREE.MeshBasicMaterial({ color: KRAN_HANDTAK })));
+      knott.position.set(p.x, 0.2, p.z);
+      const stang = merk(new THREE.Mesh(new THREE.CylinderGeometry(hr * 0.09, hr * 0.09, hr * 3, 8), new THREE.MeshBasicMaterial({ color: "#1b5e20" })));
+      stang.position.set(p.x, hr * 1.5, p.z);
+      const topp = merk(new THREE.Mesh(new THREE.SphereGeometry(hr * 0.5, 16, 12), new THREE.MeshBasicMaterial({ color: KRAN_HANDTAK })));
+      topp.position.set(p.x, hr * 3.1, p.z);
+      // De hvite pilene (B): en bue langs utsiden av sirkelen i hver retning,
+      // med spiss. Hel sirkel: ett håndtak har begge pilene, ellers peker hvert
+      // håndtak bare den veien det kan flyttes uten å krysse det andre.
+      const rp = R + hr * 2.6, spenn = Math.min(18, 600 / R + 6);
+      const retninger = s.full ? (hvem === "fra" ? [-1, 1] : []) : [-1, 1];
+      for (const sd of retninger) {
+        const g0 = v + sd * 3, g1 = v + sd * spenn;
+        const bue = merk(new THREE.Mesh(flatBue(rp - hr * 0.22, rp + hr * 0.22, Math.min(g0, g1), Math.max(g0, g1), 12),
+          new THREE.MeshBasicMaterial({ color: KRAN_HANDTAK, side: THREE.DoubleSide })));
+        bue.position.y = 0.12;
+        const e = retning(g1), tang = V(sd * -e.z, 0, sd * e.x);   // med klokka er tangenten (−z, x) i (x, z)
+        const spiss = merk(new THREE.Mesh(new THREE.ConeGeometry(hr * 0.75, hr * 1.8, 16), new THREE.MeshBasicMaterial({ color: KRAN_HANDTAK })));
+        spiss.position.set(e.x * rp + tang.x * hr * 0.7, 0.15, e.z * rp + tang.z * hr * 0.7);
+        spiss.quaternion.setFromUnitVectors(V(0, 1, 0), tang.normalize());
+      }
+    }
+  }
+}
+
+// Høyden på bommen (meter over bakken): toppen av masta pluss svingkransen
+export function kranBomY(o) { return (o.H || 32) + 1.2; }
+
+function byggTaarnkran(g, o, opts) {
+  const { L, B, H } = o, enkel = !!opts.enkel, R = o.radius || 40, gul = o.farge;
+  const BETONG = "#9a9a96", MORK2 = "#3a3f46";
+  const fundH = 1.0;
+  boks(g, L, fundH, B, BETONG, 0, fundH / 2, 0, { r: enkel ? 0 : 0.05 });
+  // Masta: fire hjørnerør og diagonaler på hver side (fagverk)
+  const m = Math.max(0.5, Math.min(L, B) * 0.18), stav = 0.16, fag = 2.4;
+  for (const [sx, sz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) boks(g, stav, H - fundH, stav, gul, sx * m, fundH + (H - fundH) / 2, sz * m);
+  for (let y = fundH; y < H - 0.01; y += fag) {
+    const a = y, b = Math.min(H, y + fag);
+    if (enkel) { for (const [x0, z0, x1, z1] of [[-m, -m, m, -m], [m, -m, m, m], [m, m, -m, m], [-m, m, -m, -m]]) stag(g, V(x0, b, z0), V(x1, b, z1), 0.08, gul); continue; }
+    stag(g, V(-m, a, -m), V(m, b, -m), 0.08, gul); stag(g, V(m, a, m), V(-m, b, m), 0.08, gul);
+    stag(g, V(-m, a, m), V(-m, b, -m), 0.08, gul); stag(g, V(m, a, -m), V(m, b, m), 0.08, gul);
+  }
+  // Svingdelen: alt over masta dreies så bommen peker mot midten av sektoren.
+  // Bygges med bommen langs −z (nord) og dreies til slutt.
+  const sv = new THREE.Group();
+  sv.position.y = H;
+  const bomY = kranBomY(o) - H, bh = 1.3, bb = 0.65, mot = Math.max(6, R * 0.28);
+  boks(sv, m * 2 + 0.6, 0.8, m * 2 + 0.6, MORK2, 0, 0.4, 0);
+  // førerhuset på siden, med mørkt vindu mot bommen
+  boks(sv, 1.6, 1.9, 1.8, "#dfe3e8", m + 1.1, -0.2, -m - 0.6, { r: enkel ? 0 : 0.06 });
+  flat(sv, 1.3, 0.9, "#1f2a33", m + 1.1, 0.2, -m - 1.501, "-z");
+  // bommen: to underrør og ett overrør, med diagonaler (trekantfagverk)
+  for (const sx of [-bb, bb]) stag(sv, V(sx, bomY, 0), V(sx, bomY, -R), 0.14, gul);
+  stag(sv, V(0, bomY + bh, 0), V(0, bomY + bh, -R + 1), 0.14, gul);
+  if (!enkel) for (let z = 0; z < R - 1; z += 2) {
+    stag(sv, V(-bb, bomY, -z), V(0, bomY + bh, -z - 1), 0.07, gul);
+    stag(sv, V(bb, bomY, -z), V(0, bomY + bh, -z - 1), 0.07, gul);
+  }
+  // motbommen med motvekten (betongblokker) i enden
+  for (const sx of [-bb, bb]) stag(sv, V(sx, bomY, 0), V(sx, bomY, mot), 0.16, gul);
+  boks(sv, bb * 2 + 0.2, 0.06, mot - 1, "#7d858c", 0, bomY + 0.1, mot / 2);
+  boks(sv, 2.4, 2.4, 2.4, BETONG, 0, bomY - 0.6, mot - 1.4, { r: enkel ? 0 : 0.05 });
+  // tårntoppen og stagene ned til bom og motbom
+  const topp = bomY + Math.max(5, R * 0.16);
+  stag(sv, V(0, bomY, 0.4), V(0, topp, 0), 0.3, gul);
+  stag(sv, V(0, topp, 0), V(0, bomY + bh, -R * 0.62), 0.05, MORK2);
+  stag(sv, V(0, topp, 0), V(0, bomY, mot - 0.5), 0.05, MORK2);
+  // løpekatten og kroken (henger 4 m over bakken)
+  const kz = -R * 0.68, krokY = 4 - H;
+  boks(sv, 1.0, 0.4, 1.2, MORK2, 0, bomY - 0.2, kz);
+  stag(sv, V(0, bomY - 0.4, kz), V(0, krokY + 0.4, kz), 0.04, MORK2);
+  boks(sv, 0.5, 0.7, 0.5, "#f2b705", 0, krokY, kz);
+  sv.rotation.y = -kranSektor(o).midt * Math.PI / 180;
+  g.add(sv);
+  byggKranSone(g, o, opts);
 }
 
 const BYGG = {
@@ -942,6 +1171,44 @@ const BYGG = {
   // samme størrelse som førstehjelpsskiltet — med bilde av en betongbil som
   // vaskes og en tekstplate «VASKEPLASS» under. Skiltet står innenfor sonen,
   // i hjørnet av +x-enden, og vender langs sonen (mot bilene som kjører inn).
+  taarnkran(g, o, _h, opts) { byggTaarnkran(g, o, opts); },
+
+  // 🚬 Røykeområde (Emil 01.10): sone på bakken med skilt, et askebeger på
+  // fot og en benk langs den ene langsiden.
+  royk(g, o, _h, opts) {
+    const tykk = sone(g, o), kant = soneKant(o), { L, B } = o;
+    soneSkilt(g, o, "royk", (opts.skiltTekster && opts.skiltTekster.royk) || "RØYKEOMRÅDE", opts);
+    const ax = -L / 2 + kant + 0.5, az = 0;
+    sylinder(g, 0.035, 0.85, "#5f666d", ax, tykk + 0.425, az, null, 8);
+    sylinder(g, 0.16, 0.04, "#5f666d", ax, tykk + 0.02, az, null, 16);
+    sylinder(g, 0.15, 0.14, "#3d4349", ax, tykk + 0.92, az, null, 16);
+    if (L > 2.2 && B > 1.4) {
+      const bl = Math.min(1.6, L - 1.6), bz = -B / 2 + kant + 0.35;
+      boks(g, bl, 0.05, 0.36, "#8d5a2b", 0, tykk + 0.45, bz, { r: opts.enkel ? 0 : 0.01 });
+      for (const sx of [-1, 1]) boks(g, 0.06, 0.43, 0.3, "#4a5157", sx * (bl / 2 - 0.1), tykk + 0.215, bz);
+    }
+  },
+
+  // 📋 HMS-tavle (Emil 01.10): oppslagstavle på to bein, med lite tak.
+  // Tavla vender mot +z (forsiden), baksiden er en plate i tavlas farge.
+  hmstavle(g, o, _h, opts) {
+    const { L, B, H } = o, enkel = !!opts.enkel;
+    const tavleH = Math.min(1.25, H * 0.55), yMidt = H - 0.2 - tavleH / 2, tykk = 0.05;
+    for (const sx of [-1, 1]) {
+      boks(g, 0.08, H - 0.05, 0.08, "#5f666d", sx * (L / 2 - 0.06), (H - 0.05) / 2, 0);
+      boks(g, 0.12, 0.04, Math.min(B, 0.5), "#5f666d", sx * (L / 2 - 0.06), 0.02, 0);
+    }
+    boks(g, L - 0.04, tavleH + 0.06, tykk, o.farge, 0, yMidt, 0, { r: enkel ? 0 : 0.012 });
+    boks(g, L, 0.04, Math.min(B, 0.4), toneFarge(o.farge, 0.6), 0, H - 0.04, 0.04);           // taket
+    const m = tavleMat((opts.skiltTekster && opts.skiltTekster.hmstavle) || "HMS-TAVLE", o.farge);
+    if (m) {
+      const f = new THREE.Mesh(new THREE.PlaneGeometry(L - 0.16, tavleH - 0.06), m);
+      f.position.set(0, yMidt, tykk / 2 + 0.001);
+      f.userData.egen = true;
+      g.add(f);
+    } else flat(g, L - 0.16, tavleH - 0.06, "#f7f8f9", 0, yMidt, tykk / 2 + 0.001, "z");
+  },
+
   vaskeplass(g, o, _h, opts) {
     const tykk = sone(g, o);
     if (!opts.enkel) flat(g, 0.6, 0.6, "#3a4046", 0, tykk + 0.001, 0, "y");            // sluket
@@ -1062,7 +1329,7 @@ export const RIGG_SEL_ANDEL_PIL = 0.8;
 export function riggValgEffekt(g, paa, andel) {
   const a = andel == null ? RIGG_SEL_ANDEL : andel;
   g.traverse(m => {
-    if (m.isSprite || !m.isMesh || !m.material) return;
+    if (m.isSprite || !m.isMesh || !m.material || m.userData.ikkeValg) return;
     if (paa) {
       if (!m.userData.matOrig) m.userData.matOrig = m.material;
       if (!m.userData.matSel) {

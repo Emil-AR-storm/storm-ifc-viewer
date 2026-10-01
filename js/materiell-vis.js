@@ -18,6 +18,7 @@ import { $, EKSTRA_LAG, S, apnePanel, esc, ikon, registrerEkstraGruppe } from ".
 import { t } from "./i18n.js";
 import { LETT } from "./lett.js";
 import { camera, canvas, flyTil, frameHooks, makeLabel, raycaster, scene, skalerLapperMedTak } from "./scene.js";
+import { STRO_MM, perLag, stalBunkeDybde, stalOffset } from "./stalbunker-regn.js";
 
 // ---------- Objektmalene ----------
 // Alle mål i MILLIMETER i lagret form; regnes om til sceneenheter ved bygging.
@@ -66,6 +67,18 @@ export const MALTYPER = {
     stabling: 20,                // mm per beslag i bunten — de ligger i hverandre
     standard: { lengde: 2000, bredde: 200, tykkelse: 100, flens: 25, farge: "#b9c4cf" }
   },
+  // 🔩 STÅLPROFIL (Emil 01.10, stålbunker): søyler og bjelker fra
+  // stålmodellen, pakket i bunker rundt bygget av js/stalbunker.js. Lages
+  // ALDRI for hånd (`generert`: står ikke i «Nytt materiell»). `bredde` er
+  // flensbredden b og `tykkelse` profilhøyden h (mm); `profil`, `del` og
+  // `form` følger med. Stablingen står i stalbunker-regn.js.
+  stal: {
+    label: "Stålprofil",
+    fast: false, generert: true,
+    tykkelse: 200,
+    stabling: STRO_MM,
+    standard: { lengde: 6000, bredde: 100, tykkelse: 200, farge: "#6f7b85" }
+  },
   kassett: {
     label: "Kassett forskaling",
     fast: true,                  // fast mål: 600 mm × 3000 mm
@@ -78,6 +91,7 @@ export const MALTYPER = {
 };
 
 export const MATERIELL_MAKS_ANTALL = 500;
+export const STAL_FORMER = ["I", "RHS", "CHS", "U", "L", "T", "rekt"];
 
 // 🩻 Armering: de to underkategoriene. Ø-dimensjonene er stangdiameter i mm
 // (Ø12 = 12 mm tykk stang) — bare de handelsvanlige dimensjonene godtas.
@@ -110,6 +124,7 @@ export function materiellTypeLabel(p) {
   }
   if (p.maltype === "beslag")
     return t((BESLAG_TYPER[p.beslagType] || BESLAG_TYPER.l).label);
+  if (p.maltype === "stal") return t(p.del === "soyle" ? "Søyle" : "Bjelke") + " " + (p.profil || "");
   return t(MALTYPER[p.maltype].label);
 }
 
@@ -158,6 +173,16 @@ export function vaskMateriell(p) {
   if (p.maltype === "beslag") {
     ut.beslagType = BESLAG_TYPER[p.beslagType] ? p.beslagType : "l";
     ut.flens = tall(p.flens, 5, 500, mal.standard.flens);
+  }
+  if (p.maltype === "stal") {
+    // Små profiler (CFSHS 80) er smalere enn de 100 mm de andre maltypene har
+    // som minstemål — stålet får sine egne grenser
+    ut.bredde = tall(p.bredde, 10, 2000, mal.standard.bredde);
+    ut.tykkelse = tall(p.tykkelse, 10, 2000, mal.standard.tykkelse);
+    ut.profil = String(p.profil || "").slice(0, 40);
+    ut.del = p.del === "soyle" ? "soyle" : "bjelke";
+    ut.form = STAL_FORMER.includes(p.form) ? p.form : "rekt";
+    ut.godstykkelse = Math.max(0, Math.min(200, Number(p.godstykkelse) || 0));
   }
   if (p.maltype === "armering") {
     ut.armType = ARM_TYPER[p.armType] ? p.armType : "nett";
@@ -326,6 +351,10 @@ export function materiellMengdeRader() {
   const ut = [];
   mengdeTeller = 0;
   for (const p of vaskMateriellListe(S.materiell)) {
+    // 🔩 Stålbunkene er stålet I MODELLEN, pakket om. Det står allerede i
+    // Mengder (fra IFC-en) — telles det her også, bestilles det to ganger.
+    // Mengdelista for bunkene ligger i Materiell-panelet.
+    if (p.maltype === "stal") continue;
     const label = materiellTypeLabel(p);
     const L = p.lengde / 1000, B = p.bredde / 1000, H = p.tykkelse / 1000;
     const key = (p.navn || label) + " · " + label;
@@ -542,6 +571,57 @@ function stang3D(a, b, dMm, farge) {
   return m;
 }
 
+// 🔩 Ett stålprofil som ligger: tverrsnittet (I, hulprofil, rør, U, L eller
+// massiv firkant) trukket ut langs lengden (x). Underkanten står i y = 0 og
+// midten i z = 0, som de andre enhetene. Godstykkelsen er tegnet tykkere enn
+// den er når den er ukjent — det er et bilde av bunken, ikke en beregning.
+function stalForm(p) {
+  const b = p.bredde, h = p.tykkelse, tt = Math.max(4, p.godstykkelse || Math.min(b, h) * 0.08);
+  const sh = new THREE.Shape();
+  const rekt = (form, x0, y0, x1, y1) => { form.moveTo(x0, y0); form.lineTo(x1, y0); form.lineTo(x1, y1); form.lineTo(x0, y1); form.lineTo(x0, y0); };
+  if (p.form === "I") {
+    const tw = Math.max(4, tt * 0.65);
+    sh.moveTo(-b / 2, 0); sh.lineTo(b / 2, 0); sh.lineTo(b / 2, tt); sh.lineTo(tw / 2, tt); sh.lineTo(tw / 2, h - tt);
+    sh.lineTo(b / 2, h - tt); sh.lineTo(b / 2, h); sh.lineTo(-b / 2, h); sh.lineTo(-b / 2, h - tt); sh.lineTo(-tw / 2, h - tt);
+    sh.lineTo(-tw / 2, tt); sh.lineTo(-b / 2, tt); sh.lineTo(-b / 2, 0);
+  } else if (p.form === "U") {
+    sh.moveTo(-b / 2, 0); sh.lineTo(b / 2, 0); sh.lineTo(b / 2, tt); sh.lineTo(-b / 2 + tt, tt); sh.lineTo(-b / 2 + tt, h - tt);
+    sh.lineTo(b / 2, h - tt); sh.lineTo(b / 2, h); sh.lineTo(-b / 2, h); sh.lineTo(-b / 2, 0);
+  } else if (p.form === "L") {
+    sh.moveTo(-b / 2, 0); sh.lineTo(b / 2, 0); sh.lineTo(b / 2, tt); sh.lineTo(-b / 2 + tt, tt); sh.lineTo(-b / 2 + tt, h); sh.lineTo(-b / 2, h); sh.lineTo(-b / 2, 0);
+  } else if (p.form === "T") {
+    const tw = Math.max(4, tt * 0.9);
+    sh.moveTo(-tw / 2, 0); sh.lineTo(tw / 2, 0); sh.lineTo(tw / 2, h - tt); sh.lineTo(b / 2, h - tt); sh.lineTo(b / 2, h);
+    sh.lineTo(-b / 2, h); sh.lineTo(-b / 2, h - tt); sh.lineTo(-tw / 2, h - tt); sh.lineTo(-tw / 2, 0);
+  } else if (p.form === "CHS") {
+    sh.absarc(0, h / 2, b / 2, 0, Math.PI * 2, false);
+    const hull = new THREE.Path(); hull.absarc(0, h / 2, Math.max(1, b / 2 - tt), 0, Math.PI * 2, true); sh.holes.push(hull);
+  } else {
+    rekt(sh, -b / 2, 0, b / 2, h);
+    if (p.form === "RHS") { const hull = new THREE.Path(); hull.moveTo(-b / 2 + tt, tt); hull.lineTo(-b / 2 + tt, h - tt); hull.lineTo(b / 2 - tt, h - tt); hull.lineTo(b / 2 - tt, tt); hull.lineTo(-b / 2 + tt, tt); sh.holes.push(hull); }
+  }
+  return sh;
+}
+function stalMesh(p) {
+  const geo = new THREE.ExtrudeGeometry(stalForm(p), { depth: p.lengde, bevelEnabled: false, curveSegments: 10 });
+  // Uttrekket går langs +z i formens rom: dreies så lengden ligger langs x
+  geo.translate(0, 0, -p.lengde / 2);
+  geo.rotateY(Math.PI / 2);
+  const s = mmTilScene(1);
+  geo.scale(s, s, s);
+  return new THREE.Mesh(geo, lambert(p.farge));
+}
+// Strøene under hvert lag: tre treklosser på tvers av bunken.
+function stalStroer(gruppe, p) {
+  const dybde = stalBunkeDybde(p.antall, p.bredde) + 200;
+  const lag = Math.ceil(p.antall / perLag(p.antall));
+  for (let l = 0; l < lag; l++) for (const f of [-0.38, 0, 0.38]) {
+    const s = boks(STRO_MM, STRO_MM, dybde, "#a0784a");
+    s.position.set(mmTilScene(f * p.lengde), mmTilScene(l * (p.tykkelse + STRO_MM) + STRO_MM / 2), 0);
+    gruppe.add(s);
+  }
+}
+
 function byggEnhet(p) {
   const g = new THREE.Group();
   const mal = MALTYPER[p.maltype];
@@ -569,6 +649,8 @@ function byggEnhet(p) {
     // hver stang er en lav-poly sylinder (8 sider) langs sitt segment
     for (const [a, b] of armeringSegmenter(p.armType, p.lengde, p.bredde, p.diameter))
       g.add(stang3D(a, b, p.diameter, p.farge));
+  } else if (p.maltype === "stal") {
+    g.add(stalMesh(p));
   } else if (p.maltype === "kassett") {
     // ligger med plankesiden ned: planker 98 mm + plate 21 mm øverst
     const plankeH = 98, plateH = 21;
@@ -603,7 +685,7 @@ export const MAKS_DETALJLAG = 50;
 export function lagTykkelseMm(maltype, tykkelseMm) {
   const mal = MALTYPER[maltype];
   if (!mal) return 0;
-  return (maltype === "sandwich" || maltype === "armering")
+  return (maltype === "sandwich" || maltype === "armering" || maltype === "stal")
     ? (Number(tykkelseMm) || mal.tykkelse) + mal.stabling
     : mal.stabling;
 }
@@ -621,6 +703,7 @@ export const BUNKE_KLARING = 50;   // mm luft mellom to bunker
 // Ren og testbar: [opp, sideveis] i mm for enhet nr i (0-basert).
 // «Sideveis» er på tvers av lengderetningen (z før rotasjon).
 export function stabelOffset(p, i) {
+  if (p.maltype === "stal") return stalOffset(p.antall, p.bredde, p.tykkelse, i);
   const lag = lagTykkelseMm(p.maltype, p.tykkelse);
   if (p.maltype === "trp") return [i * lag, 0];
   if (p.maltype === "armering" && p.armType === "stang") {
@@ -637,6 +720,7 @@ export function stabelOffset(p, i) {
 // lengden. Feil dybde ga Emils bilde 21.08: endekrok-bunkene inni hverandre
 // (lengde 800 > bredde 200) og U-bøylene langt fra hverandre.
 export function bunkeDybdeMm(p) {
+  if (p.maltype === "stal") return stalBunkeDybde(p.antall, p.bredde);
   if (p.maltype === "armering" && (p.armType === "ubojle" || p.armType === "ukrok"))
     return p.lengde;
   // Hatprofilen er bredere enn `bredde`: flensene stikker ut på begge sider.
@@ -654,7 +738,9 @@ export function bunkeDybdeMm(p) {
 // «500» aldri blir tusenvis av småbokser.
 export function byggMateriellObjekt(p) {
   const gruppe = new THREE.Group();
-  const stang = p.maltype === "armering" && p.armType === "stang";
+  // Stål tegnes alltid profil for profil (som stengene): en bunke er sjelden
+  // mer enn 50, og en sokkelboks ville skjult hvilket profil det er.
+  const stang = (p.maltype === "armering" && p.armType === "stang") || p.maltype === "stal";
   const lag = lagTykkelseMm(p.maltype, p.tykkelse);
   let toppUnderkantMm = 0;
   if (stang || p.antall <= MAKS_DETALJLAG) {
@@ -688,6 +774,7 @@ export function byggMateriellObjekt(p) {
     }
   }
   const sokkelMm = toppUnderkantMm;   // navnelappen står over øverste enhet
+  if (p.maltype === "stal") stalStroer(gruppe, p);
 
   // Navnelappen — samme utseende som aksesystemets etiketter, i objektets
   // farge, med antallet når det er en stabel.

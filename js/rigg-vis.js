@@ -23,10 +23,10 @@ import { $, S, esc, ikon, registrerEkstraGruppe } from "./state.js";
 import { t } from "./i18n.js";
 import { LETT } from "./lett.js";
 import { LAPP_MAKS_M, LAPP_MIN_PX, camera, flyTil, frameHooks, grid, lappStorrelse, makeLabel, renderer, scene, skalerLapperMedTak } from "./scene.js";
-import { RIGG_SEL_ANDEL_PIL, byggModell, riggValgEffekt, toneFarge } from "./rigg-modell.js";
+import { KRAN_GRONN, RIGG_SEL_ANDEL_PIL, byggModell, kranHandtakR, riggValgEffekt, toneFarge } from "./rigg-modell.js";
 import {
   AVFALLSTYPER, avfallstype, GJERDE_DELER, P_PLASS_B, P_PLASS_D, RIGG_REKKEFOLGE, RIGG_TYPER, erPil, gjerdeLappPunkt, gjerdeStykker, parkeringsPlasser, lokalTilEN, riggAntall, riggFraByggeplass, riggForByggeplassFra, riggMengdeRader,
-  riggFotavtrykk, riggObjekter, riggRef, riggTilBygg, tilUtm, vaskRef, REF_ID
+  riggFotavtrykk, riggObjekter, riggRef, riggTilBygg, tilUtm, vaskRef, REF_ID, kranSektor, kranKompass
 } from "./rigg-regn.js";
 
 export function gjerdeDelLabel(del) { return t(GJERDE_DELER[del] || del); }
@@ -224,7 +224,15 @@ export function byggRiggObjekt(o, skala, hoyder) {
   // brukerens språk). Vises også på byggeplass-siden — det er ingen bilder å hente.
   const at = o.avfall ? avfallstype(o.avfall) : null;
   const avfall = at ? { id: at.id, farge: at.farge, tekst: t(at.label).toUpperCase() } : null;
-  byggModell(modell, o, hoyder, { enkel: LETT, logo, avfall, mark: gjerdeMark, skiltTekster: { vaskeplass: t("Vaskeplass").toUpperCase(), lagring: t("Lagringsområde").toUpperCase() } });
+  // 🏗 Kranen: håndtakene står bare mens sektoren stilles inn (S.riggKranRed
+  // fra rigg.js), gradene og radiusen når kranen er valgt eller stilles inn.
+  const red = !LETT && S.riggKranRed && S.riggKranRed.id === o.id;
+  // En full omtegning (tegnRigg) midt i innstillingen skal vise kladden, ikke det lagrede
+  if (red) o = Object.assign({}, o, { sektorFra: S.riggKranRed.sektorFra, sektorTil: S.riggKranRed.sektorTil });
+  const kran = { rediger: !!red, info: !!red || (!LETT && o.id === S.riggValgtId) };
+  byggModell(modell, o, hoyder, { enkel: LETT, logo, avfall, mark: gjerdeMark, kran, skiltTekster: {
+    vaskeplass: t("Vaskeplass").toUpperCase(), lagring: t("Lagringsområde").toUpperCase(),
+    royk: t("Røykeområde").toUpperCase(), hmstavle: t("HMS-tavle").toUpperCase() } });
   ytre.add(modell);
   const n = riggAntall(o);
   let tekst = (o.navn || riggTypeLabel(o.type)) + (n > 1 ? "  ×" + n : "");
@@ -256,10 +264,32 @@ export function byggRiggObjekt(o, skala, hoyder) {
     lapp.position.set(pk.x * s, (o.H + hm + 0.8) * s, pk.z * s);
   }
   ytre.add(lapp);
+  if (RIGG_TYPER[o.type] && RIGG_TYPER[o.type].kran && kran.info) kranLapper(ytre, o, s);
   ytre.userData.hoyder = hoyder || null;
   ytre.userData.riggId = o.id;
   ytre.userData.riggType = o.type;
   return ytre;
+}
+
+// 🏗 Gradene ved håndtakene og radiusen midt i sektoren (prøvebilde C).
+// Gradene er KOMPASSRETNINGEN (fra nord, med klokka) — det er den som står
+// i en kranplan — ikke vinkelen i objektets eget rom.
+function kranLapper(ytre, o, s) {
+  const R = o.radius, sk = kranSektor(o), ref = aktivRef();
+  const plassRot = ref && ref.plass ? ref.plass.rot : 0;
+  const lapp = (tekst, farge, g, r, px) => {
+    const l = makeLabel(tekst, farge);
+    l.userData.px = px; l.userData.aspect = l.scale.x / l.scale.y;
+    const v = g * Math.PI / 180;
+    l.position.set(Math.sin(v) * r * s, 3 * s, -Math.cos(v) * r * s);
+    ytre.add(l);
+  };
+  const ut = R + kranHandtakR(R) * 6;
+  if (!sk.full) {
+    lapp(kranKompass(o, sk.fra, plassRot) + "°", "#ffffff", sk.fra, ut, 18);
+    lapp(kranKompass(o, sk.til, plassRot) + "°", "#ffffff", sk.til, ut, 18);
+  }
+  lapp("R " + Math.round(R) + " m" + (sk.full ? "" : " · " + sk.bredde + "°"), KRAN_GRONN, sk.midt, R * 0.55, 20);
 }
 
 // ═══════════════════════ TEGN OG PLASSER ═══════════════════════
