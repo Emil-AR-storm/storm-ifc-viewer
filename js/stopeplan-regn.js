@@ -499,3 +499,72 @@ export function fjernVann(liste, vannId, naa) {
   return vaskEtappeListe(liste).map(e => (e.slettet || !(e.vanntetting || []).some(v => v.id === vannId)) ? e
     : Object.assign({}, e, { vanntetting: e.vanntetting.filter(v => v.id !== vannId), endret: naa || e.endret }));
 }
+
+// ═══════════════ TRINN 7: STØPEPLAN-PDF (oppsett D) OG EXCEL ═══════════════
+// Emil 01.10: oppsett D — plan og 3D øverst, tidslinje i midten, full tabell
+// nederst. Ingen «ca» på tallene, og ingen svinn eller ekstra betong: det
+// varierer for mye fra prosjekt til prosjekt, så brukeren legger det til selv.
+//
+// Én rad per etappe. `volumElementer(e)` gir elementvolumet i m³ (kommer fra
+// mengdeuttaket i stopeplan.js — her er regningen ren og testbar).
+export function stopeplanTabell(liste, volumElementer, plateM, iDag) {
+  const rader = sortert(liste).map(e => {
+    const fs = feltSummer(e);
+    const v = vannSummer(e, plateM);
+    const st = statusFor(e, iDag);
+    const nEl = (e.elementer || []).length, nF = (e.felt || []).length;
+    return {
+      id: e.id, nr: e.nr, navn: e.navn, farge: e.farge, dato: e.dato, stoptDato: e.stoptDato || "",
+      status: st, innhold: [nEl ? nEl + (nEl === 1 ? " element" : " elementer") : "", nF ? nF + " felt" : ""].filter(Boolean).join(" · ") || "–",
+      areal: fs.areal, volum: (Number(volumElementer ? volumElementer(e) : 0) || 0) + fs.volum,
+      injeksjon: v.injeksjon.lm, cemflex: v.cemflex.lmMedOmlegg, plater: v.cemflex.plater, skjoter: v.cemflex.skjoter
+    };
+  });
+  const sum = rader.reduce((s, r) => ({ areal: s.areal + r.areal, volum: s.volum + r.volum, injeksjon: s.injeksjon + r.injeksjon,
+    cemflex: s.cemflex + r.cemflex, plater: s.plater + r.plater }), { areal: 0, volum: 0, injeksjon: 0, cemflex: 0, plater: 0 });
+  return { rader, sum };
+}
+
+// Tidslinjen på arket: hele uker, mandag til søndag, fra første til siste
+// dato (og i dag). { fra, til, uker: [{ mandag, nr }] } eller null.
+export function isoUke(iso) {
+  const b = String(iso || "").split("-").map(Number);
+  const d = new Date(Date.UTC(b[0], b[1] - 1, b[2]));
+  const dag = (d.getUTCDay() + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - dag + 3);                 // torsdagen i uka
+  const t1 = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));
+  return 1 + Math.round(((d - t1) / 86400000 - 3 + ((t1.getUTCDay() + 6) % 7)) / 7);
+}
+export function ganttUker(liste, iDag) {
+  const d = [];
+  for (const e of synlige(liste)) { if (e.dato) d.push(e.dato); if (e.stoptDato) d.push(e.stoptDato); }
+  if (!d.length) return null;
+  d.push(iDag); d.sort();
+  const fra = mandag(d[0]), sist = mandag(d[d.length - 1]);
+  const uker = [];
+  for (let m = fra; m <= sist; m = plussDager(m, 7)) uker.push({ mandag: m, nr: isoUke(m) });
+  return { fra, til: plussDager(sist, 7), uker };
+}
+
+export function stopeplanFilnavn(fil, iDag, ending) {
+  const navn = String(fil || "modell").replace(/\.(ifc|glb)$/i, "").replace(/[\\/:*?"<>|]+/g, "-").trim() || "modell";
+  return "Støpeplan " + navn + " " + iDag + "." + (ending || "pdf");
+}
+
+// Excel: ett ark, én rad per etappe, summene som FORMLER (som Mengder).
+// Tallene skrives som tall — ikke tekst — så de kan regnes videre på
+// (svinn og ekstra betong legger brukeren til selv, Emil 01.10).
+export function stopeplanExcelRader(tab, statusTekst) {
+  const st = statusTekst || ((s) => STATUS_TEKST[s] || s);
+  const r3 = (v) => Math.round(v * 1000) / 1000;
+  const hode = ["Nr", "Etappe", "Innhold", "Plandato", "Status", "Støpt", "Areal felt (m²)", "Volum (m³)",
+    "Injeksjonsslange (lm)", "Cemflex m/omlegg (lm)", "Cemflex plater (stk)"];
+  const rader = [hode];
+  for (const r of tab.rader) rader.push([r.nr, r.navn, r.innhold, r.dato || "", st(r.status), r.stoptDato || "",
+    r3(r.areal), r3(r.volum), r3(r.injeksjon), r3(r.cemflex), r.plater]);
+  const n = tab.rader.length;
+  const sumRad = ["", "Sum", "", "", "", ""];
+  for (let k = 6; k <= 10; k++) sumRad.push(n ? "=SUM(" + String.fromCharCode(65 + k) + "2:" + String.fromCharCode(65 + k) + (n + 1) + ")" : 0);
+  rader.push(sumRad);
+  return rader;
+}

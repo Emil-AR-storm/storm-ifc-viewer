@@ -50,7 +50,7 @@ export const GRUPPER = [
   // målestokk, tittelfelt og sjekkene før nedlasting er de samme.
   { id: "dok",      navn: "Dokumentasjon",    ikonNavn: "tegning",
     hjelp: "Dokumentasjon: rapport, riggplan, SW-tegning, BCF og lett kopi",
-    knapper: ["btnRapport", "btnDokRigg", "btnDokSW", "btnDokBcf", "btnSaveLite"] }
+    knapper: ["btnRapport", "btnDokStope", "btnDokRigg", "btnDokSW", "btnDokBcf", "btnSaveLite"] }
 ];
 
 // Knapper som står uansett hvilken gruppe som er valgt. Angre, Gjenopprett og
