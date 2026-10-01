@@ -296,6 +296,10 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
   <div class="body" id="commentBody"></div>
 </div>
 
+<div class="panel" id="stopePanel">
+  <header><span data-i18n>Støpeplan</span><button onclick="document.getElementById('stopePanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <div class="body" id="stopeBody"></div>
+</div>
 <div class="panel" id="grupperPanel">
   <header><span data-i18n>Grupper</span><button onclick="document.getElementById('grupperPanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="grupperBody"></div>
