@@ -16,7 +16,7 @@ import { S, esc, ikon } from "../state.js";
 import { t } from "../i18n.js";
 import { allElementBoxes, forHverTrekant } from "../elements.js";
 import { MALTYPER, mmTilScene, ribbonPosisjoner, trpProfil } from "../materiell-vis.js";
-import { APN_REGEL, APN_SLARK, SW_MAKS_LAPPER, eierUtsparing, profilUtsnitt, rektMinusHull, skraBiter, ribbonSkraPos, skraVinkel, soyleTypeNavn, tilMm, tilScene, vinkelTekst } from "./regler.js";
+import { hullNaa, APN_REGEL, APN_SLARK, SW_MAKS_LAPPER, eierUtsparing, profilUtsnitt, rektMinusHull, skraBiter, ribbonSkraPos, skraVinkel, soyleTypeNavn, tilMm, tilScene, vinkelTekst } from "./regler.js";
 import { STD_OPPSETT, hentLagredeFraSp, just, lagret, lesLagret, lesSkjulteIder, oppdaterSwValgEffekt, ryddTegning, settLagret, skrivLagret, swGroup, swSkjultId, GULV_ID } from "./tilstand.js";
 import { loesAlleJusteringer } from "./generer.js";
 import { STAL_TYPER } from "./stal.js";
@@ -275,16 +275,8 @@ export function tegnVeggElementer(vegger, o, visMerking) {
     // som bitene som står igjen rundt hakket.
     // Hakkene regnes ut fra radens åpninger og elementets NÅVÆRENDE
     // utstrekning, så de følger med når elementet dras/strekkes.
-    let hull = v.hull;
-    if (v.apn && v.fraMm !== undefined) {
-      hull = [];
-      for (const a of v.apn) {
-        const x0 = Math.max(v.fraMm, a.fraMm) - v.fraMm, x1 = Math.min(v.tilMm, a.tilMm_) - v.fraMm;
-        const y0 = Math.max(v.rBunnMm, a.bunnMm) - v.rBunnMm;
-        const y1 = Math.min(v.rBunnMm + v.hoydeMm, a.toppMm) - v.rBunnMm;
-        if (x1 - x0 > 10 && y1 - y0 > 10) hull.push({ x0, x1, y0, y1 });
-      }
-    }
+    // (hullNaa i regler.js — samme regel som byggeplassen bruker)
+    const hull = hullNaa(v);
     if (v.skra) {
       // Skråkappet element: ett trapes med bølge og kjerne, åpningene som hull.
       el.add(byggSkraPanel(v.lengdeMm,

@@ -1819,3 +1819,24 @@ export function utsparingerPaFasade(fasade, baseY, liste) {
 // ═══════════════════ GENERERINGEN ═══════════════════
 
 // Alt som tegnes bor i én gruppe, og alt som er generert lagres som rene tall
+
+// 🕳 Hakkene i ett element, regnet ut av radens åpninger og elementets
+// NÅVÆRENDE utstrekning (fraMm–tilMm). ÉN regel for kontoret (tegning.js) og
+// byggeplassen (swByggeplassElement): Emils funn 01.10 var et element som var
+// dratt kortere etter genereringen. Kontoret regnet hakkene på nytt og tegnet
+// det riktig, men byggeplassen brukte det LAGREDE `hull` fra før draget —
+// et hakk 2990 mm bredt i et element på 2800 mm. Da sto bare en 200 mm stripe
+// igjen, og montøren så dimensjonslappen, men ikke panelet.
+// Uten åpninger (eldre lagring) brukes det lagrede som før.
+export function hullNaa(v) {
+  if (!v) return [];
+  if (!(v.apn && v.fraMm !== undefined)) return Array.isArray(v.hull) ? v.hull : [];
+  const hull = [];
+  for (const a of v.apn) {
+    const x0 = Math.max(v.fraMm, a.fraMm) - v.fraMm, x1 = Math.min(v.tilMm, a.tilMm_) - v.fraMm;
+    const y0 = Math.max(v.rBunnMm, a.bunnMm) - v.rBunnMm;
+    const y1 = Math.min(v.rBunnMm + v.hoydeMm, a.toppMm) - v.rBunnMm;
+    if (x1 - x0 > 10 && y1 - y0 > 10) hull.push({ x0, x1, y0, y1 });
+  }
+  return hull;
+}

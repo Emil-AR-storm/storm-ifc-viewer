@@ -18,7 +18,7 @@ import { allElementBoxes } from "../elements.js";
 import { camera, flyTil, scene } from "../scene.js";
 import { settValgEffekt } from "../materiell-vis.js";
 import { flettPaaNavn, spLes, spPaalogget, spSkriv } from "../sp-lager.js";
-import { tilMm, SW_KLARING_MM, SW_MIN_FELT_MM, SW_MIN_SKRA_MM, rektMinusHull, sikreUtspTyper, skraVinkel, soyleTypeNavn, tilScene, vinkelTekst } from "./regler.js";
+import { hullNaa, tilMm, SW_KLARING_MM, SW_MIN_FELT_MM, SW_MIN_SKRA_MM, rektMinusHull, sikreUtspTyper, skraVinkel, soyleTypeNavn, tilScene, vinkelTekst } from "./regler.js";
 import { baseYNaa, tegnAlt, utspPaFasader } from "./tegning.js";
 import { byggAlleStabler, fjernGenerertMateriell, loesAlleJusteringer } from "./generer.js";
 import { pekGulv, pekVegg, veggMedId } from "./juster.js";
@@ -365,6 +365,17 @@ export function swForByggeplass() {
     const e = swByggeplassElement(v, erRm);
     if (e.l > 0 && e.h > 0) ut.push(e);
   }
+  // 🧱 Betonggulvet følger med (trinn 5, Emil 01.10): det kan ligge i en
+  // støpeplan-etappe, og da må montøren se det farget. Ligger som et vanlig
+  // element med k = "g": en flat kasse — l langs x, h = betongtykkelsen,
+  // t langs z — så den gamle tegningen ute tegner det riktig uten noe nytt.
+  const g = lagret && lagret.gulv;
+  const sk = (lagret && lagret.skjul) || {};
+  if (g && !sk.gulv) {
+    const tk = o.betongMm || 200;
+    ut.push({ id: GULV_ID, sw: "", k: "g", x: r4(g.x), y: r4(g.topp - tilScene(tk) / 2), z: r4(g.z), rot: 0,
+      l: mmHel(tilMm(g.bredde)), h: mmHel(tk), t: mmHel(tilMm(g.dybde)), nx: 0, nz: 1, dim: "" });
+  }
   return { elementer: ut, utsparinger: swUtspForByggeplass(),
     farge: String(o.farge || "#dfe5ec"),
     utvFarge: String(o.utvFarge || ""), isolasjon: String(o.isolasjon || "") };
@@ -406,7 +417,9 @@ export function swByggeplassElement(v, erRm) {
   // OPPDELINGEN GJØRES HER, ikke ute: rektMinusHull er guillotine-regelen som
   // bestemmer hvilke biter som blir igjen, og den skal finnes ett sted. Ute
   // tegnes bitene som de er.
-  const hull = Array.isArray(v.hull) ? v.hull.filter(h => h && h.x1 - h.x0 > 10 && h.y1 - h.y0 > 10) : [];
+  // Regnet på NYTT fra åpningene (hullNaa) — ikke det lagrede `hull`, som
+  // kan være fra før elementet ble dratt (Emils funn 01.10).
+  const hull = hullNaa(v).filter(h => h && h.x1 - h.x0 > 10 && h.y1 - h.y0 > 10);
   if (hull.length) {
     if (e.hv !== undefined) {
       // Skråkappet MED hakk: bitene ville mistet skråkuttet. Hullene sendes rå,
