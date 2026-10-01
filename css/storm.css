@@ -1761,3 +1761,32 @@ html[data-tema="lys"] .st-etappe select { color-scheme: light; }
 .st-knapper { margin: 6px 0 0; flex-wrap: wrap; }
 .st-knapper button { padding: 4px 9px; font-size: 12px; }
 .st-knapper .st-oye { margin-left: auto; }
+
+/* 🧱 Støpeplanens velgemodus («Legg til», Emil 01.10): linja nederst som viser
+   hvor mange som er valgt, med Ferdig og Avbryt. Ligger over modellen, under
+   panelene, og flytter seg ikke når panelet åpnes. */
+.st-velgbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: 64px; z-index: 40;
+  display: none; gap: 10px; align-items: center; max-width: calc(100vw - 32px);
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  padding: 8px 12px; box-shadow: 0 4px 18px rgba(0,0,0,.35); font-size: 13px; }
+.st-velgbar .st-velg-farge { width: 14px; height: 14px; border-radius: 3px; flex: none; }
+.st-velgbar .st-velg-tekst { color: var(--muted); line-height: 1.35; }
+.st-velgbar .st-velg-tekst b { color: var(--text); }
+.st-velgbar .st-velg-ant { font-weight: 700; white-space: nowrap; }
+#stopeBody .st-legg.aktiv { border-color: var(--accent, #3b82f6); color: var(--text); }
+/* På PC står støpeplanpanelet til høyre — da legger linja seg til venstre for
+   det i stedet for oppå (panelet er inntil 380 px bredt). */
+@media (min-width: 900px) {
+  body:has(#stopePanel.open) .st-velgbar { left: 16px; right: 400px; transform: none; margin: 0 auto; width: max-content; }
+}
+/* 🧱 Støpeplan trinn 3: feltene under etappen */
+.st-felt { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 0 4px 6px; border-top: 1px solid var(--border); font-size: 12px; }
+.st-felt.valgt { background: var(--panel); border-radius: 6px; }
+.st-felt .st-felt-navn { padding: 2px 8px; font-weight: 700; }
+.st-felt .st-felt-tall { color: var(--muted); flex: 1; min-width: 120px; }
+.st-felt .st-felt-tk input { width: 64px; }
+.st-felt .st-kanter { flex-basis: 100%; color: var(--muted); }
+.st-felt .st-kanter input.st-kant { width: 64px; margin: 2px 4px 2px 0; }
+#stopeBody .st-nyfelt.aktiv { border-color: var(--accent, #3b82f6); }
+.st-velgbar .st-form { display: inline-flex; gap: 4px; }
+.st-velgbar .st-form button.aktiv { border-color: var(--accent, #3b82f6); font-weight: 700; }
