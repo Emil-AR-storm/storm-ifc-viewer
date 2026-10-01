@@ -47,7 +47,7 @@ export function tegnPanel() {
         ' <span class="st-merke" style="color:' + STATUS_FARGE[st] + '">' +
         esc(st === "stopt" && e.stoptDato ? t("Støpt {0}", datoKort(e.stoptDato)) : t(STATUS_TEKST[st])) + "</span></div>" +
       '<div class="st-innhold">' + esc(t("{0} elementer", (e.elementer || []).length) + " · " + t("{0} felt", (e.felt || []).length) +
-        (fs.areal > 0 ? " (" + t("ca {0}", m2(fs.areal)) + " · " + t("ca {0}", m3(fs.volum)) + ")" : "")) + "</div>" +
+        (fs.areal > 0 ? " (" + m2(fs.areal) + " · " + m3(fs.volum) + ")" : "")) + "</div>" +
       vannLinje(e) +
     "</div>";
   }
@@ -104,8 +104,8 @@ export function visFelt(feltId) {
   $("propBody").innerHTML =
     rad(t("Dato"), e.dato ? datoLang(e.dato) : t("Ingen dato")) +
     rad(t("Status"), st === "stopt" && e.stoptDato ? t("Støpt {0}", datoLang(e.stoptDato)) : t(STATUS_TEKST[st])) +
-    rad(t("Areal (ca)"), m2(feltAreal(f))) +
-    rad(t("Volum (ca)"), m3(feltVolum(f))) +
+    rad(t("Areal"), m2(feltAreal(f))) +
+    rad(t("Volum"), m3(feltVolum(f))) +
     rad(t("Tykkelse"), Math.round(f.tykkelseM * 1000) + " mm");
   const p = $("propPanel");
   if (p) p.dataset.navn = $("propTitle").textContent;

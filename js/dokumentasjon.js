@@ -36,6 +36,8 @@ export function apneOgTrykk(panelId, apneKnappId, indreKnappId, tomTekst) {
   return "trykket";
 }
 
+på("btnDokStope", "click", () =>
+  apneOgTrykk("stopePanel", "btnStopeplan", "stPdf", "Legg inn minst én etappe først — støpeplanen er tom."));
 på("btnDokRigg", "click", () =>
   apneOgTrykk("riggPanel", "btnRigg", "riggPdf", "Legg inn noe rigg først — planen er tom."));
 på("btnDokSW", "click", () =>

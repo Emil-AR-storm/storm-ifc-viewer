@@ -352,15 +352,15 @@ export function tegnPanel() {
     const vol = volumFor(e) + fs.volum;
     const innhold = [
       t("{0} elementer", e.elementer.length),
-      t("{0} felt", e.felt.length) + (fs.areal > 0 ? " (" + t("ca {0}", m2(fs.areal)) + ")" : "")
-    ].join(" · ") + (vol > 0 ? " · " + t("ca {0}", m3(vol)) : "");
+      t("{0} felt", e.felt.length) + (fs.areal > 0 ? " (" + m2(fs.areal) + ")" : "")
+    ].join(" · ") + (vol > 0 ? " · " + m3(vol) : "");
     // 🧱 Feltene (trinn 3): én linje per felt, og målene på det som er valgt
     let feltHtml = "";
     e.felt.forEach((f, k) => {
       const erValgt = f.id === valgtF;
       feltHtml += '<div class="st-felt' + (erValgt ? " valgt" : "") + '" data-felt="' + esc(f.id) + '">' +
         '<button class="st-felt-navn" title="' + esc(t("Vis og juster feltet")) + '">' + esc(t("Felt {0}", k + 1)) + "</button>" +
-        '<span class="st-felt-tall">' + esc(t("ca {0}", m2(feltAreal(f))) + " · " + t("ca {0}", m3(feltVolum(f)))) + "</span>" +
+        '<span class="st-felt-tall">' + esc(m2(feltAreal(f)) + " · " + m3(feltVolum(f))) + "</span>" +
         '<label class="st-felt-tk">' + '<input type="number" class="st-tk" min="50" max="3000" step="10" value="' + Math.round(f.tykkelseM * 1000) + '"> mm</label>' +
         '<button class="st-felt-slett" title="' + esc(t("Slett feltet")) + '">' + ikon("slett") + "</button>" +
         '<span class="st-felt-vann"><button class="st-vann-ny" data-type="injeksjon">' + esc(t("+ Injeksjon")) + "</button>" +
@@ -396,11 +396,16 @@ export function tegnPanel() {
       "</div>" +
     "</div>";
   }
-  html += '<div class="prop-actions" style="margin-top:10px"><button id="stNy" class="primary">' + ikon("pluss") + " " + esc(t("Ny etappe")) + "</button></div>" +
+  html += '<div class="prop-actions" style="margin-top:10px"><button id="stNy" class="primary">' + ikon("pluss") + " " + esc(t("Ny etappe")) + "</button>" +
+      // 📄 Trinn 7: PDF (oppsett D) og Excel
+      '<button id="stPdf"' + (liste.length ? "" : " disabled") + ">" + ikon("lastned") + " " + esc(t("Støpeplan (PDF)")) + "</button>" +
+      '<button id="stXlsx"' + (liste.length ? "" : " disabled") + ">" + ikon("lastned") + " " + esc(t("Excel")) + "</button></div>" +
     '<p class="set-hjelp" id="stLagring">' + esc(lagringsTekst()) + "</p>";
   body.innerHTML = html;
 
   $("stNy").onclick = () => leggTilEtappe();
+  $("stPdf").onclick = async () => { const P = await import("./stopeplan-pdf.js"); return P.lagStopeplanPdf(volumFor); };
+  $("stXlsx").onclick = async () => { const P = await import("./stopeplan-pdf.js"); return P.lagStopeplanXlsx(volumFor); };
   $("stVis").onchange = (ev) => { settVisEtappeplan(ev.target.checked); tegnTidslinje(); };
   $("stVisVann").onchange = (ev) => settVisVanntetting(ev.target.checked);
   const pl = $("stPlateM");
