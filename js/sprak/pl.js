@@ -1881,5 +1881,8 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "+ Legg til valgte": "+ Dodaj zaznaczone",
   "Vis etappen i modellen": "Pokaż etap w modelu",
   "Skjul etappen i modellen": "Ukryj etap w modelu",
-  "Ta alle elementene ut av etappen?": "Usunąć wszystkie elementy z etapu?"
+  "Ta alle elementene ut av etappen?": "Usunąć wszystkie elementy z etapu?",
+  "Betonggulv": "Posadzka betonowa",
+  "Isolasjon under": "Izolacja pod spodem",
+  "Del støpene i etapper. Gi hver etappe en dato, og merk den som støpt når den er ferdig. Velg elementer i modellen (shift-klikk eller shift-dra) og trykk «Legg til valgte» på etappen. Generert betonggulv og ringmur kan også legges inn.": "Podziel betonowanie na etapy. Nadaj każdemu etapowi datę i oznacz go jako zabetonowany, gdy jest gotowy. Zaznacz elementy w modelu (shift+klik lub shift+przeciągnij) i naciśnij „Dodaj zaznaczone” przy etapie. Można też dodać wygenerowaną posadzkę betonową i ławę fundamentową."
 };

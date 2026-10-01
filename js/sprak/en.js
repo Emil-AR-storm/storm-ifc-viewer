@@ -1881,5 +1881,8 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "+ Legg til valgte": "+ Add selected",
   "Vis etappen i modellen": "Show the stage in the model",
   "Skjul etappen i modellen": "Hide the stage in the model",
-  "Ta alle elementene ut av etappen?": "Remove all elements from the stage?"
+  "Ta alle elementene ut av etappen?": "Remove all elements from the stage?",
+  "Betonggulv": "Concrete floor",
+  "Isolasjon under": "Insulation below",
+  "Del støpene i etapper. Gi hver etappe en dato, og merk den som støpt når den er ferdig. Velg elementer i modellen (shift-klikk eller shift-dra) og trykk «Legg til valgte» på etappen. Generert betonggulv og ringmur kan også legges inn.": "Split the pours into stages. Give each stage a date and mark it as poured when it is done. Select elements in the model (shift-click or shift-drag) and press “Add selected” on the stage. Generated concrete floors and ring walls can be added too."
 };

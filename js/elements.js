@@ -997,29 +997,42 @@ async function showMultiSummary() {
       g.count += p.antall; g.len += len; g.area += area;
     }
   }
+  // ⇧ SW-elementene i utvalget, med samme tall som i Mengder
+  let antEk = 0;
+  for (const l of flervalgLag()) {
+    if (typeof l.flervalgRader !== "function") continue;
+    for (const r of l.flervalgRader(l.valgte())) {
+      antEk++;
+      totVol += r.vol || 0; totLen += r.len || 0; totArea += r.area || 0;
+      let g = grupper.get(r.key);
+      if (!g) grupper.set(r.key, g = { count: 0, len: 0, area: 0, vol: 0, type: r.type || "" });
+      g.count++; g.len += r.len || 0; g.area += r.area || 0; g.vol += r.vol || 0;
+    }
+  }
   const antMat = S.multiSelMat ? S.multiSelMat.size : 0;
-  if (!antElem && !antMat) { $("propPanel").classList.remove("open"); return; }
+  if (!antElem && !antMat && !antEk) { $("propPanel").classList.remove("open"); return; }
+  const antElemAlle = antElem + antEk;
   // Hvor mange rader lista viser før den kortes av. Settes i ⚙ Innstillinger →
   // Visning → «Elementer i lista». 0 = vis alle (kan bli tregt på tusenvis).
   const items = [...grupper.entries()].sort((a, b) => b[1].count - a[1].count);
   const grense = listeGrense();
   const vist = grense > 0 ? items.slice(0, grense) : items;
   $("propTitle").textContent =
-    antElem && antMat ? t("{0} elementer og {1} materiell valgt", antElem, antMat)
+    antElemAlle && antMat ? t("{0} elementer og {1} materiell valgt", antElemAlle, antMat)
     : antMat ? t("{0} materiell valgt", antMat)
-    : t("{0} elementer valgt", antElem);
+    : t("{0} elementer valgt", antElemAlle);
   // Samme «Skjul»-knapp som når ett element er valgt – her skjuler den hele
   // utvalget. Ikke i lav kvalitet / lett kopi: der er geometrien slått sammen,
   // så enkeltelementer kan ikke skjules (samme grunn som i showProperties).
   // Knappen gjelder IFC-elementene — materiell skjules fra sin egen knapperad
   // eller 📦-panelet, og vises derfor bare når utvalget har elementer.
   $("propBody").innerHTML =
-    (antElem ? '<div class="prop-actions"><button id="paHideSel">' + ikon("skjul") + ' ' +
-      t("Skjul {0} valgte", antElem) + '</button></div>' : "") +
+    (antElemAlle ? '<div class="prop-actions"><button id="paHideSel">' + ikon("skjul") + ' ' +
+      t("Skjul {0} valgte", antElemAlle) + '</button></div>' : "") +
     '<div class="prop-row" style="font-weight:600"><div class="k">' + t("Sum volum") + '</div><div class="v">' + fmtVol(totVol) + '</div></div>' +
     '<div class="prop-row" style="font-weight:600"><div class="k">' + t("Sum areal (største flate)") + '</div><div class="v">' + fmtArea(totArea) + '</div></div>' +
     '<div class="prop-row"><div class="k">' + t("Sum lengde (lengste mål)") + '</div><div class="v">' + totLen.toFixed(2) + ' m</div></div>' +
-    '<div class="prop-row"><div class="k">' + t("Antall") + '</div><div class="v">' + (antElem + antMat) + t(" stk") + '</div></div>' +
+    '<div class="prop-row"><div class="k">' + t("Antall") + '</div><div class="v">' + (antElemAlle + antMat) + t(" stk") + '</div></div>' +
     vist.map(([key, g]) =>
       '<div class="qty-row"><div class="n">' + esc(key) +
       (g.type ? ' <span style="color:var(--muted);font-size:11px">(' + esc(typeVisning(g.type)) + ')</span>' : "") +
@@ -1031,7 +1044,11 @@ async function showMultiSummary() {
       ]) + '</div></div>').join("") +
     (items.length > vist.length ? '<p style="color:var(--muted); font-size:11px; margin-top:6px">' + t("… og {0} til (summene øverst gjelder alle). Endre grensen i ⚙ Innstillinger → Visning.", items.length - vist.length) + '</p>' : "") +
     '<p style="color:var(--muted); font-size:11px; margin-top:8px">' + t("Shift-klikk legger til/fjerner. Shift + dra lager markeringsboks: mot høyre = kun synlige, mot venstre = alt i boksen. Vanlig klikk nullstiller.") + '</p>';
-  if (antElem) $("paHideSel").onclick = () => hideElements(new Set(S.multiSel.keys()));   // virker nå også i 🪶
+  if (antElemAlle) $("paHideSel").onclick = () => {
+    if (antElem) hideElements(new Set(S.multiSel.keys()));   // virker nå også i 🪶
+    for (const l of flervalgLag()) { const v = l.valgte(); if (v.length && l.skjul) l.skjul(v); }
+    if (!antElem) $("propPanel").classList.remove("open");
+  };
   apnePanel("propPanel");
 }
 
@@ -1107,15 +1124,46 @@ function toggleMateriellValg(id) {
 }
 
 // Felles shift-klikk-logikk (brukes både ved klikk og små drag)
+// ⇧ Lagene som kan være med i flervalget (SW-elementene: veggelementer,
+// ringmurbiter og betonggulvet — Emil 01.10). Evnen «flervalg» meldes inn av
+// laget selv, så et nytt lag kommer med uten at denne fila må vite om det.
+function flervalgLag() { return ekstraLagSom("valgte").filter(l => l.flervalg); }
+function antEkstraValgt() { return flervalgLag().reduce((n, l) => n + l.valgte().length, 0); }
+function noeValgt() { return S.multiSel.size || (S.multiSelMat && S.multiSelMat.size) || antEkstraValgt(); }
+// Hva panelet skal vise etter et shift-klikk: er det bare ETT SW-objekt igjen,
+// får det sine egne egenskaper med mål (som ved vanlig klikk) — ikke en
+// «1 elementer valgt»-oppsummering.
+function visUtvalg() {
+  if (!S.multiSel.size && !(S.multiSelMat && S.multiSelMat.size) && antEkstraValgt() === 1) {
+    const l = flervalgLag().find(x => x.valgte().length === 1);
+    if (l && l.visEgenskaper) { l.visEgenskaper(l.valgte()[0]); return; }
+  }
+  if (noeValgt()) showMultiSummary();
+  else $("propPanel").classList.remove("open");
+}
+
 function shiftClickAt(x, y) {
   const hit = pick(x, y);
   const mHit = pickMateriell(x, y);
+  const ek = flervalgLag().length ? pickEkstra(x, y) : null;
+  if (ek && ek.lag.flervalg && (!hit || ek.avstand < hit.distance) && (!mHit || ek.avstand < mHit.distance)) {
+    // Et enkeltvalgt IFC-element blir med i utvalget, som ved shift-klikk på
+    // et nytt element — ellers forsvant det første du hadde trykket på.
+    if (!S.multiSel.size && S.currentPropID != null) {
+      S.multiSel.set(S.currentPropID, elementQuantities(S.currentPropID));
+      selectElementsSet(new Set(S.multiSel.keys()));
+    }
+    const valgt = new Set(ek.lag.valgte());
+    if (valgt.has(ek.id)) valgt.delete(ek.id); else valgt.add(ek.id);
+    ek.lag.velg([...valgt]);
+    visUtvalg();
+    return;
+  }
   // Materiell nærmest kameraet? Da er det materiellet klikket gjelder — du
   // trykte på det du så, samme regel som for elementene.
   if (mHit && (!hit || mHit.distance < hit.distance)) {
     toggleMateriellValg(mHit.id);
-    if (S.multiSel.size || S.multiSelMat.size) showMultiSummary();
-    else $("propPanel").classList.remove("open");
+    visUtvalg();
     return;
   }
   if (!hit) return;
@@ -1126,8 +1174,7 @@ function shiftClickAt(x, y) {
   if (S.multiSel.has(id)) S.multiSel.delete(id);
   else S.multiSel.set(id, elementQuantities(id));
   selectElementsSet(new Set(S.multiSel.keys()));
-  if (S.multiSel.size || S.multiSelMat.size) showMultiSummary();
-  else $("propPanel").classList.remove("open");
+  visUtvalg();
 }
 
 export function zoomToElement(id) {
@@ -1826,7 +1873,7 @@ function renderQuantities(full) {
 export function refreshNumbers() {
   if ($("qtyPanel").classList.contains("open") && S.qtyCache) renderQuantities(S.qtyCache);
   if ($("propPanel").classList.contains("open")) {
-    if (S.multiSel.size || (S.multiSelMat && S.multiSelMat.size)) showMultiSummary();
+    if (S.multiSel.size || (S.multiSelMat && S.multiSelMat.size) || antEkstraValgt() > 1) showMultiSummary();
     else if (S.currentPropID != null) showProperties(S.currentPropID);
   }
 }
@@ -1906,6 +1953,13 @@ function idsVisibleInRect(x0, y0, x1, y1) {
       const id = (buf[i] << 16) | (buf[i+1] << 8) | buf[i+2];
       if (id) ids.add(id);
     }
+    // Bare EKTE elementer. Lagene ved siden av modellen (SW-elementene,
+    // støpeplanfargene, riggen …) tegnes i sine egne farger her — de skal
+    // dekke det som ligger bak, men pikslene deres er ikke id-er. Uten denne
+    // sjekken fikk boksen med seg tall som 3027256 som «elementer» (Emils
+    // shift-dra over generert ringmur 01.10), og de havnet i støpeplanen.
+    const kjente = alleElementIder();
+    for (const id of [...ids]) if (!kjente.has(id)) ids.delete(id);
   } catch (err) {
     // Tomt utvalg er riktig svar her – bedre enn å velge feil elementer.
     console.warn("Markeringsboksen kunne ikke leses av:", err);
@@ -2026,7 +2080,16 @@ function finishBoxSelect(b) {
   const skjult = skjulteIder();
   for (const id of skjult) ids.delete(id);
   const matIds = materiellIRect(b.x0, b.y0, b.x1, b.y1);
-  if (!ids.size && !matIds.size) return;
+  // ⇧ SW-elementene i boksen (Emil 01.10) — laget svarer selv
+  let ekNye = 0;
+  for (const l of flervalgLag()) {
+    if (typeof l.iRekt !== "function") continue;
+    const nye = l.iRekt(b.x0, b.y0, b.x1, b.y1, visibleOnly);
+    if (!nye.size) continue;
+    ekNye += nye.size;
+    l.velg([...new Set([...l.valgte(), ...nye])]);
+  }
+  if (!ids.size && !matIds.size && !ekNye) return;
   if (ids.size) {
     const q = quantitiesForSet(ids);
     for (const id of ids) S.multiSel.set(id, q.get(id) || { dims: [0, 0, 0], vol: 0 });
@@ -2036,7 +2099,7 @@ function finishBoxSelect(b) {
     for (const id of matIds) S.multiSelMat.add(id);
     oppdaterMateriellValgEffekt();
   }
-  showMultiSummary();
+  visUtvalg();
 }
 
 canvas.addEventListener("pointerdown", (e) => {

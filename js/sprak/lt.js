@@ -1881,5 +1881,8 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "+ Legg til valgte": "+ Pridėti pasirinktus",
   "Vis etappen i modellen": "Rodyti etapą modelyje",
   "Skjul etappen i modellen": "Slėpti etapą modelyje",
-  "Ta alle elementene ut av etappen?": "Pašalinti visus elementus iš etapo?"
+  "Ta alle elementene ut av etappen?": "Pašalinti visus elementus iš etapo?",
+  "Betonggulv": "Betoninės grindys",
+  "Isolasjon under": "Izoliacija apačioje",
+  "Del støpene i etapper. Gi hver etappe en dato, og merk den som støpt når den er ferdig. Velg elementer i modellen (shift-klikk eller shift-dra) og trykk «Legg til valgte» på etappen. Generert betonggulv og ringmur kan også legges inn.": "Padalykite betonavimą į etapus. Kiekvienam etapui nurodykite datą ir pažymėkite kaip išbetonuotą, kai baigtas. Pasirinkite elementus modelyje (shift+spustelėjimas arba shift+tempimas) ir etape paspauskite „Pridėti pasirinktus“. Taip pat galima pridėti sugeneruotas betonines grindis ir cokolį."
 };
