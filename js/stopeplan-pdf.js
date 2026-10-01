@@ -23,6 +23,7 @@ import {
   CEMFLEX_OMLEGG_M, STATUS_TEKST, dagerMellom, erGenerert, ganttUker, plussDager, sortert, statusFor,
   stopeplanExcelRader, stopeplanFilnavn, stopeplanTabell
 } from "./stopeplan-regn.js";
+import { innholdTekst } from "./stopeplan-tid.js";
 import { stopeGroup, tegnStopeplan, feltBase, tilScene } from "./stopeplan-vis.js";
 
 // Arket i mm (A3 liggende)
@@ -210,6 +211,12 @@ function brikkePunkter(e) {
   return ut;
 }
 
+// Innhold-kolonnen på brukerens språk (regnemodulen gir den bare på norsk)
+function medInnhold(tab) {
+  for (const r of tab.rader) r.innhold = innholdTekst(r.nEl, r.nF);
+  return tab;
+}
+
 // ═══════════════════════ HOVEDFUNKSJONEN ═══════════════════════
 export async function lagStopeplanPdf(volumFor) {
   if (!S.modelGroup) { alert(t("Åpne en modell først.")); return null; }
@@ -247,7 +254,7 @@ export async function lagStopeplanPdf(volumFor) {
     S.stopeVistPer = vistPerFor;
     tegnStopeplan();
 
-    const tab = stopeplanTabell(S.stopeplan, volumFor, S.stopePlateM || 2, iDag);
+    const tab = medInnhold(stopeplanTabell(S.stopeplan, volumFor, S.stopePlateM || 2, iDag));
     const uker = ganttUker(S.stopeplan, iDag);
     const logo = await finnLogo();
     vis(t("Henter PDF-biblioteket …"));
@@ -471,7 +478,7 @@ function tittelfelt(d, m, side) {
 // ═══════════════════════ EXCEL ═══════════════════════
 export async function lagStopeplanXlsx(volumFor) {
   const iDag = iDagISO();
-  const tab = stopeplanTabell(S.stopeplan, volumFor, S.stopePlateM || 2, iDag);
+  const tab = medInnhold(stopeplanTabell(S.stopeplan, volumFor, S.stopePlateM || 2, iDag));
   const rader = stopeplanExcelRader(tab, (s) => t(STATUS_TEKST[s] || s));
   rader.push([]);
   rader.push([t("Volum fra modellen (elementer) og felt × tykkelse, uten svinn eller ekstra betong. Cemflex VB 150, plater à {0} m, minst 5 cm omlegg per skjøt. Injeksjonsslange uten skjøt.",

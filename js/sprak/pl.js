@@ -1963,5 +1963,15 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "uke {0}–{1}": "tygodnie {0}–{1}",
   "Legg inn minst én etappe først — støpeplanen er tom.": "Najpierw dodaj co najmniej jeden etap — plan betonowania jest pusty.",
   "Last ned støpeplanen som PDF (åpner Støpeplan-panelet)": "Pobierz plan betonowania jako PDF (otwiera panel Plan betonowania)",
-  "Logo på PDF": "Logo w PDF"
+  "Logo på PDF": "Logo w PDF",
+  "{0} elementer|one": "{0} element",
+  "{0} elementer|few": "{0} elementy",
+  "{0} felt|one": "{0} pole",
+  "{0} felt|few": "{0} pola",
+  "{0} elementer lagt i {1}.|one": "Dodano {0} element do {1}.",
+  "{0} elementer lagt i {1}.|few": "Dodano {0} elementy do {1}.",
+  "{0} elementer lagt i {1}. {2} av dem er flyttet fra en annen etappe.|one": "Dodano {0} element do {1}. Został przeniesiony z innego etapu.",
+  "{0} elementer lagt i {1}. {2} av dem er flyttet fra en annen etappe.|few": "Dodano {0} elementy do {1}. {2} z nich przeniesiono z innego etapu.",
+  "{0} element lagt i {1}.": "Dodano {0} element do {1}.",
+  "{0} element lagt i {1}. Det er flyttet fra en annen etappe.": "Dodano {0} element do {1}. Został przeniesiony z innego etapu."
 };

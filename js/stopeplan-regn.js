@@ -514,7 +514,7 @@ export function stopeplanTabell(liste, volumElementer, plateM, iDag) {
     const st = statusFor(e, iDag);
     const nEl = (e.elementer || []).length, nF = (e.felt || []).length;
     return {
-      id: e.id, nr: e.nr, navn: e.navn, farge: e.farge, dato: e.dato, stoptDato: e.stoptDato || "",
+      id: e.id, nr: e.nr, nEl, nF, navn: e.navn, farge: e.farge, dato: e.dato, stoptDato: e.stoptDato || "",
       status: st, innhold: [nEl ? nEl + (nEl === 1 ? " element" : " elementer") : "", nF ? nF + " felt" : ""].filter(Boolean).join(" · ") || "–",
       areal: fs.areal, volum: (Number(volumElementer ? volumElementer(e) : 0) || 0) + fs.volum,
       injeksjon: v.injeksjon.lm, cemflex: v.cemflex.lmMedOmlegg, plater: v.cemflex.plater, skjoter: v.cemflex.skjoter

@@ -1963,5 +1963,15 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "uke {0}–{1}": "weeks {0}–{1}",
   "Legg inn minst én etappe først — støpeplanen er tom.": "Add at least one stage first — the pour plan is empty.",
   "Last ned støpeplanen som PDF (åpner Støpeplan-panelet)": "Download the pour plan as PDF (opens the Pour plan panel)",
-  "Logo på PDF": "Logo on PDF"
+  "Logo på PDF": "Logo on PDF",
+  "{0} elementer|one": "{0} element",
+  "{0} elementer|few": "{0} elements",
+  "{0} felt|one": "{0} area",
+  "{0} felt|few": "{0} areas",
+  "{0} elementer lagt i {1}.|one": "{0} element added to {1}.",
+  "{0} elementer lagt i {1}.|few": "{0} elements added to {1}.",
+  "{0} elementer lagt i {1}. {2} av dem er flyttet fra en annen etappe.|one": "{0} element added to {1}. It was moved from another stage.",
+  "{0} elementer lagt i {1}. {2} av dem er flyttet fra en annen etappe.|few": "{0} elements added to {1}. {2} of them were moved from another stage.",
+  "{0} element lagt i {1}.": "{0} element added to {1}.",
+  "{0} element lagt i {1}. Det er flyttet fra en annen etappe.": "{0} element added to {1}. It was moved from another stage."
 };

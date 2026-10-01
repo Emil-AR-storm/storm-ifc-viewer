@@ -15,7 +15,8 @@ export const S = {};
 export const DEFAULT_KEYS = {
   marker: "P", measure: "M", kote: "K", axes: "A", clip: "S",
   storey: "E", search: "F", ghost: "T", qty: "D", fit: "G", settings: "I",
-  sw: "W", materiell: "L", grupper: "U"
+  sw: "W", materiell: "L", grupper: "U",
+  stope: "B", nyEtappe: "N"   // 🧱 Støpeplan (B for betong) og Ny etappe
 };
 
 export const DEFAULT_SETTINGS = {

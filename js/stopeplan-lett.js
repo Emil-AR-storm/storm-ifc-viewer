@@ -17,7 +17,7 @@ import { t } from "./i18n.js";
 import { iDagISO } from "./frist.js";
 import { CEMFLEX_OMLEGG_M, cemflexPlan, vannLengde, vannSummer, STATUS_TEKST, feltAreal, feltSummer, feltVolum, finnFelt, sortert, statusFor, synlige, vaskEtappeListe } from "./stopeplan-regn.js";
 import { settVisEtappeplan, settVisVanntetting, stopeGroup, tegnStopeplan, visEtappeplan, visVanntetting } from "./stopeplan-vis.js";
-import { datoKort, datoLang, tegnTidslinje } from "./stopeplan-tid.js";
+import { antallElementer, antallFelt, datoKort, datoLang, tegnTidslinje } from "./stopeplan-tid.js";
 
 const erApen = () => { const p = $("stopePanel"); return !!(p && p.classList.contains("open")); };
 const m2 = (v) => (Math.round(v * 10) / 10).toLocaleString("no-NO") + " m²";
@@ -46,7 +46,7 @@ export function tegnPanel() {
       '<div class="st-rad">' + (e.dato ? esc(datoLang(e.dato)) : esc(t("Ingen dato"))) +
         ' <span class="st-merke" style="color:' + STATUS_FARGE[st] + '">' +
         esc(st === "stopt" && e.stoptDato ? t("Støpt {0}", datoKort(e.stoptDato)) : t(STATUS_TEKST[st])) + "</span></div>" +
-      '<div class="st-innhold">' + esc(t("{0} elementer", (e.elementer || []).length) + " · " + t("{0} felt", (e.felt || []).length) +
+      '<div class="st-innhold">' + esc(antallElementer((e.elementer || []).length) + " · " + antallFelt((e.felt || []).length) +
         (fs.areal > 0 ? " (" + m2(fs.areal) + " · " + m3(fs.volum) + ")" : "")) + "</div>" +
       vannLinje(e) +
     "</div>";

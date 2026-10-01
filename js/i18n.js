@@ -38,6 +38,26 @@ export function t(nøkkel, ...args) {
   return s;
 }
 
+// 🔢 Tall + ord med riktig entall/flertall: tn(1, "{0} felt", "{0} felt").
+// Norsk: `ent` når n er 1, ellers `flere`. Andre språk følger språkets egne
+// regler (Intl.PluralRules): polsk har tre former (1 element, 2 elementy,
+// 5 elementów), litauisk også (1 elementas, 2 elementai, 10 elementų).
+// Oversettelsene ligger på nøkkelen `flere + "|" + kategori` («{0} felt|one»,
+// «{0} felt|few»); mangler den, brukes vanlig t(flere). {1}, {2} … fylles
+// med `args` som i t().
+export function tn(n, ent, flere, ...args) {
+  if (!S.lang || S.lang === "no") return t(n === 1 ? ent : flere, n, ...args);
+  let kat = "other";
+  try { kat = new Intl.PluralRules(S.lang).select(n); } catch (_) { kat = n === 1 ? "one" : "other"; }
+  const o = ORDBOK[flere + "|" + kat];
+  if (o && o[S.lang]) {
+    let s = o[S.lang];
+    [n, ...args].forEach((a, i) => { s = s.split("{" + i + "}").join(a); });
+    return s;
+  }
+  return t(flere, n, ...args);
+}
+
 export async function setLang(kode) {
   if (!SPRAK.some(([k]) => k === kode)) kode = "no";
   S.lang = kode;

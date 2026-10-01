@@ -1963,5 +1963,15 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "uke {0}–{1}": "{0}–{1} sav.",
   "Legg inn minst én etappe først — støpeplanen er tom.": "Pirmiausia pridėkite bent vieną etapą — betonavimo planas tuščias.",
   "Last ned støpeplanen som PDF (åpner Støpeplan-panelet)": "Atsisiųsti betonavimo planą PDF formatu (atidaro Betonavimo plano skydelį)",
-  "Logo på PDF": "Logotipas PDF"
+  "Logo på PDF": "Logotipas PDF",
+  "{0} elementer|one": "{0} elementas",
+  "{0} elementer|few": "{0} elementai",
+  "{0} felt|one": "{0} laukas",
+  "{0} felt|few": "{0} laukai",
+  "{0} elementer lagt i {1}.|one": "{0} elementas pridėtas į {1}.",
+  "{0} elementer lagt i {1}.|few": "{0} elementai pridėti į {1}.",
+  "{0} elementer lagt i {1}. {2} av dem er flyttet fra en annen etappe.|one": "{0} elementas pridėtas į {1}. Jis perkeltas iš kito etapo.",
+  "{0} elementer lagt i {1}. {2} av dem er flyttet fra en annen etappe.|few": "{0} elementai pridėti į {1}. {2} iš jų perkelti iš kito etapo.",
+  "{0} element lagt i {1}.": "{0} elementas pridėtas į {1}.",
+  "{0} element lagt i {1}. Det er flyttet fra en annen etappe.": "{0} elementas pridėtas į {1}. Jis perkeltas iš kito etapo."
 };
