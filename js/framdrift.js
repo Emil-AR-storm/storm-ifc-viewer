@@ -25,7 +25,7 @@ import { t, tn } from "./i18n.js";
 import { flettPaaId, spLes, spPaalogget, spSkriv } from "./sp-lager.js";
 import { clearSelection, veksleMateriellIUtvalg } from "./elements.js";
 import { metaFor } from "./ifcrpc.js";
-import { SLAG_NAVN, etappeForNokkel, fjern, leggTil, nokkel, nyEtappe, sortert, synlige, tellingPerSlag, tidsSpenn, vaskEtappe, vaskEtappeListe } from "./framdrift-regn.js";
+import { SLAG_NAVN, etappeForNokkel, pdfTrinn, fjern, leggTil, nokkel, nyEtappe, sortert, synlige, tellingPerSlag, tidsSpenn, vaskEtappe, vaskEtappeListe } from "./framdrift-regn.js";
 import { ryddFramdriftVis, settSkjulTildelte, stoppAvspilling, tegnFramdrift, tegnTidslinje } from "./framdrift-vis.js";
 import { LAG_ID as TRP_BLIKK_LAG } from "./framdrift-plukk.js";
 
@@ -352,11 +352,14 @@ export function tegnPanel() {
       "</div></div>";
   }
   html += '<label class="set-hjelp st-logo">' + esc(t("Logo på PDF")) + ' <select id="fpLogo"></select></label>' +
-    '<div class="prop-actions" style="margin-top:10px"><button id="fpNy" class="primary">' + ikon("pluss") + " " + esc(t("Nytt trinn")) + "</button></div>" +
+    '<div class="prop-actions" style="margin-top:10px"><button id="fpNy" class="primary">' + ikon("pluss") + " " + esc(t("Nytt trinn")) + "</button>" +
+      '<button id="fpPdf"' + (pdfTrinn(S.framdrift).length ? "" : " disabled") + ' title="' + esc(t("Én side per trinn: bygget sett fra nord, sør, øst og vest, og det som er nytt i trinnet")) + '">' +
+      ikon("lastned") + " " + esc(t("Last ned PDF")) + "</button></div>" +
     '<p class="set-hjelp" id="fpLagring">' + esc(lagringsTekst()) + "</p>";
   body.innerHTML = html;
 
   $("fpNy").onclick = () => leggTilEtappe();
+  $("fpPdf").onclick = () => lastNedPdf();
   if ($("fpVis")) $("fpVis").onchange = (ev) => { S.framdriftVis = ev.target.checked; oppdaterVis(); };
   fyllLogo($("fpLogo"));
   $("fpLogo").onchange = (ev) => { S.settings.framdriftLogo = ev.target.value || ""; writePrefs(); };
@@ -397,6 +400,25 @@ function oppdaterVis() {
   if (!paa) stoppAvspilling();
   tegnFramdrift(paa);
   tegnTidslinje(paa);
+}
+
+// 📄 PDF-en (trinn 4, js/framdrift-pdf.js — lastes først ved trykk). Glideren
+// slås av mens bildene tegnes, og settes tilbake etterpå.
+let lagerPdf = false;
+export async function lastNedPdf() {
+  if (lagerPdf) return null;
+  lagerPdf = true;
+  if (velger) avsluttVelg(false);
+  stoppAvspilling();
+  settSkjulTildelte(false);
+  tegnFramdrift(false);
+  try {
+    const P = await import("./framdrift-pdf.js");
+    return await P.lagFramdriftPdf();
+  } finally {
+    lagerPdf = false;
+    oppdaterVis();
+  }
 }
 
 // ═══════════════════════ KROKER ═══════════════════════
