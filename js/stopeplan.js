@@ -16,10 +16,10 @@ import { t } from "./i18n.js";
 import { iDagISO } from "./frist.js";
 import { flettPaaId, spLes, spPaalogget, spSkriv } from "./sp-lager.js";
 import {
-  STATUS_TEKST, erGenerert, fjernElementer, leggTilElementer, nyEtappe, sortert, statusFor, synlige, vaskEtappe, vaskEtappeListe
+  STATUS_TEKST, erGenerert, feltAreal, feltSummer, feltVolum, fjernElementer, kantLengder, leggTilElementer, nyEtappe, sortert, statusFor, synlige, vaskEtappe, vaskEtappeListe
 } from "./stopeplan-regn.js";
 import { etappeSkjult, settEtappeSkjult, tegnStopeplan } from "./stopeplan-vis.js";
-import { quantitiesForSet } from "./elements.js";
+import { clearSelection, quantitiesForSet } from "./elements.js";
 import { metaFor } from "./ifcrpc.js";
 
 const SP_MAPPE = "Stopeplan";
@@ -151,6 +151,73 @@ export function leggValgteTil(id) {
   return r.lagtTil;
 }
 
+// ═══════════ «LEGG TIL»: EN EGEN VELGEMODUS (Emil 01.10) ═══════════
+// FØR: velg i modellen → egenskapspanelet åpnet seg og LUKKET støpeplanen →
+// åpne støpeplanen igjen → «Legg til valgte». Upraktisk for den som skal fylle
+// inn en hel plan. NÅ: «Legg til» på etappen starter en modus der hvert trykk
+// i modellen legger til eller tar bort (shift-dra for mange på en gang).
+// Panelet blir stående, og en linje nederst viser hvor mange som er valgt.
+// «Ferdig» legger dem i etappen, «Avbryt» (eller Esc) lar etappen være.
+let velger = null;          // { etappeId } mens modusen er på
+export const velgerEtappe = () => (velger ? velger.etappeId : null);
+
+function velgBar() {
+  let el = $("stVelgBar");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "stVelgBar";
+    el.className = "st-velgbar";
+    document.body.appendChild(el);
+  }
+  return el;
+}
+
+function tegnVelgBar() {
+  const el = velgBar();
+  if (!velger) { el.style.display = "none"; el.innerHTML = ""; return; }
+  const e = synlige(S.stopeplan).find(x => x.id === velger.etappeId);
+  const n = antallValgte();
+  el.style.display = "flex";
+  el.innerHTML =
+    '<span class="st-velg-farge" style="background:' + esc(e ? e.farge : "#888") + '"></span>' +
+    '<span class="st-velg-tekst"><b>' + esc(t("Legg til i {0}", e ? e.navn : "")) + "</b><br>" +
+      esc(t("Trykk på elementene som skal med. Shift + dra for mange på en gang.")) + "</span>" +
+    '<span class="st-velg-ant">' + esc(t("{0} valgt", n)) + "</span>" +
+    '<button id="stVelgFerdig" class="primary"' + (n ? "" : " disabled") + ">" + esc(t("Ferdig")) + "</button>" +
+    '<button id="stVelgAvbryt">' + esc(t("Avbryt")) + "</button>";
+  $("stVelgFerdig").onclick = () => avsluttVelg(true);
+  $("stVelgAvbryt").onclick = () => avsluttVelg(false);
+}
+
+export function startVelg(etappeId) {
+  if (velger) avsluttVelg(false);
+  if (S.stopeFelt && S.stopeFelt.tegner()) S.stopeFelt.avbrytTegning();
+  velger = { etappeId };
+  S.velgModusAktiv = true;
+  sisteMelding = "";
+  tegnVelgBar();
+  tegnPanel();
+}
+
+export function avsluttVelg(leggTil) {
+  if (!velger) return 0;
+  const id = velger.etappeId;
+  let n = 0;
+  if (leggTil) n = leggValgteTil(id);
+  velger = null;
+  S.velgModusAktiv = false;
+  // Utvalget var modusens arbeidsliste — det skal ikke henge igjen etterpå
+  clearSelection();
+  tegnVelgBar();
+  tegnPanel();
+  return n;
+}
+S.velgModusOppdater = () => tegnVelgBar();
+S.avsluttVelgModus = () => avsluttVelg(false);
+window.addEventListener("keydown", (ev) => {
+  if (velger && ev.key === "Escape") { ev.stopPropagation(); avsluttVelg(false); }
+}, true);
+
 export function tomElementer(id) {
   S.stopeplan = fjernElementer(S.stopeplan, id, null, new Date().toISOString());
   sisteMelding = "";
@@ -183,16 +250,12 @@ export function volumFor(e) {
   return v + gen;
 }
 const m3 = (v) => (Math.round(v * 10) / 10).toLocaleString("no-NO") + " m³";
+const m2 = (v) => (Math.round(v * 10) / 10).toLocaleString("no-NO") + " m²";
 
 // Tellerne på «Legg til valgte» følger utvalget uten at hele panelet tegnes
 // på nytt (det ville tatt fokus fra et felt du skriver i).
 function oppdaterValgKnapper() {
-  if (!erApen()) return;
-  const n = antallValgte();
-  document.querySelectorAll("#stopeBody .st-legg").forEach(b => {
-    b.disabled = n === 0;
-    b.textContent = n ? t("+ Legg til valgte ({0})", n) : t("+ Legg til valgte");
-  });
+  if (velger) tegnVelgBar();
 }
 window.addEventListener("pointerup", () => setTimeout(oppdaterValgKnapper, 0));
 window.addEventListener("keyup", () => setTimeout(oppdaterValgKnapper, 0));
@@ -207,18 +270,34 @@ export function tegnPanel() {
   if (!body) return;
   const iDag = iDagISO();
   const liste = sortert(S.stopeplan);
-  const nValgt = antallValgte();
   let html = '<p class="set-hjelp" style="margin-top:0">' +
-    esc(t("Del støpene i etapper. Gi hver etappe en dato, og merk den som støpt når den er ferdig. Velg elementer i modellen (shift-klikk eller shift-dra) og trykk «Legg til valgte» på etappen. Generert betonggulv og ringmur kan også legges inn.")) + "</p>" +
+    esc(t("Del støpene i etapper. Gi hver etappe en dato, og merk den som støpt når den er ferdig. Trykk «Legg til» på etappen og velg elementene i modellen — også generert betonggulv og ringmur. Trykk «Ferdig» når du er ferdig. «+ Felt» tegner et felt på plata.")) + "</p>" +
     (sisteMelding ? '<p class="set-hjelp" style="color:var(--text)">' + esc(sisteMelding) + "</p>" : "");
   if (!liste.length) html += '<p class="hint">' + esc(t("Ingen etapper ennå.")) + "</p>";
+  const SF = S.stopeFelt;
+  const valgtF = SF ? SF.valgt() : null, tegnerI = SF ? SF.tegner() : null;
   for (const e of liste) {
     const st = statusFor(e, iDag);
-    const vol = volumFor(e);
+    const fs = feltSummer(e);
+    const vol = volumFor(e) + fs.volum;
     const innhold = [
-      t("{0} elementer", e.elementer.length) + (vol > 0 ? " · " + t("ca {0}", m3(vol)) : ""),
-      t("{0} felt", e.felt.length)
-    ].join(" · ");
+      t("{0} elementer", e.elementer.length),
+      t("{0} felt", e.felt.length) + (fs.areal > 0 ? " (" + t("ca {0}", m2(fs.areal)) + ")" : "")
+    ].join(" · ") + (vol > 0 ? " · " + t("ca {0}", m3(vol)) : "");
+    // 🧱 Feltene (trinn 3): én linje per felt, og målene på det som er valgt
+    let feltHtml = "";
+    e.felt.forEach((f, k) => {
+      const erValgt = f.id === valgtF;
+      feltHtml += '<div class="st-felt' + (erValgt ? " valgt" : "") + '" data-felt="' + esc(f.id) + '">' +
+        '<button class="st-felt-navn" title="' + esc(t("Vis og juster feltet")) + '">' + esc(t("Felt {0}", k + 1)) + "</button>" +
+        '<span class="st-felt-tall">' + esc(t("ca {0}", m2(feltAreal(f))) + " · " + t("ca {0}", m3(feltVolum(f)))) + "</span>" +
+        '<label class="st-felt-tk">' + '<input type="number" class="st-tk" min="50" max="3000" step="10" value="' + Math.round(f.tykkelseM * 1000) + '"> mm</label>' +
+        '<button class="st-felt-slett" title="' + esc(t("Slett feltet")) + '">' + ikon("slett") + "</button>" +
+        (erValgt ? '<div class="st-kanter">' + esc(t("Kanter (m):")) + " " +
+          kantLengder(f).map((L, i) => '<input type="number" class="st-kant" data-i="' + i + '" step="0.01" min="0.05" value="' + (Math.round(L * 100) / 100) + '">').join("") +
+          '<div class="set-hjelp">' + esc(t("Dra de hvite prikkene (hjørner) eller de gule (kanter). Dra inne i feltet for å flytte det. Dobbeltklikk på en kant gir et nytt hjørne. Delete sletter. Ctrl+Z angrer.")) + "</div></div>" : "") +
+      "</div>";
+    });
     html += '<div class="st-etappe" data-id="' + esc(e.id) + '" style="border-left:4px solid ' + esc(e.farge) + '">' +
       '<div class="st-rad">' +
         '<input type="color" class="st-farge" value="' + esc(e.farge) + '" title="' + esc(t("Farge")) + '">' +
@@ -234,10 +313,11 @@ export function tegnPanel() {
         "</select>" +
         '<span class="st-merke" style="color:' + STATUS_FARGE[st] + '">' + esc(t(STATUS_TEKST[st])) + "</span>" +
       "</div>" +
-      '<div class="st-innhold">' + esc(innhold) + "</div>" +
+      '<div class="st-innhold">' + esc(innhold) + "</div>" + feltHtml +
       '<div class="st-rad st-knapper">' +
-        '<button class="st-legg"' + (nValgt ? "" : " disabled") + ">" +
-          esc(nValgt ? t("+ Legg til valgte ({0})", nValgt) : t("+ Legg til valgte")) + "</button>" +
+        '<button class="st-legg' + (velgerEtappe() === e.id ? " aktiv" : "") + '">' +
+          esc(velgerEtappe() === e.id ? t("Velger …") : t("+ Legg til")) + "</button>" +
+        '<button class="st-nyfelt' + (tegnerI === e.id ? " aktiv" : "") + '">' + esc(tegnerI === e.id ? t("Tegner …") : t("+ Felt")) + "</button>" +
         (e.elementer.length ? '<button class="st-tom">' + esc(t("Tøm")) + "</button>" : "") +
         '<button class="st-oye" title="' + esc(etappeSkjult(e.id) ? t("Vis etappen i modellen") : t("Skjul etappen i modellen")) + '">' +
           ikon(etappeSkjult(e.id) ? "skjul" : "vis") + "</button>" +
@@ -256,7 +336,18 @@ export function tegnPanel() {
     rad.querySelector(".st-status").onchange = (ev) => { endreEtappe(id, { status: ev.target.value }); tegnPanel(); };
     // «change», ikke «input»: input fyrer for hvert musetrekk i fargehjulet
     rad.querySelector(".st-farge").onchange = (ev) => { endreEtappe(id, { farge: ev.target.value }); tegnPanel(); };
-    rad.querySelector(".st-legg").onclick = () => leggValgteTil(id);
+    rad.querySelector(".st-legg").onclick = () => { if (velgerEtappe() === id) avsluttVelg(true); else startVelg(id); };
+    rad.querySelector(".st-nyfelt").onclick = () => {
+      if (!SF) return;
+      if (SF.tegner() === id) SF.avbrytTegning(); else { if (velger) avsluttVelg(false); SF.startTegning(id); }
+    };
+    rad.querySelectorAll(".st-felt").forEach(fr => {
+      const fid = fr.dataset.felt;
+      fr.querySelector(".st-felt-navn").onclick = () => SF && SF.velgFelt(SF.valgt() === fid ? null : fid);
+      fr.querySelector(".st-felt-slett").onclick = () => SF && SF.slettFelt(fid);
+      fr.querySelector(".st-tk").onchange = (ev) => SF && SF.settTykkelse(fid, ev.target.value);
+      fr.querySelectorAll(".st-kant").forEach(inp => inp.onchange = (ev) => SF && SF.settKantLengde(fid, Number(inp.dataset.i), Number(ev.target.value)));
+    });
     const tom = rad.querySelector(".st-tom");
     if (tom) tom.onclick = () => { if (confirm(t("Ta alle elementene ut av etappen?"))) tomElementer(id); };
     rad.querySelector(".st-oye").onclick = () => { settEtappeSkjult(id, !etappeSkjult(id)); tegnPanel(); };
@@ -276,11 +367,15 @@ S.lastStopeplan = () => {
   if (erApen()) tegnPanel();
   hentFraSp();          // i bakgrunnen
 };
-S.ryddStopeplan = () => { S.stopeplan = []; volumBuffer.clear(); tegnStopeplan([]); };
+S.ryddStopeplan = () => { if (velger) avsluttVelg(false); if (S.ryddStopeFelt) S.ryddStopeFelt(); S.stopeplan = []; volumBuffer.clear(); tegnStopeplan([]); };
 
 på("btnStopeplan", "click", () => {
   const panel = $("stopePanel");
-  if (panel.classList.contains("open")) { panel.classList.remove("open"); return; }
+  if (panel.classList.contains("open")) {
+    if (velger) avsluttVelg(false);
+    if (S.ryddStopeFelt) S.ryddStopeFelt();
+    panel.classList.remove("open"); return;
+  }
   if (!S.modelGroup) { alert(t("Åpne en modell først.")); return; }
   tegnPanel();
   apnePanel("stopePanel");

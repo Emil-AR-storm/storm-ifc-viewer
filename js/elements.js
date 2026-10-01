@@ -1134,6 +1134,11 @@ function noeValgt() { return S.multiSel.size || (S.multiSelMat && S.multiSelMat.
 // får det sine egne egenskaper med mål (som ved vanlig klikk) — ikke en
 // «1 elementer valgt»-oppsummering.
 function visUtvalg() {
+  // 🧱 Velgemodus (støpeplanens «Legg til», Emil 01.10): utvalget vises i
+  // modusens egen linje, IKKE i egenskapspanelet. Egenskapspanelet ville
+  // lukket støpeplanpanelet (bare ett panel er åpent om gangen) — og det var
+  // nettopp det som gjorde den gamle måten upraktisk.
+  if (S.velgModusAktiv) { if (S.velgModusOppdater) S.velgModusOppdater(); return; }
   if (!S.multiSel.size && !(S.multiSelMat && S.multiSelMat.size) && antEkstraValgt() === 1) {
     const l = flervalgLag().find(x => x.valgte().length === 1);
     if (l && l.visEgenskaper) { l.visEgenskaper(l.valgte()[0]); return; }
@@ -1141,6 +1146,10 @@ function visUtvalg() {
   if (noeValgt()) showMultiSummary();
   else $("propPanel").classList.remove("open");
 }
+
+// Velgemodusen bruker samme veksling som shift-klikket — vanlig trykk legger
+// til eller tar bort, uten at shift må holdes inne.
+export function velgVedPunkt(x, y) { shiftClickAt(x, y); }
 
 function shiftClickAt(x, y) {
   const hit = pick(x, y);
