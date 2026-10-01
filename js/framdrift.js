@@ -24,7 +24,8 @@ import { t, tn } from "./i18n.js";
 import { flettPaaId, spLes, spPaalogget, spSkriv } from "./sp-lager.js";
 import { clearSelection } from "./elements.js";
 import { metaFor } from "./ifcrpc.js";
-import { SLAG_NAVN, fjern, leggTil, nokkel, nyEtappe, sortert, synlige, tellingPerSlag, vaskEtappe, vaskEtappeListe } from "./framdrift-regn.js";
+import { SLAG_NAVN, fjern, leggTil, nokkel, nyEtappe, sortert, synlige, tellingPerSlag, tidsSpenn, vaskEtappe, vaskEtappeListe } from "./framdrift-regn.js";
+import { ryddFramdriftVis, stoppAvspilling, tegnFramdrift, tegnTidslinje } from "./framdrift-vis.js";
 
 const SP_MAPPE = "Framdriftsplan";
 let spStatus = "av", lagreTid = 0;
@@ -133,7 +134,7 @@ export function leggValgteTil(id) {
   S.framdrift = r.liste.map(e => e.id === id ? Object.assign(e, { av: mittNavn() }) : e);
   const e = synlige(S.framdrift).find(x => x.id === id);
   sisteMelding = r.flyttet
-    ? tn(r.lagtTil, "{0} objekt lagt i {1}. Det er flyttet fra en annen etappe.", "{0} objekter lagt i {1}. {2} av dem er flyttet fra en annen etappe.", e ? e.navn : "", r.flyttet)
+    ? tn(r.lagtTil, "{0} objekt lagt i {1}. Det er flyttet fra et annet trinn.", "{0} objekter lagt i {1}. {2} av dem er flyttet fra et annet trinn.", e ? e.navn : "", r.flyttet)
     : tn(r.lagtTil, "{0} objekt lagt i {1}.", "{0} objekter lagt i {1}.", e ? e.navn : "");
   lagre();
   return r.lagtTil;
@@ -240,8 +241,16 @@ async function fyllLogo(velg) {
 // ═══════════════════════ PANELET ═══════════════════════
 function erApen() { const p = $("framdriftPanel"); return !!(p && p.classList.contains("open")); }
 const datoLang = (iso) => { const d = String(iso || "").split("-"); return d.length === 3 ? d[2] + "." + d[1] + "." + d[0] : ""; };
+// «1 element», «2 elementer» — entall og flertall på alle språk
+const ANTALL = {
+  id: (n) => tn(n, "{0} element", "{0} elementer"),
+  sw: (n) => tn(n, "{0} SW-element", "{0} SW-elementer"),
+  tak: (n) => tn(n, "{0} takplate", "{0} takplater"),
+  mat: (n) => t("{0} materiell", n),
+  rigg: (n) => t("{0} rigg", n)
+};
 export function innholdTekst(e) {
-  const deler = tellingPerSlag(e).map(x => x.antall + " " + t(SLAG_NAVN[x.slag]).toLowerCase());
+  const deler = tellingPerSlag(e).map(x => ANTALL[x.slag] ? ANTALL[x.slag](x.antall) : x.antall + " " + t(SLAG_NAVN[x.slag]).toLowerCase());
   return deler.length ? deler.join(" · ") : t("Ingenting lagt til ennå");
 }
 
@@ -250,9 +259,12 @@ export function tegnPanel() {
   if (!body) return;
   const liste = sortert(S.framdrift);
   let html = '<p class="set-hjelp" style="margin-top:0">' +
-    esc(t("Del arbeidet i etapper med dato. Trykk «Legg til» på etappen og velg det som utføres da — elementer, SW-elementer, takplater, rigg og materiell. Trykk «Ferdig» når du er ferdig.")) + "</p>" +
+    esc(t("Del arbeidet i trinn med dato. Trykk «Legg til» på trinnet og velg det som utføres da — elementer, SW-elementer, takplater, rigg og materiell. Trykk «Ferdig» når du er ferdig.")) + "</p>" +
     (sisteMelding ? '<p class="set-hjelp" style="color:var(--text)">' + esc(sisteMelding) + "</p>" : "");
-  if (!liste.length) html += '<p class="hint">' + esc(t("Ingen etapper ennå.")) + "</p>";
+  if (liste.length) html += '<label class="set-hjelp fp-vis"><input type="checkbox" id="fpVis"' + (S.framdriftVis !== false ? " checked" : "") + "> " +
+    esc(t("Vis framdriften i modellen — dra glideren nederst")) + "</label>" +
+    (tidsSpenn(liste) ? "" : '<p class="hint">' + esc(t("Sett «Fra»-dato på trinnene for å få glideren.")) + "</p>");
+  if (!liste.length) html += '<p class="hint">' + esc(t("Ingen trinn ennå.")) + "</p>";
   for (const e of liste) {
     const velgerHer = velgerEtappe() === e.id;
     html += '<div class="st-etappe fp-etappe" data-id="' + esc(e.id) + '" style="border-left:4px solid ' + esc(e.farge) + '">' +
@@ -260,7 +272,7 @@ export function tegnPanel() {
         '<input type="color" class="st-farge" value="' + esc(e.farge) + '" title="' + esc(t("Farge")) + '">' +
         '<b class="st-nr">' + e.nr + "</b>" +
         '<input type="text" class="st-navn" maxlength="80" value="' + esc(e.navn) + '">' +
-        '<button class="st-slett" title="' + esc(t("Slett etappen")) + '">' + ikon("slett") + "</button>" +
+        '<button class="st-slett" title="' + esc(t("Slett trinnet")) + '">' + ikon("slett") + "</button>" +
       "</div>" +
       '<div class="st-rad fp-datoer">' +
         '<label class="fp-dato">' + esc(t("Fra")) + ' <input type="date" class="fp-fra" value="' + esc(e.dato) + '"></label>' +
@@ -273,11 +285,12 @@ export function tegnPanel() {
       "</div></div>";
   }
   html += '<label class="set-hjelp st-logo">' + esc(t("Logo på PDF")) + ' <select id="fpLogo"></select></label>' +
-    '<div class="prop-actions" style="margin-top:10px"><button id="fpNy" class="primary">' + ikon("pluss") + " " + esc(t("Ny etappe")) + "</button></div>" +
+    '<div class="prop-actions" style="margin-top:10px"><button id="fpNy" class="primary">' + ikon("pluss") + " " + esc(t("Nytt trinn")) + "</button></div>" +
     '<p class="set-hjelp" id="fpLagring">' + esc(lagringsTekst()) + "</p>";
   body.innerHTML = html;
 
   $("fpNy").onclick = () => leggTilEtappe();
+  if ($("fpVis")) $("fpVis").onchange = (ev) => { S.framdriftVis = ev.target.checked; oppdaterVis(); };
   fyllLogo($("fpLogo"));
   $("fpLogo").onchange = (ev) => { S.settings.framdriftLogo = ev.target.value || ""; writePrefs(); };
   body.querySelectorAll(".fp-etappe").forEach(rad => {
@@ -288,29 +301,42 @@ export function tegnPanel() {
     rad.querySelector(".st-farge").onchange = (ev) => { endreEtappe(id, { farge: ev.target.value }); tegnPanel(); };
     rad.querySelector(".st-legg").onclick = () => { if (velgerEtappe() === id) avsluttVelg(true); else startVelg(id); };
     const tom = rad.querySelector(".st-tom");
-    if (tom) tom.onclick = () => { if (confirm(t("Ta alt ut av etappen?"))) tomEtappe(id); };
+    if (tom) tom.onclick = () => { if (confirm(t("Ta alt ut av trinnet?"))) tomEtappe(id); };
     rad.querySelector(".st-slett").onclick = () => {
       const e = synlige(S.framdrift).find(x => x.id === id);
       if (e && confirm(t("Slette {0}?", e.navn))) slettEtappe(id);
     };
   });
+  oppdaterVis();
+}
+
+// 📅 Glideren (trinn 3, js/framdrift-vis.js): på når panelet er åpent og
+// avkrysset — men AV mens du velger, ellers kunne du ikke trykke på det som
+// ennå ikke er bygget.
+function oppdaterVis() {
+  const paa = erApen() && S.framdriftVis !== false && !velger;
+  if (!paa) stoppAvspilling();
+  tegnFramdrift(paa);
+  tegnTidslinje(paa);
 }
 
 // ═══════════════════════ KROKER ═══════════════════════
 S.lastFramdrift = () => {
+  ryddFramdriftVis();
   S.framdrift = lesLokalt();
   sisteMelding = "";
   if (erApen()) tegnPanel();
   hentFraSp();
 };
-S.ryddFramdrift = () => { if (velger) avsluttVelg(false); S.framdrift = []; };
+S.ryddFramdrift = () => { if (velger) avsluttVelg(false); ryddFramdriftVis(); S.framdrift = []; };
 
 på("btnFramdrift", "click", () => {
   const panel = $("framdriftPanel");
-  if (panel.classList.contains("open")) { if (velger) avsluttVelg(false); panel.classList.remove("open"); return; }
+  if (panel.classList.contains("open")) { if (velger) avsluttVelg(false); panel.classList.remove("open"); oppdaterVis(); return; }
   if (!S.modelGroup) { alert(t("Åpne en modell først.")); return; }
   tegnPanel();
   apnePanel("framdriftPanel");
+  oppdaterVis();
 });
 // Lukkes panelet på en annen måte (krysset, et annet panel, Esc): velgemodusen av
 (() => {
@@ -323,5 +349,6 @@ på("btnFramdrift", "click", () => {
     if (naa === varApen) return;
     varApen = naa;
     if (!naa && velger) avsluttVelg(false);
+    if (!naa) oppdaterVis();
   }).observe(p, { attributes: true, attributeFilter: ["class"] });
 })();
