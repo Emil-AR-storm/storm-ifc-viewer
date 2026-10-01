@@ -1912,5 +1912,12 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "farger betongen etter støpeplanen": "colours the concrete by the pour plan",
   "Støpt {0}": "Poured {0}",
   "Angre «støpt»": "Undo “poured”",
-  "Merk som støpt": "Mark as poured"
+  "Merk som støpt": "Mark as poured",
+  "Ingen dato": "No date",
+  "Etappe {0}": "Stage {0}",
+  "Areal (ca)": "Area (approx.)",
+  "Støpeplanen": "The pour plan",
+  "Har prosjektlederen laget en støpeplan, står knappen Støpeplan i Bygg Info. Betongen er farget etter etappen den støpes i: full farge er støpt, svakere farge kommer senere. Tidslinjen nederst viser datoene — dra i den for å se hvordan det skal se ut en annen dag, og trykk I dag for å komme tilbake. Trykk på et felt på plata for etappe, dato og mengde.": "If the project manager has made a pour plan, the Pour plan button is in Building info. The concrete is coloured by the stage it is poured in: full colour is poured, fainter colour comes later. The timeline at the bottom shows the dates — drag it to see how it should look on another day, and tap Today to come back. Tap an area on the slab for stage, date and quantity.",
+  "Støpeplan: etapper, felt og tidslinje": "Pour plan: stages, areas and timeline",
+  "Støpeplan (i Bygg Info) deler støpene i etapper. Trykk + Legg til på etappen og velg elementene i modellen, eller + Felt for å tegne et felt på plata — dra hjørner og kanter for å justere. Merk som støpt når etappen er ferdig. Tidslinjen nederst viser planen på en valgt dag, og Vis etappeplan skrur fargingen av og på. Planen følger med ut til byggeplassen når du trykker Storm-Byggeplass.": "Pour plan (in Building info) splits the pours into stages. Press + Add on the stage and pick the elements in the model, or + Area to draw an area on the slab — drag corners and edges to adjust. Mark as poured when the stage is done. The timeline at the bottom shows the plan on a chosen day, and Show stage plan turns the colouring on and off. The plan goes out to the site when you press Storm-Byggeplass."
 };

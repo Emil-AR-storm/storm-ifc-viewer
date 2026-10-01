@@ -1912,5 +1912,12 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "farger betongen etter støpeplanen": "koloruje beton według planu betonowania",
   "Støpt {0}": "Zabetonowano {0}",
   "Angre «støpt»": "Cofnij „zabetonowano”",
-  "Merk som støpt": "Oznacz jako zabetonowane"
+  "Merk som støpt": "Oznacz jako zabetonowane",
+  "Ingen dato": "Brak daty",
+  "Etappe {0}": "Etap {0}",
+  "Areal (ca)": "Powierzchnia (ok.)",
+  "Støpeplanen": "Plan betonowania",
+  "Har prosjektlederen laget en støpeplan, står knappen Støpeplan i Bygg Info. Betongen er farget etter etappen den støpes i: full farge er støpt, svakere farge kommer senere. Tidslinjen nederst viser datoene — dra i den for å se hvordan det skal se ut en annen dag, og trykk I dag for å komme tilbake. Trykk på et felt på plata for etappe, dato og mengde.": "Jeśli kierownik projektu przygotował plan betonowania, przycisk Plan betonowania jest w Info o budynku. Beton jest pokolorowany według etapu, w którym jest wylewany: pełny kolor to zabetonowane, słabszy kolor będzie później. Oś czasu na dole pokazuje daty — przeciągnij ją, aby zobaczyć, jak ma to wyglądać innego dnia, i naciśnij Dziś, aby wrócić. Dotknij pola na płycie, aby zobaczyć etap, datę i ilość.",
+  "Støpeplan: etapper, felt og tidslinje": "Plan betonowania: etapy, pola i oś czasu",
+  "Støpeplan (i Bygg Info) deler støpene i etapper. Trykk + Legg til på etappen og velg elementene i modellen, eller + Felt for å tegne et felt på plata — dra hjørner og kanter for å justere. Merk som støpt når etappen er ferdig. Tidslinjen nederst viser planen på en valgt dag, og Vis etappeplan skrur fargingen av og på. Planen følger med ut til byggeplassen når du trykker Storm-Byggeplass.": "Plan betonowania (w Info o budynku) dzieli betonowania na etapy. Naciśnij + Dodaj przy etapie i wybierz elementy w modelu albo + Pole, aby narysować pole na płycie — przeciągaj narożniki i krawędzie, aby dopasować. Oznacz jako zabetonowane, gdy etap jest gotowy. Oś czasu na dole pokazuje plan w wybranym dniu, a Pokaż plan etapów włącza i wyłącza kolorowanie. Plan trafia na budowę, gdy naciśniesz Storm-Byggeplass."
 };

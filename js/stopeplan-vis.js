@@ -16,7 +16,9 @@
 //   planlagt        — blass
 import * as THREE from "three";
 import { S, registrerEkstraGruppe } from "./state.js";
-import { flyTil, scene } from "./scene.js";
+import { camera, canvas, flyTil, raycaster, scene } from "./scene.js";
+import { LETT } from "./lett.js";
+const _pk = new THREE.Vector2();
 import { forHverTrekant } from "./elements.js";
 import { iDagISO } from "./frist.js";
 import { elementNokkel, erGenerert, statusPer, synlige } from "./stopeplan-regn.js";
@@ -197,6 +199,21 @@ registrerEkstraGruppe(stopeGroup, {
   settSkjulTilstand(v) { settVisEtappeplan(!(v && v.skjult)); },
   mengder: () => {},
   sokRader: () => [],
+  // 📋 Byggeplassen (trinn 5): trykk på et FELT viser etappen i infovinduet.
+  // Bare der — på kontoret eier stopeplan-felt.js trykkene på feltene.
+  ...(LETT ? {
+    plukk(x, y) {
+      if (!stopeGroup.visible || !feltMeshes.length) return null;
+      const r = canvas.getBoundingClientRect();
+      _pk.set(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1);
+      raycaster.setFromCamera(_pk, camera);
+      const h = raycaster.intersectObjects(feltMeshes, false)[0];
+      return h ? { id: h.object.userData.feltId, navn: "", avstand: h.distance } : null;
+    },
+    velg() {},
+    valgte: () => [],
+    visEgenskaper(id) { if (S.stopeVisFelt) S.stopeVisFelt(id); }
+  } : {}),
   // Fra søket (kontrakten i test-ekstralag): fly til etappen
   gaTil(id) {
     const m = stopeGroup.children.find(o => o.userData.etappeId === id);

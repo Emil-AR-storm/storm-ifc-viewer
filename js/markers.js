@@ -216,6 +216,10 @@ async function lastLettMarkeringer() {
       // 🏕 Riggen på tomta (rigg-vis.js). Gamle filer har ikke feltet.
       if (S.settRiggFraLett)
         S.settRiggFraLett(d && !Array.isArray(d) ? d.rigg : null);
+      // 🧱 Støpeplanen (stopeplan-lett.js) SIST: den farger elementer, felt
+      // og den genererte betongen fra SW-feltet over. Gamle filer har ikke feltet.
+      if (S.settStopeplanFraLett)
+        S.settStopeplanFraLett(d && !Array.isArray(d) ? d.stopeplan : null);
     }
   } catch (e) {
     feil = (e && e.tidsavbrudd)
