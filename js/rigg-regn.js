@@ -71,6 +71,22 @@ export const RIGG_TYPER = {
   // To typer i hver sin farge, og gående er stiplet, så de kan skilles også
   // på en svart-hvitt-utskrift av riggplanen. B = bredden på pila; L og H
   // brukes ikke. Pilene telles ikke i Mengder — de bestilles ikke.
+  // 🏗 Tårnkran (Emil 30.09 + skisse 01.10): mast, bom og motbom, og en
+  // SVINGRADIUS på bakken. L × B er fundamentet, H er mastehøyden (krokhøyden
+  // under bommen) — derfor tåler kranen høyere H enn de andre (KRAN_MAKS_H).
+  // `radius` er bomlengden = hvor langt kranen rekker. Mange byggeplasser
+  // tillater ikke 360° sving (naboer, vei, skole): sektorFra → sektorTil er
+  // den TILLATTE delen, med klokka, i grader fra objektets egen nord. Like
+  // verdier = hel sirkel. Målene er forslag {Source not found: typiske mål
+  // for en mellomstor tårnkran, ikke sjekket mot Storms leverandør}.
+  taarnkran:  { label: "Tårnkran", L: 4.5, B: 4.5, H: 32, farge: "#f2c200", kran: true },
+  // 🚬 Røykeområde (Emil 01.10): en sone på bakken som lagringsområdet, med
+  // skilt, askebeger og benk. H er skiltets høyde.
+  royk:       { label: "Røykeområde", L: 4, B: 3, H: 2.2, farge: "#cdbf9f", flate: true, kant: true },
+  // 📋 HMS-tavle (Emil 01.10): oppslagstavle på to bein med tak — SHA-plan,
+  // riggplan, nødnummer og beskjeder. Ikke det samme som HMS-kort-
+  // registreringen (hms), som er der man registrerer seg. L × H er tavla.
+  hmstavle:   { label: "HMS-tavle", L: 2.4, B: 0.5, H: 2.3, farge: "#1f5fbf" },
   pilKjoretoy: { label: "Pil: kjøretøy", L: 1, B: 1.5, H: 0.05, farge: "#f57c00", pil: true },
   pilGaende:   { label: "Pil: gående", L: 1, B: 0.8, H: 0.05, farge: "#43a047", pil: true, stiplet: true }
 };
@@ -102,8 +118,8 @@ export function erPil(o) { return !!(o && RIGG_TYPER[o.type] && RIGG_TYPER[o.typ
 export function minPunkter(o) { return erPil(o) ? 2 : 3; }
 
 // Rekkefølgen knappene står i panelet — det man rigger først, først.
-export const RIGG_REKKEFOLGE = ["gjerde", "pilKjoretoy", "pilGaende", "brakke", "hjulbrakke", "toalett", "forstehjelp", "mote",
-  "strom", "lys", "container", "hms", "soppel", "parkering", "lagring", "vaskeplass"];
+export const RIGG_REKKEFOLGE = ["gjerde", "pilKjoretoy", "pilGaende", "taarnkran", "brakke", "hjulbrakke", "toalett", "forstehjelp", "mote",
+  "strom", "lys", "container", "hms", "hmstavle", "soppel", "parkering", "lagring", "vaskeplass", "royk"];
 
 // Kort forklaring per type. Står i panelet nå, og blir teksten i
 // tegnforklaringen på riggplan-PDF-en (trinn 6).
@@ -123,8 +139,19 @@ export const RIGG_FORKLARING = {
   vaskeplass: "Vaskeplass for betongbiler etter levering",
   gjerde: "Byggegjerde rundt byggeplassen, med port for kjøretøy",
   pilKjoretoy: "Kjørevei for biler, lastebiler og maskiner",
-  pilGaende: "Gangvei for de som går på byggeplassen"
+  pilGaende: "Gangvei for de som går på byggeplassen",
+  taarnkran: "Tårnkran — sirkelen er svingradiusen, grønt er der bommen får svinge",
+  royk: "Eget område for røyking, med askebeger",
+  hmstavle: "Oppslag: SHA-plan, riggplan, nødnummer og beskjeder"
 };
+
+// 🏗 Kranens grenser. Radiusen er bomlengden (5–90 m dekker alt fra en
+// hurtigmonteringskran til de største på norske byggeplasser {Source not
+// found: grovt anslag}), mastehøyden opptil 80 m.
+export const KRAN_MAKS_H = 80, KRAN_MIN_R = 5, KRAN_MAKS_R = 90, KRAN_STD_R = 40;
+// Den minste sektoren som kan stilles inn: et smalere felt er ikke en
+// arbeidssone, og håndtakene ville lagt seg oppå hverandre.
+export const KRAN_MIN_SEKTOR = 5;
 
 export const MAKS_ETASJER = 3;
 export const MAKS_MODULER = 12;
@@ -168,6 +195,51 @@ export function normVinkel(g) {
   return Math.round(v * 10) / 10 % 360;
 }
 
+// ═══════════════════════ 🏗 KRANENS SEKTOR ═══════════════════════
+// Vinklene er grader MED KLOKKA fra objektets egen nord (lokal −z), samme
+// retning som rot. Retningen til en vinkel g i objektets rom: (sin g, −cos g).
+export function kranSektor(o) {
+  const fra = normVinkel(o && o.sektorFra), til = normVinkel(o && o.sektorTil != null ? o.sektorTil : fra);
+  const full = fra === til;
+  const bredde = full ? 360 : (til - fra + 360) % 360;
+  return { full, fra, til, bredde, midt: normVinkel(fra + bredde / 2) };
+}
+// Vinkelen fra kranens midte til et punkt i objektets rom (x, z i meter)
+export function vinkelTil(x, z) {
+  return normVinkel(Math.atan2(x, -z) * 180 / Math.PI);
+}
+// Ligger vinkelen g innenfor den tillatte sektoren? Kanten regnes som inne.
+export function iSektor(o, g) {
+  const s = kranSektor(o);
+  if (s.full) return true;
+  return (normVinkel(g) - s.fra + 360) % 360 <= s.bredde + 1e-9;
+}
+// Ett håndtak er dratt til vinkelen `g`. `hvem` er "fra" eller "til".
+// Fra hel sirkel ligger begge håndtakene i samme punkt (Emils skisse): det
+// som dras ÅPNER et hull der det står — dras det med klokka, blir det
+// starten på den grønne sektoren; mot klokka, slutten. Svaret er de nye
+// { sektorFra, sektorTil, hvem } — eller null når sektoren ville blitt
+// smalere enn KRAN_MIN_SEKTOR (da står håndtaket der det var).
+export function draSektor(o, hvem, g) {
+  const s = kranSektor(o), v = normVinkel(Math.round(g));
+  if (s.full) {
+    const d = ((v - s.fra + 540) % 360) - 180;          // −180 … 180, + = med klokka
+    if (Math.abs(d) < 1) return null;
+    return d > 0 ? { sektorFra: v, sektorTil: s.fra, hvem: "fra" } : { sektorFra: s.fra, sektorTil: v, hvem: "til" };
+  }
+  const fra = hvem === "fra" ? v : s.fra, til = hvem === "til" ? v : s.til;
+  const bredde = (til - fra + 360) % 360;
+  // Dratt helt rundt til det andre håndtaket: hel sirkel igjen
+  if (bredde === 0 || bredde > 360 - 1) return { sektorFra: fra, sektorTil: fra, hvem };
+  if (bredde < KRAN_MIN_SEKTOR) return null;
+  return { sektorFra: fra, sektorTil: til, hvem };
+}
+// Kompassretningen (grader fra nord) til en vinkel i objektets rom: objektets
+// rotasjon er med klokka, som vinklene — de legges sammen.
+export function kranKompass(o, g, plassRot) {
+  return normVinkel(g + (o && o.rot || 0) + (o && o.ramme === "bygg" ? (Number(plassRot) || 0) : 0));
+}
+
 // Posisjonen kan ligge i UTM33 (seks-sifrede tall) — grensen er vid med vilje,
 // men ikke uendelig: noe utenfor Norge er en feil, ikke en tomt.
 const MAKS_KOORD = 1e7;
@@ -186,7 +258,7 @@ export function vaskRiggObjekt(p) {
     farge: vaskFarge(p.farge, M.farge),
     L: mal(p.L, M.gjerde ? 0.5 : 0.1, M.gjerde ? 10 : M.flate ? 200 : 30, M.L),
     B: mal(p.B, 0.1, M.flate ? 200 : 30, M.B),
-    H: mal(p.H, 0.1, 15, M.H),
+    H: mal(p.H, 0.1, M.kran ? KRAN_MAKS_H : 15, M.H),
     // "utm" = E/N er UTM33 i meter (riggen hører til TOMTA, Emil 25.09).
     // "bygg" = lagt inn før noe terreng fantes: E/N er byggrammen (E = x,
     // N = −z, meter fra modellens senter). Gjøres om til utm første gang
@@ -215,6 +287,16 @@ export function vaskRiggObjekt(p) {
   if (M.moduler) {
     ut.etasjer = heltall(p.etasjer, 1, MAKS_ETASJER, 1);
     ut.moduler = heltall(p.moduler, 1, MAKS_MODULER, 1);
+  }
+  // 🏗 Radius og tillatt sektor. Gamle filer har ingen sektor → hel sirkel.
+  if (M.kran) {
+    ut.radius = mal(p.radius, KRAN_MIN_R, KRAN_MAKS_R, KRAN_STD_R);
+    const fra = tall(p.sektorFra), til = tall(p.sektorTil);
+    ut.sektorFra = fra == null ? 0 : normVinkel(Math.round(fra));
+    ut.sektorTil = til == null ? ut.sektorFra : normVinkel(Math.round(til));
+    // For smal sektor (kan bare komme fra en fil) → hel sirkel, ikke en strek
+    const bredde = (ut.sektorTil - ut.sektorFra + 360) % 360;
+    if (bredde && bredde < KRAN_MIN_SEKTOR) ut.sektorTil = ut.sektorFra;
   }
   if (M.gjerde || M.pil) {
     ut.punkter = vaskPunkter(p.punkter, M.pil ? 2 : MIN_SKJOTER);
@@ -878,9 +960,16 @@ export function riggplanTegnforklaring(liste, tr) {
       }
       continue;
     }
-    let antall;
+    let antall, ekstraForklaring = "";
     if (M.pil) {
       antall = av.length + " " + lab("stk") + " · " + Math.round(av.reduce((a, o) => a + pilLengde(o), 0)) + " m";
+    } else if (M.kran) {
+      // Radiusen og sektoren står i tegnforklaringen — det er det man skal vite
+      antall = av.length + " " + lab("stk") + " · R " + av.map(o => Math.round(o.radius)).join("/") + " m";
+      // Begrenset sving står i forklaringen: «tillatt sving 160°» (hele
+      // sirkelen sier ingenting ekstra)
+      const delvis = av.map(o => kranSektor(o)).filter(q => !q.full);
+      if (delvis.length) ekstraForklaring = " · " + lab("tillatt sving {0}").replace("{0}", delvis.map(q => q.bredde + "°").join(" / "));
     } else if (M.parkering) {
       const pl = av.reduce((a, o) => a + parkeringsPlasser(o.L, o.B).totalt, 0);
       antall = lab("{0} plasser").replace("{0}", pl);
@@ -888,7 +977,7 @@ export function riggplanTegnforklaring(liste, tr) {
       antall = av.reduce((a, o) => a + riggAntall(o), 0) + " " + lab("stk");
     }
     rad({ type: k, label: lab(M.label), farge, stiplet: !!M.stiplet, pil: !!M.pil, kant: !!M.kant, antall,
-      forklaring: lab(RIGG_FORKLARING[k] || "") });
+      forklaring: lab(RIGG_FORKLARING[k] || "") + ekstraForklaring });
   }
   return ut;
 }

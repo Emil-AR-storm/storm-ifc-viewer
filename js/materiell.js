@@ -211,7 +211,8 @@ function oppdaterValgBar() {
     '<button id="mvRotH" class="btn" title="' + t("Roter 15° mot høyre") + '" style="padding:3px 8px">⟳</button>' +
     '<button id="mvSkjul" class="btn" title="' + t("Skjul/vis") + '" style="padding:3px 8px">' + ikon("skjul") + "</button>" +
     '<button id="mvSlett" class="btn" title="' + t("Slett") + '" style="padding:3px 8px">' + ikon("slett") + "</button>" +
-    '<button id="mvRediger" class="btn" title="' + t("Rediger") + '" style="padding:3px 8px">' + ikon("rediger") + "</button>" +
+    // 🔩 Stålbunkene redigeres ikke for hånd — de lages fra modellen
+    (p.maltype === "stal" ? "" : '<button id="mvRediger" class="btn" title="' + t("Rediger") + '" style="padding:3px 8px">' + ikon("rediger") + "</button>") +
     '<button id="mvLukk" class="btn" title="' + t("Ferdig") + '" style="padding:3px 8px">' + t("Ferdig") + "</button>";
   $("mvFlytt").onclick = () => {
     const o = valgtId && finnObjekt(valgtId);
@@ -229,7 +230,7 @@ function oppdaterValgBar() {
   $("mvSlett").onclick = () => { const q = hentP(valgtId); if (q) fjern(q.id, true); velg(null); };
   // Rediger: åpner skjemaet forhåndsutfylt, så en skrivefeil i dimensjoner,
   // navn eller farge rettes uten å legge inn objektet på nytt (Emil 21.08).
-  $("mvRediger").onclick = () => {
+  if ($("mvRediger")) $("mvRediger").onclick = () => {
     const q = hentP(valgtId);
     if (!q) return;
     apnePanel("materiellPanel");
@@ -472,12 +473,16 @@ function tegnPanel() {
     ).join("");
   }
 
+  // 🔩 stålbunkene fra stålmodellen (js/stalbunker.js)
+  if (S.stalPanel) html += S.stalPanel.html();
+
   // biblioteket
   html += '<h4 style="margin:14px 0 4px">' + t("Materiell-bibliotek") + "</h4>" +
     '<div id="matBib"><p style="color:var(--muted);font-size:12px">' + t("Henter biblioteket …") + "</p></div>";
 
   body.innerHTML = html;
   $("matNytt").onclick = () => tegnSkjema();
+  if (S.stalPanel) S.stalPanel.kobl();
   body.querySelectorAll("[data-mat-velg]").forEach(d =>
     d.onclick = () => velg(d.dataset.matVelg));
   body.querySelectorAll("button[data-mat-skjul]").forEach(b =>
@@ -548,7 +553,7 @@ function tegnSkjema(mal, redigerId) {
   body.innerHTML =
     '<h4 style="margin:0 0 6px">' + t(redigerId ? "Rediger materiell" : "Nytt materiell") + "</h4>" +
     '<label>' + t("Type") + '<select id="matType">' +
-    Object.keys(MALTYPER).map(k => '<option value="' + k + '"' + (k === type ? " selected" : "") + ">" + esc(t(MALTYPER[k].label)) + "</option>").join("") +
+    Object.keys(MALTYPER).filter(k => !MALTYPER[k].generert).map(k => '<option value="' + k + '"' + (k === type ? " selected" : "") + ">" + esc(t(MALTYPER[k].label)) + "</option>").join("") +
     "</select></label>" +
     '<label>' + t("Navn på objektet") + '<input type="text" id="matNavn" maxlength="80" placeholder="' + t("f.eks. TRP tak felt B") + '" value="' + esc(m.navn || "") + '"></label>' +
     '<div id="matFelter">' + felter(type) + "</div>" +

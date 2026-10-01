@@ -41,7 +41,8 @@ import {
   byggTilRigg, enTilLokal, fjernSkjoter, flyttSkjoter, gjerdeFraRektangel, gjerdeMengder, gjerdeStykker,
   gjorOmTilPort, gjorTilbake, leggTilSkjot, naboStykker, nyRiggId, normVinkel, riggAntall, riggObjekter,
   riggTelling, trengerOpplasting, vaskRiggListe, vaskRiggObjekt, erGjerde, MALESTOKKER, riggplanDekning, vaskMalestokkValg, erPil, minPunkter, parkeringsPlasser, pilFraPunkter, pilLengde,
-  RIGGPLAN_NAVN_MAKS, riggFraLagret, riggOyeblikk, riggplanSammendrag, AVFALLSTYPER, avfallstype
+  RIGGPLAN_NAVN_MAKS, riggFraLagret, riggOyeblikk, riggplanSammendrag, AVFALLSTYPER, avfallstype,
+  KRAN_MAKS_H, KRAN_MAKS_R, KRAN_MIN_R, draSektor, kranSektor, vinkelTil
 } from "./rigg-regn.js";
 import {
   aktivRef, byggRiggObjekt, finnRiggObjekt, gjerdeDelLabel, lappStorrelse, oppdaterRiggValgEffekt, riggBase, riggGroup,
@@ -73,6 +74,11 @@ let portModus = false;
 let sistSkjemaId = null;
 let sistValgBarHtml = "";      // knapperaden slik den sist ble bygd (se oppdaterValgBar)      // skjemaet sist vist for (logolista hentes på nytt bare ved bytte)
 let overStykke = null;         // panelet under pekeren i port-steget
+// 🏗 Kranens svingsektor stilles inn (knappen «Radius» i raden): en kladd som
+// tegnes mens håndtakene dras, og lagres først når man trykker «Lagre».
+//   kranRed:    { id, sektorFra, sektorTil } — speiles i S.riggKranRed for rigg-vis.js
+//   sektorDrar: { hvem: "fra" | "til" } — det håndtaket som holdes
+let kranRed = null, sektorDrar = null;
 
 function hentO(id) { return riggObjekter(S.rigg || []).find(o => o.id === id) || null; }
 
@@ -517,6 +523,59 @@ function valgtGjerde() {
   return o && o.punkter ? o : null;
 }
 
+// ═══════════════════════ 🏗 KRANENS SEKTOR ═══════════════════════
+function erKran(o) { return !!(o && RIGG_TYPER[o.type] && RIGG_TYPER[o.type].kran); }
+function kranKladd() {
+  const o = kranRed && hentO(kranRed.id);
+  return o ? Object.assign({}, o, { sektorFra: kranRed.sektorFra, sektorTil: kranRed.sektorTil }) : null;
+}
+function startKranRed() {
+  const o = valgtId && hentO(valgtId);
+  if (!erKran(o)) return;
+  // Som port-steget: håndtakene trenger rigg-modus, ellers går draget til kameraet
+  if (!iModus() || !erApen()) visValgt(o.id);
+  kranRed = { id: o.id, sektorFra: o.sektorFra, sektorTil: o.sektorTil };
+  S.riggKranRed = kranRed;
+  tegnEnRigg(kranKladd());
+  oppdaterValgBar();
+  if (S.riggModeBarTegn) S.riggModeBarTegn();
+}
+function avsluttKranRed(lagre) {
+  if (!kranRed) return;
+  const r = kranRed, o = hentO(r.id);
+  kranRed = null; sektorDrar = null; S.riggKranRed = null;
+  if (lagre && o && (o.sektorFra !== r.sektorFra || o.sektorTil !== r.sektorTil))
+    oppdater(o.id, { sektorFra: r.sektorFra, sektorTil: r.sektorTil }, "Svingsektor endret");
+  else if (o) tegnEnRigg(o);
+  oppdaterValgBar();
+  if (S.riggModeBarTegn) S.riggModeBarTegn();
+}
+// Hvilket håndtak er under pekeren? ("fra", "til" eller null)
+function pekSektorHandtak(x, y) {
+  const g = kranRed && finnRiggObjekt(kranRed.id);
+  if (!g) return null;
+  settNdc(x, y);
+  raycaster.setFromCamera(_ndc, camera);
+  const mesher = [];
+  g.traverse(m => { if (m.isMesh && m.userData.sektorHandtak) mesher.push(m); });
+  const h = raycaster.intersectObjects(mesher, false)[0];
+  return h ? h.object.userData.sektorHandtak : null;
+}
+// Vinkelen fra kranens midte til pekeren, i kranens eget rom. Strålen treffer
+// et vannrett plan i kranens fothøyde — ikke bygget: da ville vinkelen hoppet
+// når pekeren går over taket.
+const _kranPlan = new THREE.Plane(), _kranP = new THREE.Vector3();
+function kranVinkel(o, x, y) {
+  const g = finnRiggObjekt(o.id);
+  if (!g) return null;
+  settNdc(x, y);
+  raycaster.setFromCamera(_ndc, camera);
+  _kranPlan.set(new THREE.Vector3(0, 1, 0), -g.position.y);
+  if (!raycaster.ray.intersectPlane(_kranPlan, _kranP)) return null;
+  const lok = lokalFra(o, _kranP.clone());
+  return lok ? vinkelTil(lok.x, lok.z) : null;
+}
+
 function tomHandtak() { handtakGroup.children.slice().forEach(m => handtakGroup.remove(m)); }
 
 // `o` kan være en kladd (mens en skjøt dras).
@@ -602,8 +661,13 @@ function velg(id) {
     const forrige = valgtId && hentO(valgtId);
     if (hadde && forrige) tegnEnRigg(forrige);
   }
+  if (kranRed && kranRed.id !== id) avsluttKranRed(false);
+  const forrigeId = valgtId;
   valgtId = id;
   S.riggValgtId = id;
+  // 🏗 Gradene og radiusen står bare på en valgt kran — den må tegnes på nytt
+  // når den blir valgt eller valgt bort
+  for (const k of new Set([forrigeId, id])) { const q = k && hentO(k); if (erKran(q)) tegnEnRigg(q); }
   oppdaterRiggValgEffekt();
   oppdaterValgBar();
   oppdaterHandtak();
@@ -660,6 +724,25 @@ function oppdaterValgBar() {
   // fantes ikke lenger da museknappen ble sluppet, så det måtte to trykk til.
   // Lik HTML → de samme knappene står, med de samme lytterne.
   const bytt = (html) => { if (html === sistValgBarHtml && el.firstChild) return false; el.innerHTML = html; sistValgBarHtml = html; return true; };
+  if (kranRed && kranRed.id === o.id) {
+    const sk = kranSektor(kranKladd() || o);
+    const html = '<span style="font-size:12px;font-weight:600">' + t("Radius") + "</span>" +
+      '<span style="font-size:12px;color:var(--muted)">' + esc(sk.full ? t("Hel sirkel — dra et hvitt håndtak langs kanten for å begrense svingen")
+        : t("Tillatt sving {0}° — dra de hvite håndtakene langs kanten", sk.bredde)) + "</span>" +
+      '<button id="rvKranHel" class="btn" style="padding:3px 8px"' + (sk.full ? " disabled" : "") + ">" + t("Hel sirkel") + "</button>" +
+      '<button id="rvKranLagre" class="btn primary" style="padding:3px 10px">' + t("Lagre") + "</button>" +
+      '<button id="rvKranAvbryt" class="btn" style="padding:3px 8px">' + t("Avbryt") + "</button>";
+    if (bytt(html)) {
+      $("rvKranLagre").onclick = () => avsluttKranRed(true);
+      $("rvKranAvbryt").onclick = () => avsluttKranRed(false);
+      $("rvKranHel").onclick = () => {
+        if (!kranRed) return;
+        kranRed.sektorTil = kranRed.sektorFra;
+        tegnEnRigg(kranKladd()); oppdaterValgBar();
+      };
+    }
+    return;
+  }
   if (portModus && erGjerde(o)) {
     if (bytt('<span style="font-size:12px;font-weight:600">' + ikon("pluss") + " " + t("Port") + "</span>" + portStegKnapper(o))) koblPortSteg(o);
     return;
@@ -675,9 +758,11 @@ function oppdaterValgBar() {
     '<button id="rvSlett" class="btn" title="' + t("Slett") + '" style="padding:3px 8px">' + ikon("slett") + "</button>" +
     '<button id="rvRediger" class="btn" title="' + t("Rediger") + '" style="padding:3px 8px">' + ikon("rediger") + "</button>" +
     gjerdeKnapper(o) +
+    (erKran(o) ? '<button id="rvRadius" class="btn" title="' + t("Still inn hvor kranen får svinge: dra håndtakene langs sirkelen") + '" style="padding:3px 8px">' + t("Radius") + "</button>" : "") +
     '<button id="rvLukk" class="btn" title="' + t("Ferdig") + '" style="padding:3px 8px">' + t("Ferdig") + "</button>";
   if (!bytt(html)) return;
   koblGjerdeKnapper(o);
+  if ($("rvRadius")) $("rvRadius").onclick = () => startKranRed();
   $("rvFlytt").onclick = () => {
     const g = valgtId && finnRiggObjekt(valgtId);
     if (g) flytter = { id: valgtId, fra: g.position.clone() };
@@ -954,7 +1039,7 @@ function settRiggModus(paa) {
   S.mode = paa ? "rigg" : (S.mode === "rigg" ? null : S.mode);
   const b = $("btnRigg");
   if (b) b.classList.toggle("active", paa);
-  if (!paa) { avbrytPlassering(); avbrytMerker(); avbrytPil(); avsluttPortModus(); }
+  if (!paa) { avbrytPlassering(); avbrytMerker(); avbrytPil(); avsluttPortModus(); avsluttKranRed(false); }
   visKatalog(paa);
   if (S.oppdaterModeBar) S.oppdaterModeBar();
   oppdaterHandtak();
@@ -1025,6 +1110,12 @@ window.addEventListener("pointerdown", (e) => {
   if (merker) { e.stopPropagation(); merker.start = bakkePunkt(e.clientX, e.clientY); return; }
   // ➜ under pilteging tas klikket på pointerup; et drag roterer kameraet som vanlig
   if (tegner) return;
+  if (iModus() && kranRed) {
+    // 🏗 et håndtak på kranens sirkel? Alt annet er kameraet mens sektoren stilles inn
+    const hvem = pekSektorHandtak(e.clientX, e.clientY);
+    if (hvem) { e.stopPropagation(); sektorDrar = { hvem }; return; }
+    return;
+  }
   if (iModus()) {
     // 🚧 en skjøt i det valgte gjerdet?
     const gj = valgtGjerde();
@@ -1063,6 +1154,18 @@ window.addEventListener("pointermove", (e) => {
   if (tegner) { const pt = bakkePunkt(e.clientX, e.clientY); if (pt && tegner.punkter.length) tegnPilKladd(pt); return; }
   if (merker) {
     if (merker.start) { e.stopPropagation(); const pt = bakkePunkt(e.clientX, e.clientY); if (pt) tegnMerkeboks(merker.start, pt); }
+    return;
+  }
+  if (sektorDrar && kranRed) {
+    e.stopPropagation();
+    const k = kranKladd();
+    const v = k && kranVinkel(k, e.clientX, e.clientY);
+    const ny = v != null && draSektor(k, sektorDrar.hvem, v);
+    if (!ny || (ny.sektorFra === kranRed.sektorFra && ny.sektorTil === kranRed.sektorTil)) return;
+    kranRed.sektorFra = ny.sektorFra; kranRed.sektorTil = ny.sektorTil;
+    sektorDrar.hvem = ny.hvem;   // fra hel sirkel avgjør retningen hvilket håndtak det ble
+    tegnEnRigg(kranKladd());
+    oppdaterValgBar();
     return;
   }
   if (skjotDrar) {
@@ -1156,6 +1259,11 @@ window.addEventListener("pointerup", (e) => {
     lagGjerde(a, b);
     return;
   }
+  if (sektorDrar) { sektorDrar = null; e.stopPropagation(); slippKamera(e); return; }
+  if (kranRed && iModus()) {
+    // Et klikk ved siden av håndtakene endrer ingenting — sektoren lagres med «Lagre»
+    return;
+  }
   if (skjotDrar) {
     const sd = skjotDrar; skjotDrar = null;
     e.stopPropagation(); slippKamera(e);
@@ -1223,7 +1331,9 @@ window.addEventListener("keydown", (e) => {
   }
   if (tegner && e.key === "Enter" && !iFelt) { e.preventDefault(); fullforPil(); return; }
   if (portModus && e.key === "Enter" && !iFelt) { const o = valgtGjerde(); if (o && lagPortNaa(o)) e.preventDefault(); return; }
+  if (kranRed && e.key === "Enter" && !iFelt) { e.preventDefault(); avsluttKranRed(true); return; }
   if (e.key !== "Escape") return;
+  if (kranRed) { avsluttKranRed(false); return; }
   if (tegner) { avbrytPil(); return; }
   if (portModus) { avsluttPortModus(); return; }
   if (merker) { avbrytMerker(); return; }
@@ -1450,6 +1560,11 @@ function skjemaHtml(o) {
       : M.gjerde
       ? felt("riggL", "Panellengde (m)", o.L, 0.5, 10, 0.01) + felt("riggH", "Panelhøyde (m)", o.H, 0.1, 15, 0.01) +
         '<input type="hidden" id="riggB" value="' + o.B + '">'
+      : M.kran
+      ? felt("riggRadius", "Svingradius = bomlengde (m)", o.radius, KRAN_MIN_R, KRAN_MAKS_R, 0.5) +
+        felt("riggH", "Mastehøyde (m)", o.H, 0.1, KRAN_MAKS_H, 0.1) +
+        felt("riggL", "Fundament lengde (m)", o.L, 0.1, 30, 0.01) + felt("riggB", "Fundament bredde (m)", o.B, 0.1, 30, 0.01) +
+        "<p " + LITEN + ">" + t("Trykk «Radius» i raden over for å stille inn hvor kranen får svinge.") + "</p>"
       : felt("riggL", "Lengde (m)", o.L, 0.1, 30, 0.01) +
         felt("riggB", "Bredde (m)", o.B, 0.1, 30, 0.01) +
         felt("riggH", "Høyde (m)", o.H, 0.1, 15, 0.01)) +
@@ -1489,6 +1604,7 @@ function koblSkjema(o) {
     if (M.moduler && $("riggDorEnde")) felter.dorEnde = $("riggDorEnde").value;
     if (M.avfall && $("riggAvfall")) felter.avfall = $("riggAvfall").value;
     if (M.moduler) { felter.moduler = $("riggMod").value; felter.etasjer = $("riggEt").value; }
+    if (M.kran && $("riggRadius")) felter.radius = $("riggRadius").value;
     return felter;
   };
   const lagre = (felter) => {
@@ -1507,6 +1623,7 @@ function koblSkjema(o) {
     const sett = (id, v) => { const f = $(id); if (f && f !== document.activeElement && v != null && String(f.value) !== String(v)) f.value = v; };
     sett("riggL", etter.L); sett("riggB", etter.B); sett("riggH", etter.H); sett("riggRot", etter.rot);
     if (M.moduler) { sett("riggMod", etter.moduler); sett("riggEt", etter.etasjer); }
+    if (M.kran) sett("riggRadius", etter.radius);
   };
   // Lagres i NESTE runde av hendelsesløkka: med Tab fyrer change før markøren
   // har flyttet seg. Tegnes panelet på nytt der og da, landet markøren i

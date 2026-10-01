@@ -51,11 +51,15 @@ function hex(d, farge, felt) {
 
 // Boksen rundt alt som er TEGNET i en gruppe — uten navnelapper (sprites),
 // som ellers ville blåst opp utstrekningen.
-function boksUtenLapper(rot) {
+// `utenSone`: uten kranens svingsirkel (kranSone) — sirkelen skal være med
+// når utsnittet velges, men ikke regnes som objektets fotavtrykk (da ville
+// ingen nål fått stå innenfor 40 m fra kranen).
+function boksUtenLapper(rot, utenSone) {
   const boks = new THREE.Box3(), b = new THREE.Box3();
   rot.updateMatrixWorld(true);
   rot.traverse(o => {
     if (!o.isMesh || o.isSprite || !o.visible || !o.geometry) return;
+    if (utenSone && o.userData.kranSone) return;
     if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
     b.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld);
     boks.union(b);
@@ -214,6 +218,7 @@ function medSkygger(sk) {
 // skjermen og telefonene tegnes som før.
 //
 // Tallene står samlet så de kan justeres ett sted (og prøves i testene).
+export const KRAN_STIPLET_PDF = 0x4a5157;
 export const RIGGPLAN_BILDE = {
   // (4) Bildet tegnes større og skaleres ned: tynne gjerder, piler og
   // skilttekst blir skarpere enn med kantutjevning alene. Taket (piksler på
@@ -346,7 +351,7 @@ function leggPynt(medKontur) {
       o.add(e); streker.push(e);
     };
     const kanStrekes = (o) => o.isMesh && !o.isSprite && !o.isInstancedMesh && !o.isLineSegments2 && o.visible && o.geometry &&
-      o.geometry.attributes.position && !(o.material && o.material.transparent);
+      o.geometry.attributes.position && !(o.material && o.material.transparent) && !o.userData.kranSone && !o.userData.sektorHandtak;
     // Bare VOLUMER får strek (brakker, containere, bygget). Pilene, gjerdet og
     // flatene på bakken ble «risete» med strek på hver skjøt i båndet
     // (prøven 29.09), og flatene har allerede sin mørke kant.
@@ -449,8 +454,12 @@ function tegnMedKamera(kam, pxB, pxH, oppsett) {
   // skjøteprikker og håndtak. Settes tilbake i finally, uansett hva som skjer.
   const skjult = [];
   scene.traverse(o => {
-    if (o.visible && (o.isSprite || o.name === "rigg-skjoter")) { skjult.push(o); o.visible = false; }
+    if (o.visible && (o.isSprite || o.name === "rigg-skjoter" || o.userData.sektorHandtak)) { skjult.push(o); o.visible = false; }
   });
+  // 🏗 Kranens stiplede sirkel er hvit — den synes på skjermen, men ikke på
+  // lyst papir og lyst terreng. I PDF-bildene blir den mørk grå.
+  const stiplet = [];
+  scene.traverse(o => { if (o.isMesh && o.userData.kranStiplet && o.material && o.material.color) { stiplet.push([o, o.material.color.getHex()]); o.material.color.setHex(KRAN_STIPLET_PDF); } });
   const gammelBg = scene.background;
   const gammeltRutenett = grid.visible;
   const gammelt = renderer.getRenderTarget();
@@ -491,6 +500,7 @@ function tegnMedKamera(kam, pxB, pxH, oppsett) {
     }
     return c.toDataURL("image/jpeg", v.kvalitet || 0.92);
   } finally {
+    for (const [o, f] of stiplet) o.material.color.setHex(f);
     renderer.setRenderTarget(gammelt);
     if (ryddPynt) ryddPynt();
     if (rydd) rydd();
@@ -638,9 +648,11 @@ export async function lastNedRiggplan(valg) {
         g.updateMatrixWorld(true);
         p = tilArk(g.children[0].localToWorld(new THREE.Vector3((a.x + b2.x) / 2, h + 1, (a.z + b2.z) / 2)));
       } else {
-        const b = boksUtenLapper(g);
+        const b = boksUtenLapper(g, true);
         if (b.isEmpty()) continue;
-        p = tilArk(b.getCenter(new THREE.Vector3()));
+        // 🏗 Kranens nål står på masta (gruppas origo), ikke midt i boksen —
+        // bommen gjør boksen skjev mot den ene siden
+        p = tilArk(o.type === "taarnkran" ? g.position.clone() : b.getCenter(new THREE.Vector3()));
         // Fotavtrykket på arket: hjørnene av boksen, projisert
         const hj = [];
         for (const x of [b.min.x, b.max.x]) for (const y of [b.min.y, b.max.y]) for (const z of [b.min.z, b.max.z]) {
@@ -778,6 +790,39 @@ function tegnNaal(d, n, r) {
   d.setFont(undefined, "normal");
 }
 
+// ☎ NØDNUMRENE (Emil 01.10, etter riggplanen fra Pallfinger-prosjektet):
+// tre felt side om side — brann 110, politi 112, medisinsk nødhjelp 113 —
+// i de vanlige fargene (rødt, blått, gult), så de kjennes igjen på avstand.
+// Tegnet som flater og tekst, ikke et bilde av et skilt: skarpt i alle
+// størrelser og på alle språk. Numrene er de norske nødnumrene
+// {Source: Helsedirektoratet / politiet.no — 110, 112, 113 i Norge}.
+export const NOD_H = 30;
+export const NODNUMMER = [
+  { nr: "110", tittel: "BRANN", under: "Brann og ulykker", bunn: "#c62828", tekst: "#ffffff" },
+  { nr: "112", tittel: "POLITI", under: "Politi", bunn: "#1f4fa8", tekst: "#ffffff" },
+  { nr: "113", tittel: "MEDISINSK NØDHJELP", under: "Ambulanse", bunn: "#f9c80e", tekst: "#111111" }
+];
+function tegnNodnummer(d, x, y, b) {
+  d.setFontSize(9); d.setFont(undefined, "bold"); hex(d, SORT);
+  d.text(t("Nødnummer"), x, y + 3);
+  d.setFont(undefined, "normal");
+  const mellom = 2, fb = (b - 2 * mellom) / 3, fy = y + 5, fh = NOD_H - 5;
+  NODNUMMER.forEach((n, i) => {
+    const fx = x + i * (fb + mellom);
+    hex(d, n.bunn, "fyll"); d.roundedRect(fx, fy, fb, fh, 1.5, 1.5, "F");
+    hex(d, n.tekst);
+    d.setFont(undefined, "bold");
+    let fs = 7.5; d.setFontSize(fs);
+    const tittel = t(n.tittel);
+    while (fs > 4.5 && d.getTextWidth(tittel) > fb - 3) { fs -= 0.5; d.setFontSize(fs); }
+    d.text(tittel, fx + fb / 2, fy + 4.5, { align: "center" });
+    d.setFontSize(26);
+    d.text(n.nr, fx + fb / 2, fy + 16.5, { align: "center" });
+    d.setFont(undefined, "normal"); d.setFontSize(6);
+    d.text(d.splitTextToSize(t(n.under), fb - 3)[0], fx + fb / 2, fy + fh - 2, { align: "center" });
+  });
+}
+
 function tegnArk(jsPDF, m) {
   const R = RIGGPLAN;
   const d = new jsPDF({ unit: "mm", format: "a3", orientation: "landscape" });
@@ -849,11 +894,13 @@ function tegnArk(jsPDF, m) {
   d.text(t("Hva er hva"), fx, y0 + 4);
   d.setFont(undefined, "normal");
   let y = y0 + 8;
+  // ☎ Nødnumrene står nederst i kolonnen (Emil 01.10) — kortene stopper over dem
+  const nodY = y0 + R.bildeH - NOD_H;
   for (const r of m.forklaring) {
     const linjer = d.splitTextToSize(r.forklaring, fb - 22);
     d.setFontSize(6.5);
     const kh = 7.5 + linjer.length * 2.7;
-    if (y + kh > y0 + R.bildeH) { d.setFontSize(7); hex(d, GRÅ); d.text(t("… flere typer enn det er plass til"), fx, y + 3); break; }
+    if (y + kh > nodY - 3) { d.setFontSize(7); hex(d, GRÅ); d.text(t("… flere typer enn det er plass til"), fx, y + 3); break; }
     hex(d, KORT, "fyll"); d.roundedRect(fx, y, fb, kh, 1.5, 1.5, "F");
     // 🎨 Ikonet (Emil 29.09): det SAMME som i rigg-panelet (js/rigg-ikoner.js).
     // Uten lerret: fargeflis, eller strek for pilene (stiplet for gående).
@@ -886,6 +933,8 @@ function tegnArk(jsPDF, m) {
     d.text(linjer, fx + 17.5, y + 7.6);
     y += kh + 1.6;
   }
+
+  tegnNodnummer(d, fx, nodY, fb);
 
   // ── Bunnlinja: forbehold og kartkilde (CC BY 4.0 krever navngivelse) ──
   const bunn = () => {
