@@ -28,7 +28,7 @@ import { camera, canvas, frameHooks, makeLabel, raycaster, renderer, scene, upda
 import { elementBoxById, hitID } from "./elements.js";
 import {
   FELT_TOL_M, feltAreal, finnFelt, fjernFelt, fjernHjorne, flyttPunkter, kantLengde, leggTilFelt,
-  leggTilHjorne, nyttFelt, rektangel, settKantLengde as _settKant, snappFelt, synlige, vaskEtappeListe
+  feltKanter, fjernVann, leggTilVann, leggTilHjorne, nyttFelt, rektangel, settKantLengde as _settKant, snappFelt, synlige, vaskEtappeListe
 } from "./stopeplan-regn.js";
 import { feltBase, feltMeshListe, stopeGroup, tegnStopeplan, tilBygg, tilScene } from "./stopeplan-vis.js";
 import { lagre, tegnPanel } from "./stopeplan.js";
@@ -39,6 +39,7 @@ let valgtFelt = null;  // felt-id
 let aktivHjorne = null; // { feltId, i } — det sist dratte hjørnet (Delete sletter det)
 let drar = null;       // { type, feltId, i, start, liste0, beveget }
 let ned = null;        // { x, y } der pekeren gikk ned
+let vann = null;       // 💧 trinn 6: { feltId, etappeId, type, valgt: Set<kantnr> }
 
 export const feltValgt = () => valgtFelt;
 export const tegnerFelt = () => (tegner ? tegner.etappeId : null);
@@ -306,6 +307,30 @@ export function tegnHandtak() {
     for (const p of pos) { handtakGroup.add(prikk(p, false)); handtakInfo.hjorner++; }
     return;
   }
+  // 💧 Velg kanter for vanntetting: valgte kanter gule, de andre hvite
+  if (vann) {
+    const vv = finnFelt(S.stopeplan, vann.feltId);
+    if (!vv) return;
+    const f = vv.felt, P = f.punkter, y = f.by + 0.02;
+    const lp = { ja: [], nei: [] };
+    for (let i = 0; i < P.length; i++) {
+      const a = tilScene(P[i][0], P[i][1], y), b = tilScene(P[(i + 1) % P.length][0], P[(i + 1) % P.length][1], y);
+      (vann.valgt.has(i) ? lp.ja : lp.nei).push(a.x, a.y, a.z, b.x, b.y, b.z);
+      const m = P[i], q = P[(i + 1) % P.length];
+      handtakGroup.add(prikk(tilScene((m[0] + q[0]) / 2, (m[1] + q[1]) / 2, y), vann.valgt.has(i))); handtakInfo.kanter++;
+      const lapp = maalLapp(m, q, f.by, midtAv(P));
+      if (lapp) { handtakGroup.add(lapp); handtakInfo.lapper++; }
+    }
+    for (const [k, farge] of [["ja", 0xf5b800], ["nei", 0xffffff]]) {
+      if (!lp[k].length) continue;
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(lp[k]), 3));
+      const l = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: farge, depthTest: false, transparent: true, opacity: k === "ja" ? 1 : 0.6 }));
+      l.renderOrder = 998;
+      handtakGroup.add(l);
+    }
+    return;
+  }
   const v = valgtFelt && finnFelt(S.stopeplan, valgtFelt);
   if (!v || !erApen()) return;
   const f = v.felt, P = f.punkter;
@@ -461,6 +486,13 @@ window.addEventListener("pointerup", (e) => {
   }
   if (!overCanvas(e) || e.button !== 0 || e.shiftKey) return;
   if (n && Math.hypot(e.clientX - n.x, e.clientY - n.y) > 6) return;   // et drag var kameraet
+  // 💧 Velg kanter: trykk på en kant legger den til eller tar den bort
+  if (vann) {
+    e.stopPropagation(); slippKamera(e);
+    const i = nærmesteKant(vann.feltId, e.clientX, e.clientY, 18);
+    if (i != null) { if (vann.valgt.has(i)) vann.valgt.delete(i); else vann.valgt.add(i); tegnVannBar(); tegnHandtak(); }
+    return;
+  }
   if (tegner) {
     // Kameraet fikk pointerdown — det må få vite at trykket er over, ellers
     // tror det at knappen fortsatt holdes og roterer med neste musebevegelse.
@@ -507,6 +539,7 @@ window.addEventListener("dblclick", (e) => {
 window.addEventListener("keydown", (e) => {
   const iFelt = e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
   if (iFelt) return;
+  if (vann) { if (e.key === "Escape") { e.stopPropagation(); avbrytVann(); } return; }
   if (tegner) {
     if (e.key === "Escape") { e.stopPropagation(); avbrytTegning(); }
     else if (e.key === "Enter" && tegner.form === "poly") { e.preventDefault(); fullfor(); }
@@ -524,8 +557,88 @@ window.addEventListener("keydown", (e) => {
   }
 }, true);
 
+// ═══════════ 💧 TRINN 6: VANNTETTING LANGS KANTENE ═══════════
+// «+ Injeksjon» eller «+ Cemflex» på et felt: trykk på kantene den skal gå
+// langs (eller «Hele omkretsen»), og «Ferdig». Injeksjonsslangen går som regel
+// rundt hele (Emil 01.10), Cemflex ofte bare langs fugen mot neste støp.
+function nærmesteKant(feltId, x, y, tolPx) {
+  const v = finnFelt(S.stopeplan, feltId);
+  if (!v) return null;
+  const P = v.felt.punkter;
+  let best = null, bestD = tolPx;
+  for (let i = 0; i < P.length; i++) {
+    const a = skjermPos(P[i][0], P[i][1], v.felt.by), b = skjermPos(P[(i + 1) % P.length][0], P[(i + 1) % P.length][1], v.felt.by);
+    if (!a || !b) continue;
+    const dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy;
+    if (L2 < 1) continue;
+    const u = Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / L2));
+    const d = Math.hypot(a[0] + u * dx - x, a[1] + u * dy - y);
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  return best;
+}
+function vannBar() {
+  let el = $("stVannBar");
+  if (!el) { el = document.createElement("div"); el.id = "stVannBar"; el.className = "st-velgbar"; document.body.appendChild(el); }
+  return el;
+}
+function vannValgtLengde() {
+  const v = vann && finnFelt(S.stopeplan, vann.feltId);
+  if (!v) return 0;
+  let L = 0;
+  for (const i of vann.valgt) L += kantLengde(v.felt, i);
+  return L;
+}
+function tegnVannBar() {
+  const el = vannBar();
+  if (!vann) { el.style.display = "none"; el.innerHTML = ""; return; }
+  const navn = vann.type === "cemflex" ? t("Cemflex-plater") : t("Injeksjonsslange");
+  const n = vann.valgt.size;
+  el.style.display = "flex";
+  el.innerHTML =
+    '<span class="st-velg-farge" style="background:' + (vann.type === "cemflex" ? "#b8c2cc" : "#f5b800") + '"></span>' +
+    '<span class="st-velg-tekst"><b>' + esc(t("{0} langs kantene", navn)) + "</b><br>" +
+      esc(t("Trykk på kantene den skal gå langs.")) + "</span>" +
+    '<span class="st-velg-ant">' + esc(t("{0} kanter · {1}", n, mTekst(vannValgtLengde()))) + "</span>" +
+    '<button id="stVannAlle">' + esc(t("Hele omkretsen")) + "</button>" +
+    '<button id="stVannFerdig" class="primary"' + (n ? "" : " disabled") + ">" + esc(t("Ferdig")) + "</button>" +
+    '<button id="stVannAvbryt">' + esc(t("Avbryt")) + "</button>";
+  $("stVannAlle").onclick = () => {
+    const v = finnFelt(S.stopeplan, vann.feltId);
+    if (!v) return;
+    vann.valgt = new Set(v.felt.punkter.map((_, i) => i));
+    tegnVannBar(); tegnHandtak();
+  };
+  $("stVannFerdig").onclick = () => ferdigVann();
+  $("stVannAvbryt").onclick = () => avbrytVann();
+}
+export function startVann(feltId, type) {
+  const v = finnFelt(S.stopeplan, feltId);
+  if (!v) return;
+  if (tegner) avbrytTegning();
+  if (S.velgModusAktiv && S.avsluttVelgModus) S.avsluttVelgModus();
+  vann = { feltId, etappeId: v.etappe.id, type, valgt: new Set() };
+  valgtFelt = null; aktivHjorne = null;
+  tegnVannBar(); tegnHandtak(); tegnPanel();
+}
+export function avbrytVann() { vann = null; tegnVannBar(); tegnHandtak(); tegnPanel(); }
+function ferdigVann() {
+  const v = vann && finnFelt(S.stopeplan, vann.feltId);
+  if (!v || !vann.valgt.size) return;
+  const ider = [...vann.valgt].sort((a, b) => a - b);
+  const lukket = ider.length === v.felt.punkter.length;
+  const ny = { id: "V-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6),
+    type: vann.type, kanter: feltKanter(v.felt, ider), by: v.felt.by, lukket, feltId: v.felt.id };
+  const etappeId = vann.etappeId;
+  vann = null;
+  tegnVannBar();
+  endre(leggTilVann(S.stopeplan, etappeId, ny, new Date().toISOString()), "Vanntetting lagt til");
+}
+export function slettVann(id) { endre(fjernVann(S.stopeplan, id, new Date().toISOString()), "Vanntetting slettet"); }
+
 // ═══════════════════════ KROKER ═══════════════════════
 S.stopeFelt = { startTegning, avbrytTegning, velgFelt, slettFelt, settTykkelse, settKantLengde: settKantLengdeUI,
+  startVann, avbrytVann, slettVann, vann: () => (vann ? { feltId: vann.feltId, type: vann.type } : null),
   valgt: () => valgtFelt, tegner: () => (tegner ? tegner.etappeId : null), tegnHandtak };
 // Panelet lukket eller ny modell: ingen håndtak og ingen halvferdig tegning
-S.ryddStopeFelt = () => { tegner = null; drar = null; valgtFelt = null; aktivHjorne = null; tegnFeltBar(); ryddHandtak(); };
+S.ryddStopeFelt = () => { tegner = null; drar = null; valgtFelt = null; aktivHjorne = null; vann = null; tegnFeltBar(); tegnVannBar(); ryddHandtak(); };
