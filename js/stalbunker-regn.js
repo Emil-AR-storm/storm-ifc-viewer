@@ -332,7 +332,18 @@ export function grupperFagverk(fagverk) {
       kgHalv: h.utenVekt ? 0 : h.kg, antall: 0, halv: h, snitt: { form: "fagverk", b: h.hoydeMm, h: h.tykkMm, t: 0 } });
     m.get(sig).antall++;
   }
-  return [...m.values()].sort((a, b) => b.lengdeMm - a.lengdeMm);
+  // 🔑 Nøkkelen MÅ være unik per bunke. To ulike halvdeler med samme lengde,
+  // høyde og profiler (et pulttak: venstre og høyre halvdel, Emils
+  // skjermbilde 01.10) fikk samme nøkkel — og dermed samme plass, oppå
+  // hverandre. Like nøkler får et løpenummer, i en fast rekkefølge.
+  const liste = [...m.values()].sort((a, b) => b.lengdeMm - a.lengdeMm || b.hoydeMm - a.hoydeMm || (a.sig < b.sig ? -1 : a.sig > b.sig ? 1 : 0));
+  const sett = new Map();
+  for (const g of liste) {
+    const n = sett.get(g.nokkel) || 0;
+    sett.set(g.nokkel, n + 1);
+    if (n) g.nokkel += "#" + (n + 1);
+  }
+  return liste;
 }
 
 // Stablingen: FV_PER_STABEL halvdeler flatt oppå hverandre med strøer
