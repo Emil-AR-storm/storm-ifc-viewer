@@ -1,5 +1,11 @@
 // 📜 RULLING I ALLE VINDUENE — byggeplass-siden (Emil 02.10).
 //
+// Runde 2 (Emil 02.10, skjermbilder av Utseende og Mengder): «ingen av de
+// andre pop up vinduene har fått samme løsning som objekt info vinduet».
+// Vinduene er nå like små som egenskapspanelet: strammere hode og rader, og
+// lista får en fast lav høyde og rulles inni vinduet (CSS «kompakte vinduer»
+// i storm.css). Denne fila gir fallet nederst og løfter kontekstlinja.
+//
 // «jeg vil ha den skrulle funksjonen i alle pop up vindu storm-byggeplass»:
 // samme oppførsel som egenskapspanelet (js/prop-kompakt.js) — innholdet
 // ruller inne i vinduet uten å dra modellen eller siden med seg, og et svakt
@@ -21,7 +27,19 @@ function rullbar(el) {
   const cs = window.getComputedStyle(el);
   return cs.overflowY === "auto" || cs.overflowY === "scroll";
 }
+// 📏 Høyden på panelet som står åpent, så kontekstlinja nederst (snitt, mål,
+// koter — #modeBar) kan legge seg OVER det i stedet for oppå innholdet
+// (Emil 02.10, skjermbilde: «Tøm koter» lå over Utseende-lista).
+export function apentPanelHoyde() {
+  let h = 0;
+  for (const p of document.querySelectorAll(".panel.open")) {
+    const r = p.getBoundingClientRect();
+    if (r.height > h && r.bottom >= window.innerHeight - 2) h = r.height;
+  }
+  return Math.round(h);
+}
 export function oppdaterFall() {
+  document.documentElement.style.setProperty("--apen-panel", apentPanelHoyde() + "px");
   for (const el of document.querySelectorAll(UTVALG)) {
     if (!el.offsetParent && el.offsetHeight === 0) { el.classList.remove("rull-mer"); continue; }
     if (!rullbar(el)) continue;
