@@ -1870,3 +1870,34 @@ body.st-tid-paa .st-velgbar { bottom: 112px; }
 #framdriftBody .prop-actions { margin-top: 8px !important; gap: 6px; }
 #framdriftBody .prop-actions button { padding: 5px 9px; font-size: 12px; }
 #framdriftBody .st-legg.aktiv, #framdriftBody .st-fjern.aktiv { border-color: var(--accent, #3b82f6); color: var(--text); }
+
+/* 📜 Byggeplass-siden: alle vinduer ruller som egenskapspanelet (js/rull-fall.js)
+   — innholdet drar ikke modellen med seg, og et svakt fall nederst viser at
+   det er mer å rulle til. */
+[data-lett="1"] .rull-boks { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+[data-lett="1"] .rull-boks.rull-mer {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 22px), transparent);
+          mask-image: linear-gradient(to bottom, #000 calc(100% - 22px), transparent); }
+
+/* 📱 Framdriftsplan på mobil — oppsett B, stripe nederst (Emil 02.10).
+   Glideren ligger rett oppå panelet (--fp-bunn settes av framdrift-vis.js),
+   tynn og i hele bredden; panelet kan legges sammen til én linje. */
+.fp-sammen-knapp, .fp-hode-status { display: none; }
+@media (max-width: 899px) {
+  .st-tid.fp-tid { left: 0; right: 0; bottom: var(--fp-bunn, 0px); border-radius: 12px 12px 0 0;
+    padding: 5px 10px 1px; border-bottom: 0; }
+  .fp-tid .st-tid-topp { font-size: 11.5px; margin-bottom: 0; }
+  .fp-tid .fp-tid-knapper { gap: 4px; }
+  .fp-tid .fp-tid-knapper button { padding: 3px 8px; font-size: 11px; }
+  .fp-tid .st-tid-akse { display: none; }
+  .fp-tid .st-tid-bane { height: 26px; }
+  .fp-tid .fp-bar { height: 10px; bottom: 12px; font-size: 0; }
+  #framdriftPanel { border-radius: 0; }
+  #framdriftPanel header { padding: 8px 12px; gap: 6px; cursor: pointer; }
+  #framdriftPanel header > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #framdriftPanel .fp-hode-status { display: inline; font-weight: 400; font-size: 12px; color: var(--muted); margin-left: 6px; }
+  #framdriftPanel .fp-hode-status:not(:empty)::before { content: "· "; }
+  #framdriftPanel .fp-sammen-knapp { display: inline-flex; margin-left: auto; padding: 3px 9px; font-size: 13px; }
+  #framdriftPanel.fp-sammen .body { display: none; }
+  body.fp-tid-paa .st-velgbar { bottom: calc(var(--fp-bunn, 0px) + 70px); }
+}
