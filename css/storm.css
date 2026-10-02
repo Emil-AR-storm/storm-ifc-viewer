@@ -1844,3 +1844,29 @@ body.st-tid-paa .st-velgbar { bottom: 112px; }
 .fp-tid .fp-tid-knapper { display: flex; gap: 6px; flex-shrink: 0; }
 .fp-tid .st-tid-topp > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fp-vis { display: flex; align-items: center; gap: 6px; }
+/* 📅 Mindre trinnbokser og egen rulleliste (Emil 02.10) — som egenskapspanelet:
+   to og et halvt trinn om gangen, svakt fall nederst når det er mer å rulle til */
+#framdriftPanel { max-height: 55vh; }
+.fp-hjelp { margin: 0 0 6px; }
+.fp-hjelp summary { cursor: pointer; color: var(--text); }
+.fp-hjelp[open] summary { margin-bottom: 4px; }
+#framdriftBody { padding: 8px 12px; font-size: 12.5px; }
+#framdriftBody > .set-hjelp { font-size: 11.5px; margin: 0 0 6px; }
+.fp-liste { overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; margin: 0 -4px 0 0; padding-right: 4px; }
+.fp-liste.kan-rulle {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent);
+          mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent); }
+#framdriftBody .fp-etappe { padding: 5px 6px 5px 8px; margin: 0 0 6px; }
+#framdriftBody .fp-etappe .st-rad { margin-bottom: 4px; gap: 5px; }
+#framdriftBody .fp-etappe .st-rad:last-child { margin-bottom: 0; }
+#framdriftBody .fp-etappe input[type="text"], #framdriftBody .fp-etappe input[type="date"] { padding: 2px 5px; font-size: 12px; }
+#framdriftBody .fp-etappe .st-farge { width: 24px; height: 22px; }
+#framdriftBody .fp-etappe .st-slett { padding: 2px 5px; }
+#framdriftBody .fp-knapper { flex-wrap: wrap; }
+#framdriftBody .fp-knapper { margin-top: 2px; }
+#framdriftBody .fp-knapper .st-innhold { flex: 1 1 auto; min-width: 0; }
+#framdriftBody .fp-knapper button { padding: 3px 8px; font-size: 11.5px; }
+#framdriftBody .fp-lett-rad { justify-content: space-between; flex-wrap: wrap; font-size: 12px; }
+#framdriftBody .prop-actions { margin-top: 8px !important; gap: 6px; }
+#framdriftBody .prop-actions button { padding: 5px 9px; font-size: 12px; }
+#framdriftBody .st-legg.aktiv, #framdriftBody .st-fjern.aktiv { border-color: var(--accent, #3b82f6); color: var(--text); }
