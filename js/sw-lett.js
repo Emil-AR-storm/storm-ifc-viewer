@@ -204,10 +204,46 @@ export function tegnSwLett(data) {
     if (visLapper && e.sw) merkPanel(e);
   }
   oppdaterValgEffekt();
+  tegnBlikkLett(data);
   if (visLapper) tegnUtsparinger(data);
   oppdaterKnapp();
   // Nytegnet = ferske materialer som ikke vet at Gjennomsiktig står på.
   if (S.ghostPaaNytt) S.ghostPaaNytt();
+}
+
+// 🟫 DET GENERERTE BLIKKET (Emil 02.10). Kontoret sender boksene slik de står
+// i scenen der (swBlikkForByggeplass i veggelement/tilstand.js): plass,
+// dreiing, mål, farge og stykkets id. Én felles kube og ett materiale per
+// farge, så tusen brett koster lite. `blikkId` står på hver boks, så
+// framdriftsplanen skjuler og toner stykkene som på kontoret.
+// Blikket er ikke noe montøren velger i — trykk går gjennom til veggen bak.
+export function vaskBlikkLett(liste) {
+  const ut = [];
+  const tall = (a, n) => Array.isArray(a) && a.length === n && a.every(v => Number.isFinite(Number(v))) ? a.map(Number) : null;
+  for (const b of (Array.isArray(liste) ? liste : []).slice(0, 8000)) {
+    if (!b) continue;
+    const p = tall(b.p, 3), q = tall(b.q, 4), sk = tall(b.s, 3);
+    if (!p || !q || !sk || sk.some(v => !(v > 0))) continue;
+    ut.push({ i: String(b.i || "").slice(0, 60), f: /^#[0-9a-fA-F]{6}$/.test(String(b.f || "")) ? b.f : "#8a929c", p, q, s: sk });
+  }
+  return ut;
+}
+function tegnBlikkLett(data) {
+  const liste = vaskBlikkLett(data && data.blikk);
+  if (!liste.length) return;
+  const kube = new THREE.BoxGeometry(1, 1, 1);
+  const mats = new Map();
+  for (const b of liste) {
+    if (!mats.has(b.f)) mats.set(b.f, mat(b.f));
+    const m = new THREE.Mesh(kube, mats.get(b.f));
+    m.position.set(b.p[0], b.p[1], b.p[2]);
+    m.quaternion.set(b.q[0], b.q[1], b.q[2], b.q[3]);
+    m.scale.set(b.s[0], b.s[1], b.s[2]);
+    m.raycast = () => {};
+    m.userData.blikk = true;
+    if (b.i) m.userData.blikkId = b.i;
+    swLettGroup.add(m);
+  }
 }
 
 // SW-nummeret i øvre hjørne og målet i midten — nøyaktig samme plassering som
