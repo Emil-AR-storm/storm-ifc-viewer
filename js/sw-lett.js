@@ -15,6 +15,7 @@ import * as THREE from "three";
 import { $, S, apnePanel, esc, ikon, registrerEkstraGruppe } from "./state.js";
 import { t } from "./i18n.js";
 import { camera, canvas, flyTil, raycaster, scene } from "./scene.js";
+import { BESLAG_FORM, BESLAG_FORM_NAVN } from "./sw-blikk.js";
 
 export const swLettGroup = new THREE.Group();
 scene.add(swLettGroup);
@@ -216,7 +217,8 @@ export function tegnSwLett(data) {
 // dreiing, mål, farge og stykkets id. Én felles kube og ett materiale per
 // farge, så tusen brett koster lite. `blikkId` står på hver boks, så
 // framdriftsplanen skjuler og toner stykkene som på kontoret.
-// Blikket er ikke noe montøren velger i — trykk går gjennom til veggen bak.
+// Trykk på et stykke: type, profil, lengde og bein i egenskapspanelet
+// (Emil 02.10). Id-en i laget er «blikk:<stykke-id>».
 export function vaskBlikkLett(liste) {
   const ut = [];
   const tall = (a, n) => Array.isArray(a) && a.length === n && a.every(v => Number.isFinite(Number(v))) ? a.map(Number) : null;
@@ -228,7 +230,44 @@ export function vaskBlikkLett(liste) {
   }
   return ut;
 }
+let blikkInfo = {};
+export function vaskBlikkInfo(d) {
+  const ut = {};
+  if (!d || typeof d !== "object" || Array.isArray(d)) return ut;
+  let n = 0;
+  for (const [id, r] of Object.entries(d)) {
+    if (++n > 3000 || !r || typeof r !== "object") continue;
+    const l = Number(r.l), b = Number(r.b);
+    ut[String(id).slice(0, 60)] = {
+      t: String(r.t || "").slice(0, 20), fo: String(r.fo || "").slice(0, 30),
+      l: Number.isFinite(l) && l >= 0 ? Math.round(l) : 0,
+      b: Number.isFinite(b) && b > 0 ? Math.round(b) : 0,
+      fa: String(r.fa || "").slice(0, 40), se: r.se === "inner" ? "inner" : "ytter"
+    };
+  }
+  return ut;
+}
+const BLIKK_TYPE = { topp: "Toppbeslag", bunn: "Bunnbeslag", hjorne: "Hjørnebeslag", ende: "Endebeslag", skjot: "Hatprofil skjøt", utsparing: "Hatprofil utsparing" };
+export function blikkTypeNavn(type) { return BLIKK_TYPE[type] ? t(BLIKK_TYPE[type]) : (type || t("Blikk")); }
+function visBlikk(id) {
+  const r = blikkInfo[id];
+  if (!$("propTitle")) return;
+  const rad = (k, v) => '<div class="prop-row"><div class="k">' + esc(k) + '</div><div class="v">' + esc(String(v)) + '</div></div>';
+  $("propTitle").textContent = r ? blikkTypeNavn(r.t) : t("Blikk");
+  const form = r && (r.fo || (BESLAG_FORM[r.t] ? BESLAG_FORM_NAVN[BESLAG_FORM[r.t]] : ""));
+  $("propBody").innerHTML = r
+    ? rad(t("Type"), blikkTypeNavn(r.t)) +
+      (form ? rad(t("Profil"), t(form)) : "") +
+      rad(t("Lengde"), r.l.toLocaleString("no-NO") + " mm") +
+      (r.b ? rad(t("Benlengde"), r.b + " mm") : "") +
+      rad(t("Plassering"), (r.se === "inner" ? t("Innervegg") : t("Yttervegg")) + (r.fa ? " · " + r.fa : ""))
+    : rad(t("Type"), t("Blikk"));
+  const p = $("propPanel");
+  if (p) p.dataset.navn = $("propTitle").textContent;
+  apnePanel("propPanel");
+}
 function tegnBlikkLett(data) {
+  blikkInfo = vaskBlikkInfo(data && data.blikkInfo);
   const liste = vaskBlikkLett(data && data.blikk);
   if (!liste.length) return;
   const kube = new THREE.BoxGeometry(1, 1, 1);
@@ -239,9 +278,10 @@ function tegnBlikkLett(data) {
     m.position.set(b.p[0], b.p[1], b.p[2]);
     m.quaternion.set(b.q[0], b.q[1], b.q[2], b.q[3]);
     m.scale.set(b.s[0], b.s[1], b.s[2]);
-    m.raycast = () => {};
+    if (b.i && skjultId.has("blikk:" + b.i)) continue;     // 👁 skjult enkeltvis
     m.userData.blikk = true;
     if (b.i) m.userData.blikkId = b.i;
+    else m.raycast = () => {};          // uten id er det ingenting å vise
     swLettGroup.add(m);
   }
 }
@@ -376,6 +416,7 @@ function settValgEffekt(o, paa) {
 
 function oppdaterValgEffekt() {
   swLettGroup.children.forEach(o => {
+    if (o.userData.blikk && o.userData.blikkId) { settValgEffekt(o, valgt.has("blikk:" + o.userData.blikkId)); return; }
     if (o.userData.swLettId === undefined) return;
     settValgEffekt(o, valgt.has(o.userData.swLettId));
   });
@@ -422,6 +463,7 @@ registrerEkstraGruppe(swLettGroup, {
     for (const h of treff) {
       // Skiltene er ikke noe å trykke på — de har allerede raycast slått av,
       // men et dekal uten id ville uansett ikke gitt noe treff å bruke.
+      if (h.object.userData.blikk && h.object.userData.blikkId) return { id: "blikk:" + h.object.userData.blikkId, avstand: h.distance };
       let o = h.object;
       while (o && o.userData.swLettId === undefined) o = o.parent;
       if (o && o.userData.swLettId) return { id: o.userData.swLettId, avstand: h.distance };
@@ -457,6 +499,7 @@ registrerEkstraGruppe(swLettGroup, {
   // Egenskapspanelet for ett SW-element. Montøren skal se hva panelet heter og
   // hvor stort det er — og kunne ta det bort for å se stålet bak.
   visEgenskaper(id) {
+    if (String(id).startsWith("blikk:")) { visBlikk(String(id).slice(6)); return; }
     const e = tegnede.find(x => String(x.id) === String(id));
     if (!e || !$("propTitle")) return;
     const rad = (k, v) => '<div class="prop-row"><div class="k">' + esc(k) +
