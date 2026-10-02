@@ -415,6 +415,67 @@ frameHooks.push(() => {
   if (naa - sistTegnet > 450) tegnFramdrift();
 });
 
+// ═══════════ 📱 MOBIL: OPPSETT B — STRIPE NEDERST (Emil 02.10) ═══════════
+// «Framdrifts glideren står midt på skjermen … tildekke så lite av skjerm som
+// mulig men behold funksjonalitet» — Emil valgte B av tre forslag:
+//   · glideren er en tynn stripe som ligger rett oppå panelet, i hele
+//     bredden (ikke lenger fast 55 % opp på skjermen)
+//   · panelet er lagt sammen til én linje: «Framdriftsplan · I arbeid: …»
+//     og ▴. Trykk på linja/pila, så kommer trinnlista; ▾ legger den sammen.
+// Bare på smale skjermer (samme grense som resten av mobiloppsettet, 899 px);
+// på PC er alt som før. Brukes av både kontoret og byggeplass-siden.
+export const MOBIL_BREDDE = 899;
+export const erMobil = () => typeof window !== "undefined" && !!window.matchMedia && window.matchMedia("(max-width: " + MOBIL_BREDDE + "px)").matches;
+
+// Hvor høyt stripa skal stå: rett over panelet når det er åpent, ellers nederst
+export function stripeBunn(panelApen, panelHoyde) { return panelApen && panelHoyde > 0 ? Math.round(panelHoyde) : 0; }
+export function plasserStripe() {
+  if (typeof document === "undefined") return;
+  const p = $("framdriftPanel");
+  const apen = !!(p && p.classList.contains("open"));
+  const h = apen ? p.getBoundingClientRect().height : 0;
+  document.documentElement.style.setProperty("--fp-bunn", stripeBunn(apen, h) + "px");
+}
+export function settLagtSammen(paa) {
+  const p = $("framdriftPanel");
+  if (!p) return;
+  p.classList.toggle("fp-sammen", !!paa);
+  const k = $("fpSammenKnapp");
+  if (k) {
+    k.textContent = paa ? "▴" : "▾";
+    const tekst = paa ? t("Vis trinnene") : t("Legg sammen");
+    k.title = tekst; k.setAttribute("aria-label", tekst); k.setAttribute("aria-expanded", paa ? "false" : "true");
+  }
+  if (!paa) begrensListe($("fpListe"));     // lista var skjult — mål den på nytt
+  plasserStripe();
+}
+// Hodet får status og pil én gang. Kalles når panelet åpnes: på mobil
+// åpner det sammenlagt, så modellen får plassen.
+export function forberedMobilPanel() {
+  const p = $("framdriftPanel");
+  if (!p) return;
+  const hode = p.querySelector("header");
+  if (hode && !$("fpSammenKnapp")) {
+    const tittel = hode.querySelector("span");
+    if (tittel) {
+      const st = document.createElement("span");
+      st.id = "fpHodeStatus"; st.className = "fp-hode-status";
+      tittel.appendChild(st);
+    }
+    const k = document.createElement("button");
+    k.id = "fpSammenKnapp"; k.className = "fp-sammen-knapp"; k.type = "button";
+    k.onclick = (ev) => { ev.stopPropagation(); settLagtSammen(!p.classList.contains("fp-sammen")); };
+    hode.insertBefore(k, hode.lastElementChild);
+    // Trykk på selve linja åpner også (stor nok flate for tommelen)
+    hode.addEventListener("click", (ev) => { if (ev.target.closest("button") || !erMobil() || !p.classList.contains("fp-sammen")) return; settLagtSammen(false); });
+    const RO = typeof window !== "undefined" && window.ResizeObserver;
+    if (RO) new RO(plasserStripe).observe(p);
+    if (typeof window !== "undefined") window.addEventListener("resize", plasserStripe);
+  }
+  settLagtSammen(erMobil());
+  oppdaterHode();
+}
+
 // ═══════════════════════ TIDSLINJEN ═══════════════════════
 const datoLang = (iso) => { const d = String(iso || "").split("-"); return d.length === 3 ? d[2] + "." + d[1] + "." + d[0] : ""; };
 const datoKort = (iso) => { const d = String(iso || "").split("-"); return d.length === 3 ? d[2] + "." + d[1] : ""; };
@@ -450,7 +511,22 @@ function toppTekst() {
     (arb.length ? ' <span class="st-tid-merk">· ' + esc(t("I arbeid:")) + " " +
       arb.map(e => esc(e.nr + " " + e.navn) + " (" + Math.round(trinnAndel(e, tid) * 100) + " %)").join(", ") + "</span>" : "");
 }
+// 📱 Mobil, oppsett B (Emil 02.10): «Framdriftsplan · I arbeid: 2 Søyler» i
+// panelhodet, så det sammenlagte panelet fortsatt sier hvor du er i planen.
+function kortStatus() {
+  const sp = tidsSpenn(S.framdrift);
+  if (!sp) return "";
+  if (S.framdriftTid == null) return t("alt ferdig");
+  const tid = framdriftTid();
+  const arb = iArbeid(S.framdrift, tid);
+  return arb.length ? arb.map(e => e.nr + " " + e.navn + " " + Math.round(trinnAndel(e, tid) * 100) + " %").join(", ") : datoLang(isoFraDag(tid));
+}
+function oppdaterHode() {
+  const el = $("fpHodeStatus");
+  if (el) el.textContent = sistApen && aktiv ? kortStatus() : "";
+}
 function oppdaterTopp() {
+  oppdaterHode();
   const el = $("fpTidTekst");
   if (el) el.innerHTML = toppTekst();
   const g = $("fpTidGlider");
@@ -469,7 +545,9 @@ export function tegnTidslinje(apen) {
   const sp = tidsSpenn(S.framdrift);
   const vis = sistApen && aktiv && !!sp;
   document.body.classList.toggle("fp-tid-paa", vis);
+  oppdaterHode();
   if (!vis) { el.style.display = "none"; el.innerHTML = ""; stoppAvspilling(); return; }
+  plasserStripe();
   const n = Math.max(1, sp.dager);
   const pos = (d) => Math.max(0, Math.min(100, (d - sp.a) / n * 100));
   const tid = framdriftTid();
