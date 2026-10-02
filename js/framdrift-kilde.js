@@ -23,19 +23,38 @@
 // Bunker uten kobling (lagt inn for hånd) står som før.
 //
 // Svar: kilder(materiellId) → [{ nokler: ["id:…"|"sw:…"|"tak:…"|"blikk:…"], w }]
+//
+// 🏗 Byggeplass-siden (trinn 6): bygg.html har ikke SW-generatoren. Kontoret
+// regner derfor koblingene ut når planen publiseres (kilderForByggeplass,
+// kalt fra byggeplass.js), og lettmodus leser dem fra S.framdriftKilder.
+// SW-modulene hentes med import() bare på kontoret.
 import { S } from "./state.js";
 import { t } from "./i18n.js";
-import { lagret } from "./veggelement/tilstand.js";
-import { lagretInner } from "./veggelement/panel.js";
-import { takMeshPerId } from "./veggelement/tak-just.js";
-import { blikkMeshPerId } from "./veggelement/blikk-just.js";
-import { BESLAG_FORM } from "./sw-blikk.js";
+import { LETT } from "./lett.js";
 
 let stal = null, stalFor = null;          // stålkildene (krever modellen, hentes asynkront)
+// Kontor-modulene (SW-generatoren) — hentes første gang, aldri i lettmodus
+let lagret = null, lagretInner = null, takMeshPerId = new Map(), blikkMeshPerId = new Map(), BESLAG_FORM = {};
+let swHentet = null;
+function hentSw() {
+  if (!swHentet) swHentet = Promise.all([
+    import("./veggelement/tilstand.js"), import("./veggelement/panel.js"),
+    import("./veggelement/tak-just.js"), import("./veggelement/blikk-just.js"), import("./sw-blikk.js")
+  ]).then(([a, b, c, d, e]) => {
+    VE = { a, b };
+    takMeshPerId = c.takMeshPerId; blikkMeshPerId = d.blikkMeshPerId; BESLAG_FORM = e.BESLAG_FORM;
+  }).catch(err => { console.warn("Framdrift: SW-modulene:", err && err.message); });
+  return swHentet;
+}
+let VE = null;
+// `lagret` byttes ut når SW-planen lastes på nytt — les den levende verdien
+function oppdaterLagret() { if (VE) { lagret = VE.a.lagret; lagretInner = VE.b.lagretInner; } }
 
 // Stålet må leses fra modellen (profil og lengde per element) — én gang per
 // modell, og på nytt når stålbunkene er laget på nytt.
 export async function forberedKilder() {
+  if (LETT) return;
+  await hentSw();
   const merke = String(S.fileName || "") + "|" + (S.materiell || []).filter(p => p && (p.maltype === "stal" || p.maltype === "fagverk")).map(p => p.id).join(",");
   if (stal && stalFor === merke) return;
   if (!(S.materiell || []).some(p => p && (p.maltype === "stal" || p.maltype === "fagverk"))) { stal = new Map(); stalFor = merke; return; }
@@ -54,6 +73,11 @@ export function nullstillKilder() { stal = null; stalFor = null; }
 const har = (liste, id) => Array.isArray(liste) && liste.includes(id);
 export function kilder(p) {
   if (!p) return null;
+  if (LETT) {
+    const k = S.framdriftKilder && S.framdriftKilder[p.id];
+    return Array.isArray(k) && k.length ? k : null;
+  }
+  oppdaterLagret();
   if (p.maltype === "stal" || p.maltype === "fagverk") {
     if (!stal || !stal.nokkelFor) return null;
     let k = null; try { k = stal.nokkelFor(p); } catch (_) { k = null; }
@@ -90,6 +114,27 @@ export function kilder(p) {
     return ut.length ? ut : null;
   }
   return null;
+}
+
+// 🏗 Til byggeplass-siden: koblingene for bunkene som ligger i planen.
+// { materiellId: [{ nokler, w }] } — bare for bunker som ligger i planen.
+export async function kilderForByggeplass(liste) {
+  const trinn = (Array.isArray(liste) ? liste : []).filter(e => e && !e.slettet);
+  const iPlan = new Set();
+  for (const e of trinn) for (const o of e.objekter || []) if (o && o.k) iPlan.add(o.k);
+  const mat = [...iPlan].filter(k => k.startsWith("mat:")).map(k => k.slice(4));
+  if (!mat.length) return {};
+  try { await forberedKilder(); } catch (_) { return {}; }
+  const ut = {};
+  for (const id of mat) {
+    const p = (S.materiell || []).find(x => x && x.id === id);
+    const k = kilder(p);
+    if (!k) continue;
+    // Alle enhetene sendes med (også de som ikke er i noe trinn): andelen
+    // som er brukt opp regnes av helheten, som på kontoret.
+    ut[id] = k.map(x => ({ nokler: (x.nokler || []).slice(), w: x.w }));
+  }
+  return ut;
 }
 
 // Regningen (hvor mye som er igjen) er ren og bor i framdrift-regn.js

@@ -220,6 +220,9 @@ async function lastLettMarkeringer() {
       // og den genererte betongen fra SW-feltet over. Gamle filer har ikke feltet.
       if (S.settStopeplanFraLett)
         S.settStopeplanFraLett(d && !Array.isArray(d) ? d.stopeplan : null);
+      // 📅 Framdriftsplanen (framdrift-lett.js) etter støpeplanen
+      if (S.settFramdriftFraLett)
+        S.settFramdriftFraLett(d && !Array.isArray(d) ? d.framdrift : null, d && !Array.isArray(d) ? d.framdriftKilder : null);
     }
   } catch (e) {
     feil = (e && e.tidsavbrudd)

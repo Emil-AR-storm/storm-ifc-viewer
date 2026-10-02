@@ -15,7 +15,7 @@
 import * as THREE from "three";
 import { $, EKSTRA_LAG, S, esc } from "./state.js";
 import { t } from "./i18n.js";
-import { frameHooks, markerGroup, omradeGroup, scene } from "./scene.js";
+import { frameHooks, makeLabel, markerGroup, omradeGroup, scene } from "./scene.js";
 import { iDagISO } from "./frist.js";
 import { allElementBoxes } from "./elements.js";
 import { framdriftSkjult, hiddenIDs, synkMergedSkjuling } from "./display.js";
@@ -180,7 +180,46 @@ function ryddOverlay(behold) {
 // materiell-vis.js) endres, og den settes tilbake før neste runde og når
 // glideren slås av. Selve bunkene og antallet rører vi ikke.
 const enhetSkjult = new Set();
-export function ryddBunker() { for (const m of enhetSkjult) m.visible = true; enhetSkjult.clear(); }
+// 🏷 Navnelappen teller ned (Emil 02.10) — bare i glideren. Lappen er en
+// sprite som skalerLapperMedTak styrer synligheten til hver ramme, så vi
+// bytter bare bildet (map) på materialene dens: originalen, og gliderens
+// tonede klone (fpMat) om den finnes. Originalbildet settes tilbake i
+// ryddBunker, så resten av programmet aldri ser det nedtalte antallet.
+const lappByttet = new Set();
+function lappMaterialer(s) { return [s.material, s.userData.fpOrig, s.userData.fpMat, s.userData.matOrig].filter(m => m && m.isMaterial); }
+function settLappBilde(s, map, aspect) {
+  for (const m of lappMaterialer(s)) if (m.map !== map) { m.map = map; m.needsUpdate = true; }
+  s.userData.aspect = aspect;
+}
+export function lappTekst(navn, rest) { return navn + "  ×" + Math.max(0, Math.round(rest)); }
+function tellNedLapp(o, rest) {
+  const s = o.children.find(c => c.isSprite && c.userData.fpLapp);
+  if (!s) return;
+  const u = s.userData;
+  if (!u.fpLappOrig) u.fpLappOrig = { map: s.material.map, aspect: u.aspect };
+  const tekst = lappTekst(u.fpLapp.navn, rest);
+  u.fpLappCache = u.fpLappCache || new Map();
+  let b = u.fpLappCache.get(tekst);
+  if (!b) {
+    const ny = makeLabel(tekst, u.fpLapp.farge);
+    b = { map: ny.material.map, aspect: ny.scale.x / ny.scale.y };
+    ny.material.dispose();
+    u.fpLappCache.set(tekst, b);
+  }
+  settLappBilde(s, b.map, b.aspect);
+  u.fpLappTekst = tekst;
+  lappByttet.add(s);
+}
+export function ryddBunker() {
+  for (const m of enhetSkjult) m.visible = true;
+  enhetSkjult.clear();
+  for (const s of lappByttet) {
+    const o = s.userData.fpLappOrig;
+    if (o) settLappBilde(s, o.map, o.aspect);
+    delete s.userData.fpLappTekst;
+  }
+  lappByttet.clear();
+}
 // Brukes av glideren/videoen her og av PDF-en (framdrift-pdf.js).
 // `skjul(o)` skjuler en hel bunke; uten den brukes fade-kartet.
 export function brukOppBunker(objMap, fade, andel, skjul, skjulEnhet) {
@@ -193,6 +232,7 @@ export function brukOppBunker(objMap, fade, andel, skjul, skjulEnhet) {
     for (const o of os) {
       if (fade && fade.has(o) && fade.get(o) <= 0) continue;       // står ikke uansett
       if (rest <= 0) { if (skjul) skjul(o); else if (fade) fade.set(o, 0); continue; }
+      if (!skjulEnhet && rest < p.antall) tellNedLapp(o, rest);   // bare glideren
       for (const m of o.children) {
         const e = m.userData.fpEnhet;
         if (!e || e[0] < rest || !m.visible) continue;

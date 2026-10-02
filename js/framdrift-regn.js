@@ -107,6 +107,33 @@ export function nyEtappe(liste, naa, id) {
     nr, navn: "Trinn " + nr, farge: fargeFor(nr), dato: "", endret: naa || new Date().toISOString()
   });
 }
+// 🏗 Til byggeplass-siden (trinn 6): trinnene uten gravsteiner og uten
+// hvem som endret sist — montøren ser planen, han eier den ikke.
+export function framdriftForByggeplass(liste) {
+  return synlige(liste).map(e => ({
+    id: e.id, nr: e.nr, navn: e.navn, farge: e.farge, dato: e.dato, slutt: e.slutt, objekter: e.objekter
+  }));
+}
+// Koblingene bunke → enheter fra kontoret, vasket (lettmodus stoler ikke på JSON-en)
+export function vaskKilder(d) {
+  const ut = {};
+  if (!d || typeof d !== "object" || Array.isArray(d)) return ut;
+  let n = 0;
+  for (const [id, liste] of Object.entries(d)) {
+    if (++n > 2000 || !Array.isArray(liste)) continue;
+    const r = [];
+    for (const x of liste.slice(0, 5000)) {
+      if (!x || !Array.isArray(x.nokler)) continue;
+      const nokler = x.nokler.map(k => { const o = vaskObjekt({ k }); return o ? o.k : ""; }).filter(Boolean).slice(0, 50);
+      if (!nokler.length) continue;
+      const w = Number(x.w);
+      r.push({ nokler, w: Number.isFinite(w) && w > 0 ? Math.min(w, 1e7) : 1 });
+    }
+    if (r.length) ut[String(id).slice(0, 60)] = r;
+  }
+  return ut;
+}
+
 // Rekkefølgen i planen: etter startdato, så nummer. Uten dato sist.
 export function sortert(liste) {
   return synlige(liste).sort((a, b) =>
