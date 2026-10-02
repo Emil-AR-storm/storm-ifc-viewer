@@ -193,6 +193,16 @@ export const KORT = [
     tekst: "Støpeplan (i Bygg Info) deler støpene i etapper. Trykk + Legg til på etappen og velg elementene i modellen, eller + Felt for å tegne et felt på plata — dra hjørner og kanter for å justere. Merk som støpt når etappen er ferdig. Tidslinjen nederst viser planen på en valgt dag, og Vis etappeplan skrur fargingen av og på. Planen følger med ut til byggeplassen når du trykker Storm-Byggeplass."
   },
   {
+    hvor: "bygg", ikonNavn: "framdrift",
+    tittel: "Framdriftsplanen",
+    tekst: "Har prosjektlederen laget en framdriftsplan, står knappen Framdriftsplan i Bygg Info. Panelet viser trinnene med datoer og hva som utføres i hvert. Dra glideren nederst for å se hva som er bygget en bestemt dag: det som kommer senere er skjult, det som er i arbeid tones inn, og materiellbunkene blir mindre etter hvert som det de er levert til monteres — antallet på navnelappen teller ned. Trykk på et trinn for å gå dit det er ferdig, Spill av for å se hele planen, og I dag for å komme tilbake."
+  },
+  {
+    hvor: "kontor", ikonNavn: "framdrift",
+    tittel: "Framdriftsplan: trinn, glider, PDF og video",
+    tekst: "Framdriftsplan (i Bygg Info) deler arbeidet i trinn med Fra- og Til-dato. Trykk + Legg til på trinnet og velg det som utføres da — elementer, SW-elementer, takplater, blikk, rigg, materiell og markeringer (trykk, eller shift + dra en boks). Det som allerede ligger i et trinn, er skjult mens du velger. − Fjern tar ting ut igjen. Glideren nederst viser bygget en valgt dag, og materiellbunkene brukes opp etter hvert som det de er levert til monteres. Last ned PDF gir én side per trinn, Lag video en film der kameraet går rundt bygget — videoen lagres i SharePoint, og PDF-en får en QR-kode til den. Planen følger med ut til byggeplassen når du trykker Storm-Byggeplass."
+  },
+  {
     hvor: "kontor", ikonNavn: "rigg",
     tittel: "Rigg: planlegg riggen på tomta",
     tekst: "Rigg (i Bygg Info) setter brakker, toalett, container, strømskap, søppelcontainer, lys, parkering, lagrings- og vaskeområde på tomta. Trykk på en type i katalogen, og så der den skal stå. Trykk på et objekt for å flytte, rotere, redigere eller slette det. Endringene lagres med en gang i SharePoint, så alle med tilgang ser det samme."

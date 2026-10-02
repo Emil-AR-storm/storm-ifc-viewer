@@ -18,6 +18,8 @@ import { grupperForEksport } from "./grupper.js";
 import { swForByggeplass, takForByggeplass } from "./veggelement.js";
 import { FRISTER, TJENESTER } from "./config.js";
 import { stopeplanForByggeplass } from "./stopeplan-regn.js";
+import { framdriftForByggeplass } from "./framdrift-regn.js";
+import { kilderForByggeplass } from "./framdrift-kilde.js";
 
 // Adressen til Workeren står i config.js, og kan overstyres av oppsett.json i
 // SharePoint. Leses gjennom TJENESTER hver gang – verdien kan komme etter at
@@ -209,6 +211,12 @@ if (btn) btn.addEventListener("click", async () => {
       terrengUt = null;
     }
 
+    // 📅 Framdriftsplanen (trinn 6) og hvilke monterte objekter bunkene er
+    // levert til — bygg.html har ikke SW-generatoren som vet det.
+    let framdriftKilder = {};
+    try { framdriftKilder = await kilderForByggeplass(S.framdrift || []); }
+    catch (err) { console.warn("Bunkenes koblinger ble ikke med ut:", err); }
+
     await fetch(TJENESTER.worker + "/last-opp?fil=" + encodeURIComponent(fil + ".markeringer.json"), {
       method: "PUT",
       headers: { "content-type": "application/json", "x-prosjekt": prosjekt, "x-token": token },
@@ -233,7 +241,11 @@ if (btn) btn.addEventListener("click", async () => {
         terreng: terrengUt,
         // 🧱 Støpeplanen (trinn 5): etappene med elementer, felt og datoer.
         // bygg.html farger betongen og viser tidslinjen (stopeplan-lett.js).
-        stopeplan: stopeplanForByggeplass(S.stopeplan || [])
+        stopeplan: stopeplanForByggeplass(S.stopeplan || []),
+        // 📅 Framdriftsplanen (trinn 6): trinnene med objekter og datoer.
+        // bygg.html viser glideren (framdrift-lett.js). Gamle lesere ser bort fra feltet.
+        framdrift: framdriftForByggeplass(S.framdrift || []),
+        framdriftKilder
       })
     });
 

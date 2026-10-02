@@ -29,6 +29,7 @@ import "./rigg-vis.js";        // 🏕 rigg: montøren SER riggen på gulvhøyde
 import "./grupper.js";         // 🎯 objektgrupper: montøren kan trykke på dem (kameraet flyr)
 import "./sw-lett.js";        // 🏗 SW-elementene som monteringsinstruks (ikke generatoren)
 import "./stopeplan-lett.js";  // 🧱 støpeplanen: montøren SER den (verktøyet er kontor-bare) — ETTER sw-lett
+import "./framdrift-lett.js";  // 📅 framdriftsplanen: montøren SER glideren (verktøyet er kontor-bare) — ETTER stopeplan-lett
 import "./markers.js";
 import "./minimap.js";
 import "./viewcube.js";

@@ -848,6 +848,8 @@ export function byggMateriellObjekt(p) {
   const lapp = makeLabel(tekst, p.farge);
   lapp.userData.px = 26;
   lapp.userData.aspect = lapp.scale.x / lapp.scale.y;
+  // Framdriftsplanens glider teller ned antallet på lappen (framdrift-vis.js)
+  if (p.antall > 1) lapp.userData.fpLapp = { navn: p.navn || materiellTypeLabel(p), farge: p.farge };
   lapp.position.y = mmTilScene(sokkelMm + p.tykkelse) + mmTilScene(600);
   gruppe.add(lapp);
 
