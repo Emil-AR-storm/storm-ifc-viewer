@@ -1901,3 +1901,25 @@ body.st-tid-paa .st-velgbar { bottom: 112px; }
   #framdriftPanel.fp-sammen .body { display: none; }
   body.fp-tid-paa .st-velgbar { bottom: calc(var(--fp-bunn, 0px) + 70px); }
 }
+
+/* 📋 Byggeplass-siden: ALLE vinduer like små som egenskapspanelet (Emil 02.10:
+   «ingen av de andre pop up vinduene har fått samme løsning som objekt info
+   vinduet»). Stramt hode, mindre rader, og lista har en lav fast høyde og
+   rulles inni vinduet med fall nederst (js/rull-fall.js). Egenskapspanelet
+   har sin egen (prop-kompakt.js), og framdriftsplanen sin egen (oppsett B). */
+[data-lett="1"] .panel:not(#propPanel):not(#framdriftPanel) header { padding: 8px 10px 8px 14px; font-size: 13px; }
+[data-lett="1"] .panel:not(#propPanel):not(#framdriftPanel) .body { padding: 8px 12px; font-size: 12.5px; max-height: 34vh; }
+[data-lett="1"] .panel:not(#propPanel):not(#framdriftPanel) .qty-row { padding: 4px 0; }
+[data-lett="1"] .panel:not(#propPanel):not(#framdriftPanel) .prop-row { padding: 3px 0; }
+[data-lett="1"] .panel:not(#propPanel):not(#framdriftPanel) .prop-actions { gap: 6px; margin-bottom: 6px; }
+[data-lett="1"] .panel:not(#propPanel):not(#framdriftPanel) .prop-actions button { padding: 5px 9px; font-size: 12px; }
+[data-lett="1"] .panel:not(#propPanel):not(#framdriftPanel) input[type="color"] { width: 26px; height: 26px; }
+[data-lett="1"] .panel:not(#propPanel):not(#framdriftPanel) .qty-row button { padding: 2px 7px; }
+[data-lett="1"] .panel:not(#propPanel):not(#framdriftPanel) .st-etappe { padding: 5px 6px 5px 8px; margin-bottom: 6px; }
+[data-lett="1"] #setMenu .body { font-size: 12.5px; }
+@media (max-width: 899px) {
+  [data-lett="1"] .panel:not(#propPanel):not(#framdriftPanel) .body { max-height: 24vh; }
+  [data-lett="1"] .panel:not(#propPanel):not(#framdriftPanel) { max-height: none; }
+}
+/* Kontekstlinja (koter, mål, snitt) over det åpne vinduet, ikke oppå lista */
+[data-lett="1"] body:has(.panel.open) #modeBar { bottom: calc(var(--apen-panel, 0px) + 8px + var(--nett-hoyde, 0px)); }
