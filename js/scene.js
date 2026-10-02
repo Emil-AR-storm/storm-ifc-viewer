@@ -1,6 +1,7 @@
 // Three.js-oppsett: renderer, kamera, lys, kamerakontroll og render-løkka.
 import * as THREE from "three";
 import { $, på, S } from "./state.js";
+import { fordelLapper } from "./lapp-kollisjon.js";
 
 // ---------- 🔍 Zoomens grenser ----------
 // Kameraet kretser rundt et blikkpunkt, og «zoom» er egentlig avstanden til
@@ -303,6 +304,9 @@ frameHooks.push(() => {
 renderer.setAnimationLoop(() => {
   controls.update();
   for (const fn of frameHooks) { try { fn(); } catch (err) { console.warn(err); } }
+  // 🏷 Etter at alle lagene har satt størrelsen på lappene sine: la dem vike
+  // for hverandre (lapp-kollisjon.js). Sist, så ingen krok skalerer dem opp igjen.
+  try { fordelMeldteLapper(); } catch (err) { console.warn(err); lappKo.clear(); }
   renderer.render(scene, camera);
 });
 
@@ -466,6 +470,58 @@ export function lappStorrelse(px, pxPerEnhet, maksEnheter) {
 // S.enhetSkala: modeller i mm har 1 sceneenhet = 1 mm, ikke 1 m.
 // maksM: eget tak i meter for denne gruppa (materiellet på byggeplassen);
 // uten det gjelder LAPP_MAKS_M.
+// ═══════ 🏷 LAPPENE VIKER FOR HVERANDRE (Emil 02.10) ═══════
+// Hver ramme melder lagene inn lappene de har skalert (navnelapper på rigg og
+// materiell, markeringsboblene). Rett før bildet tegnes, krymper de som ville
+// overlappet — likt, til de akkurat ikke rører hverandre — og de som da blir
+// for små til å leses, skjules (regelen: js/lapp-kollisjon.js). Lapper fra
+// ulike lag viker også for hverandre: en bunkelapp under en markering er like
+// uleselig som to bunkelapper oppå hverandre.
+//   prio:       lavere = viktigere (markeringer 0, navnelapper 1)
+//   min:        minste høyde i px før den skjules / stopper
+//   kanSkjules: false for markeringene — en sak skal aldri forsvinne
+// Map, ikke liste: meldes samme sprite to ganger i én ramme (markers.js
+// skalerer også utenom rammen), skal den ikke vike for seg selv.
+const lappKo = new Map();
+export function meldLapp(sprite, prio, min, kanSkjules) {
+  lappKo.set(sprite, { s: sprite, prio: prio || 0, min: min || 0, kanSkjules: kanSkjules !== false });
+}
+const _kV = new THREE.Vector3();
+function synligHeltOpp(o) {
+  for (let p = o; p; p = p.parent) if (!p.visible) return false;
+  return true;
+}
+function fordelMeldteLapper() {
+  if (lappKo.size < 2) { lappKo.clear(); return; }
+  const el = renderer.domElement;
+  const W = el.clientWidth || 1, H = el.clientHeight || 1;
+  const pxPerEnhetPaa1 = H / (2 * Math.tan(camera.fov * Math.PI / 360));   // px per sceneenhet på dybde 1
+  camera.updateMatrixWorld();
+  const med = [], inn = [];
+  for (const k of lappKo.values()) {
+    const s = k.s;
+    if (!s.visible || !synligHeltOpp(s)) continue;
+    s.getWorldPosition(_kV);
+    _kV.applyMatrix4(camera.matrixWorldInverse);
+    const dybde = -_kV.z;
+    if (!(dybde > 1e-9)) continue;                   // bak kameraet
+    const pp = pxPerEnhetPaa1 / dybde;
+    const sx = (_kV.x * pp) + W / 2, sy = H / 2 - (_kV.y * pp);
+    const b = s.scale.x * pp, h = s.scale.y * pp;
+    if (sx + b / 2 < 0 || sx - b / 2 > W || sy + h / 2 < 0 || sy - h / 2 > H) continue;   // utenfor skjermen
+    med.push(k);
+    inn.push({ x: sx, y: sy, b, h, min: k.min, kanSkjules: k.kanSkjules, prio: k.prio * 1e15 + dybde });
+  }
+  lappKo.clear();
+  if (inn.length < 2) return;
+  const svar = fordelLapper(inn);
+  for (let i = 0; i < med.length; i++) {
+    const s = med[i].s, r = svar[i];
+    if (!r.vis) { s.visible = false; continue; }
+    if (r.faktor < 1) s.scale.set(s.scale.x * r.faktor, s.scale.y * r.faktor, 1);
+  }
+}
+
 export function skalerLapperMedTak(group, maksM) {
   if (!group.children.length) return;
   const h = renderer.domElement.clientHeight || 1;
@@ -478,6 +534,7 @@ export function skalerLapperMedTak(group, maksM) {
     const r = lappStorrelse(o.userData.px, 1 / (d * k), maks);
     o.visible = r.vis;
     o.scale.set(r.hoyde * (o.userData.aspect || 3), r.hoyde, 1);
+    if (r.vis) meldLapp(o, 1, LAPP_MIN_PX, true);   // 🏷 viker for naboene (over)
   });
 }
 
