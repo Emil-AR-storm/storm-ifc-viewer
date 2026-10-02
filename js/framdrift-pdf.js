@@ -27,7 +27,8 @@ import { RIGGPLAN, RIGG_TYPER, nordOgOst } from "./rigg-regn.js";
 import { aktivRef, riggBase } from "./rigg-vis.js";
 import { boksUtenLapper, hex, hjorner, lastEtterbehandling, oversiktKameraer, tegnOversiktBilde, toppbaand } from "./riggplan.js";
 import { elementGeometri, stopeGroup } from "./stopeplan-vis.js";
-import { finnObjekter, settIfcSkjult } from "./framdrift-vis.js";
+import { brukOppBunker, finnObjekter, settIfcSkjult } from "./framdrift-vis.js";
+import { forberedKilder } from "./framdrift-kilde.js";
 import { allElementBoxes } from "./elements.js";
 import { metaFor, sikreMeta } from "./ifcrpc.js";
 import { materiellTypeLabel } from "./materiell-vis.js";
@@ -222,6 +223,9 @@ export function settSide(liste, i, bareNytt, geoCache) {
       sett(o, false);
     }
   }
+  // 📦 Bunkene brukes opp (Emil 02.10): det som er montert til og med dette
+  // trinnet, er tatt fra bunkene. «Nytt i trinnet» viser leveransen hel.
+  if (!bareNytt) brukOppBunker(objMap, null, (k) => synligK.has(k) ? 1 : 0, (o) => sett(o, false), (m) => sett(m, false));
   return () => { for (let j = rydd.length - 1; j >= 0; j--) { try { rydd[j](); } catch (_) {} } };
 }
 
@@ -286,6 +290,7 @@ export async function lagFramdriftPdf() {
     vis(t("Lager framdriftsplan …"));
     await lastEtterbehandling();
     try { await sikreMeta(); } catch (_) {}
+    await forberedKilder();
     // Samme kamera på alle sidene, rundt alt som ligger i et trinn
     const u = utsnitt([...new Set(liste.flatMap(e => e.objekter.map(o => o.k)))]) || utsnitt();
     if (!u) throw new Error(t("Fant ingenting å tegne."));

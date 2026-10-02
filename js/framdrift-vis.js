@@ -20,6 +20,7 @@ import { iDagISO } from "./frist.js";
 import { allElementBoxes } from "./elements.js";
 import { framdriftSkjult, hiddenIDs, synkMergedSkjuling } from "./display.js";
 import { elementGeometri } from "./stopeplan-vis.js";
+import { igjen, kilder } from "./framdrift-kilde.js";
 import { antallSteg, dagNr, idFor, iArbeid, isoFraDag, slagFor, sortert, stegAndel, stegFor, synlige, tidsSpenn, trinnAndel, trinnTid } from "./framdrift-regn.js";
 
 // IFC-stegene som toner inn tegnes som kopier her (raycast av: de skal ikke
@@ -174,6 +175,33 @@ function ryddOverlay(behold) {
   }
 }
 
+// ═══════════ BUNKENE SOM BRUKES OPP ═══════════
+// Bare synligheten til bunkenes enheter (userData.fpEnhet, satt i
+// materiell-vis.js) endres, og den settes tilbake før neste runde og når
+// glideren slås av. Selve bunkene og antallet rører vi ikke.
+const enhetSkjult = new Set();
+export function ryddBunker() { for (const m of enhetSkjult) m.visible = true; enhetSkjult.clear(); }
+// Brukes av glideren/videoen her og av PDF-en (framdrift-pdf.js).
+// `skjul(o)` skjuler en hel bunke; uten den brukes fade-kartet.
+export function brukOppBunker(objMap, fade, andel, skjul, skjulEnhet) {
+  for (const [k, os] of objMap) {
+    if (slagFor(k) !== "mat") continue;
+    const p = (S.materiell || []).find(x => x && x.id === idFor(k));
+    const enh = kilder(p);
+    if (!enh) continue;
+    const rest = igjen(p.antall, enh, andel);
+    for (const o of os) {
+      if (fade && fade.has(o) && fade.get(o) <= 0) continue;       // står ikke uansett
+      if (rest <= 0) { if (skjul) skjul(o); else if (fade) fade.set(o, 0); continue; }
+      for (const m of o.children) {
+        const e = m.userData.fpEnhet;
+        if (!e || e[0] < rest || !m.visible) continue;
+        if (skjulEnhet) skjulEnhet(m); else { m.visible = false; enhetSkjult.add(m); }
+      }
+    }
+  }
+}
+
 // ═══════════ TEGN: MODELLEN VED TIDEN ═══════════
 let aktiv = false;
 let sistTegnet = 0;
@@ -211,17 +239,19 @@ export function tegnFramdrift(paa) {
   const ifc = new Set();
   const fade = new Map();
   const andelK = new Map();      // nøkkel → andel, for det som ikke står fullt
+  const alleA = new Map();       // nøkkel → andel for ALT i trinnene (bunkene som brukes opp)
   const steg = [];
   const behold = new Set();
   for (const e of synlige(S.framdrift)) {
     const p = andelOverstyring ? andelOverstyring(e) : skjulTildelte ? (e.id === skjulUnntak ? 1 : 0) : trinnAndel(e, tid);
-    if (p >= 1) continue;
+    if (p >= 1) { for (const o of e.objekter) alleA.set(o.k, 1); continue; }
     const rekke = rekkefolge(e, objMap);
     const n = rekke.length, K = antallSteg(n);
     const delIfc = new Map();      // steg j → [ider] for stegene som toner inn
     rekke.forEach((k, i) => {
       const j = stegFor(i, n);
       const a = stegAndel(p, j, K);
+      alleA.set(k, a);
       if (a >= 1) return;
       const s = slagFor(k);
       if (s === "id") {
@@ -272,6 +302,10 @@ export function tegnFramdrift(paa) {
       if (a < 1) fade.set(o, a);
     }
   }
+  // 📦 Bunkene brukes opp (Emil 02.10): enhetene skjules ovenfra etter hvert
+  // som det de er levert til, monteres. Ikke i «Legg til»/«Fjern».
+  ryddBunker();
+  if (!skjulTildelte) brukOppBunker(objMap, fade, (k) => alleA.get(k) || 0);
   settIfcSkjult(ifc);
   ryddOverlay(behold);
   for (const o of [...tonet]) if (!fade.has(o) || !o.parent) { gjenopprettObjekt(o); tonet.delete(o); }
@@ -282,6 +316,7 @@ export function tegnFramdrift(paa) {
 }
 
 function gjenopprettAlt() {
+  ryddBunker();
   settIfcSkjult(new Set());
   ryddOverlay(null);
   for (const o of tonet) gjenopprettObjekt(o);

@@ -176,6 +176,26 @@ export async function lagStalbunker() {
   return { bunker: nye.length, profiler: elementer.length, fagverk: fagverk.length };
 }
 
+// 📅 FRAMDRIFTSPLANEN (Emil 02.10): hvilke IFC-elementer hver stålbunke er
+// levert til. Bunken minker i framdriftsplanens glider, PDF og video etter
+// hvert som elementene monteres — og BARE der; selve bunkene endres ikke.
+// Svar: Map(bunkenøkkel → [{ nokler: ["id:…"], w }]), én enhet per profil
+// eller per fagverkshalvdel.
+export async function stalKilder() {
+  const elementer = await lesStal();
+  const fagverk = finnFagverk(elementer.filter(e => e.a && e.bp).map(e => Object.assign({}, e, { b: e.bp })));
+  const iFagverk = new Set(fagverk.flatMap(f => f.ider));
+  const ut = new Map();
+  const legg = (k, nokler) => { if (!ut.has(k)) ut.set(k, []); ut.get(k).push({ nokler, w: 1 }); };
+  for (const e of elementer) {
+    if (iFagverk.has(e.id) || (e.del !== "soyle" && e.del !== "bjelke")) continue;
+    for (const g of grupperStal([e])) legg(g.nokkel, ["id:" + e.id]);
+  }
+  for (const g of grupperFagverk(fagverk)) for (const ider of g.fagverk || []) legg(g.nokkel, ider.map(id => "id:" + id));
+  return ut;
+}
+export { bunkeNokkel };
+
 function settAlt(liste) {
   S.materiell = liste;
   tegnMateriell(); S.qtyCache = null; lagreMateriellLokalt();

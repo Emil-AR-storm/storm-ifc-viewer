@@ -807,6 +807,10 @@ export function byggMateriellObjekt(p) {
       const enhet = byggEnhet(p);
       enhet.position.y = mmTilScene(opp);
       enhet.position.z = mmTilScene(side);
+      // 📅 Enhetens nummer i bunken (0 = nederst). Brukes BARE av
+      // framdriftsplanen, som skjuler enhetene ovenfra etter hvert som de
+      // monteres (js/framdrift-kilde.js). Tegningen ellers bryr seg ikke.
+      enhet.userData.fpEnhet = [i, i + 1];
       gruppe.add(enhet);
       if (opp > toppUnderkantMm) toppUnderkantMm = opp;
     }
@@ -818,15 +822,18 @@ export function byggMateriellObjekt(p) {
       const iBunken = Math.min(per, p.antall - b * per);
       const side = mmTilScene(b * (bunkeDybdeMm(p) + BUNKE_KLARING));
       const sokkelMm = (iBunken - 1) * lag;
+      const fra = b * per;      // 📅 enhetene denne bunken står for (framdriftsplanen)
       if (sokkelMm > 0) {
         const sokkel = boks(p.lengde, sokkelMm, p.bredde, morkere(p.farge));
         sokkel.position.y = mmTilScene(sokkelMm / 2);
         sokkel.position.z = side;
+        sokkel.userData.fpEnhet = [fra, fra + iBunken];
         gruppe.add(sokkel);
       }
       const enhet = byggEnhet(p);
       enhet.position.y = mmTilScene(sokkelMm);
       enhet.position.z = side;
+      enhet.userData.fpEnhet = [fra, fra + iBunken];
       gruppe.add(enhet);
       if (sokkelMm > toppUnderkantMm) toppUnderkantMm = sokkelMm;
     }
