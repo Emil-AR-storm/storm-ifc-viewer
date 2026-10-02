@@ -380,9 +380,40 @@ export function swForByggeplass() {
     ut.push({ id: GULV_ID, sw: "", k: "g", x: r4(g.x), y: r4(g.topp - tilScene(tk) / 2), z: r4(g.z), rot: 0,
       l: mmHel(tilMm(g.bredde)), h: mmHel(tk), t: mmHel(tilMm(g.dybde)), nx: 0, nz: 1, dim: "" });
   }
-  return { elementer: ut, utsparinger: swUtspForByggeplass(),
+  return { elementer: ut, utsparinger: swUtspForByggeplass(), blikk: swBlikkForByggeplass(),
     farge: String(o.farge || "#dfe5ec"),
     utvFarge: String(o.utvFarge || ""), isolasjon: String(o.isolasjon || "") };
+}
+
+// 🟫 DET GENERERTE BLIKKET UT TIL BYGGEPLASSEN (Emil 02.10: «generert blikk på
+// bygg vises ikke på storm-byggeplass kun materiell bunke»).
+// Blikket tegnes av blikk.js som én boks per brett (enhetskube med posisjon,
+// rotasjon og skala — profilStrek). Det enkleste og sikreste er å sende nettopp
+// det som STÅR i scenen: hver boks med plass, dreiing, mål, farge og
+// stykkets id. Da blir byggeplass-siden lik kontoret uten at reglene for
+// hjørner, ender og skrå gavler må finnes to steder, og framdriftsplanen kan
+// skjule stykkene etter id («blikk:<id>», som på kontoret).
+// Skjult eller avslått blikk står ikke i scenen og kommer derfor ikke med.
+export const MAKS_BLIKK_BOKSER = 8000;
+export function swBlikkForByggeplass() {
+  const ut = [];
+  const _p = new THREE.Vector3(), _q = new THREE.Quaternion(), _s = new THREE.Vector3();
+  swGroup.updateMatrixWorld(true);
+  for (const m of swGroup.children) {
+    if (!m.isMesh || !m.userData || !m.userData.blikk || m.visible === false) continue;
+    m.matrixWorld.decompose(_p, _q, _s);
+    const farge = m.material && m.material.color ? "#" + m.material.color.getHexString() : "";
+    const r6 = (v) => Math.round(v * 1e6) / 1e6;
+    ut.push({
+      i: m.userData.blikkId !== undefined && m.userData.blikkId !== null ? String(m.userData.blikkId) : "",
+      f: farge,
+      p: [r4(_p.x), r4(_p.y), r4(_p.z)],
+      q: [r6(_q.x), r6(_q.y), r6(_q.z), r6(_q.w)],
+      s: [r6(_s.x), r6(_s.y), r6(_s.z)]
+    });
+    if (ut.length >= MAKS_BLIKK_BOKSER) break;
+  }
+  return ut;
 }
 
 // REN TALLFUNKSJON — ett element om gangen, uten lagringen. Prøves i
