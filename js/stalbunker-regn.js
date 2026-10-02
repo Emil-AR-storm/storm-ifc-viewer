@@ -331,6 +331,9 @@ export function grupperFagverk(fagverk) {
       profil: "Fagverk", lengdeMm: rundLengde(h.lengdeMm), hoydeMm: rundLengde(h.hoydeMm), tykkMm: h.tykkMm, staver: h.staver,
       kgHalv: h.utenVekt ? 0 : h.kg, antall: 0, halv: h, snitt: { form: "fagverk", b: h.hoydeMm, h: h.tykkMm, t: 0 } });
     m.get(sig).antall++;
+    // 📅 Hvilket fagverk halvdelen er fra (framdriftsplanen: bunken minker
+    // når fagverket er montert). Bare en liste med id-er — rører ikke bunken.
+    if (fv.ider) (m.get(sig).fagverk = m.get(sig).fagverk || []).push(fv.ider.slice());
   }
   // 🔑 Nøkkelen MÅ være unik per bunke. To ulike halvdeler med samme lengde,
   // høyde og profiler (et pulttak: venstre og høyre halvdel, Emils

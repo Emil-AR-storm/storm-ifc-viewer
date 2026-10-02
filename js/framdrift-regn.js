@@ -297,3 +297,21 @@ export function videoPlan(liste, V) {
   const vinkel = (f) => { const u = f / bilder; return 2 * Math.PI * (u - Math.sin(2 * Math.PI * u) / (2 * Math.PI) * 0.15); };
   return { bilder, sekunder: sek, andel, trinnVed, vinkel, fps: o.fps };
 }
+
+// ═══════════ BUNKENE SOM BRUKES OPP (Emil 02.10, se framdrift-kilde.js) ═══════════
+// Hvor mange enheter som er igjen i bunken når objektene står med andelen
+// `andel(nokkel)` (0–1). Ren regning — testes i Node.
+export function igjen(antall, enheter, andel) {
+  const n = Math.max(0, Math.round(Number(antall) || 0));
+  if (!enheter || !enheter.length) return n;
+  let sum = 0, brukt = 0;
+  for (const e of enheter) {
+    const w = Number(e.w) > 0 ? Number(e.w) : 1;
+    let a = 0;
+    for (const k of e.nokler || []) a += Math.max(0, Math.min(1, Number(andel(k)) || 0));
+    a = (e.nokler && e.nokler.length) ? a / e.nokler.length : 0;
+    sum += w; brukt += w * a;
+  }
+  if (!(sum > 0)) return n;
+  return Math.max(0, Math.min(n, Math.ceil(n * (1 - brukt / sum) - 1e-9)));
+}

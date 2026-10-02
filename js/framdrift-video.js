@@ -86,6 +86,7 @@ export async function lagFramdriftVideo() {
   try {
     vis(t("Lager video …"));
     await lastEtterbehandling();
+    await (await import("./framdrift-kilde.js")).forberedKilder();
     // Utsnittet: bare det som ligger i et trinn (resten er ikke med i videoen)
     const u = utsnitt([...new Set(liste.flatMap(e => e.objekter.map(o => o.k)))]);
     if (!u) throw new Error(t("Fant ingenting å tegne."));

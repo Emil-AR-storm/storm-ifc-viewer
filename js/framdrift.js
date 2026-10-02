@@ -28,6 +28,7 @@ import { metaFor } from "./ifcrpc.js";
 import { SLAG_NAVN, etappeForNokkel, pdfTrinn, fjern, leggTil, nokkel, nyEtappe, sortert, synlige, tellingPerSlag, tidsSpenn, vaskEtappe, vaskEtappeListe } from "./framdrift-regn.js";
 import { ryddFramdriftVis, settSkjulTildelte, stoppAvspilling, tegnFramdrift, tegnTidslinje } from "./framdrift-vis.js";
 import { LAG_ID as TRP_BLIKK_LAG } from "./framdrift-plukk.js";
+import { forberedKilder, nullstillKilder } from "./framdrift-kilde.js";
 
 const SP_MAPPE = "Framdriftsplan";
 let spStatus = "av", lagreTid = 0;
@@ -400,6 +401,9 @@ function oppdaterVis() {
   }
   settSkjulTildelte(false);
   const paa = erApen() && S.framdriftVis !== false && !velger;
+  // 📦 Hvilke bunker som brukes opp, finnes én gang per modell (stålet leses
+  // fra modellen) — så tegnes glideren på nytt med bunkene
+  if (paa) forberedKilder().then(() => { if (erApen() && S.framdriftVis !== false && !velger) tegnFramdrift(); }).catch(() => {});
   if (!paa) stoppAvspilling();
   tegnFramdrift(paa);
   tegnTidslinje(paa);
@@ -449,6 +453,7 @@ export async function lagVideo() {
 // ═══════════════════════ KROKER ═══════════════════════
 S.lastFramdrift = () => {
   ryddFramdriftVis();
+  nullstillKilder();
   S.framdrift = lesLokalt();
   sisteMelding = "";
   if (erApen()) tegnPanel();
