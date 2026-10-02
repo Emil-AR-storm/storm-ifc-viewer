@@ -16,7 +16,7 @@ import { finnNevnte, koblNevning, nevnKandidater, nevningHtml } from "./nevning.
 import { fmtTid, lydStottes, startOpptak } from "./lyd.js";
 import { fristTilISO, fullforOppgave, opprettOppgave, planUrl, plannerToken } from "./planner.js";
 import { setMode } from "./modes.js";
-import { camera, controls, frameHooks, markerGroup, omradeGroup, raycaster, renderer } from "./scene.js";
+import { camera, controls, frameHooks, markerGroup, meldLapp, omradeGroup, raycaster, renderer } from "./scene.js";
 import { GRAPH, SP, authHeaders, graphGet, spTokenSilent } from "./sharepoint.js";
 import { MAKS_LYD_PER_MARKERING, MAKS_PER_MARKERING, bildeUrl, erBildefil, lastOpp, leggTilBilder, lydNavn, lydUrl, slettBilder, trygtLyd } from "./bilder.js";
 import { ADVAR_MB, antallSider, apneHtmlTegning, apneHtmlVedlegg, erHtml, gyldigSide, hentTegninger, mb, sideBilde, velgMappe, visStatus } from "./tegninger.js";
@@ -692,8 +692,12 @@ function skalerMarkeringer() {
   for (const s of markerGroup.children) {
     const k = markerSkala(camera.position.distanceTo(s.position), camera.fov, h);
     s.scale.set(k, k, 1);
+    // 🏷 Står bobler tett, krymper de i stedet for å legge seg oppå hverandre
+    // (Emil 02.10) — men aldri under MARKER_MIN_PX, og de skjules aldri.
+    if (s.visible && meldLapp) meldLapp(s, 0, MARKER_MIN_PX, false);
   }
 }
+export const MARKER_MIN_PX = 12;
 
 frameHooks.push(skalerMarkeringer);
 

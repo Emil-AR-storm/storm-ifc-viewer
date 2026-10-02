@@ -29,7 +29,7 @@ import * as THREE from "three";
 import { $, S, apnePanel, esc, ikon, på, writePrefs } from "./state.js";
 import { t } from "./i18n.js";
 import { camera, canvas, flyTil, frameHooks, raycaster, scene } from "./scene.js";
-import { eierPunktet, registrerPeker } from "./pek-eier.js";
+import { eierPunktet, iPunktModus, registrerMaaleflate, registrerPeker } from "./pek-eier.js";
 import { pick, pickFlate } from "./elements.js";
 import { flettPaaId, flettPaaNavn, spLes, spPaalogget, spSkriv } from "./sp-lager.js";
 import { foldSeksjoner } from "./seksjoner.js";
@@ -487,6 +487,12 @@ function pekRiggTreff(x, y) {
 function pekRiggEier(x, y) { const h = pekRiggTreff(x, y); return h && eierPunktet("rigg", x, y) ? h : null; }
 function pekRigg(x, y) { const h = pekRiggEier(x, y); return h ? h.g : null; }
 registrerPeker("rigg", (x, y) => { const h = pekRiggTreff(x, y); return h ? h.avstand : null; });
+// 📏 Mål/kote/markering kan treffe rigg-objektene (pek-eier.js)
+registrerMaaleflate("rigg", (x, y) => {
+  if (!riggGroup.visible) return null;
+  const h = pekRiggTreff(x, y);
+  return h ? { point: h.punkt.clone(), distance: h.avstand } : null;
+});
 
 // ═══════════════════════ 🚧 SKJØTENE (håndtak) ═══════════════════════
 // Svarte prikker med hvit kant, som på Emils skisse. De står like over
@@ -1294,6 +1300,9 @@ window.addEventListener("pointerup", (e) => {
   }
   const klikk = ned && Math.hypot(e.clientX - ned.x, e.clientY - ned.y) <= KLIKK_PX;
   if (!klikk) return;
+  // 📏 Mål, kote og markering: trykket er et punkt — ikke åpne riggen, og la
+  // hendelsen gå videre til main.js (Emil 02.10)
+  if (iPunktModus()) return;
   const g = pekRigg(e.clientX, e.clientY);
   // 📅 Framdriftsplanens velgemodus: trykket legger rigg-objektet til / tar
   // det bort i utvalget der (framdrift.js), i stedet for å åpne riggen.

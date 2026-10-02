@@ -8,6 +8,7 @@ import { afterLoad, ifcReady, loadModel } from "./ifc.js";
 import { closeMarkerPopup, forberedNyMarkering, openMarkerPopup, pickMarker } from "./markers.js";
 import { addMeasure, koteValue, rettPunkt, snapPoint } from "./measure.js";
 import { canvas, koteGroup, makeLabel, measureGroup } from "./scene.js";
+import { naermesteMaaleflate } from "./pek-eier.js";
 
 // last inn resten av modulene (rekkefølgen bestemmer oppstart)
 import "./prefs.js";
@@ -122,6 +123,13 @@ canvas.addEventListener("pointerup", (e) => {
   // det terrenget du pekte på. Uten dette kan ikke målestokken kontrolleres.
   if (S.mode === "measure" || S.mode === "kote") {
     const f = pickFlate(e.clientX, e.clientY);
+    if (f && (!hit || f.distance < hit.distance)) hit = f;
+  }
+  // 📏 …og rigg-objektene og materiellet: punktet havner på det du trykte på,
+  // ikke på bakken bak (Emil 02.10). Markering også — den skal kunne settes
+  // på en container uten at containeren åpnes.
+  if (S.mode === "measure" || S.mode === "kote" || S.mode === "marker") {
+    const f = naermesteMaaleflate(e.clientX, e.clientY);
     if (f && (!hit || f.distance < hit.distance)) hit = f;
   }
   if (!hit) {
