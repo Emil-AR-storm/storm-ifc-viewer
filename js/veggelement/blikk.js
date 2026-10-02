@@ -356,7 +356,7 @@ export function tegnBlikk() {
   let naa = null;
   const legg = (m) => {
     m.userData.blikk = true;
-    if (naa) { m.userData.blikkId = naa.id; m.userData.blikkSett = naa.sett; husBlikkMesh(naa.id, m, naa); }
+    if (naa) { m.userData.blikkId = naa.id; m.userData.blikkSett = naa.sett; m.userData.blikkInfo = naa; husBlikkMesh(naa.id, m, naa); }
     swGroup.add(m);
   };
 
@@ -395,6 +395,7 @@ export function tegnBlikk() {
           tilMm: s.type === "skjot" ? n0(s.toppMm) : n0(s.tilMm) };
         // 🔧 EGEN BEN-LENGDE: stykket kan overstyre settets ben (Emil 17.09).
         const ben = Number.isFinite(Number(s.benMm)) ? Number(s.benMm) : b.benUteMm;
+        naa.benMm = ben;      // 🏗 følger med ut til byggeplassen (montøren ser beinet)
         // Blikkflatene. Etter Emils regel 18.09 har både fasader og
         // innervegger ÉN flate — `nrm`, siden som peker bort fra søylen. Får
         // en vegg en gang to flater, står regelen klar her.

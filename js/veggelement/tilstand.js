@@ -26,6 +26,7 @@ import { INNER_STD, lagretInner, skrivInner, tegnPanel } from "./panel.js";
 import { innerBaseY, innerMark } from "./innervegg.js";
 import { blikkJust } from "./blikk-just.js";
 import { takJust } from "./tak-just.js";
+import { BESLAG_FORM, BESLAG_FORM_NAVN } from "../sw-blikk.js";
 
 // per modellfil — da kan det tegnes opp igjen uten å regne på nytt.
 export const swGroup = new THREE.Group();
@@ -380,7 +381,7 @@ export function swForByggeplass() {
     ut.push({ id: GULV_ID, sw: "", k: "g", x: r4(g.x), y: r4(g.topp - tilScene(tk) / 2), z: r4(g.z), rot: 0,
       l: mmHel(tilMm(g.bredde)), h: mmHel(tk), t: mmHel(tilMm(g.dybde)), nx: 0, nz: 1, dim: "" });
   }
-  return { elementer: ut, utsparinger: swUtspForByggeplass(), blikk: swBlikkForByggeplass(),
+  return { elementer: ut, utsparinger: swUtspForByggeplass(), blikk: swBlikkForByggeplass(), blikkInfo: swBlikkInfoForByggeplass(),
     farge: String(o.farge || "#dfe5ec"),
     utvFarge: String(o.utvFarge || ""), isolasjon: String(o.isolasjon || "") };
 }
@@ -412,6 +413,39 @@ export function swBlikkForByggeplass() {
       s: [r6(_s.x), r6(_s.y), r6(_s.z)]
     });
     if (ut.length >= MAKS_BLIKK_BOKSER) break;
+  }
+  return ut;
+}
+
+// 🟫 Hva hvert blikkstykke ER, så montøren kan trykke på det (Emil 02.10: «ja
+// montør skal kunne trykke på blikk og se type og lengder»). Én rad per
+// stykke-id: type (topp/bunn/hjørne …), profilformen, lengden langs stykket,
+// beinet, fasaden og om det er ytter- eller innervegg.
+export function blikkInfoRad(info) {
+  if (!info || typeof info !== "object") return null;
+  const form = BESLAG_FORM[info.type] || "";
+  const rad = {
+    t: String(info.type || ""),
+    fo: form ? BESLAG_FORM_NAVN[form] : "",
+    l: Math.round(Math.abs((Number(info.tilMm) || 0) - (Number(info.fraMm) || 0))),
+    fa: String(info.fasade || "").slice(0, 40),
+    se: info.sett === "inner" ? "inner" : "ytter"
+  };
+  if (Number(info.benMm) > 0) rad.b = Math.round(Number(info.benMm));
+  return rad;
+}
+export function swBlikkInfoForByggeplass() {
+  const ut = {};
+  let n = 0;
+  for (const m of swGroup.children) {
+    const u = m.userData || {};
+    if (!u.blikk || m.visible === false || u.blikkId === undefined || u.blikkId === null) continue;
+    const id = String(u.blikkId);
+    if (ut[id]) continue;
+    const rad = blikkInfoRad(u.blikkInfo);
+    if (!rad) continue;
+    ut[id] = rad;
+    if (++n >= 3000) break;
   }
   return ut;
 }
