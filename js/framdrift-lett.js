@@ -16,7 +16,7 @@
 import { $, S, apnePanel, esc, på } from "./state.js";
 import { t, tn } from "./i18n.js";
 import { sortert, synlige, tellingPerSlag, trinnTid, vaskEtappeListe, vaskKilder } from "./framdrift-regn.js";
-import { framdriftPlanEndret, ryddFramdriftVis, settFramdriftTid, tegnFramdrift, tegnTidslinje } from "./framdrift-vis.js";
+import { begrensListe, framdriftPlanEndret, ryddFramdriftVis, settFramdriftTid, tegnFramdrift, tegnTidslinje } from "./framdrift-vis.js";
 
 const erApen = () => { const p = $("framdriftPanel"); return !!(p && p.classList.contains("open")); };
 const datoLang = (iso) => { const d = String(iso || "").split("-"); return d.length === 3 ? d[2] + "." + d[1] + "." + d[0] : ""; };
@@ -53,19 +53,21 @@ export function tegnPanel() {
   const body = $("framdriftBody");
   if (!body) return;
   const liste = sortert(S.framdrift);
-  let html = '<p class="set-hjelp" style="margin-top:0">' +
-    esc(t("Planen er laget på kontoret. Dra glideren nederst for å se hva som er bygget når — trykk på et trinn for å gå dit det er ferdig.")) + "</p>";
+  let html = '<details class="set-hjelp fp-hjelp"><summary>' + esc(t("Slik bruker du framdriftsplanen")) + "</summary>" +
+    esc(t("Planen er laget på kontoret. Dra glideren nederst for å se hva som er bygget når — trykk på et trinn for å gå dit det er ferdig.")) + "</details>";
   if (liste.length) html += '<label class="set-hjelp fp-vis"><input type="checkbox" id="fpVis"' + (S.framdriftVis !== false ? " checked" : "") + "> " +
     esc(t("Vis framdriften i modellen — dra glideren nederst")) + "</label>";
   if (!liste.length) html += '<p class="hint">' + esc(t("Ingen trinn ennå.")) + "</p>";
+  html += '<div class="fp-liste" id="fpListe">';
   for (const e of liste) {
     html += '<div class="st-etappe st-lett fp-etappe" data-id="' + esc(e.id) + '" style="border-left:4px solid ' + esc(e.farge) + '">' +
       '<div class="st-rad"><b class="st-nr">' + e.nr + "</b> <b>" + esc(e.navn) + "</b></div>" +
-      '<div class="st-rad">' + esc(datoTekst(e)) + "</div>" +
-      '<div class="st-innhold">' + esc(innholdTekst(e)) + "</div>" +
+      '<div class="st-rad fp-lett-rad"><span>' + esc(datoTekst(e)) + '</span><span class="st-innhold">' + esc(innholdTekst(e)) + "</span></div>" +
     "</div>";
   }
+  html += "</div>";
   body.innerHTML = html;
+  begrensListe($("fpListe"));
   if ($("fpVis")) $("fpVis").onchange = (ev) => { S.framdriftVis = ev.target.checked; oppdaterVis(); };
   body.querySelectorAll(".fp-etappe").forEach(rad => rad.onclick = () => {
     const e = synlige(S.framdrift).find(x => x.id === rad.dataset.id);

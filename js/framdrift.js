@@ -26,7 +26,7 @@ import { flettPaaId, spLes, spPaalogget, spSkriv } from "./sp-lager.js";
 import { clearSelection, veksleMateriellIUtvalg } from "./elements.js";
 import { metaFor } from "./ifcrpc.js";
 import { SLAG_NAVN, etappeForNokkel, pdfTrinn, fjern, leggTil, nokkel, nyEtappe, sortert, synlige, tellingPerSlag, tidsSpenn, vaskEtappe, vaskEtappeListe } from "./framdrift-regn.js";
-import { ryddFramdriftVis, settSkjulTildelte, stoppAvspilling, tegnFramdrift, tegnTidslinje } from "./framdrift-vis.js";
+import { begrensListe, ryddFramdriftVis, settSkjulTildelte, stoppAvspilling, tegnFramdrift, tegnTidslinje } from "./framdrift-vis.js";
 import { LAG_ID as TRP_BLIKK_LAG } from "./framdrift-plukk.js";
 import { forberedKilder, nullstillKilder } from "./framdrift-kilde.js";
 
@@ -324,13 +324,18 @@ export function tegnPanel() {
   const body = $("framdriftBody");
   if (!body) return;
   const liste = sortert(S.framdrift);
-  let html = '<p class="set-hjelp" style="margin-top:0">' +
-    esc(t("Del arbeidet i trinn med dato. Trykk «Legg til» på trinnet og velg det som utføres da — elementer, SW-elementer, takplater, blikk, rigg, materiell og markeringer. Trykk «Ferdig» når du er ferdig. Kom noe med ved en feil, tar «− Fjern» det ut igjen.")) + "</p>" +
+  // Forklaringen står åpen til det finnes trinn — så er den én linje du kan
+  // trykke på, og trinnene får plassen (Emil 02.10: panelet var for stort)
+  const forklaring = esc(t("Del arbeidet i trinn med dato. Trykk «Legg til» på trinnet og velg det som utføres da — elementer, SW-elementer, takplater, blikk, rigg, materiell og markeringer. Trykk «Ferdig» når du er ferdig. Kom noe med ved en feil, tar «− Fjern» det ut igjen."));
+  let html = (liste.length
+    ? '<details class="set-hjelp fp-hjelp"><summary>' + esc(t("Slik bruker du framdriftsplanen")) + "</summary>" + forklaring + "</details>"
+    : '<p class="set-hjelp" style="margin-top:0">' + forklaring + "</p>") +
     (sisteMelding ? '<p class="set-hjelp" style="color:var(--text)">' + esc(sisteMelding) + "</p>" : "");
   if (liste.length) html += '<label class="set-hjelp fp-vis"><input type="checkbox" id="fpVis"' + (S.framdriftVis !== false ? " checked" : "") + "> " +
     esc(t("Vis framdriften i modellen — dra glideren nederst")) + "</label>" +
     (tidsSpenn(liste) ? "" : '<p class="hint">' + esc(t("Sett «Fra»-dato på trinnene for å få glideren.")) + "</p>");
   if (!liste.length) html += '<p class="hint">' + esc(t("Ingen trinn ennå.")) + "</p>";
+  html += '<div class="fp-liste" id="fpListe">';
   for (const e of liste) {
     const velgerHer = velgerEtappe() === e.id;
     html += '<div class="st-etappe fp-etappe" data-id="' + esc(e.id) + '" style="border-left:4px solid ' + esc(e.farge) + '">' +
@@ -344,14 +349,14 @@ export function tegnPanel() {
         '<label class="fp-dato">' + esc(t("Fra")) + ' <input type="date" class="fp-fra" value="' + esc(e.dato) + '"></label>' +
         '<label class="fp-dato">' + esc(t("Til")) + ' <input type="date" class="fp-til" value="' + esc(e.slutt) + '"></label>' +
       "</div>" +
-      '<div class="st-innhold">' + esc(innholdTekst(e)) + "</div>" +
-      '<div class="st-rad st-knapper">' +
+      '<div class="st-rad st-knapper fp-knapper"><span class="st-innhold">' + esc(innholdTekst(e)) + "</span>" +
         '<button class="st-legg' + (velgerHer && !velgerFjerner() ? " aktiv" : "") + '">' + esc(velgerHer && !velgerFjerner() ? t("Velger …") : t("+ Legg til")) + "</button>" +
         (e.objekter.length ? '<button class="st-fjern' + (velgerHer && velgerFjerner() ? " aktiv" : "") + '" title="' + esc(t("Ta enkeltobjekter ut av trinnet igjen")) + '">' +
           esc(velgerHer && velgerFjerner() ? t("Velger …") : t("− Fjern")) + "</button>" : "") +
         (e.objekter.length ? '<button class="st-tom">' + esc(t("Tøm")) + "</button>" : "") +
       "</div></div>";
   }
+  html += "</div>";
   html += '<label class="set-hjelp st-logo">' + esc(t("Logo på PDF")) + ' <select id="fpLogo"></select></label>' +
     '<div class="prop-actions" style="margin-top:10px"><button id="fpNy" class="primary">' + ikon("pluss") + " " + esc(t("Nytt trinn")) + "</button>" +
       '<button id="fpPdf"' + (pdfTrinn(S.framdrift).length ? "" : " disabled") + ' title="' + esc(t("Én side per trinn: bygget sett fra nord, sør, øst og vest, og det som er nytt i trinnet")) + '">' +
@@ -383,6 +388,7 @@ export function tegnPanel() {
       if (e && confirm(t("Slette {0}?", e.navn))) slettEtappe(id);
     };
   });
+  begrensListe($("fpListe"));
   oppdaterVis();
 }
 
