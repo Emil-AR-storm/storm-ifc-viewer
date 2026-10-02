@@ -26,7 +26,7 @@ import { flettPaaId, spLes, spPaalogget, spSkriv } from "./sp-lager.js";
 import { clearSelection, veksleMateriellIUtvalg } from "./elements.js";
 import { metaFor } from "./ifcrpc.js";
 import { SLAG_NAVN, etappeForNokkel, pdfTrinn, fjern, leggTil, nokkel, nyEtappe, sortert, synlige, tellingPerSlag, tidsSpenn, vaskEtappe, vaskEtappeListe } from "./framdrift-regn.js";
-import { begrensListe, ryddFramdriftVis, settSkjulTildelte, stoppAvspilling, tegnFramdrift, tegnTidslinje } from "./framdrift-vis.js";
+import { begrensListe, forberedMobilPanel, ryddFramdriftVis, settSkjulTildelte, stoppAvspilling, tegnFramdrift, tegnTidslinje } from "./framdrift-vis.js";
 import { LAG_ID as TRP_BLIKK_LAG } from "./framdrift-plukk.js";
 import { forberedKilder, nullstillKilder } from "./framdrift-kilde.js";
 
@@ -473,6 +473,7 @@ på("btnFramdrift", "click", () => {
   if (!S.modelGroup) { alert(t("Åpne en modell først.")); return; }
   tegnPanel();
   apnePanel("framdriftPanel");
+  forberedMobilPanel();   // 📱 mobil: åpner sammenlagt (oppsett B)
   oppdaterVis();
 });
 // Lukkes panelet på en annen måte (krysset, et annet panel, Esc): velgemodusen av

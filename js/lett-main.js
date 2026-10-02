@@ -42,6 +42,7 @@ import "./tema.js";   // lyst/mørkt tema – trenger knappen i toppbaren
 import "./hjul.js";   // navigasjonshjul – trenger knappen i verktøylinja
 import "./share.js";
 import "./mobile.js";   // må lastes etter at alle knapper har fått lyttere
+import "./rull-fall.js";   // 📜 rulling med fall nederst i alle vinduer (Emil 02.10)
 import "./oppsett.js";   // ansattliste og Planner-plan fra SharePoint
 
 // JavaScript kjører – skjul advarselen

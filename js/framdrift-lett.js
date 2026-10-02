@@ -16,7 +16,7 @@
 import { $, S, apnePanel, esc, på } from "./state.js";
 import { t, tn } from "./i18n.js";
 import { sortert, synlige, tellingPerSlag, trinnTid, vaskEtappeListe, vaskKilder } from "./framdrift-regn.js";
-import { begrensListe, framdriftPlanEndret, ryddFramdriftVis, settFramdriftTid, tegnFramdrift, tegnTidslinje } from "./framdrift-vis.js";
+import { begrensListe, forberedMobilPanel, framdriftPlanEndret, ryddFramdriftVis, settFramdriftTid, tegnFramdrift, tegnTidslinje } from "./framdrift-vis.js";
 
 const erApen = () => { const p = $("framdriftPanel"); return !!(p && p.classList.contains("open")); };
 const datoLang = (iso) => { const d = String(iso || "").split("-"); return d.length === 3 ? d[2] + "." + d[1] + "." + d[0] : ""; };
@@ -98,6 +98,7 @@ på("btnFramdrift", "click", () => {
   if (panel.classList.contains("open")) { panel.classList.remove("open"); oppdaterVis(); return; }
   tegnPanel();
   apnePanel("framdriftPanel");
+  forberedMobilPanel();   // 📱 mobil: åpner sammenlagt (oppsett B)
   oppdaterVis();
 });
 
