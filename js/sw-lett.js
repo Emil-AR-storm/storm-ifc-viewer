@@ -225,9 +225,13 @@ function merkPanel(e) {
   sw.position.set(e.x - ex * L * 0.32 + nv.x * utD,
                   e.y + H * 0.24,
                   e.z - ez * L * 0.32 + nv.z * utD);
+  // 📅 Nummeret og målet følger elementet i framdriftsplanen (framdrift-vis.js)
+  const eier = ["sw:" + String(e.id || "")];
+  sw.userData.fpEiere = eier;
   swLettGroup.add(sw);
   if (e.dim) {
     const dim = tekstDekal(e.dim, 150, L * 0.6);
+    dim.userData.fpEiere = eier;
     dim.quaternion.copy(sw.quaternion);
     dim.position.set(e.x + nv.x * utD, e.y - H * 0.1, e.z + nv.z * utD);
     swLettGroup.add(dim);
@@ -257,6 +261,10 @@ function tegnUtsparinger(data) {
     linje.computeLineDistances();     // MÅ til, ellers blir streken hel
     linje.raycast = () => {};
     linje.userData.ghostFritatt = true;
+    // 📅 Åpningen hører til elementene den går gjennom (fra kontoret, feltet e)
+    const eiere = Array.isArray(a.e) ? a.e.slice(0, 20).map(id => "sw:" + String(id)) : [];
+    const merk = (o) => { if (eiere.length) o.userData.fpEiere = eiere; return o; };
+    merk(linje);
     swLettGroup.add(linje);
     const nv = new THREE.Vector3(Number((a.n || [])[0]) || 0, 0, Number((a.n || [])[1]) || 0);
     if (nv.lengthSq() < 1e-9) nv.set(0, 0, 1);
@@ -266,12 +274,12 @@ function tegnUtsparinger(data) {
       const tot = tekstDekal((a.b || 0) + "\u00d7" + (a.h || 0) + " MM", 260, maks);
       tot.quaternion.setFromUnitVectors(_opp, nv);
       tot.position.set(Number(a.m[0]) || 0, Number(a.m[1]) || 0, Number(a.m[2]) || 0);
-      swLettGroup.add(tot);
+      swLettGroup.add(merk(tot));
       if (a.navn && Array.isArray(a.mn)) {
         const navn = tekstDekal(a.navn, 260, maks);
         navn.quaternion.copy(tot.quaternion);
         navn.position.set(Number(a.mn[0]) || 0, Number(a.mn[1]) || 0, Number(a.mn[2]) || 0);
-        swLettGroup.add(navn);
+        swLettGroup.add(merk(navn));
       }
     }
   }

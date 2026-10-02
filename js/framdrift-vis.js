@@ -175,6 +175,41 @@ function ryddOverlay(behold) {
   }
 }
 
+// ═══════════ TRINNLISTA I PANELET (Emil 02.10) ═══════════
+// «popup vindu får framdrifts plan er alt får stor … gjør trinn bokser mindre
+// og leg inn samme skrulle funksjon som objekt info boksen har»: med flere enn
+// tre trinn vises to og et halvt om gangen, resten rulles til — med et svakt
+// fall nederst (som egenskapspanelet) som viser at det finnes mer.
+// Rulleposisjonen huskes når panelet tegnes på nytt (dato endret o.l.).
+const rullPos = {};
+export const SYNLIGE_TRINN = 3;
+export function begrensListe(el) {
+  if (!el) return;
+  el.style.maxHeight = "";
+  const bokser = [...el.children].filter(c => c.classList && c.classList.contains("fp-etappe"));
+  const fall = () => el.classList.toggle("kan-rulle", el.scrollTop + el.clientHeight < el.scrollHeight - 4);
+  if (bokser.length <= SYNLIGE_TRINN) { el.classList.remove("kan-rulle"); el.onscroll = null; return; }
+  let h = 0;
+  if (bokser[0].offsetHeight) for (let i = 0; i < 2; i++) {
+    const cs = window.getComputedStyle(bokser[i]);
+    h += bokser[i].offsetHeight + (parseFloat(cs.marginBottom) || 0);
+  }
+  if (h) h += bokser[2].offsetHeight * 0.55;
+  if (!h) {
+    // Panelet er ikke åpnet ennå (tegnes rett før apnePanel): prøv igjen straks
+    el.classList.add("kan-rulle");
+    if (!el.dataset.igjen) {
+      el.dataset.igjen = "1";
+      setTimeout(() => { delete el.dataset.igjen; if (el.isConnected && el.offsetHeight) begrensListe(el); }, 0);
+    }
+    return;
+  }
+  el.style.maxHeight = Math.ceil(h) + "px";
+  if (rullPos[el.id]) el.scrollTop = rullPos[el.id];
+  el.onscroll = () => { rullPos[el.id] = el.scrollTop; fall(); };
+  fall();
+}
+
 // ═══════════ BUNKENE SOM BRUKES OPP ═══════════
 // Bare synligheten til bunkenes enheter (userData.fpEnhet, satt i
 // materiell-vis.js) endres, og den settes tilbake før neste runde og når
