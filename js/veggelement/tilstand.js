@@ -458,7 +458,7 @@ export function swDimTekst(v) {
 // fasadene (retning, tykkelse, avstand ut fra panelet). Å sende fasadene og
 // regne på nytt ute ville vært å skrive den regningen to ganger — og den ene
 // ville drevet fra den andre. Her sendes hjørnene i ferdige koordinater.
-export function utspPunkter(apninger, fasader, baseY, tykkelseMm, ut) {
+export function utspPunkter(apninger, fasader, baseY, tykkelseMm, ut, vegger) {
   for (const a of apninger || []) {
     const f = (fasader || [])[a.fi];
     if (!f) continue;
@@ -477,7 +477,11 @@ export function utspPunkter(apninger, fasader, baseY, tykkelseMm, ut) {
       n: [r4(f.nx), r4(f.nz)],
       b: mmHel(a.tilMm_ - a.fraMm),
       h: mmHel(a.toppMm - a.bunnMm),
-      navn: a.navn ? String(a.navn).toUpperCase().slice(0, 40) : ""
+      navn: a.navn ? String(a.navn).toUpperCase().slice(0, 40) : "",
+      // 📅 elementene åpningen går gjennom (samme regel som tegning.js), så
+      // framdriftsplanen på byggeplassen kan skjule merkingen med dem
+      e: (vegger || []).filter(v => v && !v.skjult && v.fi === a.fi && v.fraMm !== undefined &&
+        Math.min(v.tilMm, a.tilMm_) - Math.max(v.fraMm, a.fraMm) > 10).map(v => String(v.id)).slice(0, 20)
     });
   }
 }
@@ -485,9 +489,9 @@ export function utspPunkter(apninger, fasader, baseY, tykkelseMm, ut) {
 export function swUtspForByggeplass() {
   const ut = [];
   const o = (lagret && lagret.oppsett) || STD_OPPSETT;
-  if (lagret) utspPunkter(utspPaFasader(), lagret.fasader || [], baseYNaa(), o.tykkelseMm, ut);
+  if (lagret) utspPunkter(utspPaFasader(), lagret.fasader || [], baseYNaa(), o.tykkelseMm, ut, lagret.vegger);
   const d = lagretInner;
-  if (d) utspPunkter(d.utspVis || [], d.fasader || [], innerBaseY(), INNER_STD.tykkelseMm, ut);
+  if (d) utspPunkter(d.utspVis || [], d.fasader || [], innerBaseY(), INNER_STD.tykkelseMm, ut, d.vegger);
   return ut;
 }
 
