@@ -2103,5 +2103,22 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Vis trinnene": "Pokaż etapy",
   "Legg sammen": "Zwiń",
   "alt ferdig": "wszystko gotowe",
-  "Benlengde": "Długość ramienia"
+  "Benlengde": "Długość ramienia",
+  "Trykk på <b>det samme objektet</b> i den nye modellen.": "Kliknij <b>ten sam obiekt</b> w nowym modelu.",
+  "I den gamle valgte du: {0}": "W starym wybrano: {0}",
+  "Hvordan skal den nye modellen legges oppå denne?": "Jak nałożyć nowy model na ten?",
+  "Modellene ligger der de er tegnet. Best når den nye er en oppdatering av samme modell.": "Modele pozostają tam, gdzie zostały narysowane. Najlepsze, gdy nowy jest aktualizacją tego samego modelu.",
+  "Manuelt": "Ręcznie",
+  "For en modell fra en annen leverandør som ikke ligger på samme sted. Du legger modellene oppå hverandre selv.": "Dla modelu od innego dostawcy, który nie leży w tym samym miejscu. Sam nakładasz modele na siebie.",
+  "Manuelt: hvordan skal modellene legges oppå hverandre?": "Ręcznie: jak nałożyć modele na siebie?",
+  "Sentrum mot sentrum": "Środek do środka",
+  "Midten av begge modellene legges i samme punkt.": "Środki obu modeli umieszcza się w tym samym punkcie.",
+  "Samme objekt i begge": "Ten sam obiekt w obu",
+  "Trykk på et objekt her, og på det samme objektet i den nye modellen. De to legges nøyaktig oppå hverandre, og resten av bygget følger med.": "Kliknij obiekt tutaj i ten sam obiekt w nowym modelu. Zostaną dokładnie nałożone, a reszta budynku podąży za nimi.",
+  "Tilbake": "Wstecz",
+  "Trykk på <b>et objekt</b> i denne modellen som finnes i begge (for eksempel en hjørnesøyle).": "Kliknij <b>obiekt</b> w tym modelu, który istnieje w obu (np. słup narożny).",
+  "Manuelt · sentrum mot sentrum": "Ręcznie · środek do środka",
+  "Manuelt · samme objekt: {0}": "Ręcznie · ten sam obiekt: {0}",
+  "den gamle flyttet {0}": "stary przesunięty o {0}",
+  "nærmeste element": "najbliższy element"
 };

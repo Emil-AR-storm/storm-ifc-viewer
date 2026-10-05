@@ -16,8 +16,8 @@
 // plukker dette laget platene og blikket ALLTID, ikke bare i velgemodusen —
 // nærmeste treff vinner i main.js, så plata du ser er den du får — og
 // trykket viser kode og mål i egenskapspanelet. Markeringsboksen (iRekt)
-// tar dem fortsatt bare med i framdriftsplanens velgemodus, så en boks over
-// hele bygget ikke drar med seg tusen blikkstykker ellers i programmet.
+// tar dem med overalt også (Emil 05.10) — oppsummeringen samler dem per type
+// (flervalgRader), så tusen blikkstykker blir noen få linjer.
 import * as THREE from "three";
 import { $, S, apnePanel, esc, registrerEkstraGruppe } from "./state.js";
 import { t } from "./i18n.js";
@@ -87,8 +87,10 @@ registrerEkstraGruppe(gruppe, {
     return null;
   },
   flervalg: true,
+  // ⇧ Markeringsboksen tar platene og blikket med overalt (Emil 05.10:
+  // «legg til at man kan markere blikk og takelement med markeringsboks»).
   iRekt(x0, y0, x1, y1) {
-    if (!aktiv()) return new Set();
+    if (!swGroup.visible || !swGroup.children.length) return new Set();
     const minX = Math.min(x0, x1), maxX = Math.max(x0, x1), minY = Math.min(y0, y1), maxY = Math.max(y0, y1);
     // Et Set, som SW-lagets iRekt — finishBoxSelect i elements.js leser .size
     const ut = new Set();
