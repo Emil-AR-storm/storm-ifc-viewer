@@ -78,6 +78,8 @@ export function nesteRev(v) {
   return 1 + Math.max(0, ...listeFor(v).map(w => w.rev || 0));
 }
 
+function synligKjede(o) { for (let x = o; x; x = x.parent) if (x.visible === false) return false; return true; }
+
 // Elementgruppa under pekeren, blant de genererte veggene
 export function pekVeggEn(cx, cy) {
   const r = canvas.getBoundingClientRect();
@@ -86,6 +88,10 @@ export function pekVeggEn(cx, cy) {
   raycaster.setFromCamera(ndc, camera);
   const treff = raycaster.intersectObjects(swGroup.children, true);
   for (const h of treff) {
+    // Raycasteren treffer også det som er skjult (visible = false) — et
+    // element framdriftsplanens glider har tatt bort, skal ikke kunne trykkes
+    // på, og heller ikke stå i veien for det bak (Emil 05.10).
+    if (!synligKjede(h.object)) continue;
     let o = h.object;
     while (o && o.userData.swId === undefined) o = o.parent;
     if (o && o.userData.swId !== undefined) {
