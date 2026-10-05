@@ -10,6 +10,7 @@
 // (eller null), og spør her før det velger noe.
 
 import { S } from "./state.js";
+import { camera, canvas, raycaster } from "./scene.js";
 
 const pekere = new Map();   // navn → (clientX, clientY) => avstand | null
 
@@ -43,10 +44,16 @@ const PUNKTMODUSER = new Set(["measure", "kote", "marker"]);
 export function iPunktModus() { return PUNKTMODUSER.has(S.mode); }
 
 // …men punktet skal havne PÅ objektet du trykte på (kranfoten, toppen av
-// containeren), ikke på bakken bak det. Rigg og materiell melder inn en flate
-// som svarer { point, distance }; main.js tar den nærmeste av dem, modellen
-// og terrenget. utenSnap: kant-snappen er laget for stålet i modellen.
-const flater = new Map();   // navn → (clientX, clientY) => { point, distance } | null
+// containeren, et SW-element, en takplate, et blikkstykke), ikke på bakken
+// bak det. Lagene melder inn en flate som svarer med et treff; main.js og
+// lett-main.js tar den nærmeste av dem, modellen og terrenget.
+//
+// Svaret er et VANLIG raycast-treff (object, faceIndex, point, distance), så
+// snappen i measure.js fester seg til hjørner og kanter på riggen og
+// SW-elementene akkurat som på stålet (Emil 05.10: «rigg objekt og generert
+// veggelement/takplater/blikk går ikke an og ta mål på»). Bare et lag som
+// sier utenSnap: true (terrenget) slipper snappen.
+const flater = new Map();   // navn → (clientX, clientY) => treff | null
 export function registrerMaaleflate(navn, fn) { flater.set(navn, fn); }
 export function naermesteMaaleflate(x, y) {
   let best = null;
@@ -55,5 +62,30 @@ export function naermesteMaaleflate(x, y) {
     try { h = fn(x, y); } catch { h = null; }
     if (h && h.point && Number.isFinite(h.distance) && (!best || h.distance < best.distance)) best = h;
   }
-  return best ? { point: best.point, distance: best.distance, utenSnap: true } : null;
+  return best;
+}
+
+// Hva en måling kan feste seg på: synlige, hele flater. Ikke navnelapper
+// (sprites), ikke streker, ikke halvgjennomsiktige felt som kransektoren —
+// et punkt der ville sveve i lufta eller havne på bakken under sektoren.
+export function kanMaalesPaa(o) {
+  if (!o || !o.isMesh || o.isSprite) return false;
+  for (let p = o; p; p = p.parent) if (p.visible === false) return false;
+  const m = Array.isArray(o.material) ? o.material[0] : o.material;
+  if (m && m.transparent && (m.opacity == null ? 1 : m.opacity) < 0.6) return false;
+  return true;
+}
+const _fNdc = { x: 0, y: 0 };
+// Ferdig flate for en hel gruppe: nærmeste treff blant barna som kan måles på.
+export function gruppeFlate(gruppe) {
+  return (x, y) => {
+    if (!gruppe || !gruppe.visible || !gruppe.children.length) return null;
+    const r = canvas.getBoundingClientRect();
+    _fNdc.x = ((x - r.left) / r.width) * 2 - 1;
+    _fNdc.y = -((y - r.top) / r.height) * 2 + 1;
+    gruppe.updateMatrixWorld(true);
+    raycaster.setFromCamera(_fNdc, camera);
+    for (const h of raycaster.intersectObjects(gruppe.children, true)) if (kanMaalesPaa(h.object)) return h;
+    return null;
+  };
 }

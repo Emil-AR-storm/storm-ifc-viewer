@@ -11,6 +11,7 @@ import { closeMarkerPopup, forberedNyMarkering, openMarkerPopup, pickMarker } fr
 import { snapshotModel } from "./compare.js";
 import { addMeasure, koteValue, rettPunkt, snapPoint } from "./measure.js";
 import { canvas, koteGroup, makeLabel, measureGroup } from "./scene.js";
+import { naermesteMaaleflate } from "./pek-eier.js";
 import { MODELL_FRIST_MS, hentMedFrist } from "./nett.js";
 import { lagreApning, lesApning } from "./apning.js";
 
@@ -92,7 +93,13 @@ canvas.addEventListener("pointerup", (e) => {
     if (mc) { openMarkerPopup(mc); return; }
     closeMarkerPopup();
   }
-  const hit = pick(e.clientX, e.clientY);
+  let hit = pick(e.clientX, e.clientY);
+  // 📏 Mål, kote og markering kan treffe riggen, SW-elementene, blikket og
+  // takplatene også — nærmeste vinner, som på kontoret (pek-eier.js)
+  if (S.mode === "measure" || S.mode === "kote" || S.mode === "marker") {
+    const f = naermesteMaaleflate(e.clientX, e.clientY);
+    if (f && (!hit || f.distance < hit.distance)) hit = f;
+  }
   // 🧱 SW-elementene bor i sin egen gruppe, som pick() ikke ser. Ligger et av
   // dem nærmere kameraet enn modelltreffet, er DET montøren trykte på — og da
   // kan han ta det bort for å se stålet bak. Samme regel som på kontoret.
@@ -119,7 +126,7 @@ canvas.addEventListener("pointerup", (e) => {
     $("commentDialog").classList.add("open");
     setTimeout(() => $("commentText").focus(), 50);
   } else if (S.mode === "measure") {
-    const mp0 = snapPoint(hit).point; // fester seg til nærmeste kant/hjørne
+    const mp0 = hit.utenSnap ? hit.point.clone() : snapPoint(hit).point; // fester seg til nærmeste kant/hjørne
     // «Rett strek» på: andrepunktet låses til nærmeste akse fra førstepunktet
     const mp = (S.measureFirst && S.rettOn) ? rettPunkt(S.measureFirst, mp0) : mp0;
     if (!S.measureFirst) {

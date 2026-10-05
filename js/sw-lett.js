@@ -15,7 +15,8 @@ import * as THREE from "three";
 import { $, S, apnePanel, esc, ikon, registrerEkstraGruppe } from "./state.js";
 import { t } from "./i18n.js";
 import { camera, canvas, flyTil, raycaster, scene } from "./scene.js";
-import { BESLAG_FORM, BESLAG_FORM_NAVN } from "./sw-blikk.js";
+import { BESLAG_FORM, BESLAG_FORM_NAVN, BLIKK_TYPE_NAVN } from "./sw-blikk.js";
+import { gruppeFlate, registrerMaaleflate } from "./pek-eier.js";
 
 export const swLettGroup = new THREE.Group();
 scene.add(swLettGroup);
@@ -219,6 +220,7 @@ export function tegnSwLett(data) {
 // framdriftsplanen skjuler og toner stykkene som på kontoret.
 // Trykk på et stykke: type, profil, lengde og bein i egenskapspanelet
 // (Emil 02.10). Id-en i laget er «blikk:<stykke-id>».
+function synligKjede(o) { for (let x = o; x; x = x.parent) if (x.visible === false) return false; return true; }
 export function vaskBlikkLett(liste) {
   const ut = [];
   const tall = (a, n) => Array.isArray(a) && a.length === n && a.every(v => Number.isFinite(Number(v))) ? a.map(Number) : null;
@@ -247,7 +249,7 @@ export function vaskBlikkInfo(d) {
   }
   return ut;
 }
-const BLIKK_TYPE = { topp: "Toppbeslag", bunn: "Bunnbeslag", hjorne: "Hjørnebeslag", ende: "Endebeslag", skjot: "Hatprofil skjøt", utsparing: "Hatprofil utsparing" };
+const BLIKK_TYPE = BLIKK_TYPE_NAVN;
 export function blikkTypeNavn(type) { return BLIKK_TYPE[type] ? t(BLIKK_TYPE[type]) : (type || t("Blikk")); }
 function visBlikk(id) {
   const r = blikkInfo[id];
@@ -461,6 +463,8 @@ registrerEkstraGruppe(swLettGroup, {
     swLettGroup.updateMatrixWorld(true);
     const treff = raycaster.intersectObjects(swLettGroup.children, true);
     for (const h of treff) {
+      // Skjult av framdriftsplanens glider (visible = false): ikke noe å trykke på
+      if (!synligKjede(h.object)) continue;
       // Skiltene er ikke noe å trykke på — de har allerede raycast slått av,
       // men et dekal uten id ville uansett ikke gitt noe treff å bruke.
       if (h.object.userData.blikk && h.object.userData.blikkId) return { id: "blikk:" + h.object.userData.blikkId, avstand: h.distance };
@@ -598,3 +602,6 @@ S.swTrekanter = (ider) => {
   return pos;
 };
 S.ryddSwLett = () => { sisteData = null; tegnSwLett(null); };
+
+// 📏 Byggeplassen: SW-elementene og blikket kan måles på (pek-eier.js)
+registrerMaaleflate("sw-lett", gruppeFlate(swLettGroup));

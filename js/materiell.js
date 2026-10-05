@@ -22,7 +22,7 @@ import * as THREE from "three";
 import { $, S, apnePanel, esc, ikon, på } from "./state.js";
 import { t } from "./i18n.js";
 import { camera, canvas, grid, raycaster } from "./scene.js";
-import { eierPunktet, iPunktModus, registrerMaaleflate, registrerPeker } from "./pek-eier.js";
+import { eierPunktet, iPunktModus, registrerPeker } from "./pek-eier.js";
 import { pick } from "./elements.js";
 import { GRAPH, SP, authHeaders, graphGet, spTokenSilent } from "./sharepoint.js";
 import {
@@ -120,20 +120,6 @@ function pekMateriell(clientX, clientY) {
   return h && eierPunktet("materiell", clientX, clientY) ? h.o : null;
 }
 registrerPeker("materiell", (x, y) => { const h = pekMateriellTreff(x, y); return h ? h.avstand : null; });
-// 📏 Mål/kote/markering kan treffe materiellet (pek-eier.js). Navnelappene
-// er ikke en flate — et punkt på en lapp ville sveve i lufta.
-registrerMaaleflate("materiell", (x, y) => {
-  if (!materiellGroup.visible || !materiellGroup.children.length) return null;
-  settNdc(x, y);
-  raycaster.setFromCamera(_ndc, camera);
-  for (const h of raycaster.intersectObjects(materiellGroup.children, true)) {
-    if (h.object.isSprite || !h.object.visible) continue;
-    let o = h.object;
-    while (o && !o.userData.materiellId) o = o.parent;
-    if (o && o.userData.materiellId) return { point: h.point.clone(), distance: h.distance };
-  }
-  return null;
-});
 
 // ---------- Angre ----------
 function post(tekst, angreFn, gjenFn) {

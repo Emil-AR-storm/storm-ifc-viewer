@@ -28,6 +28,7 @@ import {
   AVFALLSTYPER, avfallstype, GJERDE_DELER, P_PLASS_B, P_PLASS_D, RIGG_REKKEFOLGE, RIGG_TYPER, erPil, gjerdeLappPunkt, gjerdeStykker, parkeringsPlasser, lokalTilEN, riggAntall, riggFraByggeplass, riggForByggeplassFra, riggMengdeRader,
   riggFotavtrykk, riggObjekter, riggRef, riggTilBygg, tilUtm, vaskRef, REF_ID, kranSektor, kranKompass
 } from "./rigg-regn.js";
+import { gruppeFlate, registrerMaaleflate } from "./pek-eier.js";
 
 export function gjerdeDelLabel(del) { return t(GJERDE_DELER[del] || del); }
 
@@ -481,3 +482,6 @@ function tegnUtseendeRader(body) {
 }
 
 export function riggTypeSkjult(k) { return skjulteTyper.has(k); }
+
+// 📏 Mål, kote og markering kan treffe rigg-objektene — på begge sidene (pek-eier.js)
+registrerMaaleflate("rigg", gruppeFlate(riggGroup));

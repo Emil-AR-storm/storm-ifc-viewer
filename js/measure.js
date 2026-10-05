@@ -2,6 +2,7 @@
 import * as THREE from "three";
 import { S, fmtLen, tilM } from "./state.js";
 import { pick, pickFlate } from "./elements.js";
+import { naermesteMaaleflate } from "./pek-eier.js";
 import { camera, canvas, frameHooks, koteGroup, makeLabel, measureGroup, renderer, scene, updateScreenScaled } from "./scene.js";
 
 // ---------- Kote ----------
@@ -67,7 +68,7 @@ export function hideSnapPreview() {
 }
 
 canvas.addEventListener("pointermove", (e) => {
-  if (S.mode !== "measure" || e.buttons !== 0 || S.boxSel || !S.modelGroup) {
+  if (S.mode !== "measure" || e.buttons !== 0 || S.boxSel) {
     hideSnapPreview();
     return;
   }
@@ -78,6 +79,10 @@ canvas.addEventListener("pointermove", (e) => {
   // ⛰ terrenget kan måles på (se main.js) — forhåndsvisningen må vite det
   const f = pickFlate(e.clientX, e.clientY);
   if (f && (!hit || f.distance < hit.distance)) hit = f;
+  // 📏 …og riggen, materiellet og SW-elementene (pek-eier.js) — samme regel
+  // som trykket i main.js, så prikken viser der punktet faktisk havner
+  const fl = naermesteMaaleflate(e.clientX, e.clientY);
+  if (fl && (!hit || fl.distance < hit.distance)) hit = fl;
   if (!hit) { hideSnapPreview(); return; }
   const sr = hit.utenSnap ? utenSnap(hit) : snapPoint(hit);
   const traff = !!sr.type;
@@ -226,7 +231,12 @@ function byggElementData(obj, range) {
 }
 
 function hentElementData(obj, range) {
-  const nøkkel = obj.uuid + (range ? ":" + range.start : "");
+  // Rigg, materiell og SW-elementer (ikke sammenslått) kan flyttes uten å få
+  // ny uuid — plassen er med i nøkkelen, ellers snappet målet til hjørnene
+  // der objektet sto før det ble dratt.
+  const e = obj.matrixWorld.elements;
+  const nøkkel = obj.uuid + (range ? ":" + range.start : "") +
+    (obj.userData.merged ? "" : "@" + e[12].toFixed(4) + "," + e[13].toFixed(4) + "," + e[14].toFixed(4) + "," + e[0].toFixed(4) + "," + e[2].toFixed(4));
   let d = snapCache.get(nøkkel);
   if (d) return d;
   d = byggElementData(obj, range);

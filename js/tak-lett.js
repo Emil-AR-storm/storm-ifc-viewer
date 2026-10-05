@@ -13,6 +13,7 @@ import { $, S, apnePanel, esc, ikon, registrerEkstraGruppe } from "./state.js";
 import { t } from "./i18n.js";
 import { camera, canvas, flyTil, raycaster, scene } from "./scene.js";
 import { vaskTakLett } from "./sw-tak.js";
+import { gruppeFlate, registrerMaaleflate } from "./pek-eier.js";
 
 export const takLettGroup = new THREE.Group();
 takLettGroup.name = "tak-lett";
@@ -72,6 +73,8 @@ function tegn() {
   }
 }
 
+function synligKjede(o) { for (let x = o; x; x = x.parent) if (x.visible === false) return false; return true; }
+
 function senter(p) {
   const c = new THREE.Vector3();
   for (const q of p.p) c.add(new THREE.Vector3(q[0], q[1], q[2]));
@@ -102,6 +105,7 @@ registrerEkstraGruppe(takLettGroup, {
     raycaster.setFromCamera(_ndc, camera);
     const treff = raycaster.intersectObjects(takLettGroup.children, true);
     for (const h of treff) {
+      if (!synligKjede(h.object)) continue;   // skjult av framdriftsplanens glider
       let o = h.object;
       while (o && o.userData.takLettId === undefined) o = o.parent;
       if (o) return { id: o.userData.takLettId, avstand: h.distance };
@@ -137,3 +141,6 @@ registrerEkstraGruppe(takLettGroup, {
     apnePanel("propPanel");
   }
 });
+
+// 📏 Byggeplassen: takplatene kan måles på (pek-eier.js)
+registrerMaaleflate("tak-lett", gruppeFlate(takLettGroup));

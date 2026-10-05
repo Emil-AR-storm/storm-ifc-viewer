@@ -29,7 +29,7 @@ import * as THREE from "three";
 import { $, S, apnePanel, esc, ikon, på, writePrefs } from "./state.js";
 import { t } from "./i18n.js";
 import { camera, canvas, flyTil, frameHooks, raycaster, scene } from "./scene.js";
-import { eierPunktet, iPunktModus, registrerMaaleflate, registrerPeker } from "./pek-eier.js";
+import { eierPunktet, iPunktModus, registrerPeker } from "./pek-eier.js";
 import { pick, pickFlate } from "./elements.js";
 import { flettPaaId, flettPaaNavn, spLes, spPaalogget, spSkriv } from "./sp-lager.js";
 import { foldSeksjoner } from "./seksjoner.js";
@@ -487,12 +487,6 @@ function pekRiggTreff(x, y) {
 function pekRiggEier(x, y) { const h = pekRiggTreff(x, y); return h && eierPunktet("rigg", x, y) ? h : null; }
 function pekRigg(x, y) { const h = pekRiggEier(x, y); return h ? h.g : null; }
 registrerPeker("rigg", (x, y) => { const h = pekRiggTreff(x, y); return h ? h.avstand : null; });
-// 📏 Mål/kote/markering kan treffe rigg-objektene (pek-eier.js)
-registrerMaaleflate("rigg", (x, y) => {
-  if (!riggGroup.visible) return null;
-  const h = pekRiggTreff(x, y);
-  return h ? { point: h.punkt.clone(), distance: h.avstand } : null;
-});
 
 // ═══════════════════════ 🚧 SKJØTENE (håndtak) ═══════════════════════
 // Svarte prikker med hvit kant, som på Emils skisse. De står like over
