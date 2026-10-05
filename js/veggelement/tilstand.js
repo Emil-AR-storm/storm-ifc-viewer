@@ -27,6 +27,7 @@ import { innerBaseY, innerMark } from "./innervegg.js";
 import { blikkJust } from "./blikk-just.js";
 import { takJust } from "./tak-just.js";
 import { BESLAG_FORM, BESLAG_FORM_NAVN } from "../sw-blikk.js";
+import { gruppeFlate, registrerMaaleflate } from "../pek-eier.js";
 
 // per modellfil — da kan det tegnes opp igjen uten å regne på nytt.
 export const swGroup = new THREE.Group();
@@ -942,3 +943,7 @@ export function slettResultat(navn) {
   lagreBeggeSteder(liste);
   tegnPanel();
 }
+
+// 📏 Mål, kote og markering kan treffe de genererte veggelementene, gulvet,
+// takplatene og blikket (Emil 05.10) — alt bor i swGroup (pek-eier.js)
+registrerMaaleflate("sw", gruppeFlate(swGroup));

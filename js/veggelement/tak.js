@@ -603,7 +603,7 @@ export function tegnTak() {
   let naa = null;
   const legg = (m) => {
     m.userData.tak = true;
-    if (naa) { m.userData.trpId = naa.id; husTakMesh(naa.id, m, naa); }
+    if (naa) { m.userData.trpId = naa.id; m.userData.trpInfo = naa; husTakMesh(naa.id, m, naa); }
     swGroup.add(m);
   };
   const farge = data.o.farge || "#8fa3b8";
