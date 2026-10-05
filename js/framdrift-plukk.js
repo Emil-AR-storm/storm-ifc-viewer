@@ -9,8 +9,20 @@
 // Laget melder seg inn i EKSTRA_LAG (js/state.js) med plukk, flervalg og
 // iRekt, så både trykk og shift + dra virker uten at elements.js vet om det.
 // Id-ene er hele nøkler: «tak:<id>» og «blikk:<id>».
+//
+// 🎯 TRYKK OVERALT (Emil 05.10): «når man trykker på generert veggelement/
+// takplater/blikk så blir objekt som står bak markert». SW-lagets plukking
+// så gjennom platene og blikket og traff veggen (eller stålet) bak. Nå
+// plukker dette laget platene og blikket ALLTID, ikke bare i velgemodusen —
+// nærmeste treff vinner i main.js, så plata du ser er den du får — og
+// trykket viser kode og mål i egenskapspanelet. Markeringsboksen (iRekt)
+// tar dem fortsatt bare med i framdriftsplanens velgemodus, så en boks over
+// hele bygget ikke drar med seg tusen blikkstykker ellers i programmet.
 import * as THREE from "three";
-import { S, registrerEkstraGruppe } from "./state.js";
+import { $, S, apnePanel, esc, registrerEkstraGruppe } from "./state.js";
+import { t } from "./i18n.js";
+import { BESLAG_FORM, BESLAG_FORM_NAVN, BLIKK_TYPE_NAVN } from "./sw-blikk.js";
+import { blikkInfoRad } from "./veggelement/tilstand.js";
 import { camera, canvas, raycaster } from "./scene.js";
 import { swGroup } from "./veggelement/tilstand.js";
 import { settValgEffekt } from "./materiell-vis.js";
@@ -60,15 +72,17 @@ registrerEkstraGruppe(gruppe, {
   sokRader: () => [],
   gaTil() {},
   plukk(cx, cy) {
-    if (!aktiv() || !swGroup.children.length) return null;
+    if (!swGroup.visible || !swGroup.children.length) return null;
     const r = canvas.getBoundingClientRect();
     _ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
     swGroup.updateMatrixWorld(true);
     raycaster.setFromCamera(_ndc, camera);
     for (const h of raycaster.intersectObjects(swGroup.children, true)) {
       if (h.object.isSprite || !synligKjede(h.object)) continue;
+      // Det FØRSTE synlige treffet avgjør: er det en vegg, er det ikke en
+      // plate bak veggen du trykte på (da svarer SW-laget).
       const k = nokkelForMesh(h.object);
-      if (k) return { id: k, avstand: h.distance };
+      return k ? { id: k, avstand: h.distance } : null;
     }
     return null;
   },
@@ -98,5 +112,64 @@ registrerEkstraGruppe(gruppe, {
     for (const k of nye) valgt.add(k);
     oppdaterEffekt();
   },
-  valgte: () => [...valgt]
+  valgte: () => [...valgt],
+  // ⇧ Shift-klikk utenfor velgemodusen: platene og blikket telles i
+  // oppsummeringen (antall og løpemeter per type), som SW-elementene
+  flervalgRader(ider) {
+    const ut = [];
+    for (const k of ider || []) {
+      const i = infoFor(k);
+      if (!i) continue;
+      if (i.slag === "tak") ut.push({ key: t("TRP-takplate") + (i.kode ? " · " + i.kode : ""), type: "TRP", len: i.lengdeMm / 1000, area: i.lengdeMm * i.breddeMm / 1e6, vol: 0, navn: i.kode || t("TRP-takplate") });
+      else ut.push({ key: blikkNavn(i.r.t) + (i.r.fo ? " · " + t(i.r.fo) : ""), type: t("Blikk"), len: i.r.l / 1000, area: 0, vol: 0, navn: blikkNavn(i.r.t) });
+    }
+    return ut;
+  },
+  visEgenskaper(k) { visInfo(k); }
 });
+
+// ---------- Hva plata / stykket ER ----------
+function blikkNavn(type) { return BLIKK_TYPE_NAVN[type] ? t(BLIKK_TYPE_NAVN[type]) : (type || t("Blikk")); }
+function forsteMesh(k) {
+  for (const o of swGroup.children) if (nokkelForMesh(o) === k) return o;
+  return null;
+}
+export function infoFor(k) {
+  const m = forsteMesh(k);
+  if (!m) return null;
+  if (String(k).startsWith("tak:")) {
+    const p = m.userData.trpInfo || {};
+    return { slag: "tak", kode: String(p.kode || ""), lengdeMm: Math.round(Number(p.lengdeMm) || 0),
+      breddeMm: Math.round(Number(p.breddeMm) || 0), skra: !!p.skra,
+      lengdeVMm: Math.round(Number(p.lengdeVMm) || 0), lengdeHMm: Math.round(Number(p.lengdeHMm) || 0) };
+  }
+  const r = blikkInfoRad(m.userData.blikkInfo);
+  return r ? { slag: "blikk", r } : null;
+}
+function visInfo(k) {
+  const i = infoFor(k);
+  if (!i || !$("propTitle")) return;
+  const rad = (a, b) => '<div class="prop-row"><div class="k">' + esc(a) + '</div><div class="v">' + esc(String(b)) + "</div></div>";
+  const mm = (v) => Number(v).toLocaleString("no-NO") + " mm";
+  if (i.slag === "tak") {
+    $("propTitle").textContent = t("TRP-takplate");
+    $("propBody").innerHTML =
+      (i.kode ? rad(t("Kode"), i.kode) : "") +
+      (i.skra && i.lengdeVMm && i.lengdeHMm ? rad(t("Lengde"), mm(i.lengdeVMm) + " / " + mm(i.lengdeHMm))
+        : (i.lengdeMm ? rad(t("Lengde"), mm(i.lengdeMm)) : "")) +
+      (i.breddeMm ? rad(t("Bredde"), mm(i.breddeMm)) : "");
+  } else {
+    const r = i.r;
+    const form = r.fo || (BESLAG_FORM[r.t] ? BESLAG_FORM_NAVN[BESLAG_FORM[r.t]] : "");
+    $("propTitle").textContent = blikkNavn(r.t);
+    $("propBody").innerHTML =
+      rad(t("Type"), blikkNavn(r.t)) +
+      (form ? rad(t("Profil"), t(form)) : "") +
+      rad(t("Lengde"), mm(r.l)) +
+      (r.b ? rad(t("Benlengde"), r.b + " mm") : "") +
+      rad(t("Plassering"), (r.se === "inner" ? t("Innervegg") : t("Yttervegg")) + (r.fa ? " · " + r.fa : ""));
+  }
+  const p = $("propPanel");
+  if (p) p.dataset.navn = $("propTitle").textContent;
+  apnePanel("propPanel");
+}

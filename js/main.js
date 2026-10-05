@@ -8,7 +8,7 @@ import { afterLoad, ifcReady, loadModel } from "./ifc.js";
 import { closeMarkerPopup, forberedNyMarkering, openMarkerPopup, pickMarker } from "./markers.js";
 import { addMeasure, koteValue, rettPunkt, snapPoint } from "./measure.js";
 import { canvas, koteGroup, makeLabel, measureGroup } from "./scene.js";
-import { naermesteMaaleflate } from "./pek-eier.js";
+import { naermesteMaaleflate, registrerPeker } from "./pek-eier.js";
 
 // last inn resten av modulene (rekkefølgen bestemmer oppstart)
 import "./prefs.js";
@@ -67,6 +67,14 @@ if (sprakVelg) {
 }
 
 // ---------- Klikk / trykk ----------
+
+// 🎯 Rigg og materiell har egne pekerlyttere på window, og spør pek-eier.js
+// om de eier punktet før de velger noe. Der var bare de to med — et SW-element,
+// en takplate eller stålet FORAN en container ga likevel containeren
+// (Emil 05.10: «objekt som står bak blir markert»). Nå er modellen og lagene
+// (SW, blikk, takplater, støpeplan …) med i avgjørelsen: nærmeste vinner.
+registrerPeker("modell", (x, y) => { const h = pick(x, y); return h ? h.distance : null; });
+registrerPeker("lag", (x, y) => { const h = pickEkstra(x, y); return h ? h.avstand : null; });
 
 canvas.addEventListener("pointerdown", (e) => { S.downPos = { x: e.clientX, y: e.clientY }; });
 

@@ -23,6 +23,10 @@
 // ha skum, teip og blikk. Skjøten mellom to rader låser seg i hverandre og er
 // helt dekket: ingenting der.
 
+// Visningsnavnet på hvert blikkstykke (oversettes med t() der det vises).
+// Bor her så både byggeplassen (sw-lett.js) og kontoret (framdrift-plukk.js)
+// kaller stykkene det samme.
+export const BLIKK_TYPE_NAVN = { topp: "Toppbeslag", bunn: "Bunnbeslag", hjorne: "Hjørnebeslag", ende: "Endebeslag", skjot: "Hatprofil skjøt", utsparing: "Hatprofil utsparing" };
 export const BLIKK_TOL_MM = 5;
 export const SKRUER_PER_STANG = 8;      // per påbegynt 2,5 lm, som i dag
 export const BESLAG_LENGDE_M = 2.5;

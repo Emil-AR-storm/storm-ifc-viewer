@@ -19,6 +19,7 @@ import { t } from "./i18n.js";
 import { LETT } from "./lett.js";
 import { camera, canvas, flyTil, frameHooks, makeLabel, raycaster, scene, skalerLapperMedTak } from "./scene.js";
 import { FV_PER_STABEL, FV_STRO_MM, STRO_MM, fagverkBunkeDybde, fagverkOffset, perLag, stalBunkeDybde, stalOffset } from "./stalbunker-regn.js";
+import { gruppeFlate, registrerMaaleflate } from "./pek-eier.js";
 
 // ---------- Objektmalene ----------
 // Alle mål i MILLIMETER i lagret form; regnes om til sceneenheter ved bygging.
@@ -995,3 +996,6 @@ S.materiellUtseendeRader = (body) => {
     };
   });
 };
+
+// 📏 Mål, kote og markering kan treffe materiellet — på begge sidene (pek-eier.js)
+registrerMaaleflate("materiell", gruppeFlate(materiellGroup));
