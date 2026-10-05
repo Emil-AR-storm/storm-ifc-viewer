@@ -7,12 +7,27 @@
 // Elementene kjennes igjen på IFC-ens GlobalId, som følger elementet mellom
 // revisjoner. Mangler GlobalId-treff (noen eksportører lager nye hver gang),
 // faller den tilbake på geometrisk match: type + posisjon + volum.
+//
+// TO MÅTER (Emil 01.10 / 05.10): når man trykker Sammenlign, velger man
+//   · AUTOMATISK — slik sammenligningen alltid har virket. Modellene ligger der
+//     de er tegnet. Denne er IKKE endret.
+//   · MANUELT — for en modell fra en annen leverandør, som ikke er bygget
+//     videre fra den gamle og derfor ligger et annet sted. Modellene legges
+//     oppå hverandre først:
+//       a) Sentrum mot sentrum: midten av begge modellene i samme punkt.
+//       b) Samme objekt i begge: man trykker på et objekt i den gamle og det
+//          samme objektet i den nye — midten av de to legges oppå hverandre,
+//          og hele bygget følger med.
+//     Bare AVTRYKKET av den gamle flyttes (tallene, ikke modellen på skjermen),
+//     så den nye modellen, riggen og markeringene står der de står. Etter
+//     flyttingen parres elementene også på «nærmeste like element» innen
+//     0,3 m, fordi to leverandører sjelden har nøyaktig samme koordinater.
 import * as THREE from "three";
 import { $, på, S, apnePanel, esc, ikon, loadingEl, loadingText } from "./state.js";
 import { t } from "./i18n.js";
 import { guidFor, sikreMeta, typeFor } from "./ifcrpc.js";
 import { alleElementIder } from "./ifc.js";
-import { allElementBoxes, elemDisplayName, elementBoxById, fmtVol, quantitiesForSet, val, zoomToElement } from "./elements.js";
+import { allElementBoxes, clearSelection, elemDisplayName, elementBoxById, fmtVol, quantitiesForSet, selectElement, val, zoomToElement } from "./elements.js";
 import { camera, controls, scene } from "./scene.js";
 
 const COL = { ny: 0x3cb44b, slettet: 0xef4444, endret: 0xfbbf24, uendret: 0x6b7280 };
@@ -181,6 +196,79 @@ export function compare(base, now) {
   return Object.assign(r, { metode, usikker: treff < minst * 0.5 });
 }
 
+// ---------- ✋ Manuelt: legg modellene oppå hverandre ----------
+// Avtrykket av den GAMLE modellen flyttes så referansepunktet (sentrum, eller
+// midten av objektet man trykket på) havner oppå referansepunktet i den nye.
+export function flyttAvtrykk(base, d) {
+  const items = new Map();
+  for (const [k, e] of base.items) items.set(k, Object.assign({}, e, { c: [e.c[0] + d[0], e.c[1] + d[1], e.c[2] + d[2]] }));
+  return Object.assign({}, base, { items });
+}
+
+// Parring på nærmeste like element. To leverandører tegner sjelden på
+// millimeteren likt, og 5 cm-rutenettet i rekeyGeo bommer når et senter
+// ligger like ved en rutekant. Her finnes for hvert element i den nye
+// modellen det nærmeste i den gamle innen `R` — samme IFC-type teller mest,
+// så likt mål — og hvert element brukes bare én gang (nærmeste par først).
+// Svaret er to kart med FELLES nøkler for parene, klare for diff().
+export function naerParing(baseItems, nowItems, R) {
+  const celle = R, nokkel = (c) => Math.floor(c[0] / celle) + "|" + Math.floor(c[1] / celle) + "|" + Math.floor(c[2] / celle);
+  const rute = new Map();
+  const bl = [...baseItems.values()];
+  bl.forEach((b, i) => { const k = nokkel(b.c); if (!rute.has(k)) rute.set(k, []); rute.get(k).push(i); });
+  const par = [];
+  const nl = [...nowItems.values()];
+  nl.forEach((e, j) => {
+    const cx = Math.floor(e.c[0] / celle), cy = Math.floor(e.c[1] / celle), cz = Math.floor(e.c[2] / celle);
+    for (let x = cx - 1; x <= cx + 1; x++) for (let y = cy - 1; y <= cy + 1; y++) for (let z = cz - 1; z <= cz + 1; z++) {
+      for (const i of rute.get(x + "|" + y + "|" + z) || []) {
+        const b = bl[i];
+        const dist = Math.hypot(e.c[0] - b.c[0], e.c[1] - b.c[1], e.c[2] - b.c[2]);
+        if (dist > R) continue;
+        const dMal = Math.max(...[0, 1, 2].map(q => Math.abs(e.d[q] - b.d[q])));
+        const annenType = (e.type || "") !== (b.type || "");
+        par.push({ i, j, s: dist + dMal * 0.5 + (annenType ? R : 0) });
+      }
+    }
+  });
+  par.sort((a, c) => a.s - c.s);
+  const bruktB = new Set(), bruktN = new Set();
+  const bUt = new Map(), nUt = new Map();
+  let n = 0;
+  for (const p of par) {
+    if (bruktB.has(p.i) || bruktN.has(p.j)) continue;
+    bruktB.add(p.i); bruktN.add(p.j);
+    const k = "par:" + (n++);
+    bUt.set(k, bl[p.i]); nUt.set(k, nl[p.j]);
+  }
+  bl.forEach((b, i) => { if (!bruktB.has(i)) bUt.set("b:" + i, b); });
+  nl.forEach((e, j) => { if (!bruktN.has(j)) nUt.set("n:" + j, e); });
+  return { base: bUt, now: nUt, par: n };
+}
+
+// Manuell sammenligning: flytt avtrykket, prøv de vanlige måtene (GlobalId og
+// geometri) OG nærmeste-parringen, og behold den som parrer flest.
+//   refB / refN: referansepunktet i den gamle og den nye modellen
+//   meterPerEnhet: modellens enhet (1 for meter, 0,001 for mm)
+export function compareManuelt(base, now, refB, refN, meterPerEnhet) {
+  const d = [refN[0] - refB[0], refN[1] - refB[1], refN[2] - refB[2]];
+  const flyttet = flyttAvtrykk(base, d);
+  const r = compare(flyttet, now);
+  const tol = Math.max(now.size * 2e-5, 0.001);
+  const p = naerParing(flyttet.items, now.items, 0.3 / (meterPerEnhet || 1));
+  const naer = diff(p.base, p.now, tol);
+  const treff = (x) => x.uendret.size + x.endret.length;
+  let ut = r;
+  if (treff(naer) > treff(r)) {
+    const sorter = (a, c) => (a.type || "").localeCompare(c.type || "") || (a.name || "").localeCompare(c.name || "");
+    naer.ny.sort(sorter); naer.endret.sort(sorter); naer.slettet.sort(sorter);
+    const minst = Math.max(1, Math.min(base.items.size, now.items.size));
+    ut = Object.assign(naer, { metode: "nærmeste element", usikker: treff(naer) < minst * 0.5 });
+  }
+  ut.flytt = d;
+  return ut;
+}
+
 // ---------- Visning ----------
 function paint() {
   compareGroup.clear();
@@ -247,8 +335,19 @@ function renderPanel() {
 
   if (!result) {
     const base = S.compareBase;
+    // ✋ Manuelt, objekt: den nye modellen er lastet — nå trykker man på det
+    // samme objektet i den
+    if (base && venterNy) {
+      $("compareBody").innerHTML =
+        '<p style="font-size:13px">' + ikon("hjelp") + ' ' + t("Trykk på <b>det samme objektet</b> i den nye modellen.") + '</p>' +
+        '<p style="color:var(--muted); font-size:12px; margin-top:8px">' + t("I den gamle valgte du: {0}", esc(base.manuell.refNavn || "")) + '</p>' +
+        '<div class="prop-actions" style="margin-top:12px"><button id="cmpAvbryt">' + t("Avbryt sammenligning") + '</button></div>';
+      $("cmpAvbryt").onclick = stopCompare;
+      return;
+    }
     $("compareBody").innerHTML = base
       ? '<p style="font-size:13px">' + t("Avtrykk tatt av <b>{0}</b> ({1} elementer).", esc(base.file), base.count) + '</p>' +
+        (base.manuell ? '<p style="font-size:12px; margin-top:6px">' + ikon("hjelp") + ' ' + esc(manuellTekst(base.manuell)) + '</p>' : '') +
         '<p style="color:var(--muted); font-size:12px; margin-top:8px">' +
         t("Åpne nå den nye versjonen – med Åpne eller Biblioteket. Endringene fargelegges automatisk når modellen er lastet.") + '</p>' +
         '<div class="prop-actions" style="margin-top:12px"><button id="cmpAvbryt">' + t("Avbryt sammenligning") + '</button></div>'
@@ -264,7 +363,9 @@ function renderPanel() {
     '<button id="cmpStopp">' + ikon("lukk") + ' ' + t("Avslutt") + '</button></div>' +
     '<p style="font-size:12px; color:var(--muted); margin-bottom:8px">' +
     esc(S.compareBase.file) + ' → ' + esc(S.fileName) +
-    t(" · gjenkjent på ") + r.metode + '</p>' +
+    t(" · gjenkjent på ") + t(r.metode) + '</p>' +
+    (S.compareBase.manuell ? '<p style="font-size:12px; color:var(--muted); margin-bottom:8px">' + ikon("hjelp") + ' ' +
+      esc(manuellTekst(S.compareBase.manuell, r.flytt)) + '</p>' : '') +
     (r.usikker ? '<p style="font-size:12px; color:var(--accent2); margin-bottom:8px">' + ikon("advarsel") + ' ' + t("Under halvparten av elementene lot seg parre. Er dette to versjoner av samme modell? Ellers har eksporten byttet både GlobalId og geometri.") + '</p>' : '') +
     // Radene under er også FILTER: overlappende bokser kan skjule hverandre,
     // så et trykk på Nye/Slettet/Endret viser bare den fargen i modellen.
@@ -407,7 +508,7 @@ export function applySharedCompare(c) {
 }
 
 // ---------- Start / stopp ----------
-async function startSnapshot() {
+async function startSnapshot(manuell) {
   loadingText.textContent = t("Leser modellen …");
   loadingEl.classList.add("open");
   const snap = await snapshotModel();
@@ -417,12 +518,15 @@ async function startSnapshot() {
     renderPanel();
     return;
   }
+  if (manuell) snap.manuell = manuell;
   S.compareBase = snap;
   result = null;
   renderPanel();
 }
 
 export function stopCompare() {
+  S.cmpVelger = null;
+  venterNy = null;
   S.compareOn = false;
   S.compareBase = null;
   result = null;
@@ -443,6 +547,23 @@ S.onModelLoaded = async () => {
   const now = await snapshotModel();
   loadingEl.classList.remove("open");
   if (!now) return;
+  // ✋ Manuelt: sentrum er klart med en gang; objektet må velges i den nye
+  if (base.manuell && base.manuell.slag === "senter") { fullforManuelt(base, now, modellSenter()); return; }
+  if (base.manuell && base.manuell.slag === "objekt") {
+    venterNy = { now };
+    result = null;
+    $("btnCompare").classList.add("active");
+    S.cmpVelger = (id) => {
+      const c = objektSenter(id);
+      if (!c) return;
+      S.cmpVelger = null;
+      const v = venterNy; venterNy = null;
+      clearSelection();
+      fullforManuelt(base, v.now, c, elemDisplayName(id));
+    };
+    renderPanel();
+    return;
+  }
   result = compare(base, now);
   boksFilter = null;   // ny sammenligning starter alltid med alle fargene
   S.compareOn = true;
@@ -451,9 +572,89 @@ S.onModelLoaded = async () => {
   renderPanel();
 };
 
+function fullforManuelt(base, now, refN, navnNy) {
+  if (navnNy) base.manuell.refNavnNy = navnNy;
+  result = compareManuelt(base, now, base.manuell.ref, refN, S.enhetSkala || 1);
+  boksFilter = null;
+  S.compareOn = true;
+  $("btnCompare").classList.add("active");
+  paint();
+  renderPanel();
+}
+
 på("btnCompare", "click", () => {
   if (!S.modelGroup) return;
-  if (S.compareOn || S.compareBase) { stopCompare(); return; }
+  if (S.compareOn || S.compareBase || $("btnCompare").classList.contains("active")) { stopCompare(); return; }
   $("btnCompare").classList.add("active");
-  startSnapshot();
+  visValg();
 });
+
+// ---------- ✋ Valget: Automatisk eller Manuelt ----------
+let venterNy = null;    // { now } — manuelt, objekt: venter på trykket i den nye modellen
+S.cmpVelger = null;     // main.js: et trykk på et element går hit i stedet for å velge det
+
+const valgRad = (id, tittel, tekst) =>
+  '<div class="lib-item" id="' + id + '" style="cursor:pointer"><div class="n">' + tittel + '</div>' +
+  '<div class="m" style="white-space:normal">' + tekst + '</div></div>';
+
+function visValg() {
+  apnePanel("comparePanel");
+  $("compareBody").innerHTML =
+    '<p style="font-size:13px; margin-bottom:8px">' + t("Hvordan skal den nye modellen legges oppå denne?") + '</p>' +
+    valgRad("cmpAuto", ikon("hake") + ' ' + t("Automatisk"),
+      t("Modellene ligger der de er tegnet. Best når den nye er en oppdatering av samme modell.")) +
+    valgRad("cmpManuelt", ikon("juster") + ' ' + t("Manuelt"),
+      t("For en modell fra en annen leverandør som ikke ligger på samme sted. Du legger modellene oppå hverandre selv.")) +
+    '<div class="prop-actions" style="margin-top:12px"><button id="cmpAvbryt">' + t("Avbryt sammenligning") + '</button></div>';
+  $("cmpAuto").onclick = () => startSnapshot();
+  $("cmpManuelt").onclick = visManuelt;
+  $("cmpAvbryt").onclick = stopCompare;
+}
+
+function visManuelt() {
+  $("compareBody").innerHTML =
+    '<p style="font-size:13px; margin-bottom:8px">' + t("Manuelt: hvordan skal modellene legges oppå hverandre?") + '</p>' +
+    valgRad("cmpSenter", t("Sentrum mot sentrum"),
+      t("Midten av begge modellene legges i samme punkt.")) +
+    valgRad("cmpObjekt", t("Samme objekt i begge"),
+      t("Trykk på et objekt her, og på det samme objektet i den nye modellen. De to legges nøyaktig oppå hverandre, og resten av bygget følger med.")) +
+    '<div class="prop-actions" style="margin-top:12px"><button id="cmpTilbake">' + t("Tilbake") + '</button><button id="cmpAvbryt">' + t("Avbryt sammenligning") + '</button></div>';
+  $("cmpSenter").onclick = () => startSnapshot({ slag: "senter", ref: modellSenter() });
+  $("cmpObjekt").onclick = visVelgGammel;
+  $("cmpTilbake").onclick = visValg;
+  $("cmpAvbryt").onclick = stopCompare;
+}
+
+function visVelgGammel() {
+  $("compareBody").innerHTML =
+    '<p style="font-size:13px">' + ikon("hjelp") + ' ' + t("Trykk på <b>et objekt</b> i denne modellen som finnes i begge (for eksempel en hjørnesøyle).") + '</p>' +
+    '<div class="prop-actions" style="margin-top:12px"><button id="cmpTilbake">' + t("Tilbake") + '</button><button id="cmpAvbryt">' + t("Avbryt sammenligning") + '</button></div>';
+  $("cmpTilbake").onclick = () => { S.cmpVelger = null; visManuelt(); };
+  $("cmpAvbryt").onclick = stopCompare;
+  S.cmpVelger = (id) => {
+    const c = objektSenter(id);
+    if (!c) return;
+    S.cmpVelger = null;
+    selectElement(id);   // så man ser hva man valgte, til avtrykket er tatt
+    startSnapshot({ slag: "objekt", ref: c, refNavn: elemDisplayName(id) }).then(() => clearSelection());
+  };
+}
+
+function modellSenter() {
+  const b = new THREE.Box3().setFromObject(S.modelGroup);
+  const c = b.getCenter(new THREE.Vector3());
+  return [c.x, c.y, c.z];
+}
+function objektSenter(id) {
+  const b = elementBoxById(id);
+  if (!b || b.isEmpty()) return null;
+  const c = b.getCenter(new THREE.Vector3());
+  return [c.x, c.y, c.z];
+}
+export function manuellTekst(m, flytt) {
+  const del = m.slag === "senter" ? t("Manuelt · sentrum mot sentrum")
+    : t("Manuelt · samme objekt: {0}", (m.refNavn || "") + (m.refNavnNy && m.refNavnNy !== m.refNavn ? " → " + m.refNavnNy : ""));
+  if (!flytt) return del;
+  const m_ = Math.hypot(flytt[0], flytt[1], flytt[2]) * (S.enhetSkala || 1);
+  return del + " · " + t("den gamle flyttet {0}", m_ >= 1 ? m_.toFixed(2).replace(".", ",") + " m" : Math.round(m_ * 1000) + " mm");
+}

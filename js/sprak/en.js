@@ -2103,5 +2103,22 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Vis trinnene": "Show the steps",
   "Legg sammen": "Collapse",
   "alt ferdig": "everything done",
-  "Benlengde": "Leg length"
+  "Benlengde": "Leg length",
+  "Trykk på <b>det samme objektet</b> i den nye modellen.": "Click <b>the same object</b> in the new model.",
+  "I den gamle valgte du: {0}": "In the old one you chose: {0}",
+  "Hvordan skal den nye modellen legges oppå denne?": "How should the new model be laid over this one?",
+  "Modellene ligger der de er tegnet. Best når den nye er en oppdatering av samme modell.": "The models stay where they were drawn. Best when the new one is an update of the same model.",
+  "Manuelt": "Manual",
+  "For en modell fra en annen leverandør som ikke ligger på samme sted. Du legger modellene oppå hverandre selv.": "For a model from another supplier that is not in the same place. You lay the models over each other yourself.",
+  "Manuelt: hvordan skal modellene legges oppå hverandre?": "Manual: how should the models be laid over each other?",
+  "Sentrum mot sentrum": "Centre to centre",
+  "Midten av begge modellene legges i samme punkt.": "The centre of both models is placed at the same point.",
+  "Samme objekt i begge": "Same object in both",
+  "Trykk på et objekt her, og på det samme objektet i den nye modellen. De to legges nøyaktig oppå hverandre, og resten av bygget følger med.": "Click an object here, and the same object in the new model. The two are laid exactly over each other, and the rest of the building follows.",
+  "Tilbake": "Back",
+  "Trykk på <b>et objekt</b> i denne modellen som finnes i begge (for eksempel en hjørnesøyle).": "Click <b>an object</b> in this model that exists in both (for example a corner column).",
+  "Manuelt · sentrum mot sentrum": "Manual · centre to centre",
+  "Manuelt · samme objekt: {0}": "Manual · same object: {0}",
+  "den gamle flyttet {0}": "old one moved {0}",
+  "nærmeste element": "nearest element"
 };

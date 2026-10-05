@@ -104,6 +104,14 @@ canvas.addEventListener("pointerup", (e) => {
     if (fh) setClipFromFace(fh);
     return;
   }
+  // 🔄 Sammenlign → Manuelt → «Samme objekt i begge»: trykket velger
+  // referanseobjektet (compare.js), i stedet for å åpne egenskapene
+  if (S.cmpVelger && !S.mode && !e.shiftKey) {
+    const ch = pick(e.clientX, e.clientY);
+    const cid = ch ? hitID(ch) : null;
+    if (cid != null) S.cmpVelger(cid);
+    return;
+  }
   // 🟡 Trykk på en markering åpner teksten. Går foran valg av element, men ikke
   // foran verktøyene – i 📌/📏/▲-modus skal trykket gjøre det modusen sier.
   if (!S.mode) {

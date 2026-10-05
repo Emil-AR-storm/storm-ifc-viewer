@@ -2103,5 +2103,22 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Vis trinnene": "Rodyti etapus",
   "Legg sammen": "Suskleisti",
   "alt ferdig": "viskas atlikta",
-  "Benlengde": "Kojelės ilgis"
+  "Benlengde": "Kojelės ilgis",
+  "Trykk på <b>det samme objektet</b> i den nye modellen.": "Spustelėkite <b>tą patį objektą</b> naujame modelyje.",
+  "I den gamle valgte du: {0}": "Senajame pasirinkote: {0}",
+  "Hvordan skal den nye modellen legges oppå denne?": "Kaip uždėti naują modelį ant šio?",
+  "Modellene ligger der de er tegnet. Best når den nye er en oppdatering av samme modell.": "Modeliai lieka ten, kur nubraižyti. Geriausia, kai naujas yra to paties modelio atnaujinimas.",
+  "Manuelt": "Rankiniu būdu",
+  "For en modell fra en annen leverandør som ikke ligger på samme sted. Du legger modellene oppå hverandre selv.": "Kito tiekėjo modeliui, kuris yra ne toje pačioje vietoje. Modelius uždedate vienas ant kito patys.",
+  "Manuelt: hvordan skal modellene legges oppå hverandre?": "Rankiniu būdu: kaip uždėti modelius vienas ant kito?",
+  "Sentrum mot sentrum": "Centras į centrą",
+  "Midten av begge modellene legges i samme punkt.": "Abiejų modelių centrai sutapdinami viename taške.",
+  "Samme objekt i begge": "Tas pats objektas abiejuose",
+  "Trykk på et objekt her, og på det samme objektet i den nye modellen. De to legges nøyaktig oppå hverandre, og resten av bygget følger med.": "Spustelėkite objektą čia ir tą patį objektą naujame modelyje. Jie bus tiksliai sutapdinti, o likęs pastatas paseks.",
+  "Tilbake": "Atgal",
+  "Trykk på <b>et objekt</b> i denne modellen som finnes i begge (for eksempel en hjørnesøyle).": "Spustelėkite <b>objektą</b> šiame modelyje, kuris yra abiejuose (pvz., kampinę koloną).",
+  "Manuelt · sentrum mot sentrum": "Rankiniu būdu · centras į centrą",
+  "Manuelt · samme objekt: {0}": "Rankiniu būdu · tas pats objektas: {0}",
+  "den gamle flyttet {0}": "senasis perkeltas {0}",
+  "nærmeste element": "artimiausias elementas"
 };
