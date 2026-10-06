@@ -77,6 +77,7 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
   <symbol id="i-maal" viewBox="0 0 24 24"><path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z" /><path d="m14.5 12.5 2-2" /><path d="m11.5 9.5 2-2" /><path d="m8.5 6.5 2-2" /><path d="m17.5 15.5 2-2" /></symbol>
   <symbol id="i-kjede" viewBox="0 0 24 24"><path d="M2 8h20" /><path d="M2 5v6M9 5v6M15 5v6M22 5v6" /><path d="M1 9.5 3 6.5M8 9.5l2-3M14 9.5l2-3M21 9.5l2-3" /><path d="M5 16h2M11 16h2M17 16h2" /></symbol>
   <symbol id="i-vinkel" viewBox="0 0 24 24"><path d="M3 20h18" /><path d="M3 20 15 5" /><path d="M10 20a7 7 0 0 0-2.2-5.1" /></symbol>
+  <symbol id="i-laster" viewBox="0 0 24 24"><path d="M12 2v8M8.5 4 12 6.5 15.5 4M8.5 9.5 12 7" /><path d="M2 14h12a3 3 0 1 0-3-3" /><path d="M2 18h16a3 3 0 1 1-3 3" /><path d="M2 22h6" /></symbol>
   <symbol id="i-kote" viewBox="0 0 24 24"><path d="m8 3 4 8 5-5 5 15H2L8 3z" /></symbol>
   <symbol id="i-akser" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2" /><path d="M3 9h18" /><path d="M3 15h18" /><path d="M9 3v18" /><path d="M15 3v18" /></symbol>
   <symbol id="i-snitt" viewBox="0 0 24 24"><circle cx="6" cy="6" r="3" /><path d="M8.12 8.12 12 12" /><path d="M20 4 8.12 15.88" /><circle cx="6" cy="18" r="3" /><path d="M14.8 14.8 20 20" /></symbol>
@@ -183,6 +184,7 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
   <button id="btnRigg" title="Rigg: brakker, toalett, container og annen rigg på tomta" data-i18n-title><svg class="ikon"><use href="#i-rigg"/></svg><span class="btn-t" data-i18n>Rigg</span></button>
   <button id="btnStopeplan" title="Støpeplan: del støpene i etapper med dato, felt på plata og elementer" data-i18n-title><svg class="ikon"><use href="#i-stope"/></svg><span class="btn-t" data-i18n>Støpeplan</span></button>
   <button id="btnFramdrift" title="Framdriftsplan: trinn med dato for alt som skal utføres — elementer, SW, takplater, rigg og materiell" data-i18n-title><svg class="ikon"><use href="#i-framdrift"/></svg><span class="btn-t" data-i18n>Framdriftsplan</span></button>
+  <button id="btnLaster" title="Snø og vind: veiledende snølast på taket og vindlast på fasadene" data-i18n-title><svg class="ikon"><use href="#i-laster"/></svg><span class="btn-t" data-i18n>Snø og vind</span></button>
   <button id="btnMateriell" title="Materiell: legg inn vareleveranser i modellen så alle ser hvor de skal ligge" data-i18n-title><svg class="ikon"><use href="#i-materiell"/></svg><span class="btn-t" data-i18n>Materiell</span></button>
   <button id="btnSW" title="SW-generator: automatiske veggelementer på stålmodeller" data-i18n-title><svg class="ikon"><use href="#i-sw"/></svg><span class="btn-t" data-i18n>SW-generator</span></button>
   <button id="btnBlikk" title="Blikk &amp; Tak: beslag og hatprofil rundt de genererte veggelementene" data-i18n-title><svg class="ikon"><use href="#i-sw"/></svg><span class="btn-t" data-i18n>Blikk &amp; Tak</span></button>
@@ -263,6 +265,11 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
 
 <!-- 🧱 Støpeplan (js/stopeplan.js) -->
 <!-- 📅 Framdriftsplan (js/framdrift.js) -->
+<div class="panel" id="lasterPanel">
+  <header><span data-i18n>Snø og vind</span><button onclick="document.getElementById('lasterPanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <div class="body" id="lasterBody"></div>
+</div>
+
 <div class="panel" id="framdriftPanel">
   <header><span data-i18n>Framdriftsplan</span><button onclick="document.getElementById('framdriftPanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="framdriftBody"></div>
