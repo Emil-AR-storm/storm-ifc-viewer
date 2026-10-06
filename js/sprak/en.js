@@ -2184,5 +2184,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "I – kystnært, åpent": "I – coastal, open",
   "II – landbruk, spredte hus": "II – farmland, scattered houses",
   "III – tettsted, skog": "III – village, forest",
-  "IV – by, minst 15 % bebygd": "IV – town, at least 15 % built up"
+  "IV – by, minst 15 % bebygd": "IV – town, at least 15 % built up",
+  "Hentet fra terrenget (adressen)": "Taken from the terrain (address)",
+  "Hentet fra terrenget": "Taken from the terrain"
 };

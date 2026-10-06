@@ -18,7 +18,7 @@ import { swGroup } from "./veggelement/tilstand.js";
 import { foldSeksjoner } from "./seksjoner.js";
 import { forskyvLapper, meldMaalLapper } from "./maal-verktoy.js";
 import {
-  CPE_FLATT_TAK, TERRENG, cpeVegg, flattTakSoner, mu1, snoMark, snoTak, tall, vaskLastdata,
+  CPE_FLATT_TAK, TERRENG, cpeVegg, flattTakSoner, kommuneFraSvar, kommunePunktUrl, mu1, snoMark, snoTak, tall, vaskLastdata,
   veggSoner, vindBasis, vindTrykk, we
 } from "./laster-regn.js";
 
@@ -62,6 +62,43 @@ function hFraTerreng() {
   const c = b.getCenter(new THREE.Vector3()); c.y = b.min.y;
   const h = S.koteMoh(c);
   return Number.isFinite(h) ? Math.round(h) : null;
+}
+
+// ---------- 🗺 Kommunen fra terrenget (Emil 06.10) ----------
+// Terrenget som er lastet inn på modellen vet adressen. Adressesøket gir
+// kommunenavnet direkte; ble terrenget hentet på en koordinat, spør vi
+// Kartverkets kommuneinfo om punktet. Svaret huskes per punkt, så panelet
+// ikke spør nettet hver gang det åpnes.
+const kommuneHurtig = new Map();
+export async function kommuneFraTerreng() {
+  const ref = S.terrengRef ? S.terrengRef() : null;
+  if (!ref) return "";
+  if (ref.kommune) return ref.kommune;
+  const url = kommunePunktUrl(ref.adresseE, ref.adresseN);
+  if (!url) return "";
+  if (kommuneHurtig.has(url)) return kommuneHurtig.get(url);
+  try {
+    const svar = await fetch(url);
+    if (!svar.ok) return "";
+    const navn = kommuneFraSvar(await svar.json());
+    if (navn) kommuneHurtig.set(url, navn);
+    return navn;
+  } catch (_) { return ""; }
+}
+
+// Fyller inn TOMME felt fra terrenget: kommunen, og høyden over havet. Det
+// brukeren har skrevet selv, røres aldri. `fra` husker hva som kom fra
+// terrenget, så panelet kan si det under feltet.
+let fraTerreng = { kommune: false, H: false };
+async function fyllFraTerreng() {
+  let endret = false;
+  if (!data.H) { const h = hFraTerreng(); if (h != null) { data.H = String(h); fraTerreng.H = true; endret = true; } }
+  if (!data.kommune) {
+    const k = await kommuneFraTerreng();
+    if (k && !data.kommune) { data.kommune = k; fraTerreng.kommune = true; endret = true; }
+  }
+  if (endret) { skriv(); if ($("lasterPanel") && $("lasterPanel").classList.contains("open")) tegnPanel(); }
+  return endret;
 }
 
 // ---------- Takflatene ----------
@@ -334,7 +371,9 @@ function tegnPanel() {
     '<div class="prop-actions" data-sw-fast><button id="laSno">' + t("Vis snølast") + '</button><button id="laVind">' + t("Vis vindlast") + "</button></div>" +
     '<h4 data-sek="la-sted">' + t("Sted") + "</h4>" +
     felt("kommune", t("Kommune"), "", t("f.eks. Modum")) +
+    (fraTerreng.kommune ? '<p class="la-tom">' + ikon("kote") + " " + t("Hentet fra terrenget (adressen)") + "</p>" : "") +
     felt("H", t("Høyde over havet, H"), "moh", terrengH != null ? t("fra terrenget: {0}", terrengH) : "") +
+    (fraTerreng.H ? '<p class="la-tom">' + ikon("kote") + " " + t("Hentet fra terrenget") + "</p>" : "") +
     (terrengH != null ? '<div class="prop-actions"><button id="laHentH">' + t("Bruk høyden fra terrenget ({0} moh)", terrengH) + "</button></div>" : "") +
     '<h4 data-sek="la-sno">' + t("Snølast (NS-EN 1991-1-3)") + "</h4>" +
     felt("sk0", "sk,0", "kN/m²") + felt("Hg", "Hg", "moh") + felt("dsk", "Δsk", t("kN/m² per 100 m")) + felt("skMaks", "sk,maks", "kN/m²") +
@@ -351,7 +390,11 @@ function tegnPanel() {
     '<div id="laVindRes"></div>';
   foldSeksjoner(body, { nokkel: "storm-laster-seksjoner-apne", standard: ["la-sted", "la-sno", "la-vind"] });
   body.querySelectorAll("[data-felt]").forEach(el => {
-    const lagre = () => { data[el.dataset.felt] = el.value; skriv(); visResultat(); if (visSno || visVind) tegn(); };
+    const lagre = () => {
+      data[el.dataset.felt] = el.value;
+      if (el.dataset.felt in fraTerreng) fraTerreng[el.dataset.felt] = false;   // skrevet om for hånd
+      skriv(); visResultat(); if (visSno || visVind) tegn();
+    };
     el.addEventListener("input", lagre); el.addEventListener("change", lagre);
   });
   body.querySelectorAll("[data-retning]").forEach(el => el.onclick = () => {
@@ -410,11 +453,13 @@ på("btnLaster", "click", () => {
   if (panel.classList.contains("open")) { panel.classList.remove("open"); return; }
   if (!S.modelGroup) { alert(t("Åpne en modell først.")); return; }
   les();
+  fraTerreng = { kommune: false, H: false };
   tegnPanel();
   apnePanel("lasterPanel");
+  fyllFraTerreng();   // tegner panelet på nytt når kommunen er funnet
 });
 
 // Ny modell: lastdataene hører til modellen, og visningen ryddes
-S.ryddLaster = () => { visSno = visVind = false; rydd(); data = {}; };
+S.ryddLaster = () => { visSno = visVind = false; rydd(); data = {}; fraTerreng = { kommune: false, H: false }; };
 
-export const __test = { RETNINGER, regnUt, settData: (d) => { data = vaskLastdata(d); } };
+export const __test = { RETNINGER, regnUt, settData: (d) => { data = vaskLastdata(d); }, hentData: () => data, fyllFraTerreng };

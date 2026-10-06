@@ -155,3 +155,20 @@ export function vaskLastdata(d) {
   if (ut.retning && !["0", "1", "2", "3"].includes(ut.retning)) delete ut.retning;
   return ut;
 }
+
+// ═══════════════════════ KOMMUNEN FRA TERRENGET ═══════════════════════
+// Kartverkets kommuneinfo: hvilken kommune et punkt (UTM33, EPSG:25833)
+// ligger i. Ingen nøkkel — samme tjeneste (ws.geonorge.no) som adressesøket
+// i Terreng. Brukes bare når adressen ikke hadde kommunenavnet med.
+export const KOMMUNE_PUNKT_URL = "https://ws.geonorge.no/kommuneinfo/v1/punkt";
+export function kommunePunktUrl(E, N) {
+  if (E === null || E === undefined || E === "" || N === null || N === undefined || N === "") return null;
+  const e = Number(E), n = Number(N);
+  if (!Number.isFinite(e) || !Number.isFinite(n)) return null;
+  return KOMMUNE_PUNKT_URL + "?nord=" + Math.round(n) + "&ost=" + Math.round(e) + "&koordsys=25833";
+}
+// «Øvre Eiker» fra { kommunenavn: "Øvre Eiker", kommunenummer: "3314", … }
+export function kommuneFraSvar(json) {
+  const navn = json && typeof json.kommunenavn === "string" ? json.kommunenavn.trim() : "";
+  return navn ? navn.slice(0, 60) : "";
+}
