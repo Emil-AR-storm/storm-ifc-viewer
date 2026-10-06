@@ -40,7 +40,7 @@ export function eierPunktet(navn, x, y) { return naermesteEier(x, y) === navn; }
 // og lytterne deres ligger på window i fangstfasen — de tok trykket før
 // main.js fikk sette målepunktet. I disse modusene betyr et trykk «her er et
 // punkt», aldri «åpne dette objektet».
-const PUNKTMODUSER = new Set(["measure", "kote", "marker"]);
+const PUNKTMODUSER = new Set(["measure", "kote", "marker", "kjede", "vinkel"]);
 export function iPunktModus() { return PUNKTMODUSER.has(S.mode); }
 
 // …men punktet skal havne PÅ objektet du trykte på (kranfoten, toppen av

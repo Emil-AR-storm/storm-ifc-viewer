@@ -32,8 +32,8 @@ export const GRUPPER = [
   // samme som verktøy INNE i gruppa (Mål-knappen og Utseende-panelet), og da
   // kunne ingen si «trykk på Mål» uten å måtte forklare hvilken (Emil 31.08).
   { id: "mal",      navn: "Måleverktøy",      ikonNavn: "maal",
-    hjelp: "Måleverktøy: avstand, kote og aksesystem",
-    knapper: ["btnMeasure", "btnKote", "btnAxes"] },
+    hjelp: "Måleverktøy: avstand, kjedemål, vinkel og fall, kote og aksesystem",
+    knapper: ["btnMeasure", "btnKjede", "btnVinkel", "btnKote", "btnAxes"] },
   { id: "info",     navn: "Bygg Info",        ikonNavn: "sok",
     hjelp: "Informasjon om bygget: markeringer, mengder, søk og sammenligning",
     knapper: ["btnMarker", "btnQty", "btnSearch", "btnGrupper", "btnTerreng", "btnRigg", "btnStopeplan", "btnFramdrift", "btnCompare"] },

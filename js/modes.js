@@ -6,13 +6,15 @@ import { koteGroup, measureGroup } from "./scene.js";
 
 // ---------- Modus-håndtering ----------
 
-export const modeButtons = { marker: $("btnMarker"), measure: $("btnMeasure"), kote: $("btnKote") };
+export const modeButtons = { marker: $("btnMarker"), measure: $("btnMeasure"), kote: $("btnKote"), kjede: $("btnKjede"), vinkel: $("btnVinkel") };
 
 export const modeBar = $("modeBar");
 
 export function setMode(m) {
   S.mode = (S.mode === m) ? null : m;
-  for (const k in modeButtons) modeButtons[k].classList.toggle("active", S.mode === k);
+  for (const k in modeButtons) if (modeButtons[k]) modeButtons[k].classList.toggle("active", S.mode === k);
+  // 📏📐 et kjedemål eller en vinkel under arbeid kastes når modusen byttes
+  if (S.avbrytMaalVerktoy) S.avbrytMaalVerktoy();
   // 📦 materiell-modus settes av materiell.js — men går man hit fra den,
   // skal knappen dens slippe å stå som aktiv
   const bm = $("btnMateriell");
@@ -58,6 +60,10 @@ på("btnMarker", "click", () => setMode("marker"));
 på("btnMeasure", "click", () => setMode("measure"));
 
 på("btnKote", "click", () => setMode("kote"));
+
+på("btnKjede", "click", () => setMode("kjede"));     // 📏 kjedemål (js/maal-verktoy.js)
+
+på("btnVinkel", "click", () => setMode("vinkel"));   // 📐 vinkel og fall (js/maal-verktoy.js)
 
 export function updateModeBar() {
   if (S.clipOn || S.storeyOn) return; // snitt-/etasjekontroller styrer modeBar
@@ -107,6 +113,10 @@ export function updateModeBar() {
       });
     };
     modeBar.classList.add("open");
+  } else if (S.mode === "kjede" && S.kjedeModeBar) {
+    S.kjedeModeBar(modeBar);      // 📏 eies av js/maal-verktoy.js
+  } else if (S.mode === "vinkel" && S.vinkelModeBar) {
+    S.vinkelModeBar(modeBar);     // 📐 eies av js/maal-verktoy.js
   } else if (S.mode === "marker") {
     modeBar.innerHTML = '<span class="lbl">' + t("Trykk på modellen for å plassere markering") + '</span>';
     // ⭕▭ Område-valgene (sirkel/firkant + nivå) eies av markers.js og legges
