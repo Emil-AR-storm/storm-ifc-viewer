@@ -2186,5 +2186,11 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "III – tettsted, skog": "III – village, forest",
   "IV – by, minst 15 % bebygd": "IV – town, at least 15 % built up",
   "Hentet fra terrenget (adressen)": "Taken from the terrain (address)",
-  "Hentet fra terrenget": "Taken from the terrain"
+  "Hentet fra terrenget": "Taken from the terrain",
+  "vb,0 er {0} m/s. Referansevindhastigheten i Norge er vanligvis mellom 22 og 31 m/s — sjekk tallet.": "vb,0 is {0} m/s. The reference wind velocity in Norway is usually between 22 and 31 m/s — check the value.",
+  "{1} er {0}. Den skal ligge mellom 0 og 1,0 (normalt 1,0).": "{1} is {0}. It should be between 0 and 1.0 (normally 1.0).",
+  "{1} er {0}. Høydefaktoren er 1,0 eller litt større — aldri under 1,0.": "{1} is {0}. The altitude factor is 1.0 or slightly larger — never below 1.0.",
+  "{1} er {0}. Sannsynlighetsfaktoren er normalt 1,0 (50 års returperiode).": "{1} is {0}. The probability factor is normally 1.0 (50-year return period).",
+  "sk,0 er {0} kN/m². Det er utenfor det som er vanlig i Norge — sjekk tallet.": "sk,0 is {0} kN/m². That is outside what is usual in Norway — check the value.",
+  "{1} er {0}. Den skal normalt være 1,0.": "{1} is {0}. It should normally be 1.0."
 };
