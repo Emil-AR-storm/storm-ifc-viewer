@@ -26,7 +26,8 @@ import { innerSkjulNaa, oppdaterInnerveggerEtterUtsp, settInnerSkjul, tegnInnerv
 // Ringen er trygg: tegnBlikk() kalles når tegnDelA KJØRER, ikke mens modulen
 // lastes (se regelen øverst i js/veggelement.js).
 import { tegnBlikk } from "./blikk.js";
-import { tegnTak } from "./tak.js";
+import { tegnTak, takPa } from "./tak.js";
+import { blikkPa } from "./blikk-just.js";
 
 // ---------- 👁 «SW-generator» i 🎨 Utseende ----------
 // Emil 03.09: alt SW-generatoren har satt PÅ BYGGET skal kunne skjules —
@@ -70,6 +71,8 @@ export function swSkjulRad(sk, attr, navn, tekst, ekstra) {
     '" style="padding:3px 8px">' + ikon(sk[navn] ? "skjul" : "vis") + '</button></div></div>';
 }
 
+const harTak = () => { try { return takPa(); } catch (_) { return false; } };
+const harBlikk = () => { try { return blikkPa(); } catch (_) { return false; } };
 S.swUtseendeRader = (body) => {
   if (!body) return;
   const antV = ((lagret && lagret.vegger) || []).length;
@@ -89,6 +92,10 @@ S.swUtseendeRader = (body) => {
       (lagret.gulv ? swSkjulRad(sk, "data-sw-skjul", "gulv", "Gulv og isolasjon") : "") +
       ((lagret.ringmur || []).length
         ? swSkjulRad(sk, "data-sw-skjul", "ringmur", "Ringmur", (lagret.ringmur || []).length) : "") +
+      // 🏠 Tak og blikk fra «Blikk & Tak» (Emil 06.10): kunne før bare skjules
+      // med «Alt på bygget». Radene vises når generatoren har lagt dem.
+      (harTak() ? swSkjulRad(sk, "data-sw-skjul", "tak", "Tak (takplater)") : "") +
+      (harBlikk() ? swSkjulRad(sk, "data-sw-skjul", "blikk", "Blikk") : "") +
       swSkjulRad(sk, "data-sw-skjul", "merking", "Merking og mål") +
       '<p style="color:var(--muted);font-size:11px;margin:2px 0 6px">' +
         t("Bunkene med veggelementer rundt bygget ligger i Materiell og skjules i sine egne rader over.") + '</p>';
