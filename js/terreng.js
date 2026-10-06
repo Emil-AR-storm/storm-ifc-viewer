@@ -205,6 +205,12 @@ S.terrengRef = () => {
     synlig,
     // 📄 riggplanen skriver adressen i tittelfeltet
     adresse: (terreng.adresse && terreng.adresse.tekst) || "",
+    // ❄🌬 Snø og vind fyller inn kommunen herfra (Emil 06.10). Adresse-API-et
+    // gir kommunenavnet; er terrenget hentet på en koordinat, er det tomt, og
+    // da spør laster.js kommuneinfo på punktet (adresseE/adresseN, UTM33).
+    kommune: (terreng.adresse && terreng.adresse.kommune) || "",
+    adresseE: terreng.adresse && Number.isFinite(terreng.adresse.E) ? terreng.adresse.E : E0,
+    adresseN: terreng.adresse && Number.isFinite(terreng.adresse.N) ? terreng.adresse.N : N0,
     yVed(E, N) {
       if (!synlig) return null;
       if (pad && pad.paa && gulv && !visMasser) {

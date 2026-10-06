@@ -2184,5 +2184,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "I – kystnært, åpent": "I – pakrantė, atvira",
   "II – landbruk, spredte hus": "II – žemės ūkis, pavieniai namai",
   "III – tettsted, skog": "III – gyvenvietė, miškas",
-  "IV – by, minst 15 % bebygd": "IV – miestas, bent 15 % užstatyta"
+  "IV – by, minst 15 % bebygd": "IV – miestas, bent 15 % užstatyta",
+  "Hentet fra terrenget (adressen)": "Paimta iš reljefo (adresas)",
+  "Hentet fra terrenget": "Paimta iš reljefo"
 };

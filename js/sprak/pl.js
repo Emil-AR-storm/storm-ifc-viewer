@@ -2184,5 +2184,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "I – kystnært, åpent": "I – przybrzeżny, otwarty",
   "II – landbruk, spredte hus": "II – tereny rolne, rozproszona zabudowa",
   "III – tettsted, skog": "III – miejscowość, las",
-  "IV – by, minst 15 % bebygd": "IV – miasto, min. 15 % zabudowy"
+  "IV – by, minst 15 % bebygd": "IV – miasto, min. 15 % zabudowy",
+  "Hentet fra terrenget (adressen)": "Pobrano z terenu (adres)",
+  "Hentet fra terrenget": "Pobrano z terenu"
 };
