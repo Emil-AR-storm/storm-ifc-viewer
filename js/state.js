@@ -241,6 +241,7 @@ export function nullstillModellState() {
   if (S.ryddRigg) S.ryddRigg();
   if (S.ryddStopeplan) S.ryddStopeplan();   // 🧱 støpeplanen hørte til modellen som ble lukket
   if (S.ryddFramdrift) S.ryddFramdrift();   // 📅 framdriftsplanen likeså
+  if (S.ryddLaster) S.ryddLaster();         // ❄🌬 snø- og vindvisningen hørte til modellen
   if (S.ryddTakLett) S.ryddTakLett();   // 🏠 takplatene på byggeplass-siden
 }
 

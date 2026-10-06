@@ -203,6 +203,11 @@ export const KORT = [
     tekst: "Framdriftsplan (i Bygg Info) deler arbeidet i trinn med Fra- og Til-dato. Trykk + Legg til på trinnet og velg det som utføres da — elementer, SW-elementer, takplater, blikk, rigg, materiell og markeringer (trykk, eller shift + dra en boks). Det som allerede ligger i et trinn, er skjult mens du velger. − Fjern tar ting ut igjen. Glideren nederst viser bygget en valgt dag, og materiellbunkene brukes opp etter hvert som det de er levert til monteres. Last ned PDF gir én side per trinn, Lag video en film der kameraet går rundt bygget — videoen lagres i SharePoint, og PDF-en får en QR-kode til den. Planen følger med ut til byggeplassen når du trykker Storm-Byggeplass."
   },
   {
+    hvor: "kontor", ikonNavn: "laster",
+    tittel: "Snø og vind: veiledende laster",
+    tekst: "Snø og vind (i Bygg Info) regner snølasten på hver takflate og vindtrykket på fasadene og et flatt tak. Skriv inn kommuneverdiene fra standarden eller RIBs lastforutsetninger (sk,0, Hg, Δsk, vb,0), velg terrengkategori og vindretning, og trykk Vis snølast eller Vis vindlast for å se lastene i farger i modellen. Høyden over havet kan hentes fra terrenget. Dette er en veiledende kontroll — den erstatter ikke RIB."
+  },
+  {
     hvor: "kontor", ikonNavn: "rigg",
     tittel: "Rigg: planlegg riggen på tomta",
     tekst: "Rigg (i Bygg Info) setter brakker, toalett, container, strømskap, søppelcontainer, lys, parkering, lagrings- og vaskeområde på tomta. Trykk på en type i katalogen, og så der den skal stå. Trykk på et objekt for å flytte, rotere, redigere eller slette det. Endringene lagres med en gang i SharePoint, så alle med tilgang ser det samme."
