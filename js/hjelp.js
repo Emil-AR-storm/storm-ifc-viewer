@@ -204,8 +204,8 @@ export const KORT = [
   },
   {
     hvor: "kontor", ikonNavn: "laster",
-    tittel: "Snø og vind: veiledende laster",
-    tekst: "Snø og vind (i Bygg Info) regner snølasten på hver takflate og vindtrykket på fasadene og et flatt tak. Skriv inn kommuneverdiene fra standarden eller RIBs lastforutsetninger (sk,0, Hg, Δsk, vb,0), velg terrengkategori og vindretning, og trykk Vis snølast eller Vis vindlast for å se lastene i farger i modellen. Høyden over havet kan hentes fra terrenget. Dette er en veiledende kontroll — den erstatter ikke RIB."
+    tittel: "Snø & Last: veiledende laster",
+    tekst: "Snø & Last (i Bygg Info) regner snølasten på hver takflate og vindtrykket på fasadene og et flatt tak. Skriv inn kommuneverdiene fra standarden eller RIBs lastforutsetninger (sk,0, Hg, Δsk, vb,0), velg terrengkategori og vindretning, og trykk Vis snølast eller Vis vindlast for å se lastene i farger i modellen. Høyden over havet kan hentes fra terrenget. Dette er en veiledende kontroll — den erstatter ikke RIB."
   },
   {
     hvor: "kontor", ikonNavn: "rigg",

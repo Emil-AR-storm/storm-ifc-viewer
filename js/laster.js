@@ -15,7 +15,7 @@ import { $, S, apnePanel, esc, ikon, på } from "./state.js";
 import { t } from "./i18n.js";
 import { frameHooks, makeLabel, scene, updateScreenScaled } from "./scene.js";
 import { lagret, swGroup } from "./veggelement/tilstand.js";
-import { allElementBoxes, skjulteIder } from "./elements.js";
+import { allElementBoxes, forHverTrekant, skjulteIder } from "./elements.js";
 import { typeFor } from "./ifcrpc.js";
 import { foldSeksjoner } from "./seksjoner.js";
 import { forskyvLapper, meldMaalLapper } from "./maal-verktoy.js";
@@ -259,114 +259,195 @@ function takflater() {
   return { kilde: "manuell", flater: manuelleTakflater(form, data.takvinkel) };
 }
 
-// ---------- Veggene vinden tar på (Emil 06.10) ----------
-// «Boksen skal forme seg rundt stålbygget og legge seg langs flaten til
-// veggen.» Flatene lages av det som FINNES i modellen — ingenting her vet
-// noe om én bestemt modell:
-//   1. veggene SW-generatoren har lagt: hver synlig yttervegg leses av sine
-//      egne 3D-flater og legges på fasaden den hører til (omrisset i
-//      fasadens plan, også skråkappede gavlbiter)
-//   2. ellers: minste rektangel rundt stålsøylene (eller veggene, eller hele
-//      bygget), fra foten av søylene til toppen av stålet.
-// Selve sonene og arealene regnes i laster-regn.js (vindPaFlater).
+// ---------- Fasadene vinden tar på (Emil 06.10) ----------
+// Fasit fra Emil (bilde 6): flatene skal ligge som en kasse RUNDT bygget —
+// hver fasade dekket helt, fra ende til ende og fra bunn til topp, som om
+// stålbygget var kledd med veggelementer uten utsparinger. Ingenting her vet
+// noe om én bestemt modell; flatene lages etter disse reglene:
+//
+//   FASADENE: SW-generatorens fasader når den har lagt vegger, ellers det
+//   minste rektangelet rundt stålsøylene (fire sider).
+//
+//   HVA SOM STÅR I EN FASADE: veggelementene og ringmuren på den fasaden
+//   (lastet inn = generert, også når de er skjult i Utseende), og stålet
+//   (søyler, bjelker, stag) som ligger i fasadeplanet. Stål som går på tvers
+//   av fasaden (takåser, bjelker inn i bygget) hører ikke til.
+//
+//   HVOR FLATEN LIGGER: på utsiden av veggelementene/ringmuren når de er
+//   lastet inn. Ellers på utsiden av søylene — pluss veggtykkelsen hvis den er
+//   oppgitt i SW-generatoren, fordi veggen skal stå der.
+//
+//   HVOR LANG OG HØY: ytterkant til ytterkant (+ veggtykkelsen i hver ende
+//   hvis den er oppgitt), fra laveste fot til toppen. Toppen følger gavler og
+//   skråkapp; hull, vinduer og porter telles med (fasadeOmriss).
+const STAL_FASADE = new Set(["COLUMN", "BEAM", "MEMBER"]);
 const STAL_SOYLE = new Set(["COLUMN"]);
-const STAL_TOPP = new Set(["COLUMN", "BEAM", "MEMBER", "ROOF", "PLATE", "COVERING", "WALL", "WALLSTANDARDCASE", "CURTAINWALL"]);
-const VEGG = new Set(["WALL", "WALLSTANDARDCASE", "CURTAINWALL"]);
+const FASADE_BAND = 1.0;          // m: så nær fasadelinja må stålet ligge for å høre til fasaden
 let flateHurtig = { nokkel: "", verdi: null };
 function takTopp() {
   let y = -Infinity;
   if (swGroup) swGroup.traverse(o => {
-    if (!o.isMesh || !(o.userData && (o.userData.tak || o.userData.blikk)) || !synligKjede(o)) return;
+    if (!o.isMesh || !(o.userData && (o.userData.tak || o.userData.blikk))) return;
     const bb = new THREE.Box3().setFromObject(o); if (!bb.isEmpty()) y = Math.max(y, bb.max.y);
   });
   return Number.isFinite(y) ? y * skala() : NaN;
 }
-function flaterFraSW() {
-  const L = lagret;
-  if (!L || !Array.isArray(L.fasader) || !Array.isArray(L.vegger) || !swGroup) return [];
-  const s = skala();
-  const vegger = new Map();
-  for (const v of L.vegger) if (v && !v.skjult && Number.isInteger(v.fi) && L.fasader[v.fi]) vegger.set(v.id, v);
-  if (!vegger.size) return [];
-  swGroup.updateMatrixWorld(true);
-  const pr = new Map();            // vegg-id → punkter [x, y, z] i meter
-  const p = new THREE.Vector3();
-  swGroup.traverse(o => {
-    if (!o.isMesh || !o.geometry || !o.userData || !synligKjede(o)) return;
-    const v = vegger.get(o.userData.swId);
-    const pos = o.geometry.attributes && o.geometry.attributes.position;
-    if (!v || !pos) return;
-    let arr = pr.get(v.id); if (!arr) pr.set(v.id, arr = []);
-    for (let i = 0; i < pos.count; i++) { p.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld); arr.push([p.x * s, p.y * s, p.z * s]); }
-  });
-  if (!pr.size) return [];
-  // midtpunktet av bygget i plan — avgjør hvilken vei «utover» er
-  let cx = 0, cz = 0, n = 0;
-  for (const arr of pr.values()) for (const q of arr) { cx += q[0]; cz += q[2]; n++; }
-  cx /= n; cz /= n;
-  const perFasade = new Map();
-  for (const [id, arr] of pr) {
-    const v = vegger.get(id), f = L.fasader[v.fi];
-    let ff = perFasade.get(v.fi);
-    if (!ff) {
-      const el = Math.hypot(f.ex, f.ez) || 1, nl = Math.hypot(f.nx, f.nz) || 1;
-      ff = { fi: v.fi, navn: f.navn || t("Fasade {0}", v.fi + 1), o: [f.px * s, f.pz * s], e: [f.ex / el, f.ez / el], N: [f.nx / nl, f.nz / nl], deler: [], pkt: [] };
-      perFasade.set(v.fi, ff);
+// SW-generatorens vegger og ringmur, per fasade: hjørnene i 3D (meter).
+// Regnet av TALLENE i SW-lagringen, ikke av 3D-meshene: «lastet inn» betyr
+// generert, og veggene skal telle også når de er skjult i 🎨 Utseende (da
+// tegnes de ikke, men de står der på bygget).
+export function swElementHjorner(v, s) {
+  const rot = Number(v.rot) || 0;
+  const r = [Math.cos(rot), -Math.sin(rot)], f = [Math.sin(rot), Math.cos(rot)];
+  const c = [Number(v.x) * s, Number(v.y) * s, Number(v.z) * s];
+  let L, T, omr;
+  if (v.ringmur) {
+    L = Number(v.lengde) * s; T = Number(v.tykkelse) * s;
+    const H = Number(v.hoyde) * s;
+    omr = [[-L / 2, -H / 2], [L / 2, -H / 2], [L / 2, H / 2], [-L / 2, H / 2]];
+  } else {
+    L = Number(v.lengdeMm) / 1000; T = Number(v.tMm) / 1000;
+    if (v.skra && Array.isArray(v.toppP) && v.toppP.length) {
+      const hMaks = Math.max(...v.toppP.map(q => Number(q[1]))) / 1000, y0 = -hMaks / 2;
+      omr = [[-L / 2, y0], [L / 2, y0], ...v.toppP.map(q => [-L / 2 + Number(q[0]) / 1000, y0 + Number(q[1]) / 1000]).reverse()];
+    } else {
+      const H = Number(v.hoydeMm) / 1000;
+      omr = [[-L / 2, -H / 2], [L / 2, -H / 2], [L / 2, H / 2], [-L / 2, H / 2]];
     }
-    const ty = arr.map(q => [(q[0] - ff.o[0]) * ff.e[0] + (q[2] - ff.o[1]) * ff.e[1], q[1]]);
-    const hy = hylle2(ty);
-    if (hy.length >= 3) ff.deler.push(hy);
-    ff.pkt.push(...arr);
   }
+  if (!(L > 0) || !omr.every(q => Number.isFinite(q[0]) && Number.isFinite(q[1])) || !c.every(Number.isFinite)) return [];
+  const tt = Number.isFinite(T) && T > 0 ? T : 0;
   const ut = [];
-  for (const ff of perFasade.values()) {
-    if (!ff.deler.length) continue;
-    // hele fasaden, fra topp til bunn — åpninger og hull telles med (Emil 06.10)
-    const omr = fasadeOmriss(ff.deler);
-    if (omr.length >= 3) ff.deler = [omr];
-    // normalen skal peke UT fra bygget
-    let mx = 0, mz = 0; for (const q of ff.pkt) { mx += q[0]; mz += q[2]; } mx /= ff.pkt.length; mz /= ff.pkt.length;
-    if ((mx - cx) * ff.N[0] + (mz - cz) * ff.N[1] < 0) ff.N = [-ff.N[0], -ff.N[1]];
-    let nMaks = -Infinity;
-    for (const q of ff.pkt) nMaks = Math.max(nMaks, (q[0] - ff.o[0]) * ff.N[0] + (q[2] - ff.o[1]) * ff.N[1]);
-    ut.push({ navn: ff.navn, o: ff.o, e: ff.e, N: ff.N, deler: ff.deler, ut: nMaks });
-  }
-  return ut.sort((a, b) => a.navn.localeCompare(b.navn, "nb", { numeric: true }));
+  for (const [x, y] of omr) for (const z of [-tt / 2, tt / 2])
+    ut.push([c[0] + x * r[0] + z * f[0], c[1] + y, c[2] + x * r[1] + z * f[1]]);
+  return ut;
 }
-function flaterFraStal() {
+function swPunkterPerFasade() {
+  const L = lagret, ut = new Map();
+  if (!L || !Array.isArray(L.fasader)) return ut;
+  const s = skala();
+  for (const v of [...(L.vegger || []), ...(L.ringmur || [])]) {
+    if (!v || v.skjult || !Number.isInteger(v.fi) || !L.fasader[v.fi]) continue;
+    if (!v.ringmur && v.lengdeMm !== undefined && !(v.lengdeMm > 0)) continue;
+    const arr = swElementHjorner(v, s);
+    if (!arr.length) continue;
+    let del = ut.get(v.fi); if (!del) ut.set(v.fi, del = new Map());
+    del.set(v.id, arr);
+  }
+  return ut;
+}
+// Stålet i modellen: punktene til hvert element (meter), med typen
+function stalElementer() {
   let skjult = new Set();
   try { skjult = skjulteIder(); } catch (_) { skjult = new Set(); }
-  const s = skala();
-  const grupper = { soyle: [], vegg: [], alle: [] };
-  let yb = Infinity, ybAlle = Infinity, yt = -Infinity, ytAlle = -Infinity;
+  const typer = new Map(), alle = new Map();
   try {
     for (const [id, eb] of allElementBoxes()) {
       if (skjult.has(id) || eb.isEmpty()) continue;
       const tp = typeNavn(id);
       if (!erBygningsdel(tp)) continue;
-      const hj = [[eb.min.x, eb.min.z], [eb.max.x, eb.min.z], [eb.max.x, eb.max.z], [eb.min.x, eb.max.z]].map(([x, z]) => [x * s, z * s]);
-      grupper.alle.push(...hj);
-      ybAlle = Math.min(ybAlle, eb.min.y * s); ytAlle = Math.max(ytAlle, eb.max.y * s);
-      if (STAL_SOYLE.has(tp)) { grupper.soyle.push(...hj); yb = Math.min(yb, eb.min.y * s); }
-      else if (VEGG.has(tp)) grupper.vegg.push(...hj);
-      if (STAL_TOPP.has(tp)) yt = Math.max(yt, eb.max.y * s);
+      alle.set(id, eb);
+      if (STAL_FASADE.has(tp)) typer.set(id, tp);
     }
   } catch (_) { return []; }
-  const pkt = grupper.soyle.length >= 3 ? grupper.soyle : grupper.vegg.length >= 3 ? grupper.vegg : grupper.alle;
-  if (pkt.length < 3) return [];
-  if (!Number.isFinite(yb)) yb = ybAlle;
-  if (!Number.isFinite(yt)) yt = ytAlle;
-  const tt = takTopp(); if (Number.isFinite(tt)) yt = Math.max(yt, tt);
-  return flaterFraRektangel(minsteRektangel(pkt), yb, yt).map((f, i) => ({ ...f, navn: t("Side {0}", i + 1), ut: 0 }));
+  const s = skala();
+  const ider = typer.size ? typer : new Map([...alle.keys()].map(id => [id, ""]));
+  const pkt = new Map();
+  const v = new THREE.Vector3();
+  try {
+    forHverTrekant(new Set(ider.keys()), (pos, a, b, c, mat, id) => {
+      let arr = pkt.get(id); if (!arr) pkt.set(id, arr = []);
+      for (const i of [a, b, c]) { v.fromBufferAttribute(pos, i); if (mat) v.applyMatrix4(mat); arr.push([v.x * s, v.y * s, v.z * s]); }
+    });
+  } catch (_) { /* uten geometri: boksene under */ }
+  const ut = [];
+  for (const [id, tp] of ider) {
+    let arr = pkt.get(id);
+    if (!arr || !arr.length) {
+      const eb = alle.get(id); if (!eb) continue;
+      arr = [];
+      for (const x of [eb.min.x, eb.max.x]) for (const y of [eb.min.y, eb.max.y]) for (const z of [eb.min.z, eb.max.z]) arr.push([x * s, y * s, z * s]);
+    }
+    ut.push({ id, tp, pkt: arr });
+  }
+  return ut;
+}
+function byggFasader() {
+  const L = lagret, s = skala();
+  const tyk = L && L.oppsett && Number(L.oppsett.tykkelseMm) > 0 ? Number(L.oppsett.tykkelseMm) / 1000 : 0;
+  const sw = swPunkterPerFasade();
+  const stal = stalElementer();
+  // 1. fasadene
+  let rammer = [], kilde;
+  if (sw.size && L && Array.isArray(L.fasader)) {
+    kilde = "sw";
+    rammer = L.fasader.map((f, fi) => {
+      const el = Math.hypot(f.ex, f.ez) || 1, nl = Math.hypot(f.nx, f.nz) || 1;
+      return { fi, navn: f.navn || t("Fasade {0}", fi + 1), o: [f.px * s, f.pz * s], e: [f.ex / el, f.ez / el], N: [f.nx / nl, f.nz / nl] };
+    });
+  } else {
+    kilde = "stal";
+    const soyler = stal.filter(x => STAL_SOYLE.has(x.tp));
+    const plan = (soyler.length ? soyler : stal).flatMap(x => x.pkt.map(q => [q[0], q[2]]));
+    const rk = plan.length >= 3 ? minsteRektangel(plan) : null;
+    if (!rk) return { flater: [], kilde };
+    rammer = flaterFraRektangel(rk, 0, 1).map((f, i) => ({ fi: i, navn: t("Side {0}", i + 1), o: f.o, e: f.e, N: f.N }));
+  }
+  // midtpunktet av bygget — avgjør hvilken vei «utover» er
+  let cx = 0, cz = 0, n = 0;
+  for (const x of stal) for (const q of x.pkt) { cx += q[0]; cz += q[2]; n++; }
+  for (const del of sw.values()) for (const arr of del.values()) for (const q of arr) { cx += q[0]; cz += q[2]; n++; }
+  if (!n) return { flater: [], kilde };
+  cx /= n; cz /= n;
+  const flater = [];
+  for (const r of rammer) {
+    // utover = bort fra midten av bygget
+    if ((r.o[0] - cx) * r.N[0] + (r.o[1] - cz) * r.N[1] < 0) r.N = [-r.N[0], -r.N[1]];
+    const ty = (q) => [(q[0] - r.o[0]) * r.e[0] + (q[2] - r.o[1]) * r.e[1], q[1]];
+    const nn = (q) => (q[0] - r.o[0]) * r.N[0] + (q[2] - r.o[1]) * r.N[1];
+    const deler = [];
+    // veggelementer og ringmur på fasaden
+    let swUt = -Infinity;
+    const swDel = r.fi !== undefined && kilde === "sw" ? sw.get(r.fi) : null;
+    if (swDel) for (const arr of swDel.values()) {
+      const h = hylle2(arr.map(ty)); if (h.length >= 3) deler.push(h);
+      for (const q of arr) swUt = Math.max(swUt, nn(q));
+    }
+    // stålet i fasadeplanet
+    let stalUt = -Infinity, stalT0 = Infinity, stalT1 = -Infinity;
+    for (const x of stal) {
+      let n0 = Infinity, n1 = -Infinity;
+      for (const q of x.pkt) { const v = nn(q); n0 = Math.min(n0, v); n1 = Math.max(n1, v); }
+      if (n0 < -FASADE_BAND || n1 > FASADE_BAND) continue;     // går på tvers, eller ligger i en annen fasade
+      const tyx = x.pkt.map(ty);
+      const h = hylle2(tyx); if (h.length >= 3) deler.push(h);
+      stalUt = Math.max(stalUt, n1);
+      for (const [tt] of tyx) { stalT0 = Math.min(stalT0, tt); stalT1 = Math.max(stalT1, tt); }
+    }
+    if (!deler.length) continue;
+    let omr = fasadeOmriss(deler);
+    if (omr.length < 3) continue;
+    let ut;
+    if (Number.isFinite(swUt)) ut = swUt;                      // utsiden av veggene/ringmuren
+    else {
+      ut = stalUt + tyk;                                       // utsiden av søylene (+ veggen som skal stå der)
+      if (tyk > 0) {                                           // veggtykkelsen forbi søylene i hver ende
+        const a = Math.min(...omr.map(p => p[0])), b = Math.max(...omr.map(p => p[0]));
+        omr = omr.map(([tt, y]) => [tt <= a + 1e-9 ? tt - tyk : tt >= b - 1e-9 ? tt + tyk : tt, y]);
+      }
+    }
+    flater.push({ navn: r.navn, o: r.o, e: r.e, N: r.N, deler: [omr], ut });
+  }
+  return { flater, kilde, tyk };
 }
 function vindFlater() {
   let skjultN = 0; try { skjultN = skjulteIder().size; } catch (_) {}
-  const nk = [S.fileName, S.modelGroup && S.modelGroup.uuid, swGroup ? swGroup.children.length : 0,
-    lagret && lagret.vegger ? lagret.vegger.length : 0, skjultN, skala()].join("|");
+  const L = lagret;
+  const nk = [S.fileName, S.modelGroup && S.modelGroup.uuid, swGroup ? swGroup.children.length : 0, [...((L && L.vegger) || []), ...((L && L.ringmur) || [])].reduce((a, v) => a + (Number(v.x) || 0) * 7 + (Number(v.z) || 0) * 13 + (Number(v.y) || 0) * 3 + (Number(v.lengdeMm || v.lengde) || 0) + (v.skjult ? 1e6 : 0), 0).toFixed(4),
+    L && L.vegger ? L.vegger.length : 0, L && L.ringmur ? L.ringmur.length : 0,
+    L && L.oppsett ? L.oppsett.tykkelseMm : "", skjultN, skala()].join("|");
   if (flateHurtig.nokkel === nk && flateHurtig.verdi) return flateHurtig.verdi;
-  let flater = flaterFraSW(), kilde = "sw";
-  if (!flater.length) { flater = flaterFraStal(); kilde = "stal"; }
-  const verdi = { flater, kilde, hTopp: takTopp() };
+  const verdi = { ...byggFasader(), hTopp: takTopp() };
   flateHurtig = { nokkel: nk, verdi };
   return verdi;
 }
@@ -587,8 +668,8 @@ function visResultat() {
       const v = r.vind, qp = v.q.qp;
       let h = advarsel(vindAdvarsler(data)) + rad(t("Basisvindhastighet, vb"), kn(v.vb) + " m/s") +
         '<p class="la-tom">' + ikon("fasade") + " " + (v.kilde === "sw"
-          ? t("Sonene ligger på veggene SW-generatoren har lagt ({0} fasader).", v.flater.length)
-          : t("Ingen SW-vegger: sonene ligger på et rektangel rundt stålsøylene.")) + "</p>" +
+          ? t("Sonene ligger utenpå veggelementene og ringmuren ({0} fasader), fra ende til ende og bunn til topp.", v.flater.length)
+          : t("Ingen SW-vegger: sonene ligger utenpå stålsøylene i hver fasade, fra ende til ende og bunn til topp.")) + "</p>" +
         rad(t("Byggehøyde h · b · d"), kn(v.h) + " · " + kn(v.b) + " · " + kn(v.d) + " m") +
         rad(t("Vindkasthastighetstrykk qp(h)"), kn(qp / 1000) + " kN/m²");
       for (const k of ["D", "E", "A", "B", "C"]) {
@@ -631,4 +712,4 @@ på("btnLaster", "click", () => {
 // Ny modell: lastdataene hører til modellen, og visningen ryddes
 S.ryddLaster = () => { visSno = visVind = false; rydd(); data = {}; fraTerreng = { kommune: false, H: false }; };
 
-export const __test = { regnUt, flaterFraSW, flaterFraStal, glemFlater: () => { flateHurtig = { nokkel: "", verdi: null }; }, settData: (d) => { data = vaskLastdata(d); }, hentData: () => data, fyllFraTerreng };
+export const __test = { regnUt, byggFasader, glemFlater: () => { flateHurtig = { nokkel: "", verdi: null }; }, settData: (d) => { data = vaskLastdata(d); }, hentData: () => data, fyllFraTerreng };
