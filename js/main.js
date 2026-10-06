@@ -31,6 +31,7 @@ import "./markers.js";
 import "./minimap.js";
 import "./viewcube.js";
 import "./axes.js";
+import "./maal-verktoy.js";   // 📏📐 kjedemål og vinkel/fall — FØR modes.js (kontrollinja)
 import "./modes.js";
 import "./angre.js";   // ↩ angre/gjenopprett – må lastes før ui.js (hurtigtastene)
 import "./sharepoint.js";
@@ -137,16 +138,22 @@ canvas.addEventListener("pointerup", (e) => {
   // ⛰ Mål og Kote kan også treffe TERRENGET (og bare de — terrenget kan ikke
   // velges som element). Ligger terrenget nærmere kameraet enn modellen, er
   // det terrenget du pekte på. Uten dette kan ikke målestokken kontrolleres.
-  if (S.mode === "measure" || S.mode === "kote") {
+  if (S.mode === "measure" || S.mode === "kote" || S.mode === "kjede" || S.mode === "vinkel") {
     const f = pickFlate(e.clientX, e.clientY);
     if (f && (!hit || f.distance < hit.distance)) hit = f;
   }
   // 📏 …og rigg-objektene og materiellet: punktet havner på det du trykte på,
   // ikke på bakken bak (Emil 02.10). Markering også — den skal kunne settes
   // på en container uten at containeren åpnes.
-  if (S.mode === "measure" || S.mode === "kote" || S.mode === "marker") {
+  if (S.mode === "measure" || S.mode === "kote" || S.mode === "marker" || S.mode === "kjede" || S.mode === "vinkel") {
     const f = naermesteMaaleflate(e.clientX, e.clientY);
     if (f && (!hit || f.distance < hit.distance)) hit = f;
+  }
+  // 📏📐 Kjedemål og Vinkel/fall (js/maal-verktoy.js). Går foran «traff
+  // ingenting»: et kjedemål plasseres der du trykker, også i lufta.
+  if ((S.mode === "kjede" || S.mode === "vinkel") && S.maalVerktoyKlikk) {
+    const mp = hit ? (hit.utenSnap ? hit.point.clone() : snapPoint(hit).point) : null;
+    if (S.maalVerktoyKlikk(e.clientX, e.clientY, mp)) return;
   }
   if (!hit) {
     // Shift eies av flervalget (elements.js) — og det kan ha truffet MATERIELL,

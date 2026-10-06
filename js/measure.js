@@ -68,7 +68,7 @@ export function hideSnapPreview() {
 }
 
 canvas.addEventListener("pointermove", (e) => {
-  if (S.mode !== "measure" || e.buttons !== 0 || S.boxSel) {
+  if ((S.mode !== "measure" && S.mode !== "kjede" && S.mode !== "vinkel") || e.buttons !== 0 || S.boxSel) {
     hideSnapPreview();
     return;
   }
