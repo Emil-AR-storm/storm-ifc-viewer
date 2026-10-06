@@ -2186,5 +2186,11 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "III – tettsted, skog": "III – gyvenvietė, miškas",
   "IV – by, minst 15 % bebygd": "IV – miestas, bent 15 % užstatyta",
   "Hentet fra terrenget (adressen)": "Paimta iš reljefo (adresas)",
-  "Hentet fra terrenget": "Paimta iš reljefo"
+  "Hentet fra terrenget": "Paimta iš reljefo",
+  "vb,0 er {0} m/s. Referansevindhastigheten i Norge er vanligvis mellom 22 og 31 m/s — sjekk tallet.": "vb,0 yra {0} m/s. Bazinis vėjo greitis Norvegijoje paprastai yra 22–31 m/s — patikrinkite reikšmę.",
+  "{1} er {0}. Den skal ligge mellom 0 og 1,0 (normalt 1,0).": "{1} yra {0}. Turi būti tarp 0 ir 1,0 (paprastai 1,0).",
+  "{1} er {0}. Høydefaktoren er 1,0 eller litt større — aldri under 1,0.": "{1} yra {0}. Aukščio koeficientas yra 1,0 arba šiek tiek didesnis — niekada mažesnis nei 1,0.",
+  "{1} er {0}. Sannsynlighetsfaktoren er normalt 1,0 (50 års returperiode).": "{1} yra {0}. Tikimybės koeficientas paprastai yra 1,0 (50 metų pasikartojimo periodas).",
+  "sk,0 er {0} kN/m². Det er utenfor det som er vanlig i Norge — sjekk tallet.": "sk,0 yra {0} kN/m². Tai neįprasta Norvegijai — patikrinkite reikšmę.",
+  "{1} er {0}. Den skal normalt være 1,0.": "{1} yra {0}. Paprastai turi būti 1,0."
 };

@@ -15,11 +15,13 @@ import { $, S, apnePanel, esc, ikon, på } from "./state.js";
 import { t } from "./i18n.js";
 import { frameHooks, makeLabel, scene, updateScreenScaled } from "./scene.js";
 import { swGroup } from "./veggelement/tilstand.js";
+import { allElementBoxes, skjulteIder } from "./elements.js";
+import { typeFor } from "./ifcrpc.js";
 import { foldSeksjoner } from "./seksjoner.js";
 import { forskyvLapper, meldMaalLapper } from "./maal-verktoy.js";
 import {
   CPE_FLATT_TAK, TERRENG, cpeVegg, flattTakSoner, kommuneFraSvar, kommunePunktUrl, mu1, snoMark, snoTak, tall, vaskLastdata,
-  veggSoner, vindBasis, vindTrykk, we
+  snoAdvarsler, veggSoner, vindAdvarsler, vindBasis, vindTrykk, we
 } from "./laster-regn.js";
 
 export const lasterGroup = new THREE.Group();
@@ -43,15 +45,45 @@ function les() {
 function skriv() { try { localStorage.setItem(nokkel(), JSON.stringify(vaskLastdata(data))); } catch (_) {} }
 
 // ---------- Bygget: boks, høyde over havet ----------
-// Bygget = modellen + det SW-generatoren har lagt på (vegger, tak, blikk):
-// byggehøyden til vind skal måles til mønet, ikke til toppen av stålet.
+// Bygget = de SYNLIGE bygningselementene i modellen + veggene, taket og
+// blikket SW-generatoren har lagt på — byggehøyden til vind skal måles til
+// mønet, ikke til toppen av stålet.
+//
+// Emil 06.10 (bilde: vindsonene stakk langt ut over parkeringen): boksen ble
+// regnet av hele modellgruppa og alt i SW-gruppa. Det tar med skjulte
+// elementer, rom (IfcSpace), tomt og åpninger, og navnelapper og hjelpefigurer
+// i SW-gruppa — og da blir «bygget» større enn bygget. Nå teller bare det
+// som står der og er en del av bygget.
+const IKKE_BYGG = new Set(["SPACE", "SITE", "OPENINGELEMENT", "ANNOTATION", "GRID", "VIRTUALELEMENT", "BUILDING", "BUILDINGSTOREY"]);
+function typeNavn(id) {
+  let tp = "";
+  try {
+    if (S.glbActive) { const p = S.glbProps && S.glbProps.get(id); tp = (p && p[2]) || ""; }
+    else tp = typeFor(id) || "";
+  } catch (_) { tp = ""; }
+  return String(tp).toUpperCase().replace(/^IFC/, "");
+}
+export function erBygningsdel(type) { return !IKKE_BYGG.has(String(type || "").toUpperCase().replace(/^IFC/, "")); }
+function synligKjede(o) { for (let x = o; x; x = x.parent) if (x.visible === false) return false; return true; }
 function boks() {
   if (!S.modelGroup) return null;
-  const b = new THREE.Box3().setFromObject(S.modelGroup);
+  const b = new THREE.Box3();
+  let skjult = new Set();
+  try { skjult = skjulteIder(); } catch (_) { skjult = new Set(); }
+  try {
+    for (const [id, eb] of allElementBoxes()) {
+      if (skjult.has(id) || !erBygningsdel(typeNavn(id)) || eb.isEmpty()) continue;
+      b.union(eb);
+    }
+  } catch (_) { /* faller tilbake under */ }
+  if (b.isEmpty()) b.setFromObject(S.modelGroup);
   if (swGroup && swGroup.children.length) {
-    const sb = new THREE.Box3();
-    for (const o of swGroup.children) if (o.visible !== false) sb.expandByObject(o);
-    if (!sb.isEmpty()) b.union(sb);
+    swGroup.traverse(o => {
+      if (!o.isMesh || o.isSprite || !synligKjede(o)) return;
+      const u = o.userData || {};
+      if (u.swId === undefined && !u.tak && !u.blikk) return;   // bare vegger, gulv, tak og blikk
+      b.expandByObject(o);
+    });
   }
   return b.isEmpty() ? null : b;
 }
@@ -411,13 +443,15 @@ function tegnPanel() {
 }
 
 const rad = (k, v) => '<div class="qty-row"><div class="n">' + k + '</div><div class="c">' + v + "</div></div>";
+const advarsel = (liste) => liste.map(a => '<div class="laster-forbehold laster-advarsel">' + ikon("advarsel") + " " +
+  esc(t(a.tekst, String(a.verdi).replace(".", ","), a.navn || "")) + "</div>").join("");
 function visResultat() {
   const r = regnUt();
   const sr = $("laSnoRes"), vr = $("laVindRes");
   if (sr) {
     if (!r.sno) sr.innerHTML = '<p class="la-tom">' + t("Skriv inn sk,0 (og Hg, Δsk og H) for å få snølasten.") + "</p>";
     else {
-      let h = rad(t("Snølast på mark, sk"), kn(r.sno.sk) + " kN/m²" + (r.sno.n ? " (n = " + r.sno.n + ")" : "") + (r.sno.kappet ? " · sk,maks" : ""));
+      let h = advarsel(snoAdvarsler(data)) + rad(t("Snølast på mark, sk"), kn(r.sno.sk) + " kN/m²" + (r.sno.n ? " (n = " + r.sno.n + ")" : "") + (r.sno.kappet ? " · sk,maks" : ""));
       if (r.sno.kilde === "mangler") h += '<p class="la-tom">' + t("Tak-generatoren har ikke lagt tak — regnet som flatt tak over modellen. Velg takform og vinkel over.") + "</p>";
       for (const f of r.sno.flater)
         h += rad(esc(f.navn) + " · " + Math.round(f.alfa * 10) / 10 + "° · μ1 " + kn(f.mu), kn(f.s) + " kN/m² · " + Math.round(f.total) + " kN");
@@ -430,7 +464,7 @@ function visResultat() {
     if (!r.vind) vr.innerHTML = '<p class="la-tom">' + t("Skriv inn vb,0 for å få vindlasten.") + "</p>";
     else {
       const v = r.vind;
-      let h = rad(t("Basisvindhastighet, vb"), kn(v.vb) + " m/s") +
+      let h = advarsel(vindAdvarsler(data)) + rad(t("Basisvindhastighet, vb"), kn(v.vb) + " m/s") +
         rad(t("Byggehøyde h · b · d"), kn(v.h) + " · " + kn(v.b) + " · " + kn(v.d) + " m") +
         rad(t("Vindkasthastighetstrykk qp(h)"), kn(v.q.qp / 1000) + " kN/m²");
       for (const k of ["D", "E", "A", "B", "C"]) {

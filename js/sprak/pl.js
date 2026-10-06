@@ -2186,5 +2186,11 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "III – tettsted, skog": "III – miejscowość, las",
   "IV – by, minst 15 % bebygd": "IV – miasto, min. 15 % zabudowy",
   "Hentet fra terrenget (adressen)": "Pobrano z terenu (adres)",
-  "Hentet fra terrenget": "Pobrano z terenu"
+  "Hentet fra terrenget": "Pobrano z terenu",
+  "vb,0 er {0} m/s. Referansevindhastigheten i Norge er vanligvis mellom 22 og 31 m/s — sjekk tallet.": "vb,0 wynosi {0} m/s. Bazowa prędkość wiatru w Norwegii wynosi zwykle 22–31 m/s — sprawdź wartość.",
+  "{1} er {0}. Den skal ligge mellom 0 og 1,0 (normalt 1,0).": "{1} wynosi {0}. Powinien mieścić się między 0 a 1,0 (zwykle 1,0).",
+  "{1} er {0}. Høydefaktoren er 1,0 eller litt større — aldri under 1,0.": "{1} wynosi {0}. Współczynnik wysokości wynosi 1,0 lub nieco więcej — nigdy poniżej 1,0.",
+  "{1} er {0}. Sannsynlighetsfaktoren er normalt 1,0 (50 års returperiode).": "{1} wynosi {0}. Współczynnik prawdopodobieństwa wynosi zwykle 1,0 (okres powrotu 50 lat).",
+  "sk,0 er {0} kN/m². Det er utenfor det som er vanlig i Norge — sjekk tallet.": "sk,0 wynosi {0} kN/m². To poza zakresem typowym dla Norwegii — sprawdź wartość.",
+  "{1} er {0}. Den skal normalt være 1,0.": "{1} wynosi {0}. Zwykle powinien wynosić 1,0."
 };

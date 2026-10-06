@@ -172,3 +172,34 @@ export function kommuneFraSvar(json) {
   const navn = json && typeof json.kommunenavn === "string" ? json.kommunenavn.trim() : "";
   return navn ? navn.slice(0, 60) : "";
 }
+
+// ═══════════════════════ SJEKK AV TALLENE SOM SKRIVES INN ═══════════════════════
+// Emil 06.10 (bilde: qp 0,07 kN/m²): vb,0 = 5, cdir = 2, cseason = 4 gir et
+// vindtrykk som ikke kan stemme — og ingenting sa fra. Grensene her er
+// rimelighetsgrenser, ikke standardens tall: utenfor dem er det nesten alltid
+// en skrivefeil. Svaret er nøkler (oversettes i panelet) med verdien.
+export function vindAdvarsler(v) {
+  const ut = [];
+  const n = (k) => tall(v[k]);
+  const vb0 = n("vb0");
+  if (vb0 != null && (vb0 < 20 || vb0 > 35)) ut.push({ tekst: "vb,0 er {0} m/s. Referansevindhastigheten i Norge er vanligvis mellom 22 og 31 m/s — sjekk tallet.", verdi: vb0 });
+  for (const k of ["cdir", "cseason"]) {
+    const x = n(k);
+    if (x != null && (x <= 0 || x > 1)) ut.push({ tekst: "{1} er {0}. Den skal ligge mellom 0 og 1,0 (normalt 1,0).", verdi: x, navn: k });
+  }
+  const calt = n("calt");
+  if (calt != null && (calt < 1 || calt > 2)) ut.push({ tekst: "{1} er {0}. Høydefaktoren er 1,0 eller litt større — aldri under 1,0.", verdi: calt, navn: "calt" });
+  const cprob = n("cprob");
+  if (cprob != null && (cprob < 0.7 || cprob > 1.2)) ut.push({ tekst: "{1} er {0}. Sannsynlighetsfaktoren er normalt 1,0 (50 års returperiode).", verdi: cprob, navn: "cprob" });
+  return ut;
+}
+export function snoAdvarsler(v) {
+  const ut = [];
+  const sk0 = tall(v.sk0);
+  if (sk0 != null && (sk0 <= 0 || sk0 > 12)) ut.push({ tekst: "sk,0 er {0} kN/m². Det er utenfor det som er vanlig i Norge — sjekk tallet.", verdi: sk0 });
+  for (const k of ["Ce", "Ct"]) {
+    const x = tall(v[k]);
+    if (x != null && (x <= 0 || x > 1.25)) ut.push({ tekst: "{1} er {0}. Den skal normalt være 1,0.", verdi: x, navn: k });
+  }
+  return ut;
+}
