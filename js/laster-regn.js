@@ -203,3 +203,159 @@ export function snoAdvarsler(v) {
   }
   return ut;
 }
+
+// ════════════════════════════════════════════════════════════════════════
+// 🧱 VINDEN PÅ DE FAKTISKE VEGGENE (Emil 06.10)
+// «Boksen skal forme seg rundt stålbygget og legge seg langs flaten til
+// veggen og regne ut m² av veggen.» Og: «basert på prinsipp og regler —
+// ingen hardkodet info om spesifikke modeller».
+//
+// Derfor: ingenting her vet noe om én bestemt modell. Inndataene er bare
+// FLATER — hver med en utovernormal N, en retning e langs flaten, et
+// startpunkt o i plan og en liste DELER (omrisset av hver vegg-bit i flatens
+// eget plan, t langs e og y opp). Hvor flatene kommer fra (SW-generatorens
+// vegger, eller omrisset av stålsøylene) avgjøres i laster.js. Reglene som
+// brukes er bare NS-EN 1991-1-4 avsnitt 7.2.2:
+//   • en flate som vinden treffer rett på (N·w < −cos 45°) er lo-vegg D
+//   • en flate vinden går rett fra (N·w > cos 45°) er le-vegg E
+//   • de andre er sidevegger, delt i A, B, C etter avstanden fra lo-kanten
+//   • b, d og h måles på veggene selv (b på tvers av vinden, d langs)
+// Alt i meter.
+// ════════════════════════════════════════════════════════════════════════
+const COS45 = Math.SQRT1_2;
+
+// Konveks hylle av punkter [x, y] (monoton kjede), mot klokka.
+export function hylle2(pkt) {
+  const p = pkt.filter(q => Number.isFinite(q[0]) && Number.isFinite(q[1]))
+    .slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  if (p.length < 3) return p;
+  const kr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lav = [], hoy = [];
+  for (const q of p) { while (lav.length >= 2 && kr(lav[lav.length - 2], lav[lav.length - 1], q) <= 1e-12) lav.pop(); lav.push(q); }
+  for (let i = p.length - 1; i >= 0; i--) { const q = p[i]; while (hoy.length >= 2 && kr(hoy[hoy.length - 2], hoy[hoy.length - 1], q) <= 1e-12) hoy.pop(); hoy.push(q); }
+  lav.pop(); hoy.pop();
+  return lav.concat(hoy);
+}
+
+// Arealet av et polygon [[x, y], …] (skolissformelen), alltid positivt.
+export function areal2(poly) {
+  let a = 0;
+  for (let i = 0; i < poly.length; i++) { const p = poly[i], q = poly[(i + 1) % poly.length]; a += p[0] * q[1] - q[0] * p[1]; }
+  return Math.abs(a) / 2;
+}
+
+// Klipper et polygon til stripa ta ≤ x ≤ tb (Sutherland–Hodgman, to kanter).
+export function klippX(poly, ta, tb) {
+  const kant = (inn, side, grense) => {
+    const ut = [];
+    for (let i = 0; i < inn.length; i++) {
+      const p = inn[i], q = inn[(i + 1) % inn.length];
+      const pi = side * (p[0] - grense) >= 0, qi = side * (q[0] - grense) >= 0;
+      if (pi) ut.push(p);
+      if (pi !== qi) { const k = (grense - p[0]) / (q[0] - p[0]); ut.push([grense, p[1] + k * (q[1] - p[1])]); }
+    }
+    return ut;
+  };
+  let r = kant(poly, 1, Math.min(ta, tb));
+  if (r.length) r = kant(r, -1, Math.max(ta, tb));
+  return r.length >= 3 ? r : [];
+}
+
+// Minste omsluttende rektangel rundt punkter i plan (roterende kalipere på
+// hylla): gir bygningens akser når det ikke finnes vegger å lese av.
+export function minsteRektangel(pkt) {
+  const h = hylle2(pkt);
+  if (h.length < 3) return null;
+  let best = null;
+  for (let i = 0; i < h.length; i++) {
+    const p = h[i], q = h[(i + 1) % h.length];
+    const L = Math.hypot(q[0] - p[0], q[1] - p[1]);
+    if (L < 1e-9) continue;
+    const ux = (q[0] - p[0]) / L, uy = (q[1] - p[1]) / L;
+    let a0 = Infinity, a1 = -Infinity, b0 = Infinity, b1 = -Infinity;
+    for (const r of h) { const a = r[0] * ux + r[1] * uy, b = -r[0] * uy + r[1] * ux; a0 = Math.min(a0, a); a1 = Math.max(a1, a); b0 = Math.min(b0, b); b1 = Math.max(b1, b); }
+    const A = (a1 - a0) * (b1 - b0);
+    if (!best || A < best.A - 1e-9) best = { A, u: [ux, uy], v: [-uy, ux], a0, a1, b0, b1 };
+  }
+  return best;
+}
+
+// Fire vegger rundt et rektangel (fra minsteRektangel), fra yb til yt.
+export function flaterFraRektangel(rk, yb, yt) {
+  if (!rk) return [];
+  const P = (a, b) => [rk.u[0] * a + rk.v[0] * b, rk.u[1] * a + rk.v[1] * b];
+  const side = (o, e, N, L) => ({ o, e, N, deler: [[[0, yb], [L, yb], [L, yt], [0, yt]]] });
+  const La = rk.a1 - rk.a0, Lb = rk.b1 - rk.b0;
+  return [
+    side(P(rk.a0, rk.b0), rk.u, [-rk.v[0], -rk.v[1]], La),
+    side(P(rk.a1, rk.b0), rk.v, rk.u, Lb),
+    side(P(rk.a1, rk.b1), [-rk.u[0], -rk.u[1]], rk.v, La),
+    side(P(rk.a0, rk.b1), [-rk.v[0], -rk.v[1]], [-rk.u[0], -rk.u[1]], Lb)
+  ];
+}
+
+// Fire vindretninger etter BYGGETS akser: rett inn på den lengste flaten,
+// så 90°, 180° og 270° videre. w er retningen vinden BLÅSER mot.
+export function vindRetninger(flater) {
+  let best = null, bestA = -1;
+  for (const f of flater || []) {
+    const A = (f.deler || []).reduce((s, d) => s + areal2(d), 0);
+    if (A > bestA) { bestA = A; best = f; }
+  }
+  const n = best ? best.N : [0, 1];
+  const w0 = [-n[0], -n[1]];
+  const rot = (v, k) => { let x = v[0], y = v[1]; for (let i = 0; i < k; i++) [x, y] = [-y, x]; return [x, y]; };
+  return [0, 1, 2, 3].map(k => rot(w0, k));
+}
+
+// Hoveddelen: deler flatene i soner for vindretningen w og regner arealene.
+// hTopp (valgfri) er toppen av bygget hvis taket stikker over veggene.
+export function vindPaFlater(flater, w, hTopp) {
+  const fl = (flater || []).filter(f => f && f.deler && f.deler.length);
+  if (!fl.length) return null;
+  const wl = Math.hypot(w[0], w[1]) || 1, wx = w[0] / wl, wz = w[1] / wl;
+  const qx = -wz, qz = wx;                       // på tvers av vinden
+  let s0 = Infinity, s1 = -Infinity, q0 = Infinity, q1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const f of fl) for (const d of f.deler) for (const [t, y] of d) {
+    const x = f.o[0] + t * f.e[0], z = f.o[1] + t * f.e[1];
+    const s = x * wx + z * wz, q = x * qx + z * qz;
+    s0 = Math.min(s0, s); s1 = Math.max(s1, s); q0 = Math.min(q0, q); q1 = Math.max(q1, q);
+    y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+  }
+  if (Number.isFinite(hTopp) && hTopp > y1) y1 = hTopp;
+  const d = s1 - s0, b = q1 - q0, h = y1 - y0;
+  if (!(d > 0 && b > 0 && h > 0)) return null;
+  const soner = veggSoner(b, d, h);
+  const cpe = cpeVegg(h / d);
+  const grenser = [["A", 0, soner.A], ["B", soner.A, soner.A + soner.B], ["C", soner.A + soner.B, d]];
+  const deler = [];                               // { fi, sone, poly, areal }
+  fl.forEach((f, fi) => {
+    const c = f.N[0] * wx + f.N[1] * wz;
+    if (c < -COS45 || c > COS45) {
+      const sone = c < 0 ? "D" : "E";
+      for (const p of f.deler) deler.push({ fi, sone, poly: p, areal: areal2(p) });
+      return;
+    }
+    const ew = f.e[0] * wx + f.e[1] * wz;
+    const os = f.o[0] * wx + f.o[1] * wz - s0;    // s = os + t·ew
+    for (const [sone, sa, sb] of grenser) {
+      if (!(sb - sa > 1e-9)) continue;
+      for (const p of f.deler) {
+        const k = Math.abs(ew) < 1e-9 ? (os >= sa && os <= sb ? p : []) : klippX(p, (sa - os) / ew, (sb - os) / ew);
+        const A = k.length ? areal2(k) : 0;
+        if (A > 1e-6) deler.push({ fi, sone, poly: k, areal: A });
+      }
+    }
+  });
+  // samlet per flate og sone
+  const sum = new Map();
+  for (const x of deler) {
+    const k = x.fi + "|" + x.sone;
+    if (!sum.has(k)) sum.set(k, { fi: x.fi, sone: x.sone, areal: 0 });
+    sum.get(k).areal += x.areal;
+  }
+  return { b, d, h, s0, q0, y0, y1, w: [wx, wz], tvers: [qx, qz], soner, cpe, deler, perFlate: [...sum.values()] };
+}
+
+// Kraft på en sone: we · A (kN, med fortegn — positivt er trykk inn på veggen).
+export const kraft = (qp, cpe, areal) => we(qp, cpe) * areal;
