@@ -359,3 +359,65 @@ export function vindPaFlater(flater, w, hTopp) {
 
 // Kraft på en sone: we · A (kN, med fortegn — positivt er trykk inn på veggen).
 export const kraft = (qp, cpe, areal) => we(qp, cpe) * areal;
+
+// ════════════════════════════════════════════════════════════════════════
+// 🧱 HELE FASADEN, FRA TOPP TIL BUNN (Emil 06.10)
+// «Vindlasten treffer hele overflaten av fasaden, så den bør dekke hele
+// veggen — som om stålbygget var helt dekket av veggelementer fra topp til
+// bunn, uten utsparinger.» Vinduer, porter og hull mellom elementene telles
+// altså med (bruttoareal).
+//
+// Omrisset bygges av delene på fasaden:
+//   • bunnen er den laveste foten
+//   • toppen er den øvre konturen over alle delene (gavler og skråkapp
+//     følges), og der det ikke står noe element (en port i full høyde)
+//     trekkes toppen rett over fra naboene
+// ════════════════════════════════════════════════════════════════════════
+function toppVed(poly, t) {
+  let y = -Infinity;
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i], q = poly[(i + 1) % poly.length];
+    const a = Math.min(p[0], q[0]), b = Math.max(p[0], q[0]);
+    if (t < a - 1e-9 || t > b + 1e-9) continue;
+    if (b - a < 1e-9) y = Math.max(y, p[1], q[1]);
+    else y = Math.max(y, p[1] + (t - p[0]) / (q[0] - p[0]) * (q[1] - p[1]));
+  }
+  return Number.isFinite(y) ? y : null;
+}
+export function fasadeOmriss(deler) {
+  const dl = (deler || []).filter(d => d && d.length >= 3);
+  if (!dl.length) return [];
+  let yb = Infinity;
+  const ts = [];
+  for (const d of dl) for (const [t, y] of d) { yb = Math.min(yb, y); ts.push(t); }
+  const u = [...new Set(ts.map(t => Math.round(t * 1e6) / 1e6))].sort((a, b) => a - b);
+  const t0 = u[0], t1 = u[u.length - 1];
+  if (!(t1 - t0 > 1e-9)) return [];
+  const eps = Math.max(1e-6, (t1 - t0) * 1e-7);
+  const topp = (t) => { let y = null; for (const d of dl) { const v = toppVed(d, t); if (v != null && (y == null || v > y)) y = v; } return y; };
+  // venstre og høyre side av hvert knekkpunkt, så trinn blir loddrette
+  const pkt = [];
+  u.forEach((t, i) => {
+    const L = i > 0 ? topp(t - eps) : null, R = i < u.length - 1 ? topp(t + eps) : null;
+    if (i > 0) pkt.push([t, L]);
+    if (i < u.length - 1 && (i === 0 || R !== L)) pkt.push([t, R]);
+  });
+  // hull uten element (port i full høyde): rett linje mellom naboene
+  for (let i = 0; i < pkt.length; i++) if (pkt[i][1] == null) {
+    let a = i - 1; while (a >= 0 && pkt[a][1] == null) a--;
+    let b = i + 1; while (b < pkt.length && pkt[b][1] == null) b++;
+    const ya = a >= 0 ? pkt[a][1] : null, yb2 = b < pkt.length ? pkt[b][1] : null;
+    pkt[i][1] = ya == null ? yb2 : yb2 == null ? ya
+      : ya + (pkt[i][0] - pkt[a][0]) / ((pkt[b][0] - pkt[a][0]) || 1) * (yb2 - ya);
+  }
+  // fjern punkter som ligger på en rett linje
+  const ren = [];
+  for (const p of pkt) {
+    if (ren.length >= 2) {
+      const a = ren[ren.length - 2], b = ren[ren.length - 1];
+      if (Math.abs((b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0])) < 1e-9) ren.pop();
+    }
+    if (!ren.length || Math.abs(ren[ren.length - 1][0] - p[0]) > 1e-12 || Math.abs(ren[ren.length - 1][1] - p[1]) > 1e-12) ren.push(p);
+  }
+  return [[t0, yb], [t1, yb], ...ren.reverse()];
+}

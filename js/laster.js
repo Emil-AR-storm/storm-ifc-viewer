@@ -22,7 +22,7 @@ import { forskyvLapper, meldMaalLapper } from "./maal-verktoy.js";
 import {
   CPE_FLATT_TAK, TERRENG, flattTakSoner, kommuneFraSvar, kommunePunktUrl, mu1, snoMark, snoTak, tall, vaskLastdata,
   snoAdvarsler, vindAdvarsler, vindBasis, vindTrykk, we,
-  flaterFraRektangel, hylle2, kraft, minsteRektangel, vindPaFlater, vindRetninger
+  fasadeOmriss, flaterFraRektangel, hylle2, kraft, minsteRektangel, vindPaFlater, vindRetninger
 } from "./laster-regn.js";
 
 export const lasterGroup = new THREE.Group();
@@ -321,6 +321,9 @@ function flaterFraSW() {
   const ut = [];
   for (const ff of perFasade.values()) {
     if (!ff.deler.length) continue;
+    // hele fasaden, fra topp til bunn — åpninger og hull telles med (Emil 06.10)
+    const omr = fasadeOmriss(ff.deler);
+    if (omr.length >= 3) ff.deler = [omr];
     // normalen skal peke UT fra bygget
     let mx = 0, mz = 0; for (const q of ff.pkt) { mx += q[0]; mz += q[2]; } mx /= ff.pkt.length; mz /= ff.pkt.length;
     if ((mx - cx) * ff.N[0] + (mz - cz) * ff.N[1] < 0) ff.N = [-ff.N[0], -ff.N[1]];
