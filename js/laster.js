@@ -14,14 +14,15 @@ import * as THREE from "three";
 import { $, S, apnePanel, esc, ikon, på } from "./state.js";
 import { t } from "./i18n.js";
 import { frameHooks, makeLabel, scene, updateScreenScaled } from "./scene.js";
-import { swGroup } from "./veggelement/tilstand.js";
+import { lagret, swGroup } from "./veggelement/tilstand.js";
 import { allElementBoxes, skjulteIder } from "./elements.js";
 import { typeFor } from "./ifcrpc.js";
 import { foldSeksjoner } from "./seksjoner.js";
 import { forskyvLapper, meldMaalLapper } from "./maal-verktoy.js";
 import {
-  CPE_FLATT_TAK, TERRENG, cpeVegg, flattTakSoner, kommuneFraSvar, kommunePunktUrl, mu1, snoMark, snoTak, tall, vaskLastdata,
-  snoAdvarsler, veggSoner, vindAdvarsler, vindBasis, vindTrykk, we
+  CPE_FLATT_TAK, TERRENG, flattTakSoner, kommuneFraSvar, kommunePunktUrl, mu1, snoMark, snoTak, tall, vaskLastdata,
+  snoAdvarsler, vindAdvarsler, vindBasis, vindTrykk, we,
+  flaterFraRektangel, hylle2, kraft, minsteRektangel, vindPaFlater, vindRetninger
 } from "./laster-regn.js";
 
 export const lasterGroup = new THREE.Group();
@@ -258,14 +259,126 @@ function takflater() {
   return { kilde: "manuell", flater: manuelleTakflater(form, data.takvinkel) };
 }
 
-// ---------- Utregningen ----------
-const RETNINGER = [
-  { navn: "→ +X", d: new THREE.Vector3(1, 0, 0), b: new THREE.Vector3(0, 0, 1), start: (bx) => new THREE.Vector3(bx.min.x, 0, bx.min.z) },
-  { navn: "↓ +Z", d: new THREE.Vector3(0, 0, 1), b: new THREE.Vector3(1, 0, 0), start: (bx) => new THREE.Vector3(bx.min.x, 0, bx.min.z) },
-  { navn: "← −X", d: new THREE.Vector3(-1, 0, 0), b: new THREE.Vector3(0, 0, 1), start: (bx) => new THREE.Vector3(bx.max.x, 0, bx.min.z) },
-  { navn: "↑ −Z", d: new THREE.Vector3(0, 0, -1), b: new THREE.Vector3(1, 0, 0), start: (bx) => new THREE.Vector3(bx.min.x, 0, bx.max.z) }
-];
+// ---------- Veggene vinden tar på (Emil 06.10) ----------
+// «Boksen skal forme seg rundt stålbygget og legge seg langs flaten til
+// veggen.» Flatene lages av det som FINNES i modellen — ingenting her vet
+// noe om én bestemt modell:
+//   1. veggene SW-generatoren har lagt: hver synlig yttervegg leses av sine
+//      egne 3D-flater og legges på fasaden den hører til (omrisset i
+//      fasadens plan, også skråkappede gavlbiter)
+//   2. ellers: minste rektangel rundt stålsøylene (eller veggene, eller hele
+//      bygget), fra foten av søylene til toppen av stålet.
+// Selve sonene og arealene regnes i laster-regn.js (vindPaFlater).
+const STAL_SOYLE = new Set(["COLUMN"]);
+const STAL_TOPP = new Set(["COLUMN", "BEAM", "MEMBER", "ROOF", "PLATE", "COVERING", "WALL", "WALLSTANDARDCASE", "CURTAINWALL"]);
+const VEGG = new Set(["WALL", "WALLSTANDARDCASE", "CURTAINWALL"]);
+let flateHurtig = { nokkel: "", verdi: null };
+function takTopp() {
+  let y = -Infinity;
+  if (swGroup) swGroup.traverse(o => {
+    if (!o.isMesh || !(o.userData && (o.userData.tak || o.userData.blikk)) || !synligKjede(o)) return;
+    const bb = new THREE.Box3().setFromObject(o); if (!bb.isEmpty()) y = Math.max(y, bb.max.y);
+  });
+  return Number.isFinite(y) ? y * skala() : NaN;
+}
+function flaterFraSW() {
+  const L = lagret;
+  if (!L || !Array.isArray(L.fasader) || !Array.isArray(L.vegger) || !swGroup) return [];
+  const s = skala();
+  const vegger = new Map();
+  for (const v of L.vegger) if (v && !v.skjult && Number.isInteger(v.fi) && L.fasader[v.fi]) vegger.set(v.id, v);
+  if (!vegger.size) return [];
+  swGroup.updateMatrixWorld(true);
+  const pr = new Map();            // vegg-id → punkter [x, y, z] i meter
+  const p = new THREE.Vector3();
+  swGroup.traverse(o => {
+    if (!o.isMesh || !o.geometry || !o.userData || !synligKjede(o)) return;
+    const v = vegger.get(o.userData.swId);
+    const pos = o.geometry.attributes && o.geometry.attributes.position;
+    if (!v || !pos) return;
+    let arr = pr.get(v.id); if (!arr) pr.set(v.id, arr = []);
+    for (let i = 0; i < pos.count; i++) { p.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld); arr.push([p.x * s, p.y * s, p.z * s]); }
+  });
+  if (!pr.size) return [];
+  // midtpunktet av bygget i plan — avgjør hvilken vei «utover» er
+  let cx = 0, cz = 0, n = 0;
+  for (const arr of pr.values()) for (const q of arr) { cx += q[0]; cz += q[2]; n++; }
+  cx /= n; cz /= n;
+  const perFasade = new Map();
+  for (const [id, arr] of pr) {
+    const v = vegger.get(id), f = L.fasader[v.fi];
+    let ff = perFasade.get(v.fi);
+    if (!ff) {
+      const el = Math.hypot(f.ex, f.ez) || 1, nl = Math.hypot(f.nx, f.nz) || 1;
+      ff = { fi: v.fi, navn: f.navn || t("Fasade {0}", v.fi + 1), o: [f.px * s, f.pz * s], e: [f.ex / el, f.ez / el], N: [f.nx / nl, f.nz / nl], deler: [], pkt: [] };
+      perFasade.set(v.fi, ff);
+    }
+    const ty = arr.map(q => [(q[0] - ff.o[0]) * ff.e[0] + (q[2] - ff.o[1]) * ff.e[1], q[1]]);
+    const hy = hylle2(ty);
+    if (hy.length >= 3) ff.deler.push(hy);
+    ff.pkt.push(...arr);
+  }
+  const ut = [];
+  for (const ff of perFasade.values()) {
+    if (!ff.deler.length) continue;
+    // normalen skal peke UT fra bygget
+    let mx = 0, mz = 0; for (const q of ff.pkt) { mx += q[0]; mz += q[2]; } mx /= ff.pkt.length; mz /= ff.pkt.length;
+    if ((mx - cx) * ff.N[0] + (mz - cz) * ff.N[1] < 0) ff.N = [-ff.N[0], -ff.N[1]];
+    let nMaks = -Infinity;
+    for (const q of ff.pkt) nMaks = Math.max(nMaks, (q[0] - ff.o[0]) * ff.N[0] + (q[2] - ff.o[1]) * ff.N[1]);
+    ut.push({ navn: ff.navn, o: ff.o, e: ff.e, N: ff.N, deler: ff.deler, ut: nMaks });
+  }
+  return ut.sort((a, b) => a.navn.localeCompare(b.navn, "nb", { numeric: true }));
+}
+function flaterFraStal() {
+  let skjult = new Set();
+  try { skjult = skjulteIder(); } catch (_) { skjult = new Set(); }
+  const s = skala();
+  const grupper = { soyle: [], vegg: [], alle: [] };
+  let yb = Infinity, ybAlle = Infinity, yt = -Infinity, ytAlle = -Infinity;
+  try {
+    for (const [id, eb] of allElementBoxes()) {
+      if (skjult.has(id) || eb.isEmpty()) continue;
+      const tp = typeNavn(id);
+      if (!erBygningsdel(tp)) continue;
+      const hj = [[eb.min.x, eb.min.z], [eb.max.x, eb.min.z], [eb.max.x, eb.max.z], [eb.min.x, eb.max.z]].map(([x, z]) => [x * s, z * s]);
+      grupper.alle.push(...hj);
+      ybAlle = Math.min(ybAlle, eb.min.y * s); ytAlle = Math.max(ytAlle, eb.max.y * s);
+      if (STAL_SOYLE.has(tp)) { grupper.soyle.push(...hj); yb = Math.min(yb, eb.min.y * s); }
+      else if (VEGG.has(tp)) grupper.vegg.push(...hj);
+      if (STAL_TOPP.has(tp)) yt = Math.max(yt, eb.max.y * s);
+    }
+  } catch (_) { return []; }
+  const pkt = grupper.soyle.length >= 3 ? grupper.soyle : grupper.vegg.length >= 3 ? grupper.vegg : grupper.alle;
+  if (pkt.length < 3) return [];
+  if (!Number.isFinite(yb)) yb = ybAlle;
+  if (!Number.isFinite(yt)) yt = ytAlle;
+  const tt = takTopp(); if (Number.isFinite(tt)) yt = Math.max(yt, tt);
+  return flaterFraRektangel(minsteRektangel(pkt), yb, yt).map((f, i) => ({ ...f, navn: t("Side {0}", i + 1), ut: 0 }));
+}
+function vindFlater() {
+  let skjultN = 0; try { skjultN = skjulteIder().size; } catch (_) {}
+  const nk = [S.fileName, S.modelGroup && S.modelGroup.uuid, swGroup ? swGroup.children.length : 0,
+    lagret && lagret.vegger ? lagret.vegger.length : 0, skjultN, skala()].join("|");
+  if (flateHurtig.nokkel === nk && flateHurtig.verdi) return flateHurtig.verdi;
+  let flater = flaterFraSW(), kilde = "sw";
+  if (!flater.length) { flater = flaterFraStal(); kilde = "stal"; }
+  const verdi = { flater, kilde, hTopp: takTopp() };
+  flateHurtig = { nokkel: nk, verdi };
+  return verdi;
+}
+const PILER = ["→", "↘", "↓", "↙", "←", "↖", "↑", "↗"];
+const pilFor = (w) => PILER[((Math.round(Math.atan2(w[1], w[0]) / (Math.PI / 4)) % 8) + 8) % 8];
+function retninger(vf) {
+  return vindRetninger(vf.flater).map(w => {
+    const r = vindPaFlater(vf.flater, w, vf.hTopp);
+    let lo = null, A = 0;
+    if (r) for (const x of r.perFlate) if (x.sone === "D" && x.areal > A) { A = x.areal; lo = vf.flater[x.fi].navn; }
+    return { w, navn: pilFor(w) + (lo ? " " + lo : "") };
+  });
+}
 
+// ---------- Utregningen ----------
 export function regnUt() {
   const ut = { sno: null, vind: null };
   const sm = snoMark({ sk0: data.sk0, Hg: data.Hg, dsk: data.dsk, skMaks: data.skMaks, H: data.H });
@@ -277,19 +390,17 @@ export function regnUt() {
     }) };
   }
   const vb = vindBasis(data);
-  const bx = boks();
-  if (vb != null && bx) {
-    const s = skala();
-    const r = RETNINGER[Number(data.retning || 0)] || RETNINGER[0];
-    const Lx = (bx.max.x - bx.min.x) * s, Lz = (bx.max.z - bx.min.z) * s;
-    const h = (bx.max.y - bx.min.y) * s;
-    const d = Math.abs(r.d.x) > 0 ? Lx : Lz, b = Math.abs(r.d.x) > 0 ? Lz : Lx;
-    const kat = TERRENG[data.terreng] ? data.terreng : "II";
-    const q = vindTrykk(h, vb, kat);
-    const cpe = cpeVegg(h / d);
-    const soner = veggSoner(b, d, h);
-    const tak = tf.flater.length && tf.flater.every(f => f.alfa < 5) ? flattTakSoner(b, d, h) : null;
-    ut.vind = { vb, kat, h, b, d, q, cpe, soner, tak, retning: r };
+  if (vb != null) {
+    const vf = vindFlater();
+    const rr = vf.flater.length ? retninger(vf) : [];
+    const r = rr[Number(data.retning || 0)] || rr[0];
+    const v = r ? vindPaFlater(vf.flater, r.w, vf.hTopp) : null;
+    if (v) {
+      const kat = TERRENG[data.terreng] ? data.terreng : "II";
+      const q = vindTrykk(v.h, vb, kat);
+      const tak = tf.flater.length && tf.flater.every(f => f.alfa < 5) ? flattTakSoner(v.b, v.d, v.h) : null;
+      ut.vind = { ...v, vb, kat, q, tak, kilde: vf.kilde, flater: vf.flater, retning: r, retninger: rr };
+    }
   }
   return ut;
 }
@@ -345,42 +456,43 @@ function tegn() {
     }
   }
   if (visVind && r.vind) {
-    const v = r.vind, s = skala();
-    const o0 = v.retning.start(bx); o0.y = bx.min.y;
-    const P = (dm, bm, ym) => o0.clone().addScaledVector(v.retning.d, dm / s).addScaledVector(v.retning.b, bm / s).add(new THREE.Vector3(0, ym / s, 0));
-    const ut = (bx.max.x - bx.min.x + bx.max.z - bx.min.z) * 0.004;
-    const qp = v.q.qp;
-    const sone = (navn, cpe, hj, utover) => {
-      const poly = hj.map(p => p.clone().addScaledVector(utover, ut));
-      const m = flateMesh(poly, farge(cpe), 0.4);
+    const v = r.vind, s = skala(), qp = v.q.qp;
+    const luft = 0.05;                              // 5 cm utenpå veggen
+    const plan = (f, tt) => [f.o[0] + tt * f.e[0] + (f.ut + luft) * f.N[0], f.o[1] + tt * f.e[1] + (f.ut + luft) * f.N[1]];
+    const V3 = (x, y, z) => new THREE.Vector3(x / s, y / s, z / s);
+    const midt = new Map();                         // flate|sone → tyngdepunkt
+    for (const x of v.deler) {
+      const f = v.flater[x.fi];
+      const poly = x.poly.map(([tt, y]) => { const [px, pz] = plan(f, tt); return V3(px, y, pz); });
+      const m = flateMesh(poly, farge(v.cpe[x.sone]), 0.4);
       if (m) lasterGroup.add(m);
-      const midt = poly.reduce((a, p) => a.add(p), new THREE.Vector3()).divideScalar(poly.length);
-      lasterGroup.add(lappPaa(navn + "  " + fortegn(we(qp, cpe)) + " kN/m²", hex(farge(cpe)), midt));
-    };
-    const H = v.h, D = v.d, B = v.b;
-    // lo-veggen (D) og le-veggen (E)
-    sone("D", v.cpe.D, [P(0, 0, 0), P(0, B, 0), P(0, B, H), P(0, 0, H)], v.retning.d.clone().negate());
-    sone("E", v.cpe.E, [P(D, 0, 0), P(D, B, 0), P(D, B, H), P(D, 0, H)], v.retning.d.clone());
-    // sideveggene: A, B, C fra lo-kanten
-    let fra = 0;
-    for (const [navn, len] of [["A", v.soner.A], ["B", v.soner.B], ["C", v.soner.C]]) {
-      if (!(len > 1e-9)) continue;
-      const til = fra + len;
-      sone(navn, v.cpe[navn], [P(fra, 0, 0), P(til, 0, 0), P(til, 0, H), P(fra, 0, H)], v.retning.b.clone().negate());
-      sone(navn, v.cpe[navn], [P(fra, B, 0), P(til, B, 0), P(til, B, H), P(fra, B, H)], v.retning.b.clone());
-      fra = til;
+      const k = x.fi + "|" + x.sone;
+      if (!midt.has(k)) midt.set(k, { p: new THREE.Vector3(), A: 0 });
+      const c = poly.reduce((a, p) => a.add(p), new THREE.Vector3()).divideScalar(poly.length);
+      const mm = midt.get(k); mm.p.addScaledVector(c, x.areal); mm.A += x.areal;
     }
-    // flatt tak
+    for (const x of v.perFlate) {
+      const mm = midt.get(x.fi + "|" + x.sone);
+      if (!mm || !(mm.A > 0)) continue;
+      const cpe = v.cpe[x.sone];
+      lasterGroup.add(lappPaa(x.sone + "  " + fortegn(we(qp, cpe)) + " kN/m² · " + Math.round(x.areal) + " m²", hex(farge(cpe)), mm.p.clone().divideScalar(mm.A)));
+    }
+    // flatt tak — i vindens retning, over toppen av veggene
+    const W = v.w, Q = v.tvers;
+    const T = (dm, bm, ym) => V3(W[0] * (v.s0 + dm) + Q[0] * (v.q0 + bm), ym, W[1] * (v.s0 + dm) + Q[1] * (v.q0 + bm));
     if (v.tak) for (const z of v.tak.soner) {
       const cpe = CPE_FLATT_TAK[z.sone];
-      sone(z.sone, cpe, [P(z.v0, z.u0, H), P(z.v1, z.u0, H), P(z.v1, z.u1, H), P(z.v0, z.u1, H)], new THREE.Vector3(0, 1, 0));
+      const poly = [T(z.v0, z.u0, v.y1 + luft), T(z.v1, z.u0, v.y1 + luft), T(z.v1, z.u1, v.y1 + luft), T(z.v0, z.u1, v.y1 + luft)];
+      const m = flateMesh(poly, farge(cpe), 0.4); if (m) lasterGroup.add(m);
+      const c = poly.reduce((a, p) => a.add(p), new THREE.Vector3()).divideScalar(4);
+      lasterGroup.add(lappPaa(z.sone + "  " + fortegn(we(qp, cpe)) + " kN/m²", hex(farge(cpe)), c));
     }
     // pila: hvor vinden kommer fra
-    const lengde = Math.max(D, B) * 0.25 / s;
-    const midtLo = P(0, B / 2, H / 2);
-    const pil = new THREE.ArrowHelper(v.retning.d.clone(), midtLo.clone().addScaledVector(v.retning.d, -lengde * 1.2), lengde, 0x22d3ee, lengde * 0.3, lengde * 0.15);
-    lasterGroup.add(pil);
-    lasterGroup.add(lappPaa(t("Vind · qp {0} kN/m²", kn(qp / 1000)), "#22d3ee", midtLo.clone().addScaledVector(v.retning.d, -lengde * 1.4)));
+    const lengde = Math.max(v.d, v.b) * 0.25;
+    const midtLo = T(-lengde * 1.2, v.b / 2, (v.y0 + v.y1) / 2);
+    const retn = new THREE.Vector3(W[0], 0, W[1]);
+    lasterGroup.add(new THREE.ArrowHelper(retn, midtLo, lengde / s, 0x22d3ee, lengde * 0.3 / s, lengde * 0.15 / s));
+    lasterGroup.add(lappPaa(t("Vind · qp {0} kN/m²", kn(qp / 1000)), "#22d3ee", T(-lengde * 1.4, v.b / 2, (v.y0 + v.y1) / 2)));
   }
 }
 
@@ -390,6 +502,12 @@ const felt = (id, navn, enhet, hjelp) =>
   '<input type="text" inputmode="decimal" data-felt="' + id + '" value="' + esc(data[id] || "") + '"' +
   (hjelp ? ' placeholder="' + esc(hjelp) + '"' : "") + "></label>";
 
+function retningKnapper() {
+  let rr = [];
+  try { const vf = vindFlater(); rr = vf.flater.length ? retninger(vf) : []; } catch (_) { rr = []; }
+  if (!rr.length) rr = [0, 1, 2, 3].map(i => ({ navn: String(i + 1) }));
+  return rr.map((r, i) => '<button data-retning="' + i + '"' + (String(data.retning || 0) === String(i) ? ' class="active"' : "") + ">" + esc(r.navn) + "</button>").join("");
+}
 function tegnPanel() {
   const body = $("lasterBody");
   if (!body) return;
@@ -418,7 +536,7 @@ function tegnPanel() {
     felt("calt", "calt", "", "1,0") + felt("cprob", "cprob", "", "1,0") +
     '<label>' + t("Terrengkategori") + '<select data-felt="terreng">' + kat + "</select></label>" +
     '<label>' + t("Vindretning") + '</label><div class="prop-actions" id="laRetning">' +
-      RETNINGER.map((r, i) => '<button data-retning="' + i + '"' + (String(data.retning || 0) === String(i) ? ' class="active"' : "") + ">" + r.navn + "</button>").join("") + "</div>" +
+      retningKnapper() + "</div>" +
     '<div id="laVindRes"></div>';
   foldSeksjoner(body, { nokkel: "storm-laster-seksjoner-apne", standard: ["la-sted", "la-sno", "la-vind"] });
   body.querySelectorAll("[data-felt]").forEach(el => {
@@ -463,17 +581,31 @@ function visResultat() {
   if (vr) {
     if (!r.vind) vr.innerHTML = '<p class="la-tom">' + t("Skriv inn vb,0 for å få vindlasten.") + "</p>";
     else {
-      const v = r.vind;
+      const v = r.vind, qp = v.q.qp;
       let h = advarsel(vindAdvarsler(data)) + rad(t("Basisvindhastighet, vb"), kn(v.vb) + " m/s") +
+        '<p class="la-tom">' + ikon("fasade") + " " + (v.kilde === "sw"
+          ? t("Sonene ligger på veggene SW-generatoren har lagt ({0} fasader).", v.flater.length)
+          : t("Ingen SW-vegger: sonene ligger på et rektangel rundt stålsøylene.")) + "</p>" +
         rad(t("Byggehøyde h · b · d"), kn(v.h) + " · " + kn(v.b) + " · " + kn(v.d) + " m") +
-        rad(t("Vindkasthastighetstrykk qp(h)"), kn(v.q.qp / 1000) + " kN/m²");
+        rad(t("Vindkasthastighetstrykk qp(h)"), kn(qp / 1000) + " kN/m²");
       for (const k of ["D", "E", "A", "B", "C"]) {
-        if (k !== "D" && k !== "E" && !(v.soner[k] > 1e-9)) continue;
+        const A = v.perFlate.filter(x => x.sone === k).reduce((s, x) => s + x.areal, 0);
+        if (!(A > 1e-6)) continue;
         const navn = { D: t("D – lo-vegg (trykk)"), E: t("E – le-vegg (sug)"), A: "A", B: "B", C: "C" }[k];
-        h += rad(navn + " · cpe " + fortegn(v.cpe[k]), fortegn(we(v.q.qp, v.cpe[k])) + " kN/m²");
+        h += rad(navn + " · cpe " + fortegn(v.cpe[k]), fortegn(we(qp, v.cpe[k])) + " kN/m² · " + kn(A) + " m² · " + fortegn(kraft(qp, v.cpe[k], A)) + " kN");
       }
-      if (v.tak) for (const k of ["F", "G", "H", "I"])
-        h += rad(t("Tak {0}", k) + " · cpe " + fortegn(CPE_FLATT_TAK[k]), fortegn(we(v.q.qp, CPE_FLATT_TAK[k])) + " kN/m²" + (k === "I" ? " / " + fortegn(we(v.q.qp, CPE_FLATT_TAK.Iminus)) : ""));
+      h += '<h4>' + t("Per fasade") + "</h4>";
+      const rekke = { D: 0, A: 1, B: 2, C: 3, E: 4 };
+      for (const x of v.perFlate.slice().sort((a, b) => a.fi - b.fi || rekke[a.sone] - rekke[b.sone]))
+        h += rad(esc(v.flater[x.fi].navn) + " · " + x.sone + " · " + kn(x.areal) + " m²",
+          fortegn(we(qp, v.cpe[x.sone])) + " kN/m² · " + fortegn(kraft(qp, v.cpe[x.sone], x.areal)) + " kN");
+      const sumA = v.perFlate.reduce((s, x) => s + x.areal, 0);
+      h += rad("<b>" + t("Sum veggareal") + "</b>", "<b>" + kn(sumA) + " m²</b>");
+      if (v.tak) for (const k of ["F", "G", "H", "I"]) {
+        const A = v.tak.soner.filter(z => z.sone === k).reduce((s, z) => s + (z.u1 - z.u0) * (z.v1 - z.v0), 0);
+        h += rad(t("Tak {0}", k) + " · cpe " + fortegn(CPE_FLATT_TAK[k]) + " · " + kn(A) + " m²",
+          fortegn(we(qp, CPE_FLATT_TAK[k])) + " kN/m²" + (k === "I" ? " / " + fortegn(we(qp, CPE_FLATT_TAK.Iminus)) : ""));
+      }
       else h += '<p class="la-tom">' + t("Vind på skrått tak (over 5°) er ikke med i denne versjonen — se tabell 7.3–7.4 i standarden.") + "</p>";
       vr.innerHTML = h;
     }
@@ -496,4 +628,4 @@ på("btnLaster", "click", () => {
 // Ny modell: lastdataene hører til modellen, og visningen ryddes
 S.ryddLaster = () => { visSno = visVind = false; rydd(); data = {}; fraTerreng = { kommune: false, H: false }; };
 
-export const __test = { RETNINGER, regnUt, settData: (d) => { data = vaskLastdata(d); }, hentData: () => data, fyllFraTerreng };
+export const __test = { regnUt, flaterFraSW, flaterFraStal, glemFlater: () => { flateHurtig = { nokkel: "", verdi: null }; }, settData: (d) => { data = vaskLastdata(d); }, hentData: () => data, fyllFraTerreng };
