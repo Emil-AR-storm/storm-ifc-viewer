@@ -1932,3 +1932,4 @@ body.st-tid-paa .st-velgbar { bottom: 112px; }
   border-radius: 8px; padding: 8px 10px; font-size: 12px; line-height: 1.4; margin-bottom: 8px; }
 #lasterBody .la-tom { color: var(--muted); font-size: 12px; margin: 6px 0; }
 #laRetning button.active, #lasterBody .prop-actions button.active { outline: 2px solid var(--accent, #3b82f6); }
+#lasterBody .laster-advarsel { border-color: #ef4444; background: rgba(239, 68, 68, .12); margin: 6px 0; }
