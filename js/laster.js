@@ -542,7 +542,37 @@ function byggFasader() {
   const alleSw = [...sw.values()].flatMap(del => [...del.values()]);
   const kant = tyk + 0.05;                                   // så langt forbi hjørnet flata får gå
   const flater = [];
-  for (const r of rammer) {
+  // 🧭 HVEM EIER HVA (Emil 08.10, runde 5: ved innvendige hjørner med et
+  // lite sprang lå flata på enden av NABOveggen, og naboflatene overlappet).
+  // To parallelle fasader som ligger tett (et sprang på under en meter)
+  // fanget begge de samme veggene og søylene, og flata la seg på den som
+  // stakk lengst ut. Nå eies hvert element av ÉN fasade per retning: den
+  // parallelle fasaden hvis linje ligger nærmest elementets midte, og som
+  // elementet ligger langs. Vinkelrette fasader påvirkes ikke — en
+  // hjørnesøyle hører fortsatt til begge sidene av hjørnet.
+  const eier = new Map();                                    // element → Set av rammeindekser
+  if (rammer.some(r => r.fast)) {
+    const retn = (r) => Math.round(((Math.atan2(r.e[1], r.e[0]) * 180 / Math.PI) % 180 + 180) % 180 / 5) % 36;
+    const tildel = (el, pkt) => {
+      let cx2 = 0, cz2 = 0;
+      for (const q of pkt) { cx2 += q[0]; cz2 += q[2]; }
+      cx2 /= pkt.length; cz2 /= pkt.length;
+      const best = new Map();
+      rammer.forEach((r, i) => {
+        if (!r.fast) return;
+        const d = (cx2 - r.o[0]) * r.N[0] + (cz2 - r.o[1]) * r.N[1];
+        const tt = (cx2 - r.o[0]) * r.e[0] + (cz2 - r.o[1]) * r.e[1];
+        if (tt < -kant - 0.5 || tt > r.L + kant + 0.5 || d < -SOYLE_INN - 1 || d > SW_UT + 1) return;
+        const k = retn(r), b = best.get(k);
+        if (!b || Math.abs(d) < b.d) best.set(k, { i, d: Math.abs(d) });
+      });
+      eier.set(el, new Set([...best.values()].map(b => b.i)));
+    };
+    for (const arr of alleSw) tildel(arr, arr);
+    for (const x of stal) tildel(x, x.pkt);
+  }
+  const eies = (el, i) => { const e = eier.get(el); return !e || e.has(i); };
+  for (const [ri, r] of rammer.entries()) {
     // utover = bort fra midten av bygget (omrisset vet det selv)
     if (!r.fast && (r.o[0] - cx) * r.N[0] + (r.o[1] - cz) * r.N[1] < 0) r.N = [-r.N[0], -r.N[1]];
     // 🏗 Emil 08.10 (bilde: flatene lå et stykke utenfor søylene, og gikk
@@ -555,7 +585,7 @@ function byggFasader() {
       let skyv = -Infinity, a0 = Infinity, b0 = -Infinity;
       const kandidater = [];
       for (const x of stal) {
-        if (!x.staar) continue;
+        if (!x.staar || !eies(x, ri)) continue;
         let n0 = Infinity, n1 = -Infinity, e0 = Infinity, e1 = -Infinity;
         for (const q of x.pkt) {
           const v = (q[0] - r.o[0]) * r.N[0] + (q[2] - r.o[1]) * r.N[1];
@@ -606,6 +636,7 @@ function byggFasader() {
     } else swDel = r.fi !== undefined && kilde === "sw" && sw.get(r.fi) ? [...sw.get(r.fi).values()] : [];
     let swA = Infinity, swB = -Infinity;
     for (const arr of swDel) {
+      if (r.fast && !eies(arr, ri)) continue;
       if (r.fast) {
         let n0 = Infinity, n1 = -Infinity; for (const q of arr) { const v = nn(q); n0 = Math.min(n0, v); n1 = Math.max(n1, v); }
         if (n0 < -FASADE_BAND || n1 > SW_UT) continue;
@@ -620,6 +651,7 @@ function byggFasader() {
     let stalUt = -Infinity, soyleUt = -Infinity;
     const staende = [];                                        // toppene av søyler og forlengere
     for (const x of stal) {
+      if (r.fast && !eies(x, ri)) continue;
       let n0 = Infinity, n1 = -Infinity;
       for (const q of x.pkt) { const v = nn(q); n0 = Math.min(n0, v); n1 = Math.max(n1, v); }
       if (n0 < -FASADE_BAND || n1 > FASADE_BAND) continue;     // går på tvers, eller ligger i en annen fasade
@@ -651,7 +683,7 @@ function byggFasader() {
       // veggene kan gå forbi søylene, men ikke forbi kanten av omrisset —
       // der fortsetter nabofasaden (samme linje, annen del av bygget)
       if (Number.isFinite(swUt)) { a = Math.max(Math.min(a, swA), -kant); b = Math.min(Math.max(b, swB), r.L + kant); }
-      flater.push({ navn: r.navn, o: r.o, e: r.e, N: r.N, deler: [omr], ut, a, b, fast: true });
+      flater.push({ navn: r.navn, o: r.o, e: r.e, N: r.N, deler: [omr], ut, a, b, fast: true, L: r.L });
       continue;
     }
     flater.push({ navn: r.navn, o: r.o, e: r.e, N: r.N, deler: [omr], ut });
@@ -679,6 +711,11 @@ function byggFasader() {
       // bare når krysset ligger nær endene vi har fra før — ellers er det
       // ikke naboflater rundt samme hjørne
       if (k && Math.abs(k.tf - f.b) < 3 && Math.abs(k.tg - g.a) < 3) { f.b = k.tf; g.a = k.tg; }
+      else if (!k && f.L > 0 && Math.abs(f.e[0] * g.e[0] + f.e[1] * g.e[1]) > 0.98) {
+        // parallelle naboer rundt et lite sprang: hver stopper der sin egen
+        // kant av omrisset slutter — de skal ikke gå forbi hverandre
+        f.b = Math.min(f.b, f.L); g.a = Math.max(g.a, 0);
+      }
     }
   }
   for (const f of flater) {
