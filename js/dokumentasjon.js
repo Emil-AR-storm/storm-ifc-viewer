@@ -16,11 +16,12 @@
 // Importeres bare fra main.js. På byggeplass-siden er knappene skjult.
 import { $, S, på } from "./state.js";
 import { t } from "./i18n.js";
+import { varsel } from "./varsel.js";
 
 // Åpner panelet (hvis det ikke er åpent) og trykker knappen inni det.
 // Returnerer hva som skjedde, så testene kan sjekke det uten å se på skjermen.
 export function apneOgTrykk(panelId, apneKnappId, indreKnappId, tomTekst) {
-  if (!S.modelGroup) { alert(t("Åpne en modell først.")); return "ingen-modell"; }
+  if (!S.modelGroup) { varsel(t("Åpne en modell først.")); return "ingen-modell"; }
   const panel = $(panelId);
   // Åpne-knappen er en veksler: trykkes den mens panelet er åpent, LUKKES det.
   if (!(panel && panel.classList.contains("open"))) {
@@ -31,7 +32,7 @@ export function apneOgTrykk(panelId, apneKnappId, indreKnappId, tomTekst) {
   if (!knapp) return "fant-ikke";
   // En låst knapp betyr at det ikke finnes noe å laste ned (riggplan uten
   // rigg). Et trykk på en låst knapp gjør ingenting — da må vi si hvorfor.
-  if (knapp.disabled) { if (tomTekst) alert(t(tomTekst)); return "tom"; }
+  if (knapp.disabled) { if (tomTekst) varsel(t(tomTekst)); return "tom"; }
   knapp.click();
   return "trykket";
 }
@@ -45,7 +46,7 @@ på("btnDokSW", "click", () =>
 // BCF ligger i rapportmenyen, som finnes fra start — der er det ikke noe
 // panel å åpne, bare knappen å trykke.
 på("btnDokBcf", "click", () => {
-  if (!S.modelGroup) { alert(t("Åpne en modell først.")); return; }
+  if (!S.modelGroup) { varsel(t("Åpne en modell først.")); return; }
   const b = $("rapBcf");
   if (b) b.click();
 });

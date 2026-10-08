@@ -29,6 +29,7 @@ import { SLAG_NAVN, etappeForNokkel, pdfTrinn, fjern, leggTil, nokkel, nyEtappe,
 import { begrensListe, forberedMobilPanel, ryddFramdriftVis, settSkjulTildelte, stoppAvspilling, tegnFramdrift, tegnTidslinje } from "./framdrift-vis.js";
 import { LAG_ID as TRP_BLIKK_LAG } from "./framdrift-plukk.js";
 import { forberedKilder, nullstillKilder } from "./framdrift-kilde.js";
+import { varsel } from "./varsel.js";
 
 const SP_MAPPE = "Framdriftsplan";
 let spStatus = "av", lagreTid = 0;
@@ -470,7 +471,7 @@ S.ryddFramdrift = () => { if (velger) avsluttVelg(false); ryddFramdriftVis(); S.
 på("btnFramdrift", "click", () => {
   const panel = $("framdriftPanel");
   if (panel.classList.contains("open")) { if (velger) avsluttVelg(false); panel.classList.remove("open"); oppdaterVis(); return; }
-  if (!S.modelGroup) { alert(t("Åpne en modell først.")); return; }
+  if (!S.modelGroup) { varsel(t("Åpne en modell først.")); return; }
   tegnPanel();
   apnePanel("framdriftPanel");
   forberedMobilPanel();   // 📱 mobil: åpner sammenlagt (oppsett B)

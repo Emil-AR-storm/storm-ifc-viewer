@@ -46,6 +46,7 @@ import "./byggeplass.js";
 import "./mobile.js";   // må lastes etter at alle knapper har fått lyttere
 import "./oppsett.js";   // ansattliste og Planner-plan fra SharePoint
 import "./usersync.js";   // personlig oppsett fra SharePoint – må lastes sist
+import { varsel } from "./varsel.js";
 
 // JavaScript kjører – skjul advarselen
 const jsCheck = document.getElementById("jsCheck");
@@ -229,7 +230,7 @@ if (window.EMBEDDED_IFC) {
       await loadModel(buf);
       afterLoad();
     } catch (err) {
-      alert(t("Klarte ikke å laste innebygd modell: ") + err.message);
+      varsel(t("Klarte ikke å laste innebygd modell: ") + err.message);
     } finally {
       loadingEl.classList.remove("open");
     }

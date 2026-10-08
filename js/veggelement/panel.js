@@ -28,6 +28,7 @@ import { fasadePanelHtml, innerForhandsvis, innerMark, innerPanelHtml, koblInner
 export { SEKSJON_NOKKEL, SEKSJON_STANDARD_APEN, foldSeksjoner, lesApneSeksjoner, seksjonNokkel, skrivApneSeksjoner } from "../seksjoner.js";
 import { foldSeksjoner } from "../seksjoner.js";
 import { blikkPanelHtml, koblBlikkSeksjon } from "./blikk.js";
+import { varsel } from "../varsel.js";
 
 export function tegnPanel() {
   const body = $("swBody");
@@ -166,7 +167,7 @@ export function tegnPanel() {
     lesOppsettFraPanel();
     $("swGenerer").disabled = true;
     try { await generer(); }
-    catch (err) { console.warn("SW-generator:", err); alert(t("Genereringen feilet: ") + (err && err.message || err)); }
+    catch (err) { console.warn("SW-generator:", err); varsel(t("Genereringen feilet: ") + (err && err.message || err)); }
     finally { const b = $("swGenerer"); if (b) b.disabled = false; }
   };
   $("swListe").onclick = () => { lesOppsettFraPanel(); lastNedListe(); };

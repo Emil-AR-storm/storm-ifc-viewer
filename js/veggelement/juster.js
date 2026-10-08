@@ -23,6 +23,7 @@ import { byggAlleStabler, byggInnerStabler, generer, loesAlleJusteringer, snappP
 import { finnUtsparingKandidater, kandidatTilUtsparing, stalPaFasader } from "./stal.js";
 import { innerData, lagretInner, skrivInner, tegnPanel } from "./panel.js";
 import { avsluttInnerMark, byggAlleInnervegger, innerBaseY, innerForhandsvis, innerMark, oppdaterInnerveggerEtterUtsp, tegnInnerBar } from "./innervegg.js";
+import { varsel } from "../varsel.js";
 
 // ---------- ✥ Juster elementer: dra i endene ----------
 // Emils ønske 02.09: trykk på et element og dra i enden for å stille lengden.
@@ -310,7 +311,7 @@ export function splittValgte() {
     just.valgt.add(ny.id);
     delt++;
   }
-  if (!delt) { alert(t("Elementet er for kort å dele — hver halvdel må bli minst 100 mm.")); return; }
+  if (!delt) { varsel(t("Elementet er for kort å dele — hver halvdel må bli minst 100 mm.")); return; }
   loesAlleJusteringer();
   byggAlleStabler();
   skrivBegge();
@@ -323,7 +324,7 @@ export function splittValgte() {
 export function startJuster() {
   const antYtre = ((lagret && lagret.vegger) || []).length;
   const antIndre = ((lagretInner && lagretInner.vegger) || []).length;
-  if (!antYtre && !antIndre) { alert(t("Generer veggelementene først.")); return; }
+  if (!antYtre && !antIndre) { varsel(t("Generer veggelementene først.")); return; }
   // Migrer og tegn på nytt FØR modusen åpnes: en ringmur laget av en eldre
   // versjon mangler id-en plukkingen trenger, og da klikket man rett gjennom
   // muren og traff søyla bak (Emil 03.09). Etter migreringen bærer hver bit
@@ -463,7 +464,7 @@ export function tegnUtspBar() {
 // Da havner boksene på SERIEN, ikke i del A-oppsettet: en dør i en innervegg
 // skal ikke kappe ytterveggen bak den.
 export function startUtspMark(forInner) {
-  if (!S.modelGroup) { alert(t("Åpne en modell først.")); return; }
+  if (!S.modelGroup) { varsel(t("Åpne en modell først.")); return; }
   const prikker = new THREE.Group();
   swGroup.add(prikker);
   utspMark = { flater: [], ned: null, prikker, inner: !!forInner };
@@ -508,7 +509,7 @@ export function fullforUtspMark() {
   sikreUtspTyper(maal, tilInner && innerMark.bygd && innerMark.bygd.okBetong !== undefined
     ? innerMark.bygd.okBetong : okBetongNaa());
   if (!lagt) {
-    alert(t("Utsparingen trenger to motstående sider — trykk på innsiden av søylene på hver side av åpningen."));
+    varsel(t("Utsparingen trenger to motstående sider — trykk på innsiden av søylene på hver side av åpningen."));
     return;
   }
   if (!tilInner) skrivLagret();
@@ -519,7 +520,7 @@ export function fullforUtspMark() {
   // skjedde med veggen. Åpningen lå i den globale lista, og innerveggene ble
   // aldri bygget på nytt. Nå gjør de det, og døra kapper veggen den står i.
   else oppdaterInnerveggerEtterUtsp();
-  if (feilet) alert(t("{0} utsparinger lagt til — {1} område manglet to motstående sider og ble hoppet over.", lagt, feilet));
+  if (feilet) varsel(t("{0} utsparinger lagt til — {1} område manglet to motstående sider og ble hoppet over.", lagt, feilet));
 }
 
 // Klikkene fanges på window i FANGSTFASEN (samme oppskrift som materiell.js):
@@ -671,7 +672,7 @@ export function tegnFinnBar() {
 }
 
 export async function startFinnUtsp() {
-  if (!lagret || !(lagret.fasader || []).length) { alert(t("Generer veggelementene først.")); return; }
+  if (!lagret || !(lagret.fasader || []).length) { varsel(t("Generer veggelementene først.")); return; }
   if (utspMark) avsluttUtspMark();
   if (innerMark) avsluttInnerMark();
   if (just) avsluttJuster();
@@ -706,7 +707,7 @@ export async function startFinnUtsp() {
   const finnes = utspPaFasader().concat((d.utspVis || []).map(a => ({ ...a, fi: a.fi + lagret.fasader.length })));
   const fasInfo = vegger.map(v => ({ lengdeMm: tilMm(Math.abs(v.f.t1 - v.f.t0)), toppMm: v.toppMm, okBetongMm: v.okBetongMm, skjot: v.f.skjot || [] }));
   const kand = finnUtsparingKandidater(stalAlle, fasInfo, finnes);
-  if (!kand.length) { alert(t("Fant ingen åpninger under losholter på fasadene.")); return; }
+  if (!kand.length) { varsel(t("Fant ingen åpninger under losholter på fasadene.")); return; }
   settFinnMark({ kandidater: kand.map(k => ({ k, paa: true, mesh: null })), vegger, gruppe: new THREE.Group(), ned: null });
   swGroup.add(finnMark.gruppe);
   tegnFinnKandidater();

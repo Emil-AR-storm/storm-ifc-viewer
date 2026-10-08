@@ -13,6 +13,7 @@ import { restoreAppearance } from "./prefs.js";
 import { axesGroup, fitToModel, koteGroup, markerGroup, measureGroup, renderer, scene } from "./scene.js";
 import { SP, spOpenFile } from "./sharepoint.js";
 import { tomTegningsbuffer } from "./tegninger.js";
+import { varsel } from "./varsel.js";
 
 // ---------- IFC ----------
 // Selve IFC-motoren (web-ifc + wasm) lever nå i js/ifc-worker.js. Hovedtråden
@@ -26,7 +27,7 @@ export const ifcReady = Promise.resolve();
 export async function openLocalFile(file, handle) {
   if (!file) return;
   if (!/\.(ifc|glb)$/i.test(file.name)) {
-    alert(t("Dette ser ikke ut som en IFC- eller lett kopi-fil ({0}). Velg en fil som slutter på .ifc eller .glb", file.name));
+    varsel(t("Dette ser ikke ut som en IFC- eller lett kopi-fil ({0}). Velg en fil som slutter på .ifc eller .glb", file.name));
     return;
   }
   S.fileName = file.name;
@@ -53,7 +54,7 @@ export async function openLocalFile(file, handle) {
     const msg = /permission|not.*readable|NotReadableError|NotFoundError/i.test(err.name + " " + err.message)
       ? t("Klarte ikke å lese fila. Ligger den i OneDrive og er merket «bare på nett»? Høyreklikk fila i Utforsker → «Behold alltid på denne enheten», og prøv igjen.")
       : t("Klarte ikke å lese IFC-filen: ") + err.message;
-    if (!(await offerLightRetry(err))) alert(msg);
+    if (!(await offerLightRetry(err))) varsel(msg);
   } finally {
     loadingEl.classList.remove("open");
   }
@@ -84,7 +85,7 @@ export async function pickFile() {
   try {
     await openLocalFile(await handle.getFile(), handle);
   } catch (err) {
-    alert(t("Klarte ikke å lese filen: ") + err.message);
+    varsel(t("Klarte ikke å lese filen: ") + err.message);
   }
 }
 
@@ -161,7 +162,7 @@ export async function pickFile() {
     } catch (_) {}
 
     if (!file) {
-      alert(t("Nettleseren fikk ingen fil ut av det du slapp. Det skjer når fila bare finnes i skya (OneDrive «bare på nett»), eller når den dras fra Outlook, Teams, en zip-mappe eller en nettside. Høyreklikk fila i Utforsker → «Behold alltid på denne enheten» og prøv igjen — eller bruk Velg IFC-fil."));
+      varsel(t("Nettleseren fikk ingen fil ut av det du slapp. Det skjer når fila bare finnes i skya (OneDrive «bare på nett»), eller når den dras fra Outlook, Teams, en zip-mappe eller en nettside. Høyreklikk fila i Utforsker → «Behold alltid på denne enheten» og prøv igjen — eller bruk Velg IFC-fil."));
       return;
     }
     await openLocalFile(file, handle);
@@ -487,7 +488,7 @@ export async function loadGlb(buffer) {
 
 på("btnSaveLite", "click", async () => {
   if (!S.modelGroup) return;
-  if (S.glbActive) { alert(t("Denne modellen er allerede en lett kopi.")); return; }
+  if (S.glbActive) { varsel(t("Denne modellen er allerede en lett kopi.")); return; }
   loadingEl.classList.add("open");
   try {
     // Kopien bygges fra geometrien som alt ligger i scenen – modellen lastes
@@ -503,7 +504,7 @@ på("btnSaveLite", "click", async () => {
       (utelatt ? " (" + utelatt + t(" små/festemidler utelatt)") : "");
   } catch (err) {
     console.error(err);
-    alert(t("Klarte ikke å lage lett kopi: ") + err.message);
+    varsel(t("Klarte ikke å lage lett kopi: ") + err.message);
   } finally {
     loadingEl.classList.remove("open");
   }
@@ -545,7 +546,7 @@ på("btnLight", "click", async () => {
       clearLoadFlag();
     } catch (err) {
       clearLoadFlag();
-      alert(t("Klarte ikke å laste på nytt: ") + err.message);
+      varsel(t("Klarte ikke å laste på nytt: ") + err.message);
     } finally {
       loadingEl.classList.remove("open");
     }
@@ -569,7 +570,7 @@ export async function offerLightRetry(err) {
     clearLoadFlag();
   } catch (e2) {
     clearLoadFlag();
-    alert(t("Gikk ikke i lav kvalitet heller: ") + e2.message);
+    varsel(t("Gikk ikke i lav kvalitet heller: ") + e2.message);
   } finally {
     loadingEl.classList.remove("open");
   }
@@ -593,6 +594,6 @@ export async function offerLightRetry(err) {
     setLight(true);
     b.style.display = "none";
     if (info.libId) spOpenFile({ id: info.libId, name: info.name, size: info.size });
-    else alert(t("Velg «{0}» på nytt – den åpnes nå i lav kvalitet.", info.name || "filen"));
+    else varsel(t("Velg «{0}» på nytt – den åpnes nå i lav kvalitet.", info.name || "filen"));
   };
 })();

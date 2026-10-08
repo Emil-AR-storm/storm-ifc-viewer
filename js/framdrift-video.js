@@ -26,6 +26,7 @@ import { framdriftGroup, settVideoModus, tegnFramdrift } from "./framdrift-vis.j
 import { skjulIkkeInnhold, utsnitt } from "./framdrift-pdf.js";
 import { spLastOpp, spPaalogget } from "./sp-lager.js";
 import { pdfTrinn, trinnTittel, videoPlan, videoFilnavn, VIDEO } from "./framdrift-regn.js";
+import { varsel } from "./varsel.js";
 
 export const SP_MAPPE = "Framdriftsplan";
 export const spVideoFil = (ext) => String(S.fileName || "modell") + ".framdrift." + ext;
@@ -78,8 +79,8 @@ function tegnTekst(ctx, W, H, plan, f, liste) {
 // Returnerer { blob, type, ext, sekunder, url? } eller null.
 export async function lagFramdriftVideo() {
   const liste = pdfTrinn(S.framdrift);
-  if (!S.modelGroup) { alert(t("Åpne en modell først.")); return null; }
-  if (!liste.length) { alert(t("Legg noe i et trinn først — planen er tom.")); return null; }
+  if (!S.modelGroup) { varsel(t("Åpne en modell først.")); return null; }
+  if (!liste.length) { varsel(t("Legg noe i et trinn først — planen er tom.")); return null; }
   const vis = (tekst) => { if (loadingText) loadingText.textContent = tekst; };
   if (loadingEl) loadingEl.classList.add("open");
   let okt = null, ryddScene = null;
@@ -203,7 +204,7 @@ export async function lagFramdriftVideo() {
     return { blob, type, ext, sekunder: plan.bilder / Vo.fps, url, bilder: plan.bilder };
   } catch (err) {
     console.warn("Framdriftsvideoen feilet:", err);
-    alert(t("Klarte ikke å lage videoen: {0}", err.message || String(err)));
+    varsel(t("Klarte ikke å lage videoen: {0}", err.message || String(err)));
     return null;
   } finally {
     settVideoModus(null);

@@ -26,6 +26,7 @@ import { ryddLogonavn } from "./rapport.js";
 import { LETT } from "./lett.js";
 import { GRAPH, SP, authHeaders, graphGet, spTokenSilent } from "./sharepoint.js";
 import { hentLogo, hentLogoer, lesMappe } from "./tegninger.js";
+import { varsel } from "./varsel.js";
 
 export const sjekklisteMappe = () => SP.folder + "/Sjekklister";
 export const erJson = (navn) => /\.json$/i.test(String(navn || ""));
@@ -813,7 +814,7 @@ export async function apneSkjema(c, mal, skjema, lagre) {
           hentLogo: () => hentLogo(itemId)
         });
       } catch (err) {
-        alert(t("Klarte ikke å lage PDF-en: {0}", err.message));
+        varsel(t("Klarte ikke å lage PDF-en: {0}", err.message));
       } finally {
         pdf.disabled = false; pdf.textContent = gammel;
       }
@@ -1029,17 +1030,17 @@ export function bePåSignatur(standardNavn) {
     el.querySelector(".sg-ok").onclick = () => {
       const navn = navnEllerStopp();
       if (!navn) return;
-      if (!tegnet) { alert(t("Tegn signaturen i feltet, eller velg «Ikke nødvendig».")); return; }
+      if (!tegnet) { varsel(t("Tegn signaturen i feltet, eller velg «Ikke nødvendig».")); return; }
       let data = "";
       try { data = String(lerret.toDataURL("image/png") || ""); } catch (_) { data = ""; }
       if (!/^data:image\/png;base64,/.test(data)) {
-        alert(t("Klarte ikke å lagre signaturen. Velg «Ikke nødvendig», eller prøv en annen nettleser."));
+        varsel(t("Klarte ikke å lagre signaturen. Velg «Ikke nødvendig», eller prøv en annen nettleser."));
         return;
       }
       // For stor signatur lagres ikke — heller navn alene enn en markeringsfil
       // som vokser til flere MB og gjør byggeplass-siden treg.
       if (data.length > MAKS_SIGNATUR) {
-        alert(t("Signaturen ble for stor til å lagres. Prøv en enklere strek, eller velg «Ikke nødvendig»."));
+        varsel(t("Signaturen ble for stor til å lagres. Prøv en enklere strek, eller velg «Ikke nødvendig»."));
         return;
       }
       svar({ navn, signatur: data });

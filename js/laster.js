@@ -27,6 +27,7 @@ import {
 } from "./laster-regn.js";
 import { takBjelker, takBjelkeLinjer, takOppsett } from "./veggelement/tak.js";
 import { takflaterFraBjelker, omrissUV, punktPaFlate } from "./sw-tak.js";
+import { varsel } from "./varsel.js";
 
 export const lasterGroup = new THREE.Group();
 lasterGroup.name = "laster";
@@ -1078,7 +1079,7 @@ på("btnLaster", "click", () => {
   const panel = $("lasterPanel");
   if (!panel) return;
   if (panel.classList.contains("open")) { panel.classList.remove("open"); return; }
-  if (!S.modelGroup) { alert(t("Åpne en modell først.")); return; }
+  if (!S.modelGroup) { varsel(t("Åpne en modell først.")); return; }
   les();
   fraTerreng = { kommune: false, H: false };
   tegnPanel();

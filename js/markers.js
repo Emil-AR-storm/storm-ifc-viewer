@@ -22,6 +22,7 @@ import { MAKS_LYD_PER_MARKERING, MAKS_PER_MARKERING, bildeUrl, erBildefil, lastO
 import { ADVAR_MB, antallSider, apneHtmlTegning, apneHtmlVedlegg, erHtml, gyldigSide, hentTegninger, mb, sideBilde, velgMappe, visStatus } from "./tegninger.js";
 import { MAKS_SKJEMA_PER_MARKERING, apneMalVelger, apneSkjema, gjeldendeSkjema,
          hentMaler, sjekklisteI, sjekklisteStripeHtml, vaskSkjema } from "./sjekkliste.js";
+import { varsel } from "./varsel.js";
 // ⛓-lenka til en markering hentes via S.markerLink (settes av share.js).
 // Direkte import ville gitt sirkel: markers → share → display → ifc → markers.
 
@@ -289,7 +290,7 @@ async function sendHendelse(hendelse, fraKo) {
     if (!fraKo) {
       koSkriv(koLes().concat([hendelse]));
       tegnNettBanner();
-      alert(t("Fikk ikke sendt dette til prosjektlederen nå. Det er lagret på telefonen og sendes automatisk når du har nett igjen."));
+      varsel(t("Fikk ikke sendt dette til prosjektlederen nå. Det er lagret på telefonen og sendes automatisk når du har nett igjen."));
     }
     return false;
   }
@@ -583,7 +584,7 @@ async function doPush(forsøk) {
       // Det lokale ligger trygt i localStorage – ingenting er tapt.
       S.sharedOK = false;
       renderCommentList();
-      alert(t("Fikk ikke lagret markeringene – noen andre skriver i samme fil akkurat nå. Ingenting er tapt lokalt; prøv igjen om litt."));
+      varsel(t("Fikk ikke lagret markeringene – noen andre skriver i samme fil akkurat nå. Ingenting er tapt lokalt; prøv igjen om litt."));
       return;
     }
     S.sharedOK = r.ok;
@@ -1111,7 +1112,7 @@ function stoppOpptakHvisAktivt() {
 
 async function taOppTil(c, knapp) {
   if (lydI(c).length >= MAKS_LYD_PER_MARKERING) {
-    alert(t("En markering kan ha maks {0} talemeldinger.", MAKS_LYD_PER_MARKERING));
+    varsel(t("En markering kan ha maks {0} talemeldinger.", MAKS_LYD_PER_MARKERING));
     return;
   }
   stoppOpptakHvisAktivt();          // aldri to opptak i gang samtidig
@@ -1122,7 +1123,7 @@ async function taOppTil(c, knapp) {
   } catch (err) {
     // Avslått mikrofontilgang er den vanligste grunnen, og feilmeldingen fra
     // nettleseren sier ingenting om hvordan man angrer på det.
-    alert(/NotAllowed|Permission/i.test(err.name + err.message)
+    varsel(/NotAllowed|Permission/i.test(err.name + err.message)
       ? t("Mikrofonen er avslått for denne siden. Slå den på i nettleserens innstillinger for nettstedet, og prøv igjen.")
       : t("Fikk ikke startet opptaket: ") + err.message);
     return;
@@ -1147,11 +1148,11 @@ async function taOppTil(c, knapp) {
       persist();
       pushSharedComments();
       renderCommentList();
-      if (LETT) alert(opp.koet
+      if (LETT) varsel(opp.koet
         ? t("Talemeldingen er lagret på telefonen. Den sendes automatisk når du har nett igjen.")
         : t("Talemeldingen er sendt. Den blir synlig for prosjektlederen neste gang han åpner modellen."));
     } catch (err) {
-      alert(err.message === "IKKE_INNLOGGET"
+      varsel(err.message === "IKKE_INNLOGGET"
         ? t("Talemeldinger lagres i SharePoint, så du må være innlogget. Trykk på den røde prikken øverst til høyre for å logge inn, og prøv igjen.")
         : t("Klarte ikke å sende talemeldingen: ") + err.message);
     } finally {
@@ -1244,10 +1245,10 @@ async function apneLagretSkjema(c, skjemaId) {
   if (!s) return;
   let svar;
   try { svar = await hentMaler(); }
-  catch (err) { alert(t("Klarte ikke å hente malen: {0}", err.message)); return; }
+  catch (err) { varsel(t("Klarte ikke å hente malen: {0}", err.message)); return; }
   const mal = (svar.maler || []).find(m => m.id === s.malId);
   if (!mal) {
-    alert(t("Malen «{0}» finnes ikke i SharePoint lenger. Svarene er trygge, men skjemaet kan ikke vises uten malen.", s.malNavn));
+    varsel(t("Malen «{0}» finnes ikke i SharePoint lenger. Svarene er trygge, men skjemaet kan ikke vises uten malen.", s.malNavn));
     return;
   }
   apneSkjema(c, mal, { ...s, svar: { ...s.svar } }, lagreSkjema);
@@ -1329,7 +1330,7 @@ async function apneTegningVelger(c) {
     if (erHtml(f.name)) {
       try { await apneHtmlTegning(f); }
       catch (err) {
-        alert(err.message === "IKKE_INNLOGGET"
+        varsel(err.message === "IKKE_INNLOGGET"
           ? t("Du må være innlogget for å åpne tegninger fra SharePoint.")
           : t("Kunne ikke åpne HTML-siden: ") + err.message);
       }
@@ -1407,7 +1408,7 @@ async function visTegning(v) {
     antall = await antallSider(v, visStatus);
   } catch (err) {
     visStatus("");
-    alert(err.message === "IKKE_INNLOGGET"
+    varsel(err.message === "IKKE_INNLOGGET"
       ? t("Du må være innlogget for å åpne tegninger fra SharePoint.")
       : t("Klarte ikke å åpne tegningen: ") + err.message);
     return;
@@ -1630,9 +1631,9 @@ window.addEventListener("keydown", (e) => {
 async function taImotFiler(c, filer, seksjon, etterpa) {
   const felt = bildeFelt(seksjon);
   const gode = [...filer].filter(erBildefil);
-  if (!gode.length) { alert(t("Fant ingen bildefiler blant det du valgte.")); return; }
+  if (!gode.length) { varsel(t("Fant ingen bildefiler blant det du valgte.")); return; }
   const plass = MAKS_PER_MARKERING - bilderI(c, seksjon).length;
-  if (plass <= 0) { alert(t("Hver seksjon kan ha maks {0} bilder.", MAKS_PER_MARKERING)); return; }
+  if (plass <= 0) { varsel(t("Hver seksjon kan ha maks {0} bilder.", MAKS_PER_MARKERING)); return; }
   loadingText.textContent = gode.length > 1 ? t("Laster opp {0} bilder …", Math.min(gode.length, plass)) : t("Laster opp bildet …");
   loadingEl.classList.add("open");
   try {
@@ -1648,11 +1649,11 @@ async function taImotFiler(c, filer, seksjon, etterpa) {
     // regnet ut, ikke tildelt av serveren, så henvisningen er gyldig når fila
     // kommer fram. Men beskjeden må si hva som FAKTISK skjedde — «sendt» om
     // noe som ligger på telefonen er verre enn ingen beskjed.
-    if (LETT) alert(res.koet
+    if (LETT) varsel(res.koet
       ? t("Bildet er lagret på telefonen. Det sendes automatisk når du har nett igjen.")
       : t("Bildet er sendt. Det blir synlig for prosjektlederen neste gang han åpner modellen."));
   } catch (err) {
-    alert(err.message === "IKKE_INNLOGGET"
+    varsel(err.message === "IKKE_INNLOGGET"
       ? t("Bilder lagres i SharePoint, så du må være innlogget. Trykk på den røde prikken øverst til høyre for å logge inn, og prøv igjen.")
       : t("Klarte ikke å legge ved bildet: ") + err.message);
   } finally {
@@ -1900,7 +1901,7 @@ export function openMarkerPopup(c) {
       const v = tegningerI(c)[Number(t.dataset.tegning)];
       if (!v) return;
       if (v.html) {
-        apneHtmlVedlegg(v).catch(err => alert(err.message === "IKKE_INNLOGGET"
+        apneHtmlVedlegg(v).catch(err => varsel(err.message === "IKKE_INNLOGGET"
           ? t("Du må være innlogget for å åpne tegninger fra SharePoint.")
           : t("Kunne ikke åpne HTML-siden: ") + err.message));
       } else {
@@ -2295,7 +2296,7 @@ window.saveComment = function() {
       // (vaskMarkering) på samme måte som resten av markeringen
       omrade: c.omrade || undefined
     } }).then(ok => {
-      if (ok) { alert(t("Markeringen er sendt til prosjektlederen.")); return; }
+      if (ok) { varsel(t("Markeringen er sendt til prosjektlederen.")); return; }
       merkUsendte();          // J5: tegn den blass og merk den «ikke sendt»
       renderCommentList();
     });
@@ -2346,12 +2347,12 @@ async function sendTilPlanner(list) {
   // Uten plan-ID ville Graph fått «/planner/plans//buckets» og svart 400 med en
   // melding ingen kan gjøre noe med. Stopp her, og si hvor tallet skal inn.
   if (!PLANNER.planId) {
-    alert(t("Planner er ikke satt opp ennå. Plan-ID-en legges inn i «oppsett.json» i SharePoint-mappa med modellene."));
+    varsel(t("Planner er ikke satt opp ennå. Plan-ID-en legges inn i «oppsett.json» i SharePoint-mappa med modellene."));
     return;
   }
   const uten = list.filter(c => !c.due);
   if (uten.length) {
-    alert((uten.length === 1 ? t("Markeringen mangler frist.") : t("{0} markeringer mangler frist.", uten.length)) +
+    varsel((uten.length === 1 ? t("Markeringen mangler frist.") : t("{0} markeringer mangler frist.", uten.length)) +
       t(" Sett frist først – Planner-oppgaven trenger en dato."));
     return;
   }
@@ -2362,7 +2363,7 @@ async function sendTilPlanner(list) {
   const ukjent = [...new Set(list.filter(c => c.owner && !ANSATTE.some(a => a.navn === c.owner))
                                  .map(c => c.owner))];
   if (ukjent.length) {
-    alert(t("Fant ikke {0} i ansattlista, så oppgaven ville ikke fått noen mottaker. Velg en ansvarlig fra lista først.",
+    varsel(t("Fant ikke {0} i ansattlista, så oppgaven ville ikke fått noen mottaker. Velg en ansvarlig fra lista først.",
       ukjent.map(n => "«" + n + "»").join(", ")));
     return;
   }
@@ -2411,7 +2412,7 @@ async function sendTilPlanner(list) {
     const m = /403|Forbidden/.test(err.message)
       ? t("Planner nektet. Vanligste årsak: den ansvarlige er ikke medlem av gruppen som eier planen.")
       : err.message;
-    alert(t("Klarte ikke å lage Planner-oppgave: ") + m);
+    varsel(t("Klarte ikke å lage Planner-oppgave: ") + m);
   } finally {
     loadingEl.classList.remove("open");
     btnIds.forEach(id => { const b = $(id); if (b) b.disabled = false; });

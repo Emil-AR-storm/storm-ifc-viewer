@@ -34,6 +34,7 @@ import {
   riggplanTegnforklaring, skalaStrek, vaskMalestokkValg, velgMalestokk
 } from "./rigg-regn.js";
 import { aktivRef, finnRiggObjekt, riggBase, riggGroup, toneFarge } from "./rigg-vis.js";
+import { varsel } from "./varsel.js";
 
 const PX_PER_MM = 7;          // bildets oppløsning: 292 mm → ~2000 px
 const GRÅ = "#6b7280", SORT = "#14161a", LINJE = "#c9ced6", KORT = "#f4f5f7";
@@ -625,9 +626,9 @@ export function tegnOversiktBilde(o, pxB, pxH) {
 // valg: «auto» (minste målestokk der alt får plass) eller et tall (1:valg).
 export async function lastNedRiggplan(valg) {
   const base = riggBase();
-  if (!base) { alert(t("Åpne en modell først.")); return null; }
+  if (!base) { varsel(t("Åpne en modell først.")); return null; }
   const objekter = riggObjekter(S.rigg || []).filter(o => !o.skjult);
-  if (!objekter.length) { alert(t("Legg inn noe rigg først — planen er tom.")); return null; }
+  if (!objekter.length) { varsel(t("Legg inn noe rigg først — planen er tom.")); return null; }
   const vis = (tekst) => { if (loadingText) loadingText.textContent = tekst; };
   if (loadingEl) loadingEl.classList.add("open");
   try {
@@ -765,7 +766,7 @@ export async function lastNedRiggplan(valg) {
     return { skala, ringer: ringer.length, rader: forklaring.length, langtUnna, kuttet };
   } catch (err) {
     console.warn("Riggplanen feilet:", err);
-    alert(t("Klarte ikke å lage riggplanen: {0}", err.message));
+    varsel(t("Klarte ikke å lage riggplanen: {0}", err.message));
     return null;
   } finally {
     if (loadingEl) loadingEl.classList.remove("open");

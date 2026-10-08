@@ -7,6 +7,7 @@ import { lightElementBoxes } from "./ifc.js";
 import { kall } from "./ifcrpc.js";
 import { modeBar, modeButtons, updateModeBar } from "./modes.js";
 import { renderer } from "./scene.js";
+import { varsel } from "./varsel.js";
 
 // ---------- Snitt (clipping) ----------
 
@@ -312,7 +313,7 @@ function currentClipState() {
 }
 
 function saveCurrentClip() {
-  if (!S.fileName) { alert(t("Åpne en modell først.")); return; }
+  if (!S.fileName) { varsel(t("Åpne en modell først.")); return; }
   const name = (prompt(t("Navn på snittet:"), t("Snitt") + " " + (clipList().length + 1)) || "").trim();
   if (!name) return;
   const list = clipList().filter(c => c.name !== name);

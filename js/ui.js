@@ -508,6 +508,7 @@ import { fangstBilde } from "./scene.js";
 import { hentLogo, hentLogoer } from "./tegninger.js";
 import { ryddLogonavn } from "./rapport.js";
 import "./verktoygrupper.js";   // 🧰 grupperer verktøylinja — må lastes etter at knappene finnes
+import { varsel } from "./varsel.js";
 
 let logoerLastet = false;
 
@@ -563,7 +564,7 @@ på("rapLogo", "change", (e) => {
 // brukeren — «få markeringene ut av Storm» — bare i et annet format.
 på("rapBcf", "click", async () => {
   lukkRapMeny();
-  if (!S.modelGroup) { alert(t("Åpne en modell først.")); return; }
+  if (!S.modelGroup) { varsel(t("Åpne en modell først.")); return; }
   try {
     const bcf = await import("./bcf.js");
     const r = await bcf.eksporterBcf({
@@ -575,18 +576,18 @@ på("rapBcf", "click", async () => {
     // Sier ALLTID fra hvor mange saker som mangler elementreferanse. Uten den
     // finner ikke mottakerens verktøy fram til riktig vegg, og det er verdt å
     // vite FØR fila sendes — ikke etter at prosjekterende har spurt.
-    alert(r.utenElement
+    varsel(r.utenElement
       ? t("{0} BCF-saker eksportert. {1} av dem mangler elementreferanse og peker ikke på et bestemt objekt — de ble laget før elementkoblingen kom inn.", r.antall, r.utenElement)
       : t("{0} BCF-saker eksportert, alle med elementreferanse.", r.antall));
   } catch (err) {
-    alert(t("Klarte ikke å lage BCF-fila: {0}", err.message));
+    varsel(t("Klarte ikke å lage BCF-fila: {0}", err.message));
   }
 });
 
 document.querySelectorAll(".rap-valg").forEach((b) => {
   b.addEventListener("click", async () => {
     lukkRapMeny();
-    if (!S.modelGroup) { alert(t("Åpne en modell først.")); return; }
+    if (!S.modelGroup) { varsel(t("Åpne en modell først.")); return; }
     const velg = $("rapLogo");
     const itemId = velg ? velg.value : "";
     await lastNedRapport({

@@ -11,6 +11,7 @@ import { $, S, esc, ikon } from "./state.js";
 import { t } from "./i18n.js";
 import { openLocalFile } from "./ifc.js";
 import { spOpenFile } from "./sharepoint.js";
+import { varsel } from "./varsel.js";
 
 const DB_NAME = "storm-ifc";
 const STORE = "recent";
@@ -137,7 +138,7 @@ export async function resume(rec) {
   }
   // Lokal fil uten håndtak: vi kan ikke åpne den selv, så vi hjelper på vei
   if (!rec.handle || !rec.handle.getFile) {
-    alert(t("Velg «{0}» på nytt – nettleseren tillater ikke at siden åpner en lokal fil av seg selv.", rec.name));
+    varsel(t("Velg «{0}» på nytt – nettleseren tillater ikke at siden åpner en lokal fil av seg selv.", rec.name));
     $("fileInput").click();
     return;
   }
@@ -148,7 +149,7 @@ export async function resume(rec) {
       perm = await rec.handle.requestPermission({ mode: "read" });
     }
     if (perm !== "granted") {
-      alert(t("Fikk ikke tilgang til filen. Velg den på nytt med Åpne-knappen."));
+      varsel(t("Fikk ikke tilgang til filen. Velg den på nytt med Åpne-knappen."));
       return;
     }
     const file = await rec.handle.getFile();
@@ -156,10 +157,10 @@ export async function resume(rec) {
   } catch (err) {
     console.warn("Kunne ikke gjenåpne:", err);
     if (/NotFound|NotAllowed/i.test(err.name || "")) {
-      alert(t("Fant ikke «{0}» der den lå sist. Er den flyttet eller slettet? Velg den på nytt med Åpne-knappen.", rec.name));
+      varsel(t("Fant ikke «{0}» der den lå sist. Er den flyttet eller slettet? Velg den på nytt med Åpne-knappen.", rec.name));
       idbDel(); render(null);
     } else {
-      alert(t("Klarte ikke å gjenåpne filen: ") + err.message);
+      varsel(t("Klarte ikke å gjenåpne filen: ") + err.message);
     }
   }
 }
