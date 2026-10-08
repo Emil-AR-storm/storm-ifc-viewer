@@ -349,7 +349,10 @@ export async function generer() {
   const blikkFoer = (lagret && lagret.blikk) || null;
   settLagret({ oppsett: o, vegger, gulv, ringmur, materiellIder: [],
                fasader: fasadeLagret, okBetong, baseY, utspVis,
-               blikk: blikkFoer || { pa: false, just: {}, ekstra: [], nesteNr: 1 } });
+               blikk: blikkFoer || { pa: false, just: {}, ekstra: [], nesteNr: 1 },
+               // 🏔 Taket er sitt eget verktøy (Emil 08.10) og overlever at
+               // veggene genereres på nytt — det samme gjør oppsettene.
+               ...beholdTakOgOppsett() });
   loesAlleJusteringer();
   byggAlleStabler();
   skrivLagret();
@@ -821,11 +824,19 @@ export function fjernGenerertMateriell() {
   S.qtyCache = null;
 }
 
+// Det som IKKE er veggene: taket (eget verktøy) og blikkets/takets oppsett.
+function beholdTakOgOppsett() {
+  const ut = {};
+  for (const k of ["tak", "takOppsett", "blikkOppsett"])
+    if (lagret && lagret[k] !== undefined) ut[k] = lagret[k];
+  return ut;
+}
+
 export function fjernAltGenerert() {
   fjernGenerertMateriell();
   const o = oppsett();
   settLagret({ oppsett: o, vegger: [], gulv: null, ringmur: null, materiellIder: [],
-               blikk: { pa: false, just: {}, ekstra: [], nesteNr: 1 } });
+               blikk: { pa: false, just: {}, ekstra: [], nesteNr: 1 }, ...beholdTakOgOppsett() });
   skrivLagret();
   tegnAlt();
   tegnPanel();

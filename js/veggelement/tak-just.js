@@ -270,7 +270,7 @@ export function startTakJuster(paaNytt) {
   const markorer = new THREE.Group();
   swGroup.add(markorer);
   settTakJust({ valgt: new Set(), drar: null, markorer, tegnPanel: paaNytt });
-  $("blikkPanel")?.classList.remove("open");
+  $("takPanel")?.classList.remove("open");
   tegnTakJustBar(paaNytt);
 }
 
@@ -280,7 +280,7 @@ export function avsluttTakJuster(paaNytt) {
   settTakJust(null);
   tegnTakJustBar(paaNytt);
   if (paaNytt) paaNytt();
-  apnePanel("blikkPanel");
+  apnePanel("takPanel");
 }
 
 // Hvilken takplate ligger under musa?
