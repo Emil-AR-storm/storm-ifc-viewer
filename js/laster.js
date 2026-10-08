@@ -343,13 +343,45 @@ function klippTilOmriss(f, ring) {
     arealSkraa: arealPlan / Math.cos(f.alfa * Math.PI / 180) };
 }
 
+// Løft hver regelflate opp på toppen av platene som ligger på den. Platene
+// og bjelkeflata er parallelle; avstanden langs normalen er platenes høyde
+// over bjelken. Finnes ingen plateflate med samme helning (taket er lagt
+// annerledes enn reglene), blir flata liggende på bjelketoppen.
+function paaPlatetoppen(regler, plater) {
+  return regler.map(f => {
+    const n = f.normal || new THREE.Vector3(0, 1, 0);
+    let best = null;
+    for (const g of plater) {
+      if (!g.normal || !g.polygon || !g.polygon.length) continue;
+      if (g.normal.dot(n) < 0.999) continue;      // ikke samme takfall
+      const d = g.polygon[0].clone().sub(f.polygon[0]).dot(n);
+      // bare et løft på noen få cm til en halv meter er platene på DENNE flata
+      if (d > 0 && d * skala() < 0.5 && (best === null || d < best)) best = d;
+    }
+    return best === null ? f : { ...f, polygon: f.polygon.map(p => p.clone().addScaledVector(n, best)) };
+  });
+}
+
 function takflater() {
   const form = data.takform || "auto";
   if (form === "auto") {
     const g = takflaterFraGenerator();
-    if (g.length) return { kilde: "generator", flater: g };
     const r = takflaterRegler();
-    if (r.length) return { kilde: "regler", flater: r };
+    // 🔎 EMILS FUNN 08.10 (Valle, bilde 3): «formen på Vis snølast ligger
+    // utenfor taket — den skal ligge innenfor blikket og stoppe ved utvendig
+    // ytterkant av toppbjelkene.»
+    //
+    // Med takplater lagt ble snøflaten lest av PLATENE: det konvekse skallet av
+    // hver plates boks. Platene stikker ut over bjelkene, og en skråkappet
+    // plate har en boks som går forbi kappet — derfor lå snøen ute over
+    // blikket og forbi skråkanten. Taket snøen ligger på er det samme med og
+    // uten plater: omrisset av toppbjelkenes utvendige flate. Platene brukes
+    // nå bare til å løfte flata opp på platetoppen, så den ikke gjemmer seg
+    // under platene.
+    if (r.length) return g.length
+      ? { kilde: "regler-plater", flater: paaPlatetoppen(r, g) }
+      : { kilde: "regler", flater: r };
+    if (g.length) return { kilde: "generator", flater: g };
     const m = flaterFraStal("auto", "");
     if (m) return { kilde: "stal", flater: m.flater, profil: m.profil };
     return { kilde: "mangler", flater: lokkOverModellen() };
@@ -993,6 +1025,7 @@ function visResultat() {
       let h = advarsel(snoAdvarsler(data)) + rad(t("Snølast på mark, sk"), kn(r.sno.sk) + " kN/m²" + (r.sno.n ? " (n = " + r.sno.n + ")" : "") + (r.sno.kappet ? " · sk,maks" : ""));
       if (r.sno.kilde === "mangler") h += '<p class="la-tom">' + t("Tak-generatoren har ikke lagt tak — regnet som flatt tak over modellen. Velg takform og vinkel over.") + "</p>";
       const formNavn = { flatt: t("Flatt tak"), pult: t("Pulttak"), saltak: t("Saltak") };
+      if (r.sno.kilde === "regler-plater") h += '<p class="la-tom">' + t("Snøen ligger på taket innenfor blikket: omrisset av toppbjelkenes utvendige flate ({0} takflater), løftet opp på takplatene.", r.sno.flater.length) + "</p>";
       if (r.sno.kilde === "regler") h += '<p class="la-tom">' + t("Ingen takplater er lagt — takflatene er regnet med tak-generatorens regler: de øverste bjelkene, med omrisset av bjelkenes utvendige flate ({0} takflater).", r.sno.flater.length) + "</p>";
       if (r.sno.kilde === "stal" && r.sno.profil) h += '<p class="la-tom">' + t("Fant ingen takbjelker — taket er lest av stålet (uten søyler og søyleforlengere): {0}, {1}°. Velg takform for å skrive inn vinkelen selv.", formNavn[r.sno.profil.form] || "", kn1(r.sno.profil.vinkel)) + "</p>";
       if (r.sno.kilde === "stal-vinkel" && r.sno.profil) h += '<p class="la-tom">' + t("Takvinkelen du skrev inn ({0}°) er brukt på taket lest av stålet ({1}).", kn1(r.sno.profil.vinkel), formNavn[r.sno.profil.form] || "") + "</p>";
