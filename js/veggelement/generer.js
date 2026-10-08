@@ -25,13 +25,14 @@ import { TAK_TOL_MM, baseYNaa, taklinjerFraModell, tegnAlt, utspPaFasader } from
 import { butikkFor } from "./juster.js";
 import { INNER_STD, innerData, lagretInner, tegnPanel } from "./panel.js";
 import { innerBaseY, nummererInner } from "./innervegg.js";
+import { varsel } from "../varsel.js";
 
 // ---------- Selve genereringen ----------
 export async function generer() {
   const o = oppsett();
   const alleSoyler = await hentSoyler();
   if (alleSoyler.length < 3) {
-    alert(t("Fant bare {0} søyler (IfcColumn) i modellen — trenger minst 3 for å finne fasadene.", alleSoyler.length));
+    varsel(t("Fant bare {0} søyler (IfcColumn) i modellen — trenger minst 3 for å finne fasadene.", alleSoyler.length));
     return;
   }
   // 🧭 MANUELT SLÅR AV AUTOMATIKKEN (Emils valg, punkt 6): er én fasade satt
@@ -44,7 +45,7 @@ export async function generer() {
     fasader = manuelleFasaderFra(manuelle, perId, INNER_STD.knekkGrader);
     soyler = soylerIFasader(fasader);
     if (!fasader.length || soyler.length < 2) {
-      alert(t("De manuelle fasadene peker på søyler som ikke finnes i denne modellen. Slett dem, eller marker på nytt."));
+      varsel(t("De manuelle fasadene peker på søyler som ikke finnes i denne modellen. Slett dem, eller marker på nytt."));
       return;
     }
   } else {
@@ -59,7 +60,7 @@ export async function generer() {
       || fasaderFra(soyler, kolTol0);
   }
   const kolTol = Math.max(0.3 / (S.enhetSkala || 1), soyler[0].bredde * 2);
-  if (!fasader.length) { alert(t("Fant ingen fasader å sette veggelementer på.")); return; }
+  if (!fasader.length) { varsel(t("Fant ingen fasader å sette veggelementer på.")); return; }
 
   const okBetong = Math.min(...soyler.map(s => s.minY));   // OK betong = bunn av søylene
   // Gavlsøyler uten forlenger skal likevel dele veggen (Sundland 04.09).
@@ -329,7 +330,7 @@ export async function generer() {
       }
     }
   }
-  if (!vegger.length) { alert(t("Ingen veggelementer ble generert — sjekk at modellen har søyler med høyde.")); return; }
+  if (!vegger.length) { varsel(t("Ingen veggelementer ble generert — sjekk at modellen har søyler med høyde.")); return; }
 
   // SW-numrene
   // Fasadene lagres kompakt, så stablene kan settes opp på nytt etter en
@@ -932,7 +933,7 @@ export function materiellArk() {
 }
 
 export function lastNedListe() {
-  if (!lagret || !(lagret.vegger || []).length) { alert(t("Generer veggelementene først.")); return; }
+  if (!lagret || !(lagret.vegger || []).length) { varsel(t("Generer veggelementene først.")); return; }
   const o = lagret.oppsett;
   const rader = swListeRader(lagret.vegger.filter(v => !v.skjult), {
     prosjekt: o.prosjekt, oppdragsnr: o.oppdragsnr, sted: o.sted, sign: o.sign,
@@ -950,7 +951,7 @@ export function lastNedListe() {
     [{ navn: t("SW-liste"), rader }, materiellArk(), blikkArk(), takArk()].filter(Boolean))
     .catch(err => {
       console.warn("SW-lista kunne ikke lages:", err);
-      alert(t("Klarte ikke å lage Excel-fila: ") + (err && err.message || err));
+      varsel(t("Klarte ikke å lage Excel-fila: ") + (err && err.message || err));
     });
 }
 

@@ -36,6 +36,7 @@ import { TAK_BOTTE_MM, TAK_TOL_MM, baseYNaa, skjulNaa, tegnAlt, tekstDekal } fro
 import { STAL_TYPER } from "./stal.js";
 import { bunkePlass, lesStabelPosisjonerAlle, settStabelTilbakeAlle } from "./bunker.js";
 import { lagreMateriellLokalt, tegnMateriell, vaskMateriell } from "../materiell-vis.js";
+import { varsel } from "../varsel.js";
 
 // ───────────────────── oppsettet ─────────────────────
 
@@ -983,7 +984,7 @@ på("btnTak", "click", () => {
   const panel = $("takPanel");
   if (!panel) return;
   if (panel.classList.contains("open")) { panel.classList.remove("open"); return; }
-  if (!S.modelGroup) { alert(t("Åpne en modell først.")); return; }
+  if (!S.modelGroup) { varsel(t("Åpne en modell først.")); return; }
   tegnTakPanel();
   apnePanel("takPanel");
 });
@@ -1035,7 +1036,7 @@ export function koblTakPanel(paaNytt) {
       tegnAlt();
     } catch (err) {
       console.warn("Taket kunne ikke genereres:", err);
-      alert(t("Klarte ikke å hente stålet: ") + (err && err.message || err));
+      varsel(t("Klarte ikke å hente stålet: ") + (err && err.message || err));
     } finally {
       const b2 = $("takGenerer");
       if (b2) b2.disabled = false;
@@ -1097,12 +1098,12 @@ export function takArk() {
 
 export function lastNedTakListe() {
   const ark = takArk();
-  if (!ark) { alert(t("Trykk «Generer tak» først.")); return; }
+  if (!ark) { varsel(t("Trykk «Generer tak» først.")); return; }
   import("../elements.js").then(({ lastNedXlsxFlere }) => {
     const navn = (S.fileName || "modell").replace(/\.(ifc|glb)$/i, "");
     return lastNedXlsxFlere(navn + " - Takliste.xlsx", [ark]);
   }).catch(err => {
     console.warn("Taklista kunne ikke lages:", err);
-    alert(t("Klarte ikke å lage Excel-fila: ") + (err && err.message || err));
+    varsel(t("Klarte ikke å lage Excel-fila: ") + (err && err.message || err));
   });
 }

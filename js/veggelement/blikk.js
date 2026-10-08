@@ -23,6 +23,7 @@ import { byggTakStabler, koblTakPanel, takPanelHtml } from "./tak.js";
 import { baseYNaa, skjulNaa, tegnAlt, utspPaFasader } from "./tegning.js";
 import { bunkePlass, lesStabelPosisjonerAlle, settStabelTilbakeAlle } from "./bunker.js";
 import { lagreMateriellLokalt, tegnMateriell, vaskMateriell } from "../materiell-vis.js";
+import { varsel } from "../varsel.js";
 
 // Blikket har ÉN farge, som settes selv — akkurat som veggelementene
 // (Emil 17.09). De gule og blå strekene i den første runden var bare en
@@ -749,13 +750,13 @@ export function koblBlikkHandlinger(body) {
 // skal ikke måtte lete gjennom SW-lista. Arket er det SAMME som ligger i
 // SW-fila, så de to kan aldri komme i utakt.
 export function lastNedBlikkListe() {
-  if (!blikkPa()) { alert(t("Trykk «Generer blikk» først.")); return; }
+  if (!blikkPa()) { varsel(t("Trykk «Generer blikk» først.")); return; }
   const ark = blikkArk();
-  if (!ark) { alert(t("Generer veggelementene først.")); return; }
+  if (!ark) { varsel(t("Generer veggelementene først.")); return; }
   const navn = (S.fileName || "modell").replace(/\.(ifc|glb)$/i, "");
   lastNedXlsxFlere(navn + " - Blikkliste.xlsx", [ark]).catch(err => {
     console.warn("Blikklista kunne ikke lages:", err);
-    alert(t("Klarte ikke å lage Excel-fila: ") + (err && err.message || err));
+    varsel(t("Klarte ikke å lage Excel-fila: ") + (err && err.message || err));
   });
 }
 

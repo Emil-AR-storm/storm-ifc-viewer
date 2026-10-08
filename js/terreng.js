@@ -36,6 +36,7 @@ import {
 } from "./terreng-regn.js";
 import { lastNedXlsx, pick } from "./elements.js";
 import { snapPoint } from "./measure.js";
+import { varsel } from "./varsel.js";
 
 // ═══════════════════════ TILSTAND ═══════════════════════
 // Alt om det lastede terrenget. null = ingen terreng.
@@ -1352,7 +1353,7 @@ function visLagring() {
 async function lagreTerreng(navn) {
   if (!terreng || lagrer) return;
   const n = String(navn || "").trim().slice(0, 80);
-  if (!n) { alert(t("Gi terrenget et navn først.")); return; }
+  if (!n) { varsel(t("Gi terrenget et navn først.")); return; }
   lagrer = true; tegnPanel();
   const t0 = terreng;
   t0.id = nyTerrengId();
@@ -2043,7 +2044,7 @@ på("btnTerreng", "click", () => {
   const panel = $("terrengPanel");
   if (!panel) return;
   if (panel.classList.contains("open")) { panel.classList.remove("open"); return; }
-  if (!S.modelGroup) { alert(t("Åpne en modell først.")); return; }
+  if (!S.modelGroup) { varsel(t("Åpne en modell først.")); return; }
   tegnPanel();
   apnePanel("terrengPanel");
   const inp = $("trAdresse");

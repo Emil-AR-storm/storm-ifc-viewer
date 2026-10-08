@@ -28,6 +28,7 @@ import { blikkJust } from "./blikk-just.js";
 import { takJust } from "./tak-just.js";
 import { BESLAG_FORM, BESLAG_FORM_NAVN } from "../sw-blikk.js";
 import { gruppeFlate, registrerMaaleflate } from "../pek-eier.js";
+import { varsel } from "../varsel.js";
 
 // per modellfil — da kan det tegnes opp igjen uten å regne på nytt.
 export const swGroup = new THREE.Group();
@@ -880,9 +881,9 @@ export function swOyeblikksbilde() {
 
 export function lagreResultat(navn) {
   const rent = String(navn || "").trim().slice(0, 60);
-  if (!rent) { alert(t("Gi resultatet et navn før du lagrer det.")); return; }
+  if (!rent) { varsel(t("Gi resultatet et navn før du lagrer det.")); return; }
   if (!lagret || !(lagret.vegger || []).length) {
-    alert(t("Generer veggelementene først.")); return;
+    varsel(t("Generer veggelementene først.")); return;
   }
   const liste = lesLagredeRaa();
   const fra_for = liste.findIndex(p => p.navn === rent);
@@ -897,7 +898,7 @@ export function lagreResultat(navn) {
     data: swOyeblikksbilde() };
   if (fra_for >= 0) liste[fra_for] = post; else liste.push(post);
   if (!lagreBeggeSteder(liste)) {
-    alert(t("Klarte ikke å lagre — nettleserens lagring er full. Slett et gammelt resultat og prøv igjen."));
+    varsel(t("Klarte ikke å lagre — nettleserens lagring er full. Slett et gammelt resultat og prøv igjen."));
     return;
   }
   tegnPanel();

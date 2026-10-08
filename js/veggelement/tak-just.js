@@ -21,6 +21,7 @@ import { lagret, skrivLagret, swGroup } from "./tilstand.js";
 import { tegnAlt } from "./tegning.js";
 import { snapKandidater, snapVerdi } from "../sw-tak.js";
 import { flettPaaNavn, spLes, spPaalogget, spSkriv } from "../sp-lager.js";
+import { varsel } from "../varsel.js";
 
 export let takJust = null;   // { valgt: Set<id>, drar, markorer } når aktiv
 export function settTakJust(v) { takJust = v; }
@@ -265,7 +266,7 @@ export function pekPil(cx, cy) {
 }
 
 export function startTakJuster(paaNytt) {
-  if (!lagret || !lagret.tak || !lagret.tak.pa) { alert(t("Trykk «Generer tak» først.")); return; }
+  if (!lagret || !lagret.tak || !lagret.tak.pa) { varsel(t("Trykk «Generer tak» først.")); return; }
   tegnAlt();                       // meshene må bære id-ene før vi plukker
   const markorer = new THREE.Group();
   swGroup.add(markorer);
@@ -370,9 +371,9 @@ function mittNavn() {
 
 export function lagreTakResultat(navn, etterpa) {
   const rent = String(navn || "").trim().slice(0, 60);
-  if (!rent) { alert(t("Gi resultatet et navn før du lagrer det.")); return; }
+  if (!rent) { varsel(t("Gi resultatet et navn før du lagrer det.")); return; }
   const b = tilstand();
-  if (!b || !b.pa) { alert(t("Trykk «Generer tak» først.")); return; }
+  if (!b || !b.pa) { varsel(t("Trykk «Generer tak» først.")); return; }
   const liste = lesTakLagredeRaa();
   const fraFor = liste.findIndex(p => p.navn === rent);
   if (fraFor >= 0 && !liste[fraFor].slettet
@@ -386,7 +387,7 @@ export function lagreTakResultat(navn, etterpa) {
       tak: { pa: true, just: b.just, ekstra: b.ekstra, nesteNr: b.nesteNr } })) };
   if (fraFor >= 0) liste[fraFor] = post; else liste.push(post);
   if (!lagreTakBeggeSteder(liste, etterpa)) {
-    alert(t("Klarte ikke å lagre — nettleserens lagring er full. Slett et gammelt resultat og prøv igjen."));
+    varsel(t("Klarte ikke å lagre — nettleserens lagring er full. Slett et gammelt resultat og prøv igjen."));
     return;
   }
   if (etterpa) etterpa();

@@ -46,6 +46,7 @@ import "./share.js";
 import "./mobile.js";   // må lastes etter at alle knapper har fått lyttere
 import "./rull-fall.js";   // 📜 rulling med fall nederst i alle vinduer (Emil 02.10)
 import "./oppsett.js";   // ansattliste og Planner-plan fra SharePoint
+import { varsel } from "./varsel.js";
 
 // JavaScript kjører – skjul advarselen
 const jsCheck = document.getElementById("jsCheck");
@@ -190,7 +191,7 @@ async function åpneFraUrl(url) {
     await loadGlb(new Uint8Array(await r.arrayBuffer()));
     afterLoad();
   } catch (err) {
-    alert(err && err.tidsavbrudd
+    varsel(err && err.tidsavbrudd
       ? t("Modellen svarte ikke. Sjekk dekningen og prøv igjen.")
       : t("Klarte ikke å laste modellen: ") + err.message);
   } finally {
@@ -303,7 +304,7 @@ window.åpneFraUrl = åpneFraUrl;   // trinn 3 kaller denne
   btn.addEventListener("click", async () => {
     const gammelt = $("histPanel");
     if (gammelt) { gammelt.remove(); btn.classList.remove("active"); return; }
-    if (!S.lettProsjekt) { alert(t("Skriv koden først.")); return; }
+    if (!S.lettProsjekt) { varsel(t("Skriv koden først.")); return; }
     let idx = { liste: [] };
     try {
       const r = await fetch("/revisjoner/" + S.lettProsjekt);
@@ -344,7 +345,7 @@ window.åpneFraUrl = åpneFraUrl;   // trinn 3 kaller denne
         const fil = S.fileName;
         await åpneFraUrl("/modell/" + S.lettProsjekt + "/rev/" + rv.rev + "/" + encodeURIComponent(fil));
         const snap = await snapshotModel();
-        if (!snap) { alert(t("Fikk ikke lest revisjonen for sammenligning.")); return; }
+        if (!snap) { varsel(t("Fikk ikke lest revisjonen for sammenligning.")); return; }
         snap.file = t("Revisjon") + " " + rv.rev;   // må hete noe annet enn nyeste, ellers starter ikke sammenligningen
         S.compareBase = snap;
         await åpneFraUrl("/modell/" + S.lettProsjekt + "/" + encodeURIComponent(fil) + "?v=" + Date.now());

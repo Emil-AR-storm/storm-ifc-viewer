@@ -30,6 +30,7 @@ import { flettPaaNavn, spLes, spPaalogget, spSkriv } from "../sp-lager.js";
 import { tilMm, tilScene } from "./regler.js";
 import { lagret, skrivLagret, swGroup } from "./tilstand.js";
 import { tegnAlt } from "./tegning.js";
+import { varsel } from "../varsel.js";
 
 // ───────────────────── på/av og hjemmet for justeringene ─────────────────────
 
@@ -63,7 +64,7 @@ export function generertAntall() {
 // og tegner alt på nytt. Tallene regnes av tegningen — her settes bare bryteren.
 export function genererBlikk() {
   if (!lagret || !(lagret.vegger || []).length) {
-    alert(t("Generer veggelementene først.")); return false;
+    varsel(t("Generer veggelementene først.")); return false;
   }
   const b = blikkTilstand();
   b.pa = true;
@@ -163,8 +164,8 @@ export function blikkOyeblikksbilde(oppsettForSett) {
 
 export function lagreBlikkResultat(navn, oppsettForSett, etterpa) {
   const rent = String(navn || "").trim().slice(0, 60);
-  if (!rent) { alert(t("Gi resultatet et navn før du lagrer det.")); return; }
-  if (!blikkPa()) { alert(t("Trykk «Generer blikk» først.")); return; }
+  if (!rent) { varsel(t("Gi resultatet et navn før du lagrer det.")); return; }
+  if (!blikkPa()) { varsel(t("Trykk «Generer blikk» først.")); return; }
   const liste = lesBlikkLagredeRaa();
   const fra_for = liste.findIndex(p => p.navn === rent);
   if (fra_for >= 0 && !liste[fra_for].slettet
@@ -177,7 +178,7 @@ export function lagreBlikkResultat(navn, oppsettForSett, etterpa) {
     data: blikkOyeblikksbilde(oppsettForSett) };
   if (fra_for >= 0) liste[fra_for] = post; else liste.push(post);
   if (!lagreBlikkBeggeSteder(liste, etterpa)) {
-    alert(t("Klarte ikke å lagre — nettleserens lagring er full. Slett et gammelt resultat og prøv igjen."));
+    varsel(t("Klarte ikke å lagre — nettleserens lagring er full. Slett et gammelt resultat og prøv igjen."));
     return;
   }
   if (etterpa) etterpa();
@@ -347,7 +348,7 @@ export function merkBlikkValgte() {
 }
 
 export function startBlikkJuster(tegnPanelFn) {
-  if (!blikkPa()) { alert(t("Trykk «Generer blikk» først.")); return; }
+  if (!blikkPa()) { varsel(t("Trykk «Generer blikk» først.")); return; }
   tegnAlt();                       // meshene må bære id-ene før vi plukker
   const markorer = new THREE.Group();
   swGroup.add(markorer);
@@ -488,7 +489,7 @@ export function leggTilTrykk(e) {
   }
   const a = L.punkter[0];
   if (a.sett !== i.sett || a.fi !== i.fi) {
-    alert(t("Begge punktene må ligge på samme fasade."));
+    varsel(t("Begge punktene må ligge på samme fasade."));
     L.punkter = [];
     return;
   }

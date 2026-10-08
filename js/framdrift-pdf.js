@@ -37,6 +37,7 @@ import { spFilInfo, spPaalogget } from "./sp-lager.js";
 import { qrDataUrl } from "./qr.js";
 import { GULV_ID } from "./veggelement/tilstand.js";
 import { IFC_GRUPPE, framdriftFilnavn, idFor, ifcUnder, infoRader, pdfTrinn, slagFor, trinnTittel } from "./framdrift-regn.js";
+import { varsel } from "./varsel.js";
 
 const GRÅ = "#6b7280", SORT = "#14161a", LINJE = "#c9ced6", KORT = "#f4f5f7";
 const PX_PER_MM = 5;
@@ -281,8 +282,8 @@ export function utsnitt(nokler) {
 // ═══════════════════════ HOVEDINNGANGEN ═══════════════════════
 export async function lagFramdriftPdf() {
   const liste = pdfTrinn(S.framdrift);
-  if (!S.modelGroup) { alert(t("Åpne en modell først.")); return null; }
-  if (!liste.length) { alert(t("Legg noe i et trinn først — planen er tom.")); return null; }
+  if (!S.modelGroup) { varsel(t("Åpne en modell først.")); return null; }
+  if (!liste.length) { varsel(t("Legg noe i et trinn først — planen er tom.")); return null; }
   const vis = (tekst) => { if (loadingText) loadingText.textContent = tekst; };
   if (loadingEl) loadingEl.classList.add("open");
   const geoCache = new Map();
@@ -332,7 +333,7 @@ export async function lagFramdriftPdf() {
     return { sider: sider.length };
   } catch (err) {
     console.warn("Framdriftsplanen feilet:", err);
-    alert(t("Klarte ikke å lage framdriftsplanen: {0}", err.message));
+    varsel(t("Klarte ikke å lage framdriftsplanen: {0}", err.message));
     return null;
   } finally {
     for (const g of geoCache.values()) if (g && g.dispose) g.dispose();

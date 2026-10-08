@@ -30,6 +30,7 @@ import {
   lagreMateriellLokalt, materiellForEksport, materiellGroup,
   materiellTypeLabel, oppdaterMateriellValgEffekt, tegnMateriell, vaskMateriell
 } from "./materiell-vis.js";
+import { varsel } from "./varsel.js";
 
 // ---------- Tilstand ----------
 let plasserer = null;      // { p, gruppe } — objektet som henger på pekeren
@@ -444,7 +445,7 @@ på("btnMateriell", "click", () => {
     settMateriellModus(false);
     return;
   }
-  if (!S.modelGroup) { alert(t("Åpne en modell først.")); return; }
+  if (!S.modelGroup) { varsel(t("Åpne en modell først.")); return; }
   settMateriellModus(true);
   tegnPanel();
   apnePanel("materiellPanel");
@@ -622,10 +623,10 @@ function tegnSkjema(mal, redigerId) {
   $("matLagre").onclick = async () => {
     const p = lesSkjema();
     if (!p) return;
-    if (!p.navn) { alert(t("Gi malen et navn før du lagrer den i biblioteket.")); return; }
+    if (!p.navn) { varsel(t("Gi malen et navn før du lagrer den i biblioteket.")); return; }
     $("matLagre").disabled = true;
     try { await lagreIBibliotek(p); tegnPanel(); }
-    catch (err) { alert(t("Fikk ikke lagret i biblioteket: ") + err.message); }
+    catch (err) { varsel(t("Fikk ikke lagret i biblioteket: ") + err.message); }
     finally { const b = $("matLagre"); if (b) b.disabled = false; }
   };
   $("matAvbryt").onclick = () => tegnPanel();

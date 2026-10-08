@@ -15,6 +15,7 @@ import { metaFor, sikreMeta } from "./ifcrpc.js";
 import { profilKgPerM } from "./profiler.js";
 import { lagreMateriellLokalt, tegnMateriell, vaskMateriell } from "./materiell-vis.js";
 import { fagverkNokkel, fagverkProfiler, finnFagverk, grupperFagverk, grupperStal, plasserBunker, profilNavn, stalMengder, stalNokkel, stalSum } from "./stalbunker-regn.js";
+import { varsel } from "./varsel.js";
 
 // Fargen på stålet i bunkene: grå stål, så de skiller seg fra SW-bunkene
 // (lys grå) og TRP (blågrå). Ikke en UI-farge, derfor ikke en CSS-variabel.
@@ -138,7 +139,7 @@ export async function lagStalbunker() {
   const fagverk = finnFagverk(elementer.filter(e => e.a && e.bp).map(e => Object.assign({}, e, { b: e.bp })));
   const iFagverk = new Set(fagverk.flatMap(f => f.ider));
   const grupper = grupperStal(elementer.filter(e => !iFagverk.has(e.id))).concat(grupperFagverk(fagverk));
-  if (!grupper.length) { alert(t("Fant ingen søyler eller bjelker (IfcColumn / IfcBeam) i modellen.")); return null; }
+  if (!grupper.length) { varsel(t("Fant ingen søyler eller bjelker (IfcColumn / IfcBeam) i modellen.")); return null; }
   const { c, gulv, ramme } = byggRamme();
   const plass = new Map(plasserBunker(grupper, ramme).map(p => [p.nokkel, p]));
   const gamle = new Map(stalliste().map(p => [bunkeNokkel(p), p]));
@@ -263,7 +264,7 @@ S.stalPanel = {
     if ($("stalLag")) $("stalLag").onclick = async () => {
       const b = $("stalLag"); b.disabled = true;
       try { await lagStalbunker(); }
-      catch (err) { alert(t("Klarte ikke å lage stålbunkene: {0}", err.message)); }
+      catch (err) { varsel(t("Klarte ikke å lage stålbunkene: {0}", err.message)); }
       finally { if ($("stalLag")) $("stalLag").disabled = false; }
     };
     if ($("stalFjern")) $("stalFjern").onclick = () => fjernStalbunker();

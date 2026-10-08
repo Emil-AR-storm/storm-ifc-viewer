@@ -24,6 +24,7 @@ import { settVisEtappeplan, settVisVanntetting, tegnStopeplan, visEtappeplan, vi
 import { antallElementer, antallFelt, settVistPer as settVist, tegnTidslinje as tegnTid } from "./stopeplan-tid.js";
 import { clearSelection, quantitiesForSet } from "./elements.js";
 import { metaFor } from "./ifcrpc.js";
+import { varsel } from "./varsel.js";
 
 const SP_MAPPE = "Stopeplan";
 let spStatus = "av";          // "av" | "ok" | "feil" — vises nederst i panelet
@@ -508,7 +509,7 @@ på("btnStopeplan", "click", () => {
     if (S.ryddStopeFelt) S.ryddStopeFelt();
     panel.classList.remove("open"); return;
   }
-  if (!S.modelGroup) { alert(t("Åpne en modell først.")); return; }
+  if (!S.modelGroup) { varsel(t("Åpne en modell først.")); return; }
   tegnPanel();
   apnePanel("stopePanel");
   tegnTidslinje();

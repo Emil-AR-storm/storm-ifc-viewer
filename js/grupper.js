@@ -22,6 +22,7 @@ import { mmTilScene } from "./materiell-vis.js";
 // 📁 Lagrede grupper ligger i SharePoint, ikke bare i denne nettleseren.
 // Se js/sp-lager.js for hvorfor, og for flettingen.
 import { flettPaaId, spLes, spPaalogget, spSkriv } from "./sp-lager.js";
+import { varsel } from "./varsel.js";
 
 const LETT = document.documentElement.dataset.lett === "1";
 export const GRUPPE_MAKS_ELEMENTER = 5000;
@@ -179,7 +180,7 @@ export function aktiverGruppe(g) {
     const b = bokser.get(id);
     if (b) { boks.union(b); funnet++; }
   }
-  if (!funnet) { alert(t("Fant ikke elementene i denne modellen.")); return; }
+  if (!funnet) { varsel(t("Fant ikke elementene i denne modellen.")); return; }
   // GRUPPAS EGNE ELEMENTER HENTES ALLTID FRAM FØRST. Forrige gruppe kan ha
   // skjult nettopp dem: «Fundamenter» skjuler armeringen, og trykket på
   // «Armering» etterpå viste da ingenting — armeringen var fortsatt skjult
@@ -286,7 +287,7 @@ function tegnPanel() {
   const inp = $("grNavn"), knapp = $("grLagre");
   if (knapp) knapp.onclick = () => {
     const navn = (inp.value || "").trim();
-    if (!navn) { alert(t("Gi gruppen et navn først.")); return; }
+    if (!navn) { varsel(t("Gi gruppen et navn først.")); return; }
     const ids = valgteIder();
     if (!ids.length) return;
     leggTil({ id: nyId(), navn: navn.slice(0, 80), ids,
@@ -304,7 +305,7 @@ function tegnPanel() {
 på("btnGrupper", "click", () => {
   const panel = $("grupperPanel");
   if (panel.classList.contains("open")) { panel.classList.remove("open"); return; }
-  if (!S.modelGroup) { alert(t("Åpne en modell først.")); return; }
+  if (!S.modelGroup) { varsel(t("Åpne en modell først.")); return; }
   tegnPanel();
   apnePanel("grupperPanel");
 });

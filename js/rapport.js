@@ -18,6 +18,7 @@
 import { S, loadingEl, loadingText } from "./state.js";
 import { t } from "./i18n.js";
 import { HASTEGRAD, HASTEGRAD_REKKE, dagerTil, hastegrad, iDagISO } from "./frist.js";
+import { varsel } from "./varsel.js";
 
 export const JSPDF_URL = "vendor/jspdf-2.5.2.umd.min.js";
 
@@ -862,7 +863,7 @@ export async function lastNedRapport(opts) {
     return m;
   } catch (err) {
     console.warn("Rapporten feilet:", err);
-    alert(t("Klarte ikke å lage rapporten: {0}", err.message));
+    varsel(t("Klarte ikke å lage rapporten: {0}", err.message));
     return null;
   } finally {
     if (loadingEl) loadingEl.classList.remove("open");

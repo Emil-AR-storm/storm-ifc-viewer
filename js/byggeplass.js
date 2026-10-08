@@ -20,6 +20,7 @@ import { FRISTER, TJENESTER } from "./config.js";
 import { stopeplanForByggeplass } from "./stopeplan-regn.js";
 import { framdriftForByggeplass } from "./framdrift-regn.js";
 import { kilderForByggeplass } from "./framdrift-kilde.js";
+import { varsel } from "./varsel.js";
 
 // Adressen til Workeren står i config.js, og kan overstyres av oppsett.json i
 // SharePoint. Leses gjennom TJENESTER hver gang – verdien kan komme etter at
@@ -43,13 +44,13 @@ try {
 
 const btn = $("btnByggeplass");
 if (btn) btn.addEventListener("click", async () => {
-  if (!S.modelGroup) { alert(t("Åpne en modell først.")); return; }
+  if (!S.modelGroup) { varsel(t("Åpne en modell først.")); return; }
   if (S.glbActive) {
-    alert(t("Denne modellen er allerede en lett kopi – åpne originalen (IFC) og prøv igjen."));
+    varsel(t("Denne modellen er allerede en lett kopi – åpne originalen (IFC) og prøv igjen."));
     return;
   }
   if (!TJENESTER.worker || TJENESTER.worker.startsWith("FYLL")) {
-    alert(t("Adressen til byggeplass-tjenesten er ikke satt opp. Den står i js/config.js, og kan overstyres i oppsett.json i SharePoint-mappa."));
+    varsel(t("Adressen til byggeplass-tjenesten er ikke satt opp. Den står i js/config.js, og kan overstyres i oppsett.json i SharePoint-mappa."));
     return;
   }
 
@@ -57,7 +58,7 @@ if (btn) btn.addEventListener("click", async () => {
   const prosjekt = (prompt(t("Prosjektnummer (5 siffer):"),
     localStorage.getItem("storm-bp-prosjekt") || "") || "").trim();
   if (!prosjekt) return;
-  if (!/^\d{5}$/.test(prosjekt)) { alert(t("Prosjektnummeret må være 5 siffer.")); return; }
+  if (!/^\d{5}$/.test(prosjekt)) { varsel(t("Prosjektnummeret må være 5 siffer.")); return; }
   localStorage.setItem("storm-bp-prosjekt", prosjekt);
 
   // Opplastingsnøkkelen finnes BARE hos den som laster opp (aldri i offentlig kode).
@@ -87,7 +88,7 @@ if (btn) btn.addEventListener("click", async () => {
     // halvt minutt senere med en melding om noe helt annet (Emil 16.09).
     else if (mr.status === 403) {
       settNøkkel(TOKEN_KEY, "");
-      alert(t("Opplastingsnøkkelen ble ikke godtatt. Prøv igjen, så spør den om nøkkelen på nytt."));
+      varsel(t("Opplastingsnøkkelen ble ikke godtatt. Prøv igjen, så spør den om nøkkelen på nytt."));
       return;
     }
   } catch (_) {}
@@ -275,7 +276,7 @@ if (btn) btn.addEventListener("click", async () => {
     oppdaterBadge();   // innboksen er tømt nå — telleren skal bort
   } catch (err) {
     console.error(err);
-    alert(t("Opplastingen feilet: ") + err.message);
+    varsel(t("Opplastingen feilet: ") + err.message);
   } finally {
     loadingEl.classList.remove("open");
   }

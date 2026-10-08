@@ -23,6 +23,7 @@ import { byggInnerStabler, felt, generer, lesOppsettFraPanel, materiellArk } fro
 import { akseNavnFor, pdfFelt, stalPaFasader } from "./stal.js";
 import { avsluttJuster, avsluttUtspMark, startUtspMark, utspListeHtml, utspMark } from "./juster.js";
 import { INNER_STD, innerData, innerOppsettForListe, lagretInner, skrivInner, tegnPanel } from "./panel.js";
+import { varsel } from "../varsel.js";
 
 // ---------- Byggingen av én innervegg ----------
 // `perId` er id → søylestabel fra hentSoyler(). Serien lagrer element-IDENE,
@@ -338,7 +339,7 @@ export function tegnInnerBar() {
 // del A sitt oppsett (tykkelse, farge, rader, ringmur), så pila og veggen
 // står der de faktisk kommer.
 export async function startInnerMark(idx, forFasade) {
-  if (!S.modelGroup) { alert(t("Åpne en modell først.")); return; }
+  if (!S.modelGroup) { varsel(t("Åpne en modell først.")); return; }
   if (utspMark) avsluttUtspMark();
   if (just) avsluttJuster();
   const d = innerData();
@@ -397,7 +398,7 @@ export function avsluttInnerMark() {
 export function innerTilSide() {
   if (!innerMark) return;
   if (innerMark.serie.ider.length < 2) {
-    alert(t("Marker minst to søyler — de to ytterste bestemmer veggens retning og lengde."));
+    varsel(t("Marker minst to søyler — de to ytterste bestemmer veggens retning og lengde."));
     return;
   }
   if (innerMark.fasade) {
@@ -501,7 +502,7 @@ export async function fasadeGodkjenn() {
   const o = oppsett();
   const sett = { ider: innerMark.serie.ider.slice(), side: innerMark.serie.side < 0 ? -1 : 1,
                  lukk: !!(innerMark.serie.o && innerMark.serie.o.lukk) };
-  if (sett.ider.length < 2) { alert(t("Marker minst to søyler — de to ytterste bestemmer veggens retning og lengde.")); return; }
+  if (sett.ider.length < 2) { varsel(t("Marker minst to søyler — de to ytterste bestemmer veggens retning og lengde.")); return; }
   o.manuelleFasader = (o.manuelleFasader || []).concat([sett]);
   skrivLagret();
   avsluttInnerMark();
@@ -777,7 +778,7 @@ export function koblInnerPanel(body) {
 export function lastNedInnerListe() {
   const d = innerData();
   const synlige = d.vegger.filter(v => !v.skjult);
-  if (!synlige.length) { alert(t("Lag en innervegg først.")); return; }
+  if (!synlige.length) { varsel(t("Lag en innervegg først.")); return; }
   // Tykkelsen kan være ulik fra vegg til vegg, så den føres PER ELEMENT i
   // stedet for som ett tall i toppen: to innervegger på 100 og 150 mm skal
   // ikke slås sammen til én kolonne som er feil for begge.
@@ -792,13 +793,13 @@ export function lastNedInnerListe() {
   lastNedXlsxFlere(navn + " - SW-liste innervegg.xlsx", [{ navn: t("SW-liste innervegg"), rader }, materiellArk()])
     .catch(err => {
       console.warn("Innerveggslista kunne ikke lages:", err);
-      alert(t("Klarte ikke å lage Excel-fila: ") + (err && err.message || err));
+      varsel(t("Klarte ikke å lage Excel-fila: ") + (err && err.message || err));
     });
 }
 
 export async function lastNedInnerTegning() {
   const d = innerData();
-  if (!d.vegger.length || !d.fasader.length) { alert(t("Lag en innervegg først.")); return; }
+  if (!d.vegger.length || !d.fasader.length) { varsel(t("Lag en innervegg først.")); return; }
   const knapp = $("swInnerTegning");
   if (knapp) knapp.disabled = true;
   try {
@@ -829,7 +830,7 @@ export async function lastNedInnerTegning() {
     });
   } catch (err) {
     console.warn("Innervegg-tegning:", err);
-    alert(t("Klarte ikke å lage tegninga: ") + (err && err.message || err));
+    varsel(t("Klarte ikke å lage tegninga: ") + (err && err.message || err));
   } finally {
     const b = $("swInnerTegning");
     if (b) b.disabled = false;
@@ -851,7 +852,7 @@ på("btnSW", "click", () => {
   const panel = $("swPanel");
   if (!panel) return;
   if (panel.classList.contains("open")) { panel.classList.remove("open"); return; }
-  if (!S.modelGroup) { alert(t("Åpne en modell først.")); return; }
+  if (!S.modelGroup) { varsel(t("Åpne en modell først.")); return; }
   tegnPanel();
   apnePanel("swPanel");
 });

@@ -22,6 +22,7 @@ import { UTSP_PORT_BREDDE_MM, foreslaUtspType, konveksHull, soyleTypeNavn, tilMm
 import { STD_OPPSETT, lagret, oppsett } from "./tilstand.js";
 import { baseYNaa, utspPaFasader } from "./tegning.js";
 import { felt, lesOppsettFraPanel } from "./generer.js";
+import { varsel } from "../varsel.js";
 
 // ---------- 📐 Instruksjonstegning (PDF i Moelv-format) ----------
 // Feltene tittelfeltet skal fylles med. Tomt «Utfyll PDF»-felt arver fra
@@ -500,11 +501,11 @@ export async function ringmurPaFasader(mod) {
 export async function lastNedTegning() {
   const o = lesOppsettFraPanel();
   if (!lagret || !(lagret.vegger || []).length) {
-    alert(t("Generer veggelementene først."));
+    varsel(t("Generer veggelementene først."));
     return;
   }
   if (!(lagret.fasader || []).length) {
-    alert(t("Veggene er laget av en eldre versjon — trykk «Generer SW + gulv/ringmur» før du tegner."));
+    varsel(t("Veggene er laget av en eldre versjon — trykk «Generer SW + gulv/ringmur» før du tegner."));
     return;
   }
   const knapp = $("swTegning");
@@ -533,7 +534,7 @@ export async function lastNedTegning() {
     });
   } catch (err) {
     console.warn("Instruksjonstegning:", err);
-    alert(t("Klarte ikke å lage tegninga: ") + (err && err.message || err));
+    varsel(t("Klarte ikke å lage tegninga: ") + (err && err.message || err));
   } finally {
     const b = $("swTegning");
     if (b) b.disabled = false;

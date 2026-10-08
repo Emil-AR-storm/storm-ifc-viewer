@@ -12,6 +12,7 @@ import { kall, metaFor, sikreMeta } from "./ifcrpc.js";
 import { axesGroup, camera, canvas, controls, flyTil, grid, koteGroup, markerGroup, measureGroup, omradeGroup, pointer, raycaster, renderer, scene, selGroup } from "./scene.js";
 import { materiellGroup, materiellTypeLabel, oppdaterMateriellValgEffekt } from "./materiell-vis.js";
 import { skjulMaal, vekselMaal } from "./maal.js";
+import { varsel } from "./varsel.js";
 
 const selMat = new THREE.MeshLambertMaterial({ color: 0x3b82f6, emissive: 0x1d4ed8, side: THREE.DoubleSide });
 
@@ -1874,7 +1875,7 @@ function renderQuantities(full) {
 
   const arkFeil = (err) => {
     console.warn("Regnearket kunne ikke lages:", err);
-    alert(t("Klarte ikke å lage Excel-fila: ") + (err && err.message || err));
+    varsel(t("Klarte ikke å lage Excel-fila: ") + (err && err.message || err));
   };
   $("qtyCsvG").onclick = () => lastNedXlsx(baseName() + filnavnDel + " - mengder.xlsx",
     t("Mengder"), qtyGroupRows(cache)).catch(arkFeil);
@@ -1887,7 +1888,7 @@ function renderQuantities(full) {
       await navigator.clipboard.writeText(tsv);
       $("qtyCopy").textContent = t("Kopiert");
       setTimeout(() => { if ($("qtyCopy")) $("qtyCopy").innerHTML = ikon("kopier") + " " + t("Kopier"); }, 1500);
-    } catch(_) { alert(t("Klarte ikke å kopiere. Bruk Grupper (CSV) i stedet.")); }
+    } catch(_) { varsel(t("Klarte ikke å kopiere. Bruk Grupper (CSV) i stedet.")); }
   };
 }
 

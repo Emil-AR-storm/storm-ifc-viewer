@@ -14,6 +14,7 @@ import { LETT } from "./lett.js";
 import { MAKS_I_KO, fraBlob, koAlle, koAntall, koLegg, koSlett, koTelleForsok, tilBlob } from "./vedleggko.js";
 import { t } from "./i18n.js";
 import { GRAPH, SP, authHeaders, graphGet, spTokenSilent } from "./sharepoint.js";
+import { varsel } from "./varsel.js";
 
 export const MAKS_PX = 1600;      // lengste side etter nedskalering
 export const JPEG_KVALITET = 0.72;
@@ -188,7 +189,7 @@ export async function toemVedleggKo(stille) {
   } finally { koJobber = false; }
   if (sendt && !stille) {
     const igjen = await koAntall();
-    alert(igjen
+    varsel(igjen
       ? t("{0} vedlegg er sendt. {1} venter fortsatt på nett.", sendt, igjen)
       : t("{0} vedlegg som lå og ventet er nå sendt til prosjektlederen.", sendt));
   }

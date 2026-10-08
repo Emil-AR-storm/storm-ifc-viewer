@@ -25,6 +25,7 @@ import {
 } from "./stopeplan-regn.js";
 import { innholdTekst } from "./stopeplan-tid.js";
 import { stopeGroup, tegnStopeplan, feltBase, tilScene } from "./stopeplan-vis.js";
+import { varsel } from "./varsel.js";
 
 // Arket i mm (A3 liggende)
 export const ARK = {
@@ -219,7 +220,7 @@ function medInnhold(tab) {
 
 // ═══════════════════════ HOVEDFUNKSJONEN ═══════════════════════
 export async function lagStopeplanPdf(volumFor) {
-  if (!S.modelGroup) { alert(t("Åpne en modell først.")); return null; }
+  if (!S.modelGroup) { varsel(t("Åpne en modell først.")); return null; }
   const vis = (tekst) => { if (loadingEl) { loadingEl.classList.add("open"); if (loadingText) loadingText.textContent = tekst; } };
   try {
     vis(t("Tegner støpeplanen …"));
@@ -268,7 +269,7 @@ export async function lagStopeplanPdf(volumFor) {
     return { etapper: tab.rader.length, brikker: brikker.length, sider: d.getNumberOfPages() };
   } catch (err) {
     console.warn("Støpeplan-PDF feilet:", err);
-    alert(t("Klarte ikke å lage støpeplanen: {0}", err.message));
+    varsel(t("Klarte ikke å lage støpeplanen: {0}", err.message));
     return null;
   } finally {
     if (loadingEl) loadingEl.classList.remove("open");

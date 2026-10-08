@@ -3,6 +3,7 @@ import { $, på, S, esc, ikon, loadingEl, loadingText, lukkPaneler } from "./sta
 import { t } from "./i18n.js";
 import { LETT } from "./lett.js";
 import { afterLoad, clearLoadFlag, ifcReady, loadGlb, loadModel, offerLightRetry, setLoadFlag } from "./ifc.js";
+import { varsel } from "./varsel.js";
 
 // ---------- SharePoint-bibliotek (Microsoft Graph) ----------
 export const SP = {
@@ -499,7 +500,7 @@ export async function spOpenFile(item) {
   } catch (err) {
     console.error(err);
     clearLoadFlag();
-    if (!(await offerLightRetry(err))) alert(t("Klarte ikke å åpne fra biblioteket: ") + err.message);
+    if (!(await offerLightRetry(err))) varsel(t("Klarte ikke å åpne fra biblioteket: ") + err.message);
   } finally {
     loadingEl.classList.remove("open");
   }

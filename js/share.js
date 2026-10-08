@@ -14,6 +14,7 @@ import { sikreMeta } from "./ifcrpc.js";
 import { alleElementIder } from "./ifc.js";
 import { camera, controls } from "./scene.js";
 import { spOpenFile } from "./sharepoint.js";
+import { varsel } from "./varsel.js";
 
 const VERSION = 1;
 const HASH_KEY = "v=";
@@ -194,7 +195,7 @@ export async function applyView(v) {
 
 // ---------- ⛓-knappen ----------
 på("btnShare", "click", async () => {
-  if (!S.modelGroup) { alert(t("Åpne en modell først.")); return; }
+  if (!S.modelGroup) { varsel(t("Åpne en modell først.")); return; }
   const { link, note } = await buildShareLink();
   const body = $("shareBody");
   const fromLib = !!(S.lastLoadInfo && S.lastLoadInfo.libId);
@@ -222,7 +223,7 @@ på("btnShare", "click", async () => {
       setTimeout(() => { if ($("shCopy")) $("shCopy").innerHTML = ikon("kopier") + " " + t("Kopier lenke"); }, 1500);
     } catch(_) {
       $("shLink").select();
-      alert(t("Trykk Ctrl+C for å kopiere lenka."));
+      varsel(t("Trykk Ctrl+C for å kopiere lenka."));
     }
   };
   apnePanel("sharePanel");
@@ -262,7 +263,7 @@ S.onSharedReady = () => {
   if (b) b.style.display = "none";
   if (v.f && S.fileName && v.f !== S.fileName) {
     // annen fil enn den som ble delt – vi legger på visningen, men sier det
-    setTimeout(() => alert(t("Den delte visningen ble laget for «{0}», men du har åpnet «{1}». Visningen legges på så godt det går.", v.f, S.fileName)), 200);
+    setTimeout(() => varsel(t("Den delte visningen ble laget for «{0}», men du har åpnet «{1}». Visningen legges på så godt det går.", v.f, S.fileName)), 200);
   }
   applyView(v);
 };

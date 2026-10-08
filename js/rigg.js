@@ -48,6 +48,7 @@ import {
   aktivRef, byggRiggObjekt, finnRiggObjekt, gjerdeDelLabel, lappStorrelse, oppdaterRiggValgEffekt, riggBase, riggGroup,
   riggTypeLabel, settGjerdeMarkering, tegnEnRigg, tegnRigg
 } from "./rigg-vis.js";
+import { varsel } from "./varsel.js";
 
 // ═══════════════════════ TILSTAND ═══════════════════════
 let plasserer = null;   // { o, gruppe } — objektet som henger på pekeren
@@ -295,8 +296,8 @@ async function hentPlanerFraSp() {
 
 function lagrePlan(navn) {
   const rent = String(navn || "").trim().slice(0, RIGGPLAN_NAVN_MAKS);
-  if (!rent) { alert(t("Gi riggplanen et navn før du lagrer den.")); return; }
-  if (!riggObjekter(S.rigg || []).length) { alert(t("Plasser noe på tomta før du lagrer riggplanen.")); return; }
+  if (!rent) { varsel(t("Gi riggplanen et navn før du lagrer den.")); return; }
+  if (!riggObjekter(S.rigg || []).length) { varsel(t("Plasser noe på tomta før du lagrer riggplanen.")); return; }
   const liste = lesPlanerRaa();
   const i = liste.findIndex(p => p && p.navn === rent);
   if (i >= 0 && !liste[i].slettet && !confirm(t("«{0}» finnes allerede. Skal den skrives over?", rent))) return;
@@ -306,7 +307,7 @@ function lagrePlan(navn) {
     av: mittNavn(), antall: riggplanSammendrag(data).objekter, data };
   if (i >= 0) liste[i] = post; else liste.push(post);
   if (!lagrePlanerBeggeSteder(liste)) {
-    alert(t("Klarte ikke å lagre — nettleserens lagring er full. Slett et gammelt resultat og prøv igjen."));
+    varsel(t("Klarte ikke å lagre — nettleserens lagring er full. Slett et gammelt resultat og prøv igjen."));
     return;
   }
   tegnPanel();
@@ -987,7 +988,7 @@ function lagGjerde(a, b) {
   if (!pos) return;
   const hx = Math.abs(b.x - a.x) / 2 * base.skala, hz = Math.abs(b.z - a.z) / 2 * base.skala;
   const punkter = gjerdeFraRektangel(hx, hz, RIGG_TYPER.gjerde.L);
-  if (!punkter) { alert(t("Firkanten er for liten til et gjerde. Dra en større boks.")); return; }
+  if (!punkter) { varsel(t("Firkanten er for liten til et gjerde. Dra en større boks.")); return; }
   const ref = aktivRef();
   // rotY i scenen = plass.rot − rot. Skal gjerdet ligge langs scenens akser, er rot = plass.rot.
   const rot = pos.ramme === "utm" && ref ? ref.plass.rot : 0;
@@ -1361,7 +1362,7 @@ function erApen() { const p = $("riggPanel"); return !!(p && p.classList.contain
 på("btnRigg", "click", () => {
   const panel = $("riggPanel");
   if (panel.classList.contains("open")) { panel.classList.remove("open"); settRiggModus(false); return; }
-  if (!S.modelGroup) { alert(t("Åpne en modell først.")); return; }
+  if (!S.modelGroup) { varsel(t("Åpne en modell først.")); return; }
   apnePanel("riggPanel");
   settRiggModus(true);
   tegnPanel();
@@ -1518,7 +1519,7 @@ function tegnPanel() {
       const m = await import("./riggplan.js");
       await m.lastNedRiggplan(vaskMalestokkValg(S.settings && S.settings.riggMalestokk));
     }
-    catch (err) { alert(t("Klarte ikke å lage riggplanen: {0}", err.message)); }
+    catch (err) { varsel(t("Klarte ikke å lage riggplanen: {0}", err.message)); }
     finally { if ($("riggPdf")) $("riggPdf").disabled = false; }
   };
   // Trykk på navnet: velg objektet og fly dit
