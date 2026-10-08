@@ -197,6 +197,11 @@ export function snoAdvarsler(v) {
   const ut = [];
   const sk0 = tall(v.sk0);
   if (sk0 != null && (sk0 <= 0 || sk0 > 12)) ut.push({ tekst: "sk,0 er {0} kN/m². Det er utenfor det som er vanlig i Norge — sjekk tallet.", verdi: sk0 });
+  // Emil 08.10 (sk,0 = 8 og sk,maks = 6 ga 4,80 kN/m² uten at noe sa fra)
+  const maks = tall(v.skMaks);
+  if (sk0 != null && maks != null && maks > 0 && sk0 > maks) ut.push({ tekst: "sk,0 ({0} kN/m²) er større enn sk,maks ({1} kN/m²). Da blir sk,maks brukt — sjekk begge tallene mot standarden eller RIB.", verdi: sk0, navn: String(maks).replace(".", ",") });
+  const H = tall(v.H), Hg = tall(v.Hg);
+  if (H != null && Hg != null && Math.abs(H - Hg) < 1e-9 && H > 0) ut.push({ tekst: "Hg er lik høyden over havet ({0} moh). Hg er kommunens grensehøyde fra standarden, ikke byggets høyde — sjekk tallet.", verdi: Hg });
   for (const k of ["Ce", "Ct"]) {
     const x = tall(v[k]);
     if (x != null && (x <= 0 || x > 1.25)) ut.push({ tekst: "{1} er {0}. Den skal normalt være 1,0.", verdi: x, navn: k });
@@ -384,17 +389,43 @@ function toppVed(poly, t) {
   }
   return Number.isFinite(y) ? y : null;
 }
-export function fasadeOmriss(deler) {
+//
+// Emil 08.10 (bilde: søyleforlengerne var dekket, men ikke mellomrommet
+// mellom dem): veggelementene går helt opp mellom forlengerne, så den delen
+// av veggen tar også vind. Derfor STÅENDE (valgfri): toppene [t, y] av de
+// stående delene i fasaden (søyler med forlengere). Mellom to naboer trekkes
+// toppen som en rett linje fra topp til topp — aldri lavere enn delene selv.
+// Stående deler som er under halvparten så høye som de høyeste (en dørstolpe)
+// tas ikke med.
+export function fasadeOmriss(deler, staende) {
   const dl = (deler || []).filter(d => d && d.length >= 3);
   if (!dl.length) return [];
   let yb = Infinity;
   const ts = [];
   for (const d of dl) for (const [t, y] of d) { yb = Math.min(yb, y); ts.push(t); }
+  let st = (staende || []).filter(q => Number.isFinite(q[0]) && Number.isFinite(q[1]));
+  if (st.length) {
+    const hMaks = Math.max(...st.map(q => q[1])) - yb;
+    st = st.filter(q => q[1] - yb >= hMaks / 2).sort((a, b) => a[0] - b[0] || b[1] - a[1])
+      .filter((q, i, a) => i === 0 || Math.abs(q[0] - a[i - 1][0]) > 1e-6);
+    for (const q of st) ts.push(q[0]);
+  }
   const u = [...new Set(ts.map(t => Math.round(t * 1e6) / 1e6))].sort((a, b) => a - b);
   const t0 = u[0], t1 = u[u.length - 1];
   if (!(t1 - t0 > 1e-9)) return [];
   const eps = Math.max(1e-6, (t1 - t0) * 1e-7);
-  const topp = (t) => { let y = null; for (const d of dl) { const v = toppVed(d, t); if (v != null && (y == null || v > y)) y = v; } return y; };
+  const bro = (t) => {
+    if (st.length < 2 || t < st[0][0] - 1e-9 || t > st[st.length - 1][0] + 1e-9) return null;
+    for (let i = 1; i < st.length; i++) if (t <= st[i][0] + 1e-9) {
+      const a = st[i - 1], b = st[i]; return a[1] + (t - a[0]) / ((b[0] - a[0]) || 1) * (b[1] - a[1]);
+    }
+    return null;
+  };
+  const topp = (t) => {
+    let y = null; for (const d of dl) { const v = toppVed(d, t); if (v != null && (y == null || v > y)) y = v; }
+    const b = bro(t); if (b != null && (y == null || b > y)) y = b;
+    return y;
+  };
   // venstre og høyre side av hvert knekkpunkt, så trinn blir loddrette
   const pkt = [];
   u.forEach((t, i) => {
@@ -420,4 +451,156 @@ export function fasadeOmriss(deler) {
     if (!ren.length || Math.abs(ren[ren.length - 1][0] - p[0]) > 1e-12 || Math.abs(ren[ren.length - 1][1] - p[1]) > 1e-12) ren.push(p);
   }
   return [[t0, yb], [t1, yb], ...ren.reverse()];
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// 🏗 TAKET FRA STÅLET (Emil 08.10)
+// Uten tak fra tak-generatoren la snøen seg som et flatt lokk på toppen av
+// søyleforlengerne, og lokket stakk utenfor bygget. Regelen nå:
+//   • STÅENDE elementer (søyler, søyleforlengere, alt som er mye høyere enn
+//     det er bredt) bærer taket, men ER ikke taket — de telles ikke.
+//   • Taket er den ØVRE KONTUREN av resten av stålet (takbjelker, fagverk,
+//     åser), sett på tvers av mønet. Konturen er den øvre konvekse hylla, så
+//     åser og fagverksknuter ikke gir et sagtak.
+//   • Mønet ligger der konturen er høyest. Ligger det helt ute ved en kant,
+//     er taket et pulttak; er begge sidene under 0,5°, er det flatt.
+//   • Retningen: den av byggets to akser der taket heller mest.
+// Ingenting her vet noe om én bestemt modell.
+// ════════════════════════════════════════════════════════════════════════
+const GRAD = Math.PI / 180;
+
+// Står elementet? Søyler alltid; ellers når høyden er over dobbelt så stor
+// som den største bredden i plan.
+export function erStaende(pkt, tp) {
+  if (String(tp || "").toUpperCase() === "COLUMN") return true;
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  for (const [x, y, z] of pkt || []) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
+  if (!Number.isFinite(y1)) return false;
+  return (y1 - y0) > 2 * Math.max(x1 - x0, z1 - z0, 1e-9);
+}
+
+// Øvre kontur av punktene [s, y]: den øvre konvekse hylla, venstre → høyre.
+export function ovreKontur(pkt) {
+  const p = (pkt || []).filter(q => Number.isFinite(q[0]) && Number.isFinite(q[1])).slice().sort((a, b) => a[0] - b[0] || b[1] - a[1]);
+  const ut = [];
+  const kr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  for (const q of p) {
+    if (ut.length && Math.abs(ut[ut.length - 1][0] - q[0]) < 1e-9) continue;   // samme s: den høyeste kom først
+    while (ut.length >= 2 && kr(ut[ut.length - 2], ut[ut.length - 1], q) >= -1e-12) ut.pop();
+    ut.push(q);
+  }
+  return ut;
+}
+const yPaKontur = (k, s) => {
+  if (!k.length) return NaN;
+  if (s <= k[0][0]) return k[0][1];
+  for (let i = 1; i < k.length; i++) if (s <= k[i][0]) {
+    const a = k[i - 1], b = k[i]; return a[1] + (s - a[0]) / ((b[0] - a[0]) || 1) * (b[1] - a[1]);
+  }
+  return k[k.length - 1][1];
+};
+
+// Takprofilet på tvers av mønet, fra s0 til s1: { form, sm (mønet), y0, ym, y1, vinkel }
+export function takProfil(pkt, s0, s1) {
+  const k = ovreKontur(pkt);
+  if (!k.length || !(s1 > s0)) return null;
+  const L = s1 - s0;
+  let im = 0; for (let i = 1; i < k.length; i++) if (k[i][1] > k[im][1] + 1e-9) im = i;
+  // En rett linje gjennom hver side av konturen (minste kvadrater). Toppen selv
+  // er ofte en ås eller en knute litt ved siden av mønet, så den tas bare med
+  // når siden ellers har for få punkter.
+  const linje = (q) => {
+    if (!q.length) return null;
+    if (q.length === 1) return { k: 0, m: q[0][1] };
+    let sx = 0, sy = 0, sxx = 0, sxy = 0; const n = q.length;
+    for (const [x, y] of q) { sx += x; sy += y; sxx += x * x; sxy += x * y; }
+    const d = n * sxx - sx * sx;
+    if (Math.abs(d) < 1e-12) return { k: 0, m: sy / n };
+    const kk = (n * sxy - sx * sy) / d; return { k: kk, m: (sy - kk * sx) / n };
+  };
+  // jevnt fordelte punkter langs konturen, uten endene: en kort knekk ved
+  // takfoten eller ved mønet (enden av en ås, en fagverksknute) skal ikke
+  // styre linja
+  const prov = (a, b) => {
+    if (!(b - a > 1e-6)) return [];
+    const n = 60, q = [], m = (b - a) * 0.1;          // 10 % av hver ende holdes utenfor
+    for (let i = 0; i <= n; i++) { const x = a + m + (b - a - 2 * m) * i / n; q.push([x, yPaKontur(k, x)]); }
+    return q;
+  };
+  const venstre = linje(prov(k[0][0], k[im][0])), hoyre = linje(prov(k[im][0], k[k.length - 1][0]));
+  const yv = (l, s) => l.k * s + l.m;
+  let sm = k[im][0], ym = k[im][1];
+  const LITE = Math.tan(0.25 * GRAD);
+  const stigerV = venstre && venstre.k > LITE, fallerH = hoyre && hoyre.k < -LITE;
+  if (stigerV && fallerH && Math.abs(venstre.k - hoyre.k) > 1e-9) {
+    const x = (hoyre.m - venstre.m) / (venstre.k - hoyre.k);
+    if (x > s0 && x < s1) { sm = x; ym = yv(venstre, x); }
+  }
+  const lv = venstre || hoyre, lh = hoyre || venstre;
+  let y0 = lv ? yv(lv, s0) : yPaKontur(k, s0);
+  let y1 = lh ? yv(lh, s1) : yPaKontur(k, s1);
+  // mønet nær en kant (innenfor 10 %): pulttak fra den andre kanten
+  if (sm - s0 < 0.1 * L || !stigerV) { sm = s0; ym = lh ? yv(lh, s0) : ym; }
+  else if (s1 - sm < 0.1 * L || !fallerH) { sm = s1; ym = lv ? yv(lv, s1) : ym; }
+  const v0 = sm > s0 ? Math.atan(Math.max(0, ym - y0) / (sm - s0)) / GRAD : 0;
+  const v1 = s1 > sm ? Math.atan(Math.max(0, ym - y1) / (s1 - sm)) / GRAD : 0;
+  const topp = Math.max(...k.map(q => q[1]));
+  if (v0 < 0.5 && v1 < 0.5) return { form: "flatt", sm: s0, y0: topp, ym: topp, y1: topp, vinkel: 0 };
+  if (sm === s0) return { form: "pult", sm, y0: ym, ym, y1, vinkel: v1 };
+  if (sm === s1) return { form: "pult", sm, y0, ym, y1: ym, vinkel: v0 };
+  return { form: "saltak", sm, y0, ym, y1, vinkel: Math.max(v0, v1) };
+}
+
+// Ny takvinkel på et profil (skrevet inn for hånd). Laveste takfot står fast.
+export function profilMedVinkel(p, form, vinkel, s0, s1) {
+  const tg = Math.tan(Math.max(0, Math.min(89, Number(vinkel) || 0)) * GRAD);
+  const fot = Math.min(p.y0, p.y1);
+  if (form === "flatt") return { form, sm: s0, y0: p.ym, ym: p.ym, y1: p.ym, vinkel: 0 };
+  if (form === "pult") {
+    // heller samme vei som stålet hvis det heller; ellers stiger det mot s1
+    if (p.form === "pult" && p.sm === s0) return { form, sm: s0, y0: fot + tg * (s1 - s0), ym: fot + tg * (s1 - s0), y1: fot, vinkel };
+    return { form, sm: s1, y0: fot, ym: fot + tg * (s1 - s0), y1: fot + tg * (s1 - s0), vinkel };
+  }
+  const sm = p.form === "saltak" ? p.sm : (s0 + s1) / 2;
+  return { form: "saltak", sm, y0: fot + tg * 0, ym: fot + tg * Math.max(sm - s0, s1 - sm), y1: fot, vinkel,
+    // to takflater med samme vinkel: takfoten på hver side regnes fra mønet
+    yA: fot + tg * Math.max(sm - s0, s1 - sm) - tg * (sm - s0), yB: fot + tg * Math.max(sm - s0, s1 - sm) - tg * (s1 - sm) };
+}
+
+// Takflatene (meter) over rektangelet rk (fra minsteRektangel) for punktene
+// [x, y, z] av takstålet. akse "v" = mønet langs u (profilet går langs v).
+// Svar: { akse, profil, flater: [{ poly: [[x,y,z]…], alfa, arealPlan, arealSkraa }] }
+export function takFraStal(pkt, rk, valg) {
+  if (!rk || !pkt || !pkt.length) return null;
+  const o = valg || {};
+  const A = (p) => p[0] * rk.u[0] + p[2] * rk.u[1], B = (p) => p[0] * rk.v[0] + p[2] * rk.v[1];
+  const prof = {
+    v: takProfil(pkt.map(p => [B(p), p[1]]), rk.b0, rk.b1),
+    u: takProfil(pkt.map(p => [A(p), p[1]]), rk.a0, rk.a1)
+  };
+  if (!prof.v && !prof.u) return null;
+  // aksen der taket heller mest; likt (flatt): profilet på tvers av den lange siden
+  const lang = (rk.a1 - rk.a0) >= (rk.b1 - rk.b0) ? "v" : "u";
+  let akse = lang;
+  if (prof.v && prof.u && Math.abs(prof.u.vinkel - prof.v.vinkel) > 0.25) akse = prof.u.vinkel > prof.v.vinkel ? "u" : "v";
+  else if (!prof[akse]) akse = akse === "v" ? "u" : "v";
+  const [s0, s1, c0, c1] = akse === "v" ? [rk.b0, rk.b1, rk.a0, rk.a1] : [rk.a0, rk.a1, rk.b0, rk.b1];
+  let p = prof[akse];
+  const vinkel = Number(o.vinkel);
+  if (o.form && o.form !== "auto") p = profilMedVinkel(p, o.form, o.vinkel, s0, s1);
+  else if (Number.isFinite(vinkel) && vinkel > 0) p = profilMedVinkel(p, p.form === "flatt" ? "saltak" : p.form, vinkel, s0, s1);
+  const P = (s, c, y) => {
+    const [a, b] = akse === "v" ? [c, s] : [s, c];
+    return [rk.u[0] * a + rk.v[0] * b, y, rk.u[1] * a + rk.v[1] * b];
+  };
+  const flate = (sa, sb, ya, yb) => {
+    const plan = (sb - sa) * (c1 - c0);
+    const alfa = Math.atan(Math.abs(yb - ya) / ((sb - sa) || 1)) / GRAD;
+    return { poly: [P(sa, c0, ya), P(sb, c0, yb), P(sb, c1, yb), P(sa, c1, ya)], alfa, arealPlan: plan, arealSkraa: plan / Math.cos(alfa * GRAD) };
+  };
+  const flater = [];
+  if (p.form === "saltak" && p.sm > s0 && p.sm < s1) {
+    flater.push(flate(s0, p.sm, p.yA ?? p.y0, p.ym), flate(p.sm, s1, p.ym, p.yB ?? p.y1));
+  } else flater.push(flate(s0, s1, p.y0, p.y1));
+  return { akse, profil: p, flater };
 }

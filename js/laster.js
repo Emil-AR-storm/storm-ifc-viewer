@@ -22,7 +22,8 @@ import { forskyvLapper, meldMaalLapper } from "./maal-verktoy.js";
 import {
   CPE_FLATT_TAK, TERRENG, flattTakSoner, kommuneFraSvar, kommunePunktUrl, mu1, snoMark, snoTak, tall, vaskLastdata,
   snoAdvarsler, vindAdvarsler, vindBasis, vindTrykk, we,
-  fasadeOmriss, flaterFraRektangel, hylle2, kraft, minsteRektangel, vindPaFlater, vindRetninger
+  fasadeOmriss, flaterFraRektangel, hylle2, kraft, minsteRektangel, vindPaFlater, vindRetninger,
+  erStaende, takFraStal
 } from "./laster-regn.js";
 
 export const lasterGroup = new THREE.Group();
@@ -225,28 +226,54 @@ function skall(pkt, n) {
   return lav.slice(0, -1).concat(hoy.slice(0, -1)).map(q => midt.clone().addScaledVector(e1, q.x).addScaledVector(e2, q.y).addScaledVector(n, topp));
 }
 
-// Uten tak-generatoren: taket over modellens topp, med takvinkelen som er
-// skrevet inn. Saltaket deles på langs (mønet langs den lange siden).
-function manuelleTakflater(form, vinkel) {
+// Uten tak-generatoren (Emil 08.10): taket leses av STÅLET — den øvre konturen
+// av takbjelker, fagverk og åser, over rektangelet stålsøylene står i. Søyler
+// og søyleforlengere er ikke taket (se takFraStal i laster-regn.js). Velges en
+// takform, eller skrives en takvinkel inn, brukes den på det samme taket.
+let takHurtig = { nokkel: "", verdi: null };
+function takFraModell(form, vinkel) {
+  const nk = [stalNokkel(), form, vinkel].join("|");
+  if (takHurtig.nokkel === nk) return takHurtig.verdi;
+  let verdi = null;
+  const stal = stalElementer();
+  const ligg = stal.filter(x => !x.staar);
+  if (ligg.length) {
+    const staar = stal.filter(x => x.staar);
+    const plan = (staar.length ? staar : stal).flatMap(x => x.pkt.map(q => [q[0], q[2]]));
+    const rk = plan.length >= 3 ? minsteRektangel(plan) : null;
+    if (rk) {
+      // takets utstrekning: alt stålet (et utstikk over søylene teller med)
+      let a0 = Infinity, a1 = -Infinity, b0 = Infinity, b1 = -Infinity;
+      for (const x of stal) for (const q of x.pkt) {
+        const a = q[0] * rk.u[0] + q[2] * rk.u[1], b = q[0] * rk.v[0] + q[2] * rk.v[1];
+        a0 = Math.min(a0, a); a1 = Math.max(a1, a); b0 = Math.min(b0, b); b1 = Math.max(b1, b);
+      }
+      verdi = takFraStal(ligg.flatMap(x => x.pkt), { ...rk, a0, a1, b0, b1 }, { form, vinkel: tall(vinkel) });
+    }
+  }
+  takHurtig = { nokkel: nk, verdi };
+  return verdi;
+}
+function flaterFraStal(form, vinkel) {
+  const r = takFraModell(form, vinkel);
+  if (!r) return null;
+  const s = skala();
+  const navn = r.flater.length > 1 ? (i) => t("Takhalvdel {0}", i + 1) : () => t("Tak");
+  return { profil: r.profil, flater: r.flater.map((f, i) => {
+    const polygon = f.poly.map(q => new THREE.Vector3(q[0] / s, q[1] / s, q[2] / s));
+    const normal = new THREE.Vector3().subVectors(polygon[1], polygon[0]).cross(new THREE.Vector3().subVectors(polygon[3], polygon[0])).normalize();
+    if (normal.y < 0) normal.negate();
+    return { navn: navn(i), alfa: f.alfa, arealPlan: f.arealPlan, arealSkraa: f.arealSkraa, polygon, normal };
+  }) };
+}
+// Siste utvei (ingen bygningsdeler å lese taket av): flatt over modellen.
+function lokkOverModellen() {
   const b = boks();
   if (!b) return [];
-  const s = skala();
+  const s = skala(), y = b.max.y;
   const Lx = (b.max.x - b.min.x) * s, Lz = (b.max.z - b.min.z) * s;
-  const a = form === "flatt" ? 0 : Math.max(0, Math.min(89, tall(vinkel) || 0));
-  const y = b.max.y;
-  const kvad = (x0, x1, z0, z1) => [new THREE.Vector3(x0, y, z0), new THREE.Vector3(x1, y, z0), new THREE.Vector3(x1, y, z1), new THREE.Vector3(x0, y, z1)];
-  const flate = (navn, poly, planM2) => ({ navn, alfa: a, arealPlan: planM2, arealSkraa: planM2 / Math.cos(a * Math.PI / 180), polygon: poly, normal: new THREE.Vector3(0, 1, 0) });
-  if (form === "saltak") {
-    if (Lx >= Lz) {
-      const zm = (b.min.z + b.max.z) / 2;
-      return [flate(t("Takhalvdel {0}", 1), kvad(b.min.x, b.max.x, b.min.z, zm), Lx * Lz / 2),
-              flate(t("Takhalvdel {0}", 2), kvad(b.min.x, b.max.x, zm, b.max.z), Lx * Lz / 2)];
-    }
-    const xm = (b.min.x + b.max.x) / 2;
-    return [flate(t("Takhalvdel {0}", 1), kvad(b.min.x, xm, b.min.z, b.max.z), Lx * Lz / 2),
-            flate(t("Takhalvdel {0}", 2), kvad(xm, b.max.x, b.min.z, b.max.z), Lx * Lz / 2)];
-  }
-  return [flate(t("Tak"), kvad(b.min.x, b.max.x, b.min.z, b.max.z), Lx * Lz)];
+  const poly = [new THREE.Vector3(b.min.x, y, b.min.z), new THREE.Vector3(b.max.x, y, b.min.z), new THREE.Vector3(b.max.x, y, b.max.z), new THREE.Vector3(b.min.x, y, b.max.z)];
+  return [{ navn: t("Tak"), alfa: 0, arealPlan: Lx * Lz, arealSkraa: Lx * Lz, polygon: poly, normal: new THREE.Vector3(0, 1, 0) }];
 }
 
 function takflater() {
@@ -254,9 +281,10 @@ function takflater() {
   if (form === "auto") {
     const g = takflaterFraGenerator();
     if (g.length) return { kilde: "generator", flater: g };
-    return { kilde: "mangler", flater: manuelleTakflater("flatt", 0) };
   }
-  return { kilde: "manuell", flater: manuelleTakflater(form, data.takvinkel) };
+  const m = flaterFraStal(form, data.takvinkel);
+  if (m) return { kilde: form === "auto" ? (tall(data.takvinkel) > 0 ? "stal-vinkel" : "stal") : "manuell", flater: m.flater, profil: m.profil };
+  return { kilde: "mangler", flater: lokkOverModellen() };
 }
 
 // ---------- Fasadene vinden tar på (Emil 06.10) ----------
@@ -290,7 +318,11 @@ function takTopp() {
     if (!o.isMesh || !(o.userData && (o.userData.tak || o.userData.blikk))) return;
     const bb = new THREE.Box3().setFromObject(o); if (!bb.isEmpty()) y = Math.max(y, bb.max.y);
   });
-  return Number.isFinite(y) ? y * skala() : NaN;
+  if (Number.isFinite(y)) return y * skala();
+  // uten tak fra generatoren: toppen av taket lest av stålet
+  const r = takFraModell("auto", "");
+  if (r) for (const f of r.flater) for (const q of f.poly) y = Math.max(y, q[1]);
+  return Number.isFinite(y) ? y : NaN;
 }
 // SW-generatorens vegger og ringmur, per fasade: hjørnene i 3D (meter).
 // Regnet av TALLENE i SW-lagringen, ikke av 3D-meshene: «lastet inn» betyr
@@ -336,8 +368,21 @@ function swPunkterPerFasade() {
   }
   return ut;
 }
-// Stålet i modellen: punktene til hvert element (meter), med typen
+// Stålet i modellen: punktene til hvert element (meter), med typen og om det
+// står (søyle, søyleforlenger). Huskes til modellen eller det skjulte endres.
+let stalHurtig = { nokkel: "", verdi: null };
+function stalNokkel() {
+  let skjultN = 0; try { skjultN = skjulteIder().size; } catch (_) {}
+  return [S.fileName, S.modelGroup && S.modelGroup.uuid, skjultN, skala()].join("|");
+}
 function stalElementer() {
+  const nk = stalNokkel();
+  if (stalHurtig.nokkel === nk && stalHurtig.verdi) return stalHurtig.verdi;
+  const verdi = stalElementerNy();
+  stalHurtig = { nokkel: nk, verdi };
+  return verdi;
+}
+function stalElementerNy() {
   let skjult = new Set();
   try { skjult = skjulteIder(); } catch (_) { skjult = new Set(); }
   const typer = new Map(), alle = new Map();
@@ -368,7 +413,7 @@ function stalElementer() {
       arr = [];
       for (const x of [eb.min.x, eb.max.x]) for (const y of [eb.min.y, eb.max.y]) for (const z of [eb.min.z, eb.max.z]) arr.push([x * s, y * s, z * s]);
     }
-    ut.push({ id, tp, pkt: arr });
+    ut.push({ id, tp, pkt: arr, staar: erStaende(arr, tp) });
   }
   return ut;
 }
@@ -415,6 +460,7 @@ function byggFasader() {
     }
     // stålet i fasadeplanet
     let stalUt = -Infinity, stalT0 = Infinity, stalT1 = -Infinity;
+    const staende = [];                                        // toppene av søyler og forlengere
     for (const x of stal) {
       let n0 = Infinity, n1 = -Infinity;
       for (const q of x.pkt) { const v = nn(q); n0 = Math.min(n0, v); n1 = Math.max(n1, v); }
@@ -422,10 +468,12 @@ function byggFasader() {
       const tyx = x.pkt.map(ty);
       const h = hylle2(tyx); if (h.length >= 3) deler.push(h);
       stalUt = Math.max(stalUt, n1);
-      for (const [tt] of tyx) { stalT0 = Math.min(stalT0, tt); stalT1 = Math.max(stalT1, tt); }
+      let e0 = Infinity, e1 = -Infinity, yt = -Infinity;
+      for (const [tt, yy] of tyx) { stalT0 = Math.min(stalT0, tt); stalT1 = Math.max(stalT1, tt); e0 = Math.min(e0, tt); e1 = Math.max(e1, tt); yt = Math.max(yt, yy); }
+      if (x.staar) staende.push([(e0 + e1) / 2, yt]);
     }
     if (!deler.length) continue;
-    let omr = fasadeOmriss(deler);
+    let omr = fasadeOmriss(deler, staende);
     if (omr.length < 3) continue;
     let ut;
     if (Number.isFinite(swUt)) ut = swUt;                      // utsiden av veggene/ringmuren
@@ -468,7 +516,7 @@ export function regnUt() {
   const sm = snoMark({ sk0: data.sk0, Hg: data.Hg, dsk: data.dsk, skMaks: data.skMaks, H: data.H });
   const tf = takflater();
   if (sm) {
-    ut.sno = { ...sm, kilde: tf.kilde, flater: tf.flater.map(f => {
+    ut.sno = { ...sm, kilde: tf.kilde, profil: tf.profil, flater: tf.flater.map(f => {
       const s = snoTak(sm.sk, f.alfa, data.Ce, data.Ct);
       return { ...f, mu: mu1(f.alfa), s, total: s * f.arealPlan };
     }) };
@@ -494,10 +542,25 @@ function rydd() {
   lasterGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); } });
   lasterGroup.clear();
 }
-function flateMesh(poly, farge, opasitet) {
+// Emil 08.10 (bilde: hjørnene ble «vrengt» opp mot søyleforlengerne): flatene
+// ble delt i trekanter som en vifte fra første hjørne. Det går bare for
+// konvekse flater — en fasade med hakk og gavler fikk trekanter UTENFOR
+// omrisset. Nå trianguleres omrisset ordentlig (ShapeUtils), i flatens eget
+// plan. `plan2` er hjørnene i 2D når de finnes; ellers legges de i planet.
+function flatePlan2(poly) {
+  const n = new THREE.Vector3();
+  for (let i = 0; i < poly.length; i++) { const a = poly[i], b = poly[(i + 1) % poly.length]; n.x += (a.y - b.y) * (a.z + b.z); n.y += (a.z - b.z) * (a.x + b.x); n.z += (a.x - b.x) * (a.y + b.y); }
+  const ax = Math.abs(n.x), ay = Math.abs(n.y), az = Math.abs(n.z);
+  return poly.map(p => ax >= ay && ax >= az ? new THREE.Vector2(p.y, p.z) : ay >= az ? new THREE.Vector2(p.x, p.z) : new THREE.Vector2(p.x, p.y));
+}
+function flateMesh(poly, farge, opasitet, plan2) {
   if (poly.length < 3) return null;
   const pos = [];
-  for (let i = 1; i + 1 < poly.length; i++) pos.push(...poly[0].toArray(), ...poly[i].toArray(), ...poly[i + 1].toArray());
+  let p2 = plan2 ? plan2.map(q => new THREE.Vector2(q[0], q[1])) : flatePlan2(poly);
+  let tri = [];
+  try { tri = THREE.ShapeUtils.triangulateShape(p2, []); } catch (_) { tri = []; }
+  if (tri.length) for (const [a, b, c] of tri) pos.push(...poly[a].toArray(), ...poly[b].toArray(), ...poly[c].toArray());
+  else for (let i = 1; i + 1 < poly.length; i++) pos.push(...poly[0].toArray(), ...poly[i].toArray(), ...poly[i + 1].toArray());
   const g = new THREE.BufferGeometry();
   g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
   const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: farge, transparent: true, opacity: opasitet, side: THREE.DoubleSide, depthWrite: false }));
@@ -515,6 +578,7 @@ function lappPaa(tekst, farge, pos) {
   return l;
 }
 const kn = (v) => v.toFixed(2).replace(".", ",");
+const kn1 = (v) => (Math.round(v * 10) / 10).toString().replace(".", ",");
 const fortegn = (v) => (v >= 0 ? "+" : "−") + kn(Math.abs(v));
 export function farge(cpe) {
   if (cpe >= 0) return 0x3b82f6;
@@ -548,7 +612,7 @@ function tegn() {
     for (const x of v.deler) {
       const f = v.flater[x.fi];
       const poly = x.poly.map(([tt, y]) => { const [px, pz] = plan(f, tt); return V3(px, y, pz); });
-      const m = flateMesh(poly, farge(v.cpe[x.sone]), 0.4);
+      const m = flateMesh(poly, farge(v.cpe[x.sone]), 0.4, x.poly);
       if (m) lasterGroup.add(m);
       const k = x.fi + "|" + x.sone;
       if (!midt.has(k)) midt.set(k, { p: new THREE.Vector3(), A: 0 });
@@ -655,8 +719,11 @@ function visResultat() {
     else {
       let h = advarsel(snoAdvarsler(data)) + rad(t("Snølast på mark, sk"), kn(r.sno.sk) + " kN/m²" + (r.sno.n ? " (n = " + r.sno.n + ")" : "") + (r.sno.kappet ? " · sk,maks" : ""));
       if (r.sno.kilde === "mangler") h += '<p class="la-tom">' + t("Tak-generatoren har ikke lagt tak — regnet som flatt tak over modellen. Velg takform og vinkel over.") + "</p>";
+      const formNavn = { flatt: t("Flatt tak"), pult: t("Pulttak"), saltak: t("Saltak") };
+      if (r.sno.kilde === "stal" && r.sno.profil) h += '<p class="la-tom">' + t("Ingen tak fra tak-generatoren — taket er lest av stålet (uten søyler og søyleforlengere): {0}, {1}°. Skriv inn en takvinkel for å overstyre vinkelen.", formNavn[r.sno.profil.form] || "", kn1(r.sno.profil.vinkel)) + "</p>";
+      if (r.sno.kilde === "stal-vinkel" && r.sno.profil) h += '<p class="la-tom">' + t("Takvinkelen du skrev inn ({0}°) er brukt på taket lest av stålet ({1}).", kn1(r.sno.profil.vinkel), formNavn[r.sno.profil.form] || "") + "</p>";
       for (const f of r.sno.flater)
-        h += rad(esc(f.navn) + " · " + Math.round(f.alfa * 10) / 10 + "° · μ1 " + kn(f.mu), kn(f.s) + " kN/m² · " + Math.round(f.total) + " kN");
+        h += rad(esc(f.navn) + " · " + kn1(f.alfa) + "° · μ1 " + kn(f.mu), kn(f.s) + " kN/m² · " + Math.round(f.total) + " kN");
       const tot = r.sno.flater.reduce((s, f) => s + f.total, 0);
       h += rad("<b>" + t("Sum snølast på taket") + "</b>", "<b>" + Math.round(tot) + " kN</b>");
       sr.innerHTML = h;
