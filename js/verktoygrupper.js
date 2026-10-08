@@ -126,6 +126,13 @@ export function settGruppe(id) {
   const linje = $("toolbar");
   if (!linje) return;
   linje.dataset.gruppe = id || "";
+  // 📱 Emil 08.10: «når du trykker …Mer får du opp absolutt alle verktøyene
+  // i stedet for bare de fra gruppen du er inne på — dette er rotete.»
+  // På telefon flytter js/mobile.js de fleste knappene ut av #toolbar og inn
+  // i ⋯-menyen (#moreMenu), og der traff ikke gruppereglene, som henger på
+  // #toolbar[data-gruppe]. Gruppa settes derfor også på <body>, så CSS-en kan
+  // filtrere ⋯-menyen med samme regel — uansett om menyen finnes ennå.
+  document.body.dataset.vgruppe = id || "";
   document.querySelectorAll("#verktoygrupper button[data-velg]").forEach(b =>
     b.classList.toggle("active", b.dataset.velg === id));
   S.settings.verktoygruppe = id || "";
