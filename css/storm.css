@@ -1591,12 +1591,15 @@ body:not(.har-modell) #btnFit { display: none !important; }
    er én funksjon brukt to steder, ikke to utgaver som kan gli fra hverandre.
    Bare selektorene måtte utvides; alt annet var likt fra før. */
 /* 🏕⛰ Emil 28.09: Rigg og Terreng fikk samme dropdown-format — samme
-   foldSeksjoner() (js/seksjoner.js), bare selektorene er utvidet. */
+   foldSeksjoner() (js/seksjoner.js), bare selektorene er utvidet.
+   🔎 Bugtest 08.10: Snø & Last bruker også foldSeksjoner(), men sto ikke i
+   lista — pila sto på en egen linje over overskriften. */
 #swBody .sw-seksjon > summary,
 #blikkBody .sw-seksjon > summary,
 #takBody .sw-seksjon > summary,
 #riggBody .sw-seksjon > summary,
-#terrengBody .sw-seksjon > summary {
+#terrengBody .sw-seksjon > summary,
+#lasterBody .sw-seksjon > summary {
   cursor: pointer;
   list-style: none;
   display: flex; align-items: center; gap: 6px;
@@ -1606,12 +1609,14 @@ body:not(.har-modell) #btnFit { display: none !important; }
 #blikkBody .sw-seksjon > summary::-webkit-details-marker,
 #takBody .sw-seksjon > summary::-webkit-details-marker,
 #riggBody .sw-seksjon > summary::-webkit-details-marker,
-#terrengBody .sw-seksjon > summary::-webkit-details-marker { display: none; }
+#terrengBody .sw-seksjon > summary::-webkit-details-marker,
+#lasterBody .sw-seksjon > summary::-webkit-details-marker { display: none; }
 #swBody .sw-seksjon > summary::before,
 #blikkBody .sw-seksjon > summary::before,
 #takBody .sw-seksjon > summary::before,
 #riggBody .sw-seksjon > summary::before,
-#terrengBody .sw-seksjon > summary::before {
+#terrengBody .sw-seksjon > summary::before,
+#lasterBody .sw-seksjon > summary::before {
   content: "▸";
   color: var(--muted);
   font-size: 13px;
@@ -1622,32 +1627,38 @@ body:not(.har-modell) #btnFit { display: none !important; }
 #blikkBody .sw-seksjon[open] > summary::before,
 #takBody .sw-seksjon[open] > summary::before,
 #riggBody .sw-seksjon[open] > summary::before,
-#terrengBody .sw-seksjon[open] > summary::before { transform: rotate(90deg); }
+#terrengBody .sw-seksjon[open] > summary::before,
+#lasterBody .sw-seksjon[open] > summary::before { transform: rotate(90deg); }
 #swBody .sw-seksjon > summary > h4,
 #blikkBody .sw-seksjon > summary > h4,
 #takBody .sw-seksjon > summary > h4,
 #riggBody .sw-seksjon > summary > h4,
-#terrengBody .sw-seksjon > summary > h4 { flex: 1; }
+#terrengBody .sw-seksjon > summary > h4,
+#lasterBody .sw-seksjon > summary > h4 { flex: 1; }
 /* Overskriftene i Rigg og Terreng har ulike marger i HTML-en (10–14 px over).
    Inne i en <summary> sto pila da skjevt over teksten — lik marg over og
    under gjør at den står midt på linja. */
 #riggBody .sw-seksjon > summary > h4,
-#terrengBody .sw-seksjon > summary > h4 { margin: 8px 0 !important; }
+#terrengBody .sw-seksjon > summary > h4,
+#lasterBody .sw-seksjon > summary > h4 { margin: 8px 0 !important; }
 #swBody .sw-seksjon:not([open]) > summary > h4,
 #blikkBody .sw-seksjon:not([open]) > summary > h4,
 #takBody .sw-seksjon:not([open]) > summary > h4,
 #riggBody .sw-seksjon:not([open]) > summary > h4,
-#terrengBody .sw-seksjon:not([open]) > summary > h4 { border-bottom-color: transparent; }
+#terrengBody .sw-seksjon:not([open]) > summary > h4,
+#lasterBody .sw-seksjon:not([open]) > summary > h4 { border-bottom-color: transparent; }
 #swBody .sw-seksjon,
 #blikkBody .sw-seksjon,
 #takBody .sw-seksjon,
 #riggBody .sw-seksjon,
-#terrengBody .sw-seksjon { border-bottom: 1px solid var(--border); }
+#terrengBody .sw-seksjon,
+#lasterBody .sw-seksjon { border-bottom: 1px solid var(--border); }
 #swBody .sw-seksjon[open],
 #blikkBody .sw-seksjon[open],
 #takBody .sw-seksjon[open],
 #riggBody .sw-seksjon[open],
-#terrengBody .sw-seksjon[open] { padding-bottom: 6px; }
+#terrengBody .sw-seksjon[open],
+#lasterBody .sw-seksjon[open] { padding-bottom: 6px; }
 
 /* Skillet mellom Blikk og Tak i samme panel: et <h3> som ALDRI foldes
    (data-sw-fast), slik at de to halvdelene er til å se fra hverandre. */
