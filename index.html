@@ -187,7 +187,7 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
   <button id="btnLaster" title="Snø &amp; Last: veiledende snølast på taket og vindlast på fasadene" data-i18n-title><svg class="ikon"><use href="#i-laster"/></svg><span class="btn-t" data-i18n>Snø &amp; Last</span></button>
   <button id="btnMateriell" title="Materiell: legg inn vareleveranser i modellen så alle ser hvor de skal ligge" data-i18n-title><svg class="ikon"><use href="#i-materiell"/></svg><span class="btn-t" data-i18n>Materiell</span></button>
   <button id="btnSW" title="SW-generator: automatiske veggelementer på stålmodeller" data-i18n-title><svg class="ikon"><use href="#i-sw"/></svg><span class="btn-t" data-i18n>SW-generator</span></button>
-  <button id="btnBlikk" title="Blikk &amp; Tak: beslag og hatprofil rundt de genererte veggelementene" data-i18n-title><svg class="ikon"><use href="#i-sw"/></svg><span class="btn-t" data-i18n>Blikk &amp; Tak</span></button>
+  <button id="btnTak" title="Tak: TRP-plater lagt på de øverste bjelkene — virker med og uten veggelementer" data-i18n-title><svg class="ikon"><use href="#i-flate"/></svg><span class="btn-t" data-i18n>Tak</span></button>
   <button id="btnRapport" title="Last ned statusrapport som PDF" data-i18n-title><svg class="ikon"><use href="#i-tegning"/></svg><span class="btn-t" data-i18n>Rapport</span></button>
   <!-- 📄 Snarveier i gruppa Dokumentasjon (js/dokumentasjon.js). De åpner
        panelet sitt og trykker samme knapp der — knappene i panelene står igjen. -->
@@ -308,9 +308,9 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
   <div class="body" id="swBody"></div>
 </div>
 
-<div class="panel" id="blikkPanel">
-  <header><span data-i18n>Blikk &amp; Tak</span><button onclick="document.getElementById('blikkPanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
-  <div class="body" id="blikkBody"></div>
+<div class="panel" id="takPanel">
+  <header><span data-i18n>Tak</span><button onclick="document.getElementById('takPanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <div class="body" id="takBody"></div>
 </div>
 
 <div class="panel" id="materiellPanel">

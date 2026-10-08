@@ -1514,8 +1514,12 @@ body:not(.har-modell) #btnFit { display: none !important; }
 #terrengBody label,
 #riggBody label,
 #blikkBody > label,
+#takBody > label,
 #blikkBody label.swfelt,
+#takBody label.swfelt,
+#swBody label.swfelt,
 #blikkBody .sw-seksjon > label,
+#takBody .sw-seksjon > label,
 #swBody > label,
 #swBody .sw-seksjon > label {
   display: block;
@@ -1530,17 +1534,27 @@ body:not(.har-modell) #btnFit { display: none !important; }
 #riggBody label > input[type=number],
 #riggBody label > select,
 #blikkBody > label > input[type=text],
+#takBody > label > input[type=text],
 #blikkBody > label > input[type=number],
+#takBody > label > input[type=number],
 #blikkBody > label > select,
+#takBody > label > select,
 #blikkBody label.swfelt > input,
+#takBody label.swfelt > input,
+#swBody label.swfelt > input,
 #blikkBody label.swfelt > select,
+#takBody label.swfelt > select,
+#swBody label.swfelt > select,
 #swBody > label > input[type=text],
 #swBody > label > input[type=number],
 #swBody > label > select,
 #swBody > label > textarea,
 #blikkBody .sw-seksjon > label > input[type=text],
+#takBody .sw-seksjon > label > input[type=text],
 #blikkBody .sw-seksjon > label > input[type=number],
+#takBody .sw-seksjon > label > input[type=number],
 #blikkBody .sw-seksjon > label > select,
+#takBody .sw-seksjon > label > select,
 #swBody .sw-seksjon > label > input[type=text],
 #swBody .sw-seksjon > label > input[type=number],
 #swBody .sw-seksjon > label > select,
@@ -1555,7 +1569,9 @@ body:not(.har-modell) #btnFit { display: none !important; }
 /* Fargevelgeren skal IKKE være full bredde — en 100 % bred fargeflate leses
    som en overskrift, ikke som et valg. */
 #blikkBody > label > input[type=color],
+#takBody > label > input[type=color],
 #blikkBody .sw-seksjon > label > input[type=color],
+#takBody .sw-seksjon > label > input[type=color],
 #swBody > label > input[type=color],
 #swBody .sw-seksjon > label > input[type=color] {
   display: block;
@@ -1578,6 +1594,7 @@ body:not(.har-modell) #btnFit { display: none !important; }
    foldSeksjoner() (js/seksjoner.js), bare selektorene er utvidet. */
 #swBody .sw-seksjon > summary,
 #blikkBody .sw-seksjon > summary,
+#takBody .sw-seksjon > summary,
 #riggBody .sw-seksjon > summary,
 #terrengBody .sw-seksjon > summary {
   cursor: pointer;
@@ -1587,10 +1604,12 @@ body:not(.har-modell) #btnFit { display: none !important; }
 }
 #swBody .sw-seksjon > summary::-webkit-details-marker,
 #blikkBody .sw-seksjon > summary::-webkit-details-marker,
+#takBody .sw-seksjon > summary::-webkit-details-marker,
 #riggBody .sw-seksjon > summary::-webkit-details-marker,
 #terrengBody .sw-seksjon > summary::-webkit-details-marker { display: none; }
 #swBody .sw-seksjon > summary::before,
 #blikkBody .sw-seksjon > summary::before,
+#takBody .sw-seksjon > summary::before,
 #riggBody .sw-seksjon > summary::before,
 #terrengBody .sw-seksjon > summary::before {
   content: "▸";
@@ -1601,10 +1620,12 @@ body:not(.har-modell) #btnFit { display: none !important; }
 }
 #swBody .sw-seksjon[open] > summary::before,
 #blikkBody .sw-seksjon[open] > summary::before,
+#takBody .sw-seksjon[open] > summary::before,
 #riggBody .sw-seksjon[open] > summary::before,
 #terrengBody .sw-seksjon[open] > summary::before { transform: rotate(90deg); }
 #swBody .sw-seksjon > summary > h4,
 #blikkBody .sw-seksjon > summary > h4,
+#takBody .sw-seksjon > summary > h4,
 #riggBody .sw-seksjon > summary > h4,
 #terrengBody .sw-seksjon > summary > h4 { flex: 1; }
 /* Overskriftene i Rigg og Terreng har ulike marger i HTML-en (10–14 px over).
@@ -1614,19 +1635,23 @@ body:not(.har-modell) #btnFit { display: none !important; }
 #terrengBody .sw-seksjon > summary > h4 { margin: 8px 0 !important; }
 #swBody .sw-seksjon:not([open]) > summary > h4,
 #blikkBody .sw-seksjon:not([open]) > summary > h4,
+#takBody .sw-seksjon:not([open]) > summary > h4,
 #riggBody .sw-seksjon:not([open]) > summary > h4,
 #terrengBody .sw-seksjon:not([open]) > summary > h4 { border-bottom-color: transparent; }
 #swBody .sw-seksjon,
 #blikkBody .sw-seksjon,
+#takBody .sw-seksjon,
 #riggBody .sw-seksjon,
 #terrengBody .sw-seksjon { border-bottom: 1px solid var(--border); }
 #swBody .sw-seksjon[open],
 #blikkBody .sw-seksjon[open],
+#takBody .sw-seksjon[open],
 #riggBody .sw-seksjon[open],
 #terrengBody .sw-seksjon[open] { padding-bottom: 6px; }
 
 /* Skillet mellom Blikk og Tak i samme panel: et <h3> som ALDRI foldes
    (data-sw-fast), slik at de to halvdelene er til å se fra hverandre. */
+#takBody .sw-skille,
 #blikkBody .sw-skille {
   margin: 18px 0 6px;
   font-size: 13px;
@@ -1640,6 +1665,7 @@ body:not(.har-modell) #btnFit { display: none !important; }
    liste uten inndeling. */
 #swBody h4,
 #blikkBody h4,
+#takBody h4,
 #riggBody h4,
 #terrengBody h4 {
   font-size: 13px;
