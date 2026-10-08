@@ -27,6 +27,7 @@ import { fasadePanelHtml, innerForhandsvis, innerMark, innerPanelHtml, koblInner
 // Eksporteres videre herfra, så blikk.js og testene finner dem der de var.
 export { SEKSJON_NOKKEL, SEKSJON_STANDARD_APEN, foldSeksjoner, lesApneSeksjoner, seksjonNokkel, skrivApneSeksjoner } from "../seksjoner.js";
 import { foldSeksjoner } from "../seksjoner.js";
+import { blikkPanelHtml, koblBlikkSeksjon } from "./blikk.js";
 
 export function tegnPanel() {
   const body = $("swBody");
@@ -59,7 +60,7 @@ export function tegnPanel() {
       '"><input type="checkbox" id="swFolgTak"' +
       (o.folgTak ? " checked" : "") + '> ' + t("Veggen følger taket (saltak/pulttak)") + '</label>' +
     '<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="swKappNed"' +
-      (o.kappNederst ? " checked" : "") + '> ' + t("Tilpasningsraden nederst (som Moelv/Lørenskog)") + '</label>' +
+      (o.kappNederst ? " checked" : "") + '> ' + t("Tilpasningsraden nederst") + '</label>' +
     felt("swMinFelt", "Minste felt (mm) — tettere skjøter slås sammen", o.minFeltMm) +
     felt("swKappUnder", "Alt kortere enn (mm) er kapp — 0 = av", o.kappUnderMm) +
     felt("swMinSkra", "Tynneste ende på skråkapp (mm) — 0 = helt inntil taket", o.minSkraMm) +
@@ -68,7 +69,7 @@ export function tegnPanel() {
       '<input type="text" id="swKappTekst" maxlength="20" value="' +
       esc(o.kappTekst || "XX") + '"></span></label>' +
     '<p style="color:var(--muted);font-size:11px;margin:2px 0 6px">' +
-      t("Skriv bare slutten — «SW-» settes alltid foran. «XX» gir SW-XX (Moelv), «18*» gir SW-18*. Bare «*» gir forelderens nummer med stjerne (Lørenskog).") + '</p>' +
+      t("Skriv bare slutten — «SW-» settes alltid foran. «XX» gir SW-XX, «18*» gir SW-18*. Bare «*» gir forelderens nummer med stjerne.") + '</p>' +
     '<label>' + t("Farge") + '<input type="color" id="swFarge" value="' + esc(o.farge) + '"></label>' +
     felt("swIsoType", "Isolasjon (til lista)", o.isolasjon, "text") +
     felt("swUtvF", "Utvendig farge (til lista)", o.utvFarge, "text") +
@@ -154,8 +155,13 @@ export function tegnPanel() {
           '</span></div>' +
         '<div class="c"><button data-sw-slett-lagret="' + esc(pst.navn) + '" title="' + t("Slett") +
         '" style="padding:3px 8px">' + ikon("slett") + '</button></div></div>').join("")
-      : '<p style="color:var(--muted);font-size:12px">' + t("Ingen lagrede resultater ennå.") + '</p>');
+      : '<p style="color:var(--muted);font-size:12px">' + t("Ingen lagrede resultater ennå.") + '</p>') +
+    // 🩹 BLIKK som egen seksjon (Emil 08.10): blikket regnes av veggene, så
+    // det dukker opp her når veggelementene er generert. Taket har fått sin
+    // egen knapp — det trenger ikke veggene.
+    (antall ? "<h3 class='sw-skille' data-sw-fast>" + esc(t("Blikk")) + "</h3>" + blikkPanelHtml() : "");
   foldSeksjoner(body);
+  if (antall) koblBlikkSeksjon(body);
   $("swGenerer").onclick = async () => {
     lesOppsettFraPanel();
     $("swGenerer").disabled = true;

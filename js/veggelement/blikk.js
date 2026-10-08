@@ -18,7 +18,7 @@ import { avsluttBlikkJuster, blikkJust, blikkLagringsTekst, blikkPa, blikkTilsta
          nullstillBlikkMesh, slettBlikkResultat, startBlikkJuster } from "./blikk-just.js";
 import { tilMm, tilScene } from "./regler.js";
 import { lagret, oppsett, swGroup, skrivLagret } from "./tilstand.js";
-import { foldSeksjoner, innerData } from "./panel.js";
+import { foldSeksjoner, innerData, tegnPanel } from "./panel.js";
 import { byggTakStabler, koblTakPanel, takPanelHtml } from "./tak.js";
 import { baseYNaa, skjulNaa, tegnAlt, utspPaFasader } from "./tegning.js";
 import { bunkePlass, lesStabelPosisjonerAlle, settStabelTilbakeAlle } from "./bunker.js";
@@ -330,13 +330,10 @@ function benFor(id, standard) {
 // Bare «none» settes inline — tomt igjen, så gruppeskjulingen i
 // verktoygrupper.js får bestemme resten. Setter vi «inline-flex» her, ville
 // knappen stått i ALLE gruppene, siden inline stil slår CSS-en.
-export function oppdaterBlikkKnapp() {
-  const b = $("btnBlikk");
-  if (!b) return;
-  const har = !!(lagret && (lagret.vegger || []).length);
-  b.style.display = har ? "" : "none";
-  if (!har) $("blikkPanel")?.classList.remove("open");
-}
+// 🩹 Emil 08.10: blikket er ikke lenger en egen knapp, men en seksjon i
+// SW-generatoren som dukker opp når veggelementene er generert (se
+// tegnPanel i panel.js). Funksjonen står igjen fordi andre deler kaller den.
+export function oppdaterBlikkKnapp() {}
 
 // Alt blikket tegnet opp i swGroup. Kalles fra tegnDelA() etter veggene.
 export function tegnBlikk() {
@@ -349,7 +346,6 @@ export function tegnBlikk() {
   if (!blikkPa()) return;
   const data = blikkDeler();
   if (!data) return;
-  if ($("blikkPanel")?.classList.contains("open")) tegnBlikkPanel();
   // `naa` peker på stykket som tegnes akkurat nå, så hver brett-boks kan få
   // stykkets id med seg. Uten den treffer et trykk i «Juster blikk» en
   // tilfeldig boks i stedet for beslaget.
@@ -680,31 +676,19 @@ export function blikkPanelHtml() {
       (innerVegger ? " · " + esc(t("{0} innervegger (én side)", innerVegger)) : "") + "</p>" +
     malBlokk("ytter") +
     (innerVegger ? malBlokk("inner") : "") +
-    blikkHandlingerHtml() +
-    // 🏔 TAK-SEKSJONEN. «Blikk & Tak» er ÉTT verktøy med to seksjoner i samme
-    // panel (vedtatt spesifikasjon §1) — ikke to knapper.
-    // 🩹 Emil 21.09: «gi Blikk og tak-verktøyet samme dropdown-menyformat som
-    // SW-generator». Seksjonene foldes nå av den SAMME foldSeksjoner() som
-    // SW-panelet bruker. «Tak» er derfor et <h3> og ikke et <h4>: et h4 ville
-    // startet en seksjon som takets EGNE overskrifter straks avsluttet, og
-    // skillet mellom de to halvdelene ville forsvunnet.
-    "<h3 class='sw-skille' data-sw-fast>" + esc(t("Tak")) + "</h3>" +
-    takPanelHtml();
+    blikkHandlingerHtml();
 }
 
+// Blikk-seksjonen ligger i SW-panelet (Emil 08.10). Å «tegne blikkpanelet»
+// betyr nå å tegne SW-panelet på nytt — hvis det står åpent.
 export function tegnBlikkPanel() {
-  const body = $("blikkBody");
-  if (!body) return;
-  body.innerHTML = blikkPanelHtml();
-  // Foldingen skjer FØR knappene kobles opp, men det spiller ingen rolle:
-  // foldSeksjoner FLYTTER noder, den lager ingen nye, så $("blikkGenerer")
-  // finner samme element etterpå. Nøyaktig samme rekkefølge som tegnPanel().
-  foldSeksjoner(body);
+  if ($("swPanel")?.classList.contains("open")) tegnPanel();
+}
+
+// Knappene og profilfeltene i blikk-seksjonen kobles opp. Kalles av
+// tegnPanel() i panel.js etter at seksjonene er foldet.
+export function koblBlikkSeksjon(body) {
   koblBlikkHandlinger(body);
-  // 📦 Bunkene bygges på nytt hver gang panelet tegnes om etter en handling —
-  // samme sted SW-generatoren kaller byggAlleStabler(). Da følger antallene i
-  // Mengder med etter en justering, og ikke bare etter en ny generering.
-  koblTakPanel(() => { byggTakStabler(); tegnBlikkPanel(); });
   const les = (sett) => () => {
     const f = $("blikkFarge_" + sett);
     const ny = { blikkFarge: (f && f.value) || STD_BLIKK.blikkFarge };
@@ -786,12 +770,3 @@ export function blikkArk() {
   return { navn: t("Blikk"), rader };
 }
 function tallEl(x) { return (x === null || x === undefined || !isFinite(x)) ? "" : Number(x); }
-
-på("btnBlikk", "click", () => {
-  const panel = $("blikkPanel");
-  if (!panel) return;
-  if (panel.classList.contains("open")) { panel.classList.remove("open"); return; }
-  if (!lagret || !(lagret.vegger || []).length) { alert(t("Generer veggelementene først.")); return; }
-  tegnBlikkPanel();
-  apnePanel("blikkPanel");
-});

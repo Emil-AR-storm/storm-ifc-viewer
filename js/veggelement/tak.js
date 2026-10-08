@@ -15,7 +15,8 @@
 // TRP-plater i materiellbiblioteket siden i sommer — samme trapes, samme
 // deling, samme lav-poly ribbon. En andre utgave her ville før eller siden
 // sett annerledes ut enn den i biblioteket.
-import { $, esc, ikon, S } from "../state.js";
+import { $, apnePanel, esc, ikon, på, S } from "../state.js";
+import { foldSeksjoner } from "../seksjoner.js";
 import { t } from "../i18n.js";
 import * as THREE from "three";
 import { MALTYPER, trpProfil } from "../materiell-vis.js";
@@ -30,7 +31,7 @@ import { husTakMesh, nullstillTakMesh, startTakJuster, takJust,
          takLagringsTekst } from "./tak-just.js";
 import { soyleTypeNavn, takLinje, tilMm, tilScene } from "./regler.js";
 import { allElementBoxes, forHverTrekant } from "../elements.js";
-import { lagret, skrivLagret, swGroup } from "./tilstand.js";
+import { lagret, oppsett as oppsettSW, skrivLagret, swGroup } from "./tilstand.js";
 import { TAK_BOTTE_MM, TAK_TOL_MM, baseYNaa, skjulNaa, tegnAlt, tekstDekal } from "./tegning.js";
 import { STAL_TYPER } from "./stal.js";
 import { bunkePlass, lesStabelPosisjonerAlle, settStabelTilbakeAlle } from "./bunker.js";
@@ -244,8 +245,13 @@ export let takGrunn = "";
 
 export function takData() {
   takGrunn = "";
-  if (!lagret || !(lagret.fasader || []).length) { takGrunn = "ingen-fasader"; return null; }
+  // 🏔 Taket er sitt EGET verktøy (Emil 08.10): «Automatisk» trenger bare
+  // bjelkene, ikke veggelementene. Bare de manuelle fallretningene leser
+  // SW-generatorens fasader.
+  if (!lagret) { takGrunn = "ingen-meta"; return null; }
   const o = takOppsett();
+  const auto = o.fallFasade === "auto" || o.fallFasade === undefined || o.fallFasade === null;
+  if (!auto && !(lagret.fasader || []).length) { takGrunn = "ingen-fasader"; return null; }
   const bjelker = takBjelker();
   if (bjelker.length) {
     const d = takDataFraStal(bjelker, o);
@@ -709,9 +715,9 @@ export function byggTakStabler() {
   if (!takPa()) return;
   const data = takData();
   if (!data || !data.liste || !(data.liste.plater || []).length) return;
-  const f = (lagret.fasader || [])[0];
+  const f = (lagret.fasader || [])[0] || fasadeForBunker();
   if (!f) return;
-  const okBetong = lagret.okBetong || 0;
+  const okBetong = lagret.okBetong !== undefined ? lagret.okBetong : (f.y0 || 0);
   const nyeIder = [];
   let i = 0;
   for (const pl of data.liste.plater) {
@@ -729,6 +735,18 @@ export function byggTakStabler() {
   tegnMateriell();
   lagreMateriellLokalt();
   S.qtyCache = null;
+}
+
+// Uten veggelementer finnes ingen fasade å legge bunkene langs. Da brukes
+// den lange siden av modellens boks — bunkene havner på bakken utenfor den.
+function fasadeForBunker() {
+  if (!S.modelGroup) return null;
+  const b = new THREE.Box3().setFromObject(S.modelGroup);
+  if (b.isEmpty()) return null;
+  const langX = (b.max.x - b.min.x) >= (b.max.z - b.min.z);
+  return langX
+    ? { px: b.min.x, pz: b.max.z, ex: 1, ez: 0, nx: 0, nz: 1, t0: 0, t1: b.max.x - b.min.x, off: 0, rot: 0, y0: b.min.y }
+    : { px: b.max.x, pz: b.min.z, ex: 0, ez: 1, nx: 1, nz: 0, t0: 0, t1: b.max.z - b.min.z, off: 0, rot: -Math.PI / 2, y0: b.min.y };
 }
 
 // Rydder BARE takets egne bunker, og gjør det på ID — aldri på navnet. En
@@ -751,8 +769,7 @@ export function fjernTakMateriell() {
 // Samme oppsett som «Blikk» fikk i runde 2b, som igjen er SW-generatorens.
 
 export function takPanelHtml() {
-  if (!lagret || !(lagret.vegger || []).length)
-    return "<p class='hint'>" + esc(t("Generer veggelementene først.")) + "</p>";
+  oppsettSW();                    // gir taket et hjem selv uten veggelementer
   const data = takData();
   const o = takOppsett();
   const pa = takPa();
@@ -779,6 +796,8 @@ export function takPanelHtml() {
         ? t("Fant stål, men ingen bjelker øverst å bygge takflata av.")
       : takGrunn === "ingen-fall"
         ? t("Ingen av takbjelkene ligger med fall. Velg fallretning selv nedenfor.")
+      : takGrunn === "ingen-fasader"
+        ? t("Denne fallretningen leses av SW-generatorens fasader. Generer veggelementene, eller velg «Automatisk».")
         : t("Fant ikke stål å bygge takflata av. Taket bygges av de øverste bjelkene.");
     topp = "<p class='hint'>" + esc(grunn) + "</p>";
   } else {
@@ -948,8 +967,26 @@ function aseLinje(F, data) {
         forste.join(", "), med, F.length)) + "</p>";
 }
 
-// Seksjonen kobles opp av tegnBlikkPanel() — «Blikk & Tak» er ÉTT verktøy med
-// to seksjoner (vedtatt spesifikasjon §1), ikke to knapper.
+// 🏔 TAK ER ET EGET VERKTØY (Emil 08.10): «det går helt fint an å legge til
+// takplater uten at veggelement må være til stede». Før lå taket som en
+// seksjon i «Blikk & Tak», og knappen kom først når veggene var generert.
+// Nå har taket egen knapp og eget panel, og blikket er en seksjon i
+// SW-generatoren (det regnes av veggene, så det hører hjemme der).
+export function tegnTakPanel() {
+  const body = $("takBody");
+  if (!body) return;
+  body.innerHTML = takPanelHtml();
+  foldSeksjoner(body);
+  koblTakPanel(() => { byggTakStabler(); tegnTakPanel(); });
+}
+på("btnTak", "click", () => {
+  const panel = $("takPanel");
+  if (!panel) return;
+  if (panel.classList.contains("open")) { panel.classList.remove("open"); return; }
+  if (!S.modelGroup) { alert(t("Åpne en modell først.")); return; }
+  tegnTakPanel();
+  apnePanel("takPanel");
+});
 export function koblTakPanel(paaNytt) {
   const les = () => {
     const ny = {};
@@ -981,7 +1018,7 @@ export function koblTakPanel(paaNytt) {
   };
   for (const [id] of TAK_FELT) if ($("tf_" + id)) $("tf_" + id).onchange = les;
   if ($("takGenerer")) $("takGenerer").onclick = async () => {
-    if (!lagret || !(lagret.vegger || []).length) { alert(t("Generer veggelementene først.")); return; }
+    oppsettSW();                  // taket trenger ikke veggelementene (Emil 08.10)
     const b = $("takGenerer");
     if (b) b.disabled = true;
     try {

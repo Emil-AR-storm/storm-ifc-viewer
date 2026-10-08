@@ -352,7 +352,7 @@ export function startBlikkJuster(tegnPanelFn) {
   const markorer = new THREE.Group();
   swGroup.add(markorer);
   settBlikkJust({ valgt: new Set(), drar: null, markorer, legger: null });
-  $("blikkPanel")?.classList.remove("open");
+  $("swPanel")?.classList.remove("open");
   tegnBlikkJustBar(tegnPanelFn);
 }
 
@@ -365,7 +365,7 @@ export function avsluttBlikkJuster(tegnPanelFn) {
   settBlikkJust(null);
   tegnBlikkJustBar(tegnPanelFn);
   if (tegnPanelFn) tegnPanelFn();
-  apnePanel("blikkPanel");
+  apnePanel("swPanel");
 }
 
 // Hvilket blikkstykke ligger under musa?
