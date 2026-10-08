@@ -976,7 +976,12 @@ export function fasaderLangsRand(soyler, latTol, maksAvstand) {
 // Hegdalringen og de andre rører seg ikke. På et SKRÅTT hjørne (Valle) blir det
 // den ekte skjæringen. `nabo` er naboens utover-normal; `f` har ex/ez/nx/nz.
 // Alle mål i scene-enheter inn, mm ut.
-export function hjorneForlengelse(f, nabo, offNabo, off, tykkelseMm, start) {
+// `avstNabo` (valgfri, sceneenheter): hvor langt denne fasadens hjørnepunkt
+// ligger fra NABOENS søylelinje, målt langs naboens utover-normal. Null når
+// hjørnesøyla står på begge linjene (det vanlige). Emil 08.10: ved et
+// innvendig hjørne der søylene ikke møtes i ett punkt, regnet formelen som om
+// de gjorde det — og veggelementene gikk inn i hverandre.
+export function hjorneForlengelse(f, nabo, offNabo, off, tykkelseMm, start, avstNabo) {
   const tS = tilScene(Number(tykkelseMm) || 0);
   const tMm = Number(tykkelseMm) || 0;
   // Uten nabo (en fri ende i et manuelt fasadesett): nøyaktig som før —
@@ -995,7 +1000,35 @@ export function hjorneForlengelse(f, nabo, offNabo, off, tykkelseMm, start) {
     return tMm / 2;
   }
   // skjæringen langs veggen, målt fra hjørnesøyla (negativt = bakover)
-  return tilMm((flate - nn * (Number(off) || 0)) / d);
+  return tilMm((flate - nn * (Number(off) || 0) - (Number(avstNabo) || 0)) / d);
+}
+
+// 🧭 HVILKEN FASADE MØTER DENNE ENDEN? (Emil 08.10, runde 6)
+// Nabo i lista er ikke alltid nabo i bygget — og selv når den er det, trenger
+// ikke hjørnesøyla stå på naboens linje. Her finnes naboen geometrisk: den
+// ikke-parallelle fasaden hvis søylelinje går nærmest hjørnepunktet, og som
+// rekker fram til hjørnet. Svar: { gi, avst } (avst langs naboens normal),
+// eller null.
+export function finnHjorneNabo(fasader, fi, endeT, maksAvst) {
+  const f = fasader[fi];
+  const P = { x: f.p.x + f.ex * endeT, z: f.p.z + f.ez * endeT };
+  let best = null;
+  for (let gi = 0; gi < fasader.length; gi++) {
+    if (gi === fi) continue;
+    const g = fasader[gi];
+    const d = g.nx * f.ex + g.nz * f.ez;
+    if (Math.abs(d) < 0.2) continue;                              // parallell
+    const avst = (P.x - g.p.x) * g.nx + (P.z - g.p.z) * g.nz;      // fra naboens linje
+    if (Math.abs(avst) > maksAvst) continue;
+    const tg = (P.x - g.p.x) * g.ex + (P.z - g.p.z) * g.ez;
+    const g0 = g.soyler[0].t, g1 = g.soyler[g.soyler.length - 1].t;
+    if (tg < g0 - maksAvst || tg > g1 + maksAvst) continue;        // naboen rekker ikke hit
+    // nærmest i begge retninger: tvers på linja og langs den (forbi enden)
+    const utenfor = Math.max(0, g0 - tg, tg - g1);
+    const mal = Math.abs(avst) + utenfor;
+    if (!best || mal < best.mal) best = { gi, avst, mal };
+  }
+  return best;
 }
 
 // Hver fasade får naboenes utover-normaler. Hjørnelappen (pinwheel) trenger
