@@ -2816,25 +2816,70 @@ export function platePunkter(prof, vs, starten, enden) {
     const x = Math.max(x0, Math.min(x1, xInn));
     return x1 - x0 > 1e-9 ? h0 + (h1 - h0) * (x - x0) / (x1 - x0) : h1;
   };
-  const klem = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
+  // ✂ SAGSNITT, IKKE STREKK (Emils funn 08.10, bilde 1 og 2): «formen på
+  // takplata er riktig, men måten den former seg på er feil — hjørnet er dratt
+  // inn i stedet for at plata er kappet av ved kanten.»
+  //
+  // Før ble hvert profilsegment lest av bare på de to sidene av stripa (va og
+  // vb) og bundet sammen med én firkant. Gikk kappet tvers gjennom segmentet
+  // midt i stripa, var segmentet tomt på den ene sida — og firkanten krympet
+  // til ett punkt PÅ kappet. Da ble bølgene vridd inn mot kappet som en vifte.
+  //
+  // Nå klippes hvert segment som en ekte flate: rektangelet [x0, x1] × [va, vb]
+  // skjæres med de to kapplinjene (u ≥ starten, u ≤ enden). Det som blir igjen
+  // har samme bølgeform som en hel plate — profilen er urørt, bare kappet bort
+  // der kanten går. Slik et sagsnitt gjør.
   for (let k = 1; k < (vs || []).length; k++) {
     const va = vs[k - 1], vb = vs[k];
     if (!(vb - va > 0.1)) continue;
     const sa = starten(va), ea = enden(va), sb = starten(vb), eb = enden(vb);
+    // kapplinjene er rette innen stripa — knekkpunktene er stripegrensene
+    const sV = (v) => sa + (sb - sa) * (v - va) / (vb - va);
+    const eV = (v) => ea + (eb - ea) * (v - va) / (vb - va);
     for (let i = 1; i < P.length; i++) {
       const x0 = P[i - 1][0], x1 = P[i][0];
-      const a0 = Math.max(x0, sa), a1 = Math.min(x1, ea);
-      const b0 = Math.max(x0, sb), b1 = Math.min(x1, eb);
-      if (!(a1 > a0) && !(b1 > b0)) continue;
-      // tomt på den ene sida: segmentet krymper til plateenden der, så
-      // trekanten ender PÅ kappet og ikke ute i lufta
-      const [A0, A1] = a1 > a0 ? [a0, a1] : [klem(x0, sa, ea), klem(x0, sa, ea)];
-      const [B0, B1] = b1 > b0 ? [b0, b1] : [klem(x0, sb, eb), klem(x0, sb, eb)];
-      ut.push([va, hAv(A0, i), A0], [va, hAv(A1, i), A1], [vb, hAv(B1, i), B1],
-              [va, hAv(A0, i), A0], [vb, hAv(B1, i), B1], [vb, hAv(B0, i), B0]);
+      if (!(x1 - x0 > 1e-9)) continue;
+      // helt utenfor plata på begge sider — spar klippingen
+      if (x0 > Math.max(ea, eb) || x1 < Math.min(sa, sb)) continue;
+      // punktene som [u, v], rundt rektangelet
+      let poly = [[x0, va], [x1, va], [x1, vb], [x0, vb]];
+      poly = klippHalvplan(poly, (q) => q[0] - sV(q[1]));
+      poly = klippHalvplan(poly, (q) => eV(q[1]) - q[0]);
+      if (poly.length < 3) continue;
+      for (let j = 1; j + 1 < poly.length; j++)
+        for (const q of [poly[0], poly[j], poly[j + 1]])
+          ut.push([q[1], hAv(q[0], i), q[0]]);
     }
   }
   return ut;
+}
+
+// Sutherland–Hodgman mot ett halvplan: beholder punktene der f(q) ≥ 0.
+// Nesten-tomme biter (under 0,01 mm) regnes som tomme, så en plate som akkurat
+// rører kappet ikke får en strek av null bredde.
+function klippHalvplan(poly, f) {
+  const ut = [];
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    const fa = f(a), fb = f(b);
+    const inneA = fa >= -1e-6, inneB = fb >= -1e-6;
+    if (inneA) ut.push(a);
+    if (inneA !== inneB) {
+      const t = fa / (fa - fb);
+      ut.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+    }
+  }
+  // fjern doble punkter
+  const ren = [];
+  for (const q of ut) {
+    const p = ren[ren.length - 1];
+    if (!p || Math.abs(p[0] - q[0]) > 1e-6 || Math.abs(p[1] - q[1]) > 1e-6) ren.push(q);
+  }
+  if (ren.length > 1) {
+    const p = ren[ren.length - 1], q = ren[0];
+    if (Math.abs(p[0] - q[0]) <= 1e-6 && Math.abs(p[1] - q[1]) <= 1e-6) ren.pop();
+  }
+  return ren;
 }
 
 // ═══════════════════ 🏗 TAKPLATENE UT TIL BYGGEPLASSEN ═══════════════════
