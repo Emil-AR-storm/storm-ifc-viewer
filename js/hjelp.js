@@ -163,6 +163,16 @@ export const KORT = [
     tekst: "Last ned liste (Excel) gir SW-lista og et Materiell-ark med skruer, beslag, hatprofil og skum per fasade. Last ned instruksjonstegning (PDF) gir A0-tegninga med Storm-tittelfelt fra Utfyll PDF. Lagrede SW-resultater husker hele resultatet med navn, så du kan hente det inn igjen."
   },
   {
+    hvor: "kontor", ikonNavn: "boks",
+    tittel: "Tak: TRP-plater på de øverste bjelkene",
+    tekst: "Tak (i Storm-Byggeplass) er et eget verktøy og virker med og uten veggelementer. Med fallretning Automatisk legger platene seg langs de øverste bjelkene, så saltak, pulttak og valmtak blir riktige av seg selv. Trykk Generer tak, juster platene om du må, og last ned lista (Excel). Taket blir stående når veggene genereres på nytt."
+  },
+  {
+    hvor: "kontor", ikonNavn: "boks",
+    tittel: "Blikk ligger i SW-generatoren",
+    tekst: "Når veggelementene er generert, dukker seksjonen Blikk opp nederst i SW-generatoren. Der genereres toppbeslag, bunnbeslag, hjørnebeslag og hatprofil rundt elementene, med egne profilmål for fasader og innervegger. Blikket regnes av veggene og følger med når de endres."
+  },
+  {
     hvor: "begge", ikonNavn: "fokus",
     tittel: "Objektgrupper",
     tekst: "Velg elementer med shift-klikk eller shift-dra, åpne Grupper (i Bygg Info) og lagre utvalget med navn. Trykk på en lagret gruppe for å hente den fram: alt annet skjules og kameraet flyr dit. Vis alle henter tilbake resten."
@@ -205,7 +215,7 @@ export const KORT = [
   {
     hvor: "kontor", ikonNavn: "laster",
     tittel: "Snø & Last: veiledende laster",
-    tekst: "Snø & Last (i Bygg Info) regner snølasten på hver takflate og vindtrykket på fasadene og et flatt tak. Skriv inn kommuneverdiene fra standarden eller RIBs lastforutsetninger (sk,0, Hg, Δsk, vb,0), velg terrengkategori og vindretning, og trykk Vis snølast eller Vis vindlast for å se lastene i farger i modellen. Høyden over havet kan hentes fra terrenget. Dette er en veiledende kontroll — den erstatter ikke RIB."
+    tekst: "Snø & Last (i Bygg Info) regner snølasten på hver takflate og vindtrykket på fasadene og et flatt tak. Skriv inn kommuneverdiene fra standarden eller RIBs lastforutsetninger (sk,0, Hg, Δsk, vb,0), velg terrengkategori og vindretning, og trykk Vis snølast eller Vis vindlast for å se lastene i farger i modellen. Taket Automatisk bruker tak-generatorens regler (de øverste bjelkene), og fasadene er kantene av byggets omriss — likt med og uten veggelementer. Høyden over havet kan hentes fra terrenget. Dette er en veiledende kontroll — den erstatter ikke RIB."
   },
   {
     hvor: "kontor", ikonNavn: "rigg",

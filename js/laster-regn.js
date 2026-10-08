@@ -604,3 +604,210 @@ export function takFraStal(pkt, rk, valg) {
   } else flater.push(flate(s0, s1, p.y0, p.y1));
   return { akse, profil: p, flater };
 }
+
+// ════════════════════════════════════════════════════════════════════════
+// 🗺 BYGGETS OMRISS I PLAN (Emil 08.10)
+// Bilde: vindsonene gikk tvers gjennom bygget. Bygget var en L (hall + tilbygg
+// som er smalere), og fasadene ble lest som fire sider av et rektangel, eller
+// som SW-generatorens fasadelinjer — også linja mellom hallen og tilbygget,
+// som står INNE i bygget. Regelen nå: fasadene er kantene av byggets omriss,
+// og omrisset er taket sett ovenfra (samme takflater som tak-generatoren
+// finner av de øverste bjelkene). Det er likt med og uten veggelementer.
+// Alt i meter, punkter [x, z].
+// ════════════════════════════════════════════════════════════════════════
+export function punktIPoly(p, poly) {
+  let inn = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i], b = poly[j];
+    if ((a[1] > p[1]) !== (b[1] > p[1]) && p[0] < (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) + a[0]) inn = !inn;
+  }
+  return inn;
+}
+export function polyAreal2(poly) {
+  let a = 0;
+  for (let i = 0; i < poly.length; i++) { const p = poly[i], q = poly[(i + 1) % poly.length]; a += p[0] * q[1] - q[0] * p[1]; }
+  return a / 2;
+}
+// Douglas–Peucker på en lukket ring
+function forenkleRing(ring, tol) {
+  if (ring.length < 4) return ring;
+  const dp = (pts) => {
+    if (pts.length < 3) return pts;
+    const a = pts[0], b = pts[pts.length - 1];
+    const L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1e-12;
+    let maks = -1, im = -1;
+    for (let i = 1; i < pts.length - 1; i++) {
+      const d = Math.abs((b[0] - a[0]) * (a[1] - pts[i][1]) - (a[0] - pts[i][0]) * (b[1] - a[1])) / L;
+      if (d > maks) { maks = d; im = i; }
+    }
+    if (maks <= tol) return [a, b];
+    const v = dp(pts.slice(0, im + 1)), h = dp(pts.slice(im));
+    return v.slice(0, -1).concat(h);
+  };
+  // del ringen i to ved punktet lengst fra det første
+  let im = 0, dm = -1;
+  for (let i = 1; i < ring.length; i++) { const d = Math.hypot(ring[i][0] - ring[0][0], ring[i][1] - ring[0][1]); if (d > dm) { dm = d; im = i; } }
+  const a = dp(ring.slice(0, im + 1)), b = dp(ring.slice(im).concat([ring[0]]));
+  return a.slice(0, -1).concat(b.slice(0, -1));
+}
+// Omrisset av flere polygoner slått sammen (rutenett, så hull og overlapp
+// mellom takflatene ikke spiller noen rolle). Svar: den største ringen, mot
+// klokka sett ovenfra i (x, z), eller [] .
+export function omrissAvPolygoner(polys, celle) {
+  const P = (polys || []).filter(p => p && p.length >= 3);
+  if (!P.length) return [];
+  // byggets akse: den lengste kanten av den største flata
+  let akse = [1, 0], best = -1;
+  const storst = P.slice().sort((a, b) => Math.abs(polyAreal2(b)) - Math.abs(polyAreal2(a)))[0];
+  for (let i = 0; i < storst.length; i++) {
+    const p = storst[i], q = storst[(i + 1) % storst.length];
+    const L = Math.hypot(q[0] - p[0], q[1] - p[1]);
+    if (L > best) { best = L; akse = [(q[0] - p[0]) / L, (q[1] - p[1]) / L]; }
+  }
+  const [c, s] = akse;
+  const rot = (p) => [p[0] * c + p[1] * s, -p[0] * s + p[1] * c];
+  const tilbake = (p) => [p[0] * c - p[1] * s, p[0] * s + p[1] * c];
+  const R = P.map(p => p.map(rot));
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  for (const p of R) for (const [x, z] of p) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
+  const g = celle || Math.min(0.25, Math.max(0.05, Math.max(x1 - x0, z1 - z0) / 400));
+  const nx = Math.ceil((x1 - x0) / g) + 2, nz = Math.ceil((z1 - z0) / g) + 2;
+  const ox = x0 - g, oz = z0 - g;
+  const fylt = new Uint8Array(nx * nz);
+  for (const p of R) {
+    let a0 = Infinity, a1 = -Infinity, b0 = Infinity, b1 = -Infinity;
+    for (const [x, z] of p) { a0 = Math.min(a0, x); a1 = Math.max(a1, x); b0 = Math.min(b0, z); b1 = Math.max(b1, z); }
+    for (let i = Math.max(0, Math.floor((a0 - ox) / g)); i <= Math.min(nx - 1, Math.ceil((a1 - ox) / g)); i++)
+      for (let j = Math.max(0, Math.floor((b0 - oz) / g)); j <= Math.min(nz - 1, Math.ceil((b1 - oz) / g)); j++)
+        if (!fylt[i * nz + j] && punktIPoly([ox + (i + 0.5) * g, oz + (j + 0.5) * g], p)) fylt[i * nz + j] = 1;
+  }
+  const F = (i, j) => i >= 0 && j >= 0 && i < nx && j < nz && fylt[i * nz + j] === 1;
+  // kantene mellom fylt og tomt, rettet slik at det fylte ligger til venstre
+  const neste = new Map();
+  const k = (i, j) => i + "," + j;
+  const leggTil = (a, b) => { const ka = k(a[0], a[1]); if (!neste.has(ka)) neste.set(ka, []); neste.get(ka).push(b); };
+  for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) {
+    if (!F(i, j)) continue;
+    if (!F(i, j - 1)) leggTil([i, j], [i + 1, j]);
+    if (!F(i + 1, j)) leggTil([i + 1, j], [i + 1, j + 1]);
+    if (!F(i, j + 1)) leggTil([i + 1, j + 1], [i, j + 1]);
+    if (!F(i - 1, j)) leggTil([i, j + 1], [i, j]);
+  }
+  const ringer = [];
+  while (neste.size) {
+    const start = neste.keys().next().value;
+    const ring = [];
+    let cur = start.split(",").map(Number);
+    for (let n = 0; n < 1e6; n++) {
+      const kc = k(cur[0], cur[1]);
+      const l = neste.get(kc);
+      if (!l || !l.length) break;
+      const nx2 = l.pop(); if (!l.length) neste.delete(kc);
+      ring.push(cur);
+      cur = nx2;
+      if (k(cur[0], cur[1]) === start) break;
+    }
+    if (ring.length >= 4) ringer.push(ring);
+  }
+  if (!ringer.length) return [];
+  const verden = ringer.map(r => r.map(([i, j]) => [ox + i * g, oz + j * g]));
+  verden.sort((a, b) => Math.abs(polyAreal2(b)) - Math.abs(polyAreal2(a)));
+  let ring = forenkleRing(verden[0], g * 1.5);
+  if (polyAreal2(ring) < 0) ring = ring.reverse();
+  // Hjørnene festes til takflatenes egne hjørner når de ligger innenfor to
+  // ruter — rutenettet skal ikke flytte en vegg 5 cm.
+  const hj = R.flat();
+  ring = ring.map(p => {
+    let b = null, d = 2 * g;
+    for (const q of hj) { const dd = Math.hypot(q[0] - p[0], q[1] - p[1]); if (dd < d) { d = dd; b = q; } }
+    if (b) return b.slice();
+    // ellers hver akse for seg (et innvendig hjørne ligger på to kanter)
+    let x = p[0], z = p[1], dx = 2 * g, dz = 2 * g;
+    for (const q of hj) { if (Math.abs(q[0] - p[0]) < dx) { dx = Math.abs(q[0] - p[0]); x = q[0]; } if (Math.abs(q[1] - p[1]) < dz) { dz = Math.abs(q[1] - p[1]); z = q[1]; } }
+    return [x, z];
+  });
+  return ring.map(tilbake);
+}
+
+// Kantene av omrisset som fasader: { o, e, N, L } (N peker UT av bygget).
+// Kanter kortere enn minL tas ikke med.
+export function fasaderFraOmriss(ring, minL) {
+  const ut = [];
+  const m = minL === undefined ? 0.5 : minL;
+  for (let i = 0; i < ring.length; i++) {
+    const p = ring[i], q = ring[(i + 1) % ring.length];
+    const L = Math.hypot(q[0] - p[0], q[1] - p[1]);
+    if (!(L >= m)) continue;
+    const e = [(q[0] - p[0]) / L, (q[1] - p[1]) / L];
+    let N = [e[1], -e[0]];
+    const mid = [(p[0] + q[0]) / 2 + N[0] * 0.05, (p[1] + q[1]) / 2 + N[1] * 0.05];
+    if (punktIPoly(mid, ring)) N = [-N[0], -N[1]];
+    ut.push({ o: p, e, N, L });
+  }
+  return ut;
+}
+
+// Klipp et polygon (gjerne konkavt) med et KONVEKST polygon (Sutherland–Hodgman).
+export function klippMedKonveks(poly, klipp) {
+  let ut = poly.slice();
+  const A = polyAreal2(klipp) >= 0 ? 1 : -1;
+  for (let i = 0; i < klipp.length && ut.length; i++) {
+    const a = klipp[i], b = klipp[(i + 1) % klipp.length];
+    const inne = (p) => A * ((b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0])) >= -1e-12;
+    const inn = ut; ut = [];
+    for (let j = 0; j < inn.length; j++) {
+      const p = inn[j], q = inn[(j + 1) % inn.length];
+      const pi = inne(p), qi = inne(q);
+      if (pi) ut.push(p);
+      if (pi !== qi) {
+        const dx = q[0] - p[0], dz = q[1] - p[1];
+        const d = (b[0] - a[0]) * dz - (b[1] - a[1]) * dx;
+        const tt = Math.abs(d) < 1e-15 ? 0 : ((b[0] - a[0]) * (a[1] - p[1]) - (b[1] - a[1]) * (a[0] - p[0])) / d;
+        ut.push([p[0] + tt * dx, p[1] + tt * dz]);
+      }
+    }
+  }
+  return ut.length >= 3 ? ut : [];
+}
+
+// ═══ Fasader som står INNE i bygget (reserve når omrisset ikke finnes) ═══
+// Et punkt på fasaden er inne i bygget hvis en stråle rett UT fra det først
+// treffer en annen fasade som vender SAMME vei — da står det bygg utenfor.
+// Treffer strålen en fasade som vender MOT oss, er det luft imellom, og
+// fasaden tar vind. Svar: for hver fasade, t-intervallene som er ute.
+export function utsatteDeler(fl, steg) {
+  const ds = steg || 0.5;
+  const linje = (f) => {
+    let a = Infinity, b = -Infinity;
+    for (const d of f.deler) for (const [t] of d) { a = Math.min(a, t); b = Math.max(b, t); }
+    return { a, b, ut: Number(f.ut) || 0 };
+  };
+  const L = fl.map(linje);
+  return fl.map((f, i) => {
+    const li = L[i];
+    if (!(li.b > li.a)) return [];
+    const n = Math.max(1, Math.ceil((li.b - li.a) / ds));
+    const ute = [];
+    for (let s = 0; s < n; s++) {
+      const ta = li.a + (li.b - li.a) * s / n, tb = li.a + (li.b - li.a) * (s + 1) / n, tm = (ta + tb) / 2;
+      const p = [f.o[0] + tm * f.e[0] + (li.ut + 0.02) * f.N[0], f.o[1] + tm * f.e[1] + (li.ut + 0.02) * f.N[1]];
+      let naer = Infinity, vend = 0;
+      fl.forEach((g, j) => {
+        if (j === i) return;
+        const lj = L[j];
+        // g: q(u) = g.o + u·g.e + ut·g.N;  p + s·N = q(u)
+        const det = f.N[0] * (-g.e[1]) - f.N[1] * (-g.e[0]);
+        if (Math.abs(det) < 1e-9) return;
+        const rx = g.o[0] + lj.ut * g.N[0] - p[0], rz = g.o[1] + lj.ut * g.N[1] - p[1];
+        const s2 = (rx * (-g.e[1]) - rz * (-g.e[0])) / det;
+        const u = (f.N[0] * rz - f.N[1] * rx) / det;
+        if (s2 <= 1e-6 || u < lj.a - 1e-6 || u > lj.b + 1e-6) return;
+        if (s2 < naer) { naer = s2; vend = f.N[0] * g.N[0] + f.N[1] * g.N[1]; }
+      });
+      const inne = Number.isFinite(naer) && vend > 0.5;
+      if (inne) continue;
+      if (ute.length && Math.abs(ute[ute.length - 1][1] - ta) < 1e-9) ute[ute.length - 1][1] = tb; else ute.push([ta, tb]);
+    }
+    return ute;
+  });
+}
