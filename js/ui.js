@@ -453,6 +453,10 @@ window.addEventListener("keydown", (e) => {
     // pendingPoint/pendingOmrade skal ryddes når dialogen forlates med Esc
     if ($("commentDialog").classList.contains("open")) { if (window.cancelComment) window.cancelComment(); else $("commentDialog").classList.remove("open"); return; }
     if ($("setMenu").classList.contains("open")) { closeSettings(); return; }
+    // 🔎 Bugtest 08.10: «Last ned PDF»-menyen under Dokumentasjon lukket seg
+    // bare ved klikk utenfor — Esc gjorde ingenting, mens ⚙ Innstillinger,
+    // som er bygd likt, lukkes med Esc. Nå oppfører de seg likt.
+    if ($("rapMeny") && $("rapMeny").classList.contains("open")) { lukkRapMeny(); return; }
     if (S.clipPickFace) { stopFacePick(); showClipBar(); return; }
     if (S.mode) { setMode(S.mode); return; } // slår av gjeldende modus
 
