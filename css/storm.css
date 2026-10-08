@@ -1477,6 +1477,16 @@ body:not(.har-modell) #btnFit { display: none !important; }
 #toolbar[data-gruppe="utseende"] button[data-gruppe="utseende"],
 #toolbar[data-gruppe="bygg"]     button[data-gruppe="bygg"],
 #toolbar[data-gruppe="dok"]      button[data-gruppe="dok"] { display: inline-flex; }
+/* 📱 ⋯-menyen på telefon (Emil 08.10): bare den valgte gruppas verktøy, ikke
+   alle. js/mobile.js flytter knappene ut av #toolbar, så gruppa leses av
+   body[data-vgruppe] (satt av settGruppe). Alltid-knappene (Innstillinger,
+   Navigasjon …) har ikke data-gruppe og står uansett. */
+body[data-vgruppe] #moreMenu button[data-gruppe] { display: none; }
+body[data-vgruppe="mal"]      #moreMenu button[data-gruppe="mal"],
+body[data-vgruppe="info"]     #moreMenu button[data-gruppe="info"],
+body[data-vgruppe="utseende"] #moreMenu button[data-gruppe="utseende"],
+body[data-vgruppe="bygg"]     #moreMenu button[data-gruppe="bygg"],
+body[data-vgruppe="dok"]      #moreMenu button[data-gruppe="dok"] { display: inline-flex; }
 /* ↑ NY GRUPPE I js/verktoygrupper.js = NY LINJE HER. Uten den er gruppa tom på
    skjermen, men full i koden — test-verktoygrupper sjekker nå hver gruppe-id. */
 
@@ -2016,3 +2026,39 @@ body.st-tid-paa .st-velgbar { bottom: 112px; }
 .varsel-ok:hover, .varsel-ok:focus-visible { border-color: var(--text); outline: none; }
 @keyframes varsel-inn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .varsel-kort { animation: none; } }
+
+/* ═════ 📱 KONTROLLBOKSEN PÅ TELEFON (Emil 08.10) ═════
+   «Det er en linje du må dra fram og tilbake på — gjør det til en boks som
+   viser alt på én gang, og legg hjelpeteksten bak en ?-knapp.»
+   Gjelder #modeBar for alle verktøyene (mål, kjede, vinkel, kote, snitt,
+   etasje, markering, materiell, rigg). Knappene legger seg i et rutenett som
+   brekker til neste rad i stedet for å rulle sidelengs; hjelpeteksten (.lbl)
+   og snap-følsomheten vises først når «?» er trykket (js/modes.js).
+   Står nederst i fila med vilje: den skal vinne over den gamle
+   rulle-linja lenger opp (@media 640 px) og over bunnreglene for nettbanneret. */
+#mbHjelp { display: none; }
+@media (max-width: 640px) {
+  #modeBar {
+    left: 8px; right: 8px; transform: none;
+    max-width: none; width: auto;
+    padding: 8px; gap: 6px;
+    overflow: visible;
+  }
+  #modeBar.open {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(76px, 1fr));
+  }
+  #modeBar button {
+    min-height: 40px; padding: 6px 8px; font-size: 13px;
+    justify-content: center; text-align: center;
+  }
+  #modeBar .lbl { display: none; grid-column: 1 / -1; font-size: 13px; line-height: 1.4; }
+  #modeBar.vis-hjelp .lbl { display: block; }
+  #modeBar input[type=range] { grid-column: 1 / -1; width: 100%; }
+  #modeBar #mbSnapPx { display: none; }               /* finjustering — bak «?» */
+  #modeBar.vis-hjelp #mbSnapPx { display: block; width: 100% !important; }   /* inline width:90px i modes.js */
+  #modeBar > :not(button):not(input):not(.lbl) { grid-column: 1 / -1; }   /* område-valget o.l. */
+  #mbHjelp { display: inline-flex; font-weight: 700; }
+  /* boksen går over hele bredden — minikartet viker mens et verktøy er i bruk */
+  body:has(#modeBar.open) #miniMap { display: none !important; }
+}
