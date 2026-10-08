@@ -19,7 +19,7 @@ import { blikkArk } from "./blikk.js";
 import { takArk } from "./tak.js";
 import { lagreMateriellLokalt, tegnMateriell, vaskMateriell } from "../materiell-vis.js";
 import { stabelNokkel as stabelNokkel_ } from "./bunker.js";
-import { APN_SLARK, SW_MIN_BIT_MM, SW_SPENNANDEL, SW_TOL_MM, SW_VEGGANDEL, delOppMedUtsparinger, delRadApninger, eierUtsparing, fasadeSoyler, fasaderFra, fasaderLangsRand, flatTak, hentSoyler, hjorneForlengelse, kappNavn, konveksHull, loesRad, manuelleFasaderFra, radStabel, samleTetteSoyler, soylerIFasader, spennSoyler, swListeRader, swNummerering, takLinje, takSpenn, takTopp, tilMm, tilScene, toppErSkra, toppVinkel, utspFyllBiter, utsparingerPaFasade, veggSoyler, vinkelTekst } from "./regler.js";
+import { APN_SLARK, SW_MIN_BIT_MM, SW_SPENNANDEL, SW_TOL_MM, SW_VEGGANDEL, delOppMedUtsparinger, delRadApninger, eierUtsparing, fasadeSoyler, fasaderFra, fasaderLangsRand, finnHjorneNabo, flatTak, hentSoyler, hjorneForlengelse, kappNavn, konveksHull, loesRad, manuelleFasaderFra, radStabel, samleTetteSoyler, soylerIFasader, spennSoyler, swListeRader, swNummerering, takLinje, takSpenn, takTopp, tilMm, tilScene, toppErSkra, toppVinkel, utspFyllBiter, utsparingerPaFasade, veggSoyler, vinkelTekst } from "./regler.js";
 import { STD_OPPSETT, lagret, oppsett, settLagret, skrivLagret } from "./tilstand.js";
 import { TAK_TOL_MM, baseYNaa, taklinjerFraModell, tegnAlt, utspPaFasader } from "./tegning.js";
 import { butikkFor } from "./juster.js";
@@ -197,8 +197,18 @@ export async function generer() {
     // «± naboens offset + halve tykkelsen»; på et skrått hjørne er det den
     // faktiske skjæringen mellom denne veggens midtplan og naboens flate.
     const nabo = (fi + 1) % fasader.length, forrige = (fi + fasader.length - 1) % fasader.length;
-    const hjFraMm = tilMm(t0) + hjorneForlengelse(f, f.forrigeN, offs[forrige], off, o.tykkelseMm, true);
-    const hjTilMm = tilMm(t1) + hjorneForlengelse(f, f.nesteN, offs[nabo], off, o.tykkelseMm, false);
+    // 🧭 Naboen finnes GEOMETRISK (Emil 08.10, runde 6: elementene gikk inn i
+    // hverandre i et innvendig hjørne). Faller søket gjennom, brukes naboen
+    // i lista som før.
+    const maksA = tilScene(2000);
+    const nF = finnHjorneNabo(fasader, fi, t0, maksA), nT = finnHjorneNabo(fasader, fi, t1, maksA);
+    const naboN = (h) => ({ x: fasader[h.gi].nx, z: fasader[h.gi].nz });
+    const hjFraMm = tilMm(t0) + (nF
+      ? hjorneForlengelse(f, naboN(nF), offs[nF.gi], off, o.tykkelseMm, true, nF.avst)
+      : hjorneForlengelse(f, f.forrigeN, offs[forrige], off, o.tykkelseMm, true));
+    const hjTilMm = tilMm(t1) + (nT
+      ? hjorneForlengelse(f, naboN(nT), offs[nT.gi], off, o.tykkelseMm, false, nT.avst)
+      : hjorneForlengelse(f, f.nesteN, offs[nabo], off, o.tykkelseMm, false));
     if (o.ringmur) {
       // RINGMUREN BEHANDLES SOM EN RAD (Emil 02.09): den kappes rundt en
       // utsparing på nøyaktig samme måte som veggelementene, og får en
