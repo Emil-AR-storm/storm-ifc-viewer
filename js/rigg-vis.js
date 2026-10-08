@@ -322,6 +322,12 @@ export function tegnEnRigg(o) {
   if (!base || !o) return null;
   const gammel = finnRiggObjekt(o.id);
   if (gammel) { gammel.traverse(m => { if (m.geometry) m.geometry.dispose(); }); riggGroup.remove(gammel); }
+  // 🏗 Emil 08.10: «Skjul» på tårnkranen skjulte den ikke. Skjul-knappen
+  // setter skjult og velger bort kranen — og bortvalget tegner kranen på nytt
+  // (uten grader og radius). Det kallet hoppet over skjul-sjekken som
+  // tegnRigg() har, så kranen kom tilbake, og et nytt trykk på den viste
+  // ingen meny fordi den ER skjult. Samme regel her som i tegnRigg().
+  if (o.skjult || skjulteTyper.has(o.type)) return null;
   const g = byggPlassert(o, base, aktivRef(), S.terrengRef ? S.terrengRef() : null);
   if (g) { riggGroup.add(g); valgEffekt(g, o.id === S.riggValgtId); }
   return g;

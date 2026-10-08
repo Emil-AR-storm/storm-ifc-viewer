@@ -386,7 +386,8 @@ function takflater() {
 //   skråkapp; hull, vinduer og porter telles med (fasadeOmriss).
 const STAL_FASADE = new Set(["COLUMN", "BEAM", "MEMBER"]);
 const STAL_SOYLE = new Set(["COLUMN"]);
-const FASADE_BAND = 1.0;          // m: så nær fasadelinja må stålet ligge for å høre til fasaden
+const FASADE_BAND = 1.0;
+const SOYLE_INN = 3.0;            // m: så langt innenfor takkanten søylerekka kan stå          // m: så nær fasadelinja må stålet ligge for å høre til fasaden
 let flateHurtig = { nokkel: "", verdi: null };
 function takTopp() {
   let y = -Infinity;
@@ -543,6 +544,38 @@ function byggFasader() {
   for (const r of rammer) {
     // utover = bort fra midten av bygget (omrisset vet det selv)
     if (!r.fast && (r.o[0] - cx) * r.N[0] + (r.o[1] - cz) * r.N[1] < 0) r.N = [-r.N[0], -r.N[1]];
+    // 🏗 Emil 08.10 (bilde: flatene lå et stykke utenfor søylene, og gikk
+    // ikke opp til forlengerne): omrisset er TAKET sett ovenfra, og taket kan
+    // stikke ut over søylene. Fasaden står på SØYLEREKKA. Kanten flyttes
+    // derfor inn til ytterkanten av de ytterste søylene langs den (inntil
+    // 3 m innenfor taket), og fasaden går fra søyle til søyle i lengderetning.
+    let tA = -Infinity, tB = Infinity;
+    if (r.fast) {
+      let skyv = -Infinity, a0 = Infinity, b0 = -Infinity;
+      const kandidater = [];
+      for (const x of stal) {
+        if (!x.staar) continue;
+        let n0 = Infinity, n1 = -Infinity, e0 = Infinity, e1 = -Infinity;
+        for (const q of x.pkt) {
+          const v = (q[0] - r.o[0]) * r.N[0] + (q[2] - r.o[1]) * r.N[1];
+          const tt = (q[0] - r.o[0]) * r.e[0] + (q[2] - r.o[1]) * r.e[1];
+          n0 = Math.min(n0, v); n1 = Math.max(n1, v); e0 = Math.min(e0, tt); e1 = Math.max(e1, tt);
+        }
+        if (n1 < -SOYLE_INN || n0 > FASADE_BAND || e1 < -kant || e0 > r.L + kant) continue;
+        kandidater.push({ n0, n1, e0, e1 });
+        skyv = Math.max(skyv, n1);
+      }
+      if (Number.isFinite(skyv)) {
+        r.o = [r.o[0] + r.N[0] * skyv, r.o[1] + r.N[1] * skyv];
+        // søylene i den nye linja (innenfor båndet): de bestemmer endene
+        for (const k of kandidater) if (k.n1 - skyv >= -FASADE_BAND) { a0 = Math.min(a0, k.e0); b0 = Math.max(b0, k.e1); }
+        if (b0 > a0) { tA = a0; tB = b0; }
+      }
+      // Én søyle alene er ikke en vegg: et lite sprang i takkanten (taket
+      // stikker ut over hallen, men ikke over tilbygget) gir en kort kant med
+      // bare hjørnesøyla i. Den blir borte når kanten flyttes inn til søylene.
+      if (Number.isFinite(tA) && tB - tA < 0.6 && !alleSw.length) continue;
+    }
     const ty = (q) => [(q[0] - r.o[0]) * r.e[0] + (q[2] - r.o[1]) * r.e[1], q[1]];
     const nn = (q) => (q[0] - r.o[0]) * r.N[0] + (q[2] - r.o[1]) * r.N[1];
     // ligger delen langs denne kanten? (bare når fasaden er en kant av omrisset)
@@ -555,6 +588,7 @@ function byggFasader() {
     // veggelementer og ringmur på fasaden
     let swUt = -Infinity;
     const swDel = r.fast ? alleSw : (r.fi !== undefined && kilde === "sw" && sw.get(r.fi) ? [...sw.get(r.fi).values()] : []);
+    let swA = Infinity, swB = -Infinity;
     for (const arr of swDel) {
       if (r.fast) {
         let n0 = Infinity, n1 = -Infinity; for (const q of arr) { const v = nn(q); n0 = Math.min(n0, v); n1 = Math.max(n1, v); }
@@ -564,9 +598,10 @@ function byggFasader() {
       if (!iSpenn(tyx)) continue;
       const h = hylle2(tyx); if (h.length >= 3) deler.push(h);
       for (const q of arr) swUt = Math.max(swUt, nn(q));
+      for (const [tt] of tyx) { swA = Math.min(swA, tt); swB = Math.max(swB, tt); }
     }
     // stålet i fasadeplanet
-    let stalUt = -Infinity;
+    let stalUt = -Infinity, soyleUt = -Infinity;
     const staende = [];                                        // toppene av søyler og forlengere
     for (const x of stal) {
       let n0 = Infinity, n1 = -Infinity;
@@ -578,13 +613,14 @@ function byggFasader() {
       stalUt = Math.max(stalUt, n1);
       let e0 = Infinity, e1 = -Infinity, yt = -Infinity;
       for (const [tt, yy] of tyx) { e0 = Math.min(e0, tt); e1 = Math.max(e1, tt); yt = Math.max(yt, yy); }
-      if (x.staar) staende.push([(e0 + e1) / 2, yt]);
+      if (x.staar) { staende.push([(e0 + e1) / 2, yt]); soyleUt = Math.max(soyleUt, n1); }
     }
     if (!deler.length) continue;
     let omr = fasadeOmriss(deler, staende);
     if (omr.length < 3) continue;
     let ut;
     if (Number.isFinite(swUt)) ut = swUt;                      // utsiden av veggene/ringmuren
+    else if (r.fast) ut = Number.isFinite(soyleUt) ? soyleUt : (Number.isFinite(stalUt) ? stalUt : 0);   // inntil søylene (Emil 08.10)
     else {
       ut = (Number.isFinite(stalUt) ? stalUt : 0) + tyk;       // utsiden av søylene (+ veggen som skal stå der)
       if (tyk > 0) {                                           // veggtykkelsen forbi søylene i hver ende
@@ -592,7 +628,12 @@ function byggFasader() {
         omr = omr.map(([tt, y]) => [tt <= a + 1e-9 ? tt - tyk : tt >= b - 1e-9 ? tt + tyk : tt, y]);
       }
     }
-    if (r.fast) { omr = klippX(omr, -kant, r.L + kant); if (omr.length < 3) continue; }
+    if (r.fast) {
+      // fra søyle til søyle — eller til veggens ender når den er generert
+      let a = Number.isFinite(tA) ? tA : -kant, b = Number.isFinite(tB) ? tB : r.L + kant;
+      if (Number.isFinite(swUt)) { a = Math.min(a, swA); b = Math.max(b, swB); }
+      omr = klippX(omr, a, b); if (omr.length < 3) continue;
+    }
     flater.push({ navn: r.navn, o: r.o, e: r.e, N: r.N, deler: [omr], ut });
   }
   // Reserve uten omriss: fasader (eller biter av dem) som står inne i bygget
