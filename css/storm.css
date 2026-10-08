@@ -1970,3 +1970,49 @@ body.st-tid-paa .st-velgbar { bottom: 112px; }
 #lasterBody .la-tom { color: var(--muted); font-size: 12px; margin: 6px 0; }
 #laRetning button.active, #lasterBody .prop-actions button.active { outline: 2px solid var(--accent, #3b82f6); }
 #lasterBody .laster-advarsel { border-color: #ef4444; background: rgba(239, 68, 68, .12); margin: 6px 0; }
+
+/* ═════ 🔔 VARSELBOKSEN (js/varsel.js) — erstatter nettleserens alert() ═════
+   Emil 08.10: varslene skal være appens egne, så Storm IFC kan bli en app.
+   Kortene ligger i #varselStabel. Plasseringen styres av data-stil på
+   stabelen (midt | topp | bunn) — tre prøver Emil velger mellom; selve
+   kortet er likt i alle tre. Alle farger fra temavariablene. */
+.varsel-stabel {
+  position: fixed; z-index: 9000;
+  display: flex; flex-direction: column; gap: 8px;
+  pointer-events: none;                 /* bare kortene tar imot trykk */
+  left: 50%; transform: translateX(-50%);
+  width: min(440px, calc(100vw - 24px));
+  top: 50%; translate: 0 -50%;          /* standard: midt på skjermen */
+}
+.varsel-stabel[data-stil="topp"] { top: 64px; translate: none; }
+.varsel-stabel[data-stil="bunn"] {
+  top: auto; translate: none;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+}
+.varsel-kort {
+  pointer-events: auto;
+  display: flex; align-items: flex-start; gap: 10px;
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--muted);
+  border-radius: var(--radius-stor);
+  padding: 12px 12px 12px 14px;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, .45);
+  font-size: 14px; line-height: 1.45;
+  animation: varsel-inn .16s ease-out;
+}
+.varsel-kort.varsel-feil { border-left-color: var(--accent); }
+.varsel-ikon { flex: none; width: 18px; height: 18px; margin-top: 1px; color: var(--muted); }
+.varsel-feil .varsel-ikon { color: var(--accent); }
+.varsel-tekst { flex: 1; white-space: pre-line; overflow-wrap: anywhere; max-height: 50vh; overflow-y: auto; }
+.varsel-antall { flex: none; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.varsel-ok {
+  flex: none; align-self: center;
+  min-width: 56px; min-height: 36px;    /* stort nok til en tommel med hanske */
+  background: var(--panel2); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  font-weight: 600; cursor: pointer;
+}
+.varsel-ok:hover, .varsel-ok:focus-visible { border-color: var(--text); outline: none; }
+@keyframes varsel-inn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .varsel-kort { animation: none; } }
