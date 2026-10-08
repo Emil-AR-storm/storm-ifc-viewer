@@ -403,11 +403,29 @@ export function fasadeOmriss(deler, staende) {
   let yb = Infinity;
   const ts = [];
   for (const d of dl) for (const [t, y] of d) { yb = Math.min(yb, y); ts.push(t); }
-  let st = (staende || []).filter(q => Number.isFinite(q[0]) && Number.isFinite(q[1]));
+  // Emil 08.10 (runde 4, bilde 3–4): toppen dukket ned mellom forlengerne,
+  // fordi søyler som stopper under toppbjelka og de loddrette stavene i
+  // fagverket også «sto». Nå:
+  //   1. stående deler i samme søylepunkt (søyle + forlenger) er ÉN søyle,
+  //      med samlet topp og fot
+  //   2. bare søyler som går ned til foten av fasaden teller — en stav i
+  //      fagverket henger i lufta og bærer ingen vegg
+  //   3. toppen er den ØVRE HYLLA over søyletoppene: en søyle som er lavere
+  //      enn linja mellom naboene (en vindsøyle under bjelka) drar ikke
+  //      veggen ned — veggelementene går helt opp mellom forlengerne.
+  let st = (staende || []).filter(q => Number.isFinite(q[0]) && Number.isFinite(q[1]))
+    .map(q => [q[0], q[1], Number.isFinite(q[2]) ? q[2] : yb]).sort((a, b) => a[0] - b[0]);
   if (st.length) {
-    const hMaks = Math.max(...st.map(q => q[1])) - yb;
-    st = st.filter(q => q[1] - yb >= hMaks / 2).sort((a, b) => a[0] - b[0] || b[1] - a[1])
-      .filter((q, i, a) => i === 0 || Math.abs(q[0] - a[i - 1][0]) > 1e-6);
+    const klynger = [];
+    for (const q of st) {
+      const k = klynger[klynger.length - 1];
+      if (k && q[0] - k.t1 <= 0.3) { k.t1 = q[0]; k.tSum += q[0]; k.n++; k.topp = Math.max(k.topp, q[1]); k.fot = Math.min(k.fot, q[2]); }
+      else klynger.push({ t1: q[0], tSum: q[0], n: 1, topp: q[1], fot: q[2] });
+    }
+    const hoyde = Math.max(...klynger.map(k => k.topp)) - yb;
+    const grense = yb + Math.max(1, 0.15 * hoyde);
+    const pkt = klynger.filter(k => k.fot <= grense).map(k => [k.tSum / k.n, k.topp]);
+    st = ovreKontur(pkt);
     for (const q of st) ts.push(q[0]);
   }
   const u = [...new Set(ts.map(t => Math.round(t * 1e6) / 1e6))].sort((a, b) => a - b);

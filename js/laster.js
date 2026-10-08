@@ -387,7 +387,8 @@ function takflater() {
 const STAL_FASADE = new Set(["COLUMN", "BEAM", "MEMBER"]);
 const STAL_SOYLE = new Set(["COLUMN"]);
 const FASADE_BAND = 1.0;
-const SOYLE_INN = 3.0;            // m: så langt innenfor takkanten søylerekka kan stå          // m: så nær fasadelinja må stålet ligge for å høre til fasaden
+const SOYLE_INN = 3.0;
+const SW_UT = 2.0;                // m: så langt utenfor søylerekka en generert vegg kan stå            // m: så langt innenfor takkanten søylerekka kan stå          // m: så nær fasadelinja må stålet ligge for å høre til fasaden
 let flateHurtig = { nokkel: "", verdi: null };
 function takTopp() {
   let y = -Infinity;
@@ -574,7 +575,7 @@ function byggFasader() {
       // Én søyle alene er ikke en vegg: et lite sprang i takkanten (taket
       // stikker ut over hallen, men ikke over tilbygget) gir en kort kant med
       // bare hjørnesøyla i. Den blir borte når kanten flyttes inn til søylene.
-      if (Number.isFinite(tA) && tB - tA < 0.6 && !alleSw.length) continue;
+      if (Number.isFinite(tA) && tB - tA < 0.6) continue;
     }
     const ty = (q) => [(q[0] - r.o[0]) * r.e[0] + (q[2] - r.o[1]) * r.e[1], q[1]];
     const nn = (q) => (q[0] - r.o[0]) * r.N[0] + (q[2] - r.o[1]) * r.N[1];
@@ -587,12 +588,27 @@ function byggFasader() {
     const deler = [];
     // veggelementer og ringmur på fasaden
     let swUt = -Infinity;
-    const swDel = r.fast ? alleSw : (r.fi !== undefined && kilde === "sw" && sw.get(r.fi) ? [...sw.get(r.fi).values()] : []);
+    // Emil 08.10 (runde 4): vegger som står lenger ut enn båndet (et
+    // innvendig hjørne der veggen er satt et stykke ut) ble ikke med, og
+    // flata ble liggende inne bak veggen. Veggene velges nå etter fasaden de
+    // hører til i SW-generatoren: den må være parallell med kanten, og
+    // veggen må stå inntil 2 m utenfor søylerekka.
+    let swDel;
+    if (r.fast) {
+      swDel = [];
+      for (const [fi, del] of sw) {
+        const g = L && L.fasader && L.fasader[fi];
+        if (!g) continue;
+        const el = Math.hypot(g.ex, g.ez) || 1;
+        if (Math.abs((g.ex / el) * r.e[1] - (g.ez / el) * r.e[0]) > 0.05) continue;   // ikke parallell
+        for (const arr of del.values()) swDel.push(arr);
+      }
+    } else swDel = r.fi !== undefined && kilde === "sw" && sw.get(r.fi) ? [...sw.get(r.fi).values()] : [];
     let swA = Infinity, swB = -Infinity;
     for (const arr of swDel) {
       if (r.fast) {
         let n0 = Infinity, n1 = -Infinity; for (const q of arr) { const v = nn(q); n0 = Math.min(n0, v); n1 = Math.max(n1, v); }
-        if (n0 < -FASADE_BAND || n1 > FASADE_BAND) continue;
+        if (n0 < -FASADE_BAND || n1 > SW_UT) continue;
       }
       const tyx = arr.map(ty);
       if (!iSpenn(tyx)) continue;
@@ -611,9 +627,9 @@ function byggFasader() {
       if (!iSpenn(tyx)) continue;                              // står på samme linje, men et annet sted
       const h = hylle2(tyx); if (h.length >= 3) deler.push(h);
       stalUt = Math.max(stalUt, n1);
-      let e0 = Infinity, e1 = -Infinity, yt = -Infinity;
-      for (const [tt, yy] of tyx) { e0 = Math.min(e0, tt); e1 = Math.max(e1, tt); yt = Math.max(yt, yy); }
-      if (x.staar) { staende.push([(e0 + e1) / 2, yt]); soyleUt = Math.max(soyleUt, n1); }
+      let e0 = Infinity, e1 = -Infinity, yt = -Infinity, yf = Infinity;
+      for (const [tt, yy] of tyx) { e0 = Math.min(e0, tt); e1 = Math.max(e1, tt); yt = Math.max(yt, yy); yf = Math.min(yf, yy); }
+      if (x.staar) { staende.push([(e0 + e1) / 2, yt, yf]); soyleUt = Math.max(soyleUt, n1); }
     }
     if (!deler.length) continue;
     let omr = fasadeOmriss(deler, staende);
@@ -629,13 +645,55 @@ function byggFasader() {
       }
     }
     if (r.fast) {
-      // fra søyle til søyle — eller til veggens ender når den er generert
+      // fra søyle til søyle — eller til veggens ender når den er generert.
+      // Hjørnene rettes etterpå (se under), dette er bare reserven.
       let a = Number.isFinite(tA) ? tA : -kant, b = Number.isFinite(tB) ? tB : r.L + kant;
-      if (Number.isFinite(swUt)) { a = Math.min(a, swA); b = Math.max(b, swB); }
-      omr = klippX(omr, a, b); if (omr.length < 3) continue;
+      // veggene kan gå forbi søylene, men ikke forbi kanten av omrisset —
+      // der fortsetter nabofasaden (samme linje, annen del av bygget)
+      if (Number.isFinite(swUt)) { a = Math.max(Math.min(a, swA), -kant); b = Math.min(Math.max(b, swB), r.L + kant); }
+      flater.push({ navn: r.navn, o: r.o, e: r.e, N: r.N, deler: [omr], ut, a, b, fast: true });
+      continue;
     }
     flater.push({ navn: r.navn, o: r.o, e: r.e, N: r.N, deler: [omr], ut });
   }
+  // 📐 HJØRNENE (Emil 08.10, runde 4: «innover vendte hjørner blir ikke
+  // flyttet ut til overflaten av veggelementet»). Flatene ligger på
+  // overflaten — veggens eller søylenes — og to naboflater skal møtes der de
+  // to overflatene krysser hverandre. På et utvendig hjørne forlenges flata
+  // ut til naboens overflate, på et innvendig hjørne kortes den inn. Da går
+  // flatene rundt bygget som én sammenhengende kappe.
+  {
+    const fast = flater.filter(f => f.fast);
+    const n = fast.length;
+    const kryss = (f, g) => {
+      const P = [f.o[0] + f.N[0] * f.ut, f.o[1] + f.N[1] * f.ut], Q = [g.o[0] + g.N[0] * g.ut, g.o[1] + g.N[1] * g.ut];
+      const d = f.e[0] * g.e[1] - f.e[1] * g.e[0];
+      if (Math.abs(d) < 0.2) return null;                       // nesten parallelle: ikke et hjørne
+      const s2 = ((Q[0] - P[0]) * g.e[1] - (Q[1] - P[1]) * g.e[0]) / d;
+      const X = [P[0] + f.e[0] * s2, P[1] + f.e[1] * s2];
+      return { tf: (X[0] - f.o[0]) * f.e[0] + (X[1] - f.o[1]) * f.e[1], tg: (X[0] - g.o[0]) * g.e[0] + (X[1] - g.o[1]) * g.e[1] };
+    };
+    for (let i = 0; n >= 3 && i < n; i++) {
+      const f = fast[i], g = fast[(i + 1) % n];
+      const k = kryss(f, g);
+      // bare når krysset ligger nær endene vi har fra før — ellers er det
+      // ikke naboflater rundt samme hjørne
+      if (k && Math.abs(k.tf - f.b) < 3 && Math.abs(k.tg - g.a) < 3) { f.b = k.tf; g.a = k.tg; }
+    }
+  }
+  for (const f of flater) {
+    if (!f.fast) continue;
+    let omr = f.deler[0];
+    const a0 = Math.min(...omr.map(p => p[0])), b0 = Math.max(...omr.map(p => p[0]));
+    omr = klippX(omr, f.a, f.b);
+    if (omr.length >= 3) {
+      // strekk endene ut til hjørnet når flata må forlenges
+      const a1 = Math.min(...omr.map(p => p[0])), b1 = Math.max(...omr.map(p => p[0]));
+      omr = omr.map(([tt, y]) => [tt <= a1 + 1e-9 && f.a < a0 ? f.a : tt >= b1 - 1e-9 && f.b > b0 ? f.b : tt, y]);
+    }
+    f.deler = omr.length >= 3 ? [omr] : [];
+  }
+  for (let i = flater.length - 1; i >= 0; i--) if (!flater[i].deler.length) flater.splice(i, 1);
   // Reserve uten omriss: fasader (eller biter av dem) som står inne i bygget
   // tas ut — se utsatteDeler i laster-regn.js.
   if (kilde === "sw" && flater.length > 1) {
