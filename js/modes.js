@@ -10,6 +10,42 @@ export const modeButtons = { marker: $("btnMarker"), measure: $("btnMeasure"), k
 
 export const modeBar = $("modeBar");
 
+// 📱 «?»-KNAPPEN I KONTROLLBOKSEN (Emil 08.10): «det er en linje du må dra
+// fram og tilbake på — det er vanskelig å stille på ting og se all infoen.
+// Gjør det til en boks som viser alt på én gang, og legg hjelpeteksten bak en
+// ?-knapp i stedet for at den tar masse plass.»
+//
+// Innholdet i kontrollinja skrives av mange moduler (mål, kjede, vinkel, kote,
+// snitt, etasje, markering, materiell, rigg) med innerHTML. I stedet for å
+// legge «?» inn ni steder følger vi med på linja her: hver gang innholdet
+// byttes og det finnes en hjelpetekst (.lbl), legges «?» til bakerst. CSS-en
+// (telefon) skjuler hjelpeteksten til «?» er trykket; på PC er «?» skjult og
+// alt er som før. Valget huskes mens siden er åpen.
+let hjelpVises = false;
+function leggHjelpKnapp() {
+  if (!modeBar || $("mbHjelp") || !modeBar.querySelector(".lbl")) return;
+  const b = document.createElement("button");
+  b.id = "mbHjelp";
+  b.type = "button";
+  b.textContent = "?";
+  b.title = t("Vis eller skjul hjelpeteksten");
+  b.setAttribute("aria-label", t("Vis eller skjul hjelpeteksten"));
+  b.classList.toggle("active", hjelpVises);
+  b.onclick = () => {
+    hjelpVises = !hjelpVises;
+    modeBar.classList.toggle("vis-hjelp", hjelpVises);
+    b.classList.toggle("active", hjelpVises);
+  };
+  modeBar.appendChild(b);
+}
+// window.MutationObserver først: i Node-testene (jsdom) finnes den bare på window
+const MO = (typeof window !== "undefined" && window.MutationObserver) ||
+  (typeof MutationObserver !== "undefined" ? MutationObserver : null);
+if (modeBar && MO) {
+  modeBar.classList.toggle("vis-hjelp", hjelpVises);
+  new MO(leggHjelpKnapp).observe(modeBar, { childList: true });
+}
+
 export function setMode(m) {
   S.mode = (S.mode === m) ? null : m;
   for (const k in modeButtons) if (modeButtons[k]) modeButtons[k].classList.toggle("active", S.mode === k);
