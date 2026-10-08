@@ -42,7 +42,7 @@ export const GRUPPER = [
     knapper: ["btnClip", "btnStorey", "btnGhost", "btnColors"] },
   { id: "bygg",     navn: "Storm-Byggeplass", ikonNavn: "lastned",
     hjelp: "Ut til byggeplassen: QR-lenke, materiell, SW-generator og deling",
-    knapper: ["btnByggeplass", "btnMateriell", "btnSW", "btnBlikk", "btnShare", "btnHistorikk"] },
+    knapper: ["btnByggeplass", "btnMateriell", "btnSW", "btnTak", "btnShare", "btnHistorikk"] },
   // 📄 Alt som lager en fil å sende videre (Emil 02.09 og 04.09, valgt 30.09:
   // «flytt + snarveier»). Rapport og Lett kopi er FLYTTET hit fra
   // Storm-Byggeplass. Riggplan, SW-tegning og BCF er SNARVEIER: de åpner

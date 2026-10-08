@@ -23,8 +23,10 @@ import {
   CPE_FLATT_TAK, TERRENG, flattTakSoner, kommuneFraSvar, kommunePunktUrl, mu1, snoMark, snoTak, tall, vaskLastdata,
   snoAdvarsler, vindAdvarsler, vindBasis, vindTrykk, we,
   fasadeOmriss, flaterFraRektangel, hylle2, kraft, minsteRektangel, vindPaFlater, vindRetninger,
-  erStaende, takFraStal
+  erStaende, takFraStal, klippX, omrissAvPolygoner, fasaderFraOmriss, klippMedKonveks, polyAreal2, utsatteDeler
 } from "./laster-regn.js";
+import { takBjelker, takBjelkeLinjer, takOppsett } from "./veggelement/tak.js";
+import { takflaterFraBjelker, omrissUV, punktPaFlate } from "./sw-tak.js";
 
 export const lasterGroup = new THREE.Group();
 lasterGroup.name = "laster";
@@ -276,14 +278,88 @@ function lokkOverModellen() {
   return [{ navn: t("Tak"), alfa: 0, arealPlan: Lx * Lz, arealSkraa: Lx * Lz, polygon: poly, normal: new THREE.Vector3(0, 1, 0) }];
 }
 
+// 🏗 «AUTOMATISK» (Emil 08.10): uten lagte takplater regnes takflatene med
+// NØYAKTIG de samme reglene som tak-generatoren bruker — de øverste bjelkene,
+// gruppert i takfall, med omrisset av bjelkenes utvendige flate
+// (takflaterFraBjelker i sw-tak.js). Ingen regel står to steder.
+// Svar: [{ navn, alfa, arealPlan, arealSkraa, polygon (Vector3, scene), normal, plan ([x, z] i meter) }]
+let metaVersjon = 0;                       // øker når typenavnene er lest inn
+let regelHurtig = { nokkel: "", verdi: [] };
+export function takflaterRegler() {
+  let o = {};
+  try { o = takOppsett(); } catch (_) { o = {}; }
+  const nk = [stalNokkel(), metaVersjon, JSON.stringify(o)].join("|");
+  if (regelHurtig.nokkel === nk) return regelHurtig.verdi;
+  let verdi = [];
+  try {
+    const bj = takBjelker();
+    if (bj.length) {
+      const linjer = takBjelkeLinjer(bj, bj.map(x => x.id));
+      const fl = takflaterFraBjelker(linjer, o);
+      const s = skala();
+      verdi = fl.map(f => {
+        const uv = omrissUV(f) || [[f.u0, f.v0], [f.u1, f.v0], [f.u1, f.v1], [f.u0, f.v1]];
+        const mm = uv.map(([u, v]) => punktPaFlate(f, u, v));
+        const polygon = mm.map(q => new THREE.Vector3(q.x / 1000 / s, q.y / 1000 / s, q.z / 1000 / s));
+        const plan = mm.map(q => [q.x / 1000, q.z / 1000]);
+        const arealPlan = Math.abs(polyAreal2(plan));
+        const alfa = Math.abs(Number(f.fallGrader) || (Math.asin(Math.min(1, Math.abs(f.U.y))) * 180 / Math.PI));
+        const N = f.N ? new THREE.Vector3(f.N.x, f.N.y, f.N.z) : new THREE.Vector3(0, 1, 0);
+        if (N.y < 0) N.negate();
+        return { alfa, arealPlan, arealSkraa: arealPlan / Math.cos(alfa * Math.PI / 180), polygon, normal: N.normalize(), plan };
+      }).filter(f => f.arealPlan > 0.5).map((f, i, a) => ({ ...f, navn: a.length > 1 ? t("Takflate {0}", i + 1) : t("Tak") }));
+    }
+  } catch (err) { console.warn("Snø & Last: takflatene kunne ikke regnes", err); verdi = []; }
+  regelHurtig = { nokkel: nk, verdi };
+  return verdi;
+}
+// Byggets omriss i plan (meter): taket sett ovenfra. [] når taket ikke kan leses.
+let omrissHurtig = { nokkel: "", verdi: [] };
+export function byggOmriss() {
+  const fl = takflaterRegler();
+  const nk = regelHurtig.nokkel;
+  if (omrissHurtig.nokkel === nk) return omrissHurtig.verdi;
+  let verdi = [];
+  try { verdi = fl.length ? omrissAvPolygoner(fl.map(f => f.plan)) : []; } catch (_) { verdi = []; }
+  omrissHurtig = { nokkel: nk, verdi };
+  return verdi;
+}
+// En takflate klippet til omrisset (manuell takform på en L): planet beholdes.
+function klippTilOmriss(f, ring) {
+  if (!ring || ring.length < 3) return f;
+  const s = skala();
+  const P = f.polygon.map(p => [p.x * s, p.y * s, p.z * s]);
+  const plan = P.map(p => [p[0], p[2]]);
+  const k = klippMedKonveks(ring, polyAreal2(plan) >= 0 ? plan : plan.slice().reverse());
+  if (k.length < 3) return null;
+  // planet y = a·x + b·z + c gjennom tre hjørner
+  const [p0, p1, p2] = P;
+  const d = (p1[0] - p0[0]) * (p2[2] - p0[2]) - (p2[0] - p0[0]) * (p1[2] - p0[2]);
+  const a = Math.abs(d) < 1e-12 ? 0 : ((p1[1] - p0[1]) * (p2[2] - p0[2]) - (p2[1] - p0[1]) * (p1[2] - p0[2])) / d;
+  const b = Math.abs(d) < 1e-12 ? 0 : ((p2[1] - p0[1]) * (p1[0] - p0[0]) - (p1[1] - p0[1]) * (p2[0] - p0[0])) / d;
+  const y = (x, z) => p0[1] + a * (x - p0[0]) + b * (z - p0[2]);
+  const arealPlan = Math.abs(polyAreal2(k));
+  return { ...f, polygon: k.map(([x, z]) => new THREE.Vector3(x / s, y(x, z) / s, z / s)), arealPlan,
+    arealSkraa: arealPlan / Math.cos(f.alfa * Math.PI / 180) };
+}
+
 function takflater() {
   const form = data.takform || "auto";
   if (form === "auto") {
     const g = takflaterFraGenerator();
     if (g.length) return { kilde: "generator", flater: g };
+    const r = takflaterRegler();
+    if (r.length) return { kilde: "regler", flater: r };
+    const m = flaterFraStal("auto", "");
+    if (m) return { kilde: "stal", flater: m.flater, profil: m.profil };
+    return { kilde: "mangler", flater: lokkOverModellen() };
   }
   const m = flaterFraStal(form, data.takvinkel);
-  if (m) return { kilde: form === "auto" ? (tall(data.takvinkel) > 0 ? "stal-vinkel" : "stal") : "manuell", flater: m.flater, profil: m.profil };
+  if (m) {
+    const ring = byggOmriss();
+    const flater = m.flater.map(f => klippTilOmriss(f, ring)).filter(Boolean);
+    return { kilde: "manuell", flater, profil: m.profil };
+  }
   return { kilde: "mangler", flater: lokkOverModellen() };
 }
 
@@ -319,7 +395,10 @@ function takTopp() {
     const bb = new THREE.Box3().setFromObject(o); if (!bb.isEmpty()) y = Math.max(y, bb.max.y);
   });
   if (Number.isFinite(y)) return y * skala();
-  // uten tak fra generatoren: toppen av taket lest av stålet
+  // uten lagte takplater: toppen av takflatene etter tak-generatorens regler
+  for (const f of takflaterRegler()) for (const p of f.polygon) y = Math.max(y, p.y * skala());
+  if (Number.isFinite(y)) return y;
+  // ellers taket lest av stålet
   const r = takFraModell("auto", "");
   if (r) for (const f of r.flater) for (const q of f.poly) y = Math.max(y, q[1]);
   return Number.isFinite(y) ? y : NaN;
@@ -422,14 +501,28 @@ function byggFasader() {
   const tyk = L && L.oppsett && Number(L.oppsett.tykkelseMm) > 0 ? Number(L.oppsett.tykkelseMm) / 1000 : 0;
   const sw = swPunkterPerFasade();
   const stal = stalElementer();
+  const ring = byggOmriss();
   // 1. fasadene
+  // Emil 08.10: kantene av byggets omriss når taket kan leses (likt med og
+  // uten veggelementer). Ellers SW-generatorens fasader, eller rektangelet
+  // rundt søylene.
   let rammer = [], kilde;
-  if (sw.size && L && Array.isArray(L.fasader)) {
-    kilde = "sw";
-    rammer = L.fasader.map((f, fi) => {
-      const el = Math.hypot(f.ex, f.ez) || 1, nl = Math.hypot(f.nx, f.nz) || 1;
-      return { fi, navn: f.navn || t("Fasade {0}", fi + 1), o: [f.px * s, f.pz * s], e: [f.ex / el, f.ez / el], N: [f.nx / nl, f.nz / nl] };
+  const swFasader = L && Array.isArray(L.fasader) ? L.fasader.map((f, fi) => {
+    const el = Math.hypot(f.ex, f.ez) || 1, nl = Math.hypot(f.nx, f.nz) || 1;
+    return { fi, navn: f.navn || t("Fasade {0}", fi + 1), o: [f.px * s, f.pz * s], e: [f.ex / el, f.ez / el], N: [f.nx / nl, f.nz / nl] };
+  }) : [];
+  if (ring.length >= 3) {
+    kilde = sw.size ? "omriss-sw" : "omriss";
+    rammer = fasaderFraOmriss(ring, 0.5).map((f, i) => {
+      // navnet fra SW-generatorens fasade på samme linje, når den finnes
+      const mid = [f.o[0] + f.e[0] * f.L / 2, f.o[1] + f.e[1] * f.L / 2];
+      const lik = swFasader.find(g => Math.abs(g.e[0] * f.e[1] - g.e[1] * f.e[0]) < 0.05 &&
+        Math.abs((mid[0] - g.o[0]) * g.N[0] + (mid[1] - g.o[1]) * g.N[1]) < FASADE_BAND);
+      return { navn: lik ? lik.navn : t("Side {0}", i + 1), o: f.o, e: f.e, N: f.N, L: f.L, fast: true };
     });
+  } else if (sw.size && swFasader.length) {
+    kilde = "sw";
+    rammer = swFasader;
   } else {
     kilde = "stal";
     const soyler = stal.filter(x => STAL_SOYLE.has(x.tp));
@@ -444,32 +537,47 @@ function byggFasader() {
   for (const del of sw.values()) for (const arr of del.values()) for (const q of arr) { cx += q[0]; cz += q[2]; n++; }
   if (!n) return { flater: [], kilde };
   cx /= n; cz /= n;
+  const alleSw = [...sw.values()].flatMap(del => [...del.values()]);
+  const kant = tyk + 0.05;                                   // så langt forbi hjørnet flata får gå
   const flater = [];
   for (const r of rammer) {
-    // utover = bort fra midten av bygget
-    if ((r.o[0] - cx) * r.N[0] + (r.o[1] - cz) * r.N[1] < 0) r.N = [-r.N[0], -r.N[1]];
+    // utover = bort fra midten av bygget (omrisset vet det selv)
+    if (!r.fast && (r.o[0] - cx) * r.N[0] + (r.o[1] - cz) * r.N[1] < 0) r.N = [-r.N[0], -r.N[1]];
     const ty = (q) => [(q[0] - r.o[0]) * r.e[0] + (q[2] - r.o[1]) * r.e[1], q[1]];
     const nn = (q) => (q[0] - r.o[0]) * r.N[0] + (q[2] - r.o[1]) * r.N[1];
+    // ligger delen langs denne kanten? (bare når fasaden er en kant av omrisset)
+    const iSpenn = (tyx) => {
+      if (!r.fast) return true;
+      let a = Infinity, b = -Infinity; for (const [tt] of tyx) { a = Math.min(a, tt); b = Math.max(b, tt); }
+      return b > -kant + 1e-6 && a < r.L + kant - 1e-6;
+    };
     const deler = [];
     // veggelementer og ringmur på fasaden
     let swUt = -Infinity;
-    const swDel = r.fi !== undefined && kilde === "sw" ? sw.get(r.fi) : null;
-    if (swDel) for (const arr of swDel.values()) {
-      const h = hylle2(arr.map(ty)); if (h.length >= 3) deler.push(h);
+    const swDel = r.fast ? alleSw : (r.fi !== undefined && kilde === "sw" && sw.get(r.fi) ? [...sw.get(r.fi).values()] : []);
+    for (const arr of swDel) {
+      if (r.fast) {
+        let n0 = Infinity, n1 = -Infinity; for (const q of arr) { const v = nn(q); n0 = Math.min(n0, v); n1 = Math.max(n1, v); }
+        if (n0 < -FASADE_BAND || n1 > FASADE_BAND) continue;
+      }
+      const tyx = arr.map(ty);
+      if (!iSpenn(tyx)) continue;
+      const h = hylle2(tyx); if (h.length >= 3) deler.push(h);
       for (const q of arr) swUt = Math.max(swUt, nn(q));
     }
     // stålet i fasadeplanet
-    let stalUt = -Infinity, stalT0 = Infinity, stalT1 = -Infinity;
+    let stalUt = -Infinity;
     const staende = [];                                        // toppene av søyler og forlengere
     for (const x of stal) {
       let n0 = Infinity, n1 = -Infinity;
       for (const q of x.pkt) { const v = nn(q); n0 = Math.min(n0, v); n1 = Math.max(n1, v); }
       if (n0 < -FASADE_BAND || n1 > FASADE_BAND) continue;     // går på tvers, eller ligger i en annen fasade
       const tyx = x.pkt.map(ty);
+      if (!iSpenn(tyx)) continue;                              // står på samme linje, men et annet sted
       const h = hylle2(tyx); if (h.length >= 3) deler.push(h);
       stalUt = Math.max(stalUt, n1);
       let e0 = Infinity, e1 = -Infinity, yt = -Infinity;
-      for (const [tt, yy] of tyx) { stalT0 = Math.min(stalT0, tt); stalT1 = Math.max(stalT1, tt); e0 = Math.min(e0, tt); e1 = Math.max(e1, tt); yt = Math.max(yt, yy); }
+      for (const [tt, yy] of tyx) { e0 = Math.min(e0, tt); e1 = Math.max(e1, tt); yt = Math.max(yt, yy); }
       if (x.staar) staende.push([(e0 + e1) / 2, yt]);
     }
     if (!deler.length) continue;
@@ -478,22 +586,35 @@ function byggFasader() {
     let ut;
     if (Number.isFinite(swUt)) ut = swUt;                      // utsiden av veggene/ringmuren
     else {
-      ut = stalUt + tyk;                                       // utsiden av søylene (+ veggen som skal stå der)
+      ut = (Number.isFinite(stalUt) ? stalUt : 0) + tyk;       // utsiden av søylene (+ veggen som skal stå der)
       if (tyk > 0) {                                           // veggtykkelsen forbi søylene i hver ende
         const a = Math.min(...omr.map(p => p[0])), b = Math.max(...omr.map(p => p[0]));
         omr = omr.map(([tt, y]) => [tt <= a + 1e-9 ? tt - tyk : tt >= b - 1e-9 ? tt + tyk : tt, y]);
       }
     }
+    if (r.fast) { omr = klippX(omr, -kant, r.L + kant); if (omr.length < 3) continue; }
     flater.push({ navn: r.navn, o: r.o, e: r.e, N: r.N, deler: [omr], ut });
   }
-  return { flater, kilde, tyk };
+  // Reserve uten omriss: fasader (eller biter av dem) som står inne i bygget
+  // tas ut — se utsatteDeler i laster-regn.js.
+  if (kilde === "sw" && flater.length > 1) {
+    const ute = utsatteDeler(flater);
+    const rene = [];
+    flater.forEach((f, i) => {
+      const deler = [];
+      for (const [a, b] of ute[i]) for (const d of f.deler) { const k = klippX(d, a, b); if (k.length >= 3) deler.push(k); }
+      if (deler.length) rene.push({ ...f, deler });
+    });
+    return { flater: rene, kilde, tyk, ring };
+  }
+  return { flater, kilde, tyk, ring };
 }
 function vindFlater() {
   let skjultN = 0; try { skjultN = skjulteIder().size; } catch (_) {}
   const L = lagret;
   const nk = [S.fileName, S.modelGroup && S.modelGroup.uuid, swGroup ? swGroup.children.length : 0, [...((L && L.vegger) || []), ...((L && L.ringmur) || [])].reduce((a, v) => a + (Number(v.x) || 0) * 7 + (Number(v.z) || 0) * 13 + (Number(v.y) || 0) * 3 + (Number(v.lengdeMm || v.lengde) || 0) + (v.skjult ? 1e6 : 0), 0).toFixed(4),
     L && L.vegger ? L.vegger.length : 0, L && L.ringmur ? L.ringmur.length : 0,
-    L && L.oppsett ? L.oppsett.tykkelseMm : "", skjultN, skala()].join("|");
+    L && L.oppsett ? L.oppsett.tykkelseMm : "", skjultN, skala(), metaVersjon].join("|");
   if (flateHurtig.nokkel === nk && flateHurtig.verdi) return flateHurtig.verdi;
   const verdi = { ...byggFasader(), hTopp: takTopp() };
   flateHurtig = { nokkel: nk, verdi };
@@ -530,7 +651,22 @@ export function regnUt() {
     if (v) {
       const kat = TERRENG[data.terreng] ? data.terreng : "II";
       const q = vindTrykk(v.h, vb, kat);
-      const tak = tf.flater.length && tf.flater.every(f => f.alfa < 5) ? flattTakSoner(v.b, v.d, v.h) : null;
+      let tak = tf.flater.length && tf.flater.every(f => f.alfa < 5) ? flattTakSoner(v.b, v.d, v.h) : null;
+      // Emil 08.10: sonene på taket ligger PÅ TAKET (overkant av de høyeste
+      // bjelkene), ikke på toppen av søyleforlengerne — og bare der det er
+      // tak: en L klippes til omrisset.
+      if (tak) {
+        let yTak = -Infinity;
+        for (const f of tf.flater) for (const p of f.polygon) yTak = Math.max(yTak, p.y * skala());
+        if (!Number.isFinite(yTak)) yTak = v.y1;
+        const W = v.w, Q = v.tvers, ring = vf.ring || [];
+        const P = (dm, bm) => [W[0] * (v.s0 + dm) + Q[0] * (v.q0 + bm), W[1] * (v.s0 + dm) + Q[1] * (v.q0 + bm)];
+        tak = { ...tak, y: yTak, soner: tak.soner.map(z => {
+          let plan = [P(z.v0, z.u0), P(z.v1, z.u0), P(z.v1, z.u1), P(z.v0, z.u1)];
+          if (ring.length >= 3) plan = klippMedKonveks(ring, polyAreal2(plan) >= 0 ? plan : plan.slice().reverse());
+          return { ...z, plan, areal: plan.length >= 3 ? Math.abs(polyAreal2(plan)) : 0 };
+        }).filter(z => z.areal > 1e-6) };
+      }
       ut.vind = { ...v, vb, kat, q, tak, kilde: vf.kilde, flater: vf.flater, retning: r, retninger: rr };
     }
   }
@@ -630,9 +766,9 @@ function tegn() {
     const T = (dm, bm, ym) => V3(W[0] * (v.s0 + dm) + Q[0] * (v.q0 + bm), ym, W[1] * (v.s0 + dm) + Q[1] * (v.q0 + bm));
     if (v.tak) for (const z of v.tak.soner) {
       const cpe = CPE_FLATT_TAK[z.sone];
-      const poly = [T(z.v0, z.u0, v.y1 + luft), T(z.v1, z.u0, v.y1 + luft), T(z.v1, z.u1, v.y1 + luft), T(z.v0, z.u1, v.y1 + luft)];
-      const m = flateMesh(poly, farge(cpe), 0.4); if (m) lasterGroup.add(m);
-      const c = poly.reduce((a, p) => a.add(p), new THREE.Vector3()).divideScalar(4);
+      const poly = z.plan.map(([x, zz]) => V3(x, v.tak.y + luft, zz));
+      const m = flateMesh(poly, farge(cpe), 0.4, z.plan); if (m) lasterGroup.add(m);
+      const c = poly.reduce((a, p) => a.add(p), new THREE.Vector3()).divideScalar(poly.length);
       lasterGroup.add(lappPaa(z.sone + "  " + fortegn(we(qp, cpe)) + " kN/m²", hex(farge(cpe)), c));
     }
     // pila: hvor vinden kommer fra
@@ -661,7 +797,7 @@ function tegnPanel() {
   if (!body) return;
   const terrengH = hFraTerreng();
   const kat = Object.entries(TERRENG).map(([k, v]) => '<option value="' + k + '"' + ((data.terreng || "II") === k ? " selected" : "") + ">" + esc(t(v.navn)) + "</option>").join("");
-  const takf = [["auto", t("Fra tak-generatoren")], ["flatt", t("Flatt tak")], ["pult", t("Pulttak")], ["saltak", t("Saltak")]]
+  const takf = [["auto", t("Automatisk")], ["flatt", t("Flatt tak")], ["pult", t("Pulttak")], ["saltak", t("Saltak")]]
     .map(([k, n]) => '<option value="' + k + '"' + ((data.takform || "auto") === k ? " selected" : "") + ">" + n + "</option>").join("");
   body.innerHTML =
     '<div class="laster-forbehold">' + ikon("advarsel") + " " +
@@ -677,7 +813,7 @@ function tegnPanel() {
     felt("sk0", "sk,0", "kN/m²") + felt("Hg", "Hg", "moh") + felt("dsk", "Δsk", t("kN/m² per 100 m")) + felt("skMaks", "sk,maks", "kN/m²") +
     felt("Ce", "Ce", "", "1,0") + felt("Ct", "Ct", "", "1,0") +
     '<label>' + t("Taket") + '<select data-felt="takform">' + takf + "</select></label>" +
-    felt("takvinkel", t("Takvinkel"), "°", "0") +
+    ((data.takform || "auto") !== "auto" ? felt("takvinkel", t("Takvinkel"), "°", "0") : "") +
     '<div id="laSnoRes"></div>' +
     '<h4 data-sek="la-vind">' + t("Vindlast (NS-EN 1991-1-4)") + "</h4>" +
     felt("vb0", "vb,0", "m/s") + felt("cdir", "cdir", "", "1,0") + felt("cseason", "cseason", "", "1,0") +
@@ -692,6 +828,7 @@ function tegnPanel() {
       data[el.dataset.felt] = el.value;
       if (el.dataset.felt in fraTerreng) fraTerreng[el.dataset.felt] = false;   // skrevet om for hånd
       skriv(); visResultat(); if (visSno || visVind) tegn();
+      if (el.dataset.felt === "takform") tegnPanel();
     };
     el.addEventListener("input", lagre); el.addEventListener("change", lagre);
   });
@@ -720,7 +857,8 @@ function visResultat() {
       let h = advarsel(snoAdvarsler(data)) + rad(t("Snølast på mark, sk"), kn(r.sno.sk) + " kN/m²" + (r.sno.n ? " (n = " + r.sno.n + ")" : "") + (r.sno.kappet ? " · sk,maks" : ""));
       if (r.sno.kilde === "mangler") h += '<p class="la-tom">' + t("Tak-generatoren har ikke lagt tak — regnet som flatt tak over modellen. Velg takform og vinkel over.") + "</p>";
       const formNavn = { flatt: t("Flatt tak"), pult: t("Pulttak"), saltak: t("Saltak") };
-      if (r.sno.kilde === "stal" && r.sno.profil) h += '<p class="la-tom">' + t("Ingen tak fra tak-generatoren — taket er lest av stålet (uten søyler og søyleforlengere): {0}, {1}°. Skriv inn en takvinkel for å overstyre vinkelen.", formNavn[r.sno.profil.form] || "", kn1(r.sno.profil.vinkel)) + "</p>";
+      if (r.sno.kilde === "regler") h += '<p class="la-tom">' + t("Ingen takplater er lagt — takflatene er regnet med tak-generatorens regler: de øverste bjelkene, med omrisset av bjelkenes utvendige flate ({0} takflater).", r.sno.flater.length) + "</p>";
+      if (r.sno.kilde === "stal" && r.sno.profil) h += '<p class="la-tom">' + t("Fant ingen takbjelker — taket er lest av stålet (uten søyler og søyleforlengere): {0}, {1}°. Velg takform for å skrive inn vinkelen selv.", formNavn[r.sno.profil.form] || "", kn1(r.sno.profil.vinkel)) + "</p>";
       if (r.sno.kilde === "stal-vinkel" && r.sno.profil) h += '<p class="la-tom">' + t("Takvinkelen du skrev inn ({0}°) er brukt på taket lest av stålet ({1}).", kn1(r.sno.profil.vinkel), formNavn[r.sno.profil.form] || "") + "</p>";
       for (const f of r.sno.flater)
         h += rad(esc(f.navn) + " · " + kn1(f.alfa) + "° · μ1 " + kn(f.mu), kn(f.s) + " kN/m² · " + Math.round(f.total) + " kN");
@@ -734,7 +872,9 @@ function visResultat() {
     else {
       const v = r.vind, qp = v.q.qp;
       let h = advarsel(vindAdvarsler(data)) + rad(t("Basisvindhastighet, vb"), kn(v.vb) + " m/s") +
-        '<p class="la-tom">' + ikon("fasade") + " " + (v.kilde === "sw"
+        '<p class="la-tom">' + ikon("fasade") + " " + (v.kilde === "omriss" || v.kilde === "omriss-sw"
+          ? t("Fasadene er kantene av byggets omriss sett ovenfra ({0} fasader) — likt med og uten veggelementer. Sonene dekker hver fasade fra ende til ende og bunn til topp.", v.flater.length)
+          : v.kilde === "sw"
           ? t("Sonene ligger utenpå veggelementene og ringmuren ({0} fasader), fra ende til ende og bunn til topp.", v.flater.length)
           : t("Ingen SW-vegger: sonene ligger utenpå stålsøylene i hver fasade, fra ende til ende og bunn til topp.")) + "</p>" +
         rad(t("Byggehøyde h · b · d"), kn(v.h) + " · " + kn(v.b) + " · " + kn(v.d) + " m") +
@@ -753,7 +893,8 @@ function visResultat() {
       const sumA = v.perFlate.reduce((s, x) => s + x.areal, 0);
       h += rad("<b>" + t("Sum veggareal") + "</b>", "<b>" + kn(sumA) + " m²</b>");
       if (v.tak) for (const k of ["F", "G", "H", "I"]) {
-        const A = v.tak.soner.filter(z => z.sone === k).reduce((s, z) => s + (z.u1 - z.u0) * (z.v1 - z.v0), 0);
+        const A = v.tak.soner.filter(z => z.sone === k).reduce((s, z) => s + z.areal, 0);
+        if (!(A > 1e-6)) continue;
         h += rad(t("Tak {0}", k) + " · cpe " + fortegn(CPE_FLATT_TAK[k]) + " · " + kn(A) + " m²",
           fortegn(we(qp, CPE_FLATT_TAK[k])) + " kN/m²" + (k === "I" ? " / " + fortegn(we(qp, CPE_FLATT_TAK.Iminus)) : ""));
       }
@@ -774,9 +915,24 @@ på("btnLaster", "click", () => {
   tegnPanel();
   apnePanel("lasterPanel");
   fyllFraTerreng();   // tegner panelet på nytt når kommunen er funnet
+  lesMeta();          // typenavnene (bjelke/søyle) trengs for takflatene
 });
 
+// Typenavnene fra IFC-tråden hentes asynkront — samme venting som «Generer
+// tak» gjør. Når de er lest, regnes takflatene og fasadene på nytt.
+let metaLest = "";
+async function lesMeta() {
+  if (S.glbActive || metaLest === S.fileName) return;
+  try {
+    const { sikreMeta } = await import("./ifcrpc.js");
+    const { alleElementIder } = await import("./ifc.js");
+    await sikreMeta(alleElementIder);
+    metaLest = S.fileName; metaVersjon++;
+    if ($("lasterPanel") && $("lasterPanel").classList.contains("open")) { tegnPanel(); if (visSno || visVind) tegn(); }
+  } catch (err) { console.warn("Snø & Last: typenavnene kunne ikke leses", err); }
+}
+
 // Ny modell: lastdataene hører til modellen, og visningen ryddes
-S.ryddLaster = () => { visSno = visVind = false; rydd(); data = {}; fraTerreng = { kommune: false, H: false }; };
+S.ryddLaster = () => { metaLest = ""; visSno = visVind = false; rydd(); data = {}; fraTerreng = { kommune: false, H: false }; };
 
 export const __test = { regnUt, byggFasader, glemFlater: () => { flateHurtig = { nokkel: "", verdi: null }; }, settData: (d) => { data = vaskLastdata(d); }, hentData: () => data, fyllFraTerreng };
