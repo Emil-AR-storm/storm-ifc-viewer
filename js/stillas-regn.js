@@ -274,11 +274,15 @@ export function stillasDeler(o, bakke) {
           const stige = stiger.some(q => q.side === S.i && q.felt === i && q.etg === k);
           if (stige) {
             Bx(P(sm, B / 2, y + 0.03), [Lf - 0.04, 0.05, B - 0.04], "stige", { tell: "stigeplate", mal: fm(Lf) + " × " + fm(B) + " m" });
-            const lukL = STILLAS_STD.luke, luk0 = s1 - 0.1 - lukL;
+            // 🪜 Toppen av stigen peker mot nærmeste ende/hjørne av stillaset
+            // (Emil 09.10, som på Instant-bildet): luka ligger i den enden av
+            // plata, og stigen går på skrå inn under plata derfra.
+            const motSlutt = sm >= Le / 2, retn = motSlutt ? 1 : -1;
+            const lukL = STILLAS_STD.luke, luk0 = motSlutt ? s1 - 0.1 - lukL : s0 + 0.1;
             Bx(P(luk0 + lukL / 2, B / 2, y + 0.06), [lukL, 0.012, B - 0.2], "trapp");
-            const toppS = luk0 + 0.05, fotS = toppS - Hetg * 0.55;
+            const toppS = motSlutt ? luk0 + 0.05 : luk0 + lukL - 0.05, fotS = toppS - retn * Hetg * 0.55;
             for (const tv of [B / 2 - 0.2, B / 2 + 0.2]) R_(P(fotS, tv, y - Hetg + 0.05), P(toppS, tv, y - 0.02), "stige", { r: R * 0.7 });
-            ror[ror.length - 1].tell = "stige"; ror[ror.length - 1].mal = fm(Math.hypot(toppS - fotS, Hetg)) + " m";
+            ror[ror.length - 1].tell = "stige"; ror[ror.length - 1].mal = fm(Math.hypot(Math.abs(toppS - fotS), Hetg)) + " m";
             for (let r = 0.3; r < Hetg - 0.1; r += 0.3) {
               const f = r / Hetg, sr = fotS + (toppS - fotS) * f, yr = y - Hetg + 0.05 + (Hetg - 0.07) * f;
               R_(P(sr, B / 2 - 0.2, yr), P(sr, B / 2 + 0.2, yr), "stige", { r: R * 0.5 });
@@ -311,7 +315,7 @@ export function stillasDeler(o, bakke) {
       // diagonal hvert n. felt, på utsiden
       if (i % (o.diagonalHvert || 5) === 0)
         for (let k = 0; k < Etg; k++) R_(P(s0, B, k * Hetg + 0.25), P(s1, B, (k + 1) * Hetg), "diag", { tell: "diagonal", mal: fm(Math.hypot(Lf, Hetg - 0.25)) + " m" });
-      if (tr) trappetaarn(o, S, P, R_, Bx, legg, s0, s1, tr, haki);
+      if (tr) trappetaarn(o, S, P, R_, Bx, legg, s0, s1, tr, haki, bakke);
     }
     // forankring mot veggen
     for (let s = Math.min(1.5, Le / 2); s < Le; s += (o.forankringBort || 4))
@@ -404,7 +408,7 @@ function hjorneplate(o, H0, y, e, side, Bx, haki, inn) {
 
 // 🪜 Trappetårnet utenpå feltet s0–s1: to rader (t = B … 3B), løpene
 // annenhver side, repos i hver ende over begge radene, rekkverk bare utvendig.
-function trappetaarn(o, S, P, R_, Bx, legg, s0, s1, tr, haki) {
+function trappetaarn(o, S, P, R_, Bx, legg, s0, s1, tr, haki, bakke) {
   const B = o.B, Hetg = o.H, rad = B, t0 = B, t1 = B + 2 * rad, rep = STILLAS_STD.repos;
   const nLop = Math.min(tr.til, o.etasjer || 1), topT = nLop * Hetg;
   const RH = o.rekkverkH || 1, KH = o.kneH || 0.5;
@@ -421,6 +425,30 @@ function trappetaarn(o, S, P, R_, Bx, legg, s0, s1, tr, haki) {
       R_(P(a, tv, ya + 0.95), P(b, tv, yb + 0.95), "trapp", { r: 0.019, tell: "handlist", mal: fm(Math.hypot(b - a, Hetg)) + " m" });
       R_(P(a, tv, ya + 0.5), P(b, tv, yb + 0.5), "trapp", { r: 0.014 });
       for (let j = 0; j <= 4; j++) { const f = j / 4, sp = a + (b - a) * f, yp = ya + (yb - ya) * f; R_(P(sp, tv, yp + 0.02), P(sp, tv, yp + 0.95), "trapp", { r: 0.014 }); }
+    }
+    // 🪜 Nederste løp fortsetter ned til terrenget (Emil 09.10): samme
+    // stigning, bakover fra der løpet begynner, til trappa treffer bakken.
+    if (k === 0 && bakke) {
+      const retn = Math.sign(b - a) || 1, stig = Hetg / Math.abs(b - a);
+      const gVed = (sx) => { const q = P(sx, tm, 0); return Math.min(0, Number(bakke(q[0], q[2])) || 0); };
+      let d = 0;
+      if (gVed(a) < -0.02) for (d = 0.01; d < 12 && -stig * d > gVed(a - retn * d); d += 0.01);
+      if (d > 0.02) {
+        const sb = a - retn * d, yb0 = -stig * d;
+        for (const tv of [tv0, tv1]) {
+          R_(P(sb, tv, yb0 + 0.02), P(a, tv, 0.02), "trapp", { r: 0.038 });
+          if (tv !== tv1) continue;
+          R_(P(sb, tv, yb0 + 0.95), P(a, tv, 0.95), "trapp", { r: 0.019, tell: "handlist", mal: fm(Math.hypot(d, -yb0)) + " m" });
+          R_(P(sb, tv, yb0 + 0.5), P(a, tv, 0.5), "trapp", { r: 0.014 });
+          for (const f of [0, 1]) { const sp = sb + (a - sb) * f, yp = yb0 * (1 - f); R_(P(sp, tv, yp + 0.02), P(sp, tv, yp + 0.95), "trapp", { r: 0.014 }); }
+        }
+        const n = Math.max(1, Math.round(-yb0 / 0.2));
+        Bx(P((a + sb) / 2, tm, yb0 / 2), [0.01, 0.01, 0.01], "trapp", { tell: "trappelop", mal: fm(d) + " m / " + fm(-yb0) + " m", usynlig: true });
+        for (let j = 0; j < n; j++) {
+          const sj = sb + (a - sb) * (j + 0.5) / n, yj = yb0 * (1 - (j + 0.5) / n);
+          Bx(P(sj, tm, yj + 0.02), [d / n + 0.02, 0.04, tv1 - tv0], "trapp");
+        }
+      }
     }
     const steg = Math.max(4, Math.round(Hetg / 0.2));
     const lop = Bx(P((a + b) / 2, tm, (ya + yb) / 2), [0.01, 0.01, 0.01], "trapp", { tell: "trappelop", mal: fm(Math.abs(b - a)) + " m / " + fm(Hetg) + " m" });
