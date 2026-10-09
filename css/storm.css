@@ -23,7 +23,13 @@
    Ligger på både :root og [data-tema="mork"], slik at temaet er riktig også før
    js/tema.js rekker å sette attributtet. */
 :root, html[data-tema="mork"] {
-  --valgt-bla: #3b82f6;              /* valgt objekt / aktiv type — samme blå som i 3D */
+  --valgt-bla: #3b82f6;
+  /* 🌦 værbildene (js/vaer-felles.js) */
+  --vaer-sol: #f5b82e;
+  --vaer-sky: #b7c0cb;
+  --vaer-sky-mork: #6b7480;
+  --vaer-regn: #4ea3ff;
+  --vaer-sno: #ffffff;              /* valgt objekt / aktiv type — samme blå som i 3D */
   --bg: #0f1114;
   --panel: #191c21;
   --panel2: #23272e;
@@ -54,6 +60,11 @@
    Byttes med ⚙ Innstillinger → Utseende → Tema, eller knappen i toppbaren. */
 html[data-tema="lys"] {
   --bg: #ffffff;
+  --vaer-sol: #e0a100;
+  --vaer-sky: #9aa4b0;
+  --vaer-sky-mork: #5b6470;
+  --vaer-regn: #1f7ae0;
+  --vaer-sno: #8fb8e8;
   --panel: #ffffff;
   --panel2: #f4f5f7;
   --text: #14161a;
@@ -2061,4 +2072,63 @@ body.st-tid-paa .st-velgbar { bottom: 112px; }
   #mbHjelp { display: inline-flex; font-weight: 700; }
   /* boksen går over hele bredden — minikartet viker mens et verktøy er i bruk */
   body:has(#modeBar.open) #miniMap { display: none !important; }
+}
+
+/* ═══════════════════ 🌦 VIS VÆR (js/vaer.js, alternativ C) ═══════════════════ */
+#vaerBody .vr-topp { display: flex; align-items: center; gap: 8px; }
+#vaerBody .vr-dato { display: flex; align-items: center; gap: 6px; margin: 0; }
+#vaerBody .vr-dagnavn { color: var(--muted); text-transform: capitalize; flex: 1; }
+#vaerBody .vr-sted { color: var(--muted); font-size: 12px; margin: 6px 0 8px; }
+#vaerBody .vr-naa { display: flex; align-items: center; gap: 10px; margin: 6px 0 4px; }
+#vaerBody .vr-naa b { font-size: 18px; }
+#vaerBody input[type="range"] { width: 100%; }
+#vaerBody .vr-svarboks { background: var(--panel2); border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 10px; margin: 8px 0; }
+#vaerBody .vr-svar { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 3px 0; }
+#vaerBody .vr-svar small { display: block; color: var(--muted); font-size: 11px; }
+#vaerBody .vr-svar b { white-space: nowrap; font-weight: 600; }
+#vaerBody .vr-ok { color: var(--ok); }
+#vaerBody .vr-warn { color: var(--warn); }
+#vaerBody .vr-fare { color: var(--danger); font-weight: 700; }
+#vaerBody .vr-muted { color: var(--muted); }
+#vaerBody .vr-varm { color: var(--warn); font-weight: 600; }
+#vaerBody .vr-varsel { border-left: 3px solid var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); padding: 6px 10px; border-radius: 6px; margin: 6px 0; }
+#vaerBody .vr-varsel.fare { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent); }
+#vaerBody .vr-dogn { font-size: 12px; color: var(--muted); margin: 4px 0; }
+#vaerBody .vr-tabell { max-height: 260px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+#vaerBody table { width: 100%; border-collapse: collapse; font-size: 12px; }
+#vaerBody th { position: sticky; top: 0; background: var(--panel); color: var(--muted); font-weight: 500; text-align: left; padding: 4px 6px; }
+#vaerBody td { padding: 2px 6px; vertical-align: middle; }
+#vaerBody tr[data-t] { cursor: pointer; }
+#vaerBody tr.valgt td { background: var(--panel2); box-shadow: inset 0 1px 0 var(--text), inset 0 -1px 0 var(--text); }
+#vaerBody .vr-grenser { margin-top: 8px; }
+#vaerBody .vr-grense { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 4px 0; }
+#vaerBody .vr-grense input { width: 80px; }
+#vaerBody .vr-kilde { font-size: 10.5px; color: var(--muted); margin-top: 8px; }
+.vaer-ikon { flex-shrink: 0; vertical-align: middle; }
+
+/* 🗂 Prosjektinfo i Innstillinger (js/prosjektinfo.js) */
+#piSeksjon .pi-felt { display: block; margin: 6px 0 2px; font-size: 12px; }
+#piSeksjon .pi-felt input, #piSeksjon .pi-felt select { display: block; width: 100%; margin-top: 2px; }
+#piSeksjon .pi-sok { display: flex; gap: 6px; }
+#piSeksjon .pi-sok input { flex: 1; min-width: 0; }
+#piSeksjon .pi-adr { font-size: 12px; margin: 2px 0 6px; }
+#piSeksjon .pi-treff { display: block; width: 100%; text-align: left; margin: 3px 0; }
+#piSeksjon button.lenke { background: none; border: 0; color: var(--accent2); padding: 0 4px; cursor: pointer; text-decoration: underline; }
+
+/* 🌦 Været på Framdriftsplan-tidslinja (js/vaer-felles.js) */
+.fp-tid .st-tid-bane.fp-med-vaer { height: 56px; }
+.fp-tid .fp-vaer-rad { position: absolute; left: 0; right: 0; top: 0; height: 22px; pointer-events: none; }
+.fp-tid .fp-vaer-dag { position: absolute; top: 2px; transform: translateX(-50%); pointer-events: auto; line-height: 0; }
+.fp-tid .fp-vaer-felt { position: absolute; top: 0; height: 21px; border-radius: 3px; pointer-events: auto; }
+.fp-tid .fp-vaer-felt.fare { background: color-mix(in srgb, var(--danger) 30%, transparent); box-shadow: inset 0 -2px 0 var(--danger); }
+.fp-tid .fp-vaer-felt.varsel { background: color-mix(in srgb, var(--warn) 24%, transparent); box-shadow: inset 0 -2px 0 var(--warn); }
+.fp-tid .fp-vaer-linje { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 4px; }
+.fp-tid .fp-vaer-linje .fp-vaer-merke { margin-left: 0; }
+.fp-tid .fp-vaer-tom { position: absolute; left: 0; top: 4px; font-size: 10px; color: var(--muted); }
+.fp-tid .fp-vaer-merke { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--border); background: var(--panel2); border-radius: 10px; padding: 0 7px; font-size: 11px; margin-left: 4px; vertical-align: middle; }
+.fp-tid .fp-vaer-merke.fare { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 18%, transparent); }
+.fp-tid .fp-vaer-merke.varsel { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 18%, transparent); }
+@media (max-width: 899px) {
+  .fp-tid .st-tid-bane.fp-med-vaer { height: 50px; }
+  .fp-tid .fp-vaer-merke { font-size: 10px; padding: 0 5px; }
 }
