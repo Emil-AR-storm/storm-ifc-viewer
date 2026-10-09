@@ -1,0 +1,2598 @@
+// 💬 Markeringer: lagring lokalt og deling via SharePoint.
+import * as THREE from "three";
+import { $, på, S, esc, ikon, loadingEl, loadingText, lukkPaneler } from "./state.js";
+import { t } from "./i18n.js";
+import { LETT } from "./lett.js";
+import { ANSATTE, FRISTER, PLANNER, TJENESTER } from "./config.js";
+import { HASTEGRAD, fristTekst, hastegrad, iDagISO, omDager, vaskGrenser } from "./frist.js";
+import { hentMedFrist, meldLagretKopi, meldNettfeil, tegnNettBanner } from "./nett.js";
+import { tegnMarkering } from "./markerbilde.js";
+// Minikartet varsles med et flagg på S, IKKE med en import av minimap.js.
+// Grunnen er modulrekkefølgen: minimap.js gjør DOM-oppslag ($("miniMap")) og
+// kaller applyMiniSize() på toppnivå. Importeres den herfra, kjører den koden
+// tidligere enn i dag, og en slik rekkefølgeendring er nøyaktig den typen feil
+// som viser seg som «svart minikart bare på mobil».
+import { finnNevnte, koblNevning, nevnKandidater, nevningHtml } from "./nevning.js";
+import { fmtTid, lydStottes, startOpptak } from "./lyd.js";
+import { fristTilISO, fullforOppgave, opprettOppgave, planUrl, plannerToken } from "./planner.js";
+import { setMode } from "./modes.js";
+import { camera, controls, frameHooks, markerGroup, meldLapp, omradeGroup, raycaster, renderer } from "./scene.js";
+import { GRAPH, SP, authHeaders, graphGet, spTokenSilent } from "./sharepoint.js";
+import { MAKS_LYD_PER_MARKERING, MAKS_PER_MARKERING, bildeUrl, erBildefil, lastOpp, leggTilBilder, lydNavn, lydUrl, slettBilder, trygtLyd } from "./bilder.js";
+import { ADVAR_MB, antallSider, apneHtmlTegning, apneHtmlVedlegg, erHtml, gyldigSide, hentTegninger, mb, sideBilde, velgMappe, visStatus } from "./tegninger.js";
+import { MAKS_SKJEMA_PER_MARKERING, apneMalVelger, apneSkjema, gjeldendeSkjema,
+         hentMaler, sjekklisteI, sjekklisteStripeHtml, vaskSkjema } from "./sjekkliste.js";
+import { varsel } from "./varsel.js";
+// ⛓-lenka til en markering hentes via S.markerLink (settes av share.js).
+// Direkte import ville gitt sirkel: markers → share → display → ifc → markers.
+
+// ---------- Markeringer / kommentarer ----------
+
+på("btnComments", "click", () => {
+  lukkPaneler("commentPanel");
+  $("commentPanel").classList.toggle("open");
+});
+
+function storageKey(){ return "storm-ifc-comments::" + S.fileName; }
+
+// ---------- 👁 Skjul markeringer ----------
+// EGEN, LOKAL LISTE — flagget ligger IKKE på markeringen. Hadde det ligget der,
+// ville persist() + pushSharedComments() sendt det til SharePoint, og en
+// markering én person skjuler på sin skjerm ville forsvunnet for hele
+// byggeplassen. Skjuling er en VISNING, på linje med hiddenIDs i display.js.
+//
+// Bieffekt som er gratis: markeringer som alt ligger i localStorage står ikke i
+// settet, og er dermed synlige. Ingen migrering og ingen «vei tilbake» å glemme
+// — som runde 18 lærte oss å se etter.
+const skjulteMark = new Set();
+function skjulKey(){ return "storm-ifc-skjulte-mark::" + S.fileName; }
+
+function lastSkjulteMark() {
+  skjulteMark.clear();
+  try {
+    const raw = localStorage.getItem(skjulKey());
+    (raw ? JSON.parse(raw) : []).forEach(id => skjulteMark.add(String(id)));
+  } catch (_) {}
+}
+
+function lagreSkjulteMark() {
+  try { localStorage.setItem(skjulKey(), JSON.stringify([...skjulteMark])); } catch (_) {}
+}
+
+// Ider kommer både som tall (Date.now()) og streng (SharePoint) — resten av
+// fila sammenligner med == med vilje. Settet holder ALLTID strenger, så
+// markeringSkjult(5) og markeringSkjult("5") gir samme svar.
+export const markeringSkjult = (id) => skjulteMark.has(String(id));
+
+export function skjulteMarkeringerAntall() {
+  return (S.comments || []).filter(c => markeringSkjult(c.id)).length;
+}
+
+// Setter .visible på boblene OG områdene fra samme sett. Ett sted, så de to
+// aldri kan si forskjellige ting om samme markering.
+export function synkMarkeringSkjuling() {
+  markerGroup.children.forEach(s => { s.visible = !markeringSkjult(s.userData.commentId); });
+  omradeGroup.children.forEach(g => { g.visible = !markeringSkjult(g.userData.commentId); });
+  S.miniSkitten = true;
+  // «Vis alle» eies av display.js. Kroken settes der, så markers.js slipper å
+  // importere display.js — det ville lukket sirkelen markers → display → ifc → markers.
+  if (S.oppdaterVisAlle) S.oppdaterVisAlle();
+}
+
+// ETT sted som endrer skjulingen. Øyeknappen i markeringskortet og gruppa i
+// 🎨 Utseende kaller begge hit, og begge panelene tegnes på nytt etterpå — det
+// er slik de to holder seg i sync uten at den ene trenger å vite om den andre.
+function tegnPanelerPaNytt() {
+  if ($("commentPanel") && $("commentPanel").classList.contains("open")) renderCommentList();
+  else if ($("commentCount")) $("commentCount").textContent = S.comments.length;
+  if (S.tegnUtseendePanel) S.tegnUtseendePanel();
+}
+
+export function settMarkeringSkjult(id, skjul) {
+  const n = String(id);
+  if (skjul) skjulteMark.add(n); else skjulteMark.delete(n);
+  lagreSkjulteMark();
+  synkMarkeringSkjuling();
+  // Bobla står ikke og peker på en markering som ikke er der lenger.
+  if (skjul && popFor && String(popFor.id) === n) closeMarkerPopup();
+  tegnPanelerPaNytt();
+}
+
+export function settAlleMarkeringerSkjult(skjul) {
+  skjulteMark.clear();
+  if (skjul) (S.comments || []).forEach(c => skjulteMark.add(String(c.id)));
+  lagreSkjulteMark();
+  synkMarkeringSkjuling();
+  if (skjul) closeMarkerPopup();
+  tegnPanelerPaNytt();
+}
+
+// Kroker display.js leser: «Vis alle» skal også hente fram markeringene, og
+// knappen skal stå framme så lenge én markering er skjult.
+S.markeringNoeSkjult = () => skjulteMark.size > 0;
+S.visAlleMarkeringer = () => { if (skjulteMark.size) settAlleMarkeringerSkjult(false); };
+
+// 🎨 «Markeringer» som gruppe i Utseende. Én øyeknapp for alle, og et tall som
+// sier hvor mange som er skjult enkeltvis — uten det ville gruppa sett «på» ut
+// mens tre bobler var borte fra kortene.
+S.markeringUtseendeRader = (body) => {
+  if (!body) return;
+  const alle = (S.comments || []).length;
+  if (!alle) return;
+  const skjult = skjulteMarkeringerAntall();
+  const alleSkjult = skjult === alle;
+  const boks = document.createElement("div");
+  boks.innerHTML =
+    '<div class="qty-row" style="margin-top:10px"><div class="n" style="font-weight:700">' +
+      t("Markeringer") + '</div><div class="c"></div></div>' +
+    '<div class="qty-row"><div class="n">' + t("Alle markeringer") +
+      ' <span style="color:var(--muted);font-size:11px">(' + alle +
+      (skjult ? " · " + t("{0} skjult", skjult) : "") + ')</span></div>' +
+      '<div class="c"><button data-mark-alle="1" title="' + t("Skjul/vis") +
+      '" style="padding:3px 8px">' + ikon(alleSkjult ? "skjul" : "vis") + '</button></div></div>';
+  body.appendChild(boks);
+  boks.querySelector("button[data-mark-alle]").onclick = () => settAlleMarkeringerSkjult(!alleSkjult);
+};
+
+// @-nevning i «Ny markering»-dialogen. Kobles én gang; kandidatlista hentes
+// på nytt hver gang man skriver @, så den virker også etter at ansattlista
+// har kommet fra SharePoint.
+{
+  const nyFelt = document.getElementById("commentText");
+  if (nyFelt) koblNevning(nyFelt, () => nevnListe(null));
+}
+
+export function loadComments() {
+  if (LETT) { lastLettMarkeringer(); return; }
+  try {
+    const raw = localStorage.getItem(storageKey());
+    S.comments = raw ? JSON.parse(raw) : [];
+  } catch(_) { S.comments = []; }
+  lastSkjulteMark();          // skjulingen er per fil, som markeringene selv
+  S.comments.forEach(addMarkerSprite);
+  renderCommentList();
+  syncSharedComments(); // hent delte markeringer fra SharePoint i bakgrunnen
+}
+
+// LETTMODUS: markeringene kommer som vasket JSON fra Workeren (lagt der av
+// Byggeplass-knappen i det interne verktøyet). Samme feltvask som for den
+// delte SharePoint-fila — ukjente felter slipper aldri inn.
+async function lastLettMarkeringer() {
+  S.comments = [];
+  // FØR: hele blokka lå i «catch (_) {}». Feilet hentingen — tidsavbrudd,
+  // ingen dekning, 500 fra Workeren — sto montøren igjen med en modell uten
+  // en eneste markering OG uten en eneste feilmelding. Han hadde ingen måte å
+  // skille «ingen avvik her» fra «verktøyet fikk ikke tak i dem». Det er den
+  // farligste feilen i hele systemet, fordi den ikke ser ut som en feil.
+  let feil = "";
+  let lagretTid = 0;
+  try {
+    const r = await hentMedFrist("/markeringer/" + (S.lettProsjekt || "00000") + "/" +
+      encodeURIComponent(S.fileName + ".markeringer.json"));
+    // Stempelet settes av service workeren når svaret kommer fra dens lager i
+    // stedet for fra Workeren. Et ferskt svar har det IKKE — fraværet av
+    // headeren er signalet om at dette er sannheten og ikke en kopi.
+    try {
+      const s = r.headers && r.headers.get ? r.headers.get("X-Storm-Cachet") : null;
+      if (s) lagretTid = Number(s) || 0;
+    } catch (_) {}
+    // 404 er IKKE en feil: den betyr at prosjektlederen ikke har trykket
+    // Byggeplass ennå. Skriker vi der, lærer montøren å ignorere den røde
+    // linja — og da er den verdiløs den dagen den betyr noe.
+    if (!r.ok && r.status !== 404) {
+      feil = t("Fikk ikke hentet markeringene. Det du ser kan mangle noe.");
+    }
+    if (r.ok) {
+      const d = await r.json();
+      // BAKOVERKOMPATIBEL: fila var en naken array fram til format 2, og en
+      // gammel fil kan ligge i R2 lenge etter at klienten er oppdatert — helt
+      // til noen trykker Byggeplass igjen. Tåler koden bare det nye formatet,
+      // står byggeplassen tom i mellomtiden, uten feilmelding.
+      const rå = Array.isArray(d) ? d : (d && Array.isArray(d.markeringer) ? d.markeringer : []);
+      S.comments = rå.map(vaskMarkering).filter(Boolean);
+      // Fristgrensene kommer fra samme fil. Byggeplassen har ingen SharePoint
+      // og dermed ingen oppsett.json — dette er den eneste veien de kan komme.
+      // Mangler de, står FRISTER på standardverdiene 8/3.
+      if (d && d.grenser) {
+        const g = vaskGrenser(d.grenser);
+        FRISTER.gul = g.gul; FRISTER.rod = g.rod;
+      }
+      // 📦 Materiellet ligger i samme fil (format 2 med materiell-felt). En
+      // gammel fil (naken array) har det ikke — da blir lista tom, ikke feil.
+      if (S.settMateriellFraLett)
+        S.settMateriellFraLett(d && !Array.isArray(d) ? d.materiell : null);
+      // 🎯 Objektgruppene reiser i samme fil (grupper-feltet).
+      if (S.settGrupperFraLett)
+        S.settGrupperFraLett(d && !Array.isArray(d) ? d.grupper : null);
+      // 🏗 SW-elementene: montøren ser hvor hvert panel skal stå
+      if (S.settSwFraLett)
+        S.settSwFraLett(d && !Array.isArray(d) ? d.sw : null);
+      // ⛰ Terrenget (terreng-vis.js) FØR riggen: riggen skal stå på bakken,
+      // og da må bakken finnes når den tegnes. Gamle filer har ikke feltet.
+      if (S.settTerrengFraLett)
+        S.settTerrengFraLett(d && !Array.isArray(d) ? d.terreng : null);
+      // 🏠 Takplatene på taket (tak-lett.js). Gamle filer har ikke feltet.
+      if (S.settTakFraLett)
+        S.settTakFraLett(d && !Array.isArray(d) ? d.tak : null);
+      // 🏕 Riggen på tomta (rigg-vis.js). Gamle filer har ikke feltet.
+      if (S.settRiggFraLett)
+        S.settRiggFraLett(d && !Array.isArray(d) ? d.rigg : null);
+      // 🧱 Støpeplanen (stopeplan-lett.js) SIST: den farger elementer, felt
+      // og den genererte betongen fra SW-feltet over. Gamle filer har ikke feltet.
+      if (S.settStopeplanFraLett)
+        S.settStopeplanFraLett(d && !Array.isArray(d) ? d.stopeplan : null);
+      // 📅 Framdriftsplanen (framdrift-lett.js) etter støpeplanen
+      if (S.settFramdriftFraLett)
+        S.settFramdriftFraLett(d && !Array.isArray(d) ? d.framdrift : null, d && !Array.isArray(d) ? d.framdriftKilder : null);
+    }
+  } catch (e) {
+    feil = (e && e.tidsavbrudd)
+      ? t("Markeringene tok for lang tid å hente. Sjekk dekningen og last siden på nytt.")
+      : t("Fikk ikke hentet markeringene. Det du ser kan mangle noe.");
+  }
+  markerGroup.clear();
+  ryddOmrader();
+  lastSkjulteMark();
+  S.comments.forEach(addMarkerSprite);
+  merkUsendte();          // J5: det som ligger i køen finnes ikke hos Workeren ennå
+  renderCommentList();
+  meldNettfeil(feil);       // tom streng fjerner linja igjen
+  meldLagretKopi(lagretTid); // 0 fjerner «sist hentet»-merket
+  toemKo();               // og prøv å få det av gårde med en gang
+}
+
+function persist() {
+  try { localStorage.setItem(storageKey(), JSON.stringify(S.comments)); } catch(_){}
+}
+
+// Brukes av byggeplass.js når kvitteringsbilder fra innboksen henges på markeringene
+export function lagreOgSynk() { persist(); pushSharedComments(); renderCommentList(); }
+
+// Brukes av byggeplass.js når hendelser fra byggeplassen (ny markering, kommentar)
+// tas inn i den delte lista
+export function leggTilImportertMarkering(c) {
+  S.comments.push(c);
+  addMarkerSprite(c);
+}
+
+// LETTMODUS: nye markeringer og kommentarer sendes til Workerens innboks.
+//
+// J5 – KØ FOR DET SOM IKKE KOM FRAM.
+// Før fikk montøren bare en alert når sendingen feilet, mens markeringen ble
+// liggende i S.comments og tegnet i modellen. Siden loadComments aldri leser
+// localStorage i lettmodus, forsvant den sporløst ved neste sideinnlasting –
+// og montøren hadde ingen måte å vite det på. På en byggeplass med dårlig
+// dekning er det ikke et kanttilfelle.
+//
+// Nå legges hendelsen i en kø i localStorage, markeringen tegnes blass og
+// merkes «ikke sendt», og køen tømmes automatisk når nettet er tilbake.
+const KO_NOKKEL = "storm-bp-usendt";
+
+function koLes() {
+  try { const a = JSON.parse(localStorage.getItem(KO_NOKKEL)); return Array.isArray(a) ? a : []; }
+  catch (_) { return []; }
+}
+
+function koSkriv(a) {
+  try { localStorage.setItem(KO_NOKKEL, JSON.stringify(a)); } catch (_) {}
+}
+
+async function sendHendelse(hendelse, fraKo) {
+  try {
+    const r = await fetch("/hendelse", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(hendelse)
+    });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    return true;
+  } catch (_) {
+    if (!fraKo) {
+      koSkriv(koLes().concat([hendelse]));
+      tegnNettBanner();
+      varsel(t("Fikk ikke sendt dette til prosjektlederen nå. Det er lagret på telefonen og sendes automatisk når du har nett igjen."));
+    }
+    return false;
+  }
+}
+
+// Prøver hele køen på nytt. Kalles ved oppstart, når nettleseren melder at
+// nettet er tilbake, og hvert minutt. Serielt med vilje – en byggeplass har
+// sjelden båndbredde til overs.
+let koJobber = false;
+
+async function toemKo() {
+  if (!LETT || koJobber || !navigator.onLine) return;
+  const a = koLes();
+  if (!a.length) return;
+  koJobber = true;
+  const igjen = [];
+  for (const h of a) if (!(await sendHendelse(h, true))) igjen.push(h);
+  koSkriv(igjen);
+  koJobber = false;
+  if (igjen.length < a.length) { merkUsendte(); renderCommentList(); }
+  tegnNettBanner();   // tallet i toppbaren skal si det samme som køen faktisk gjør
+}
+
+// Henger «ikke sendt»-merket på det som fortsatt ligger i køen, og legger
+// usendte markeringer tilbake i lista – de finnes jo ikke hos Workeren ennå.
+function merkUsendte() {
+  if (!LETT) return;
+  const ko = koLes();
+  S.comments.forEach(c => { delete c.usendt; svarI(c).forEach(s => { delete s.usendt; }); });
+
+  for (const h of ko) {
+    if (h.type !== "ny-markering" || !h.markering) continue;
+    let c = S.comments.find(x => String(x.id) === String(h.markering.id));
+    if (!c) {
+      c = vaskMarkering(h.markering);
+      if (!c) continue;
+      S.comments.push(c);
+      addMarkerSprite(c);
+    }
+    c.usendt = true;
+  }
+  for (const h of ko) {
+    if (h.type !== "svar" || !h.svar) continue;
+    const c = S.comments.find(x => String(x.id) === String(h.markering));
+    if (!c) continue;
+    let sv = svarI(c).find(x => String(x.id) === String(h.svar.id));
+    if (!sv) { sv = Object.assign({}, h.svar); c.svar = svarI(c).concat([sv]); }
+    sv.usendt = true;
+  }
+  // tegn markeringene på nytt så de blasse blir blasse
+  markerGroup.clear();
+  ryddOmrader();
+  S.comments.forEach(addMarkerSprite);
+}
+
+if (LETT) {
+  addEventListener("online", toemKo);
+  setInterval(toemKo, 60000);
+  // Kroken nett.js teller med. Køen ligger her og skal fortsette å ligge her —
+  // nett.js skal bare kunne SE den, ikke eie den. Samme mønster som S.pushAngre.
+  S.tellUsendteHendelser = () => koLes().length;
+}
+
+// ---- Delte markeringer (lagres som JSON i SharePoint: IFC-modeller/Markeringer) ----
+
+const syncedFile = () => S.fileName;
+
+function sharedFilePath() {
+  return "/drive/root:/" + SP.folder.split("/").map(encodeURIComponent).join("/") +
+    "/Markeringer/" + encodeURIComponent(syncedFile() + ".markeringer.json");
+}
+
+async function sharedSiteId(token) {
+  if (!S.spSiteId) {
+    const site = await graphGet("/sites/" + SP.hostname + ":" + SP.sitePath, token);
+    S.spSiteId = site.id;
+  }
+  return S.spSiteId;
+}
+
+// Feltvask for markeringer som kommer utenfra (den delte JSON-fila i
+// SharePoint): bare kjente felter slipper inn, og alt som skal være tekst
+// gjøres om til tekst. Da kan ikke et rart felt i fila – med vilje eller ved
+// uhell – nå innerHTML eller window.open med noe annet enn det vi forventer.
+// elementId + globalId er henvisningen til IFC-elementet markeringen står på.
+// Uten dem kan et dokumentasjonsskjema bare si «en markering» – med dem kan det
+// si «Vegg B2, betong, akse 4–5», og det er hele forskjellen på et skjema og et
+// byggfaglig skjema. Settes ved oppretting; eldre markeringer får dem aldri, og
+// de skal ikke gjettes i ettertid.
+const MARKERING_TEKSTFELT = ["text", "author", "status", "owner", "due", "date", "taskId", "taskUrl",
+  "endret", "endretAv", "elementId", "globalId"];
+
+// ID som ikke kolliderer selv om to på hver sin maskin skriver i samme
+// millisekund – samme oppskrift som markeringene selv bruker.
+export function nyId() {
+  return Date.now() + "-" + Math.random().toString(36).slice(2, 8);
+}
+
+// Navnet på den innloggede, til «skrevet av» og «endret av».
+export function innloggetNavn() {
+  if (LETT) {
+    // Montøren har ingen konto — navnet spørres én gang og huskes i nettleseren
+    let navn = "";
+    try { navn = localStorage.getItem("storm-bp-navn") || ""; } catch(_) {}
+    if (!navn) {
+      navn = (prompt(t("Navnet ditt (vises på markeringen):")) || "").trim().slice(0, 40);
+      if (navn) try { localStorage.setItem("storm-bp-navn", navn); } catch(_) {}
+    }
+    return navn || t("Byggeplass");
+  }
+  try {
+    const a = S.msalApp && S.msalApp.getActiveAccount();
+    return (a && (a.name || a.username)) || "";
+  } catch(_) { return ""; }
+}
+
+// sjekkliste.js trenger navnet ved signering, men skal ikke importere denne
+// fila – markers.js importerer sjekkliste.js, og motsatt vei ville gitt en
+// sirkel. Samme grep som S.markerLink og S.hastegradFarge bruker.
+S.innloggetNavn = innloggetNavn;
+
+export function naaTekst() {
+  return new Date().toLocaleString("no-NO",
+    { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit" });
+}
+
+// Feltvask for ett svar i tråden under en markering. Samme tanke som for
+// markeringen selv: bare kjente felter, og alt som skal være tekst blir tekst.
+export function vaskSvar(r) {
+  if (!r || typeof r !== "object") return null;
+  const tekst = String(r.tekst == null ? "" : r.tekst).trim();
+  if (!tekst) return null;                        // tomme svar kastes
+  return {
+    id: r.id == null ? nyId() : String(r.id),
+    tekst,
+    forfatter: String(r.forfatter == null ? "" : r.forfatter),
+    dato: String(r.dato == null ? "" : r.dato),
+    endret: String(r.endret == null ? "" : r.endret),
+    // Hvor innlegget kom fra. Brukes av PDF-rapporten til å merke innlegg fra
+    // byggeplassen, der navnet er selvrapportert og ikke kontrollert mot noen
+    // konto. Ukjent verdi kastes: heller ingen merkelapp enn en gjetning.
+    kilde: r.kilde === "bygg" || r.kilde === "kontor" ? r.kilde : ""
+  };
+}
+
+export function vaskMarkering(r) {
+  if (!r || typeof r !== "object" || r.id == null) return null;
+  const c = { id: typeof r.id === "number" ? r.id : String(r.id) };
+  for (const k of MARKERING_TEKSTFELT) if (r[k] != null) c[k] = String(r[k]);
+  if (Array.isArray(r.svar)) c.svar = r.svar.map(vaskSvar).filter(Boolean);
+  for (const k of ["x", "y", "z"]) c[k] = Number(r[k]) || 0;
+  // frist skal være en ren dato – alt annet forkastes
+  if (c.due && !/^\d{4}-\d{2}-\d{2}$/.test(c.due)) c.due = "";
+  // 🎨 egen farge: bare en gyldig #rrggbb slipper gjennom (se vaskFarge)
+  { const f = vaskFarge(r.farge); if (f) c.farge = f; }
+  // oppgavelenka åpnes med window.open – slipp bare gjennom https
+  if (c.taskUrl && !/^https:\/\//i.test(c.taskUrl)) delete c.taskUrl;
+  if (Array.isArray(r.bilder)) c.bilder = r.bilder.filter(b => typeof b === "string");
+  if (Array.isArray(r.bilderEtter)) c.bilderEtter = r.bilderEtter.filter(b => typeof b === "string");
+  // Talemeldinger (N5). Navnet vaskes hardt: bare filnavnet, aldri en sti.
+  if (Array.isArray(r.lyd)) c.lyd = r.lyd
+    .map(l => (typeof l === "string" ? { fil: l } : l))
+    .filter(l => l && trygtLyd(l.fil))
+    .map(l => ({ fil: trygtLyd(l.fil), av: String(l.av || "").slice(0, 60), dato: String(l.dato || "") }));
+  if (Array.isArray(r.tegninger)) c.tegninger = r.tegninger
+    .filter(t => t && typeof t === "object")
+    .map(t => ({ fil: String(t.fil || ""), itemId: String(t.itemId || ""),
+                 side: Number(t.side) || 0, storrelse: Number(t.storrelse) || 0,
+                 html: t.html === true }));
+  // Utfylte sjekklister. Svarene lagres som DATA, ikke som en ferdig PDF –
+  // PDF-en regnes ut på nytt ved nedlasting. Vasken kaster hele skjemaet hvis
+  // malId mangler, for da vet ingen hvilken mal svarene hører til.
+  if (Array.isArray(r.skjema)) c.skjema = r.skjema
+    .map(vaskSkjema).filter(Boolean).slice(0, MAKS_SKJEMA_PER_MARKERING);
+  // ⭕▭ Området markeringen gjelder: boks eller sylinder på et valgt nivå,
+  // tegnet med dra-og-slipp. Samme feltvask som alt annet: bare kjente felter,
+  // og et område uten utstrekning kastes — det er et klikk, ikke et område.
+  // h er høyden i sceneenheter; 0 (gamle, flate områder) tegnes som en tynn
+  // skive, se addOmradeMesh.
+  if (r.omrade && typeof r.omrade === "object") {
+    const o = r.omrade;
+    const rx = Math.abs(Number(o.rx) || 0), rz = Math.abs(Number(o.rz) || 0);
+    if (rx > 0 && rz > 0) c.omrade = {
+      form: o.form === "firkant" ? "firkant" : "sirkel",
+      x: Number(o.x) || 0, y: Number(o.y) || 0, z: Number(o.z) || 0,
+      rx, rz,
+      h: Math.abs(Number(o.h) || 0)
+    };
+  }
+  return c;
+}
+
+async function syncSharedComments(stille) {
+  const forFile = syncedFile();
+  if (!forFile) return;
+  try {
+    // spTokenSilent kan kaste hvis MSAL ikke lastet – da er vi bare offline
+    const token = await spTokenSilent();
+    if (!token) { S.sharedOK = false; renderCommentList(); return; }
+    const sid = await sharedSiteId(token);
+    const r = await fetch(GRAPH + "/sites/" + sid + sharedFilePath() + ":/content",
+      { headers: authHeaders(token, null, "markeringer") });
+    let remote = [];
+    if (r.ok) { const d = await r.json(); if (Array.isArray(d)) remote = d.map(vaskMarkering).filter(Boolean); }
+    else if (r.status !== 404) throw new Error("Graph " + r.status);
+    if (syncedFile() !== forFile) return; // brukeren byttet modell underveis
+    const have = new Set(remote.map(c => c.id));
+    const localOnly = S.comments.filter(c => !have.has(c.id));
+    // Den delte fila vinner på markeringen, men svar går aldri tapt: skrev to
+    // personer hvert sitt svar før noen rakk å synke, beholdes begge.
+    const lokaleSvar = new Map(S.comments.map(c => [String(c.id), svarI(c)]));
+    remote.forEach(c => {
+      const mine = lokaleSvar.get(String(c.id));
+      if (!mine || !mine.length) return;
+      const kjent = new Set(svarI(c).map(s => String(s.id)));
+      const nye = mine.filter(s => !kjent.has(String(s.id)));
+      if (nye.length) c.svar = svarI(c).concat(nye);
+    });
+    S.comments = remote.concat(localOnly);
+    markerGroup.clear();
+    ryddOmrader();
+    S.comments.forEach(addMarkerSprite);
+    persist();
+    S.sharedOK = true;
+    renderCommentList();
+    // stille = vi er midt i en 412-runde og skal skrive selv straks etterpå.
+    // Uten den ville vi startet en ny push inni den som allerede pågår.
+    if (localOnly.length && !stille) pushSharedComments(); // last opp det som bare fantes lokalt
+  } catch(_) { S.sharedOK = false; renderCommentList(); }
+}
+
+// eTag-en ligger på selve elementet i SharePoint, ikke på innholdet, så den må
+// hentes for seg. null = fila finnes ikke ennå (første markering på modellen).
+async function sharedETag(token, sid) {
+  const r = await fetch(GRAPH + "/sites/" + sid + sharedFilePath() + "?$select=id,eTag",
+    { headers: authHeaders(token, null, "markeringer") });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error("Graph " + r.status);
+  return (await r.json()).eTag || null;
+}
+
+// Skrivingene står i kø, og hver skriving er BETINGET av at fila ikke er endret
+// siden vi leste den. Før skrev vi hele fila blindt: to prosjektledere med samme
+// modell åpen samme dag, og den som lagret sist slettet den andres markeringer –
+// uten feilmelding, og uten at noen oppdaget det før noen lette etter en
+// markering som ikke fantes.
+//
+// Køen er der fordi updateComment, lagreOgSynk og sendTilPlanner fyrer tett.
+// To samtidige PUT-er mot samme fil ville uansett gitt 412 på den ene.
+let pushKø = Promise.resolve();
+let pushTimer = null;
+
+export function pushSharedComments() {
+  // Samle raske endringer (statusbytte, frist, svar) til én skriving.
+  // Samme mønster som usersync.js bruker for det personlige oppsettet.
+  clearTimeout(pushTimer);
+  return new Promise((ferdig) => {
+    pushTimer = setTimeout(() => {
+      pushKø = pushKø.then(() => doPush(0)).catch(() => {}).then(ferdig);
+    }, 400);
+  });
+}
+
+async function doPush(forsøk) {
+  if (LETT) return; // lettmodus skriver aldri markeringer — kvitteringer går via innboksen
+  const forFile = syncedFile();
+  if (!forFile) return;
+  try {
+    const token = await spTokenSilent();
+    if (!token) { S.sharedOK = false; renderCommentList(); return; }
+    const sid = await sharedSiteId(token);
+    const eTag = await sharedETag(token, sid);
+    if (syncedFile() !== forFile) return;
+
+    const h = authHeaders(token, { "Content-Type": "application/json" }, "markeringer");
+    // Ingen eTag = fila skal ikke finnes. If-None-Match: * hindrer at vi skriver
+    // over en fil noen andre rakk å opprette i mellomtiden.
+    if (eTag) h["If-Match"] = eTag; else h["If-None-Match"] = "*";
+
+    const r = await fetch(GRAPH + "/sites/" + sid + sharedFilePath() + ":/content", {
+      method: "PUT", headers: h, body: JSON.stringify(S.comments)
+    });
+
+    if (r.status === 412 || r.status === 409) {
+      // Noen andre skrev først. Hent deres versjon, flett inn vårt, prøv igjen.
+      if (forsøk < 3) {
+        await syncSharedComments(true);
+        return doPush(forsøk + 1);
+      }
+      // Ga vi oss stille her, ville brukeren trodd at markeringen var delt.
+      // Det lokale ligger trygt i localStorage – ingenting er tapt.
+      S.sharedOK = false;
+      renderCommentList();
+      varsel(t("Fikk ikke lagret markeringene – noen andre skriver i samme fil akkurat nå. Ingenting er tapt lokalt; prøv igjen om litt."));
+      return;
+    }
+    S.sharedOK = r.ok;
+  } catch(_) { S.sharedOK = false; }
+  renderCommentList();
+}
+
+// ---------- Status, ansvarlig og frist ----------
+// Fargen på markeringen forteller status, så modellen kan leses uten å åpne noe.
+export const STATUS = {
+  "Åpen":  { col: "#f59e0b", glyph: "!" },
+  "Pågår": { col: "#3b82f6", glyph: "➜" },
+  "Løst":  { col: "#3cb44b", glyph: "✓" }
+};
+
+export const statusOf = (c) => (c && STATUS[c.status] ? c.status : "Åpen");
+
+// ---------- Hastegrad ut fra frist ----------
+// Selve regelen ligger i js/frist.js, ikke her — den brukes også av minikartet
+// og (etter Del B) av Cloudflare-Workeren, og skal finnes ett sted.
+//
+// Dagens dato holdes i en variabel i stedet for å leses ved hvert kall.
+// Ikke av hensyn til ytelse, men fordi den DA kan sjekkes for endring ett sted
+// (se «midnattskroken» nederst): en modell som står åpen over natta skal ikke
+// vise gårsdagens hastegrad.
+let iDag = iDagISO();
+
+export const hastegradFor = (c) => hastegrad(c, FRISTER, iDag);
+
+// Minikartet trenger fargen, men skal ikke importere markers.js (den er 70 kB
+// og trekker inn halve verktøyet). Én funksjon på S er nok, og den settes her
+// slik at minimap.js virker uendret om markeringene aldri lastes.
+S.hastegradFarge = (c) => ringFor(c);
+
+// 🎨 EGEN FARGE (Emil 21.09, bygget 30.09): under Status velger man «Frist»
+// (som før — ringen følger fristen) eller «Egendefinert» og en farge. Da
+// bruker ringen på bobla, området og prikken i minikartet den fargen i stedet.
+// Fristen forsvinner IKKE: teksten «2 dager igjen» under feltene og prikken i
+// lista står der fortsatt med fristfargen — de handler om tid, ikke om hva
+// markeringen er.
+//
+// Lagres som c.farge = "#rrggbb", eller tom/mangler = «Frist». Alt annet enn
+// en gyldig sekssifret hex-farge regnes som tomt: feltet kommer fra SharePoint
+// og fra telefoner, og en ødelagt verdi skal gi fristfargen, ikke en svart ring.
+export function vaskFarge(v) {
+  const s = String(v == null ? "" : v).trim().toLowerCase();
+  return /^#[0-9a-f]{6}$/.test(s) ? s : "";
+}
+export function ringFor(c) {
+  return vaskFarge(c && c.farge) || HASTEGRAD[hastegradFor(c)].ring;
+}
+// Standardfargen når man bytter til «Egendefinert»: dagens fristfarge, så
+// ingenting skifter farge før brukeren faktisk velger en.
+export function startFarge(c) {
+  return vaskFarge(c && c.farge) || vaskFarge(HASTEGRAD[hastegradFor(c)].ring) || "#3b82f6";
+}
+export const fristTekstFor = (c) => fristTekst(c, FRISTER, iDag);
+export const dagensDato = () => iDag;
+
+// Frist som er gått, på noe som ikke er løst.
+// Bygget på hastegrad() i stedet for sin egen datosammenligning, så det finnes
+// ETT regnestykke. Signaturen er uendret — den kalles to steder fra før.
+export function isOverdue(c) {
+  return hastegradFor(c) === "forfalt";
+}
+
+// ---------- Bobla i 3D ----------
+// Selve tegningen ligger i js/markerbilde.js — ren, uten three.js og uten
+// tilstand, slik at _test/lag-markeringsbilde.mjs kan kjøre den med et ekte
+// canvas og vise at glyfen ikke stikker ut og at ringen ikke klippes.
+function makeMarkerTexture(col, glyph, ringFarge) {
+  return new THREE.CanvasTexture(tegnMarkering(col, glyph, ringFarge));
+}
+
+const markerTextures = {};
+function textureFor(status, hast, egen) {
+  const st = STATUS[status] || STATUS["Åpen"];
+  const h = HASTEGRAD[hast] ? hast : "ukjent";
+  // Egen farge er en del av nøkkelen: to markeringer med samme status og
+  // frist, men ulik egen farge, skal ikke dele tekstur.
+  const farge = vaskFarge(egen);
+  const nokkel = status + "|" + h + "|" + farge;
+  if (!markerTextures[nokkel])
+    markerTextures[nokkel] = makeMarkerTexture(st.col, st.glyph, farge || HASTEGRAD[h].ring);
+  return markerTextures[nokkel];
+}
+
+// ---------- Størrelsen på markeringene ----------
+// Før ble størrelsen satt til en brøkdel av modellen. På et datasenter på 200 m
+// ble markeringen digre, på en vaskehall bitte liten. Nå holdes den på samme
+// antall piksler på skjermen uansett modell og zoom, som en kartnål.
+export const MARKER_PX = 26;
+
+// Hvor stor må en sprite være i modellens enheter for å dekke `px` piksler på
+// skjermen, når den står `avstand` fra kameraet?
+export function markerSkala(avstand, fovGrader, hoydePx, px) {
+  const h = hoydePx || 800;
+  const synsfelt = 2 * Math.tan((fovGrader || 60) * Math.PI / 360);
+  return Math.max(1e-6, avstand) * synsfelt * ((px || MARKER_PX) / h);
+}
+
+function skalerMarkeringer() {
+  const n = markerGroup.children.length;
+  if (!n) return;
+  const h = (renderer.domElement && renderer.domElement.clientHeight) || 800;
+  for (const s of markerGroup.children) {
+    const k = markerSkala(camera.position.distanceTo(s.position), camera.fov, h);
+    s.scale.set(k, k, 1);
+    // 🏷 Står bobler tett, krymper de i stedet for å legge seg oppå hverandre
+    // (Emil 02.10) — men aldri under MARKER_MIN_PX, og de skjules aldri.
+    if (s.visible && meldLapp) meldLapp(s, 0, MARKER_MIN_PX, false);
+  }
+}
+export const MARKER_MIN_PX = 12;
+
+frameHooks.push(skalerMarkeringer);
+
+function addMarkerSprite(comment) {
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: textureFor(statusOf(comment), hastegradFor(comment), comment.farge), depthTest: false }));
+  // J5: en markering som ikke kom fram tegnes blass, så den ikke ser ut som meldt
+  if (comment.usendt) { sprite.material.transparent = true; sprite.material.opacity = 0.4; }
+  sprite.position.set(comment.x, comment.y, comment.z);
+  sprite.renderOrder = 999;
+  sprite.userData.commentId = comment.id;
+  // Settes HER, ikke i en runde etterpå: en skjult markering skal ikke rekke
+  // å vises i ett bilde når lista tegnes på nytt.
+  sprite.visible = !markeringSkjult(comment.id);
+  markerGroup.add(sprite);
+  // ⭕▭ har markeringen et område, tegnes det i samme slengen — bobla står i
+  // senteret av området, så de hører sammen og skal leve og dø sammen
+  if (comment.omrade) addOmradeMesh(comment);
+  skalerMarkeringer();   // riktig størrelse med en gang, ikke først ved neste bilde
+}
+
+// ---------- ⭕▭ Området markeringen gjelder ----------
+// 3D-VOLUM på et valgt nivå: firkant = boks, sirkel = sylinder. Fyllet er
+// nesten gjennomsiktig; konturen er det som skal leses. Fargen følger
+// FRISTSYSTEMET — samme hastegradsring som bobla (frist.js), så rødt volum =
+// det haster, uten å åpne noe. Løst har ingen ring (null) → statusgrønn.
+function omradeFarge(c) {
+  return ringFor(c) || STATUS["Løst"].col;
+}
+
+// Konturen på BOKSEN er kantene, tegnet med three-ens «fat lines» — vanlig
+// linewidth ignoreres av WebGL (samme grunn og samme motor som kantlinjene i
+// outline.js; filene ligger i service workerens skall, så dette virker også
+// uten dekning på byggeplassen). Motoren lastes ved første område.
+let omrLinje = null, omrLinjeLast = null;
+
+function sikreOmrLinjemotor() {
+  if (omrLinje) return Promise.resolve(omrLinje);
+  if (!omrLinjeLast) omrLinjeLast = Promise.all([
+    import("three/addons/lines/LineSegmentsGeometry.js"),
+    import("three/addons/lines/LineMaterial.js"),
+    import("three/addons/lines/LineSegments2.js")
+  ]).then(([g, m, s]) => {
+    if (!g.LineSegmentsGeometry || !m.LineMaterial || !s.LineSegments2)
+      throw new Error("Linjemotoren mangler klassene");
+    omrLinje = { Geo: g.LineSegmentsGeometry, Mat: m.LineMaterial, Seg: s.LineSegments2 };
+    return omrLinje;
+  });
+  return omrLinjeLast;
+}
+
+// Linjematerialene trenger skjermoppløsningen for å holde tykkelsen i piksler.
+// Ett materiale per område (fargen er per område), så alle holdes i takt her.
+const omrLinjeMats = new Set();
+const _omrSt = new THREE.Vector2();
+let _omrStB = -1, _omrStH = -1;
+
+frameHooks.push(() => {
+  if (!omrLinjeMats.size) return;
+  renderer.getSize(_omrSt);
+  if (_omrSt.x === _omrStB && _omrSt.y === _omrStH) return;
+  _omrStB = _omrSt.x; _omrStH = _omrSt.y;
+  omrLinjeMats.forEach(m => m.resolution.set(_omrSt.x, _omrSt.y));
+});
+
+export const OMR_KANT_PX = 3.5;   // kontur-tykkelse i piksler
+
+// ENHETSGEOMETRI: alt spenner x/z fra −1 til 1 og y fra 0 til 1, med basen i
+// origo. Gruppa skaleres (rx, h, rz) — da kan forhåndsvisningen under draget
+// gjenbruke samme mesh og bare endre skala, ingen ny geometri per musedrag.
+function byggOmradeMesh(form, farge) {
+  const g = new THREE.Group();
+  // fyllet: NESTEN gjennomsiktig — volumet skal vise HVOR, ikke dekke over hva.
+  // Sirkelen er en ELLIPSOIDE (flatklemt kule), ikke en sylinder: da er den
+  // rund i alle retninger og leses som en sirkel uansett synsvinkel
+  // (Emils funn 01.09 — sylinderen så ut som en boks med lokk).
+  let fyllGeo;
+  if (form === "firkant") {
+    fyllGeo = new THREE.BoxGeometry(2, 1, 2);
+  } else {
+    fyllGeo = new THREE.SphereGeometry(1, 48, 32);
+    fyllGeo.scale(1, 0.5, 1);   // y-spennet −0.5..0.5, som boksen
+  }
+  fyllGeo.translate(0, 0.5, 0);
+  const fyll = new THREE.Mesh(fyllGeo, new THREE.MeshBasicMaterial({
+    color: farge, transparent: true, opacity: 0.08, side: THREE.DoubleSide, depthWrite: false }));
+  fyll.renderOrder = 2;
+  g.add(fyll);
+  if (form === "firkant") {
+    // konturen = kantene, som Emil ba om. Fat lines henges på når motoren er
+    // lastet — gruppa kan alt være fjernet igjen da (statusbytte), derfor
+    // sjekkes parent. Faller motoren, tegnes en vanlig 1 px-strek i stedet:
+    // tynn kontur er bedre enn ingen.
+    const kantGeo = new THREE.EdgesGeometry(fyllGeo);
+    sikreOmrLinjemotor().then(L => {
+      if (!g.parent) { kantGeo.dispose(); return; }
+      const lg = new L.Geo();
+      lg.setPositions(kantGeo.getAttribute("position").array);
+      lg.computeBoundingBox(); lg.computeBoundingSphere();
+      kantGeo.dispose();
+      const mat = new L.Mat({ color: farge, linewidth: OMR_KANT_PX, worldUnits: false,
+        polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
+      renderer.getSize(_omrSt);
+      mat.resolution.set(_omrSt.x, _omrSt.y);
+      omrLinjeMats.add(mat);
+      const linjer = new L.Seg(lg, mat);
+      linjer.raycast = () => {};
+      g.add(linjer);
+    }).catch(() => {
+      if (!g.parent) { kantGeo.dispose(); return; }
+      g.add(new THREE.LineSegments(kantGeo, new THREE.LineBasicMaterial({ color: farge })));
+    });
+  } else {
+    // konturen på SIRKELEN er silhuetten sett fra der du står — samme grep
+    // som Blenders outline: en litt større kopi tegnet med BAKSIDENE
+    // («inverted hull»), og det som stikker utenfor omrisset er kanten.
+    //
+    // TRIKSET SOM FÅR DET TIL Å VIRKE MED GJENNOMSIKTIG FYLL: hos Blender er
+    // innmaten tett og dekker skallets innside av seg selv. Vårt fyll er 92 %
+    // gjennomsiktig, så uten hjelp fylte skallet HELE formen med farge i
+    // stedet for å bli en kant (Emils funn 01.09). Derfor tegnes først en
+    // USYNLIG DYBDEMASKE — samme form, skriver bare dybde, ingen farge —
+    // som blokkerer skallets innside. Igjen står bare selve silhuettkanten,
+    // og den følger med når kameraet flyttes.
+    //
+    // renderOrder-rekka: modellen (0) → dybdemasken (995, etter modellen så
+    // den ikke lager hull i vegger) → skallet (996) → fyllet (gjennomsiktig
+    // pass, tegner over sin egen dybde fordi three-ens standard depthFunc er
+    // LessEqual).
+    const maske = new THREE.Mesh(fyllGeo.clone(), new THREE.MeshBasicMaterial({ colorWrite: false }));
+    maske.renderOrder = 995;
+    const hull = new THREE.Mesh(fyllGeo.clone(), new THREE.MeshBasicMaterial({
+      color: farge, side: THREE.BackSide }));
+    // 5 % større OM SENTERET (ikke om basen — da ble kanten borte nederst)
+    hull.scale.set(1.05, 1.05, 1.05);
+    hull.position.y = -0.025;
+    hull.renderOrder = 996;
+    g.add(maske, hull);
+  }
+  return g;
+}
+
+// Gamle områder ble lagret flate (uten h) — de tegnes som en tynn skive i
+// stedet for å forsvinne. 4 cm er nok til at silhuetten synes.
+function omrHoydeEllerSkive(o) {
+  return o.h > 0 ? o.h : 0.04 / (S.enhetSkala || 1);
+}
+
+function addOmradeMesh(c) {
+  const o = c.omrade;
+  const g = byggOmradeMesh(o.form, omradeFarge(c));
+  if (c.usendt) g.traverse(m => { if (m.material) { m.material.transparent = true; m.material.opacity *= 0.5; } });
+  g.position.set(o.x, o.y, o.z);
+  g.scale.set(Math.max(o.rx, 1e-6), omrHoydeEllerSkive(o), Math.max(o.rz, 1e-6));
+  g.userData.commentId = c.id;
+  g.visible = !markeringSkjult(c.id);
+  omradeGroup.add(g);
+}
+
+// Fjerner områdene til ÉN markering (id) eller alle (null). Geometrien
+// disposes — områdene bygges på nytt ved statusbytte, og uten dispose ville
+// hvert bytte lagt igjen en geometri på GPU-en.
+function fjernOmrader(id) {
+  omradeGroup.children.slice().forEach(g => {
+    if (id != null && g.userData.commentId != id) return;
+    g.traverse(m => {
+      if (m.geometry) m.geometry.dispose();
+      if (m.material) { omrLinjeMats.delete(m.material); m.material.dispose(); }
+    });
+    omradeGroup.remove(g);
+  });
+}
+
+// clearModel i ifc.js tømmer markerGroup ved modellbytte — områdene skal med.
+export function ryddOmrader() { fjernOmrader(null); }
+
+// Felt som endrer hvordan markeringen SER UT i 3D.
+//
+// FALLGRUVE: her sto det tidligere bare en sjekk på `status`, fordi status var
+// det eneste som påvirket teksturen. Med fristringen gjelder det også `due` —
+// og glemmes den, oppdateres dataene, lista og SharePoint mens bobla i modellen
+// står uendret til siden lastes på nytt. Ingenting krasjer. Det er bare feil.
+//
+// Legges det til noe nytt som påvirker teksturen, MÅ det inn i denne lista.
+const TEGNEFELT = ["status", "due", "farge"];
+
+// Endrer et felt på en markering og oppdaterer alt som viser den
+function updateComment(c, patch) {
+  Object.assign(c, patch);
+
+  if (TEGNEFELT.some(f => patch[f] !== undefined)) {
+    fjernOmrader(c.id);   // området farges av samme frist/status — tegnes på nytt under
+    markerGroup.children.filter(s => s.userData.commentId == c.id).forEach(s => {
+      markerGroup.remove(s);
+      // Materialet lages nytt for hver sprite i addMarkerSprite og ble tidligere
+      // liggende igjen på GPU-en ved hvert statusbytte. IKKE dispose() på
+      // s.material.map — teksturen er delt fra markerTextures, og frigjøres den,
+      // blir alle markeringer med samme status/hastegrad svarte.
+      if (s.material) s.material.dispose();
+    });
+    addMarkerSprite(c);
+    S.miniSkitten = true;   // prikken i minikartet skal skifte farge med
+  }
+
+  // Løst markering → kryss av oppgaven i Planner også. Stille: har vi ikke
+  // tilgang der og da, lar vi det ligge i stedet for å avbryte brukeren.
+  //
+  // Flyttet ut av blokka over da TEGNEFELT kom til. Treffer nøyaktig samme
+  // tilfelle som før: patch.status === "Løst" innebar allerede at status var satt.
+  if (patch.status === "Løst" && c.taskId) {
+    plannerToken(true)
+      .then(t => t && fullforOppgave(t, c.taskId))
+      .catch(err => console.warn("Kunne ikke fullføre Planner-oppgaven:", err.message));
+  }
+
+  persist();
+  pushSharedComments();
+  renderCommentList();
+  if (popFor && popFor.id === c.id) openMarkerPopup(c);
+}
+
+// ---------- ✏️ Redigering av markeringsteksten ----------
+// Teksten kan rettes etter at markeringen er laget. Vi overskriver ikke
+// «skrevet av» og opprinnelig dato – de forteller hvem som fant avviket. I
+// stedet noteres hvem som endret og når, så historikken ikke forsvinner.
+
+export function redigerMarkeringstekst(c, nyTekst) {
+  const tekst = String(nyTekst == null ? "" : nyTekst).trim();
+  if (!c || !tekst || tekst === c.text) return false;   // tom tekst sletter ikke
+  updateComment(c, { text: tekst, endret: naaTekst(), endretAv: innloggetNavn() });
+  varsleNevning(c, tekst, finnNevnte(tekst, nevnListe(c)));
+  return true;
+}
+
+// ---------- @-nevning ----------
+// Kandidatlista er ansattlista på kontoret og navnene i markeringen på
+// byggeplassen — se toppen av nevning.js for hvorfor.
+export function nevnListe(c) { return nevnKandidater(c, LETT ? [] : ANSATTE); }
+
+// Varsler den som er nevnt. To veier, avhengig av hvor vi står:
+//   Byggeplassen – gjennom Workerens innboks, samme vei som markeringer og
+//                  kommentarer går. Da fanges den opp av flyten som allerede
+//                  lytter der og legger kort i Teams-kanalen.
+//   Kontoret     – til adressen «varsel» i oppsett.json, hvis den er satt.
+//                  Er den ikke satt, skjer ingenting utenfor appen; nevningen
+//                  vises fortsatt i markeringen. Myk degradering, som resten
+//                  av oppsett.json.
+//
+// «no-cors» med text/plain er med vilje: en Power Automate-flyt svarer ikke med
+// CORS-hoder, og en vanlig JSON-POST ville utløst en preflight som blir
+// blokkert. Vi får aldri vite om den kom fram — derfor er dette et TILLEGG til
+// at nevningen står i markeringen, aldri den eneste veien.
+function varsleNevning(c, tekst, nevnte) {
+  if (!nevnte.length) return;
+  const last = {
+    type: "nevning",
+    prosjekt: S.lettProsjekt || "",
+    modell: S.fileName || "",
+    markering: c.id,
+    tekst: String(tekst || "").slice(0, 500),
+    fra: innloggetNavn(),
+    nevnte
+  };
+  if (LETT) { sendHendelse(last, true); return; }   // stille: nevningen står i teksten uansett
+  const url = TJENESTER && TJENESTER.varsel;
+  if (!url) return;
+  try {
+    fetch(url, {
+      method: "POST", mode: "no-cors", keepalive: true,
+      headers: { "content-type": "text/plain" },
+      body: JSON.stringify(last)
+    }).catch(() => {});
+  } catch (_) {}
+}
+
+// ---------- 💬 Svar på en markering ----------
+// Svarene ligger i markeringen selv (c.svar), så de følger med i den samme
+// delte JSON-fila og trenger ingen ny lagringsplass i SharePoint.
+
+export const svarI = (c) => (c && Array.isArray(c.svar) ? c.svar : []);
+
+export function leggTilSvar(c, tekst) {
+  const rent = String(tekst == null ? "" : tekst).trim();
+  if (!c || !rent) return null;
+  const s = { id: nyId(), tekst: rent, forfatter: innloggetNavn(), dato: naaTekst(), endret: "",
+              kilde: LETT ? "bygg" : "kontor" };
+  c.svar = svarI(c).concat([s]);
+  updateComment(c, {});
+  varsleNevning(c, rent, finnNevnte(rent, nevnListe(c)));
+  if (LETT) sendHendelse({ type: "svar", markering: c.id, svar: s })
+    .then(ok => { if (!ok) { merkUsendte(); renderCommentList(); } });
+  return s;
+}
+
+export function endreSvar(c, svarId, tekst) {
+  const rent = String(tekst == null ? "" : tekst).trim();
+  const s = svarI(c).find(x => x.id == svarId);
+  if (!s || !rent || rent === s.tekst) return false;
+  s.tekst = rent;
+  s.endret = naaTekst();
+  updateComment(c, {});
+  return true;
+}
+
+export function slettSvar(c, svarId) {
+  const f = svarI(c).length;
+  c.svar = svarI(c).filter(x => x.id != svarId);
+  if (c.svar.length === f) return false;
+  updateComment(c, {});
+  return true;
+}
+
+// Sletter en talemelding. Speiler slettSvar over: samme mønster, samme
+// updateComment til slutt. Selve lydfila ryddes i bakgrunnen — feiler det, blir
+// det en foreldreløs fil i SharePoint, og det skal ikke stoppe brukeren.
+export function slettLyd(c, fil) {
+  const f = lydI(c).length;
+  c.lyd = lydI(c).filter(l => l.fil !== fil);
+  if (c.lyd.length === f) return false;
+  slettBilder([fil]);
+  updateComment(c, {});
+  return true;
+}
+
+// ---------- 📷 Bilder ----------
+// Bildene ligger i SharePoint (se js/bilder.js). Her er bare visningen: en
+// stripe med miniatyrbilder i bobla, og en 📷-knapp som åpner kamera/filvelger.
+
+// Bildene ligger i to seksjoner, så et avvik kan dokumenteres før og etter at
+// det er rettet. «Før» er den gamle lista (c.bilder), så markeringer som alt
+// har bilder beholder dem.
+export const SEKSJONER = [["for", "Før", "bilder"], ["etter", "Etter", "bilderEtter"]];
+
+export function bildeFelt(seksjon) {
+  const s = SEKSJONER.find(x => x[0] === seksjon);
+  return s ? s[2] : "bilder";
+}
+
+export function bilderI(c, seksjon) {
+  return (c && c[bildeFelt(seksjon)]) || [];
+}
+
+// Alle bildene til en markering, i rekkefølgen de vises – brukes til nummerering
+// av nye filnavn, til telleren i lista og til opprydding ved sletting.
+export function alleBilder(c) {
+  return SEKSJONER.reduce((ut, [s]) => ut.concat(bilderI(c, s)), []);
+}
+
+// ---------- 🎤 Talemeldinger ----------
+// En talemelding er { fil, av, dato }. Eldre opptak ble lagret som bare et
+// filnavn, og de leses fortsatt — de får bare tom avsender. Normaliseringen
+// gjøres HER, ikke i vasken alene, fordi lista også kommer fra byggeplassen og
+// fra localStorage.
+function lydI(c) {
+  if (!c || !Array.isArray(c.lyd)) return [];
+  return c.lyd.map(l => (typeof l === "string" ? { fil: l, av: "", dato: "" } : {
+    fil: String((l && l.fil) || ""), av: String((l && l.av) || ""), dato: String((l && l.dato) || "")
+  })).filter(l => l.fil);
+}
+
+const lydFiler = (c) => lydI(c).map(l => l.fil);
+
+function lydStripeHtml(c, kanLeggeTil) {
+  const liste = lydI(c);
+  const kan = kanLeggeTil && lydStottes() && liste.length < MAKS_LYD_PER_MARKERING;
+  if (!liste.length && !kan) return "";
+  return '<div class="mp-seksjon mp-lyd-seksjon"><div class="mp-seksjon-tittel">' +
+    t("Talemelding") + (liste.length ? ' <span>' + liste.length + '</span>' : "") + '</div>' +
+    liste.map(l => '<div class="mp-lyd" data-lyd="' + esc(l.fil) + '">' +
+      '<div class="mp-lyd-topp">' +
+        '<span class="mp-lyd-meta">' + esc([l.av, l.dato].filter(Boolean).join(" · ")) + '</span>' +
+        '<button class="mp-lyd-slett" title="' + t("Slett talemeldingen") + '">' + ikon("slett") + '</button>' +
+      '</div>' +
+      '</div>').join("") +
+    (kan ? '<button class="mp-tegning nytt mp-lyd-ny">' + ikon("mikrofon") + ' ' + t("Ta opp talemelding") + '</button>' : "") +
+    '</div>';
+}
+
+// Lydfilene hentes én gang hver, som miniatyrbildene.
+function fyllLyd(rot) {
+  rot.querySelectorAll(".mp-lyd[data-lyd]").forEach(async el => {
+    if (el.dataset.fylt) return;
+    el.dataset.fylt = "1";
+    const url = await lydUrl(el.dataset.lyd);
+    if (!url) {
+      el.classList.add("mangler");
+      el.insertAdjacentHTML("beforeend", '<span>' + ikon("laas") + " " + t("Logg inn for å høre opptaket") + '</span>');
+      return;
+    }
+    const a = document.createElement("audio");
+    a.controls = true;
+    a.preload = "none";        // ikke last ned før noen trykker play
+    a.src = url;
+    el.appendChild(a);
+  });
+}
+
+// Selve opptaket. Knappen bytter til «Stopp» med en teller, så man ser at det
+// går – uten det er det umulig å vite om mikrofonen faktisk fanget noe.
+// Et pågående opptak må kunne stanses utenfra. Lukker man bobla midt i et
+// opptak, ville mikrofonen ellers stått på til fanen ble lukket – og
+// opptaksprikken i telefonens statuslinje sier ikke hvilken side som lytter.
+let opptak = null;
+
+function stoppOpptakHvisAktivt() {
+  if (!opptak) return;
+  const o = opptak;
+  opptak = null;
+  try { o.avbryt(); } catch (_) {}
+}
+
+async function taOppTil(c, knapp) {
+  if (lydI(c).length >= MAKS_LYD_PER_MARKERING) {
+    varsel(t("En markering kan ha maks {0} talemeldinger.", MAKS_LYD_PER_MARKERING));
+    return;
+  }
+  stoppOpptakHvisAktivt();          // aldri to opptak i gang samtidig
+  let ktrl;
+  try {
+    ktrl = await startOpptak((sek) => { knapp.innerHTML = ikon("stopp") + " " + t("Stopp") + " · " + fmtTid(sek); });
+    opptak = ktrl;
+  } catch (err) {
+    // Avslått mikrofontilgang er den vanligste grunnen, og feilmeldingen fra
+    // nettleseren sier ingenting om hvordan man angrer på det.
+    varsel(/NotAllowed|Permission/i.test(err.name + err.message)
+      ? t("Mikrofonen er avslått for denne siden. Slå den på i nettleserens innstillinger for nettstedet, og prøv igjen.")
+      : t("Fikk ikke startet opptaket: ") + err.message);
+    return;
+  }
+  knapp.classList.add("tar-opp");
+  knapp.onclick = async () => {
+    knapp.onclick = null;
+    const res = await ktrl.stopp();
+    opptak = null;
+    knapp.classList.remove("tar-opp");
+    if (!res || !res.blob || res.blob.size < 1000) { openMarkerPopup(c); return; }  // for kort til å være noe
+    loadingText.textContent = t("Sender talemeldingen …");
+    loadingEl.classList.add("open");
+    try {
+      const navn = lydNavn(c.id, alleBilder(c).length + lydI(c).length + 1, res.endelse);
+      const av = innloggetNavn();
+      // Navnet sendes MED opplastingen. På byggeplassen går fila til Workerens
+      // innboks, og der er det ingen innlogging å hente et navn fra senere —
+      // rekker vi det ikke her, er avsenderen tapt for godt.
+      const opp = await lastOpp(res.blob, navn, av);
+      c.lyd = lydI(c).concat([{ fil: navn, av, dato: naaTekst() }]);
+      persist();
+      pushSharedComments();
+      renderCommentList();
+      if (LETT) varsel(opp.koet
+        ? t("Talemeldingen er lagret på telefonen. Den sendes automatisk når du har nett igjen.")
+        : t("Talemeldingen er sendt. Den blir synlig for prosjektlederen neste gang han åpner modellen."));
+    } catch (err) {
+      varsel(err.message === "IKKE_INNLOGGET"
+        ? t("Talemeldinger lagres i SharePoint, så du må være innlogget. Trykk på den røde prikken øverst til høyre for å logge inn, og prøv igjen.")
+        : t("Klarte ikke å sende talemeldingen: ") + err.message);
+    } finally {
+      loadingEl.classList.remove("open");
+      openMarkerPopup(c);
+    }
+  };
+}
+
+function bildeStripeHtml(c, kanLeggeTil) {
+  return SEKSJONER.map(([seksjon, tittel]) => {
+    const liste = bilderI(c, seksjon);
+    if (!liste.length && !kanLeggeTil) return "";
+    return '<div class="mp-seksjon"><div class="mp-seksjon-tittel">' + t(tittel) +
+      (liste.length ? ' <span>' + liste.length + '</span>' : "") + '</div>' +
+      '<div class="mp-bilder">' +
+      liste.map(f => '<span class="mp-bilde" data-bilde="' + esc(f) + '" data-seksjon="' + seksjon + '" title="' + t("Åpne bildet") + '"></span>').join("") +
+      (kanLeggeTil && liste.length < MAKS_PER_MARKERING
+        ? '<label class="mp-bilde nytt" title="' + t("Ta bilde eller velg fil ({0})", t(tittel).toLowerCase()) + '">' + ikon("kamera") +
+          '<input type="file" accept="image/*" capture="environment" multiple hidden data-seksjon="' + seksjon + '"></label>'
+        : "") +
+      '</div></div>';
+  }).join("");
+}
+
+// Fyller miniatyrbildene etterpå – hvert bilde hentes fra SharePoint én gang.
+function fyllMiniatyrer(rot, c) {
+  rot.querySelectorAll(".mp-bilde[data-bilde]").forEach(async el => {
+    if (el.dataset.fylt) return;
+    el.dataset.fylt = "1";
+    const url = await bildeUrl(el.dataset.bilde);
+    if (!url) { el.classList.add("mangler"); el.innerHTML = ikon("laas"); el.title = t("Logg inn for å se bildet"); return; }
+    const img = document.createElement("img");
+    img.src = url;
+    el.appendChild(img);
+    // du blar gjennom ALLE bildene i markeringen, så før og etter kan
+    // sammenlignes med piltastene
+    el.onclick = () => visStort(c, alleBilder(c).indexOf(el.dataset.bilde));
+  });
+}
+
+// ---------- 📄 Arbeidstegninger på en markering ----------
+// Vedlegget er en henvisning: { fil, itemId, side, storrelse }. Fjerner du den,
+// forsvinner bare henvisningen – PDF-en ligger trygt i tegningsbiblioteket.
+
+export function tegningerI(c) {
+  return (c && c.tegninger) || [];
+}
+
+export function tegningTekst(v) {
+  return v.fil + (v.side > 1 ? t(" · s. ") + v.side : "");
+}
+
+function tegningStripeHtml(c) {
+  const liste = tegningerI(c);
+  return '<div class="mp-seksjon"><div class="mp-seksjon-tittel">' + t("Arbeidstegninger") +
+    (liste.length ? ' <span>' + liste.length + '</span>' : "") + '</div>' +
+    '<div class="mp-tegninger">' +
+    liste.map((v, i) =>
+      '<span class="mp-tegning" data-tegning="' + i + '" title="' + t("Åpne {0}", esc(v.fil)) + '">' +
+      ikon("tegning") + ' ' + esc(tegningTekst(v)) +
+      (mb(v.storrelse) > ADVAR_MB ? ' <span class="stor">' + mb(v.storrelse).toFixed(0) + ' MB</span>' : "") +
+      '<button class="mp-tegning-x" data-fjern="' + i + '" title="' + t("Fjern henvisningen (tegningen slettes ikke)") + '">' + ikon("lukk") + '</button>' +
+      '</span>').join("") +
+    '<button class="mp-tegning nytt" id="mpTegning">' + ikon("tegning") + ' ' + t("Legg til arbeidstegning") + '</button>' +
+    '</div></div>';
+}
+
+// ---------- Sjekklister ----------
+// Skjemaet lagres på markeringen som data. En ny versjon LEGGES TIL, den
+// erstatter ikke den gamle: et signert skjema som kan endres i ettertid uten
+// spor er ikke dokumentasjon.
+
+export function lagreSkjema(c, skjema) {
+  const rent = vaskSkjema(skjema);
+  if (!rent || !c) return null;
+  const liste = sjekklisteI(c).slice();
+  const i = liste.findIndex(s => s.id === rent.id);
+  if (i >= 0) liste[i] = rent; else liste.push(rent);
+  c.skjema = liste.slice(-MAKS_SKJEMA_PER_MARKERING);
+  persist();
+  pushSharedComments();
+  renderCommentList();
+  if (popFor && popFor.id === c.id) openMarkerPopup(c);
+  return rent;
+}
+
+async function apneLagretSkjema(c, skjemaId) {
+  const s = sjekklisteI(c).find(x => x.id === skjemaId);
+  if (!s) return;
+  let svar;
+  try { svar = await hentMaler(); }
+  catch (err) { varsel(t("Klarte ikke å hente malen: {0}", err.message)); return; }
+  const mal = (svar.maler || []).find(m => m.id === s.malId);
+  if (!mal) {
+    varsel(t("Malen «{0}» finnes ikke i SharePoint lenger. Svarene er trygge, men skjemaet kan ikke vises uten malen.", s.malNavn));
+    return;
+  }
+  apneSkjema(c, mal, { ...s, svar: { ...s.svar } }, lagreSkjema);
+}
+
+// Velgeren: lista over PDF-ene som hører til modellen, med søk og sidetall.
+async function apneTegningVelger(c) {
+  let el = $("tegningVelg");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "tegningVelg";
+    document.body.appendChild(el);
+    el.addEventListener("click", (e) => { if (e.target === el) lukkTegningVelger(); });
+  }
+  el.innerHTML = '<div class="tv-boks"><div class="tv-topp">' + t("Arbeidstegninger") +
+    '<button class="tv-x" title="' + t("Lukk") + '">' + ikon("lukk") + '</button></div>' +
+    '<div class="tv-kropp"><p style="color:var(--muted)">' + t("Henter tegninger fra SharePoint …") + '</p></div></div>';
+  el.querySelector(".tv-x").onclick = lukkTegningVelger;
+  el.classList.add("open");
+  const kropp = el.querySelector(".tv-kropp");
+
+  let svar;
+  try { svar = await hentTegninger(S.fileName); }
+  catch (err) { svar = { feil: err.message }; }
+  if (!el.classList.contains("open")) return;
+
+  if (svar.feil) {
+    kropp.innerHTML = '<p style="color:var(--muted)">' + (svar.feil === "IKKE_INNLOGGET"
+      ? t("Tegningene ligger i SharePoint, så du må være innlogget. Trykk på den røde prikken øverst til høyre for å logge inn.")
+      : esc(svar.feil)) + '</p>';
+    return;
+  }
+
+  // Ingen mappe fant seg selv – la brukeren peke den ut én gang
+  if (svar.mangler) {
+    kropp.innerHTML = '<p style="color:var(--muted)">' + t("Fant ingen tegningsmappe for «{0}». Mappa skal ligge i <b>{1}</b>.", esc(S.fileName), esc(SP.folder) + "/Tegninger") + '</p>' +
+      (svar.undermapper.length
+        ? '<p style="color:var(--muted);font-size:11px;margin:8px 0 4px">' + t("Velg mappa som hører til denne modellen:") + '</p>' +
+          svar.undermapper.map(n => '<div class="lib-item" data-mappe="' + esc(n) + '"><div class="n">' + ikon("apne") + ' ' + esc(n) + '</div></div>').join("")
+        : '<p style="color:var(--muted);font-size:11px;margin-top:8px">' + t("Det ligger ingen mapper der ennå.") + '</p>');
+    kropp.querySelectorAll("[data-mappe]").forEach(d => {
+      d.onclick = async () => {
+        kropp.innerHTML = '<p style="color:var(--muted)">' + t("Henter tegninger …") + '</p>';
+        await velgMappe(S.fileName, d.dataset.mappe);
+        apneTegningVelger(c);
+      };
+    });
+    return;
+  }
+
+  const htmlSider = svar.htmlSider || [];
+  if (!svar.filer.length && !htmlSider.length) {
+    kropp.innerHTML = '<p style="color:var(--muted)">' + t("Mappa <b>{0}</b> er tom. Legg PDF-ene inn i {1}.", esc(svar.mappenavn), esc(tegningsStiTekst(svar.mappenavn))) + '</p>';
+    return;
+  }
+
+  kropp.innerHTML =
+    '<p class="tv-mappe">' + esc(svar.mappenavn) + ' · ' + t("{0} tegninger", svar.filer.length + htmlSider.length) + '</p>' +
+    '<input type="search" id="tvSok" placeholder="' + t("Søk etter tegning …") + '" autocomplete="off">' +
+    '<div id="tvListe"></div>' +
+    '<p class="tv-hint">' + t("Ett trykk velger · dobbelttrykk åpner") + '</p>' +
+    '<div class="tv-bunn"><label>' + t("Side") + ' <input type="number" id="tvSide" min="1" value="1"></label>' +
+    '<button class="primary" id="tvLegg" disabled>' + t("Legg ved") + '</button></div>';
+
+  // FLERVALG (Emils regler 25.08.2026): ett trykk velger/velger bort,
+  // dobbelttrykk ÅPNER (PDF i fullskjermviseren, HTML i ny fane), og
+  // «Legg ved» legger ved alt som er valgt i ÉN omgang — også HTML-sider.
+  // Valget overlever søk. VIKTIG: et klikk tegner ALDRI lista på nytt —
+  // gjorde den det, ville dobbelttrykket landet på en død node.
+  const alle = svar.filer.concat(htmlSider);
+  const valgte = new Map();   // id → fil-objekt
+
+  const oppdaterKnapp = () => {
+    $("tvLegg").disabled = !valgte.size;
+    $("tvLegg").textContent = t("Legg ved") + (valgte.size ? " (" + valgte.size + ")" : "");
+  };
+
+  const apneFil = async (f) => {
+    if (erHtml(f.name)) {
+      try { await apneHtmlTegning(f); }
+      catch (err) {
+        varsel(err.message === "IKKE_INNLOGGET"
+          ? t("Du må være innlogget for å åpne tegninger fra SharePoint.")
+          : t("Kunne ikke åpne HTML-siden: ") + err.message);
+      }
+    } else {
+      visTegning({ fil: f.name, itemId: f.id,
+        side: Math.max(1, Math.round(Number($("tvSide").value) || 1)),
+        storrelse: f.size || 0 });
+    }
+  };
+
+  const rad = (f, ikonNavn, meta) =>
+    '<div class="lib-item' + (valgte.has(f.id) ? " valgt" : "") + '" data-id="' + esc(f.id) +
+    '" data-type="' + (erHtml(f.name) ? "html" : "pdf") + '">' +
+    '<div class="n">' + ikon(ikonNavn) + ' ' + esc(f.name) + '</div>' +
+    '<div class="m">' + meta + '</div></div>';
+
+  const tegn = (q) => {
+    const s = q.trim().toLowerCase();
+    const treff = svar.filer.filter(f => f.name.toLowerCase().includes(s));
+    const treffHtml = htmlSider.filter(f => f.name.toLowerCase().includes(s));
+    const htmlDel = treffHtml.length
+      ? '<p class="tv-kat">HTML</p>' + treffHtml.map(f => rad(f, "apne", "HTML")).join("")
+      : "";
+    const pdfDel = treff.length
+      ? (treffHtml.length ? '<p class="tv-kat">PDF</p>' : "") + treff.map(f =>
+          rad(f, "tegning", mb(f.size).toFixed(1) + ' MB' +
+            (mb(f.size) > ADVAR_MB ? ' · <span style="color:var(--accent2)">' + t("stor fil") + '</span>' : ""))).join("")
+      : "";
+    $("tvListe").innerHTML = (htmlDel + pdfDel) ||
+      '<p style="color:var(--muted)">' + t("Ingen treff.") + '</p>';
+    $("tvListe").querySelectorAll(".lib-item[data-id]").forEach(d => {
+      const finn = () => alle.find(f => f.id === d.dataset.id) || null;
+      d.onclick = () => {
+        const f = finn();
+        if (!f) return;
+        if (valgte.has(f.id)) valgte.delete(f.id); else valgte.set(f.id, f);
+        d.classList.toggle("valgt", valgte.has(f.id));
+        oppdaterKnapp();
+      };
+      d.ondblclick = () => { const f = finn(); if (f) apneFil(f); };
+    });
+  };
+  $("tvSok").addEventListener("input", () => tegn($("tvSok").value));
+  tegn("");
+  oppdaterKnapp();
+
+  $("tvLegg").onclick = () => {
+    if (!valgte.size) return;
+    const side = Math.max(1, Math.round(Number($("tvSide").value) || 1));
+    const nye = [...valgte.values()].map(f => erHtml(f.name)
+      ? { fil: f.name, itemId: f.id, side: 1, storrelse: f.size || 0, html: true }
+      : { fil: f.name, itemId: f.id, side, storrelse: f.size || 0 });
+    c.tegninger = tegningerI(c).concat(nye);
+    persist();
+    pushSharedComments();
+    renderCommentList();
+    lukkTegningVelger();
+    openMarkerPopup(c);
+  };
+}
+
+function tegningsStiTekst(mappenavn) {
+  return SP.folder + "/Tegninger/" + mappenavn;
+}
+
+function lukkTegningVelger() {
+  const el = $("tegningVelg");
+  if (el) el.classList.remove("open");
+}
+
+// Åpner en tegning i fullskjermvisningen, på siden markeringen peker på.
+async function visTegning(v) {
+  let antall = 0;
+  try {
+    antall = await antallSider(v, visStatus);
+  } catch (err) {
+    visStatus("");
+    varsel(err.message === "IKKE_INNLOGGET"
+      ? t("Du må være innlogget for å åpne tegninger fra SharePoint.")
+      : t("Klarte ikke å åpne tegningen: ") + err.message);
+    return;
+  }
+  visStatus("");
+  if (!antall) return;                       // brukeren avbrøt en stor nedlasting
+  byggBildeVis();
+  bvSettKilde(
+    (nr) => sideBilde(v, nr + 1),
+    antall,
+    (nr) => v.fil + t(" · side ") + t("{0} av {1}", nr + 1, antall)
+  );
+  $("bildeVis").classList.add("open");
+  bvVis(gyldigSide(v.side, antall) - 1);
+}
+
+// ---------- Bildet i full skjerm: zoom, panorering og bla ----------
+// Zoom med rullehjul (mot pekeren), + / −, dobbeltklikk eller knipe på mobil.
+// Dra for å flytte når du er zoomet inn. Piltaster eller ‹ › blar mellom bildene
+// i markeringen.
+
+const BV = {
+  navn: [], merker: [], nr: 0, antall: 0,
+  hent: () => null, tekst: () => "",
+  skala: 1, x: 0, y: 0, drar: false, px: 0, py: 0, pekere: new Map(), start: 0
+};
+
+// «Før 2 av 3» – teller innenfor seksjonen bildet hører til, siden det er slik
+// man leser en avviksdokumentasjon.
+export function bvTellerTekst(merker, nr) {
+  const alle = merker || [];
+  if (!alle.length) return "";
+  const merke = alle[nr];
+  const iSeksjon = alle.filter(m => m === merke);
+  const nrISeksjon = alle.slice(0, nr + 1).filter(m => m === merke).length;
+  return (merke ? t(merke) + " " : "") + t("{0} av {1}", nrISeksjon, iSeksjon.length);
+}
+export const MIN_SKALA = 1, MAKS_SKALA = 8;
+
+// Zoomen stopper ved 100 % og 800 %. Egen funksjon, så grensene kan testes.
+export function bvNySkala(skala, faktor) {
+  return Math.max(MIN_SKALA, Math.min(MAKS_SKALA, skala * faktor));
+}
+
+// Blar rundt: etter siste bilde kommer det første igjen.
+export function bvNyttNr(nr, antall) {
+  if (!antall) return 0;
+  return ((nr % antall) + antall) % antall;
+}
+
+function bvSett() {
+  const img = $("bvBilde");
+  if (!img) return;
+  img.style.transform = "translate(" + BV.x + "px," + BV.y + "px) scale(" + BV.skala + ")";
+  img.style.cursor = BV.skala > 1 ? (BV.drar ? "grabbing" : "grab") : "zoom-in";
+  const el = $("bildeVis");
+  if (el) el.classList.toggle("zoomet", BV.skala > 1);
+  const t = $("bvZoom");
+  if (t) t.textContent = Math.round(BV.skala * 100) + " %";
+}
+
+function bvNullstill() { BV.skala = 1; BV.x = 0; BV.y = 0; bvSett(); }
+
+// Zoomer om et punkt på skjermen, så det du peker på blir stående
+function bvZoomOm(faktor, klientX, klientY) {
+  const img = $("bvBilde");
+  if (!img) return;
+  const ny = bvNySkala(BV.skala, faktor);
+  if (ny === BV.skala) return;
+  const r = img.getBoundingClientRect();
+  const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+  const dx = (klientX === undefined ? cx : klientX) - cx;
+  const dy = (klientY === undefined ? cy : klientY) - cy;
+  const k = ny / BV.skala;
+  BV.x = BV.x - dx * (k - 1);
+  BV.y = BV.y - dy * (k - 1);
+  BV.skala = ny;
+  if (BV.skala === 1) { BV.x = 0; BV.y = 0; }
+  bvSett();
+}
+
+// Viseren vet ikke om den viser et foto eller en tegningsside – den får en
+// hent-funksjon, et antall og en tekst. Da virker zoom, dra og bla likt for
+// begge.
+function bvSettKilde(hent, antall, tekst) {
+  BV.hent = hent;
+  BV.antall = antall;
+  BV.tekst = tekst;
+}
+
+async function bvVis(nr) {
+  if (!BV.antall) return;
+  BV.nr = bvNyttNr(nr, BV.antall);
+  bvNullstill();
+  const teller = $("bvTeller");
+  if (teller) teller.textContent = BV.tekst(BV.nr);
+  const img = $("bvBilde");
+  if (img) {
+    img.src = "";
+    const visesNa = BV.nr;
+    const url = await BV.hent(BV.nr);
+    // brukeren kan ha blad videre mens siden ble tegnet
+    if (url && $("bvBilde") && BV.nr === visesNa) $("bvBilde").src = url;
+  }
+  const flere = BV.antall > 1;
+  ["bvFor", "bvNeste"].forEach(id => { const b = $(id); if (b) b.style.display = flere ? "" : "none"; });
+}
+
+function byggBildeVis() {
+  let el = $("bildeVis");
+  if (el) return el;
+  el = document.createElement("div");
+  el.id = "bildeVis";
+  el.innerHTML =
+    '<img id="bvBilde" alt="" draggable="false">' +
+    '<div class="bv-topp"><span id="bvTeller"></span><span id="bvZoom"></span>' +
+      '<button class="bv-knapp" id="bvUt" title="' + t("Zoom ut (−)") + '">−</button>' +
+      '<button class="bv-knapp" id="bvInn" title="' + t("Zoom inn (+)") + '">+</button>' +
+      '<button class="bv-knapp" id="bvEn" title="' + t("Tilpass til skjermen (0)") + '">' + ikon("fullskjerm") + '</button>' +
+      '<button class="bv-knapp bv-x" id="bvX" title="' + t("Lukk (Esc)") + '">' + ikon("lukk") + '</button></div>' +
+    '<button class="bv-pil" id="bvFor" title="' + t("Forrige bilde (←)") + '">' + ikon("forrige") + '</button>' +
+    '<button class="bv-pil" id="bvNeste" title="' + t("Neste bilde (→)") + '">' + ikon("neste") + '</button>';
+  document.body.appendChild(el);
+
+  const stopp = (e) => e.stopPropagation();
+  el.querySelector(".bv-topp").addEventListener("pointerdown", stopp);
+  $("bvX").onclick = lukkBildeVis;
+  $("bvInn").onclick = () => bvZoomOm(1.4);
+  $("bvUt").onclick = () => bvZoomOm(1 / 1.4);
+  $("bvEn").onclick = bvNullstill;
+  $("bvFor").onclick = (e) => { stopp(e); bvVis(BV.nr - 1); };
+  $("bvNeste").onclick = (e) => { stopp(e); bvVis(BV.nr + 1); };
+
+  // rullehjul zoomer, og siden viewer'en ligger bak må vi stoppe hjulet der
+  el.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    bvZoomOm(e.deltaY < 0 ? 1.15 : 1 / 1.15, e.clientX, e.clientY);
+  }, { passive: false });
+
+  const img = $("bvBilde");
+  img.addEventListener("dblclick", (e) => {
+    e.stopPropagation();
+    if (BV.skala > 1) bvNullstill(); else bvZoomOm(2.5, e.clientX, e.clientY);
+  });
+
+  // dra for å panorere, og to fingre for å knipe
+  el.addEventListener("pointerdown", (e) => {
+    BV.pekere.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (BV.pekere.size === 2) {
+      const [a, b] = [...BV.pekere.values()];
+      BV.start = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+      BV.drar = false;
+      return;
+    }
+    if (BV.skala > 1) { BV.drar = true; BV.px = e.clientX; BV.py = e.clientY; bvSett(); }
+  });
+  el.addEventListener("pointermove", (e) => {
+    if (!BV.pekere.has(e.pointerId)) return;
+    BV.pekere.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (BV.pekere.size === 2) {
+      const [a, b] = [...BV.pekere.values()];
+      const d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+      bvZoomOm(d / BV.start, (a.x + b.x) / 2, (a.y + b.y) / 2);
+      BV.start = d;
+      return;
+    }
+    if (!BV.drar) return;
+    BV.x += e.clientX - BV.px; BV.y += e.clientY - BV.py;
+    BV.px = e.clientX; BV.py = e.clientY;
+    bvSett();
+  });
+  const slutt = (e) => {
+    BV.pekere.delete(e.pointerId);
+    // klikk på bakgrunnen lukker – men bare når vi ikke har dratt eller zoomet
+    const dratt = BV.drar;
+    BV.drar = false;
+    bvSett();
+    if (!dratt && BV.skala === 1 && e.target === el) lukkBildeVis();
+  };
+  el.addEventListener("pointerup", slutt);
+  el.addEventListener("pointercancel", slutt);
+  return el;
+}
+
+function visStort(c, nr) {
+  const el = byggBildeVis();
+  BV.navn = [];
+  BV.merker = [];
+  SEKSJONER.forEach(([seksjon, tittel]) => {
+    bilderI(c, seksjon).filter(Boolean).forEach(f => { BV.navn.push(f); BV.merker.push(tittel); });
+  });
+  bvSettKilde(
+    (i) => bildeUrl(BV.navn[i]),
+    BV.navn.length,
+    (i) => bvTellerTekst(BV.merker, i)   // «Etter 2 av 3», ikke «5 av 6»
+  );
+  el.classList.add("open");
+  bvVis(Math.max(0, nr || 0));
+}
+
+function lukkBildeVis() {
+  const el = $("bildeVis");
+  if (el) el.classList.remove("open");
+  BV.pekere.clear();
+  BV.drar = false;
+}
+
+// Tastatur i bildeviseren: piler blar, +/− zoomer, 0 tilpasser
+window.addEventListener("keydown", (e) => {
+  const el = $("bildeVis");
+  if (!el || !el.classList.contains("open")) return;
+  if (e.key === "ArrowLeft") { bvVis(BV.nr - 1); e.preventDefault(); }
+  else if (e.key === "ArrowRight") { bvVis(BV.nr + 1); e.preventDefault(); }
+  else if (e.key === "+" || e.key === "=") { bvZoomOm(1.4); e.preventDefault(); }
+  else if (e.key === "-") { bvZoomOm(1 / 1.4); e.preventDefault(); }
+  else if (e.key === "0") { bvNullstill(); e.preventDefault(); }
+});
+
+// Felles håndtering av valgte filer: komprimer, last opp, lagre filnavnene.
+async function taImotFiler(c, filer, seksjon, etterpa) {
+  const felt = bildeFelt(seksjon);
+  const gode = [...filer].filter(erBildefil);
+  if (!gode.length) { varsel(t("Fant ingen bildefiler blant det du valgte.")); return; }
+  const plass = MAKS_PER_MARKERING - bilderI(c, seksjon).length;
+  if (plass <= 0) { varsel(t("Hver seksjon kan ha maks {0} bilder.", MAKS_PER_MARKERING)); return; }
+  loadingText.textContent = gode.length > 1 ? t("Laster opp {0} bilder …", Math.min(gode.length, plass)) : t("Laster opp bildet …");
+  loadingEl.classList.add("open");
+  try {
+    if (LETT) S._lettSeksjon = seksjon;   // leses av lastOpp i bilder.js
+    // nummereringen går på TVERS av seksjonene, så to filer aldri får samme navn
+    const res = await leggTilBilder(c.id, gode.slice(0, plass), alleBilder(c).length);
+    c[felt] = bilderI(c, seksjon).concat(res.navn);
+    persist();
+    pushSharedComments();
+    renderCommentList();
+    if (etterpa) etterpa();
+    // Filnavnet lagres på markeringen selv om fila ligger i kø: navnet er
+    // regnet ut, ikke tildelt av serveren, så henvisningen er gyldig når fila
+    // kommer fram. Men beskjeden må si hva som FAKTISK skjedde — «sendt» om
+    // noe som ligger på telefonen er verre enn ingen beskjed.
+    if (LETT) varsel(res.koet
+      ? t("Bildet er lagret på telefonen. Det sendes automatisk når du har nett igjen.")
+      : t("Bildet er sendt. Det blir synlig for prosjektlederen neste gang han åpner modellen."));
+  } catch (err) {
+    varsel(err.message === "IKKE_INNLOGGET"
+      ? t("Bilder lagres i SharePoint, så du må være innlogget. Trykk på den røde prikken øverst til høyre for å logge inn, og prøv igjen.")
+      : t("Klarte ikke å legge ved bildet: ") + err.message);
+  } finally {
+    loadingEl.classList.remove("open");
+  }
+}
+
+// ---------- 💬 Svartråden i bobla ----------
+
+// Hvilken tekst redigeres akkurat nå? null = ingen, "" = selve markeringen,
+// ellers ID-en til svaret. Ligger utenfor openMarkerPopup fordi bobla tegnes
+// på nytt hver gang noe endres, og redigeringen skal overleve det.
+let redigerer = null;
+
+// «Emil · 04.08.2026, 09:12 (endret 04.08.2026, 10:30)»
+export function svarMetaTekst(s) {
+  const hode = (s.forfatter ? s.forfatter + " · " : "") + (s.dato || "");
+  return s.endret ? hode + " " + t("(endret {0})", s.endret) : hode;
+}
+
+export function markeringMetaTekst(c) {
+  const hode = (c.author ? c.author + " · " : "") + (c.date || "");
+  if (!c.endret) return hode;
+  return hode + " " + (c.endretAv
+    ? t("(endret av {0} {1})", c.endretAv, c.endret)
+    : t("(endret {0})", c.endret));
+}
+
+// Et tekstfelt med Lagre/Avbryt – brukes både til markeringen og til svar.
+function redigerFeltHtml(verdi, klasse) {
+  return '<div class="mp-rediger ' + klasse + '">' +
+    '<textarea class="mp-rediger-tekst" rows="3">' + esc(verdi) + '</textarea>' +
+    '<div class="mp-rediger-knapper">' +
+      '<button class="mp-lagre">' + ikon("lagre") + ' ' + t("Lagre") + '</button>' +
+      '<button class="mp-avbryt">' + t("Avbryt") + '</button>' +
+    '</div></div>';
+}
+
+function svarSeksjonHtml(c) {
+  const liste = svarI(c);
+  let html = '<div class="mp-seksjon mp-svar-seksjon"><div class="mp-seksjon-tittel">' +
+    t("Kommentarer") + (liste.length ? ' <span>' + liste.length + '</span>' : "") + '</div>';
+
+  html += liste.map(s => '<div class="mp-svar" data-svar="' + esc(s.id) + '">' +
+      '<div class="mp-svar-meta"><span>' + esc(svarMetaTekst(s)) + '</span>' +
+        '<span class="mp-svar-verktoy">' +
+          '<button class="mp-svar-rediger" title="' + t("Endre kommentaren") + '">' + ikon("rediger") + '</button>' +
+          '<button class="mp-svar-slett" title="' + t("Slett kommentaren") + '">' + ikon("slett") + '</button>' +
+        '</span></div>' +
+      (redigerer === s.id
+        ? redigerFeltHtml(s.tekst, "for-svar")
+        : '<div class="mp-svar-tekst">' + nevningHtml(s.tekst, nevnListe(c), innloggetNavn()) + '</div>') +
+    '</div>').join("");
+
+  html += redigerer === "nytt"
+    ? redigerFeltHtml("", "for-nytt")
+    : '<button class="mp-tegning nytt mp-svar-nytt">' + ikon("svar") + ' ' + t("Skriv en kommentar") + '</button>';
+  return html + '</div>';
+}
+
+// Kobler opp Lagre/Avbryt i ett redigeringsfelt. `lagre(tekst)` gjør jobben.
+function koblRedigering(rot, lagre) {
+  const boks = rot.querySelector(".mp-rediger");
+  if (!boks) return;
+  const felt = boks.querySelector(".mp-rediger-tekst");
+  const ferdig = () => { redigerer = null; };
+  boks.querySelector(".mp-avbryt").onclick = () => { ferdig(); openMarkerPopup(popFor); };
+  boks.querySelector(".mp-lagre").onclick = () => {
+    const tekst = felt.value;
+    ferdig();
+    // lagre() kaller updateComment, som tegner bobla på nytt. Endret den
+    // ingenting (tom tekst, eller helt lik den gamle), tegner vi selv.
+    if (!lagre(tekst)) openMarkerPopup(popFor);
+  };
+  // Ctrl/Cmd+Enter lagrer, Esc avbryter – Esc stoppes så den ikke lukker bobla
+  felt.onkeydown = (e) => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); boks.querySelector(".mp-lagre").click(); }
+    else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); boks.querySelector(".mp-avbryt").click(); }
+  };
+  // @-nevning. Kobles FØR fokus, så lista er klar med en gang man skriver @.
+  koblNevning(felt, () => nevnListe(popFor));
+  felt.focus();
+  felt.setSelectionRange(felt.value.length, felt.value.length);
+}
+
+function koblSvarSeksjon(el, c) {
+  const seksjon = el.querySelector(".mp-svar-seksjon");
+  if (!seksjon) return;
+
+  const nyttKnapp = seksjon.querySelector(".mp-svar-nytt");
+  if (nyttKnapp) nyttKnapp.onclick = () => { redigerer = "nytt"; openMarkerPopup(c); };
+
+  if (redigerer === "nytt") koblRedigering(seksjon, (tekst) => !!leggTilSvar(c, tekst));
+
+  seksjon.querySelectorAll(".mp-svar").forEach(rad => {
+    const id = rad.dataset.svar;
+    rad.querySelector(".mp-svar-rediger").onclick = () => { redigerer = id; openMarkerPopup(c); };
+    rad.querySelector(".mp-svar-slett").onclick = () => {
+      if (!confirm(t("Slette denne kommentaren?"))) return;
+      slettSvar(c, id);
+    };
+    if (redigerer === id) koblRedigering(rad, (tekst) => endreSvar(c, id, tekst));
+  });
+}
+
+// ---------- Trykk på en 🟡 markering for å lese teksten ----------
+// Bobla henges på selve markeringen og følger den når du roterer og zoomer.
+
+const mRay = new THREE.Raycaster();
+const mPt = new THREE.Vector2();
+
+// Returnerer markeringen under punktet, eller null
+export function pickMarker(clientX, clientY) {
+  if (!markerGroup.children.length) return null;
+  mPt.x = (clientX / innerWidth) * 2 - 1;
+  mPt.y = -(clientY / innerHeight) * 2 + 1;
+  mRay.setFromCamera(mPt, camera);
+  // Filtreres EKSPLISITT på .visible. Raycasteren i three hopper ikke over
+  // usynlige objekter av seg selv, og en skjult markering som fortsatt kan
+  // klikkes fram er verre enn ingen skjuling.
+  const hits = mRay.intersectObjects(markerGroup.children.filter(s => s.visible), false);
+  if (!hits.length) return null;
+  const id = hits[0].object.userData.commentId;
+  return S.comments.find(c => c.id == id) || null;
+}
+
+let popFor = null;                        // markeringen bobla hører til
+const popAnchor = new THREE.Vector3();
+
+export function closeMarkerPopup() {
+  stoppOpptakHvisAktivt();
+  popFor = null;
+  redigerer = null;
+  const el = $("markerPop");
+  if (el) el.classList.remove("open");
+}
+
+export function openMarkerPopup(c) {
+  if (!c) return;
+  let el = $("markerPop");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "markerPop";
+    document.body.appendChild(el);
+  }
+  // Bytter du markering, skal en påbegynt redigering ikke følge med over
+  if (popFor && popFor.id !== c.id) redigerer = null;
+  popFor = c;
+  const st = statusOf(c);
+  el.innerHTML =
+    '<div class="mp-meta"><span>' + esc(markeringMetaTekst(c)) + '</span>' +
+      '<button class="mp-endre" title="' + t("Endre teksten") + '">' + ikon("rediger") + '</button>' +
+      '<button class="mp-x" title="' + t("Lukk") + '">' + ikon("lukk") + '</button></div>' +
+    // Alt mellom toppen og knappene ligger i en egen kropp som kan rulles.
+    // Uten den vokser bobla ut av skjermen så snart teksten blir lang – og da
+    // er både feltene og Slett-knappen utenfor rekkevidde.
+    '<div class="mp-kropp">' +
+    (redigerer === ""
+      ? redigerFeltHtml(c.text, "for-markering")
+      : '<div class="mp-text">' + nevningHtml(c.text, nevnListe(c), innloggetNavn()) + '</div>') +
+    bildeStripeHtml(c, true) +
+    lydStripeHtml(c, true) +
+    tegningStripeHtml(c) +
+    sjekklisteStripeHtml(c) +
+    svarSeksjonHtml(c) +
+    '<div class="mp-fields">' +
+      '<label>' + t("Status") + '<select class="mp-st">' + Object.keys(STATUS).map(k =>
+        '<option value="' + k + '"' + (k === st ? " selected" : "") + '>' + t(k) + '</option>').join("") + '</select></label>' +
+      '<label>' + t("Ansvarlig") + '<select class="mp-ow"><option value="">' + t("– ingen –") + '</option>' +
+        ANSATTE.map(a => '<option value="' + esc(a.navn) + '"' + (c.owner === a.navn ? " selected" : "") + '>' +
+          esc(a.navn) + '</option>').join("") +
+        (c.owner && !ANSATTE.some(a => a.navn === c.owner)
+          ? '<option value="' + esc(c.owner) + '" selected>' + esc(c.owner) + '</option>' : "") +
+      '</select></label>' +
+      '<label>' + t("Frist") + '<input type="date" class="mp-due" value="' + esc(c.due || "") + '"></label>' +
+      // 🎨 Farge: Frist (som før) eller Egendefinert med fargevelger
+      '<label>' + t("Farge") + '<select class="mp-fargevalg">' +
+        '<option value="frist"' + (vaskFarge(c.farge) ? "" : " selected") + '>' + t("Frist") + '</option>' +
+        '<option value="egen"' + (vaskFarge(c.farge) ? " selected" : "") + '>' + t("Egendefinert") + '</option>' +
+      '</select></label>' +
+      (vaskFarge(c.farge)
+        ? '<label>' + t("Egen farge") + '<input type="color" class="mp-farge" value="' + esc(vaskFarge(c.farge)) + '"></label>'
+        : "") +
+    '</div>' +
+    // Hastegraden i klartekst under feltene. Vises OGSÅ på byggeplassen:
+    // .mp-fields skjules i lettmodus, men .mp-frist gjør det ikke — frist er
+    // den ene opplysningen som avgjør hva montøren gjør nå.
+    (() => {
+      const ft = fristTekstFor(c);
+      const ring = HASTEGRAD[ft.hast].ring;
+      if (!ring || ft.hast === "ukjent") return "";
+      return '<div class="mp-frist" style="border-left:3px solid ' + ring + '">' +
+        (ft.hast === "forfalt" || ft.hast === "rod" ? ikon("advarsel") + " " : "") +
+        esc(ft.arg === null ? t(ft.nokkel) : t(ft.nokkel, ft.arg)) + '</div>';
+    })() +
+    '</div>' +
+    '<div class="mp-act"><button class="mp-go">' + ikon("fokus") + ' ' + t("Gå til") + '</button>' +
+      (c.taskId
+        ? '<button class="mp-open" title="' + t("Åpne oppgaven i Planner") + '">' + ikon("planner") + ' ' + t("Se oppgave") + '</button>'
+        : '<button class="mp-task" id="mp-task" title="' + t("Lag Teams Planner-oppgave") + '">' + ikon("planner") + ' Planner</button>') +
+      '<button class="mp-del">' + ikon("slett") + ' ' + t("Slett") + '</button></div>';
+  el.querySelector(".mp-x").onclick = closeMarkerPopup;
+  el.querySelector(".mp-endre").onclick = () => { redigerer = ""; openMarkerPopup(c); };
+  if (redigerer === "") {
+    koblRedigering(el, (tekst) => redigerMarkeringstekst(c, tekst));
+  }
+  koblSvarSeksjon(el, c);
+  el.querySelector(".mp-go").onclick = () => goToComment(c);
+  el.querySelector(".mp-st").onchange = (e) => updateComment(c, { status: e.target.value });
+  el.querySelector(".mp-ow").onchange = (e) => updateComment(c, { owner: e.target.value });
+  el.querySelector(".mp-due").onchange = (e) => updateComment(c, { due: e.target.value });
+  // Bytte til Egendefinert gir dagens fristfarge som start, så bobla ikke
+  // skifter farge før brukeren har valgt. Tilbake til Frist tømmer feltet.
+  el.querySelector(".mp-fargevalg").onchange = (e) =>
+    updateComment(c, { farge: e.target.value === "egen" ? startFarge(c) : "" });
+  const fargeFelt = el.querySelector(".mp-farge");
+  // «change», ikke «input»: input fyrer for hvert musetrekk i fargehjulet, og
+  // hver gang skrives markeringene til SharePoint.
+  if (fargeFelt) fargeFelt.onchange = (e) => updateComment(c, { farge: vaskFarge(e.target.value) });
+  if (el.querySelector(".mp-task")) el.querySelector(".mp-task").onclick = () => sendTilPlanner([c]);
+  if (el.querySelector(".mp-open")) el.querySelector(".mp-open").onclick = () => window.open(c.taskUrl || planUrl(), "_blank");
+  el.querySelector(".mp-del").onclick = () => { deleteComment(c.id); closeMarkerPopup(); };
+  el.querySelectorAll(".mp-bilder input[type=file]").forEach(inp => {
+    inp.onchange = () => {
+      const filer = [...inp.files];
+      const seksjon = inp.dataset.seksjon;
+      inp.value = "";                           // samme bilde skal kunne velges igjen
+      taImotFiler(c, filer, seksjon, () => openMarkerPopup(c));
+    };
+  });
+  if ($("mpTegning")) $("mpTegning").onclick = () => apneTegningVelger(c);
+  if ($("mpSkjema")) $("mpSkjema").onclick = () => apneMalVelger(c, lagreSkjema);
+  el.querySelectorAll(".mp-skjema[data-skjema]").forEach(s => {
+    s.onclick = () => apneLagretSkjema(c, s.dataset.skjema);
+  });
+  el.querySelectorAll(".mp-tegning[data-tegning]").forEach(t => {
+    t.onclick = (e) => {
+      const fjern = e.target.getAttribute("data-fjern");
+      if (fjern !== null) {
+        // bare henvisningen fjernes – PDF-en blir liggende i biblioteket
+        c.tegninger = tegningerI(c).filter((_, i) => i !== Number(fjern));
+        persist(); pushSharedComments(); renderCommentList(); openMarkerPopup(c);
+        return;
+      }
+      const v = tegningerI(c)[Number(t.dataset.tegning)];
+      if (!v) return;
+      if (v.html) {
+        apneHtmlVedlegg(v).catch(err => varsel(err.message === "IKKE_INNLOGGET"
+          ? t("Du må være innlogget for å åpne tegninger fra SharePoint.")
+          : t("Kunne ikke åpne HTML-siden: ") + err.message));
+      } else {
+        visTegning(v);
+      }
+    };
+  });
+  fyllMiniatyrer(el, c);
+  fyllLyd(el);
+  const lydKnapp = el.querySelector(".mp-lyd-ny");
+  if (lydKnapp) lydKnapp.onclick = () => taOppTil(c, lydKnapp);
+  el.querySelectorAll(".mp-lyd[data-lyd]").forEach(rad => {
+    const slettKnapp = rad.querySelector(".mp-lyd-slett");
+    if (!slettKnapp) return;
+    slettKnapp.onclick = (e) => {
+      e.stopPropagation();                       // ikke start avspilling
+      if (!confirm(t("Slette denne talemeldingen?"))) return;
+      slettLyd(c, rad.dataset.lyd);
+    };
+  });
+  el.classList.add("open");
+  placePopup();
+}
+
+// Flytter bobla dit markeringen er på skjermen nå
+function placePopup() {
+  const el = $("markerPop");
+  if (!el || !popFor) return;
+  popAnchor.set(popFor.x, popFor.y, popFor.z).project(camera);
+  if (popAnchor.z > 1) { el.style.visibility = "hidden"; return; }  // bak kameraet
+  el.style.visibility = "visible";
+  const x = (popAnchor.x * 0.5 + 0.5) * innerWidth;
+  const y = (-popAnchor.y * 0.5 + 0.5) * innerHeight;
+  const w = el.offsetWidth || 240, h = el.offsetHeight || 90;
+  el.style.left = Math.max(8, Math.min(innerWidth - w - 8, x - w / 2)) + "px";
+  el.style.top = Math.max(8, Math.min(innerHeight - h - 8, y - h - 18)) + "px";
+}
+
+frameHooks.push(() => { if (popFor) placePopup(); });
+
+export function goToComment(c) {
+  controls.target.set(c.x, c.y, c.z);
+  const off = camera.position.clone().sub(controls.target).normalize().multiplyScalar(8);
+  camera.position.set(c.x + off.x, c.y + off.y, c.z + off.z);
+}
+
+export function deleteComment(id) {
+  const c = S.comments.find(c => c.id == id);
+  // bildefilene i SharePoint ryddes med, så vi ikke samler opp foreldreløse filer
+  if (c && (alleBilder(c).length || lydI(c).length)) slettBilder(alleBilder(c).concat(lydFiler(c)));
+  S.comments = S.comments.filter(c => c.id != id);
+  markerGroup.children.filter(s => s.userData.commentId == id).forEach(s => markerGroup.remove(s));
+  fjernOmrader(id);
+  // Uten dette samler nøkkelen opp id-er til markeringer som ikke finnes, og
+  // en ny markering som tilfeldigvis får samme id ville startet skjult.
+  if (skjulteMark.delete(String(id))) lagreSkjulteMark();
+  persist(); pushSharedComments(); renderCommentList();
+}
+
+// Esc lukker bildet i full skjerm først, deretter bobla
+// (tastetrykket håndteres ellers i ui.js)
+window.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  const bv = $("bildeVis");
+  if (bv && bv.classList.contains("open")) { lukkBildeVis(); return; }
+  const tv = $("tegningVelg");
+  if (tv && tv.classList.contains("open")) { lukkTegningVelger(); return; }
+  closeMarkerPopup();
+});
+
+// Bilder valgt i «Ny markering» venter i S.nyeBilder til markeringen er lagret –
+// først da har vi en id å navngi filene etter.
+const filInput = $("commentFiles");
+if (filInput) filInput.onchange = () => {
+  S.nyeBilder = [...filInput.files].filter(erBildefil).slice(0, MAKS_PER_MARKERING);
+  visValgteFiler();
+};
+
+function visValgteFiler() {
+  const info = $("commentFileInfo");
+  if (!info) return;
+  const n = S.nyeBilder.length;
+  info.textContent = n ? (n === 1 ? t("1 bilde valgt") : t("{0} bilder valgt", n)) : "";
+}
+
+export function nullstillNyeBilder() {
+  S.nyeBilder = [];
+  const inp = $("commentFiles");
+  if (inp) inp.value = "";
+  visValgteFiler();
+}
+
+// Gjør «Ny markering»-dialogen klar. Kalles fra main.js og lett-main.js like
+// før dialogen åpnes.
+//
+// FORHÅNDSUTFYLT FRIST, IKKE PÅKREVD: et hardt krav ville lagt friksjon
+// nøyaktig der du vil ha minst av den — du står i modellen, ser feilen, vil få
+// den ned. Med forhåndsutfylling får vi samme dekning, og den som bare trykker
+// videre får en fornuftig frist i stedet for ingen.
+//
+// GJELDER IKKE BYGGEPLASSEN. Montøren kjenner ikke framdriftsplanen, og frist
+// er noe kontoret eier. Feltet er skjult med CSS i bygg.html
+// ([data-lett="1"] .cd-frist), og hoppes over her uansett — CSS skal ikke være
+// det eneste som avgjør hvilke data som lagres.
+export const STANDARD_FRIST_DAGER = 14;
+
+export function forberedNyMarkering() {
+  $("commentText").value = "";
+  const felt = $("commentDue"), av = $("commentNoDue");
+  if (!felt || !av) return;                    // eldre HTML uten feltet
+  if (LETT) { felt.value = ""; av.checked = true; return; }
+  av.checked = false;
+  felt.value = omDager(STANDARD_FRIST_DAGER, iDag);
+  felt.disabled = false;
+  av.onchange = () => { felt.disabled = av.checked; if (av.checked) felt.value = ""; };
+}
+
+// ---------- ⭕▭ Tegne et område (dra og slipp) ----------
+// I markering-modus kan man i stedet for et enkelt trykk MARKERE OMRÅDET
+// saken gjelder: velg sirkel eller firkant og et nivå i kontrollinja, dra i
+// modellen — slipp, og markeringsdialogen åpner som vanlig. Bobla settes i
+// senteret av området (Emils bestilling 31.08).
+//
+// PEKELOGIKKEN er materiell.js sin oppskrift: lytterne ligger på window i
+// FANGSTFASEN og stopper hendelsen FØR kameraet (SimpleControls på canvas)
+// ser den — da starter aldri rotasjonen, og ingenting må ryddes etterpå.
+// Et drag som ikke starter mens et område-valg er aktivt røres aldri.
+let omrForm = null;     // null | "sirkel" | "firkant"
+let omrNiva = -1;       // indeks i S.storeyList, -1 = bakkenivå
+let omrDrag = null;     // { fra: Vector3, mesh: Group } under tegning
+
+// Høyden området legges på. Nivåene er de samme etasjene som minikartets
+// etasjevelger bruker (S.storeyList, bygget av clip.js) — men her er det
+// GULVET som gjelder, ikke øyehøyden: området ligger PÅ dekket, løftet 5 cm
+// så det ikke flimrer mot betongen (z-fighting).
+function omrNivaY() {
+  const loft = 0.05 / (S.enhetSkala || 1);
+  const e = omrNiva >= 0 && S.storeyList && S.storeyList[omrNiva];
+  if (e) return e.yBase + loft;
+  return (S.modelBox ? S.modelBox.min.y : 0) + loft;
+}
+
+// Skjæringen mellom blikket og nivåplanet — punktet under pekeren, på nivået.
+const _omrNdc = new THREE.Vector2();
+const _omrPlan = new THREE.Plane();
+const _omrPkt = new THREE.Vector3();
+
+function omrPunkt(clientX, clientY, y) {
+  const r = renderer.domElement.getBoundingClientRect();
+  _omrNdc.set(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
+  raycaster.setFromCamera(_omrNdc, camera);
+  _omrPlan.set(new THREE.Vector3(0, 1, 0), -y);
+  return raycaster.ray.intersectPlane(_omrPlan, _omrPkt) ? _omrPkt.clone() : null;
+}
+
+// Grunnflaten fra et drag. BEGGE former dras HJØRNE TIL HJØRNE — det er den
+// eneste ryddige måten å stille bredde og lengde hver for seg (Emil 31.08).
+// Sirkelen blir sylinderen som passer inni det dragde rektangelet.
+function omrFraDrag(fra, til) {
+  return { form: omrForm,
+    x: (fra.x + til.x) / 2, y: fra.y, z: (fra.z + til.z) / 2,
+    rx: Math.abs(til.x - fra.x) / 2, rz: Math.abs(til.z - fra.z) / 2, h: 0 };
+}
+
+const OMR_MIN_M = 0.1;    // under 10 cm grunnflate er det et klikk, ikke et område
+const OMR_MIN_H_M = 0.02; // laveste høyde — en skive, aldri 0
+
+// Høyden stilles ETTER at grunnflaten er sluppet: pekeren opp/ned = volumet
+// vokser/krymper, neste trykk låser den. Høyden leses av ved å skjære blikket
+// mot et STÅENDE plan gjennom senteret, vendt mot kameraet — da svarer en
+// bevegelse oppover på skjermen alltid til høyere volum, uansett vinkel.
+let omrHoyde = null;   // { o, mesh } mens høyden stilles
+let omrForhandsvisning = null;   // den blå kopien som står mens dialogen er åpen
+
+function fjernOmrForhandsvisning() {
+  const mesh = omrForhandsvisning;
+  omrForhandsvisning = null;
+  if (!mesh) return;
+  mesh.traverse(m => {
+    if (m.geometry) m.geometry.dispose();
+    if (m.material) { omrLinjeMats.delete(m.material); m.material.dispose(); }
+  });
+  omradeGroup.remove(mesh);
+}
+
+function omrHoydeFra(clientX, clientY) {
+  const r = renderer.domElement.getBoundingClientRect();
+  _omrNdc.set(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
+  raycaster.setFromCamera(_omrNdc, camera);
+  const n = new THREE.Vector3();
+  camera.getWorldDirection(n);
+  n.y = 0;
+  if (n.lengthSq() < 1e-9) n.set(0, 0, 1);   // rett ovenfra: et plan må velges
+  n.normalize();
+  const o = omrHoyde.o;
+  _omrPlan.setFromNormalAndCoplanarPoint(n, new THREE.Vector3(o.x, o.y, o.z));
+  if (!raycaster.ray.intersectPlane(_omrPlan, _omrPkt)) return null;
+  return Math.max(OMR_MIN_H_M / (S.enhetSkala || 1), _omrPkt.y - o.y);
+}
+
+function avbrytOmrTegning() {
+  const mesh = (omrDrag && omrDrag.mesh) || (omrHoyde && omrHoyde.mesh);
+  omrDrag = null;
+  omrHoyde = null;
+  if (!mesh) return;
+  mesh.traverse(m => {
+    if (m.geometry) m.geometry.dispose();
+    if (m.material) { omrLinjeMats.delete(m.material); m.material.dispose(); }
+  });
+  omradeGroup.remove(mesh);
+}
+
+window.addEventListener("pointerdown", (e) => {
+  // Trinn 2 aktivt? Da LÅSER dette trykket høyden — dialogen åpner på pointerup.
+  if (omrHoyde) { e.stopPropagation(); return; }
+  if (S.mode !== "marker" || !omrForm || e.button !== 0) return;
+  if (e.shiftKey) return;   // shift er flervalgets tast (elements.js) — også her
+  if (e.target !== renderer.domElement || !S.modelGroup) return;
+  const pt = omrPunkt(e.clientX, e.clientY, omrNivaY());
+  if (!pt) return;
+  e.stopPropagation();   // kameraet skal ikke rotere mens området dras
+  fjernOmrForhandsvisning();   // en glemt forhåndsvisning skal ikke bli stående
+  const mesh = byggOmradeMesh(omrForm, "#3b82f6");   // nøytral blå til fristen er valgt
+  mesh.position.copy(pt);
+  mesh.scale.set(1e-6, OMR_MIN_H_M / (S.enhetSkala || 1), 1e-6);
+  omradeGroup.add(mesh);
+  omrDrag = { fra: pt, mesh };
+}, true);
+
+window.addEventListener("pointermove", (e) => {
+  // Trinn 1: grunnflaten følger pekeren på nivåplanet
+  if (omrDrag) {
+    e.stopPropagation();
+    const til = omrPunkt(e.clientX, e.clientY, omrDrag.fra.y);
+    if (!til) return;
+    const o = omrFraDrag(omrDrag.fra, til);
+    omrDrag.mesh.position.set(o.x, o.y, o.z);
+    omrDrag.mesh.scale.x = Math.max(o.rx, 1e-6);
+    omrDrag.mesh.scale.z = Math.max(o.rz, 1e-6);
+    return;
+  }
+  // Trinn 2: høyden følger pekeren (ingen knapp holdes)
+  if (omrHoyde) {
+    const h = omrHoydeFra(e.clientX, e.clientY);
+    if (h == null) return;
+    omrHoyde.o.h = h;
+    omrHoyde.mesh.scale.y = h;
+  }
+}, true);
+
+window.addEventListener("pointerup", (e) => {
+  // Trinn 2 → ferdig: høyden er låst, dialogen åpner. Forhåndsvisningen står
+  // til dialogen lukkes, så man ser volumet mens man skriver.
+  if (omrHoyde && !omrDrag) {
+    const H = omrHoyde;
+    omrHoyde = null;
+    e.stopPropagation();
+    omrForhandsvisning = H.mesh;   // står til dialogen lukkes — se saveComment/cancelComment
+    const o = H.o;
+    // bobla i senteret av VOLUMET, ikke bare grunnflaten
+    S.pendingPoint = new THREE.Vector3(o.x, o.y + o.h / 2, o.z);
+    S.pendingOmrade = o;
+    forberedNyMarkering();
+    $("commentDialog").classList.add("open");
+    setTimeout(() => { const f = $("commentText"); if (f) f.focus(); }, 50);
+    return;
+  }
+  // Trinn 1 → slipp: grunnflaten er satt, gå til høyde-trinnet
+  if (!omrDrag) return;
+  const d = omrDrag;
+  omrDrag = null;
+  e.stopPropagation();
+  const til = omrPunkt(e.clientX, e.clientY, d.fra.y);
+  const o = til ? omrFraDrag(d.fra, til) : null;
+  const min = OMR_MIN_M / (S.enhetSkala || 1);
+  if (!o || o.rx < min || o.rz < min) {   // for lite — regn det som et feiltrykk
+    omradeGroup.remove(d.mesh);
+    d.mesh.traverse(m => {
+      if (m.geometry) m.geometry.dispose();
+      if (m.material) { omrLinjeMats.delete(m.material); m.material.dispose(); }
+    });
+    return;
+  }
+  o.h = OMR_MIN_H_M / (S.enhetSkala || 1);
+  omrHoyde = { o, mesh: d.mesh };
+}, true);
+
+window.addEventListener("pointercancel", () => {
+  if (omrDrag || omrHoyde) avbrytOmrTegning();
+}, true);
+
+// Esc avbryter tegningen — FØR den vanlige Esc-lytteren lukker paneler.
+window.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape" || (!omrDrag && !omrHoyde)) return;
+  e.stopPropagation();
+  avbrytOmrTegning();
+}, true);
+
+// Kontrollinja i markering-modus: sirkel/firkant-valg + nivå. Kalles av
+// updateModeBar (modes.js) via S — modes.js kan ikke importere markers.js
+// (markers.js importerer setMode derfra), samme krok-mønster som materiell.
+S.omradeModeBar = (bar) => {
+  const lbl = bar.querySelector(".lbl");
+  const boks = document.createElement("span");
+  boks.style.cssText = "display:inline-flex;gap:6px;align-items:center;margin-left:10px";
+  boks.innerHTML =
+    '<span style="color:var(--muted);font-size:12px">' + t("eller marker område:") + '</span>' +
+    '<button id="mbOmrSirkel" title="' + t("Dra grunnflaten fra hjørne til hjørne — området blir en rund sirkel") + '">' + t("Sirkel") + '</button>' +
+    '<button id="mbOmrFirkant" title="' + t("Dra grunnflaten fra hjørne til hjørne — området blir en boks") + '">' + t("Firkant") + '</button>' +
+    '<select id="mbOmrNiva" title="' + t("Nivået området legges på — samme etasjer som minikartet") + '">' +
+    '<option value="-1">' + t("Bakkenivå") + '</option></select>';
+  bar.appendChild(boks);
+
+  const tegnKnapper = () => {
+    $("mbOmrSirkel").classList.toggle("active", omrForm === "sirkel");
+    $("mbOmrFirkant").classList.toggle("active", omrForm === "firkant");
+    if (lbl) lbl.textContent = omrForm
+      ? t("Dra grunnflaten fra hjørne til hjørne, slipp — dra så opp/ned for høyden, og trykk for å skrive markeringen")
+      : t("Trykk på modellen for å plassere markering");
+  };
+  $("mbOmrSirkel").onclick = () => { omrForm = omrForm === "sirkel" ? null : "sirkel"; tegnKnapper(); };
+  $("mbOmrFirkant").onclick = () => { omrForm = omrForm === "firkant" ? null : "firkant"; tegnKnapper(); };
+
+  // Etasjelista bygges først når noen faktisk er i markering-modus — samme
+  // latskap som minikartets velger. Er modellen uten etasjer, står
+  // «Bakkenivå» igjen alene, og det er et ærlig svar.
+  const sel = $("mbOmrNiva");
+  (S.sikreEtasjeliste ? S.sikreEtasjeliste() : Promise.resolve(S.storeyList || []))
+    .then(liste => {
+      if (!$("mbOmrNiva")) return;   // linja er tegnet om i mellomtiden
+      (liste || []).forEach((et, i) => {
+        const op = document.createElement("option");
+        op.value = String(i);
+        op.textContent = et.name;
+        sel.appendChild(op);
+      });
+      if (omrNiva >= 0 && omrNiva < (liste || []).length) sel.value = String(omrNiva);
+      else { omrNiva = -1; sel.value = "-1"; }
+    })
+    .catch(() => {});
+  sel.onchange = () => { omrNiva = Number(sel.value); };
+  tegnKnapper();
+};
+
+window.saveComment = function() {
+  const text = $("commentText").value.trim();
+  $("commentDialog").classList.remove("open");
+  fjernOmrForhandsvisning();   // den ekte tegnes av addMarkerSprite med fristfarge
+  if (!text || !S.pendingPoint) { S.pendingPoint = null; S.pendingOmrade = null; nullstillNyeBilder(); return; }
+  const c = {
+    // klokkeslett + tilfeldig hale: to som lager markering i samme millisekund
+    // (delt fil, hele Storm) skal ikke få samme ID
+    id: nyId(),
+    text,
+    author: innloggetNavn(),
+    status: "Åpen",
+    // J1: INGEN automatisk ansvarlig. Sto det ANSATTE[0] her, ble den som
+    // tilfeldigvis står øverst i oppsett.json stille eier av alt som opprettes –
+    // uten at noen valgte det, og uten at noen fikk beskjed. Tom eier er synlig
+    // og ærlig; feil eier ser riktig ut, og da oppdager ingen den.
+    owner: "",
+    // Frist fra dialogen. Tom på byggeplassen og når «ingen frist» er huket av —
+    // da får markeringen grå ring, som er ærlig: ingen har bestemt når dette
+    // skal være ferdig. Grå blir dermed en arbeidskø, ikke en mangel.
+    due: (!LETT && $("commentDue") && $("commentNoDue") && !$("commentNoDue").checked)
+      ? ($("commentDue").value || "") : "",
+    svar: [],
+    x: S.pendingPoint.x, y: S.pendingPoint.y, z: S.pendingPoint.z,
+    date: naaTekst()
+  };
+  // ⭕▭ ble markeringen tegnet som et område, følger området med markeringen —
+  // gjennom samme vask, samme delte fil og samme eksport som alt annet
+  if (S.pendingOmrade) { c.omrade = S.pendingOmrade; S.pendingOmrade = null; }
+  // IFC-elementet markeringen står på, hvis noe var valgt da den ble laget.
+  // Er ingenting valgt, settes ingenting – et tomt felt er ærlig, en gjetning
+  // ser riktig ut og da oppdager ingen den.
+  if (S.currentPropID != null) {
+    c.elementId = String(S.currentPropID);
+    const m = S.meta && S.meta.get(S.currentPropID);
+    if (m && m.globalId) c.globalId = String(m.globalId);
+  }
+  S.comments.push(c);
+  addMarkerSprite(c);
+  persist();
+  pushSharedComments();
+  renderCommentList();
+  if (LETT) {
+    sendHendelse({ type: "ny-markering", markering: {
+      id: c.id, text: c.text, author: c.author, date: c.date,
+      status: "Åpen", x: c.x, y: c.y, z: c.z,
+      // området må med i hendelsen — kontoret vasker det i byggeplass.js
+      // (vaskMarkering) på samme måte som resten av markeringen
+      omrade: c.omrade || undefined
+    } }).then(ok => {
+      if (ok) { varsel(t("Markeringen er sendt til prosjektlederen.")); return; }
+      merkUsendte();          // J5: tegn den blass og merk den «ikke sendt»
+      renderCommentList();
+    });
+  }
+  S.pendingPoint = null;
+  // markeringen er lagret nå – bildene lastes opp i bakgrunnen etterpå
+  if (S.nyeBilder.length) {
+    const filer = S.nyeBilder;
+    nullstillNyeBilder();
+    // bilder tatt når markeringen opprettes er «før»-tilstanden
+    taImotFiler(c, filer, "for", () => { if (popFor && popFor.id === c.id) openMarkerPopup(c); });
+  } else nullstillNyeBilder();
+  if (S.mode === "marker") setMode("marker"); // slå av markering-modus
+};
+
+window.cancelComment = function() {
+  $("commentDialog").classList.remove("open");
+  fjernOmrForhandsvisning();
+  S.pendingPoint = null;
+  S.pendingOmrade = null;
+  nullstillNyeBilder();
+};
+
+// ---------- 📋 Teams Planner ----------
+// Oppgaven opprettes rett fra nettleseren med brukerens egen Microsoft-innlogging.
+
+export function oppgaveTittel(c) {
+  const modell = (S.fileName || "modell").replace(/\.(ifc|glb)$/i, "");
+  const kort = (c.text || "").replace(/\s+/g, " ").trim();
+  return "IFC " + modell + ": " + (kort.length > 60 ? kort.slice(0, 57) + "…" : kort);
+}
+
+export function oppgaveNotat(c, lenke) {
+  const l = [
+    "Markering i Storm IFC-Viewer",
+    "Modell: " + (S.fileName || "–"),
+    "Status: " + statusOf(c),
+    c.author ? "Satt av: " + c.author : "",
+    "",
+    (c.text || "").trim()
+  ];
+  if (lenke) { l.push("", "Åpne markeringen i modellen:", lenke); }
+  return l.filter((x, i) => x !== "" || i > 0).join("\n").trim();
+}
+
+// Tar en liste markeringer og lager én Planner-oppgave per markering
+async function sendTilPlanner(list) {
+  // Uten plan-ID ville Graph fått «/planner/plans//buckets» og svart 400 med en
+  // melding ingen kan gjøre noe med. Stopp her, og si hvor tallet skal inn.
+  if (!PLANNER.planId) {
+    varsel(t("Planner er ikke satt opp ennå. Plan-ID-en legges inn i «oppsett.json» i SharePoint-mappa med modellene."));
+    return;
+  }
+  const uten = list.filter(c => !c.due);
+  if (uten.length) {
+    varsel((uten.length === 1 ? t("Markeringen mangler frist.") : t("{0} markeringer mangler frist.", uten.length)) +
+      t(" Sett frist først – Planner-oppgaven trenger en dato."));
+    return;
+  }
+  // J3: en oppgave uten mottaker er verre enn ingen oppgave – alle tror den er
+  // sendt. Står det et navn i «owner» som ikke finnes i ANSATTE med Entra-GUID
+  // (tidligere ansatt, eller navnet skrevet litt annerledes), ville assignees
+  // blitt tom og oppgaven opprettet i det stille. Stopp før det skjer.
+  const ukjent = [...new Set(list.filter(c => c.owner && !ANSATTE.some(a => a.navn === c.owner))
+                                 .map(c => c.owner))];
+  if (ukjent.length) {
+    varsel(t("Fant ikke {0} i ansattlista, så oppgaven ville ikke fått noen mottaker. Velg en ansvarlig fra lista først.",
+      ukjent.map(n => "«" + n + "»").join(", ")));
+    return;
+  }
+  const utenEier = list.filter(c => !c.owner);
+  if (utenEier.length && !confirm(utenEier.length === 1
+      ? t("Markeringen har ingen ansvarlig. Oppgaven blir liggende i Planner uten mottaker. Fortsette?")
+      : t("{0} markeringer har ingen ansvarlig. Oppgavene blir liggende i Planner uten mottaker. Fortsette?", utenEier.length))) return;
+
+  const alt = list.filter(c => c.taskId);
+  if (alt.length && !confirm(alt.length === 1
+      ? t("Denne markeringen har allerede en Planner-oppgave. Lage en ny?")
+      : t("{0} av markeringene har allerede oppgaver. Lage nye for alle?", alt.length))) return;
+
+  const btnIds = ["mp-task", "cmAllTasks"];
+  btnIds.forEach(id => { const b = $(id); if (b) b.disabled = true; });   // hindrer doble oppgaver
+  loadingText.textContent = t("Lager Planner-oppgave …");
+  loadingEl.classList.add("open");
+  try {
+    const token = await plannerToken();
+    if (!token) return;   // på vei til samtykke, eller brukeren avbrøt
+    let laget = 0;
+    for (const c of list) {
+      loadingText.textContent = t("Lager Planner-oppgave {0} av {1} …", laget + 1, list.length);
+      let lenke = "";
+      try { if (S.markerLink) lenke = await S.markerLink(c); } catch(_) {}
+      const person = ANSATTE.find(a => a.navn === c.owner);
+      const res = await opprettOppgave(token, {
+        title: oppgaveTittel(c),
+        dueISO: fristTilISO(c.due),
+        description: oppgaveNotat(c, lenke),
+        assignees: person ? [person.id] : []
+      });
+      c.taskId = res.id;
+      c.taskUrl = res.url;
+      laget++;
+    }
+    persist();
+    pushSharedComments();
+    renderCommentList();
+    if (popFor) openMarkerPopup(popFor);
+    loadingEl.classList.remove("open");
+    if (confirm(t("{0} opprettet i Planner.\n\nÅpne Planner-tavla nå?",
+        laget + " " + (laget === 1 ? t("oppgave") : t("oppgaver"))))) window.open(planUrl(), "_blank");
+  } catch (err) {
+    loadingEl.classList.remove("open");
+    const m = /403|Forbidden/.test(err.message)
+      ? t("Planner nektet. Vanligste årsak: den ansvarlige er ikke medlem av gruppen som eier planen.")
+      : err.message;
+    varsel(t("Klarte ikke å lage Planner-oppgave: ") + m);
+  } finally {
+    loadingEl.classList.remove("open");
+    btnIds.forEach(id => { const b = $(id); if (b) b.disabled = false; });
+  }
+}
+
+let listFilter = "alle";
+
+export function renderCommentList() {
+  $("commentCount").textContent = S.comments.length;
+  const body = $("commentBody");
+  const status = S.sharedOK
+    ? '<p style="color:var(--ok); font-size:11px; margin:0 0 8px">' + ikon("hake") + ' ' + t("Delt via SharePoint – alle med tilgang ser disse") + '</p>'
+    : '<p style="color:var(--muted); font-size:11px; margin:0 0 8px">' + ikon("laas") + ' ' + t("Kun lagret på denne enheten – trykk på den røde prikken øverst til høyre og logg inn for å dele") + '</p>';
+  if (!S.comments.length) {
+    body.innerHTML = status + '<p style="color:var(--muted)">' + t("Ingen markeringer ennå. Trykk på Markering og deretter på modellen.") + '</p>';
+    return;
+  }
+
+  // teller per status + filterknapper
+  const antall = { alle: S.comments.length };
+  Object.keys(STATUS).forEach(k => antall[k] = S.comments.filter(c => statusOf(c) === k).length);
+  // To fristfiltre i tillegg til statusfiltrene. Prefikset «h:» skiller dem fra
+  // statusnøklene, som er de lagrede verdiene «Åpen»/«Pågår»/«Løst».
+  antall["h:forfalt"] = S.comments.filter(c => hastegradFor(c) === "forfalt").length;
+  antall["h:rod"] = S.comments.filter(c => hastegradFor(c) === "rod").length;
+
+  const knapp = (key, tekst, farge) => '<button data-flt="' + key + '"' +
+    (listFilter === key ? ' class="active"' : "") + '>' +
+    (farge ? '<span style="color:' + farge + '">●</span> ' : "") +
+    tekst + ' ' + (antall[key] || 0) + '</button>';
+  let html = status +
+    '<div class="prop-actions">' + knapp("alle", t("Alle")) +
+      Object.keys(STATUS).map(k => knapp(k, t(k))).join("") + '</div>' +
+    // Egen rad: fristfiltrene svarer på et annet spørsmål enn statusfiltrene,
+    // og de skal ikke se ut som om de hører til samme gruppe.
+    ((antall["h:forfalt"] || antall["h:rod"])
+      ? '<div class="prop-actions">' +
+          (antall["h:forfalt"] ? knapp("h:forfalt", t("Forfalt"), HASTEGRAD.forfalt.ring) : "") +
+          (antall["h:rod"] ? knapp("h:rod", t("Haster"), HASTEGRAD.rod.ring) : "") + '</div>'
+      : "");
+
+  const vis = S.comments.filter(c =>
+    listFilter === "alle" ? true
+    : listFilter.startsWith("h:") ? hastegradFor(c) === listFilter.slice(2)
+    : statusOf(c) === listFilter);
+  // uløste med frist, som ikke alt har fått en oppgave
+  const apne = S.comments.filter(c => statusOf(c) !== "Løst" && c.due && !c.taskId);
+  if (apne.length > 1) {
+    html += '<div class="prop-actions"><button id="cmAllTasks">' + ikon("planner") + ' ' + t("Lag {0} Planner-oppgaver", apne.length) + '</button></div>';
+  }
+
+  html += vis.map(c => {
+    const st = statusOf(c);
+    // Venstrekanten beholder STATUSfargen — fyll = status, som i modellen.
+    // Hastegraden kommer som en egen prikk lenger ned, så lista og bobla
+    // forteller det samme.
+    const ft = fristTekstFor(c);
+    const ring = HASTEGRAD[ft.hast].ring;
+    // 👁 Skjult markering tegnes blass — kortet skal LESES som avslått, ellers
+    // sitter man og leter etter en boble i modellen som ikke er der.
+    const skjult = markeringSkjult(c.id);
+    return '<div class="comment' + (skjult ? " skjult" : "") + '" data-id="' + esc(c.id) +
+      '" style="border-left:3px solid ' + STATUS[st].col + (skjult ? ";opacity:.5" : "") + '">' +
+      '<div class="meta"><span>' + esc((c.author ? c.author + " · " : "") + (c.date || "")) + '</span>' +
+        '<span>' +
+        // Øyeknappen står i KORTET, ikke i 3D-en: den skjulte markeringen er
+        // per definisjon ikke synlig i modellen, så knappen som henter den
+        // tilbake må ligge et sted som fortsatt finnes.
+        '<button class="cm-skjul" data-skjul="' + esc(c.id) + '" title="' +
+          esc(skjult ? t("Vis denne markeringen") : t("Skjul denne markeringen")) +
+          '" style="padding:1px 6px;margin-right:6px">' + ikon(skjult ? "skjul" : "vis") + '</button>' +
+        '<span class="del" data-del="' + esc(c.id) + '">' + t("Slett") + '</span>' +
+        '</span></div>' +
+      '<div>' + esc(c.text) + '</div>' +
+      '<div class="meta" style="margin-top:4px"><span>' +
+        '<span style="color:' + STATUS[st].col + '">●</span> ' + t(st) +
+        (vaskFarge(c.farge)
+          ? ' <span title="' + esc(t("Egen farge")) + '" style="display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:-1px;background:' + vaskFarge(c.farge) + '"></span>'
+          : "") +
+        (c.owner ? ' · ' + esc(c.owner) : "") +
+        (c.due ? ' ' + t("· frist ") + esc(c.due.split("-").reverse().join(".")) : "") +
+        // Hastegraden: farget prikk + tekst som sier hvor lenge det er igjen.
+        // Ringen i modellen og denne prikken er samme regel, samme farge.
+        (ring
+          ? ' · <span style="color:' + ring + '" title="' + esc(t(HASTEGRAD[ft.hast].navn)) + '">●</span> ' +
+            esc(ft.arg === null ? t(ft.nokkel) : t(ft.nokkel, ft.arg))
+          : "") +
+        (c.usendt ? ' · <span style="color:var(--warn)" title="' + t("Ligger lagret på telefonen og sendes når du har nett igjen.") + '">' +
+          ikon("advarsel") + ' ' + t("ikke sendt") + '</span>' : "") +
+        (c.taskId ? ' · <span title="Har en Planner-oppgave">' + ikon("planner") + '</span>' : "") +
+        (svarI(c).length ? ' · <span title="' + t("{0} kommentarer", svarI(c).length) + '">' +
+          ikon("svar") + ' ' + svarI(c).length + '</span>' : "") +
+        (tegningerI(c).length ? ' · <span title="' +
+          esc(tegningerI(c).map(tegningTekst).join(", ")) + '">' + ikon("tegning") + ' ' + tegningerI(c).length + '</span>' : "") +
+        (gjeldendeSkjema(c).length ? ' · <span title="' +
+          esc(gjeldendeSkjema(c).map(s => s.malNavn + (s.laast ? "" : " (" + t("uferdig") + ")")).join(", ")) + '">' +
+          ikon(gjeldendeSkjema(c).every(s => s.laast) ? "laas" : "rediger") + ' ' + gjeldendeSkjema(c).length + '</span>' : "") +
+        (lydI(c).length ? ' · <span title="' + t("Talemelding") + '">' + ikon("mikrofon") + ' ' + lydI(c).length + '</span>' : "") +
+        (alleBilder(c).length
+          ? ' · <span title="' + SEKSJONER.map(([s, t]) => t + ": " + bilderI(c, s).length).join(", ") +
+            '">' + ikon("kamera") + ' ' + alleBilder(c).length + (bilderI(c, "etter").length ? " " + t("(før/etter)") : "") + '</span>'
+          : "") +
+      '</span></div></div>';
+  }).join("") ||
+    // «h:forfalt» er en intern nøkkel og skal aldri vises. Oversett den til
+    // hastegradens navn før den settes inn i setningen.
+    '<p style="color:var(--muted)">' + t("Ingen markeringer med status «{0}».",
+      esc(listFilter.startsWith("h:")
+        ? t((HASTEGRAD[listFilter.slice(2)] || { navn: listFilter }).navn)
+        : t(listFilter))) + '</p>';
+
+  body.innerHTML = html;
+  body.querySelectorAll("button[data-flt]").forEach(b => {
+    b.onclick = () => { listFilter = b.dataset.flt; renderCommentList(); };
+  });
+  if ($("cmAllTasks")) $("cmAllTasks").onclick = () => sendTilPlanner(apne);
+  body.querySelectorAll(".comment").forEach(el => {
+    el.addEventListener("click", (e) => {
+      // closest, ikke e.target: knappen har et svg-ikon inni seg, og klikket
+      // treffer <svg> — getAttribute på det gir null, og knappen ville vært død.
+      const skjulEl = e.target.closest ? e.target.closest("[data-skjul]") : null;
+      if (skjulEl) {
+        const id = skjulEl.getAttribute("data-skjul");
+        settMarkeringSkjult(id, !markeringSkjult(id));
+        return;
+      }
+      const delId = e.target.getAttribute("data-del");
+      if (delId) { deleteComment(delId); closeMarkerPopup(); return; }
+      const c = S.comments.find(c => c.id == el.dataset.id);
+      // En skjult markering flyr vi IKKE til: kameraet ville landet foran en
+      // boble som ikke er der, og bobla pekt på ingenting. Øyeknappen er
+      // handlingen på et skjult kort.
+      if (c && !markeringSkjult(c.id)) { goToComment(c); openMarkerPopup(c); }
+    });
+  });
+}
+
+// ---------- Tegn alle markeringer på nytt ----------
+// Brukes når noe UTENFOR markeringene har endret hvordan de skal se ut:
+// datoen har skiftet, eller fristgrensene har kommet fra oppsett.json.
+export function tegnAlleMarkeringerPaNytt() {
+  const gamle = [...markerGroup.children];
+  gamle.forEach(s => {
+    markerGroup.remove(s);
+    if (s.material) s.material.dispose();   // ikke .map — den er delt, se updateComment
+  });
+  ryddOmrader();   // fargene følger dagen/grensene — områdene tegnes på nytt med
+  (S.comments || []).forEach(addMarkerSprite);
+  S.miniSkitten = true;
+}
+
+// ---------- Midnattskroken ----------
+// Teksturene regnes ut én gang, men hastegraden endrer seg av seg selv når
+// klokka passerer midnatt. Står modellen åpen over natta — eller står nettbrettet
+// på i brakka — ville bobla vist gårsdagens hastegrad til noen lastet siden.
+//
+// To utløsere med vilje: visibilitychange fanger den vanlige saken (fanen tas
+// fram igjen om morgenen), intervallet fanger skjermer som aldri blir skjult.
+// Ti minutter er rikelig; ingen merker at fargen skifter 09:57 i stedet for 00:00.
+function sjekkDagskifte() {
+  const naa = iDagISO();
+  if (naa === iDag) return;
+  iDag = naa;
+  tegnAlleMarkeringerPaNytt();
+  renderCommentList();
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) sjekkDagskifte(); });
+setInterval(sjekkDagskifte, 600000);
+
+// Firmaoppsettet kommer fra SharePoint et sekund eller to etter oppstart. Står
+// markeringspanelet allerede åpent, tegnes det på nytt så «Ansvarlig» får folk
+// i seg uten at brukeren må lukke og åpne.
+//
+// Fristgrensene kommer samme vei (FRISTER fylles av oppsett.js), så markeringene
+// må også tegnes på nytt — ellers står ringene på standardverdiene 8/3 helt til
+// noen endrer en status.
+S.onOppsett = () => {
+  try {
+    tegnAlleMarkeringerPaNytt();
+    if ($("commentPanel") && $("commentPanel").classList.contains("open")) renderCommentList();
+  } catch (_) {}
+};
