@@ -239,7 +239,7 @@ S.vaerTidslinje = (fraIso, tilIso, posFor, bredde) => {
     if (niva) html += '<span class="fp-vaer-felt ' + niva + '" style="left:' + v.fra + "%;width:" + v.b + '%" title="' + esc(s.varsler.map(x => VARSEL_TEKST[x.type](s)).join(" · ")) + '"></span>';
     if (visIkon) html += '<span class="fp-vaer-dag" style="left:' + v.midt + '%" title="' + esc(iso.split("-").reverse().join(".") + ": " + kortTekst(s)) + '">' + vaerIkon(s.bilde, 16) + "</span>";
   }
-  return '<div class="fp-vaer-rad">' + html + (!ant && !laster ? '<span class="fp-vaer-tom">' + esc(t("Ingen værdata for disse datoene ennå")) + "</span>" : "") + "</div>";
+  return '<div class="fp-vaer-rad">' + html + (!ant && !laster ? '<span class="fp-vaer-tom">' + esc(sisteFeil ? t("Fikk ikke hentet været — værtjenesten svarer ikke") : t("Ingen værdata for disse datoene ennå")) + "</span>" : "") + "</div>";
 };
 // Merkelappene i toppteksten for dagen glideren står på.
 S.vaerTopp = (iso) => {
@@ -259,3 +259,52 @@ S.vaerVideoTekst = (iso) => {
 
 // Ny adresse (Prosjektinfo) → nye data. Varselbufferen er per posisjon og kan stå.
 if (typeof document !== "undefined") document.addEventListener("storm-prosjektinfo", () => { nullstillBuffer(); });
+
+// ═══════════════════════ VÆRET I 3D (bare kontoret) ═══════════════════════
+// vaer-3d.js finnes bare på kontoret (Emil 09.10) og setter S.settVaer3D.
+// Her bestemmes HVILKET vær: Framdriftsplan-glideren (dagen den står på), og
+// ellers været akkurat nå. Panelet Vis vær styrer selv (vaer.js).
+S.vaerFramdrift3D = (iso) => {
+  if (!S.settVaer3D) return;
+  if (!iso || !vaerPaa() || !posisjon()) { S.settVaer3D("framdrift", null); return; }
+  const s = (dagerSync(iso, iso) || {})[iso];
+  S.settVaer3D("framdrift", s && s.harData ? { bilde: s.bilde, natt: 0, lyn: !!s.torden } : null);
+};
+// Til videoen: været for en dag, eller null (vaer-3d.js tegner det).
+S.vaerDag3D = (iso) => {
+  if (!iso || !vaerPaa() || !posisjon()) return null;
+  const s = (dagerSync(iso, iso) || {})[iso];
+  return s && s.harData ? { bilde: s.bilde, natt: 0, lyn: !!s.torden } : null;
+};
+let naaTimer = 0;
+async function oppdaterNaa() {
+  if (!S.settVaer3D) return;
+  const k = posisjon();
+  if (!vaerPaa() || !k || !S.modelGroup) { S.settVaer3D("naa", null); return; }
+  try {
+    const v = await hentVarsel(k);
+    const l = lokal(new Date());
+    const d = dogn(v.timer, l.dato, grenser());
+    const h = d[l.time] || d.find(Boolean);
+    S.settVaer3D("naa", h ? { bilde: h.bilde, natt: S.vaerNatt ? S.vaerNatt(k.lat, l.dato, l.time) : 0, lyn: /thunder/.test(h.symbol || "") } : null);
+  } catch (_) { /* uten nett: himmelen blir som den var */ }
+}
+S.oppdaterVaerNaa = oppdaterNaa;
+if (typeof document !== "undefined") {
+  document.addEventListener("storm-vaer", () => { oppdaterNaa(); });
+  document.addEventListener("storm-prosjektinfo", () => { oppdaterNaa(); });
+  clearInterval(naaTimer);
+  naaTimer = setInterval(oppdaterNaa, 15 * 60e3);
+}
+
+// Hvorfor været IKKE vises — til byggeplass-siden (Emil 09.10: «jeg får ikke
+// opp været inne i Framdriftsplan på byggeplassen»). Tom streng = alt i orden.
+S.vaerStatus = () => {
+  if (LETT) {
+    if (!fraLett) return t("Været er ikke sendt ut fra kontoret ennå. På kontoret: slå på Vis vær og trykk Storm-Byggeplass.");
+    if (!fraLett.paa) return t("Vis vær er av på kontoret. Slå det på og trykk Storm-Byggeplass, så kommer været her.");
+  } else if (!vaerPaa()) return "";
+  if (!posisjon()) return t("Byggeplassens adresse mangler i Innstillinger → Prosjektinfo på kontoret.");
+  if (sisteFeil) return t("Fikk ikke hentet været — værtjenesten svarer ikke. Prøv igjen senere.");
+  return "";
+};

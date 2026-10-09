@@ -2371,4 +2371,10 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Byggherre / kunde": "Inwestor / klient",
   "Prosjektleder / kontakt": "Kierownik projektu / kontakt",
   "Telefon": "Telefon",
+  // 🌦 Vær: meldinger på byggeplassen (09.10.2026)
+  "Fikk ikke hentet været — værtjenesten svarer ikke": "Nie udało się pobrać pogody — usługa pogodowa nie odpowiada",
+  "Været er ikke sendt ut fra kontoret ennå. På kontoret: slå på Vis vær og trykk Storm-Byggeplass.": "Pogoda nie została jeszcze wysłana z biura. W biurze: włącz Pokaż pogodę i naciśnij Storm-Budowa.",
+  "Vis vær er av på kontoret. Slå det på og trykk Storm-Byggeplass, så kommer været her.": "Pokaż pogodę jest wyłączone w biurze. Włącz je i naciśnij Storm-Budowa, a pogoda pojawi się tutaj.",
+  "Byggeplassens adresse mangler i Innstillinger → Prosjektinfo på kontoret.": "Brakuje adresu budowy w Ustawienia → Informacje o projekcie w biurze.",
+  "Fikk ikke hentet været — værtjenesten svarer ikke. Prøv igjen senere.": "Nie udało się pobrać pogody — usługa pogodowa nie odpowiada. Spróbuj później.",
 };

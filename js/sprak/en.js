@@ -2371,4 +2371,10 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Byggherre / kunde": "Client / customer",
   "Prosjektleder / kontakt": "Project manager / contact",
   "Telefon": "Phone",
+  // 🌦 Vær: meldinger på byggeplassen (09.10.2026)
+  "Fikk ikke hentet været — værtjenesten svarer ikke": "Could not fetch the weather — the weather service is not responding",
+  "Været er ikke sendt ut fra kontoret ennå. På kontoret: slå på Vis vær og trykk Storm-Byggeplass.": "The weather has not been sent out from the office yet. At the office: turn on Show weather and press Storm Site.",
+  "Vis vær er av på kontoret. Slå det på og trykk Storm-Byggeplass, så kommer været her.": "Show weather is off at the office. Turn it on and press Storm Site, and the weather appears here.",
+  "Byggeplassens adresse mangler i Innstillinger → Prosjektinfo på kontoret.": "The site address is missing in Settings → Project info at the office.",
+  "Fikk ikke hentet været — værtjenesten svarer ikke. Prøv igjen senere.": "Could not fetch the weather — the weather service is not responding. Try again later.",
 };

@@ -513,7 +513,8 @@ export function bildeOkt(oppsett, W, H) {
   // skjøteprikker og håndtak. Settes tilbake i slutt(), uansett hva som skjer.
   const skjult = [];
   scene.traverse(o => {
-    if (o.visible && (o.isSprite || o.name === "rigg-skjoter" || o.userData.sektorHandtak)) { skjult.push(o); o.visible = false; }
+    // (skyene til været i 3D ligger bare på lag 1 og får stå — de er ikke lapper)
+    if (o.visible && ((o.isSprite && (o.layers.mask & 1)) || o.name === "rigg-skjoter" || o.userData.sektorHandtak)) { skjult.push(o); o.visible = false; }
   });
   // 🏗 Kranens stiplede sirkel er hvit — den synes på skjermen, men ikke på
   // lyst papir og lyst terreng. I PDF-bildene blir den mørk grå.
@@ -522,6 +523,9 @@ export function bildeOkt(oppsett, W, H) {
   const gammelBg = scene.background;
   const gammeltRutenett = grid.visible;
   const gammelt = renderer.getRenderTarget();
+  // 🌦 Været i 3D (dis og dempet lys) skal ikke med på arkene og i videoen
+  // (videoen tar været MED når Vis vær er på: oppsett.medVaer)
+  if (S.skjulVaer3D && !v.medVaer) S.skjulVaer3D(true);
   const gammelTaake = scene.fog;
   let rydd = null, ryddPynt = null, ror = null;
   const slutt = () => {
@@ -534,6 +538,7 @@ export function bildeOkt(oppsett, W, H) {
     scene.background = gammelBg;
     grid.visible = gammeltRutenett;
     for (const o of skjult) o.visible = true;
+    if (S.skjulVaer3D && !v.medVaer) S.skjulVaer3D(false);
   };
   try {
     scene.background = v.himmel ? himmel() : new THREE.Color(0xffffff);
@@ -551,7 +556,7 @@ export function bildeOkt(oppsett, W, H) {
     tegn(kam) {
       // Mellom bildene i en video kan skjermens rammekroker ha slått på
       // navnelappene igjen (skalerLapperMedTak) — de skjules for hvert bilde
-      scene.traverse(o => { if (o.visible && o.isSprite) { skjult.push(o); o.visible = false; } });
+      scene.traverse(o => { if (o.visible && o.isSprite && (o.layers.mask & 1)) { skjult.push(o); o.visible = false; } });
       if (etter && ror !== false) {
         try {
           if (!ror) ror = lagRor(etter, kam, W, H, v.skygge && v.skygge.skala);

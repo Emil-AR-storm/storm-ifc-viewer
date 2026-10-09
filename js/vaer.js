@@ -87,15 +87,9 @@ export function tegnPanel() {
       ? t("Ingen varsel ennå for denne dagen — MET varsler ca. 9–10 dager fram. Varselet til og med {0} finnes nå.", datoLang(data.sisteVarsel))
       : sisteHentFeil() ? t("Fikk ikke hentet været. Sjekk nettet og prøv igjen.") : t("Ingen værdata for denne dagen.")) + "</p>";
   } else {
-    const s = data.sum, h = data.d[time];
+    const s = data.sum;
     html +=
-      '<div class="vr-naa">' + vaerIkon(h ? h.bilde : s.bilde, 46) + "<div>" +
-        (h ? "<b>" + esc(tall1(h.temp)) + " °C</b> · " + esc(t(BILDE_NAVN[h.bilde] || "")) + " · " + esc(t("kl. {0}", pad(time))) +
-          '<div class="hint">' + esc(t("vind {0} m/s", tall1(h.vind))) + (h.kast != null ? ", " + esc(t("kast {0}", tall1(h.kast))) : "") +
-          (h.retning != null ? " " + esc(t("fra {0}", t(retningNavn(h.retning)))) : "") + " · " +
-          esc(h.regn > 0 ? t("{0} mm denne timen", tall1(h.regn)) : t("opphold")) + (h.varighet === 6 ? " · " + esc(t("6-timers varsel")) : "") + "</div>"
-          : '<span class="hint">' + esc(t("Ingen data for kl. {0}", pad(time))) + "</span>") +
-      "</div></div>" +
+      '<div class="vr-naa" id="vrNaa">' + naaHtml() + "</div>" +
       '<input type="range" id="vrTime" min="0" max="23" step="1" value="' + time + '" aria-label="' + esc(t("Klokkeslett")) + '">' +
       '<div class="vr-svarboks">' +
         statusRad(t("Tårnkran (kast under {0} m/s)", g.kranKast), s.status.kran, s.kranTimer.length ? t("stopp kl. {0}", periodeTekst(s.kranTimer)) + (s.kastMangler ? " · " + t("delvis vurdert på middelvind") : "") : "") +
@@ -127,6 +121,39 @@ export function tegnPanel() {
   body.innerHTML = html;
   if (apneGrenser) body.querySelector(".vr-grenser").open = true;
   koble();
+  oppdater3D();
+}
+
+// Timen glideren står på. Egen funksjon fordi glideren IKKE skal tegne hele
+// panelet på nytt mens den dras: da ble <input> byttet ut under fingeren og
+// draget stoppet etter ett hakk (Emil 09.10 — 12 → 15 tok tre drag).
+function naaHtml() {
+  const h = data && data.d[time];
+  const s = data && data.sum;
+  return vaerIkon(h ? h.bilde : (s ? s.bilde : "ukjent"), 46) + "<div>" +
+    (h ? "<b>" + esc(tall1(h.temp)) + " °C</b> · " + esc(t(BILDE_NAVN[h.bilde] || "")) + " · " + esc(t("kl. {0}", pad(time))) +
+      '<div class="hint">' + esc(t("vind {0} m/s", tall1(h.vind))) + (h.kast != null ? ", " + esc(t("kast {0}", tall1(h.kast))) : "") +
+      (h.retning != null ? " " + esc(t("fra {0}", t(retningNavn(h.retning)))) : "") + " · " +
+      esc(h.regn > 0 ? t("{0} mm denne timen", tall1(h.regn)) : t("opphold")) + (h.varighet === 6 ? " · " + esc(t("6-timers varsel")) : "") + "</div>"
+      : '<span class="hint">' + esc(t("Ingen data for kl. {0}", pad(time))) + "</span>") +
+    "</div>";
+}
+// Bare timedelen oppdateres: teksten øverst, raden i tabellen og 3D-været.
+function visTime() {
+  const el = $("vrNaa");
+  if (el) el.innerHTML = naaHtml();
+  const g = $("vrTime");
+  if (g && Number(g.value) !== time) g.value = String(time);
+  document.querySelectorAll("#vaerBody tr[data-t]").forEach(r => r.classList.toggle("valgt", Number(r.dataset.t) === time));
+  oppdater3D();
+}
+// 🌦 Været i 3D følger timen i panelet (vaer-3d.js, bare kontoret)
+function oppdater3D() {
+  if (!S.settVaer3D) return;
+  const h = data && data.d[time];
+  if (!erApen() || !h) { S.settVaer3D("panel", null); return; }
+  const k = posisjon();
+  S.settVaer3D("panel", { bilde: h.bilde, natt: S.vaerNatt ? S.vaerNatt(k && k.lat, dato, time) : 0, lyn: /thunder/.test(h.symbol || "") });
 }
 
 function grenseFelt(k, navn, g) {
@@ -138,8 +165,8 @@ function koble() {
   if (d) d.onchange = () => { if (/^\d{4}-\d{2}-\d{2}$/.test(d.value)) { dato = d.value; data = null; last(); } };
   if ($("vrIdag")) $("vrIdag").onclick = () => { dato = iDagISO(); time = lokal(new Date()).time; data = null; last(); };
   const g = $("vrTime");
-  if (g) g.oninput = () => { time = Number(g.value); tegnPanel(); };
-  document.querySelectorAll("#vaerBody tr[data-t]").forEach(r => r.onclick = () => { time = Number(r.dataset.t); tegnPanel(); });
+  if (g) g.oninput = () => { time = Number(g.value); visTime(); };
+  document.querySelectorAll("#vaerBody tr[data-t]").forEach(r => r.onclick = () => { time = Number(r.dataset.t); visTime(); });
   if ($("vrTilInnst")) $("vrTilInnst").onclick = () => { const b = $("btnSettings"); if (b) b.click(); };
   if ($("vrFramdrift")) $("vrFramdrift").onchange = (e) => { S.settings.vaerPaa = !!e.target.checked; writePrefs(); meldFramdrift(); };
   document.querySelectorAll("#vaerBody input[data-grense]").forEach(inp => inp.onchange = () => {
@@ -172,3 +199,12 @@ på("btnVaer", "click", () => {
 
 // Ny adresse i Prosjektinfo eller ny modell: hent på nytt hvis panelet står åpent
 if (typeof document !== "undefined") document.addEventListener("storm-prosjektinfo", () => { if (erApen()) { data = null; last(); } });
+
+// Panelet lukkes (krysset, et annet panel, Esc): 3D-været går tilbake til
+// Framdriftsplan-glideren eller været nå.
+(() => {
+  const p = typeof document !== "undefined" && $("vaerPanel");
+  const MO = (typeof window !== "undefined" && window.MutationObserver) || null;
+  if (!p || !MO) return;
+  new MO(() => { if (!erApen() && S.settVaer3D) S.settVaer3D("panel", null); }).observe(p, { attributes: true, attributeFilter: ["class"] });
+})();

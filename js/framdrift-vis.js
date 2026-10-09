@@ -538,6 +538,8 @@ function oppdaterTopp() {
   if (el) el.innerHTML = toppTekst();
   const vl = $("fpVaerLinje");
   if (vl) { const h = vaerLinje(); vl.innerHTML = h; vl.style.display = h ? "" : "none"; }
+  // 🌦 Været i 3D følger glideren (kontoret; vaer-felles.js → vaer-3d.js)
+  if (S.vaerFramdrift3D) { const sp = tidsSpenn(S.framdrift); S.vaerFramdrift3D(sp && sistApen && aktiv ? isoFraDag(framdriftTid()) : null); }
   const g = $("fpTidGlider");
   const sp = tidsSpenn(S.framdrift);
   if (g && sp) g.value = String(framdriftTid() - sp.a);
@@ -555,7 +557,7 @@ export function tegnTidslinje(apen) {
   const vis = sistApen && aktiv && !!sp;
   document.body.classList.toggle("fp-tid-paa", vis);
   oppdaterHode();
-  if (!vis) { el.style.display = "none"; el.innerHTML = ""; stoppAvspilling(); return; }
+  if (!vis) { el.style.display = "none"; el.innerHTML = ""; stoppAvspilling(); if (S.vaerFramdrift3D) S.vaerFramdrift3D(null); return; }
   plasserStripe();
   const n = Math.max(1, sp.dager);
   const pos = (d) => Math.max(0, Math.min(100, (d - sp.a) / n * 100));
@@ -602,6 +604,7 @@ export function tegnTidslinje(apen) {
   $("fpTidIdag").onclick = () => { stoppAvspilling(); settFramdriftTid(iDag + 0.5, true); };
   $("fpTidFerdig").onclick = () => { stoppAvspilling(); settFramdriftTid(null, true); };
   el.querySelectorAll(".fp-bar").forEach(b => b.onclick = () => { stoppAvspilling(); settFramdriftTid(Number(b.dataset.slutt), true); });
+  if (S.vaerFramdrift3D) S.vaerFramdrift3D(isoFraDag(tid));   // 🌦 3D-været følger glideren
 }
 function oppdaterBarer() {
   const tid = framdriftTid();

@@ -111,6 +111,7 @@ function medBareBygget(fn) {
   }
   const bak = scene.background;
   scene.background = new THREE.Color(0xffffff);
+  if (S.skjulVaer3D) S.skjulVaer3D(true);   // 🌦 ingen dis eller dempet lys på arket
   try { return fn(); }
   finally {
     for (const k of ekstra) { stopeGroup.remove(k); k.geometry.dispose(); k.material.dispose(); }
@@ -118,6 +119,7 @@ function medBareBygget(fn) {
     stopeGroup.visible = varVis;
     for (const [o, v] of synlig) o.visible = v;
     scene.background = bak;
+    if (S.skjulVaer3D) S.skjulVaer3D(false);
     renderer.setRenderTarget(null);
   }
 }

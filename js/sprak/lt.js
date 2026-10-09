@@ -2371,4 +2371,10 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Byggherre / kunde": "Užsakovas / klientas",
   "Prosjektleder / kontakt": "Projekto vadovas / kontaktas",
   "Telefon": "Telefonas",
+  // 🌦 Vær: meldinger på byggeplassen (09.10.2026)
+  "Fikk ikke hentet været — værtjenesten svarer ikke": "Nepavyko gauti orų — orų paslauga neatsako",
+  "Været er ikke sendt ut fra kontoret ennå. På kontoret: slå på Vis vær og trykk Storm-Byggeplass.": "Orai iš biuro dar neišsiųsti. Biure: įjunkite Rodyti orus ir paspauskite Storm statybvietė.",
+  "Vis vær er av på kontoret. Slå det på og trykk Storm-Byggeplass, så kommer været her.": "Rodyti orus biure išjungta. Įjunkite ir paspauskite Storm statybvietė, tada orai atsiras čia.",
+  "Byggeplassens adresse mangler i Innstillinger → Prosjektinfo på kontoret.": "Biure trūksta statybvietės adreso: Nustatymai → Projekto informacija.",
+  "Fikk ikke hentet været — værtjenesten svarer ikke. Prøv igjen senere.": "Nepavyko gauti orų — orų paslauga neatsako. Bandykite vėliau.",
 };
