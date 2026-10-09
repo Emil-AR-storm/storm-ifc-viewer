@@ -56,6 +56,10 @@ let melding = "";        // statuslinja i panelet
 let meldingFeil = false;
 let treff = [];          // adressetreff å velge mellom
 let sisteSok = "";
+function piAdresse() {
+  const pi = S.prosjektInfo ? S.prosjektInfo() : null;
+  return pi && pi.fra && pi.fra.adresse === "info" ? (pi.adresseFull || pi.adresse) : "";
+}
 let utsnitt = STANDARD_UTSNITT;
 let flyttModus = false;  // ✥ «Flytt og roter bygget» er slått på
 // 🗺 Hva som ligger på terrenget: "topo" (Kartverkets kart) eller "hoyde"
@@ -1862,7 +1866,8 @@ function tegnPanel() {
   let html =
     '<h4 data-sek="tr-hent" style="margin:4px 0 4px">' + ikon("kote") + " " + t("Hent terreng") + "</h4>" +
     '<label>' + t("Adresse eller koordinat") +
-    '<input type="text" id="trAdresse" maxlength="120" value="' + esc(sisteSok) + '" placeholder="' +
+    // 🗂 Tomt søkefelt: adressen fra Prosjektinfo (Innstillinger) står ferdig utfylt
+    '<input type="text" id="trAdresse" maxlength="120" value="' + esc(sisteSok || piAdresse()) + '" placeholder="' +
     t("f.eks. Industriveien 20, Geithus") + '"' + (opptatt ? " disabled" : "") + "></label>" +
     '<label>' + t("Utsnitt") + '<select id="trUtsnitt"' + (opptatt ? " disabled" : "") + ">" + valg + "</select></label>" +
     '<div class="prop-actions"><button id="trHent" class="primary"' + (opptatt ? " disabled" : "") + ">" +

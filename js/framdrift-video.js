@@ -54,14 +54,18 @@ function tegnTekst(ctx, W, H, plan, f, liste) {
   const tittel = e ? trinnTittel(e, t("Trinn")) : t("Framdriftsplan");
   const dato = e ? [norskDato(e.dato), norskDato(e.slutt)].filter(Boolean).filter((x, i, a) => a.indexOf(x) === i).join(" – ") : "";
   ctx.font = "700 " + Math.round(30 * s) + "px system-ui, sans-serif";
-  const bt = Math.max(ctx.measureText(tittel).width, (ctx.font = "600 " + Math.round(22 * s) + "px system-ui, sans-serif", ctx.measureText(dato).width));
-  const bx = 28 * s, by = 26 * s, bb = bt + 44 * s, bh = (dato ? 92 : 62) * s;
+  // 🌦 Vis vær på: været på trinnets startdag som tredje linje (vaer-felles.js)
+  const vaer = e && e.dato && S.vaerVideoTekst ? S.vaerVideoTekst(e.dato) : "";
+  const bt = Math.max(ctx.measureText(tittel).width, (ctx.font = "600 " + Math.round(22 * s) + "px system-ui, sans-serif", ctx.measureText(dato).width),
+    vaer ? (ctx.font = "500 " + Math.round(18 * s) + "px system-ui, sans-serif", ctx.measureText(vaer).width) : 0);
+  const bx = 28 * s, by = 26 * s, bb = bt + 44 * s, bh = ((dato ? 92 : 62) + (vaer ? 30 : 0)) * s;
   ctx.fillStyle = "rgba(255,255,255,0.92)";
   ctx.beginPath(); ctx.roundRect ? ctx.roundRect(bx, by, bb, bh, 12 * s) : ctx.rect(bx, by, bb, bh); ctx.fill();
   if (e) { ctx.fillStyle = e.farge; ctx.fillRect(bx, by, 7 * s, bh); }
   ctx.fillStyle = "#14161a"; ctx.font = "700 " + Math.round(30 * s) + "px system-ui, sans-serif";
   ctx.fillText(tittel, bx + 22 * s, by + 42 * s);
   if (dato) { ctx.fillStyle = e ? e.farge : "#6b7280"; ctx.font = "600 " + Math.round(22 * s) + "px system-ui, sans-serif"; ctx.fillText(dato, bx + 22 * s, by + 76 * s); }
+  if (vaer) { ctx.fillStyle = /⚠/.test(vaer) ? "#c0272d" : "#3a3f47"; ctx.font = "500 " + Math.round(18 * s) + "px system-ui, sans-serif"; ctx.fillText(vaer, bx + 22 * s, by + ((dato ? 92 : 62) + 18) * s); }
   // Trinnlinja nederst: ett felt per trinn, fylt etter hvert
   const lx = 28 * s, lb = W - 56 * s, ly = H - 40 * s, lh = 10 * s, n = liste.length;
   const mel = 4 * s, fb = (lb - mel * (n - 1)) / n;
@@ -88,6 +92,11 @@ export async function lagFramdriftVideo() {
     vis(t("Lager video …"));
     await lastEtterbehandling();
     await (await import("./framdrift-kilde.js")).forberedKilder();
+    // 🌦 Været for alle trinndatoene hentes FØR bildene tegnes (tegningen er synkron)
+    if (S.vaerForbered) {
+      const datoer = liste.map(e => e.dato).filter(Boolean).sort();
+      if (datoer.length) { try { await S.vaerForbered(datoer[0], datoer[datoer.length - 1]); } catch (_) {} }
+    }
     // Utsnittet: bare det som ligger i et trinn (resten er ikke med i videoen)
     const u = utsnitt([...new Set(liste.flatMap(e => e.objekter.map(o => o.k)))]);
     if (!u) throw new Error(t("Fant ingenting å tegne."));

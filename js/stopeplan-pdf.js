@@ -263,6 +263,8 @@ export async function lagStopeplanPdf(volumFor) {
     const d = tegnArk(jsPDF, {
       bilder, brikker, tab, uker, iDag, logo, planB, tdB,
       modell: String(S.fileName || "").replace(/\.(ifc|glb)$/i, ""),
+      // 🗂 Prosjektinfo (Innstillinger): «20652 Byggeprosjekt» i tittelfeltet
+      prosjekt: (() => { const pi = S.prosjektInfo ? S.prosjektInfo() : {}; return [pi.nummer, pi.navn].filter(Boolean).join(" "); })(),
       av: mittNavn(), plateM: S.stopePlateM || 2
     });
     lastNedFil(d.output("blob"), stopeplanFilnavn(S.fileName, iDag, "pdf"));
@@ -457,7 +459,7 @@ function tegnArk(jsPDF, m) {
 function tittelfelt(d, m, side) {
   const R = ARK, B = R.b - 2 * R.marg, y = R.h - R.marg - R.tfH;
   farge(d, SORT, "strek"); d.setLineWidth(0.5); d.rect(R.marg, y, B, R.tfH);
-  const kol = [{ b: 52 }, { b: 110, k: t("Modell"), v: m.modell }, { b: 66, k: t("Tegning"), v: t("Støpeplan") },
+  const kol = [{ b: 52 }, { b: 110, k: m.prosjekt ? t("Prosjekt") : t("Modell"), v: m.prosjekt || m.modell }, { b: 66, k: t("Tegning"), v: t("Støpeplan") },
     { b: 52, k: t("Dato"), v: datoLang(m.iDag) }, { b: 66, k: t("Tegnet av"), v: m.av || "–" }, { b: 0, k: t("Ark"), v: "" }];
   kol[kol.length - 1].b = B - kol.reduce((s, c) => s + c.b, 0);
   let x = R.marg;

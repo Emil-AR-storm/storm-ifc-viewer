@@ -451,7 +451,8 @@ export async function fyllLogoliste(velg) {
     o.value = l.itemId; o.textContent = ryddLogonavn(l.fil); o.dataset.fil = l.fil;
     velg.appendChild(o);
   }
-  const husket = S.settings && S.settings.rapLogo;
+  // 🗂 Logoen som gjelder for modellen (Prosjektinfo), ellers rapportmenyens
+  const husket = S.standardLogoFil ? S.standardLogoFil() : (S.settings && S.settings.rapLogo);
   if (husket) {
     const treff = [...velg.options].find(o => o.dataset.fil === husket);
     if (treff) velg.value = treff.value;
@@ -471,7 +472,9 @@ export async function byggKontekst(c, tilleggsFn) {
     emId: "",                                    // hentes fra Excel i en senere runde
     tittel: String(c.text || "").split("\n")[0].slice(0, 80),
     tekst: String(c.text || ""),
-    prosjekt: String(S.lettProsjekt || S.prosjektnummer || ""),
+    // 🗂 Prosjektnummeret fra Prosjektinfo (Innstillinger) — før 09.10 var det
+    // alltid tomt på kontoret, fordi bare byggeplass-siden satte S.lettProsjekt.
+    prosjekt: String((S.prosjektInfo ? S.prosjektInfo().nummer : "") || S.lettProsjekt || ""),
     ansvarlig: String(c.owner || ""),
     frist: String(c.due || ""),
     forfatter: String(c.author || ""),
@@ -795,8 +798,8 @@ export async function apneSkjema(c, mal, skjema, lagre) {
     if (logoVelg) fyllLogoliste(logoVelg);
     if (logoVelg) logoVelg.onchange = () => {
       const o = logoVelg.selectedOptions[0];
-      S.settings.rapLogo = (o && o.dataset.fil) || "";
-      writePrefs();
+      if (S.settStandardLogo) S.settStandardLogo((o && o.dataset.fil) || "");
+      else { S.settings.rapLogo = (o && o.dataset.fil) || ""; writePrefs(); }
     };
 
     const pdf = el.querySelector(".sv-pdf");

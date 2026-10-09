@@ -25,6 +25,7 @@
 // punkt, dobbeltklikk (eller Enter / «Ferdig pil») for å avslutte. Etterpå
 // virker prikkene akkurat som på gjerdet — dra, shift-klikk, dobbeltklikk for
 // nytt punkt og Delete — men pila er en åpen linje uten paneler og porter.
+import { PROSJEKT_LOGO, erStandardLogo, fraLogoValg } from "./prosjektinfo-regn.js";
 import * as THREE from "three";
 import { STILLAS_DELNAVN, STILLAS_FARGER, STILLAS_STD, stillasDeler, STILLAS_MAKS_ETASJER, STILLAS_MAKS_FELT, stillasFeltVed, stillasMengder, stillasSider, stillasTilLinje, stillasTilLukket, veksleStigeplate, veksleTrapp } from "./stillas-regn.js";
 import { $, S, apnePanel, esc, ikon, på, writePrefs } from "./state.js";
@@ -167,11 +168,17 @@ function hentLogoListe(paaNytt) {
   return logoListe;
 }
 S.riggLogoFor = (fil) => {
+  // 🗂 «Prosjektets logo» (standard for nye objekter): logoen fra Prosjektinfo
+  if (fil === PROSJEKT_LOGO) fil = S.standardLogoFil ? S.standardLogoFil() : "";
   if (!fil) return null;
   if (logoBilder.has(fil)) return logoBilder.get(fil);
   onsket.add(fil);
   return null;
 };
+// 🗂 Prosjektets logo byttet i Innstillinger: tegn brakkene på nytt med den nye.
+if (typeof document !== "undefined") document.addEventListener("storm-prosjektinfo", () => {
+  if (riggObjekter(S.rigg || []).some(o => o.logo === PROSJEKT_LOGO)) tegnRigg();
+});
 let henter = false, logoSjekket = 0;
 async function hentOnskedeLogoer() {
   if (henter || !onsket.size || !spPaalogget()) return;
@@ -208,25 +215,32 @@ frameHooks.push(() => {
 // får den samme som før. "" = ingen logo.
 export function riggLogoFil() {
   const v = S.settings && S.settings.riggLogo;
-  if (v === null || v === undefined) return (S.settings && S.settings.rapLogo) || "";
+  // 🗂 Ikke valgt / «Prosjektets logo»: logoen fra Prosjektinfo (Innstillinger)
+  if (erStandardLogo(v)) return S.standardLogoFil ? S.standardLogoFil() : ((S.settings && S.settings.rapLogo) || "");
   return String(v);
 }
 S.riggLogoFil = riggLogoFil;
 
 // Logovalget i skjemaet: «Ingen logo» + filene i Logoer-mappa. Det lagrede
 // valget vises selv om lista ikke er hentet ennå (eller man er logget ut).
-async function fyllRiggLogovalg(velg, valgt, paaNytt = true) {
+// 🗂 Øverst: «Prosjektets logo» (verdien PROSJEKT_LOGO) — logoen fra
+// Prosjektinfo i Innstillinger. `standard` = valget står på den.
+async function fyllRiggLogovalg(velg, valgt, paaNytt = true, standard = false) {
   if (!velg) return;
   const opt = (verdi, tekst) => { const o = document.createElement("option"); o.value = verdi; o.textContent = tekst; return o; };
+  if (valgt === PROSJEKT_LOGO) { standard = true; valgt = ""; }
+  const pFil = S.standardLogoFil ? S.standardLogoFil() : "";
+  const vis = standard ? PROSJEKT_LOGO : (valgt || "");
   velg.innerHTML = "";
+  velg.appendChild(opt(PROSJEKT_LOGO, t("Prosjektets logo") + (pFil ? " (" + ryddLogonavn(pFil) + ")" : "")));
   velg.appendChild(opt("", t("Ingen logo")));
   if (valgt) velg.appendChild(opt(valgt, ryddLogonavn(valgt)));
-  velg.value = valgt || "";
+  velg.value = vis;
   if (!spPaalogget()) return;
   const liste = await hentLogoListe(paaNytt);
   if (!velg.isConnected) return;
   for (const l of liste) if (l.fil !== valgt) velg.appendChild(opt(l.fil, ryddLogonavn(l.fil)));
-  velg.value = valgt || "";
+  velg.value = vis;
 }
 
 // afterLoad (ifc.js): lokalt først, så SharePoint. Nyeste `endret` vinner per
@@ -1245,6 +1259,9 @@ window.addEventListener("pointerup", (e) => {
     const pos = pt && posisjonFra(pt);
     if (!pos) return;
     const o = Object.assign({}, plasserer.o, pos);
+    // 🗂 Nye objekter med logo får «Prosjektets logo» (Emil 09.10: velg logoen
+    // én gang i Innstillinger, ikke på hvert rigg-objekt). Kan byttes i skjemaet.
+    if (RIGG_TYPER[o.type] && RIGG_TYPER[o.type].logo && !o.logo) o.logo = PROSJEKT_LOGO;
     avbrytPlassering();
     leggTil(o, true);
     visValgt(o.id);   // 📝 skjemaet åpnes med en gang — ingen «trykk på den, så Rediger»
@@ -1515,10 +1532,10 @@ function tegnPanel() {
     writePrefs();
   };
   if ($("riggPdfLogo")) {
-    fyllRiggLogovalg($("riggPdfLogo"), riggLogoFil(), false);
+    fyllRiggLogovalg($("riggPdfLogo"), riggLogoFil(), false, erStandardLogo(S.settings && S.settings.riggLogo));
     $("riggPdfLogo").onchange = (e) => {
       if (!S.settings) return;
-      S.settings.riggLogo = e.target.value || "";
+      S.settings.riggLogo = fraLogoValg(e.target.value);
       writePrefs();
     };
   }

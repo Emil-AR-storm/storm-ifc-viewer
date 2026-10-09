@@ -26,6 +26,7 @@ import "./veggelement.js";   // 🧱 SW-generator: veggelementer på stålmodell
 import "./stopeplan.js";      // 🧱 støpeplan i 3D (kun kontor)
 import "./stopeplan-felt.js"; // 🧱 trinn 3: felt på plata — tegne og dra (kun kontor)
 import "./framdrift.js";
+import "./vaer.js";            // 🌦 Vis vær (kun kontor — byggeplassen ser været i Framdriftsplan)
 import "./laster.js";          // ❄🌬 snø og vind (kun kontor)      // 📅 framdriftsplan: etapper med alle slags objekter (kun kontor)
 import "./dokumentasjon.js";  // 📄 snarveiene i gruppa Dokumentasjon (kun kontor)
 import "./markers.js";
@@ -36,6 +37,7 @@ import "./maal-verktoy.js";   // 📏📐 kjedemål og vinkel/fall — FØR mode
 import "./modes.js";
 import "./angre.js";   // ↩ angre/gjenopprett – må lastes før ui.js (hurtigtastene)
 import "./sharepoint.js";
+import "./prosjektinfo.js";   // 🗂 felles prosjektinfo i Innstillinger — FØR ui.js
 import "./ui.js";
 import "./tema.js";   // lyst/mørkt tema – trenger knappen i toppbaren
 import "./hjul.js";   // navigasjonshjul – trenger knappen i verktøylinja

@@ -525,10 +525,19 @@ function oppdaterHode() {
   const el = $("fpHodeStatus");
   if (el) el.textContent = sistApen && aktiv ? kortStatus() : "";
 }
+// 🌦 Vis vær på: været og varslene for dagen glideren står på, på en egen
+// linje under toppteksten (på samme linje ble varslene klippet bort).
+function vaerLinje() {
+  const sp = tidsSpenn(S.framdrift);
+  if (!sp || !S.vaerTopp) return "";
+  return S.vaerTopp(isoFraDag(framdriftTid()));
+}
 function oppdaterTopp() {
   oppdaterHode();
   const el = $("fpTidTekst");
   if (el) el.innerHTML = toppTekst();
+  const vl = $("fpVaerLinje");
+  if (vl) { const h = vaerLinje(); vl.innerHTML = h; vl.style.display = h ? "" : "none"; }
   const g = $("fpTidGlider");
   const sp = tidsSpenn(S.framdrift);
   if (g && sp) g.value = String(framdriftTid() - sp.a);
@@ -562,6 +571,11 @@ export function tegnTidslinje(apen) {
       esc(e.nr + " " + e.navn + " · " + datoLang(e.dato) + (e.slutt && e.slutt !== e.dato ? " – " + datoLang(e.slutt) : "")) +
       '"><span>' + e.nr + "</span></button>";
   }
+  // 🌦 Værraden over trinnene (Vis vær på): ikon per dag og røde felt på
+  // dager med varsel. Tegnes av vaer-felles.js; tom streng når været er av.
+  const dagB = (el.clientWidth || 800) / Math.max(1, n);
+  const vaerRad = S.vaerTidslinje ? S.vaerTidslinje(isoFraDag(sp.a), isoFraDag(sp.b - 1),
+    (iso) => { const d = dagNr(iso); return { fra: pos(d).toFixed(2), b: Math.max(0.3, pos(d + 1) - pos(d)).toFixed(2), midt: pos(d + 0.5).toFixed(2) }; }, dagB) : "";
   const iDag = dagNr(iDagISO());
   const idagMerke = iDag >= sp.a && iDag <= sp.b
     ? '<span class="st-tid-idag" style="left:' + pos(iDag + 0.5).toFixed(2) + '%" title="' + esc(t("I dag")) + '"></span>' : "";
@@ -576,7 +590,8 @@ export function tegnTidslinje(apen) {
         '<button id="fpTidIdag"' + (iDag >= sp.a && iDag < sp.b ? "" : " disabled") + ">" + esc(t("I dag")) + "</button>" +
         '<button id="fpTidFerdig"' + (S.framdriftTid == null ? " disabled" : "") + ">" + esc(t("Alt ferdig")) + "</button>" +
       "</span></div>" +
-    '<div class="st-tid-bane">' + idagMerke + barer +
+    (vaerRad ? '<div class="fp-vaer-linje" id="fpVaerLinje">' + vaerLinje() + "</div>" : "") +
+    '<div class="st-tid-bane' + (vaerRad ? " fp-med-vaer" : "") + '">' + idagMerke + vaerRad + barer +
       '<input type="range" id="fpTidGlider" min="0" max="' + n + '" step="0.02" value="' + (tid - sp.a) + '" aria-label="' + esc(t("Vist per")) + '">' +
     "</div>" +
     '<div class="st-tid-akse">' + akse + "</div>";
@@ -598,6 +613,12 @@ function oppdaterBarer() {
     b.classList.toggle("ferdig", p >= 1); b.classList.toggle("kommer", p <= 0); b.classList.toggle("arbeid", p > 0 && p < 1);
   });
 }
+
+// 🌦 Været er hentet ferdig (eller Vis vær / grensene er endret): tegn
+// tidslinja på nytt hvis den står oppe.
+if (typeof document !== "undefined") document.addEventListener("storm-vaer", () => {
+  if (sistApen && aktiv) tegnTidslinje();
+});
 
 // ▶ Spill av: hele planen på noen sekunder (1,5 s per trinn, minst 6 s).
 // Trinn 5 (videoen) bruker samme avspilling.

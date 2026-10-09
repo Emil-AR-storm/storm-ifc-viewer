@@ -59,6 +59,8 @@ export const DEFAULT_SETTINGS = {
   rapLogo: "",        // valgt logo (filnavn i SharePoint-mappa Logoer)
   stopeLogo: null,    // 🧱 logo på støpeplan-PDF-en (filnavn); null = samme som rapporten, "" = ingen
   riggLogo: null,     // 🚧 logo på riggplan-PDF-en (filnavn); null = samme som rapporten, "" = ingen
+  vaerPaa: null,       // 🌦 «Vis vær» på: været vises også i Framdriftsplan (null = aldri åpnet → slås på første gang)
+  vaerGrenser: null,   // 🌦 grensene for varsel (null = standard: kran 20, storm 20, regn 5/1, frost 0)
   framdriftLogo: null, // 📅 logo på framdriftsplan-PDF-en (filnavn); null = samme som rapporten, "" = ingen
   verktoygruppe: "",  // 🧰 valgt gruppe i verktøylinja (mal | info | utseende | bygg)
   // ❓ Hjelpekortene er vist én gang på denne maskinen. Står den false på
@@ -291,6 +293,12 @@ S.ryddFramdrift = null;
 S.tegnStopeplan = null;        // trinn 2/3: tegn fargene og feltene på nytt
 S.stopeplan = [];
 S.settGrupperFraLett = null;    // markers.js: grupper fra Workerens JSON (bygg)
+
+// 🗂 Prosjektinfo. Krokene settes av prosjektinfo.js.
+S.prosjektInfo = null;          // alle verktøy: () => gjeldende prosjektinfo (navn, nummer, adresse, logo …)
+S.standardLogoFil = null;       // logoen som gjelder når verktøyet ikke har valgt en egen
+S.lastProsjektinfo = null;      // ifc.js afterLoad
+S.settProsjektinfoFraLett = null; // markers.js: fra Workerens JSON (bygg)
 
 // ⛰ Terreng. Kroken settes av terreng.js (kun kontor).
 S.ryddTerreng = null;           // modellbytte: fjern terrenget fra scenen

@@ -17,6 +17,7 @@
 //   · rigg: eget utvalg her — rigg.js gir oss klikket via S.riggIVelgModus
 //
 // Importeres BARE fra main.js.
+import { PROSJEKT_LOGO, erStandardLogo, fraLogoValg } from "./prosjektinfo-regn.js";
 import { $, S, apnePanel, ekstraLagSom, esc, ikon, på, writePrefs } from "./state.js";
 import { markerGroup } from "./scene.js";
 import { hentLogoer } from "./tegninger.js";
@@ -281,7 +282,8 @@ window.addEventListener("keyup", () => setTimeout(() => { if (velger) tegnVelgBa
 // reserve (null), "" = ingen logo. Originalbildet fra SharePoint (Logoer).
 export function framdriftLogoFil() {
   const v = S.settings && S.settings.framdriftLogo;
-  if (v === null || v === undefined) return (S.settings && S.settings.rapLogo) || "";
+  // 🗂 Ikke valgt / «Prosjektets logo»: logoen fra Prosjektinfo (Innstillinger)
+  if (erStandardLogo(v)) return S.standardLogoFil ? S.standardLogoFil() : ((S.settings && S.settings.rapLogo) || "");
   return String(v);
 }
 S.framdriftLogoFil = framdriftLogoFil;
@@ -289,18 +291,20 @@ let logoListe = null;
 async function fyllLogo(velg) {
   if (!velg) return;
   const valgt = framdriftLogoFil();
+  const vis = erStandardLogo(S.settings && S.settings.framdriftLogo) ? PROSJEKT_LOGO : valgt;
   const opt = (verdi, tekst) => { const o = document.createElement("option"); o.value = verdi; o.textContent = tekst; return o; };
   velg.innerHTML = "";
+  velg.appendChild(opt(PROSJEKT_LOGO, t("Prosjektets logo") + (valgt && vis === PROSJEKT_LOGO ? " (" + ryddLogonavn(valgt) + ")" : "")));
   velg.appendChild(opt("", t("Ingen logo")));
   if (valgt) velg.appendChild(opt(valgt, ryddLogonavn(valgt)));
-  velg.value = valgt;
+  velg.value = vis;
   if (!spPaalogget()) return;
   if (!logoListe) logoListe = hentLogoer().catch(() => []);
   const liste = await logoListe;
   if (!liste.length) { logoListe = null; return; }
   if (!velg.isConnected) return;
   for (const l of liste) if (l.fil !== valgt) velg.appendChild(opt(l.fil, ryddLogonavn(l.fil)));
-  velg.value = valgt;
+  velg.value = vis;
 }
 
 // ═══════════════════════ PANELET ═══════════════════════
@@ -334,6 +338,9 @@ export function tegnPanel() {
     (sisteMelding ? '<p class="set-hjelp" style="color:var(--text)">' + esc(sisteMelding) + "</p>" : "");
   if (liste.length) html += '<label class="set-hjelp fp-vis"><input type="checkbox" id="fpVis"' + (S.framdriftVis !== false ? " checked" : "") + "> " +
     esc(t("Vis framdriften i modellen — dra glideren nederst")) + "</label>" +
+    // 🌦 Samme bryter som i Vis vær — været på tidslinja, her og på byggeplassen
+    '<label class="set-hjelp fp-vis"><input type="checkbox" id="fpVaer"' + (S.settings && S.settings.vaerPaa ? " checked" : "") + "> " +
+    esc(t("Vis været på tidslinja (varsel ved storm, mye regn, sterk vind og frost)")) + "</label>" +
     (tidsSpenn(liste) ? "" : '<p class="hint">' + esc(t("Sett «Fra»-dato på trinnene for å få glideren.")) + "</p>");
   if (!liste.length) html += '<p class="hint">' + esc(t("Ingen trinn ennå.")) + "</p>";
   html += '<div class="fp-liste" id="fpListe">';
@@ -371,8 +378,12 @@ export function tegnPanel() {
   $("fpPdf").onclick = () => lastNedPdf();
   $("fpVideo").onclick = () => lagVideo();
   if ($("fpVis")) $("fpVis").onchange = (ev) => { S.framdriftVis = ev.target.checked; oppdaterVis(); };
+  if ($("fpVaer")) $("fpVaer").onchange = (ev) => {
+    S.settings.vaerPaa = !!ev.target.checked; writePrefs();
+    try { document.dispatchEvent(new CustomEvent("storm-vaer")); } catch (_) {}
+  };
   fyllLogo($("fpLogo"));
-  $("fpLogo").onchange = (ev) => { S.settings.framdriftLogo = ev.target.value || ""; writePrefs(); };
+  $("fpLogo").onchange = (ev) => { S.settings.framdriftLogo = fraLogoValg(ev.target.value); writePrefs(); };
   body.querySelectorAll(".fp-etappe").forEach(rad => {
     const id = rad.dataset.id;
     rad.querySelector(".st-navn").onchange = (ev) => endreEtappe(id, { navn: ev.target.value });

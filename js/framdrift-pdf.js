@@ -325,9 +325,13 @@ export async function lagFramdriftPdf() {
     const jsPDF = await hentJsPDF();
     const iDag = new Date().toISOString().slice(0, 10);
     const live = S.terrengRef ? S.terrengRef() : null;
+    const pi = S.prosjektInfo ? S.prosjektInfo() : {};
     const d = tegnArk(jsPDF, {
       sider, logo, iDag, av: mittNavn(), alle: sortert0(), qr,
-      under: [S.lettProsjekt || "", (live && live.adresse) || "", String(S.fileName || "").replace(/\.(ifc|glb)$/i, "")].filter(Boolean).join("  ·  ")
+      // 🗂 Prosjektinfo (Innstillinger) først, så det som fantes fra før
+      under: [[pi.nummer, pi.navn].filter(Boolean).join(" "), pi.adresse || (live && live.adresse) || "", String(S.fileName || "").replace(/\.(ifc|glb)$/i, "")].filter(Boolean).join("  ·  "),
+      byggherre: pi.byggherre || "",
+      kontakt: [pi.leder, pi.telefon].filter(Boolean).join(" ")
     });
     lastNedFil(d.output("blob"), framdriftFilnavn(S.fileName, iDag));
     return { sider: sider.length };
@@ -396,7 +400,7 @@ export function tegnArk(jsPDF, m) {
       [t("Trinn"), t("{0} av {1}", si + 1, ant)],
       [t("Dato"), norskDato(e.dato) || "—"],
       [t("Laget av"), m.av]
-    ]);
+    ].concat(m.byggherre ? [[t("Byggherre"), m.byggherre]] : [], m.kontakt ? [[t("Kontakt"), m.kontakt]] : []));
     // ── De fire bildene ──
     side.bilder.forEach((b, i) => {
       const bx = R.marg + (i % 2) * (A.flisB + A.mellom);
