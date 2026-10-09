@@ -60,7 +60,8 @@ export const DEFAULT_SETTINGS = {
   stopeLogo: null,    // 🧱 logo på støpeplan-PDF-en (filnavn); null = samme som rapporten, "" = ingen
   riggLogo: null,     // 🚧 logo på riggplan-PDF-en (filnavn); null = samme som rapporten, "" = ingen
   vaerPaa: null,       // 🌦 «Vis vær» på: været vises også i Framdriftsplan (null = aldri åpnet → slås på første gang)
-  vaerGrenser: null,   // 🌦 grensene for varsel (null = standard: kran 20, storm 20, regn 5/1, frost 0)
+  vaerGrenser: null,
+  vaer3D: true,        // 🌦 været i 3D (himmel, skyer, regn, snø) — av med knappen i 3D-visningen   // 🌦 grensene for varsel (null = standard: kran 20, storm 20, regn 5/1, frost 0)
   framdriftLogo: null, // 📅 logo på framdriftsplan-PDF-en (filnavn); null = samme som rapporten, "" = ingen
   verktoygruppe: "",  // 🧰 valgt gruppe i verktøylinja (mal | info | utseende | bygg)
   // ❓ Hjelpekortene er vist én gang på denne maskinen. Står den false på

@@ -2377,4 +2377,9 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Vis vær er av på kontoret. Slå det på og trykk Storm-Byggeplass, så kommer været her.": "Rodyti orus biure išjungta. Įjunkite ir paspauskite Storm statybvietė, tada orai atsiras čia.",
   "Byggeplassens adresse mangler i Innstillinger → Prosjektinfo på kontoret.": "Biure trūksta statybvietės adreso: Nustatymai → Projekto informacija.",
   "Fikk ikke hentet været — værtjenesten svarer ikke. Prøv igjen senere.": "Nepavyko gauti orų — orų paslauga neatsako. Bandykite vėliau.",
+  // 🌦 Vær i 3D av/på (09.10.2026)
+  "Vis været i Framdriftsplan og 3D (også på byggeplassen)": "Rodyti orus Darbų grafike ir 3D (taip pat statybvietėje)",
+  "Vis været i 3D (himmel, skyer, regn og snø)": "Rodyti orus 3D (dangus, debesys, lietus ir sniegas)",
+  "Skjul været i 3D": "Slėpti orus 3D",
+  "Skru av været i 3D (himmel, regn og snø). Slås på igjen i Vis vær.": "Išjungti orus 3D (dangus, lietus ir sniegas). Vėl įjungiama Rodyti orus.",
 };

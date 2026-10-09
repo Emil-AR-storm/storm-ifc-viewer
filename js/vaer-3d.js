@@ -20,7 +20,7 @@
 // det aldri. Rapportbildet bruker hovedkameraet og skjuler det med
 // S.skjulVaer3D(true).
 import * as THREE from "three";
-import { S } from "./state.js";
+import { S, writePrefs } from "./state.js";
 import { camera, controls, frameHooks, scene } from "./scene.js";
 import { nattFor } from "./vaer-regn.js";
 S.vaerNatt = (lat, dato, time) => nattFor(lat, dato, time);
@@ -92,13 +92,24 @@ function lagSkyTex() {
 const skyGruppe = new THREE.Group();
 gruppe.add(skyGruppe);
 
-// Nedbøren: streker (regn) eller prikker (snø), N stykker i en enhetsboks
-// som skaleres med kameraavstanden.
-const N_REGN = 3500, N_SNO = 2500;
-const regnPos = new Float32Array(N_REGN * 6);
+// Nedbøren: regn som smale strimler og snø som prikker, N stykker i en
+// enhetsboks som skaleres med kameraavstanden.
+//
+// REGNET ER STRIMLER, IKKE STREKER (Emil 09.10: «på dager med regn kom det
+// ikke opp noe regn i videoen»). Streker i WebGL er alltid 1 piksel brede.
+// Videoen tegnes 1,5 ganger større og skaleres ned, og MP4-komprimeringen
+// fjerner så tynne, lyse detaljer — regnet forsvant. Strimlene har en bredde
+// i PIKSLER (regnes av kameraavstanden og bildehøyden), så regnet ser likt ut
+// på skjermen og i videoen. Snøfnuggene skaleres på samme måte.
+const N_REGN = 3000, N_SNO = 2500;
+const REGN_PX = 1.6, SNO_PX = 3;
+const regnPos = new Float32Array(N_REGN * 4 * 3);
+const regnIdx = new Uint32Array(N_REGN * 6);
+for (let i = 0; i < N_REGN; i++) regnIdx.set([i * 4, i * 4 + 1, i * 4 + 2, i * 4 + 2, i * 4 + 1, i * 4 + 3], i * 6);
 const regnGeo = new THREE.BufferGeometry();
 regnGeo.setAttribute("position", new THREE.BufferAttribute(regnPos, 3));
-const regn = new THREE.LineSegments(regnGeo, new THREE.LineBasicMaterial({ color: 0xaecbe6, transparent: true, opacity: 0.55, depthWrite: false }));
+regnGeo.setIndex(new THREE.BufferAttribute(regnIdx, 1));
+const regn = new THREE.Mesh(regnGeo, new THREE.MeshBasicMaterial({ color: 0xdfeaf5, transparent: true, opacity: 0.6, depthWrite: false, side: THREE.DoubleSide, fog: false }));
 regn.frustumCulled = false; regn.raycast = ingenTreff; regn.layers.set(LAG);
 const snoPos = new Float32Array(N_SNO * 3);
 const snoGeo = new THREE.BufferGeometry();
@@ -140,8 +151,17 @@ function finnLys() {
 }
 
 // ═══════════════════════ BYGG FOR AKTIVT VÆR ═══════════════════════
+// 3D-været vises bare når Vis vær er på OG «Vis været i 3D» ikke er slått av
+// (Emil 09.10: «det må finnes en knapp som skrur av 3D-visningen — det er
+// tungvint når du skal vise noen modellen og det er masse snø på skjermen»,
+// og «Vis været i Framdriftsplan skal også skru av 3D-været»).
+// Videoen følger bare Vis vær (den har sitt eget valg: medVaer).
+export function vaer3DTillatt() {
+  if (videoModus) return true;
+  return !!(S.settings && S.settings.vaerPaa && S.settings.vaer3D !== false);
+}
 function bygg() {
-  const a = skjult ? null : aktiv;
+  const a = (skjult || !vaer3DTillatt()) ? null : aktiv;
   gruppe.visible = !!a;
   if (!a) {
     for (const x of finnLys()) x.l.intensity = x.i;
@@ -169,7 +189,7 @@ function bygg() {
   // Nedbør
   const erRegn = ["regn", "storm", "sludd"].includes(a.bilde), erSno = ["sno", "sludd"].includes(a.bilde);
   regn.visible = erRegn; sno.visible = erSno;
-  regn.material.opacity = a.bilde === "storm" ? 0.7 : 0.5;
+  regn.material.opacity = a.bilde === "storm" ? 0.75 : 0.6;
   // Sola på himmelen (stil C): bare når den faktisk synes
   kuppelMat.uniforms.solStyrke.value = stil === "C" ? (a.bilde === "sol" ? 1 : a.bilde === "delvis" ? 0.6 : 0) * (1 - n) : 0;
   // Lys og dis (stil C)
@@ -191,9 +211,11 @@ frameHooks.push(() => {
   const naa = performance.now();
   const dt = Math.min(0.1, sist ? (naa - sist) / 1000 : 0.016);
   sist = naa;
-  oppdaterFor(camera, controls.target, naa, dt);
+  oppdaterFor(camera, controls.target, naa, dt, (typeof innerHeight === "number" ? innerHeight : 800) * Math.min(2, (typeof devicePixelRatio === "number" ? devicePixelRatio : 1)));
 });
-function oppdaterFor(kam, t, naa, dt) {
+const _syn = new THREE.Vector3(), _side = new THREE.Vector3(), _ned = new THREE.Vector3();
+// hPx: bildehøyden i piksler det tegnes i (skjermen, eller videoens store bilde)
+function oppdaterFor(kam, t, naa, dt, hPx) {
   const d = Math.max(1e-3, kam.position.distanceTo(t));
   // Kuppelen følger kameraet, rett innenfor fjernplanet
   kuppel.position.copy(kam.position);
@@ -214,16 +236,27 @@ function oppdaterFor(kam, t, naa, dt) {
   // Nedbøren: boks rundt målet, faller og går rundt
   const B = d * 1.4;
   nedbor.position.copy(t);
+  // Én piksel i verdensenheter, der det regner (rundt målet)
+  const fov = (kam.fov || 50) * Math.PI / 180;
+  const pxVerden = 2 * d * Math.tan(fov / 2) / Math.max(100, hPx || 800);
   if (regn.visible) {
     const fall = (naa / 1000) * 1.4;   // bokser per sekund
-    const len = 0.035, vind = aktiv && aktiv.bilde === "storm" ? 0.35 : 0.08;
+    const len = 0.04, vind = aktiv && aktiv.bilde === "storm" ? 0.35 : 0.08;
+    // Strimlene vendes mot kameraet: sideretningen står vinkelrett på både
+    // fallretningen og synslinja
+    _syn.copy(t).sub(kam.position).normalize();
+    _ned.set(vind, 1, 0).normalize();
+    _side.crossVectors(_ned, _syn).normalize().multiplyScalar(pxVerden * REGN_PX / 2);
+    const sx = _side.x, sy = _side.y, sz = _side.z;
     for (let i = 0; i < N_REGN; i++) {
       let y = fro[i * 3 + 1] - fall; y = y - Math.floor(y + 0.5);
       const x = fro[i * 3] + vind * y, z = fro[i * 3 + 2];
-      regnPos.set([x * B, y * B, z * B, (x + vind * len) * B, (y + len) * B, z * B], i * 6);
+      const ax = x * B, ay = y * B, az = z * B, bx = (x + vind * len) * B, by = (y + len) * B, bz = z * B;
+      regnPos.set([ax - sx, ay - sy, az - sz, ax + sx, ay + sy, az + sz, bx - sx, by - sy, bz - sz, bx + sx, by + sy, bz + sz], i * 12);
     }
     regnGeo.attributes.position.needsUpdate = true;
   }
+  sno.material.size = SNO_PX * Math.max(1, (hPx || 800) / 900);
   if (sno.visible) {
     const fall = (naa / 1000) * 0.12;
     for (let i = 0; i < N_SNO; i++) {
@@ -256,6 +289,7 @@ export function settVaer3D(kilde, tilstand) {
   if (JSON.stringify(ny) === JSON.stringify(aktiv)) return;
   aktiv = ny ? Object.assign({}, ny) : null;
   bygg();
+  visKnapp();
 }
 S.settVaer3D = settVaer3D;
 S.skjulVaer3D = (paa) => { skjult = !!paa; bygg(); };
@@ -276,10 +310,29 @@ S.vaer3DVideo = {
     if (scene.userData.vaerTaake) { scene.fog = null; scene.userData.vaerTaake = false; }
     kam.layers.enable(LAG);
   },
-  ramme(kam, mal, tilstand, tidMs) {
+  // hPx: høyden på bildet videoen tegnes i (før nedskalering)
+  ramme(kam, mal, tilstand, tidMs, hPx) {
     settVaer3D("video", tilstand);
     if (!gruppe.visible) return;
-    oppdaterFor(kam, mal, tidMs, 1 / 30);
+    oppdaterFor(kam, mal, tidMs, 1 / 30, hPx);
   },
   slutt() { videoModus = false; settVaer3D("video", null); bygg(); }
 };
+
+// Bryterne (Vis vær, Vis været i 3D, knappen i 3D-visningen) sier fra med
+// «storm-vaer» — tegn på nytt og vis/skjul knappen.
+function visKnapp() {
+  const k = typeof document !== "undefined" && document.getElementById("vaer3dAv");
+  if (!k) return;
+  k.style.display = (aktiv && vaer3DTillatt() && !videoModus) ? "" : "none";
+}
+if (typeof document !== "undefined") {
+  document.addEventListener("storm-vaer", () => { bygg(); visKnapp(); });
+  const k = document.getElementById("vaer3dAv");
+  if (k) k.addEventListener("click", () => {
+    if (!S.settings) return;
+    S.settings.vaer3D = false;
+    writePrefs();
+    try { document.dispatchEvent(new CustomEvent("storm-vaer")); } catch (_) {}
+  });
+}
