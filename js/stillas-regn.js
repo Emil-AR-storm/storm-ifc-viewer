@@ -248,6 +248,8 @@ export function stillasDeler(o, bakke) {
       if (!f) bein.set(k, { x: q[0], z: q[2], h, side: S.i }); else f.h = Math.max(f.h, h);
       return k;
     };
+    // nøkkelen til et bein som FINNES (lager ikke nye bein)
+    const finnes = (s, t) => { const q = P(s, t, 0), k = q[0].toFixed(3) + "," + q[2].toFixed(3); return bein.has(k) ? k : null; };
     const trappI = (i) => trapper.find(q => q.side === S.i && q.felt === i);
 
     // Bein og rammer i hver ramme-linje
@@ -255,7 +257,7 @@ export function stillasDeler(o, bakke) {
       const s = pos[i];
       const ky = legg(s, B, topp + RH);
       const ki = legg(s, 0, topp + (o.innvendig ? RH : 0));
-      rammeLinjer.push({ a: ki, b: ky, side: S.i });
+      rammeLinjer.push({ a: ki, b: ky, side: S.i, type: "ramme" });
       for (let k = 1; k <= Etg; k++) {
         const y = k * Hetg;
         if (haki) R_(P(s, 0, y), P(s, B, y), "hor", { tell: "horTverr", mal: fm(B) + " m" });
@@ -315,7 +317,7 @@ export function stillasDeler(o, bakke) {
       // diagonal hvert n. felt, på utsiden
       if (i % (o.diagonalHvert || 5) === 0)
         for (let k = 0; k < Etg; k++) R_(P(s0, B, k * Hetg + 0.25), P(s1, B, (k + 1) * Hetg), "diag", { tell: "diagonal", mal: fm(Math.hypot(Lf, Hetg - 0.25)) + " m" });
-      if (tr) trappetaarn(o, S, P, R_, Bx, legg, s0, s1, tr, haki, bakke);
+      if (tr) trappetaarn(o, S, P, R_, Bx, legg, s0, s1, tr, haki, bakke, rammeLinjer, finnes);
     }
     // forankring mot veggen
     for (let s = Math.min(1.5, Le / 2); s < Le; s += (o.forankringBort || 4))
@@ -325,7 +327,10 @@ export function stillasDeler(o, bakke) {
     if (S.hjorne === "ut") {
       // ved enden av stillaset (kan avvike litt fra hjørnet med faste lengder)
       const H0 = (a, b, y) => P(Le + a, b, y);
-      legg(Le + B, B, topp + RH);
+      const kh = legg(Le + B, B, topp + RH);
+      // ytterhjørnet i den ekstra rammehøyden: horisontaler til nabobeina
+      // (nabosidas bein finnes kanskje ikke ennå — slås opp etter alle sidene)
+      for (const [sa, ta] of [[Le, B], [Le + B, 0]]) { const q = P(sa, ta, 0); rammeLinjer.push({ pa: q[0].toFixed(3) + "," + q[2].toFixed(3), b: kh, side: S.i, type: "hor" }); }
       for (let k = 1; k <= Etg; k++) {
         const y = k * Hetg;
         const L2 = haki ? "hor" : "ramme";
@@ -356,26 +361,47 @@ export function stillasDeler(o, bakke) {
   // nederst (trinn på bunnRammeSteg). Begge beina i en ramme-linje får samme
   // ekstra høyde (de er én ramme), så lenge ingen av dem havner under bakken.
   const SM = STILLAS_STD.skrueMaks, steg = STILLAS_STD.bunnRammeSteg;
+  for (let i = rammeLinjer.length - 1; i >= 0; i--) {
+    const L = rammeLinjer[i];
+    if (L.pa) { if (bein.has(L.pa)) L.a = L.pa; else rammeLinjer.splice(i, 1); }
+  }
   for (const b of bein.values()) {
     b.g = bakke ? Math.min(0, Number(bakke(b.x, b.z)) || 0) : 0;
     const behov = -b.g - SM;
     b.ekstra = behov > 1e-6 ? Math.ceil(behov / steg - 1e-9) * steg : 0;
   }
+  // Et bein kan stå i flere linjer (trappetårnet og hjørnet deler bein med
+  // stillaset), så det jevnes ut til ingenting endrer seg lenger.
+  for (let runde = 0, endret = true; endret && runde < 10; runde++) {
+    endret = false;
+    for (const L of rammeLinjer) {
+      const a = bein.get(L.a), b = bein.get(L.b);
+      if (!a || !b || a.ekstra === b.ekstra) continue;
+      const h = Math.max(a.ekstra, b.ekstra);
+      if (-a.g - h >= -1e-9 && -b.g - h >= -1e-9) { a.ekstra = h; b.ekstra = h; endret = true; }
+    }
+  }
   for (const L of rammeLinjer) {
     const a = bein.get(L.a), b = bein.get(L.b);
-    if (!a || !b) continue;
-    const h = Math.max(a.ekstra, b.ekstra);
-    if (-a.g - h >= -1e-9 && -b.g - h >= -1e-9) { a.ekstra = h; b.ekstra = h; L.ekstra = h; }
+    L.ekstra = a && b && a.ekstra > 0 && a.ekstra === b.ekstra ? a.ekstra : 0;
   }
+  // beina som står i en ekstra RAMME, er en del av den rammen (aluminium)
+  const iRamme = new Set();
+  for (const L of rammeLinjer) if (L.ekstra > 0 && L.type === "ramme") { iRamme.add(L.a); iRamme.add(L.b); }
   let skrueMaks = 0, ekstraRammer = 0;
-  for (const b of bein.values()) {
+  for (const [nk, b] of bein) {
     const a = (y) => [b.x, y, b.z];
     const fot = 0.25 - b.ekstra;                 // der skruen møter beinet
     skrueMaks = Math.max(skrueMaks, -b.g - b.ekstra);
     bokser.push({ del: "skrue", c: a(b.g + 0.02), s: [0.15, 0.04, 0.15], e: { x: 1, z: 0 }, side: b.side, tell: "bunnskrue", mal: "" });
     ror.push({ del: "skrue", a: a(b.g + 0.04), b: a(fot), r: R * 0.8, side: b.side });
-    if (b.ekstra > 0) ror.push({ del: haki ? "spire" : "ramme", a: a(fot), b: a(0.25), r: R, side: b.side,
-      tell: haki ? "spire" : undefined, mal: haki ? fm(b.ekstra) + " m" : undefined });
+    // Haki: alltid en egen spire. Aluminium: delen av en ekstra ramme, ellers
+    // (ytterhjørnet) et eget stillasbein som telles.
+    if (b.ekstra > 0) {
+      const egen = haki || !iRamme.has(nk);
+      ror.push({ del: haki ? "spire" : "ramme", a: a(fot), b: a(0.25), r: R, side: b.side,
+        tell: egen ? "spire" : undefined, mal: egen ? fm(b.ekstra) + " m" : undefined });
+    }
     const toppStal = Math.min(b.h, topp);
     // første segment fra skruen til 1. etasje, så ett per etasje
     for (let y0 = 0; y0 < toppStal - 1e-6; y0 += Hetg) {
@@ -390,9 +416,12 @@ export function stillasDeler(o, bakke) {
   for (const L of rammeLinjer) {
     if (!(L.ekstra > 0)) continue;
     const a = bein.get(L.a), b = bein.get(L.b);
-    ekstraRammer++;
-    ror.push({ del: haki ? "hor" : "ramme", a: [a.x, 0.25, a.z], b: [b.x, 0.25, b.z], r: R, side: L.side,
-      tell: haki ? "horTverr" : "ramme", mal: haki ? fm(o.B) + " m" : fm(o.B) + " × " + fm(L.ekstra) + " m" });
+    const lengde = Math.hypot(a.x - b.x, a.z - b.z);
+    if (L.type === "ramme") ekstraRammer++;
+    const hor = haki || L.type === "hor";
+    ror.push({ del: hor ? "hor" : "ramme", a: [a.x, 0.25, a.z], b: [b.x, 0.25, b.z], r: R, side: L.side,
+      tell: hor ? (L.type === "hor" ? "horLangs" : "horTverr") : "ramme",
+      mal: hor ? fm(lengde) + " m" : fm(lengde) + " × " + fm(L.ekstra) + " m" });
   }
   return { ror, bokser, sider, skrueMaks: r3(skrueMaks), ekstraRammer };
 }
@@ -408,11 +437,18 @@ function hjorneplate(o, H0, y, e, side, Bx, haki, inn) {
 
 // 🪜 Trappetårnet utenpå feltet s0–s1: to rader (t = B … 3B), løpene
 // annenhver side, repos i hver ende over begge radene, rekkverk bare utvendig.
-function trappetaarn(o, S, P, R_, Bx, legg, s0, s1, tr, haki, bakke) {
+function trappetaarn(o, S, P, R_, Bx, legg, s0, s1, tr, haki, bakke, rammeLinjer, finnes) {
   const B = o.B, Hetg = o.H, rad = B, t0 = B, t1 = B + 2 * rad, rep = STILLAS_STD.repos;
   const nLop = Math.min(tr.til, o.etasjer || 1), topT = nLop * Hetg;
   const RH = o.rekkverkH || 1, KH = o.kneH || 0.5;
   for (const sx of [s0, s1]) for (const tx of [t0 + rad, t1]) legg(sx - 0 + 0, tx, topT + RH);
+  // tårnet står på to rammer i hver ende (B…2B og 2B…3B): de får ekstra
+  // rammehøyde nederst på samme måte som stillaset (Emil 09.10)
+  if (rammeLinjer) for (const sx of [s0, s1]) {
+    const k0 = finnes(sx, t0), k1 = finnes(sx, t0 + rad), k2 = finnes(sx, t1);
+    if (k0 && k1) rammeLinjer.push({ a: k0, b: k1, side: S.i, type: "ramme" });
+    if (k1 && k2) rammeLinjer.push({ a: k1, b: k2, side: S.i, type: "ramme" });
+  }
   const L = haki ? "hor" : "ramme";
   for (let k = 0; k < nLop; k++) {
     const ya = k * Hetg, yb = ya + Hetg, fram = k % 2 === 0;
