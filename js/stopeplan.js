@@ -11,6 +11,7 @@
 // slettet etappe blir en gravstein, så slettingen også når kollegaene.
 //
 // Importeres BARE fra main.js. Byggeplass-siden får egen visning (trinn 5).
+import { PROSJEKT_LOGO, erStandardLogo, fraLogoValg } from "./prosjektinfo-regn.js";
 import { $, S, apnePanel, ekstraLagSom, esc, ikon, på, writePrefs } from "./state.js";
 import { hentLogoer } from "./tegninger.js";
 import { ryddLogonavn } from "./rapport.js";
@@ -337,7 +338,8 @@ const STATUS_FARGE = { stopt: "var(--ok)", uke: "var(--warn)", forsinket: "var(-
 // på nytt.
 export function stopeLogoFil() {
   const v = S.settings && S.settings.stopeLogo;
-  if (v === null || v === undefined) return (S.settings && S.settings.rapLogo) || "";
+  // 🗂 Ikke valgt / «Prosjektets logo»: logoen fra Prosjektinfo (Innstillinger)
+  if (erStandardLogo(v)) return S.standardLogoFil ? S.standardLogoFil() : ((S.settings && S.settings.rapLogo) || "");
   return String(v);
 }
 S.stopeLogoFil = stopeLogoFil;
@@ -346,18 +348,20 @@ let logoListe = null;
 async function fyllStopeLogo(velg) {
   if (!velg) return;
   const valgt = stopeLogoFil();
+  const vis = erStandardLogo(S.settings && S.settings.stopeLogo) ? PROSJEKT_LOGO : valgt;
   const opt = (verdi, tekst) => { const o = document.createElement("option"); o.value = verdi; o.textContent = tekst; return o; };
   velg.innerHTML = "";
+  velg.appendChild(opt(PROSJEKT_LOGO, t("Prosjektets logo") + (valgt && vis === PROSJEKT_LOGO ? " (" + ryddLogonavn(valgt) + ")" : "")));
   velg.appendChild(opt("", t("Ingen logo")));
   if (valgt) velg.appendChild(opt(valgt, ryddLogonavn(valgt)));
-  velg.value = valgt;
+  velg.value = vis;
   if (!spPaalogget()) return;
   if (!logoListe) logoListe = hentLogoer().catch(() => []);
   let liste = await logoListe;
   if (!liste.length) { logoListe = null; return; }   // prøv igjen neste gang (innlogging kan komme senere)
   if (!velg.isConnected) return;
   for (const l of liste) if (l.fil !== valgt) velg.appendChild(opt(l.fil, ryddLogonavn(l.fil)));
-  velg.value = valgt;
+  velg.value = vis;
 }
 
 export function tegnPanel() {
@@ -445,7 +449,7 @@ export function tegnPanel() {
   $("stVis").onchange = (ev) => { settVisEtappeplan(ev.target.checked); tegnTidslinje(); };
   $("stVisVann").onchange = (ev) => settVisVanntetting(ev.target.checked);
   fyllStopeLogo($("stLogo"));
-  $("stLogo").onchange = (ev) => { S.settings.stopeLogo = ev.target.value || ""; writePrefs(); };
+  $("stLogo").onchange = (ev) => { S.settings.stopeLogo = fraLogoValg(ev.target.value); writePrefs(); };
   const pl = $("stPlateM");
   if (pl) pl.onchange = () => { settPlateM(pl.value); tegnPanel(); };
   tegnTidslinje();

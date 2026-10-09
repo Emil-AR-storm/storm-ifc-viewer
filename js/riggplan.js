@@ -755,12 +755,17 @@ export async function lastNedRiggplan(valg) {
     vis(t("Henter PDF-biblioteket …"));
     const jsPDF = await hentJsPDF();
     const iDag = new Date().toISOString().slice(0, 10);
+    const pi = S.prosjektInfo ? S.prosjektInfo() : {};
     const d = tegnArk(jsPDF, {
       bilde, ringer, forklaring, skala, nordKjent, logo, iDag, langtUnna, kuttet, oversikt, flisB, flisH,
       kartkilde: !!(live && live.synlig),
       modell: String(S.fileName || "").replace(/\.(ifc|glb)$/i, ""),
-      prosjekt: S.lettProsjekt || "",
-      adresse: (live && live.adresse) || "",
+      // 🗂 Prosjektinfo (Innstillinger): nummer + navn, adressen, byggherre og
+      // kontakt. Uten Prosjektinfo: nummeret fra Storm-Byggeplass og terrengets adresse.
+      prosjekt: [pi.nummer, pi.navn].filter(Boolean).join(" "),
+      adresse: pi.adresse || (live && live.adresse) || "",
+      byggherre: pi.byggherre || "",
+      kontakt: [pi.leder, pi.telefon].filter(Boolean).join(" "),
       av: mittNavn()
     });
     lastNedFil(d.output("blob"), riggplanFilnavn(S.fileName, iDag));
@@ -901,7 +906,7 @@ function tegnArk(jsPDF, m) {
     [t("Dato"), norskDato(m.iDag)],
     [t("Målestokk"), "1:" + m.skala.toLocaleString("nb-NO") + " (A3)"],
     [t("Laget av"), m.av]
-  ]);
+  ].concat(m.byggherre ? [[t("Byggherre"), m.byggherre]] : [], m.kontakt ? [[t("Kontakt"), m.kontakt]] : []));
 
   // ── Bildet ──
   d.addImage(m.bilde.data, "JPEG", x0, y0, R.bildeB, R.bildeH);

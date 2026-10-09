@@ -221,6 +221,12 @@ async function lastLettMarkeringer() {
       // og den genererte betongen fra SW-feltet over. Gamle filer har ikke feltet.
       if (S.settStopeplanFraLett)
         S.settStopeplanFraLett(d && !Array.isArray(d) ? d.stopeplan : null);
+      // 🗂 Prosjektinfo og værvalgene FØR framdriftsplanen: været i planen
+      // trenger posisjonen. Gamle filer har ikke feltene.
+      if (S.settProsjektinfoFraLett)
+        S.settProsjektinfoFraLett(d && !Array.isArray(d) ? d.prosjektInfo : null);
+      if (S.settVaerFraLett)
+        S.settVaerFraLett(d && !Array.isArray(d) ? d.vaer : null);
       // 📅 Framdriftsplanen (framdrift-lett.js) etter støpeplanen
       if (S.settFramdriftFraLett)
         S.settFramdriftFraLett(d && !Array.isArray(d) ? d.framdrift : null, d && !Array.isArray(d) ? d.framdriftKilder : null);

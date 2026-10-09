@@ -108,6 +108,9 @@ function hFraTerreng() {
 // ikke spør nettet hver gang det åpnes.
 const kommuneHurtig = new Map();
 export async function kommuneFraTerreng() {
+  // 🗂 Prosjektinfo (Innstillinger) først: adressesøket der gir kommunen direkte
+  const pi = S.prosjektInfo ? S.prosjektInfo() : null;
+  if (pi && pi.kommune) return pi.kommune;
   const ref = S.terrengRef ? S.terrengRef() : null;
   if (!ref) return "";
   if (ref.kommune) return ref.kommune;

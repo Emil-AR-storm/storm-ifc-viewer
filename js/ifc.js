@@ -177,6 +177,7 @@ export function afterLoad() {
   $("hint").style.display = "block";
   $("toolbar").classList.add("open");
   loadComments();
+  if (S.lastProsjektinfo) S.lastProsjektinfo(); // 🗂 prosjektinfo for denne modellen — FØR verktøyene som leser den
   if (S.lastMateriell) S.lastMateriell(); // 📦 materiell plassert i denne modellen
   if (S.lastGrupper) S.lastGrupper();     // 🎯 objektgrupper lagret for denne modellen
   if (S.lastStopeplan) S.lastStopeplan(); // 🧱 støpeplanen for denne modellen

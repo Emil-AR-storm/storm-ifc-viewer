@@ -20,6 +20,7 @@ import { FRISTER, TJENESTER } from "./config.js";
 import { stopeplanForByggeplass } from "./stopeplan-regn.js";
 import { framdriftForByggeplass } from "./framdrift-regn.js";
 import { kilderForByggeplass } from "./framdrift-kilde.js";
+import { forByggeplass } from "./prosjektinfo-regn.js";
 import { varsel } from "./varsel.js";
 
 // Adressen til Workeren står i config.js, og kan overstyres av oppsett.json i
@@ -246,7 +247,11 @@ if (btn) btn.addEventListener("click", async () => {
         // 📅 Framdriftsplanen (trinn 6): trinnene med objekter og datoer.
         // bygg.html viser glideren (framdrift-lett.js). Gamle lesere ser bort fra feltet.
         framdrift: framdriftForByggeplass(S.framdrift || []),
-        framdriftKilder
+        framdriftKilder,
+        // 🗂 Prosjektinfo (navn, nummer, adresse og posisjonen) og 🌦 værvalgene:
+        // bygg.html viser været i Framdriftsplan. Gamle lesere ser bort fra feltene.
+        prosjektInfo: forByggeplass(S.prosjektInfo ? S.prosjektInfo() : null),
+        vaer: S.vaerForByggeplass ? S.vaerForByggeplass() : null
       })
     });
 

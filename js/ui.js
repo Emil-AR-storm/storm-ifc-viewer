@@ -279,6 +279,8 @@ function renderSettings() {
       '<option value="' + k + '"' + (S.settings.cubePos === k ? " selected" : "") + '>' +
       t(navn) + '</option>').join("") + '</select></div></details>';
 
+  // 🗂 Prosjektinfo (prosjektinfo.js): felles felt alle verktøy leser
+  if (S.prosjektinfoHtml) html += S.prosjektinfoHtml();
   html += firmaoppsettHtml();
 
   html += '<h4>' + t("Lagring") + '</h4>' +
@@ -288,6 +290,7 @@ function renderSettings() {
     '<div class="prop-actions" style="margin-top:10px"><button id="stReset">' + ikon("nullstill") + ' ' + t("Tilbakestill alt") + '</button></div>';
 
   $("setBody").innerHTML = html;
+  if (S.koblProsjektinfo) S.koblProsjektinfo();
 
   $("stLang").onchange = async (e) => {
     // await: ordboka for det nye språket hentes fra js/sprak/ og er ikke på
@@ -512,9 +515,20 @@ import { varsel } from "./varsel.js";
 
 let logoerLastet = false;
 
+// 🗂 Forhåndsvalget er logoen som gjelder for modellen: Prosjektinfo i
+// Innstillinger, ellers det som sist ble valgt her. Settes hver gang menyen
+// åpnes, fordi den følger modellen.
+function velgStandardLogo() {
+  const velg = $("rapLogo");
+  if (!velg) return;
+  const husket = S.standardLogoFil ? S.standardLogoFil() : S.settings.rapLogo;
+  const treff = husket ? [...velg.options].find(o => o.dataset.fil === husket) : null;
+  velg.value = treff ? treff.value : "";
+}
 async function fyllLogovalg() {
   const velg = $("rapLogo");
-  if (!velg || logoerLastet) return;
+  if (!velg) return;
+  if (logoerLastet) { velgStandardLogo(); return; }
   logoerLastet = true;
   velg.innerHTML = '<option value="">' + esc(t("Innebygd Storm-logo")) + "</option>";
   const liste = await hentLogoer();
@@ -525,11 +539,7 @@ async function fyllLogovalg() {
   }
   // Husket valg gjenopprettes på FILNAVN, ikke itemId: SharePoint gir samme fil
   // ny itemId hvis den lastes opp på nytt, og da ville valget stille falt bort.
-  const husket = S.settings.rapLogo;
-  if (husket) {
-    const treff = [...velg.options].find(o => o.dataset.fil === husket);
-    if (treff) velg.value = treff.value;
-  }
+  velgStandardLogo();
 }
 
 function lukkRapMeny() { const m = $("rapMeny"); if (m) m.classList.remove("open"); }
@@ -556,8 +566,9 @@ document.addEventListener("pointerdown", (e) => {
 på("rapCsv", "change", (e) => { S.settings.rapCsv = !!e.target.checked; writePrefs(); });
 på("rapLogo", "change", (e) => {
   const o = e.target.selectedOptions[0];
-  S.settings.rapLogo = (o && o.dataset.fil) || "";
-  writePrefs();
+  // 🗂 Har modellen en logo i Prosjektinfo, er det den som byttes
+  if (S.settStandardLogo) S.settStandardLogo((o && o.dataset.fil) || "");
+  else { S.settings.rapLogo = (o && o.dataset.fil) || ""; writePrefs(); }
 });
 
 // 🔁 BCF-eksport. Ligger i rapportmenyen fordi det er samme handling for
@@ -570,7 +581,7 @@ på("rapBcf", "click", async () => {
     const r = await bcf.eksporterBcf({
       markeringer: S.comments || [],
       modell: S.fileName,
-      prosjekt: S.lettProsjekt || "",
+      prosjekt: (S.prosjektInfo ? S.prosjektInfo().nummer : "") || S.lettProsjekt || "",
       fangstBilde: () => fangstBilde(1400, 900)
     });
     // Sier ALLTID fra hvor mange saker som mangler elementreferanse. Uten den
@@ -592,6 +603,8 @@ document.querySelectorAll(".rap-valg").forEach((b) => {
     const itemId = velg ? velg.value : "";
     await lastNedRapport({
       utgave: b.dataset.utgave,
+      // 🗂 Prosjektnummeret (Prosjektinfo) — undertittel, bunntekst og filnavn
+      prosjekt: (S.prosjektInfo ? S.prosjektInfo().nummer : "") || S.lettProsjekt || "",
       medCsv: !!(S.settings && S.settings.rapCsv),
       modell: S.fileName,
       fangstBilde: () => fangstBilde(1400, 900),
