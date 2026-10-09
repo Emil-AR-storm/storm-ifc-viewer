@@ -267,6 +267,9 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
 
 <!-- 🧱 Støpeplan (js/stopeplan.js) -->
 <!-- 📅 Framdriftsplan (js/framdrift.js) -->
+<!-- 🌦 Skru av været i 3D med ett trykk (js/vaer-3d.js) — vises bare når det står på -->
+<button id="vaer3dAv" class="vaer3d-av" style="display:none" title="Skru av været i 3D (himmel, regn og snø). Slås på igjen i Vis vær." data-i18n-title><svg class="ikon"><use href="#i-vaer"/></svg><span data-i18n>Skjul været i 3D</span></button>
+
 <!-- 🌦 Vis vær (js/vaer.js) -->
 <div class="panel" id="vaerPanel">
   <header><span data-i18n>Vær på byggeplassen</span><button onclick="document.getElementById('vaerPanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
