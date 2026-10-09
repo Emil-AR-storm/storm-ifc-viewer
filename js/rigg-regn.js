@@ -795,7 +795,8 @@ export const GJERDE_DELER = {
 
 // Én rad per ENHET (som materiell-vis.js), så «Antall» i Mengder og i Excel
 // teller brakkemoduler og gjerdepaneler, ikke rigger. `tr` oversetter tekst.
-export function riggMengdeRader(liste, tr) {
+// bakkeFor(o) (valgfri): bakken under stillaset — da telles benforlengerne.
+export function riggMengdeRader(liste, tr, bakkeFor) {
   const lab = tr || ((x) => x);
   const ut = [];
   let n = 0;
@@ -816,7 +817,7 @@ export function riggMengdeRader(liste, tr) {
     if (erStillas(o)) {
       // 🧱 én rad per del, med målet i navnet — det stillasleverandøren teller
       const navn = o.navn || lab(RIGG_TYPER.stillas.label);
-      for (const r of stillasMengder(o)) {
+      for (const r of stillasMengder(o, bakkeFor ? bakkeFor(o) : null)) {
         const del = lab(r.navn) + (r.mal ? " " + r.mal : "");
         for (let i = 0; i < r.antall; i++) rad(navn + " · " + del, navn, del, 0, 0, 0);
       }

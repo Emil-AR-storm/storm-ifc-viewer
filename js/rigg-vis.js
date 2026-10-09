@@ -29,6 +29,7 @@ import {
   riggFotavtrykk, riggObjekter, riggRef, riggTilBygg, tilUtm, vaskRef, REF_ID, kranSektor, kranKompass
 } from "./rigg-regn.js";
 import { gruppeFlate, registrerMaaleflate } from "./pek-eier.js";
+import { stillasBeinPunkter } from "./stillas-regn.js";
 
 export function gjerdeDelLabel(del) { return t(GJERDE_DELER[del] || del); }
 
@@ -80,6 +81,17 @@ export function riggScenePos(o, base, ref, live) {
   // fire hjørnene): da ser det ut som det står på klosser i nedoverbakken, i
   // stedet for å være halvveis begravd i oppoverbakken (nettleserprøven 25.09).
   let y = null;
+  // 🧱 Stillaset (Emil 09.10): nullnivået er bakken under det HØYESTE beinet
+  // — platene står i vater, og hvert bein går ned til bakken under seg
+  // (stillasBakke). Gjelder både linje og lukket.
+  if (RIGG_TYPER[o.type] && RIGG_TYPER[o.type].stillas) {
+    if (live && o.ramme === "utm") for (const q of stillasBeinPunkter(o)) {
+      const p = lokalTilEN(o, q.x, q.z), h = live.yVed(p.E, p.N);
+      if (h != null && (y == null || h > y)) y = h;
+    }
+    if (y == null) y = base.gulvY;
+    return { x, y, z, rotY: b.rotY };
+  }
   if (o.punkter) {
     // 🚧 Gjerdet: gruppa står på det LAVESTE punktet, og hver fot løftes
     // til bakken under seg (gjerdeHoyder) — gjerdet følger terrenget panel
@@ -102,6 +114,26 @@ export function riggScenePos(o, base, ref, live) {
   }
   if (y == null) y = base.gulvY;
   return { x, y, z, rotY: b.rotY };
+}
+
+// 🧱 Bakken under et stillas: (x, z) i objektets ramme → meter under
+// nullnivået (≤ 0), eller null uten terreng. gy = gruppas høyde i scenen.
+export function stillasBakke(o, base, live, gy) {
+  if (!live || !base || o.ramme !== "utm") return null;
+  return (x, z) => {
+    const p = lokalTilEN(o, x, z), h = live.yVed(p.E, p.N);
+    return h == null ? 0 : Math.min(0, (h - gy) * base.skala);
+  };
+}
+
+// Det samme for skjemaet (mengdelista teller benforlengerne): regner ut
+// hvor stillaset står nå.
+export function stillasBakkeFor(o) {
+  const base = riggBase();
+  if (!base || !o) return null;
+  const live = S.terrengRef ? S.terrengRef() : null;
+  const pos = riggScenePos(o, base, aktivRef(), live);
+  return pos ? stillasBakke(o, base, live, pos.y) : null;
 }
 
 // Høyden under hver skjøt i gjerdet, i METER over gruppas bunn (gy, scene).
@@ -180,7 +212,7 @@ frameHooks.push(() => skalerLapperMedTak(riggGroup));
 
 export function leggRiggIMengder(groups, rows) {
   const liste = riggListe().filter(o => !skjulteTyper.has(o.type));
-  for (const r of riggMengdeRader(liste, t)) {
+  for (const r of riggMengdeRader(liste, t, stillasBakkeFor)) {
     if (!groups.has(r.key)) groups.set(r.key,
       { count: 0, length: 0, vol: 0, area: 0, flate: 0, forskaling: 0, kg: 0, kgGeo: 0,
         utenVekt: 0, umulige: 0, nominelle: 0, type: r.type, material: r.material });
@@ -245,7 +277,7 @@ export function byggRiggObjekt(o, skala, hoyder) {
   // fargen og streken sier hva de er, og en lapp på hver pil ville druknet
   // riggplanen.
   if (erPil(o) && !o.navn) {
-    ytre.userData.hoyder = hoyder || null;
+    ytre.userData.hoyder = Array.isArray(hoyder) ? hoyder : null;
     ytre.userData.riggId = o.id;
     ytre.userData.riggType = o.type;
     return ytre;
@@ -262,12 +294,12 @@ export function byggRiggObjekt(o, skala, hoyder) {
       x: o.punkter.reduce((a, q) => a + q.x, 0) / o.punkter.length,
       z: o.punkter.reduce((a, q) => a + q.z, 0) / o.punkter.length
     };
-    const hm = Math.max(0, ...(hoyder || [0]));
+    const hm = Math.max(0, ...(Array.isArray(hoyder) ? hoyder : [0]));
     lapp.position.set(pk.x * s, (riggTotalHoyde(o) + hm + 0.8) * s, pk.z * s);
   }
   ytre.add(lapp);
   if (RIGG_TYPER[o.type] && RIGG_TYPER[o.type].kran && kran.info) kranLapper(ytre, o, s);
-  ytre.userData.hoyder = hoyder || null;
+  ytre.userData.hoyder = Array.isArray(hoyder) ? hoyder : null;
   ytre.userData.riggId = o.id;
   ytre.userData.riggType = o.type;
   return ytre;
@@ -310,7 +342,9 @@ export function finnRiggObjekt(id) {
 function byggPlassert(o, base, ref, live) {
   const pos = riggScenePos(o, base, ref, live);
   if (!pos) return null;
-  const g = byggRiggObjekt(o, base.skala, o.punkter ? gjerdeHoyder(o, base, live, pos.y) : null);
+  const stillas = !!(RIGG_TYPER[o.type] && RIGG_TYPER[o.type].stillas);
+  const g = byggRiggObjekt(o, base.skala, stillas ? stillasBakke(o, base, live, pos.y)
+    : o.punkter ? gjerdeHoyder(o, base, live, pos.y) : null);
   g.position.set(pos.x, pos.y, pos.z);
   g.rotation.y = pos.rotY;
   return g;
@@ -362,7 +396,7 @@ export function plasserRigg() {
   const gjerder = [];
   for (const g of riggGroup.children.slice()) {
     const o = alle.get(g.userData.riggId);
-    if (o && o.punkter) { gjerder.push(o); continue; }
+    if (o && (o.punkter || (RIGG_TYPER[o.type] && RIGG_TYPER[o.type].stillas))) { gjerder.push(o); continue; }
     const pos = o && riggScenePos(o, base, ref, live);
     if (!pos) continue;
     g.position.set(pos.x, pos.y, pos.z);

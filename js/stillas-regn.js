@@ -38,6 +38,9 @@ export const STILLAS_STD = {
   repos: 0.5,                         // reposets lengde i hver ende av trappetårnet
   luke: 0.6                           // luka i plata med stige
 };
+// Feltlengdene som finnes på lager (Emil 09.10): hvert felt snappes til den
+// nærmeste av disse. Under den korteste → den korteste. Kan endres per stillas.
+export const STILLAS_FASTE = [3.0, 2.5, 2.0];
 export const STILLAS_MAKS_ETASJER = 20;
 export const STILLAS_MAKS_FELT = 60;
 export const STILLAS_FORMER = ["linje", "lukket"];
@@ -54,13 +57,13 @@ export const STILLAS_FARGER = {
 
 // Navnene på deltypene (norsk = i18n-nøkkel)
 export const STILLAS_DELNAVN = {
-  ramme: "Ramme", spire: "Stillasbein", horLangs: "Horisontal", horTverr: "Horisontal (tverr)",
+  ramme: "Ramme", spire: "Stillasbein", forlenger: "Benforlenger", horLangs: "Horisontal", horTverr: "Horisontal (tverr)",
   bunnskrue: "Bunnskrue med fotplate", plate: "Plate", hjorneplate: "Hjørneplate",
   planke: "Planke", hjorneplanke: "Hjørneplanke", stigeplate: "Plate med stige", stige: "Stige",
   rekkverk: "Rekkverk", stolpe: "Rekkverksstolpe", fotlist: "Fotlist", diagonal: "Diagonalstag",
   forankring: "Veggforankring", trappelop: "Trappeløp", repos: "Repos", handlist: "Håndlist"
 };
-export const STILLAS_DELREKKEFOLGE = ["ramme", "spire", "horLangs", "horTverr", "bunnskrue", "plate", "hjorneplate",
+export const STILLAS_DELREKKEFOLGE = ["ramme", "spire", "horLangs", "horTverr", "bunnskrue", "forlenger", "plate", "hjorneplate",
   "planke", "hjorneplanke", "stigeplate", "stige", "trappelop", "repos", "handlist", "rekkverk", "stolpe", "fotlist",
   "diagonal", "forankring"];
 
@@ -77,6 +80,9 @@ export function vaskStillasFelt(p, ut) {
   ut.system = p.system === "haki" ? "haki" : "alu";
   ut.visning = p.visning === "fargekodet" ? "fargekodet" : "forenklet";
   ut.etasjer = heltall(p.etasjer, 1, STILLAS_MAKS_ETASJER, 3);
+  ut.faste = vaskFaste(p.faste);
+  // feltlengden er alltid en av de faste lengdene (2,47 → 2,5)
+  if (typeof ut.L === "number") ut.L = snapLengde(ut.L, ut.faste);
   ut.moduler = heltall(p.moduler, 1, STILLAS_MAKS_FELT, 4);
   // etasjene som er arbeidsplan med plater; tomt/ugyldig → alle
   const plan = Array.isArray(p.plan) ? [...new Set(p.plan.map(Number).filter(k => Number.isInteger(k) && k >= 1 && k <= ut.etasjer))].sort((a, b) => a - b) : null;
@@ -95,6 +101,55 @@ export function vaskStillasFelt(p, ut) {
   ut.stigeplater = (Array.isArray(p.stigeplater) ? p.stigeplater : []).filter(q => plass(q, true)).slice(0, 200)
     .map(q => ({ side: q.side, felt: q.felt, etg: q.etg }));
   return ut;
+}
+
+// ═══════════════════════ FASTE LENGDER ═══════════════════════
+// «3,0 2,5 2,0» (tekst fra skjemaet) eller [3, 2.5, 2] → sortert synkende,
+// unike, 0,3–6 m, maks 10. Tomt/ugyldig → standard.
+export function vaskFaste(v) {
+  let liste = Array.isArray(v) ? v : typeof v === "string" ? v.trim().split(/[\s;\/]+/) : [];
+  liste = liste.map(x => tall(x)).filter(x => x != null && x >= 0.3 && x <= 6).map(x => Math.round(x * 100) / 100);
+  liste = [...new Set(liste)].sort((a, b) => b - a).slice(0, 10);
+  return liste.length ? liste : STILLAS_FASTE.slice();
+}
+
+// Nærmeste faste lengde. Midt mellom to → den lengste. Under den korteste →
+// den korteste, over den lengste → den lengste.
+export function snapLengde(v, faste) {
+  const F = faste && faste.length ? faste : STILLAS_FASTE;
+  let best = F[0];
+  for (const f of F) if (Math.abs(f - v) < Math.abs(best - v) - 1e-9 || (Math.abs(Math.abs(f - v) - Math.abs(best - v)) <= 1e-9 && f > best)) best = f;
+  return best;
+}
+
+// Feltene langs en side på `eff` meter, bare med faste lengder (ikke lengre
+// enn `maks`): så få felt at ingen blir for lange, hvert felt snappet til
+// nærmeste faste lengde, og så justeres ett og ett felt opp eller ned til
+// summen kommer nærmest sida. `ikkeOver` = sida ender i et innvendig hjørne:
+// da må stillaset ikke gå forbi (det ville kollidert med naboen).
+export function stillasFeltLengder(eff, faste, maks, ikkeOver) {
+  let F = (faste && faste.length ? faste : STILLAS_FASTE).filter(f => !(maks > 0) || f <= maks + 1e-9);
+  if (!F.length) F = [Math.min(...(faste && faste.length ? faste : STILLAS_FASTE))];
+  F = F.slice().sort((a, b) => b - a);
+  const n = Math.max(1, Math.min(STILLAS_MAKS_FELT * 4, Math.ceil(eff / F[0] - 1e-6)));
+  const f = Array(n).fill(snapLengde(eff / n, F));
+  const kost = (d) => Math.abs(d) + (ikkeOver && d > 0.005 ? 100 + d : 0);
+  for (let runde = 0; runde < n * F.length + 2; runde++) {
+    const sum = f.reduce((a, b) => a + b, 0), d = sum - eff;
+    if (Math.abs(d) < 1e-6) break;
+    let bedre = null;
+    for (const v of new Set(f)) {
+      const j = F.indexOf(v);
+      for (const ny of [F[j - 1], F[j + 1]]) {
+        if (ny == null) continue;
+        const k = kost(d - v + ny);
+        if (k < kost(d) - 1e-9 && (!bedre || k < bedre.k)) bedre = { k, v, ny };
+      }
+    }
+    if (!bedre) break;
+    f[f.indexOf(bedre.v)] = bedre.ny;
+  }
+  return f.sort((a, b) => b - a).map(r3);
 }
 
 // ═══════════════════════ SIDENE ═══════════════════════
@@ -116,8 +171,8 @@ export function stillasSider(o) {
   const B = o.B;
   if (o.form !== "lukket" || !Array.isArray(o.punkter) || o.punkter.length < 3) {
     const tot = (o.moduler || 1) * o.L;
-    return [{ i: 0, p0: { x: -tot / 2, z: -B / 2 }, p1: { x: tot / 2, z: -B / 2 }, e: { x: 1, z: 0 }, n: { x: 0, z: 1 },
-      L: tot, start: 0, slutt: 0, hjorne: null, felt: o.moduler || 1, lukket: false }];
+    return [medFelter({ i: 0, p0: { x: -tot / 2, z: -B / 2 }, p1: { x: tot / 2, z: -B / 2 }, e: { x: 1, z: 0 }, n: { x: 0, z: 1 },
+      L: tot, start: 0, slutt: 0, hjorne: null, lukket: false }, Array(o.moduler || 1).fill(o.L))];
   }
   const p = o.punkter, N = p.length;
   const sider = [];
@@ -138,12 +193,25 @@ export function stillasSider(o) {
     if (d < -0.2) s.hjorne = "ut";
     else if (d > 0.2) { s.hjorne = "inn"; s.slutt = B; nx.start = B; }
   }
+  const faste = vaskFaste(o.faste);
   for (const s of gyldige) {
     const eff = Math.max(0.1, s.L - s.start - s.slutt);
-    // så mange felt at ingen blir lengre enn feltlengden (som gjerdepanelene)
-    s.felt = Math.max(1, Math.ceil(eff / o.L - 1e-6));
+    // faste feltlengder, ingen lengre enn feltlengden (Emil 09.10)
+    medFelter(s, stillasFeltLengder(eff, faste, o.L, s.hjorne === "inn"));
   }
   return gyldige;
+}
+
+// felter = lengden på hvert felt, pos = hvor hvert felt begynner (fra
+// start), lengde = hvor langt stillaset faktisk går, avvik = lengde − sida.
+function medFelter(s, felter) {
+  s.felter = felter.map(r3);
+  s.felt = s.felter.length;
+  s.pos = [0];
+  for (const f of s.felter) s.pos.push(r3(s.pos[s.pos.length - 1] + f));
+  s.lengde = s.pos[s.pos.length - 1];
+  s.avvik = r3(s.lengde - Math.max(0.1, s.L - s.start - s.slutt));
+  return s;
 }
 
 // ═══════════════════════ DELENE ═══════════════════════
@@ -153,7 +221,9 @@ export function stillasSider(o) {
 // `mal` = målteksten i mengdelista.
 const fm = (v) => (Math.round(v * 100) / 100).toString().replace(".", ",");
 
-export function stillasDeler(o) {
+// `bakke(x, z)` (valgfri): bakkens høyde i meter under stillasets nullnivå
+// (≤ 0) — beina går ned til terrenget, platene står i vater.
+export function stillasDeler(o, bakke) {
   const ror = [], bokser = [];
   const B = o.B, Hetg = o.H, Etg = o.etasjer || 1, topp = Etg * Hetg;
   const RH = o.rekkverkH || 1, KH = o.kneH || 0.5;
@@ -161,11 +231,12 @@ export function stillasDeler(o) {
   const haki = o.system === "haki";
   const R = 0.024;
   const bein = new Map();      // dedupliserte bein: "x,z" → { x, z, h }
+  const g0Alu = new Set();
   const sider = stillasSider(o);
   const trapper = o.trapper || [], stiger = o.stigeplater || [];
 
   for (const S of sider) {
-    const n0 = S.felt, Le = Math.max(0.1, S.L - S.start - S.slutt), Lf = Le / n0;
+    const n0 = S.felt, Le = S.lengde, pos = S.pos;
     const P = (s, t, y) => [S.p0.x + S.e.x * (S.start + s) + S.n.x * t, y, S.p0.z + S.e.z * (S.start + s) + S.n.z * t];
     const R_ = (a, b, del, x) => { const d = Object.assign({ del, a, b, r: R, side: S.i }, x || {}); ror.push(d); return d; };
     const Bx = (c, s, del, x) => { const d = Object.assign({ del, c, s, e: S.e, side: S.i }, x || {}); bokser.push(d); return d; };
@@ -178,7 +249,7 @@ export function stillasDeler(o) {
 
     // Bein og rammer i hver ramme-linje
     for (let i = 0; i <= n0; i++) {
-      const s = i * Lf;
+      const s = pos[i];
       legg(s, B, topp + RH);
       legg(s, 0, topp + (o.innvendig ? RH : 0));
       for (let k = 1; k <= Etg; k++) {
@@ -188,7 +259,7 @@ export function stillasDeler(o) {
       }
     }
     for (let i = 0; i < n0; i++) {
-      const s0 = i * Lf, s1 = s0 + Lf, sm = s0 + Lf / 2;
+      const Lf = S.felter[i], s0 = pos[i], s1 = pos[i + 1], sm = s0 + Lf / 2;
       const tr = trappI(i);
       for (let k = 1; k <= Etg; k++) {
         const y = k * Hetg;
@@ -244,7 +315,8 @@ export function stillasDeler(o) {
         R_(P(s, -0.25, y - 0.2), P(s, 0, y - 0.2), "anker", { r: R * 1.3, tell: "forankring", mal: "" });
     // hjørneruta
     if (S.hjorne === "ut") {
-      const H0 = (a, b, y) => [S.p1.x + S.e.x * a + S.n.x * b, y, S.p1.z + S.e.z * a + S.n.z * b];
+      // ved enden av stillaset (kan avvike litt fra hjørnet med faste lengder)
+      const H0 = (a, b, y) => P(Le + a, b, y);
       legg(Le + B, B, topp + RH);
       for (let k = 1; k <= Etg; k++) {
         const y = k * Hetg;
@@ -270,14 +342,25 @@ export function stillasDeler(o) {
     }
   }
   // beina: ett segment per etasje (Haki teller dem), rekkverksstolpe over toppen
+  // Med terreng (Emil 09.10): bunnskruen står på bakken under hvert bein, og
+  // beinet går ned dit. Aluminium: et rør fra skruen opp til nullnivået
+  // telles som benforlenger (avrundet opp til 0,5 m). Haki: flere spirer.
   for (const b of bein.values()) {
+    const g = bakke ? Math.min(0, Number(bakke(b.x, b.z)) || 0) : 0;
     const a = (y) => [b.x, y, b.z];
-    bokser.push({ del: "skrue", c: a(0.02), s: [0.15, 0.04, 0.15], e: { x: 1, z: 0 }, side: b.side, tell: "bunnskrue", mal: "" });
-    ror.push({ del: "skrue", a: a(0.04), b: a(0.25), r: R * 0.8, side: b.side });
+    bokser.push({ del: "skrue", c: a(g + 0.02), s: [0.15, 0.04, 0.15], e: { x: 1, z: 0 }, side: b.side, tell: "bunnskrue", mal: "" });
+    ror.push({ del: "skrue", a: a(g + 0.04), b: a(g + 0.25), r: R * 0.8, side: b.side });
     const toppStal = Math.min(b.h, topp);
+    let y0 = 0;
+    if (haki) while (y0 > g + 0.25 + 1e-6) y0 -= Hetg;
+    else if (g < -0.005) {
+      const fl = Math.ceil((-g - 1e-6) / 0.5) * 0.5;
+      ror.push({ del: "ramme", a: a(g + 0.25), b: a(0.25), r: R, side: b.side, tell: "forlenger", mal: fm(fl) + " m" });
+      g0Alu.add(b);
+    }
     // første segment fra skruen til 1. etasje, så ett per etasje
-    for (let y0 = 0; y0 < toppStal - 1e-6; y0 += Hetg) {
-      const fra = Math.max(0.25, y0), til = Math.min(toppStal, y0 + Hetg);
+    for (; y0 < toppStal - 1e-6; y0 += Hetg) {
+      const fra = Math.max(g0Alu.has(b) ? 0.25 : g + 0.25, y0), til = Math.min(toppStal, y0 + Hetg);
       if (til - fra < 1e-6) continue;
       ror.push({ del: haki ? "spire" : "ramme", a: a(fra), b: a(til), r: R, side: b.side,
         tell: haki ? "spire" : undefined, mal: haki ? fm(Hetg) + " m" : undefined });
@@ -349,8 +432,8 @@ function trappetaarn(o, S, P, R_, Bx, legg, s0, s1, tr, haki) {
 // Aluminium: rammene telles (én per ramme-linje per etasje); beina og
 // horisontalene er en del av rammen og plata. Haki: bein, horisontaler og
 // planker telles hver for seg.
-export function stillasMengder(o) {
-  const d = stillasDeler(o);
+export function stillasMengder(o, bakke) {
+  const d = stillasDeler(o, bakke);
   const m = new Map();
   for (const x of d.ror.concat(d.bokser)) {
     if (!x.tell) continue;
@@ -367,9 +450,9 @@ export function stillasMengder(o) {
 }
 
 // Summen per deltype (uten mål) — til kort oppsummering
-export function stillasSum(o) {
+export function stillasSum(o, bakke) {
   const s = {};
-  for (const r of stillasMengder(o)) s[r.tell] = (s[r.tell] || 0) + r.antall;
+  for (const r of stillasMengder(o, bakke)) s[r.tell] = (s[r.tell] || 0) + r.antall;
   return s;
 }
 
@@ -379,13 +462,14 @@ export function stillasSum(o) {
 export function stillasFeltVed(o, x, z, y) {
   let best = null;
   for (const S of stillasSider(o)) {
-    const Le = Math.max(0.1, S.L - S.start - S.slutt), Lf = Le / S.felt;
+    const Le = S.lengde;
     const dx = x - S.p0.x, dz = z - S.p0.z;
     const s = dx * S.e.x + dz * S.e.z - S.start, t = dx * S.n.x + dz * S.n.z;
     if (s < -0.05 || s > Le + 0.05 || t < -0.3 || t > 3 * o.B + 0.3) continue;
     const avst = t < 0 ? -t : t > o.B ? t - o.B : 0;
     if (best && best.avst <= avst) continue;
-    const felt = Math.max(0, Math.min(S.felt - 1, Math.floor(s / Lf)));
+    let felt = 0;
+    while (felt < S.felt - 1 && s >= S.pos[felt + 1]) felt++;
     const etg = Math.max(1, Math.min(o.etasjer || 1, Math.round((Number(y) || 0) / o.H)));
     best = { side: S.i, felt, etg, avst };
   }
@@ -425,4 +509,11 @@ export function stillasOmriss(o) {
   if (o.form === "lukket" && o.punkter) return o.punkter.map(q => ({ x: q.x, z: q.z }));
   const tot = (o.moduler || 1) * o.L / 2;
   return [{ x: -tot, z: -o.B / 2 }, { x: tot, z: -o.B / 2 }, { x: tot, z: o.B / 2 }, { x: -tot, z: o.B / 2 }];
+}
+
+// Hvor beina står (objektets ramme) — terrenghøyden under dem bestemmer
+// stillasets nullnivå (det høyeste punktet: platene i vater, beina ned).
+export function stillasBeinPunkter(o) {
+  const d = stillasDeler(o);
+  return d.bokser.filter(x => x.tell === "bunnskrue").map(x => ({ x: x.c[0], z: x.c[2] }));
 }

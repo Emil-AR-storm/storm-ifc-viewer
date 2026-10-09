@@ -35,10 +35,11 @@ function rorGeo(r, enkel) {
   return geoCache.get(k);
 }
 
-export function byggStillas(g, o, opts) {
+// bakke(x, z) (valgfri, fra rigg-vis): beina går ned til terrenget.
+export function byggStillas(g, o, opts, bakke) {
   const enkel = !!(opts && opts.enkel);
   const visning = o.visning === "fargekodet" ? "fargekodet" : "forenklet";
-  const d = stillasDeler(o);
+  const d = stillasDeler(o, typeof bakke === "function" ? bakke : null);
   const a = new THREE.Vector3(), b = new THREE.Vector3(), dir = new THREE.Vector3();
   for (const x of d.ror) {
     a.fromArray(x.a); b.fromArray(x.b);
