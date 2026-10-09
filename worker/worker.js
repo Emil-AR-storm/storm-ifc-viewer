@@ -26,6 +26,11 @@
 //      databehandleravtalen.                                        (~linje 430)
 //   7) Sikkerhetsheadere på det proxyen serverer.                   (~linje 560)
 //
+// v12 — 9. oktober 2026:
+//   9) /vaer og /vaer/historikk: værvarsel (MET) via Workeren, med cache og
+//      daglig arkiv i R2, og målt vær fra Frost når FROST_KLIENT er satt.
+//                                                                 (søk «Vær på byggeplassen»)
+//
 // v10 — 6. august 2026:
 //   8) Sletting krever en EGEN nøkkel (SLETTE_NOKKEL), sendt som
 //      x-slett-token. ADMIN_TOKEN gir fortsatt opplasting og lesing, men kan
@@ -471,6 +476,249 @@ export async function morgenrunde(env, ctx) {
   return { sett, sendt };
 }
 
+// ---------- Vær på byggeplassen (v12, 9. okt 2026) ----------
+//
+// HVORFOR GJENNOM WORKEREN: MET (api.met.no) vil at nettsider går via en
+// mellomtjener som identifiserer seg med User-Agent og cacher etter Expires —
+// en nettleser kan ikke sette User-Agent selv. Workeren gjør begge deler, og
+// lagrer i tillegg hvert døgns varsel i R2. Slik kan Framdriftsplan vise
+// hvilket vær som var meldt en dag som er passert, også uten Frost.
+//
+// Målt vær for tidligere dager kommer fra Frost (frost.met.no) når secret-en
+// FROST_KLIENT er satt (gratis klient-ID, registreres på frost.met.no):
+//   wrangler secret put FROST_KLIENT
+// Uten den svarer /vaer/historikk med det lagrede varselet i stedet.
+//
+// Rutene er åpne (ingen kode) — de gir bare offentlig værdata. Posisjonen
+// rundes til 2 desimaler (≈ 1 km), så alle modeller på samme sted deler cache.
+const VAER_UA = "StormIFC-Viewer/1.0 https://emil-ar-storm.github.io/storm-ifc-viewer/";
+const MET_URL = "https://api.met.no/weatherapi/locationforecast/2.0/complete";
+const FROST_URL = "https://frost.met.no";
+const VAER_MAKS_DAGER = 31;
+
+function vaerKoord(url) {
+  const lat = Number(url.searchParams.get("lat")), lon = Number(url.searchParams.get("lon"));
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+  const la = Math.round(lat * 100) / 100, lo = Math.round(lon * 100) / 100;
+  return { lat: la, lon: lo, nøkkel: la.toFixed(2) + "_" + lo.toFixed(2) };
+}
+const vaerDato = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || "")) ? s : "";
+
+// Norsk tid: et døgn på byggeplassen er 00–24 norsk tid, ikke UTC.
+let _osloFmt = null;
+function osloLokal(d) {
+  if (!_osloFmt) _osloFmt = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Oslo", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23" });
+  const p = {};
+  for (const x of _osloFmt.formatToParts(d)) p[x.type] = x.value;
+  return { dato: p.year + "-" + p.month + "-" + p.day, time: Number(p.hour) % 24 };
+}
+function osloDøgn(dato) {
+  // Forskyvningen (1 eller 2 timer) leses av klokka midt på dagen.
+  const [y, m, d] = dato.split("-").map(Number);
+  const midt = Date.UTC(y, m - 1, d, 12);
+  const off = osloLokal(new Date(midt)).time - 12;
+  const fra = Date.UTC(y, m - 1, d) - off * 36e5;
+  return { fra: new Date(fra).toISOString(), til: new Date(fra + 864e5).toISOString() };
+}
+function vaerPlussDager(dato, n) {
+  const [y, m, d] = dato.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+
+// MET-punkt → timeform (samme som tolkMet i js/vaer-regn.js).
+function metTilTime(x) {
+  const d = x && x.data, i = d && d.instant && d.instant.details;
+  const n = d && (d.next_1_hours || d.next_6_hours);
+  if (!i || !n) return null;
+  const tall = (v) => (typeof v === "number" && Number.isFinite(v)) ? v : null;
+  return {
+    t: x.time, temp: tall(i.air_temperature), vind: tall(i.wind_speed), kast: tall(i.wind_speed_of_gust),
+    retning: tall(i.wind_from_direction), skydekke: tall(i.cloud_area_fraction),
+    regn: tall(n.details && n.details.precipitation_amount) || 0,
+    symbol: (n.summary && n.summary.symbol_code) || "", varighet: d.next_1_hours ? 1 : 6
+  };
+}
+
+async function r2Json(env, nøkkel) {
+  const o = await env.MODELLER.get(nøkkel);
+  if (!o) return null;
+  try { return await o.json(); } catch (_) { return null; }
+}
+
+// Varselet: fra cache til Expires, deretter If-Modified-Since mot MET.
+async function hentVarsel(env, k) {
+  const nøkkel = "vaer/varsel/" + k.nøkkel + ".json";
+  const gammel = await r2Json(env, nøkkel);
+  if (gammel && Date.parse(gammel.expires) > Date.now()) return gammel.data;
+  const h = { "User-Agent": VAER_UA, "Accept": "application/json" };
+  if (gammel && gammel.lastModified) h["If-Modified-Since"] = gammel.lastModified;
+  let r;
+  try { r = await fetch(MET_URL + "?lat=" + k.lat + "&lon=" + k.lon, { headers: h }); }
+  catch (e) { if (gammel) return gammel.data; throw e; }
+  const utløper = r.headers.get("Expires") || new Date(Date.now() + 30 * 60e3).toUTCString();
+  if (r.status === 304 && gammel) {
+    gammel.expires = utløper;
+    await env.MODELLER.put(nøkkel, JSON.stringify(gammel));
+    return gammel.data;
+  }
+  if (!r.ok) { if (gammel) return gammel.data; throw new Error("MET svarte " + r.status); }
+  const data = await r.json();
+  await env.MODELLER.put(nøkkel, JSON.stringify({ expires: utløper, lastModified: r.headers.get("Last-Modified") || "", data }));
+  try { await arkiverVarsel(env, k, data); } catch (_) { /* arkivet er en bonus — varselet skal fram uansett */ }
+  return data;
+}
+
+// Arkivet: i dag og i morgen, timevis. Varselet starter ved inneværende time,
+// så timene som allerede er passert i dag ligger igjen fra forrige lagring —
+// slik bygges et helt døgn opp i løpet av dagen.
+async function arkiverVarsel(env, k, data) {
+  const ts = (data && data.properties && data.properties.timeseries) || [];
+  const iDag = osloLokal(new Date()).dato;
+  for (const dato of [iDag, vaerPlussDager(iDag, 1)]) {
+    const nye = ts.map(metTilTime).filter(x => x && x.varighet === 1 && osloLokal(new Date(x.t)).dato === dato);
+    if (!nye.length) continue;
+    const nøkkel = "vaer/arkiv/" + k.nøkkel + "/" + dato + ".json";
+    const før = await r2Json(env, nøkkel);
+    const først = nye[0].t;
+    const behold = ((før && før.timer) || []).filter(x => x.t < først);
+    await env.MODELLER.put(nøkkel, JSON.stringify({ lagret: new Date().toISOString(), timer: behold.concat(nye) }));
+  }
+}
+
+// Frost: nærmeste stasjoner, så timeverdier. Hvert element tas fra den
+// nærmeste stasjonen som har det — nedbør måles ikke alle steder.
+const FROST_ELEMENTER = ["air_temperature", "wind_speed", "max(wind_speed_of_gust PT1H)", "sum(precipitation_amount PT1H)", "wind_from_direction", "cloud_area_fraction"];
+const FROST_FELT = { "air_temperature": "temp", "wind_speed": "vind", "max(wind_speed_of_gust PT1H)": "kast", "sum(precipitation_amount PT1H)": "regn", "wind_from_direction": "retning", "cloud_area_fraction": "skydekke" };
+function frostAuth(env) { return { Authorization: "Basic " + btoa(env.FROST_KLIENT + ":") }; }
+
+async function frostStasjoner(env, k) {
+  const nøkkel = "vaer/stasjoner/" + k.nøkkel + ".json";
+  const lagret = await r2Json(env, nøkkel);
+  if (lagret && Date.now() - Date.parse(lagret.lagret) < 30 * 864e5) return lagret.stasjoner;
+  const url = FROST_URL + "/sources/v0.jsonld?types=SensorSystem&geometry=" +
+    encodeURIComponent("nearest(POINT(" + k.lon + " " + k.lat + "))") + "&nearestmaxcount=8";
+  const r = await fetch(url, { headers: frostAuth(env) });
+  if (!r.ok) throw new Error("Frost svarte " + r.status);
+  const j = await r.json();
+  const stasjoner = (j.data || []).map(s => ({ id: s.id, navn: s.name || s.id, avstand: s.distance != null ? Math.round(s.distance * 10) / 10 : null }));
+  await env.MODELLER.put(nøkkel, JSON.stringify({ lagret: new Date().toISOString(), stasjoner }));
+  return stasjoner;
+}
+
+// Frost-svaret → { dato: [timer…] } i norsk tid. Ren — testes i Node.
+function frostTilDager(j, stasjoner) {
+  const rang = new Map(stasjoner.map((s, i) => [s.id, i]));
+  const stasjonFor = (id) => String(id || "").split(":")[0];
+  // per element: hvilken stasjon (lavest rang) har flest verdier?
+  const telling = {};
+  for (const rad of (j && j.data) || []) {
+    const st = stasjonFor(rad.sourceId);
+    for (const o of rad.observations || []) {
+      const f = FROST_FELT[o.elementId];
+      if (!f) continue;
+      telling[f] = telling[f] || {};
+      telling[f][st] = (telling[f][st] || 0) + 1;
+    }
+  }
+  const valgt = {};
+  for (const f of Object.keys(telling)) {
+    const kandidater = Object.keys(telling[f]).sort((a, b) => (rang.get(a) ?? 99) - (rang.get(b) ?? 99));
+    const maks = Math.max(...Object.values(telling[f]));
+    valgt[f] = kandidater.find(s => telling[f][s] >= maks * 0.5) || kandidater[0];
+  }
+  const timer = new Map();
+  for (const rad of (j && j.data) || []) {
+    const st = stasjonFor(rad.sourceId);
+    const t = new Date(rad.referenceTime);
+    if (isNaN(t)) continue;
+    t.setUTCMinutes(0, 0, 0);
+    // Frost stempler en times sum/maks ved SLUTTEN av timen; timeformen vår
+    // starter timen. Øyeblikksverdiene (temp, vind) brukes som de er.
+    for (const o of rad.observations || []) {
+      const f = FROST_FELT[o.elementId];
+      if (!f || valgt[f] !== st || typeof o.value !== "number") continue;
+      const start = (f === "regn" || f === "kast") ? new Date(t.getTime() - 36e5) : t;
+      const iso = start.toISOString();
+      const x = timer.get(iso) || { t: iso, temp: null, vind: null, kast: null, retning: null, skydekke: null, regn: 0, symbol: "", varighet: 1 };
+      x[f] = o.value;
+      timer.set(iso, x);
+    }
+  }
+  const dager = {};
+  for (const x of [...timer.values()].sort((a, b) => a.t < b.t ? -1 : 1)) {
+    const l = osloLokal(new Date(x.t));
+    (dager[l.dato] = dager[l.dato] || []).push(x);
+  }
+  const brukt = [...new Set(Object.values(valgt))].map(id => stasjoner.find(s => s.id === id) || { id, navn: id, avstand: null });
+  return { dager, stasjoner: brukt };
+}
+
+async function hentMaalt(env, k, fra, til) {
+  const stasjoner = await frostStasjoner(env, k);
+  if (!stasjoner.length) return { dager: {}, stasjoner: [] };
+  const url = FROST_URL + "/observations/v0.jsonld?sources=" + encodeURIComponent(stasjoner.map(s => s.id).join(",")) +
+    "&referencetime=" + encodeURIComponent(osloDøgn(fra).fra + "/" + osloDøgn(til).til) +
+    "&elements=" + encodeURIComponent(FROST_ELEMENTER.join(",")) + "&timeresolutions=PT1H";
+  const r = await fetch(url, { headers: frostAuth(env) });
+  if (r.status === 404 || r.status === 412) return { dager: {}, stasjoner: [] };   // ingen data i perioden
+  if (!r.ok) throw new Error("Frost svarte " + r.status);
+  return frostTilDager(await r.json(), stasjoner);
+}
+
+// /vaer/historikk: målt (Frost) når det finnes, ellers lagret varsel.
+// Passerte dager caches for godt — været i går endrer seg ikke.
+async function vaerHistorikk(env, k, fra, til) {
+  const iDag = osloLokal(new Date()).dato;
+  const dager = {};
+  const mangler = [];
+  for (let d = fra; d <= til; d = vaerPlussDager(d, 1)) {
+    const c = d < iDag ? await r2Json(env, "vaer/maalt/" + k.nøkkel + "/" + d + ".json") : null;
+    if (c) dager[d] = c; else mangler.push(d);
+  }
+  let stasjoner = [];
+  let frostFeil = "";
+  if (mangler.length && env.FROST_KLIENT) {
+    try {
+      const m = await hentMaalt(env, k, mangler[0], mangler[mangler.length - 1]);
+      stasjoner = m.stasjoner;
+      for (const d of mangler) {
+        const timer = m.dager[d];
+        if (!timer || !timer.length) continue;
+        dager[d] = { kilde: "maalt", timer, stasjoner };
+        // Bare HELE passerte døgn caches; i dag fylles på utover dagen.
+        if (d < iDag && timer.length >= 20) await env.MODELLER.put("vaer/maalt/" + k.nøkkel + "/" + d + ".json", JSON.stringify(dager[d]));
+      }
+    } catch (e) { frostFeil = String(e && e.message || e); }
+  }
+  for (const d of mangler) {
+    if (dager[d]) continue;
+    const a = await r2Json(env, "vaer/arkiv/" + k.nøkkel + "/" + d + ".json");
+    if (a && a.timer && a.timer.length) dager[d] = { kilde: "varslet", timer: a.timer };
+  }
+  return { dager, frost: !!env.FROST_KLIENT, frostFeil, stasjoner };
+}
+
+async function vaerRute(req, env, url, sti, cors) {
+  const k = vaerKoord(url);
+  const jsonSvar = (o, status, maksAlder) => new Response(JSON.stringify(o), {
+    status: status || 200,
+    headers: Object.assign({ "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=" + (maksAlder || 0) }, cors)
+  });
+  if (!k) return jsonSvar({ feil: "Mangler eller ugyldig lat/lon" }, 400);
+  try {
+    if (sti === "/vaer") return jsonSvar(await hentVarsel(env, k), 200, 600);
+    const fra = vaerDato(url.searchParams.get("fra")), til = vaerDato(url.searchParams.get("til")) || fra;
+    const iDag = osloLokal(new Date()).dato;
+    if (!fra || til < fra) return jsonSvar({ feil: "Ugyldig fra/til" }, 400);
+    if (til > iDag) return jsonSvar({ feil: "Historikk går bare til i dag" }, 400);
+    const [y1, m1, d1] = fra.split("-").map(Number), [y2, m2, d2] = til.split("-").map(Number);
+    if ((Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1)) / 864e5 >= VAER_MAKS_DAGER) return jsonSvar({ feil: "Maks " + VAER_MAKS_DAGER + " dager per kall" }, 400);
+    return jsonSvar(await vaerHistorikk(env, k, fra, til), 200, til < iDag ? 3600 : 300);
+  } catch (e) {
+    return jsonSvar({ feil: String(e && e.message || e) }, 502);
+  }
+}
+
 // ---------- Selve Workeren ----------
 
 export default {
@@ -492,6 +740,9 @@ export default {
 
     if (req.method === "GET" && sti === "/helse") return new Response("ok", { headers: cors });
 
+    // 🌦 Vær (v12): /vaer = MET-varselet, /vaer/historikk = målt eller lagret varsel.
+    if (req.method === "GET" && (sti === "/vaer" || sti === "/vaer/historikk")) return vaerRute(req, env, url, sti, cors);
+
     // ---------- Opplasting (fra trinn 2, uendret oppførsel) ----------
     if (req.method === "PUT" && sti === "/last-opp") {
       const token = req.headers.get("x-token") || "";
@@ -503,7 +754,7 @@ export default {
         return new Response("Prosjektnummeret må være 5 siffer", { status: 400, headers: cors });
       }
       const fil = decodeURIComponent(url.searchParams.get("fil") || "").trim();
-      if (!/^[\wæøåÆØÅ .,()–-]+\.(glb|json|jpg|jpeg|pdf)$/i.test(fil) || fil.includes("..")) {
+      if (!/^[\wæøåÆØÅ .,()–-]+\.(glb|json|jpg|jpeg|pdf|html)$/i.test(fil) || fil.includes("..")) {
         return new Response("Ugyldig filnavn: " + fil, { status: 400, headers: cors });
       }
       const mappe = url.searchParams.get("mappe") || "";
@@ -833,11 +1084,27 @@ export default {
       const skille = rest.indexOf("/");
       const prosjekt = rest.slice(0, skille);
       const navn = rest.slice(skille + 1);
-      if (!/^\d{5}$/.test(prosjekt) || !/^[0-9a-zA-Z_-]+\.pdf$/.test(navn)) return new Response("Ugyldig", { status: 400 });
+      // .html: tegningskatalogen o.l. — reiser samme vei som PDF-ene (25.08.2026)
+      if (!/^\d{5}$/.test(prosjekt) || !/^[0-9a-zA-Z_-]+\.(pdf|html)$/.test(navn)) return new Response("Ugyldig", { status: 400 });
       if (!await sjekkBevis(env, req, prosjekt)) return new Response("Skriv koden først", { status: 403 });
       const obj = await env.MODELLER.get(prosjekt + "/tegninger/" + navn);
       if (!obj) return new Response("Fant ikke tegningen", { status: 404 });
-      return new Response(obj.body, { headers: { "content-type": "application/pdf", "Cache-Control": "private, max-age=86400" } });
+      const type = navn.endsWith(".html") ? "text/html; charset=utf-8" : "application/pdf";
+      return new Response(obj.body, { headers: { "content-type": type, "Cache-Control": "private, max-age=86400" } });
+    }
+
+    // GET /modus/20653 — prosjektets størrelse (normalt/stort prosjekt).
+    // Skrives av kontoret via /last-opp?fil=modus.json og leses her ved neste
+    // Byggeplass-trykk, så valget FØLGER PROSJEKTET og ikke maskinen.
+    // Admin-nøkkel: bare den som laster opp trenger den.
+    if (req.method === "GET" && sti.startsWith("/modus/")) {
+      const prosjekt = sti.slice("/modus/".length);
+      if (!/^\d{5}$/.test(prosjekt)) return new Response("Ugyldig", { status: 400, headers: cors });
+      if (!env.ADMIN_TOKEN || !likeStrenger(req.headers.get("x-token") || "", env.ADMIN_TOKEN))
+        return new Response("Feil nøkkel", { status: 403, headers: cors });
+      const obj = await env.MODELLER.get(prosjekt + "/modus.json");
+      if (!obj) return new Response("Ikke valgt", { status: 404, headers: cors });
+      return new Response(obj.body, { headers: Object.assign({ "content-type": "application/json" }, cors) });
     }
 
     // GET /revisjoner/20645 — arkiverte revisjoner. Bevis eller admin-nøkkel.
@@ -982,7 +1249,7 @@ export default {
       // ville /sw.jsnoe også truffet, blitt hentet fra GitHub og gitt 404 —
       // ufarlig, men et mønster som ser slurvete ut for den som leser det om
       // et år.
-      if (/^\/(bygg\.html|sw\.js)(?=$|\?)/.test(hent) || /^\/(js|css|vendor)\//.test(hent)) {
+      if (/^\/(bygg\.html|sw\.js)(?=$|\?)/.test(hent) || /^\/(js|css|vendor|img)\//.test(hent)) {
         // Adressen bygges og NORMALISERES før vi henter, og vi sjekker at
         // resultatet fortsatt ligger under /storm-ifc-viewer/. Uten dette
         // slipper /js/%2e%2e/%2e%2e/… gjennom filteret over, og fetch()
