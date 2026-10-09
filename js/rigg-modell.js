@@ -21,6 +21,7 @@
 // småbitene (fuger, karmer, håndtak) — raskere på svake telefoner.
 import * as THREE from "three";
 import { P_PLASS_B, P_PLASS_D, RIGG_TYPER, gjerdeStykker, kranSektor, parkeringsPlasser } from "./rigg-regn.js";
+import { byggStillas } from "./stillas-modell.js";
 
 const matCache = new Map();
 // `detalj`: flaten ligger oppå en annen flate og skal vinne dybdetesten.
@@ -1208,6 +1209,10 @@ const BYGG = {
       g.add(f);
     } else flat(g, L - 0.16, tavleH - 0.06, "#f7f8f9", 0, yMidt, tykk / 2 + 0.001, "z");
   },
+
+  // 🧱 Stillas (Emil 08.10): hele modellen bygges av delelista i
+  // stillas-regn.js — den samme lista som mengdene telles av.
+  stillas(g, o, _h, opts) { byggStillas(g, o, opts); },
 
   vaskeplass(g, o, _h, opts) {
     const tykk = sone(g, o);

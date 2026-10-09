@@ -11,6 +11,8 @@
 //
 // Alt her testes i Node (_test/test-rigg.mjs).
 
+import { vaskStillasFelt, stillasMengder, stillasOmriss, STILLAS_STD } from "./stillas-regn.js";
+
 // ═══════════════════════ OBJEKTMALENE ═══════════════════════
 //
 // Alle mål i METER (L = lengde langs objektets egen x, B = bredde, H = høyde).
@@ -87,6 +89,10 @@ export const RIGG_TYPER = {
   // riggplan, nødnummer og beskjeder. Ikke det samme som HMS-kort-
   // registreringen (hms), som er der man registrerer seg. L × H er tavla.
   hmstavle:   { label: "HMS-tavle", L: 2.4, B: 0.5, H: 2.3, farge: "#1f5fbf" },
+  // 🧱 Stillas (Emil 08.10): normalt (linje, som brakkeriggen) eller lukket
+  // (omriss med skjøter, som byggegjerdet). L = feltlengden, B = bredden,
+  // H = etasjehøyden. Regningen og delene bor i stillas-regn.js.
+  stillas:    { label: "Stillas", L: STILLAS_STD.L, B: STILLAS_STD.B, H: STILLAS_STD.H, farge: "#c9a227", stillas: true },
   pilKjoretoy: { label: "Pil: kjøretøy", L: 1, B: 1.5, H: 0.05, farge: "#f57c00", pil: true },
   pilGaende:   { label: "Pil: gående", L: 1, B: 0.8, H: 0.05, farge: "#43a047", pil: true, stiplet: true }
 };
@@ -113,13 +119,14 @@ export function avfallstype(id) { return AVFALLSTYPER.find(a => a.id === id) || 
 // (åpen linje).
 export function harPunkter(type) { return !!(RIGG_TYPER[type] && (RIGG_TYPER[type].gjerde || RIGG_TYPER[type].pil)); }
 export function erGjerde(o) { return !!(o && RIGG_TYPER[o.type] && RIGG_TYPER[o.type].gjerde); }
+export function erStillas(o) { return !!(o && RIGG_TYPER[o.type] && RIGG_TYPER[o.type].stillas); }
 export function erPil(o) { return !!(o && RIGG_TYPER[o.type] && RIGG_TYPER[o.type].pil); }
 // Minste antall punkter: en ring trenger tre, en pil to.
 export function minPunkter(o) { return erPil(o) ? 2 : 3; }
 
 // Rekkefølgen knappene står i panelet — det man rigger først, først.
 export const RIGG_REKKEFOLGE = ["gjerde", "pilKjoretoy", "pilGaende", "taarnkran", "brakke", "hjulbrakke", "toalett", "forstehjelp", "mote",
-  "strom", "lys", "container", "hms", "hmstavle", "soppel", "parkering", "lagring", "vaskeplass", "royk"];
+  "strom", "lys", "container", "hms", "hmstavle", "soppel", "parkering", "lagring", "vaskeplass", "royk", "stillas"];
 
 // Kort forklaring per type. Står i panelet nå, og blir teksten i
 // tegnforklaringen på riggplan-PDF-en (trinn 6).
@@ -142,7 +149,8 @@ export const RIGG_FORKLARING = {
   pilGaende: "Gangvei for de som går på byggeplassen",
   taarnkran: "Tårnkran — sirkelen er svingradiusen, grønt er der bommen får svinge",
   royk: "Eget område for røyking, med askebeger",
-  hmstavle: "Oppslag: SHA-plan, riggplan, nødnummer og beskjeder"
+  hmstavle: "Oppslag: SHA-plan, riggplan, nødnummer og beskjeder",
+  stillas: "Fasadestillas — rammer eller Haki, med plater, rekkverk og trapp"
 };
 
 // 🏗 Kranens grenser. Radiusen er bomlengden (5–90 m dekker alt fra en
@@ -256,8 +264,8 @@ export function vaskRiggObjekt(p) {
     id, type: p.type,
     navn: tekst(p.navn, 80),
     farge: vaskFarge(p.farge, M.farge),
-    L: mal(p.L, M.gjerde ? 0.5 : 0.1, M.gjerde ? 10 : M.flate ? 200 : 30, M.L),
-    B: mal(p.B, 0.1, M.flate ? 200 : 30, M.B),
+    L: mal(p.L, M.gjerde ? 0.5 : M.stillas ? 0.5 : 0.1, M.gjerde ? 10 : M.stillas ? 6 : M.flate ? 200 : 30, M.L),
+    B: mal(p.B, M.stillas ? 0.5 : 0.1, M.stillas ? 3 : M.flate ? 200 : 30, M.B),
     H: mal(p.H, 0.1, M.kran ? KRAN_MAKS_H : 15, M.H),
     // "utm" = E/N er UTM33 i meter (riggen hører til TOMTA, Emil 25.09).
     // "bygg" = lagt inn før noe terreng fantes: E/N er byggrammen (E = x,
@@ -297,6 +305,14 @@ export function vaskRiggObjekt(p) {
     // For smal sektor (kan bare komme fra en fil) → hel sirkel, ikke en strek
     const bredde = (ut.sektorTil - ut.sektorFra + 360) % 360;
     if (bredde && bredde < KRAN_MIN_SEKTOR) ut.sektorTil = ut.sektorFra;
+  }
+  if (M.stillas) {
+    vaskStillasFelt(p, ut);
+    if (ut.form === "lukket") {
+      ut.punkter = vaskPunkter(p.punkter, MIN_SKJOTER);
+      if (ut.punkter) ut.punkter.forEach(q => { delete q.port; });
+      else ut.form = "linje";            // et lukket stillas uten gyldig omriss blir en linje, ikke borte
+    }
   }
   if (M.gjerde || M.pil) {
     ut.punkter = vaskPunkter(p.punkter, M.pil ? 2 : MIN_SKJOTER);
@@ -686,6 +702,7 @@ export function riggTilBygg(o, ref) {
 // rotasjonen i scenen. Brakkeriggen er så bred som alle modulene til sammen.
 export function riggFotavtrykk(o) {
   if (!o) return [];
+  if (erStillas(o)) return stillasOmriss(o).map(q => lokalTilEN(o, q.x, q.z));
   if (o.punkter) return o.punkter.map(q => lokalTilEN(o, q.x, q.z));
   const r = (o.rot || 0) * Math.PI / 180, c = Math.cos(r), s = Math.sin(r);
   const bredde = RIGG_TYPER[o.type] && RIGG_TYPER[o.type].moduler ? o.B * (o.moduler || 1) : o.B;
@@ -763,7 +780,7 @@ export function riggFraByggeplass(d) {
 // objekt. Skjulte objekter telles ikke: de er tatt ut av planen.
 export function riggAntall(o) {
   if (!o) return 0;
-  if (erPil(o)) return 1;
+  if (erPil(o) || erStillas(o)) return 1;
   if (o.punkter) return gjerdeMengder(o).paneler;
   return RIGG_TYPER[o.type] && RIGG_TYPER[o.type].moduler
     ? (o.etasjer || 1) * (o.moduler || 1) : 1;
@@ -796,6 +813,15 @@ export function riggMengdeRader(liste, tr) {
   };
   for (const o of riggObjekter(liste)) {
     if (o.skjult || erPil(o)) continue;     // pilene bestilles ikke
+    if (erStillas(o)) {
+      // 🧱 én rad per del, med målet i navnet — det stillasleverandøren teller
+      const navn = o.navn || lab(RIGG_TYPER.stillas.label);
+      for (const r of stillasMengder(o)) {
+        const del = lab(r.navn) + (r.mal ? " " + r.mal : "");
+        for (let i = 0; i < r.antall; i++) rad(navn + " · " + del, navn, del, 0, 0, 0);
+      }
+      continue;
+    }
     if (o.punkter) {
       const m = gjerdeMengder(o), navn = o.navn || lab(RIGG_TYPER.gjerde.label);
       const del = (k) => lab(GJERDE_DELER[k]);
@@ -820,7 +846,7 @@ export function riggTelling(liste) {
   let harGjerde = false;
   for (const o of riggObjekter(liste)) {
     if (o.skjult || erPil(o)) continue;
-    if (o.punkter) {
+    if (o.punkter && !erStillas(o)) {
       const g = gjerdeMengder(o);
       harGjerde = true;
       gj.panel += g.paneler; gj.port += g.porter; gj.fot += g.fotter; gj.klemme += g.klemmer;

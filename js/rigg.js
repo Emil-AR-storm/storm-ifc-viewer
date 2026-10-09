@@ -26,6 +26,7 @@
 // virker prikkene akkurat som på gjerdet — dra, shift-klikk, dobbeltklikk for
 // nytt punkt og Delete — men pila er en åpen linje uten paneler og porter.
 import * as THREE from "three";
+import { STILLAS_DELNAVN, STILLAS_FARGER, STILLAS_MAKS_ETASJER, STILLAS_MAKS_FELT, stillasFeltVed, stillasMengder, stillasSider, stillasTilLinje, stillasTilLukket, veksleStigeplate, veksleTrapp } from "./stillas-regn.js";
 import { $, S, apnePanel, esc, ikon, på, writePrefs } from "./state.js";
 import { t } from "./i18n.js";
 import { camera, canvas, flyTil, frameHooks, raycaster, scene } from "./scene.js";
@@ -40,7 +41,7 @@ import {
   MAKS_ETASJER, MAKS_MODULER, REF_ID, RIGG_FORKLARING, RIGG_REKKEFOLGE, RIGG_TYPER, ROT_STEG,
   byggTilRigg, enTilLokal, fjernSkjoter, flyttSkjoter, gjerdeFraRektangel, gjerdeMengder, gjerdeStykker,
   gjorOmTilPort, gjorTilbake, leggTilSkjot, naboStykker, nyRiggId, normVinkel, riggAntall, riggObjekter,
-  riggTelling, trengerOpplasting, vaskRiggListe, vaskRiggObjekt, erGjerde, MALESTOKKER, riggplanDekning, vaskMalestokkValg, erPil, minPunkter, parkeringsPlasser, pilFraPunkter, pilLengde,
+  riggTelling, trengerOpplasting, vaskRiggListe, vaskRiggObjekt, erGjerde, erStillas, MALESTOKKER, riggplanDekning, vaskMalestokkValg, erPil, minPunkter, parkeringsPlasser, pilFraPunkter, pilLengde,
   RIGGPLAN_NAVN_MAKS, riggFraLagret, riggOyeblikk, riggplanSammendrag, AVFALLSTYPER, avfallstype,
   KRAN_MAKS_H, KRAN_MAKS_R, KRAN_MIN_R, draSektor, kranSektor, vinkelTil
 } from "./rigg-regn.js";
@@ -72,6 +73,9 @@ let valgteStykker = [];        // panelene som er valgt (maks to) — til port
 // panelet under pekeren lyser → etter to naboer kommer «Gjør om til port» som
 // hovedknapp. «Ferdig» er borte mens steget pågår; «Avbryt» går ut av det.
 let portModus = false;
+// 🧱 Stillas: «Legg inn trapp» / «Plate med stige» — trykk på feltet, som
+// port på gjerdet. null | "trapp" | "stige"
+let stillasModus = null;
 let sistSkjemaId = null;
 let sistValgBarHtml = "";      // knapperaden slik den sist ble bygd (se oppdaterValgBar)      // skjemaet sist vist for (logolista hentes på nytt bare ved bytte)
 let overStykke = null;         // panelet under pekeren i port-steget
@@ -657,6 +661,7 @@ function velg(id) {
     const hadde = valgteStykker.length || (portModus && overStykke != null);
     valgteStykker = []; valgteSkjoter = [];
     portModus = false; overStykke = null;   // port-steget hører til ett gjerde
+    stillasModus = null;
     settGjerdeMarkering(id, []);
     // de grønne panelene på gjerdet vi forlater må males om
     const forrige = valgtId && hentO(valgtId);
@@ -797,6 +802,8 @@ function fjernSkjotKnapp(o) {
 
 function gjerdeKnapper(o) {
   if (!o.punkter) return "";
+  // 🧱 Lukket stillas: skjøtene kan dras og fjernes, men det er ingen porter
+  if (erStillas(o)) return fjernSkjotKnapp(o);
   // ➜ Pila: lengden og fjern-knappen — ingen paneler og porter
   if (erPil(o)) return '<span style="font-size:11px;color:var(--muted)">' +
     (Math.round(pilLengde(o) * 10) / 10) + " m</span>" + fjernSkjotKnapp(o);
@@ -1139,7 +1146,7 @@ window.addEventListener("pointerdown", (e) => {
       // Draget holder på avstanden mellom pekeren og objektets origo — ellers
       // hopper et gjerde (origo midt i ringen) bort til pekeren.
       const pt = bakkePunkt(e.clientX, e.clientY);
-      drar = { id, fra: h.g.position.clone(), stykke: h.stykke, varValgt, beveget: false,
+      drar = { id, fra: h.g.position.clone(), stykke: h.stykke, varValgt, beveget: false, punkt: h.punkt ? h.punkt.clone() : null,
         offset: pt ? h.g.position.clone().sub(pt) : new THREE.Vector3() };
     }
   }
@@ -1194,7 +1201,7 @@ window.addEventListener("pointermove", (e) => {
   if (!aktiv) return;
   if (drar) {
     // i port-steget flyttes ikke gjerdet: et lite rykk skal fortsatt velge panelet
-    if (portModus && !drar.beveget) return;
+    if ((portModus || stillasModus) && !drar.beveget) return;
     e.stopPropagation();
     // Et lite rykk er et klikk (velg panel), ikke et flytt.
     if (!drar.beveget) {
@@ -1286,6 +1293,7 @@ window.addEventListener("pointerup", (e) => {
       // utvalget. Utenfor port-steget velger et klikk bare gjerdet (15a) —
       // ellers ble paneler grønne uten at man visste hvorfor.
       const o = hentO(d.id);
+      if (o && erStillas(o) && d.varValgt && stillasModus && d.punkt) { stillasTrykk(o, d.punkt); return; }
       if (o && erGjerde(o) && d.varValgt && d.stykke != null && portModus) veksleStykke(o, d.stykke);
       else velg(d.id);
       return;
@@ -1343,6 +1351,7 @@ window.addEventListener("keydown", (e) => {
   if (kranRed) { avsluttKranRed(false); return; }
   if (tegner) { avbrytPil(); return; }
   if (portModus) { avsluttPortModus(); return; }
+  if (stillasModus) { settStillasModus(null); return; }
   if (merker) { avbrytMerker(); return; }
   if (skjotDrar) { const id = skjotDrar.id; skjotDrar = null; tegnEnRigg(hentO(id)); oppdaterHandtak(); return; }
   if (flytter) {
@@ -1429,7 +1438,7 @@ function tegnPanel() {
       ikonImg(o.type, o.farge) + esc(o.navn || riggTypeLabel(o.type)) +
       (o.avfall && avfallstype(o.avfall) ? ' <span style="color:var(--muted);font-size:11px">· ' + esc(t(avfallstype(o.avfall).label)) + "</span>" : "") +
       ' <span style="color:var(--muted);font-size:11px">' + esc(riggTypeLabel(o.type)) +
-      (erPil(o) ? " · " + (Math.round(pilLengde(o) * 10) / 10) + " m" : o.punkter ? " · " + gjerdeTekst(o) : " · " + o.L + " × " + o.B + " m" + (n > 1 ? " · ×" + n : "") +
+      (erPil(o) ? " · " + (Math.round(pilLengde(o) * 10) / 10) + " m" : erStillas(o) ? " · " + (o.form === "lukket" ? t("Lukket") : t("{0} felt", o.moduler)) + " · " + t("{0} etasjer", o.etasjer) : o.punkter ? " · " + gjerdeTekst(o) : " · " + o.L + " × " + o.B + " m" + (n > 1 ? " · ×" + n : "") +
         (RIGG_TYPER[o.type].parkering ? " · " + t("{0} plasser", parkeringsPlasser(o.L, o.B).totalt) : "")) + "</span></div>" +
       '<div class="c">' +
       '<button data-rigg-skjul="' + esc(o.id) + '" title="' + t("Skjul/vis") + '" style="padding:3px 8px">' + ikon(o.skjult ? "skjul" : "vis") + "</button>" +
@@ -1544,6 +1553,139 @@ function tegnPanel() {
 // Krok: «Vis alle» (rigg-vis.js) må kunne tegne lista på nytt.
 S.tegnRiggPanel = () => { if (erApen()) tegnPanel(); };
 
+// ═══════════════════════ 🧱 STILLAS ═══════════════════════
+// Trykk-modusen: «Legg inn trapp» (trappetårn utenpå feltet) og «Plate med
+// stige» (en plate blir plate med stige). Trykket regnes om til objektets egen
+// ramme, og stillasFeltVed finner side, felt og etasje.
+function settStillasModus(m) {
+  stillasModus = m || null;
+  if (stillasModus && valgtId && (!iModus() || !erApen())) visValgt(valgtId);
+  if (erApen()) tegnPanel();
+}
+function stillasTrykk(o, punkt) {
+  const g = finnRiggObjekt(o.id);
+  if (!g || !g.children[0]) return;
+  g.updateMatrixWorld(true);
+  const lok = g.children[0].worldToLocal(punkt.clone());
+  const f = stillasFeltVed(o, lok.x, lok.z, lok.y);
+  if (!f) return;
+  if (stillasModus === "trapp") oppdater(o.id, { trapper: veksleTrapp(o, f.side, f.felt) }, "Trapp lagt inn");
+  else if (stillasModus === "stige") oppdater(o.id, { stigeplater: veksleStigeplate(o, f.side, f.felt, f.etg) }, "Plate med stige");
+  if (erApen()) tegnPanel();
+}
+
+// ⚠ AVSTAND TIL BYGGET (Emil 08.10): står stillaset mer enn 0,3 m fra veggen
+// uten innvendig rekkverk, varsles det. Fra innerkanten (mot veggen) skytes en
+// stråle innover i hoftehøyde midt i hvert felt; den korteste avstanden til
+// modellen per side er sidas avstand. Felt der strålen ikke treffer noe innen
+// 5 m (åpning, hjørne, ingen vegg) teller ikke. Grensen 0,3 m er den vanlige,
+// men den må sjekkes mot Storms regler og leverandøren {Source not found}.
+export const STILLAS_MAKS_AVSTAND = 0.3;
+function stillasAvstander(o) {
+  const g = finnRiggObjekt(o.id), base = riggBase();
+  if (!g || !g.children[0] || !S.modelGroup || !base) return [];
+  g.updateMatrixWorld(true);
+  const modell = g.children[0];
+  const farFor = raycaster.far, nearFor = raycaster.near;
+  const ut = [];
+  try {
+    raycaster.near = 0; raycaster.far = 5 / base.skala;
+    for (const sd of stillasSider(o)) {
+      const Le = Math.max(0.1, sd.L - sd.start - sd.slutt), Lf = Le / sd.felt;
+      let min = Infinity;
+      for (let i = 0; i < sd.felt; i++) {
+        const s = sd.start + (i + 0.5) * Lf;
+        for (const y of [1.0, o.H + 1.0]) {
+          const p = modell.localToWorld(new THREE.Vector3(sd.p0.x + sd.e.x * s, y, sd.p0.z + sd.e.z * s));
+          const d = new THREE.Vector3(-sd.n.x, 0, -sd.n.z).transformDirection(modell.matrixWorld);
+          raycaster.set(p, d);
+          const h = raycaster.intersectObject(S.modelGroup, true).find(x => x.object.visible !== false && x.object.isMesh);
+          if (h) min = Math.min(min, h.distance * base.skala);
+        }
+      }
+      if (Number.isFinite(min)) ut.push({ side: sd.i, avstand: Math.round(min * 100) / 100 });
+    }
+  } catch (_) { /* uten modell eller treff: ingen varsling */ }
+  raycaster.far = farFor; raycaster.near = nearFor;
+  return ut;
+}
+
+function stillasSkjema(o) {
+  const sel = (id, navn, verdi, valg) => "<label>" + t(navn) + '<select id="' + id + '">' +
+    valg.map(([v, tekst]) => '<option value="' + v + '"' + (verdi === v ? " selected" : "") + ">" + t(tekst) + "</option>").join("") + "</select></label>";
+  const tall_ = (id, navn, verdi, min, maks, steg) => "<label>" + t(navn) + '<input type="number" id="' + id + '" min="' + min + '" max="' + maks +
+    '" step="' + steg + '" value="' + verdi + '"></label>';
+  const plan = new Set(o.plan || []);
+  let h = sel("riggStForm", "Form", o.form, [["linje", "Normalt (linje)"], ["lukket", "Lukket (rundt bygget)"]]) +
+    sel("riggStSystem", "Stillastype", o.system, [["alu", "Aluminium (rammer, plate 3 × 1 m)"], ["haki", "Haki (bein, planker 3 × 0,25 m)"]]) +
+    sel("riggStVisning", "Visning", o.visning, [["forenklet", "Forenklet"], ["fargekodet", "Fargekodet etter del"]]) +
+    tall_("riggL", "Feltlengde (m)", o.L, 0.5, 6, 0.01) + tall_("riggB", "Bredde (m)", o.B, 0.5, 3, 0.01) +
+    tall_("riggH", "Etasjehøyde (m)", o.H, 0.5, 4, 0.01) +
+    (o.form === "lukket" ? "" : tall_("riggMod", "Felt side om side", o.moduler, 1, STILLAS_MAKS_FELT, 1)) +
+    tall_("riggEt", "Etasjer", o.etasjer, 1, STILLAS_MAKS_ETASJER, 1) +
+    '<div style="margin:4px 0"><span ' + LITEN + ">" + t("Etasjer med plater (arbeidsplan)") + '</span><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:2px">' +
+    Array.from({ length: o.etasjer }, (_, i) => i + 1).map(k => '<label style="display:inline-flex;gap:3px;align-items:center;font-size:12px"><input type="checkbox" data-st-plan="' + k + '"' + (plan.has(k) ? " checked" : "") + ">" + k + "</label>").join("") +
+    "</div></div>" +
+    tall_("riggStRekk", "Rekkverkshøyde (m)", o.rekkverkH, 0.5, 2, 0.05) + tall_("riggStKne", "Knelist (m)", o.kneH, 0.1, 1.9, 0.05) +
+    '<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="riggStInnv"' + (o.innvendig ? " checked" : "") + ">" + t("Innvendig rekkverk") + "</label>" +
+    "<p " + LITEN + ">" + t("Vanligvis står stillaset så nær bygget at innvendig rekkverk ikke trengs (maks 0,3 m).") + "</p>" +
+    stillasAvstandTekst(o) +
+    tall_("riggStDiag", "Diagonal i hvert … felt", o.diagonalHvert, 1, 50, 1) +
+    tall_("riggStAnkB", "Forankring bortover (m)", o.forankringBort, 1, 20, 0.5) + tall_("riggStAnkO", "Forankring i høyden (m)", o.forankringOpp, 1, 20, 0.5) +
+    '<div class="prop-actions" style="margin-top:6px">' +
+    '<button id="riggStTrapp"' + (stillasModus === "trapp" ? ' class="active"' : "") + ">" + t("Legg inn trapp") + "</button>" +
+    '<button id="riggStStige"' + (stillasModus === "stige" ? ' class="active"' : "") + ">" + t("Plate med stige") + "</button></div>" +
+    (stillasModus ? "<p " + LITEN + ">" + t(stillasModus === "trapp"
+      ? "Trykk på feltet der trappetårnet skal stå — trykk igjen for å fjerne det. Esc når du er ferdig."
+      : "Trykk på plata som skal få luke og stige — trykk igjen for å gjøre den tilbake. Esc når du er ferdig.") + "</p>" : "");
+  if ((o.trapper || []).length) {
+    h += '<div style="margin:4px 0">' + o.trapper.map((q, i) => '<div style="display:flex;gap:6px;align-items:center;font-size:12px">' +
+      t("Trapp {0}", i + 1) + " · " + t("side {0}, felt {1}", q.side + 1, q.felt + 1) + " · " + t("opp til etasje") +
+      ' <select data-st-trapp="' + i + '">' + Array.from({ length: o.etasjer }, (_, k) => k + 1).map(k => '<option value="' + k + '"' + (q.til === k ? " selected" : "") + ">" + k + "</option>").join("") + "</select>" +
+      '<button data-st-trapp-fjern="' + i + '" class="btn" style="padding:1px 6px">' + ikon("slett") + "</button></div>").join("") + "</div>";
+  }
+  // mengdelista, med fargene fra den fargekodede visningen
+  const farge = (k) => STILLAS_FARGER[{ ramme: "ramme", spire: "spire", horLangs: "hor", horTverr: "hor", bunnskrue: "skrue", plate: "plate", hjorneplate: "plate",
+    planke: "planke", hjorneplanke: "planke", stigeplate: "stige", stige: "stige", trappelop: "trapp", repos: "trapp", handlist: "trapp",
+    rekkverk: "rekk", stolpe: "rekk", fotlist: "fot", diagonal: "diag", forankring: "anker" }[k]] || "#9ca3af";
+  h += '<h4 style="margin:10px 0 4px">' + t("Mengder") + '</h4><table style="width:100%;font-size:12px;border-collapse:collapse">' +
+    stillasMengder(o).map(r => "<tr><td style=\"padding:1px 4px\"><span style=\"display:inline-block;width:9px;height:9px;border-radius:2px;background:" + farge(r.tell) + "\"></span></td>" +
+      "<td>" + esc(t(STILLAS_DELNAVN[r.tell] || r.tell)) + (r.mal ? " " + esc(r.mal) : "") + '</td><td style="text-align:right">' + r.antall + "</td></tr>").join("") + "</table>";
+  return h;
+}
+
+function stillasAvstandTekst(o) {
+  const av = stillasAvstander(o);
+  if (!av.length) return "";
+  const for_ = av.filter(a => a.avstand > STILLAS_MAKS_AVSTAND);
+  const fm = (v) => String(v).replace(".", ",");
+  if (!for_.length) return "<p " + LITEN + ">✓ " + t("Avstand til veggen: {0} m", fm(Math.max(...av.map(a => a.avstand)))) + "</p>";
+  const tekst = for_.map(a => (av.length > 1 ? t("side {0}", a.side + 1) + ": " : "") + fm(a.avstand) + " m").join(", ");
+  return '<p id="riggStAvstand" style="font-size:12px;margin:4px 0;color:' + (o.innvendig ? "var(--muted)" : "var(--warn)") + '">' +
+    (o.innvendig ? t("Over 0,3 m fra veggen ({0}) — innvendig rekkverk er på.", tekst)
+      : "⚠ " + t("Over 0,3 m fra veggen ({0}) uten innvendig rekkverk. Flytt stillaset nærmere eller slå på innvendig rekkverk.", tekst)) + "</p>";
+}
+
+function stillasFelter(o) {
+  const v = (id) => $(id) ? $(id).value : undefined;
+  const f = {
+    form: v("riggStForm"), system: v("riggStSystem"), visning: v("riggStVisning"),
+    etasjer: v("riggEt"), rekkverkH: v("riggStRekk"), kneH: v("riggStKne"),
+    innvendig: !!($("riggStInnv") && $("riggStInnv").checked),
+    diagonalHvert: v("riggStDiag"), forankringBort: v("riggStAnkB"), forankringOpp: v("riggStAnkO"),
+    plan: [...document.querySelectorAll("#riggSkjema input[data-st-plan]")].filter(x => x.checked).map(x => Number(x.dataset.stPlan))
+  };
+  if ($("riggMod")) f.moduler = v("riggMod");
+  // Flere etasjer enn før: de nye etasjene får plater
+  const e = Number(f.etasjer);
+  if (e > (o.etasjer || 1)) for (let k = (o.etasjer || 1) + 1; k <= e; k++) f.plan.push(k);
+  if (!f.plan.length) f.plan = [e || o.etasjer || 1];
+  // Bytte av form: linje → lukket får et omriss, lukket → linje får felt
+  if (f.form === "lukket" && o.form !== "lukket") f.punkter = stillasTilLukket(o);
+  if (f.form === "linje" && o.form === "lukket") Object.assign(f, stillasTilLinje(o), { punkter: undefined, trapper: [], stigeplater: [] });
+  return f;
+}
+
 // ═══════════════════════ SKJEMAET (rediger) ═══════════════════════
 // 📝 Runde 15b: skjemaet er ØVERST i høyrepanelet når noe er valgt, og hver
 // endring lagres med en gang (change: når feltet forlates eller Enter, og med
@@ -1561,7 +1703,7 @@ function skjemaHtml(o) {
     esc(riggTypeLabel(o.type)) + '" value="' + esc(o.navn) + '"></label>' +
     // 🚧 Gjerdet: L er panellengden og H panelhøyden. Et panel som er lengre
     // enn panellengden blir rødt — endres lengden her, endres varslene.
-    (M.pil
+    (M.stillas ? stillasSkjema(o) : M.pil
       ? felt("riggB", "Bredde på pila (m)", o.B, 0.2, 10, 0.1) +
         '<input type="hidden" id="riggL" value="' + o.L + '"><input type="hidden" id="riggH" value="' + o.H + '">'
       : M.gjerde
@@ -1612,6 +1754,7 @@ function koblSkjema(o) {
     if (M.avfall && $("riggAvfall")) felter.avfall = $("riggAvfall").value;
     if (M.moduler) { felter.moduler = $("riggMod").value; felter.etasjer = $("riggEt").value; }
     if (M.kran && $("riggRadius")) felter.radius = $("riggRadius").value;
+    if (M.stillas) Object.assign(felter, stillasFelter(hentO(o.id) || o));
     return felter;
   };
   const lagre = (felter) => {
@@ -1631,6 +1774,8 @@ function koblSkjema(o) {
     sett("riggL", etter.L); sett("riggB", etter.B); sett("riggH", etter.H); sett("riggRot", etter.rot);
     if (M.moduler) { sett("riggMod", etter.moduler); sett("riggEt", etter.etasjer); }
     if (M.kran) sett("riggRadius", etter.radius);
+    // 🧱 stillaset: form, etasjer og mengdelista endrer hvilke felt som finnes
+    if (M.stillas && erApen()) setTimeout(() => tegnPanel(), 0);
   };
   // Lagres i NESTE runde av hendelsesløkka: med Tab fyrer change før markøren
   // har flyttet seg. Tegnes panelet på nytt der og da, landet markøren i
@@ -1644,6 +1789,17 @@ function koblSkjema(o) {
   $("riggSkjema").querySelectorAll("input").forEach(f => {
     f.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); lagre(lesFelter()); } };
   });
+  if (M.stillas) {
+    if ($("riggStTrapp")) $("riggStTrapp").onclick = () => settStillasModus(stillasModus === "trapp" ? null : "trapp");
+    if ($("riggStStige")) $("riggStStige").onclick = () => settStillasModus(stillasModus === "stige" ? null : "stige");
+    $("riggSkjema").querySelectorAll("select[data-st-trapp]").forEach(x => {
+      x.onchange = () => { const q = hentO(o.id); if (!q) return; const tr = q.trapper.map((r, i) => i === Number(x.dataset.stTrapp) ? Object.assign({}, r, { til: Number(x.value) }) : r);
+        oppdater(o.id, { trapper: tr }, "Trapp endret"); tegnPanel(); };
+    });
+    $("riggSkjema").querySelectorAll("button[data-st-trapp-fjern]").forEach(x => {
+      x.onclick = () => { const q = hentO(o.id); if (!q) return; oppdater(o.id, { trapper: q.trapper.filter((_, i) => i !== Number(x.dataset.stTrappFjern)) }, "Trapp fjernet"); tegnPanel(); };
+    });
+  }
   $("riggStd").onclick = () => {
     $("riggL").value = M.L; $("riggB").value = M.B; $("riggH").value = M.H; $("riggFarge").value = M.farge;
     lagre(lesFelter());
