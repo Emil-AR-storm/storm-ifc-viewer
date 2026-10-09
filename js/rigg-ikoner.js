@@ -39,7 +39,7 @@ export function riggIkon(type, farge, px) {
 
 // Til testene: typene som har en egen tegning (resten får et fargemerke).
 export const IKON_TYPER = ["brakke", "hjulbrakke", "toalett", "forstehjelp", "mote", "strom", "lys", "container", "hms",
-  "soppel", "parkering", "lagring", "vaskeplass", "gjerde", "gjerdePort", "pilKjoretoy", "pilGaende", "taarnkran", "royk", "hmstavle"];
+  "soppel", "parkering", "lagring", "vaskeplass", "gjerde", "gjerdePort", "pilKjoretoy", "pilGaende", "taarnkran", "royk", "hmstavle", "stillas"];
 
 function tone(hex, f) {
   const n = parseInt(String(hex).slice(1), 16);
@@ -140,6 +140,15 @@ function tegn(x, s, type, farge) {
       for (let j = 0; j <= 4; j++) { x.beginPath(); x.moveTo(12, 22 + j * 12); x.lineTo(84, 22 + j * 12); x.stroke(); }
       st(tone(farge, 0.6), 4); x.strokeRect(12, 22, 72, 48);
       R(6, 70, 16, 8, "#a7a39b"); R(74, 70, 16, 8, "#a7a39b");
+      break;
+    case "stillas":
+      // to felt, tre etasjer: bein, plater (fargen) og rekkverk på toppen
+      st("#5f6b75", 3);
+      for (const bx of [16, 48, 80]) { x.beginPath(); x.moveTo(bx, 84); x.lineTo(bx, 14); x.stroke(); }
+      for (const py of [34, 56, 78]) R(14, py - 4, 68, 6, farge);
+      st("#d9534f", 2.5);
+      for (const ry of [14, 24]) { x.beginPath(); x.moveTo(14, ry); x.lineTo(82, ry); x.stroke(); }
+      st(tone(farge, 0.6), 2); x.beginPath(); x.moveTo(16, 74); x.lineTo(48, 52); x.stroke();
       break;
     case "gjerdePort":
       st(farge, 4); x.strokeRect(12, 22, 72, 50);

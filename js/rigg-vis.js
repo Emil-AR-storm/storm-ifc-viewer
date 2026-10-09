@@ -205,6 +205,7 @@ export function settGjerdeMarkering(id, stykker, over) {
 
 // Høyden på det ferdige objektet (til navnelappen): brakken i etasjer.
 export function riggTotalHoyde(o) {
+  if (RIGG_TYPER[o.type] && RIGG_TYPER[o.type].stillas) return o.H * (o.etasjer || 1) + (o.rekkverkH || 1);
   return RIGG_TYPER[o.type] && RIGG_TYPER[o.type].moduler ? o.H * (o.etasjer || 1) : o.H;
 }
 
@@ -262,7 +263,7 @@ export function byggRiggObjekt(o, skala, hoyder) {
       z: o.punkter.reduce((a, q) => a + q.z, 0) / o.punkter.length
     };
     const hm = Math.max(0, ...(hoyder || [0]));
-    lapp.position.set(pk.x * s, (o.H + hm + 0.8) * s, pk.z * s);
+    lapp.position.set(pk.x * s, (riggTotalHoyde(o) + hm + 0.8) * s, pk.z * s);
   }
   ytre.add(lapp);
   if (RIGG_TYPER[o.type] && RIGG_TYPER[o.type].kran && kran.info) kranLapper(ytre, o, s);

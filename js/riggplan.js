@@ -137,7 +137,8 @@ function leggKontaktSkygger() {
     const modell = g.children[0];
     // Flater (parkering, lagring, vaskeplass), piler og gjerdet ligger på
     // bakken eller er tynne — de trenger ingen flekk.
-    if (!M || M.flate || M.pil || M.gjerde || !modell) continue;
+    // 🧱 stillaset er rør — ingen kontaktflekk, ingen strek på hvert rør
+    if (!M || M.flate || M.pil || M.gjerde || M.stillas || !modell) continue;
     // Modellgruppa er i METER (rigg-modell.js), så flekken måles i meter
     const B = o.B * (M.moduler ? (o.moduler || 1) : 1);
     const p = new THREE.Mesh(new THREE.PlaneGeometry(o.L + 1.4, B + 1.4), mat);
@@ -358,7 +359,7 @@ function leggPynt(medKontur) {
     // (prøven 29.09), og flatene har allerede sin mørke kant.
     for (const g of riggGroup.children) {
       const M = RIGG_TYPER[g.userData.riggType] || {};
-      if (M.pil || M.gjerde || M.flate) continue;
+      if (M.pil || M.gjerde || M.flate || M.stillas) continue;
       g.traverse(o => { if (kanStrekes(o)) leggStrek(o); });
     }
     if (S.modelGroup) {
