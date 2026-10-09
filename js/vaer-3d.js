@@ -52,6 +52,9 @@ let aktiv = null;           // { bilde, natt (0..1), lyn }
 let skjult = false;
 const gruppe = new THREE.Group();
 gruppe.name = "vaer3d";
+// Usynlig til det finnes vær å vise. Uten denne linja sto gruppa synlig fra
+// start (three.js-standard), og frame-kroken tegnet regn bak startsiden.
+gruppe.visible = false;
 gruppe.renderOrder = -10;
 scene.add(gruppe);
 const ingenTreff = () => {};
@@ -102,7 +105,10 @@ gruppe.add(skyGruppe);
 // i PIKSLER (regnes av kameraavstanden og bildehøyden), så regnet ser likt ut
 // på skjermen og i videoen. Snøfnuggene skaleres på samme måte.
 const N_REGN = 3000, N_SNO = 2500;
-const REGN_PX = 1.6, SNO_PX = 3;
+// Bredden i piksler. 1,6 ble for grovt på skjermen (Emil 09.10: «regndråpene
+// er altfor store») — dråpene nær kameraet ble i tillegg mange ganger bredere.
+// Nå regnes bredden og lengden for HVER dråpe ut fra dens egen avstand.
+const REGN_PX = 1.0, SNO_PX = 2.5;
 const regnPos = new Float32Array(N_REGN * 4 * 3);
 const regnIdx = new Uint32Array(N_REGN * 6);
 for (let i = 0; i < N_REGN; i++) regnIdx.set([i * 4, i * 4 + 1, i * 4 + 2, i * 4 + 2, i * 4 + 1, i * 4 + 3], i * 6);
@@ -158,6 +164,8 @@ function finnLys() {
 // Videoen følger bare Vis vær (den har sitt eget valg: medVaer).
 export function vaer3DTillatt() {
   if (videoModus) return true;
+  // Ingen modell åpen (startsiden): aldri vær — det var regn bak menyen (Emil 09.10)
+  if (typeof document !== "undefined" && !document.body.classList.contains("har-modell")) return false;
   return !!(S.settings && S.settings.vaerPaa && S.settings.vaer3D !== false);
 }
 function bygg() {
@@ -215,7 +223,9 @@ frameHooks.push(() => {
 });
 const _syn = new THREE.Vector3(), _side = new THREE.Vector3(), _ned = new THREE.Vector3();
 // hPx: bildehøyden i piksler det tegnes i (skjermen, eller videoens store bilde)
-function oppdaterFor(kam, t, naa, dt, hPx) {
+// pxFaktor: videoen tegnes 1,5× større og skaleres ned, så der må dråpene
+// være tilsvarende bredere for å overleve nedskaleringen og MP4-en.
+function oppdaterFor(kam, t, naa, dt, hPx, pxFaktor) {
   const d = Math.max(1e-3, kam.position.distanceTo(t));
   // Kuppelen følger kameraet, rett innenfor fjernplanet
   kuppel.position.copy(kam.position);
@@ -246,12 +256,18 @@ function oppdaterFor(kam, t, naa, dt, hPx) {
     // fallretningen og synslinja
     _syn.copy(t).sub(kam.position).normalize();
     _ned.set(vind, 1, 0).normalize();
-    _side.crossVectors(_ned, _syn).normalize().multiplyScalar(pxVerden * REGN_PX / 2);
-    const sx = _side.x, sy = _side.y, sz = _side.z;
+    _side.crossVectors(_ned, _syn).normalize().multiplyScalar(pxVerden * REGN_PX * (pxFaktor || 1) / 2);
+    const cx = kam.position.x - t.x, cy = kam.position.y - t.y, cz = kam.position.z - t.z;
     for (let i = 0; i < N_REGN; i++) {
       let y = fro[i * 3 + 1] - fall; y = y - Math.floor(y + 0.5);
       const x = fro[i * 3] + vind * y, z = fro[i * 3 + 2];
-      const ax = x * B, ay = y * B, az = z * B, bx = (x + vind * len) * B, by = (y + len) * B, bz = z * B;
+      const ax = x * B, ay = y * B, az = z * B;
+      // Dråpens avstand til kameraet i forhold til målet: nær = smalere og
+      // kortere i verden, så den blir like tynn på skjermen som de andre
+      const f = Math.min(1.5, Math.max(0.05, Math.hypot(ax - cx, ay - cy, az - cz) / d));
+      const sx = _side.x * f, sy = _side.y * f, sz = _side.z * f;
+      const l = len * Math.min(1, f);
+      const bx = ax + vind * l * B, by = ay + l * B, bz = az;
       regnPos.set([ax - sx, ay - sy, az - sz, ax + sx, ay + sy, az + sz, bx - sx, by - sy, bz - sz, bx + sx, by + sy, bz + sz], i * 12);
     }
     regnGeo.attributes.position.needsUpdate = true;
@@ -314,7 +330,7 @@ S.vaer3DVideo = {
   ramme(kam, mal, tilstand, tidMs, hPx) {
     settVaer3D("video", tilstand);
     if (!gruppe.visible) return;
-    oppdaterFor(kam, mal, tidMs, 1 / 30, hPx);
+    oppdaterFor(kam, mal, tidMs, 1 / 30, hPx, 2);
   },
   slutt() { videoModus = false; settVaer3D("video", null); bygg(); }
 };
@@ -336,3 +352,11 @@ if (typeof document !== "undefined") {
     try { document.dispatchEvent(new CustomEvent("storm-vaer")); } catch (_) {}
   });
 }
+
+// Ny modell: glem været fra forrige modell MED EN GANG — ellers sto det gamle
+// regnet/snøen på skjermen til den nye modellens vær var hentet (Emil 09.10).
+S.nullstillVaer3D = () => {
+  kilder.panel = null; kilder.framdrift = null; kilder.naa = null;
+  aktiv = null;
+  bygg(); visKnapp();
+};

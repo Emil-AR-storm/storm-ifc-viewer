@@ -104,6 +104,7 @@ async function hentFraSp() {
 // afterLoad (ifc.js): lokalt først, så SharePoint i bakgrunnen.
 S.lastProsjektinfo = () => {
   if (LETT) return;
+  if (S.nullstillVaer3D) S.nullstillVaer3D();   // 🌦 ikke vis forrige modells vær
   info = lesLokalt();
   sokTreff = []; sokMelding = "";
   meld();
