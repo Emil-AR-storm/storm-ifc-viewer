@@ -36,7 +36,9 @@ export const STILLAS_STD = {
   rekkverkH: 1.0, kneH: 0.5,
   diagonalHvert: 5, forankringBort: 4, forankringOpp: 4,
   repos: 0.5,                         // reposets lengde i hver ende av trappetårnet
-  luke: 0.6                           // luka i plata med stige
+  luke: 0.6,                          // luka i plata med stige
+  skrueMaks: 0.5,                     // så langt bunnskruen skrus ut (typisk, ikke datablad)
+  bunnRammeSteg: 0.5                  // ekstra rammehøyde nederst kommer i trinn på 0,5 m (typisk)
 };
 // Feltlengdene som finnes på lager (Emil 09.10): hvert felt snappes til den
 // nærmeste av disse. Under den korteste → den korteste. Kan endres per stillas.
@@ -57,13 +59,13 @@ export const STILLAS_FARGER = {
 
 // Navnene på deltypene (norsk = i18n-nøkkel)
 export const STILLAS_DELNAVN = {
-  ramme: "Ramme", spire: "Stillasbein", forlenger: "Benforlenger", horLangs: "Horisontal", horTverr: "Horisontal (tverr)",
+  ramme: "Ramme", spire: "Stillasbein", horLangs: "Horisontal", horTverr: "Horisontal (tverr)",
   bunnskrue: "Bunnskrue med fotplate", plate: "Plate", hjorneplate: "Hjørneplate",
   planke: "Planke", hjorneplanke: "Hjørneplanke", stigeplate: "Plate med stige", stige: "Stige",
   rekkverk: "Rekkverk", stolpe: "Rekkverksstolpe", fotlist: "Fotlist", diagonal: "Diagonalstag",
   forankring: "Veggforankring", trappelop: "Trappeløp", repos: "Repos", handlist: "Håndlist"
 };
-export const STILLAS_DELREKKEFOLGE = ["ramme", "spire", "horLangs", "horTverr", "bunnskrue", "forlenger", "plate", "hjorneplate",
+export const STILLAS_DELREKKEFOLGE = ["ramme", "spire", "horLangs", "horTverr", "bunnskrue", "plate", "hjorneplate",
   "planke", "hjorneplanke", "stigeplate", "stige", "trappelop", "repos", "handlist", "rekkverk", "stolpe", "fotlist",
   "diagonal", "forankring"];
 
@@ -231,7 +233,7 @@ export function stillasDeler(o, bakke) {
   const haki = o.system === "haki";
   const R = 0.024;
   const bein = new Map();      // dedupliserte bein: "x,z" → { x, z, h }
-  const g0Alu = new Set();
+  const rammeLinjer = [];      // innerbein + ytterbein i samme ramme-linje
   const sider = stillasSider(o);
   const trapper = o.trapper || [], stiger = o.stigeplater || [];
 
@@ -244,14 +246,16 @@ export function stillasDeler(o, bakke) {
       const q = P(s, t, 0), k = q[0].toFixed(3) + "," + q[2].toFixed(3);
       const f = bein.get(k);
       if (!f) bein.set(k, { x: q[0], z: q[2], h, side: S.i }); else f.h = Math.max(f.h, h);
+      return k;
     };
     const trappI = (i) => trapper.find(q => q.side === S.i && q.felt === i);
 
     // Bein og rammer i hver ramme-linje
     for (let i = 0; i <= n0; i++) {
       const s = pos[i];
-      legg(s, B, topp + RH);
-      legg(s, 0, topp + (o.innvendig ? RH : 0));
+      const ky = legg(s, B, topp + RH);
+      const ki = legg(s, 0, topp + (o.innvendig ? RH : 0));
+      rammeLinjer.push({ a: ki, b: ky, side: S.i });
       for (let k = 1; k <= Etg; k++) {
         const y = k * Hetg;
         if (haki) R_(P(s, 0, y), P(s, B, y), "hor", { tell: "horTverr", mal: fm(B) + " m" });
@@ -342,32 +346,51 @@ export function stillasDeler(o, bakke) {
     }
   }
   // beina: ett segment per etasje (Haki teller dem), rekkverksstolpe over toppen
-  // Med terreng (Emil 09.10): bunnskruen står på bakken under hvert bein, og
-  // beinet går ned dit. Aluminium: et rør fra skruen opp til nullnivået
-  // telles som benforlenger (avrundet opp til 0,5 m). Haki: flere spirer.
+  // Med terreng (Emil 09.10): søylene og rammene står i SAMME høyde overalt —
+  // bunnskruen skrus ut til bakken under hvert bein. Er fallet større enn
+  // skruen klarer (skrueMaks), bygges stillaset opp med en EKSTRA RAMMEHØYDE
+  // nederst (trinn på bunnRammeSteg). Begge beina i en ramme-linje får samme
+  // ekstra høyde (de er én ramme), så lenge ingen av dem havner under bakken.
+  const SM = STILLAS_STD.skrueMaks, steg = STILLAS_STD.bunnRammeSteg;
   for (const b of bein.values()) {
-    const g = bakke ? Math.min(0, Number(bakke(b.x, b.z)) || 0) : 0;
+    b.g = bakke ? Math.min(0, Number(bakke(b.x, b.z)) || 0) : 0;
+    const behov = -b.g - SM;
+    b.ekstra = behov > 1e-6 ? Math.ceil(behov / steg - 1e-9) * steg : 0;
+  }
+  for (const L of rammeLinjer) {
+    const a = bein.get(L.a), b = bein.get(L.b);
+    if (!a || !b) continue;
+    const h = Math.max(a.ekstra, b.ekstra);
+    if (-a.g - h >= -1e-9 && -b.g - h >= -1e-9) { a.ekstra = h; b.ekstra = h; L.ekstra = h; }
+  }
+  let skrueMaks = 0, ekstraRammer = 0;
+  for (const b of bein.values()) {
     const a = (y) => [b.x, y, b.z];
-    bokser.push({ del: "skrue", c: a(g + 0.02), s: [0.15, 0.04, 0.15], e: { x: 1, z: 0 }, side: b.side, tell: "bunnskrue", mal: "" });
-    ror.push({ del: "skrue", a: a(g + 0.04), b: a(g + 0.25), r: R * 0.8, side: b.side });
+    const fot = 0.25 - b.ekstra;                 // der skruen møter beinet
+    skrueMaks = Math.max(skrueMaks, -b.g - b.ekstra);
+    bokser.push({ del: "skrue", c: a(b.g + 0.02), s: [0.15, 0.04, 0.15], e: { x: 1, z: 0 }, side: b.side, tell: "bunnskrue", mal: "" });
+    ror.push({ del: "skrue", a: a(b.g + 0.04), b: a(fot), r: R * 0.8, side: b.side });
+    if (b.ekstra > 0) ror.push({ del: haki ? "spire" : "ramme", a: a(fot), b: a(0.25), r: R, side: b.side,
+      tell: haki ? "spire" : undefined, mal: haki ? fm(b.ekstra) + " m" : undefined });
     const toppStal = Math.min(b.h, topp);
-    let y0 = 0;
-    if (haki) while (y0 > g + 0.25 + 1e-6) y0 -= Hetg;
-    else if (g < -0.005) {
-      const fl = Math.ceil((-g - 1e-6) / 0.5) * 0.5;
-      ror.push({ del: "ramme", a: a(g + 0.25), b: a(0.25), r: R, side: b.side, tell: "forlenger", mal: fm(fl) + " m" });
-      g0Alu.add(b);
-    }
     // første segment fra skruen til 1. etasje, så ett per etasje
-    for (; y0 < toppStal - 1e-6; y0 += Hetg) {
-      const fra = Math.max(g0Alu.has(b) ? 0.25 : g + 0.25, y0), til = Math.min(toppStal, y0 + Hetg);
+    for (let y0 = 0; y0 < toppStal - 1e-6; y0 += Hetg) {
+      const fra = Math.max(0.25, y0), til = Math.min(toppStal, y0 + Hetg);
       if (til - fra < 1e-6) continue;
       ror.push({ del: haki ? "spire" : "ramme", a: a(fra), b: a(til), r: R, side: b.side,
         tell: haki ? "spire" : undefined, mal: haki ? fm(Hetg) + " m" : undefined });
     }
     if (b.h > topp + 1e-6) ror.push({ del: haki ? "spire" : "ramme", a: a(topp), b: a(b.h), r: R, side: b.side, tell: "stolpe", mal: fm(b.h - topp) + " m" });
   }
-  return { ror, bokser, sider };
+  // den ekstra rammen: tverrstykket på toppen av den (der den vanlige begynner)
+  for (const L of rammeLinjer) {
+    if (!(L.ekstra > 0)) continue;
+    const a = bein.get(L.a), b = bein.get(L.b);
+    ekstraRammer++;
+    ror.push({ del: haki ? "hor" : "ramme", a: [a.x, 0.25, a.z], b: [b.x, 0.25, b.z], r: R, side: L.side,
+      tell: haki ? "horTverr" : "ramme", mal: haki ? fm(o.B) + " m" : fm(o.B) + " × " + fm(L.ekstra) + " m" });
+  }
+  return { ror, bokser, sider, skrueMaks: r3(skrueMaks), ekstraRammer };
 }
 
 function hjorneplate(o, H0, y, e, side, Bx, haki, inn) {

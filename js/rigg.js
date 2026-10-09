@@ -26,7 +26,7 @@
 // virker prikkene akkurat som på gjerdet — dra, shift-klikk, dobbeltklikk for
 // nytt punkt og Delete — men pila er en åpen linje uten paneler og porter.
 import * as THREE from "three";
-import { STILLAS_DELNAVN, STILLAS_FARGER, STILLAS_MAKS_ETASJER, STILLAS_MAKS_FELT, stillasFeltVed, stillasMengder, stillasSider, stillasTilLinje, stillasTilLukket, veksleStigeplate, veksleTrapp } from "./stillas-regn.js";
+import { STILLAS_DELNAVN, STILLAS_FARGER, STILLAS_STD, stillasDeler, STILLAS_MAKS_ETASJER, STILLAS_MAKS_FELT, stillasFeltVed, stillasMengder, stillasSider, stillasTilLinje, stillasTilLukket, veksleStigeplate, veksleTrapp } from "./stillas-regn.js";
 import { $, S, apnePanel, esc, ikon, på, writePrefs } from "./state.js";
 import { t } from "./i18n.js";
 import { camera, canvas, flyTil, frameHooks, raycaster, scene } from "./scene.js";
@@ -1669,7 +1669,18 @@ function stillasSideTekst(o) {
     const av = Math.abs(sd.avvik) < 0.005 ? "" : " · " + (sd.avvik > 0 ? t("{0} m forbi", fm(sd.avvik)) : t("{0} m kort", fm(-sd.avvik)));
     return (sider.length > 1 ? t("side {0}", sd.i + 1) + ": " : "") + felt + " = " + fm(sd.lengde) + " m" + av;
   });
-  return '<p id="riggStSider" ' + LITEN + ">" + linjer.map(esc).join("<br>") + "</p>";
+  let h = '<p id="riggStSider" ' + LITEN + ">" + linjer.map(esc).join("<br>") + "</p>";
+  // 🦶 på skrå tomt står søylene i samme høyde — bunnskruene tar opp fallet
+  const bakke = stillasBakkeFor(o);
+  const d = bakke ? stillasDeler(o, bakke) : null;
+  if (d && (d.skrueMaks > 0.005 || d.ekstraRammer)) {
+    const over = d.skrueMaks > STILLAS_STD.skrueMaks + 0.005;
+    h += '<p id="riggStSkrue" style="font-size:12px;margin:4px 0;color:' + (over ? "var(--warn)" : "var(--muted)") + '">' +
+      (over ? "⚠ " + t("Bunnskruene må skrus ut {0} m — mer enn {1} m. Sjekk med leverandøren.", fm(d.skrueMaks), fm(STILLAS_STD.skrueMaks))
+        : t("Bunnskruene skrus ut opptil {0} m for å ta opp fallet i terrenget.", fm(d.skrueMaks))) +
+      (d.ekstraRammer ? "<br>" + t("Ekstra rammehøyde nederst i {0} ramme-linjer der fallet er større enn skruene klarer.", d.ekstraRammer) : "") + "</p>";
+  }
+  return h;
 }
 
 function stillasAvstandTekst(o) {
