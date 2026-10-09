@@ -330,6 +330,7 @@ export function fangstBilde(bredde, høyde) {
   const gammelBg = scene.background ? scene.background.clone() : null;
   const gammeltRutenett = grid.visible;
   try {
+    if (S.skjulVaer3D) S.skjulVaer3D(true);   // 🌦 himmel og regn hører ikke hjemme i rapporten
     if (scene.background) scene.background.set(0xffffff);
     grid.visible = false;
     rt = new THREE.WebGLRenderTarget(b, h);
@@ -364,6 +365,7 @@ export function fangstBilde(bredde, høyde) {
     return null;
   } finally {
     if (gammelBg && scene.background) scene.background.copy(gammelBg);
+    if (S.skjulVaer3D) S.skjulVaer3D(false);
     grid.visible = gammeltRutenett;
     renderer.setRenderTarget(gammelt);
     if (rt) rt.dispose();

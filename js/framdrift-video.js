@@ -87,7 +87,7 @@ export async function lagFramdriftVideo() {
   if (!liste.length) { varsel(t("Legg noe i et trinn først — planen er tom.")); return null; }
   const vis = (tekst) => { if (loadingText) loadingText.textContent = tekst; };
   if (loadingEl) loadingEl.classList.add("open");
-  let okt = null, ryddScene = null;
+  let okt = null, ryddScene = null, medVaer = false;
   try {
     vis(t("Lager video …"));
     await lastEtterbehandling();
@@ -122,7 +122,10 @@ export async function lagFramdriftVideo() {
     };
     // Utvalgsmarkering, mål, akser og håndtak fra skjermen er ikke med
     ryddScene = skjulIkkeInnhold([framdriftGroup]);
-    okt = bildeOkt({ skygge: { senter: mål, radius: u.rM * 1.2 / u.base.skala, skala: u.base.skala, nord: u.nord, ost: u.ost }, himmel: true, taake: [avstand * 0.8, avstand * 2.8] }, RW, RH);
+    // 🌦 Vis vær på (kontoret): himmel, skyer, nedbør og lyn for dagen hvert bilde viser
+    medVaer = !!(S.vaer3DVideo && S.vaerDag3D && S.settings && S.settings.vaerPaa);
+    if (medVaer) S.vaer3DVideo.start(kam);
+    okt = bildeOkt({ skygge: { senter: mål, radius: u.rM * 1.2 / u.base.skala, skala: u.base.skala, nord: u.nord, ost: u.ost }, himmel: true, taake: [avstand * 0.8, avstand * 2.8], medVaer }, RW, RH);
     // Glideren styres av videoens klokke mens bildene tegnes
     let fNaa = 0;
     settVideoModus((e) => plan.andel(e, fNaa));
@@ -137,6 +140,7 @@ export async function lagFramdriftVideo() {
       tegnFramdrift(true);
       ryddScene.igjen();
       settKamera(f);
+      if (medVaer) { const e = plan.trinnVed(f); S.vaer3DVideo.ramme(kam, mål, e && e.dato ? S.vaerDag3D(e.dato) : null, f * 1000 / Vo.fps); }
       const px = okt.tegn(kam);
       for (let y = 0; y < RH; y++) img.data.set(px.subarray((RH - 1 - y) * RW * 4, (RH - y) * RW * 4), y * RW * 4);
       sctx.putImageData(img, 0, 0);
@@ -219,6 +223,7 @@ export async function lagFramdriftVideo() {
     settVideoModus(null);
     tegnFramdrift(false);
     if (okt) okt.slutt();
+    if (medVaer && S.vaer3DVideo) S.vaer3DVideo.slutt();
     if (ryddScene) ryddScene();
     if (loadingEl) loadingEl.classList.remove("open");
   }

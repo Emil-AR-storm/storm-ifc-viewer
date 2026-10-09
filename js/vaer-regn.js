@@ -191,6 +191,7 @@ export function dagSum(d, grenser) {
     maksVind: vinder.length ? Math.max(...vinder) : null,
     maksKast: kaster.length ? Math.max(...kaster) : null,
     kastMangler,
+    torden: h.some(x => /thunder/.test(String(x.symbol || ""))),
     kranTimer: perioder(kranTimer), regnTimer: perioder(regnTimer), frostTimer: perioder(frostTimer), stormTimer: perioder(stormTimer),
     status: {
       kran: !kranTimer.length ? "ja" : kranTimer.length >= Math.min(8, h.length) ? "nei" : "delvis",
@@ -247,4 +248,18 @@ export function sisteDato(timer) {
   let s = "";
   for (const x of timer || []) { const l = lokal(x.t); if (l && l.dato > s) s = l.dato; }
   return s;
+}
+
+// Natt (0..1) ut fra solhøyden: 0 når sola står over 6°, 1 under −6°.
+// Enkel solformel (deklinasjon + timevinkel) — godt nok til lys og mørke.
+export function nattFor(lat, dato, time) {
+  if (lat == null || !dato) return 0;
+  const [y, m, d] = String(dato).split("-").map(Number);
+  const dag = Math.round((Date.UTC(y, m - 1, d) - Date.UTC(y, 0, 0)) / 864e5);
+  const dekl = -23.44 * Math.cos(2 * Math.PI / 365 * (dag + 10)) * Math.PI / 180;
+  // norsk tid ≈ soltid + 1 t (vinter) / 2 t (sommer); 1,5 t i snitt holder her
+  const tv = (time + 0.5 - 13.5) * 15 * Math.PI / 180;
+  const la = lat * Math.PI / 180;
+  const hoyde = Math.asin(Math.sin(la) * Math.sin(dekl) + Math.cos(la) * Math.cos(dekl) * Math.cos(tv)) * 180 / Math.PI;
+  return Math.max(0, Math.min(1, (6 - hoyde) / 12));
 }

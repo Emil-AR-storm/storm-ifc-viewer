@@ -56,7 +56,9 @@ export function tegnPanel() {
   let html = '<details class="set-hjelp fp-hjelp"><summary>' + esc(t("Slik bruker du framdriftsplanen")) + "</summary>" +
     esc(t("Planen er laget på kontoret. Dra glideren nederst for å se hva som er bygget når — trykk på et trinn for å gå dit det er ferdig.")) + "</details>";
   if (liste.length) html += '<label class="set-hjelp fp-vis"><input type="checkbox" id="fpVis"' + (S.framdriftVis !== false ? " checked" : "") + "> " +
-    esc(t("Vis framdriften i modellen — dra glideren nederst")) + "</label>";
+    esc(t("Vis framdriften i modellen — dra glideren nederst")) + "</label>" +
+    // 🌦 Sier fra hvorfor været mangler, i stedet for at det bare ikke vises
+    (S.vaerStatus && S.vaerStatus() ? '<p class="hint fp-vaer-status">🌦 ' + esc(S.vaerStatus()) + "</p>" : "");
   if (!liste.length) html += '<p class="hint">' + esc(t("Ingen trinn ennå.")) + "</p>";
   html += '<div class="fp-liste" id="fpListe">';
   for (const e of liste) {
@@ -117,3 +119,6 @@ på("btnFramdrift", "click", () => {
 })();
 
 
+
+// 🌦 Været hentet (eller feilet): oppdater meldingen om været i panelet
+if (typeof document !== "undefined") document.addEventListener("storm-vaer", () => { if (erApen()) tegnPanel(); });
