@@ -341,6 +341,8 @@ export function tegnPanel() {
     // 🌦 Samme bryter som i Vis vær — været på tidslinja, her og på byggeplassen
     '<label class="set-hjelp fp-vis"><input type="checkbox" id="fpVaer"' + (S.settings && S.settings.vaerPaa ? " checked" : "") + "> " +
     esc(t("Vis været på tidslinja (varsel ved storm, mye regn, sterk vind og frost)")) + "</label>" +
+    (S.settings && S.settings.vaerPaa ? '<label class="set-hjelp fp-vis"><input type="checkbox" id="fpVaer3D"' + (S.settings.vaer3D !== false ? " checked" : "") + "> " +
+      esc(t("Vis været i 3D (himmel, skyer, regn og snø)")) + "</label>" : "") +
     (tidsSpenn(liste) ? "" : '<p class="hint">' + esc(t("Sett «Fra»-dato på trinnene for å få glideren.")) + "</p>");
   if (!liste.length) html += '<p class="hint">' + esc(t("Ingen trinn ennå.")) + "</p>";
   html += '<div class="fp-liste" id="fpListe">';
@@ -380,6 +382,11 @@ export function tegnPanel() {
   if ($("fpVis")) $("fpVis").onchange = (ev) => { S.framdriftVis = ev.target.checked; oppdaterVis(); };
   if ($("fpVaer")) $("fpVaer").onchange = (ev) => {
     S.settings.vaerPaa = !!ev.target.checked; writePrefs();
+    try { document.dispatchEvent(new CustomEvent("storm-vaer")); } catch (_) {}
+    tegnPanel();
+  };
+  if ($("fpVaer3D")) $("fpVaer3D").onchange = (ev) => {
+    S.settings.vaer3D = !!ev.target.checked; writePrefs();
     try { document.dispatchEvent(new CustomEvent("storm-vaer")); } catch (_) {}
   };
   fyllLogo($("fpLogo"));

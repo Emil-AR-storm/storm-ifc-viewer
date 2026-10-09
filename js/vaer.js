@@ -106,7 +106,9 @@ export function tegnPanel() {
   }
   html +=
     '<label class="set-hjelp vr-fp"><input type="checkbox" id="vrFramdrift"' + (S.settings.vaerPaa ? " checked" : "") + "> " +
-      esc(t("Vis været i Framdriftsplan (også på byggeplassen)")) + "</label>" +
+      esc(t("Vis været i Framdriftsplan og 3D (også på byggeplassen)")) + "</label>" +
+    '<label class="set-hjelp vr-fp"><input type="checkbox" id="vr3D"' + (S.settings.vaer3D !== false ? " checked" : "") + (S.settings.vaerPaa ? "" : " disabled") + "> " +
+      esc(t("Vis været i 3D (himmel, skyer, regn og snø)")) + "</label>" +
     '<details class="vr-grenser"><summary>' + esc(t("Grenser for varsel")) + "</summary>" +
       '<p class="hint">' + esc(t("Regn og vind vises alltid. Grensene bestemmer bare når det varsles.")) + "</p>" +
       grenseFelt("kranKast", "Tårnkran: vindkast (m/s)", g) +
@@ -168,7 +170,8 @@ function koble() {
   if (g) g.oninput = () => { time = Number(g.value); visTime(); };
   document.querySelectorAll("#vaerBody tr[data-t]").forEach(r => r.onclick = () => { time = Number(r.dataset.t); visTime(); });
   if ($("vrTilInnst")) $("vrTilInnst").onclick = () => { const b = $("btnSettings"); if (b) b.click(); };
-  if ($("vrFramdrift")) $("vrFramdrift").onchange = (e) => { S.settings.vaerPaa = !!e.target.checked; writePrefs(); meldFramdrift(); };
+  if ($("vrFramdrift")) $("vrFramdrift").onchange = (e) => { S.settings.vaerPaa = !!e.target.checked; writePrefs(); meldFramdrift(); tegnPanel(); };
+  if ($("vr3D")) $("vr3D").onchange = (e) => { S.settings.vaer3D = !!e.target.checked; writePrefs(); meldFramdrift(); };
   document.querySelectorAll("#vaerBody input[data-grense]").forEach(inp => inp.onchange = () => {
     const ny = Object.assign({}, grenser(), { [inp.dataset.grense]: inp.value });
     S.settings.vaerGrenser = vaskGrenser(ny);
@@ -208,3 +211,9 @@ if (typeof document !== "undefined") document.addEventListener("storm-prosjektin
   if (!p || !MO) return;
   new MO(() => { if (!erApen() && S.settVaer3D) S.settVaer3D("panel", null); }).observe(p, { attributes: true, attributeFilter: ["class"] });
 })();
+
+// Knappen «Skjul været i 3D» (eller bryteren i Framdriftsplan) er brukt: hold avkrysningen i takt
+if (typeof document !== "undefined") document.addEventListener("storm-vaer", () => {
+  const c = $("vr3D"); if (c) c.checked = S.settings.vaer3D !== false;
+  const f = $("vrFramdrift"); if (f) f.checked = !!S.settings.vaerPaa;
+});

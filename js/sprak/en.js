@@ -2377,4 +2377,9 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Vis vær er av på kontoret. Slå det på og trykk Storm-Byggeplass, så kommer været her.": "Show weather is off at the office. Turn it on and press Storm Site, and the weather appears here.",
   "Byggeplassens adresse mangler i Innstillinger → Prosjektinfo på kontoret.": "The site address is missing in Settings → Project info at the office.",
   "Fikk ikke hentet været — værtjenesten svarer ikke. Prøv igjen senere.": "Could not fetch the weather — the weather service is not responding. Try again later.",
+  // 🌦 Vær i 3D av/på (09.10.2026)
+  "Vis været i Framdriftsplan og 3D (også på byggeplassen)": "Show the weather in the Progress plan and 3D (also on site)",
+  "Vis været i 3D (himmel, skyer, regn og snø)": "Show the weather in 3D (sky, clouds, rain and snow)",
+  "Skjul været i 3D": "Hide the weather in 3D",
+  "Skru av været i 3D (himmel, regn og snø). Slås på igjen i Vis vær.": "Turn off the weather in 3D (sky, rain and snow). Turn it back on in Show weather.",
 };

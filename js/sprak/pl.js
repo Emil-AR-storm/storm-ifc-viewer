@@ -2377,4 +2377,9 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Vis vær er av på kontoret. Slå det på og trykk Storm-Byggeplass, så kommer været her.": "Pokaż pogodę jest wyłączone w biurze. Włącz je i naciśnij Storm-Budowa, a pogoda pojawi się tutaj.",
   "Byggeplassens adresse mangler i Innstillinger → Prosjektinfo på kontoret.": "Brakuje adresu budowy w Ustawienia → Informacje o projekcie w biurze.",
   "Fikk ikke hentet været — værtjenesten svarer ikke. Prøv igjen senere.": "Nie udało się pobrać pogody — usługa pogodowa nie odpowiada. Spróbuj później.",
+  // 🌦 Vær i 3D av/på (09.10.2026)
+  "Vis været i Framdriftsplan og 3D (også på byggeplassen)": "Pokaż pogodę w Harmonogramie i 3D (także na budowie)",
+  "Vis været i 3D (himmel, skyer, regn og snø)": "Pokaż pogodę w 3D (niebo, chmury, deszcz i śnieg)",
+  "Skjul været i 3D": "Ukryj pogodę w 3D",
+  "Skru av været i 3D (himmel, regn og snø). Slås på igjen i Vis vær.": "Wyłącz pogodę w 3D (niebo, deszcz i śnieg). Włącz ponownie w Pokaż pogodę.",
 };

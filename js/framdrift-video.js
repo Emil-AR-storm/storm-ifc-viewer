@@ -140,7 +140,7 @@ export async function lagFramdriftVideo() {
       tegnFramdrift(true);
       ryddScene.igjen();
       settKamera(f);
-      if (medVaer) { const e = plan.trinnVed(f); S.vaer3DVideo.ramme(kam, mål, e && e.dato ? S.vaerDag3D(e.dato) : null, f * 1000 / Vo.fps); }
+      if (medVaer) { const e = plan.trinnVed(f); S.vaer3DVideo.ramme(kam, mål, e && e.dato ? S.vaerDag3D(e.dato) : null, f * 1000 / Vo.fps, RH); }
       const px = okt.tegn(kam);
       for (let y = 0; y < RH; y++) img.data.set(px.subarray((RH - 1 - y) * RW * 4, (RH - y) * RW * 4), y * RW * 4);
       sctx.putImageData(img, 0, 0);
