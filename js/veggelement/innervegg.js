@@ -19,7 +19,7 @@ import { hentLogo } from "../tegninger.js";
 import { APN_REGEL, APN_SLARK, SW_MIN_BIT_MM, apningPaVegg, delOppMedUtsparinger, eierUtsparing, hentSoyler, innerveggBein, innerveggBiter, innerveggOffset, kappNavn, nesteUtspType, radStabel, samleTetteSoyler, sikreUtspTyper, swListeRader, swNummerering, takLinje, tilMm, tilScene, utspFyllBiter, utsparingerPaFasade } from "./regler.js";
 import { STD_OPPSETT, just, lagret, oppsett, skrivLagret, swGroup } from "./tilstand.js";
 import { tegnAlt, tegnRingmurBiter, tegnUtspMerkingFor, tegnVeggElementer } from "./tegning.js";
-import { byggInnerStabler, felt, generer, lesOppsettFraPanel, materiellArk } from "./generer.js";
+import { byggInnerStabler, felt, generer, lesOppsettFraPanel, materiellArk, swProsjektFelt } from "./generer.js";
 import { akseNavnFor, pdfFelt, stalPaFasader } from "./stal.js";
 import { avsluttJuster, avsluttUtspMark, startUtspMark, utspListeHtml, utspMark } from "./juster.js";
 import { INNER_STD, innerData, innerOppsettForListe, lagretInner, skrivInner, tegnPanel } from "./panel.js";
@@ -784,7 +784,7 @@ export function lastNedInnerListe() {
   // ikke slås sammen til én kolonne som er feil for begge.
   const a = oppsett();
   const rader = swListeRader(synlige, {
-    prosjekt: a.prosjekt, oppdragsnr: a.oppdragsnr, sted: a.sted, sign: a.sign,
+    ...swProsjektFelt(a),   // 🗂 tomme felt fra Prosjektinfo
     dato: new Date().toLocaleDateString("no-NO"),
     tykkelseMm: [...new Set(synlige.map(v => v.tMm))].join(" / "),
     isolasjon: a.isolasjon, utvFarge: a.utvFarge, innFarge: a.innFarge
