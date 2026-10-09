@@ -34,6 +34,7 @@ export function tegnPanel() {
   const body = $("swBody");
   if (!body) return;
   const o = oppsett();
+  const pi = (S.prosjektInfo && S.prosjektInfo()) || {};   // 🗂 reserve for tomme felt
   const antall = (lagret && lagret.vegger || []).length;
   const lagrede = lesLagrede();
   const utsp = (o.utsparinger || []).filter(u => u && u.min);
@@ -92,9 +93,10 @@ export function tegnPanel() {
     utspListeHtml(utsp, "data-sw-slett-utsp", t("Ingen utsparinger lagt til ennå."), true) +
     innerPanelHtml() +
     '<h4 data-sek="lista" style="margin:10px 0 4px">' + t("Til lista") + '</h4>' +
-    felt("swProsjekt", "Prosjekt", o.prosjekt, "text") +
-    felt("swOppdrag", "Oppdragsnummer", o.oppdragsnr, "text") +
-    felt("swSted", "Sted", o.sted, "text") +
+    // 🗂 Tomme felt viser (grått) og bruker Prosjektinfo fra Innstillinger
+    felt("swProsjekt", "Prosjekt", o.prosjekt, "text", pi.navn) +
+    felt("swOppdrag", "Oppdragsnummer", o.oppdragsnr, "text", pi.nummer) +
+    felt("swSted", "Sted", o.sted, "text", pi.adresse) +
     felt("swSign", "Sign.", o.sign, "text") +
     '<p style="color:var(--muted);font-size:11px;margin:6px 0 2px">' +
       t("Excel-fila får et eget ark «Materiell»: skruer, beslag, hatprofil og skum — én kolonne per fasade og innervegg, og en total. Bare synlige element teller.") + '</p>' +
@@ -109,9 +111,9 @@ export function tegnPanel() {
     felt("swPdfNr", "Tegningsnummer (nummeret øker per ark)", o.pdfNr || "SW-01", "text") +
     felt("swPdfTittel", "Tegningstittel", o.pdfTittel, "text") +
     felt("swPdfFase", "Prosjektfase", o.pdfFase, "text") +
-    felt("swPdfProsjekt", "Prosjektnavn (linje 1)", o.pdfProsjekt, "text") +
-    felt("swPdfUnder", "Undertittel (linje 2)", o.pdfUndertittel, "text") +
-    felt("swPdfOppdrag", "Oppdragsnummer", o.pdfOppdrag, "text") +
+    felt("swPdfProsjekt", "Prosjektnavn (linje 1)", o.pdfProsjekt, "text", o.prosjekt || pi.navn) +
+    felt("swPdfUnder", "Undertittel (linje 2)", o.pdfUndertittel, "text", o.sted || pi.adresse) +
+    felt("swPdfOppdrag", "Oppdragsnummer", o.pdfOppdrag, "text", o.oppdragsnr || pi.nummer) +
     felt("swPdfTegnet", "Tegnet av", o.pdfTegnet, "text") +
     felt("swPdfKontroll", "Kontrollert av", o.pdfKontroll, "text") +
     felt("swPdfGodkjent", "Godkjent av", o.pdfGodkjent, "text") +
@@ -121,7 +123,7 @@ export function tegnPanel() {
       esc(t("Veggelementer må kappes og tilpasses til eksisterende fasade. L-Beslag festes til eks. fasade.")) +
       '">' + esc(o.pdfMerknad || "") + '</textarea></label>' +
     '<label>' + t("Logo i tittelfeltet") +
-      '<select id="swPdfLogo"><option value="">' + esc(t("Innebygd Storm-logo")) + '</option></select></label>' +
+      '<select id="swPdfLogo"><option value="" data-fil="-">' + esc(t("Innebygd Storm-logo")) + '</option></select></label>' +
     '<p style="color:var(--muted);font-size:11px;margin:2px 0 6px">' +
       (S.akseLinjer
         ? t("Aksenavnene hentes fra Akser.")
@@ -225,6 +227,12 @@ export function tegnPanel() {
 // bare «Innebygd Storm-logo» igjen — tegninga lages likevel.
 export let swLogoer = null;
 
+// 🗂 Prosjektets logo byttet i Innstillinger: SW-tegninga følger den igjen
+S.nullstillSwLogo = () => {
+  const o = oppsett();
+  if (o && o.pdfLogo) { o.pdfLogo = ""; skrivLagret(); }
+};
+
 export async function fyllLogovalgSW() {
   if (!$("swPdfLogo")) return;
   if (!swLogoer) {
@@ -239,7 +247,10 @@ export async function fyllLogovalgSW() {
     o.value = l.itemId; o.textContent = ryddLogonavn(l.fil); o.dataset.fil = l.fil;
     v.appendChild(o);
   }
-  const husket = (oppsett() || {}).pdfLogo;
+  // 🗂 pdfLogo: "" (aldri valgt) = prosjektets logo fra Innstillinger;
+  // "-" = innebygd Storm-logo med vilje; ellers et filnavn.
+  const lagretValg = (oppsett() || {}).pdfLogo || "";
+  const husket = lagretValg === "-" ? "" : (lagretValg || (S.standardLogoFil ? S.standardLogoFil() : ""));
   if (husket) {
     const treff = [...v.options].find(o => o.dataset.fil === husket);
     if (treff) v.value = treff.value;

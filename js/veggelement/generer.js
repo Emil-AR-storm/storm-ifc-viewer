@@ -936,7 +936,8 @@ export function lastNedListe() {
   if (!lagret || !(lagret.vegger || []).length) { varsel(t("Generer veggelementene først.")); return; }
   const o = lagret.oppsett;
   const rader = swListeRader(lagret.vegger.filter(v => !v.skjult), {
-    prosjekt: o.prosjekt, oppdragsnr: o.oppdragsnr, sted: o.sted, sign: o.sign,
+    // 🗂 Tomme felt hentes fra Prosjektinfo (Innstillinger)
+    ...swProsjektFelt(o),
     dato: new Date().toLocaleDateString("no-NO"),
     tykkelseMm: o.tykkelseMm, isolasjon: o.isolasjon,
     utvFarge: o.utvFarge, innFarge: o.innFarge
@@ -955,10 +956,24 @@ export function lastNedListe() {
     });
 }
 
+// 🗂 «Til lista»-feltene med Prosjektinfo som reserve: det brukeren har
+// skrevet i SW-panelet vinner, ellers prosjektnavn, -nummer og adresse.
+export function swProsjektFelt(o) {
+  const pi = S.prosjektInfo ? S.prosjektInfo() : {};
+  return {
+    prosjekt: (o && o.prosjekt) || pi.navn || "",
+    oppdragsnr: (o && o.oppdragsnr) || pi.nummer || "",
+    sted: (o && o.sted) || pi.adresse || "",
+    sign: (o && o.sign) || ""
+  };
+}
+
 // ---------- Panelet ----------
-export function felt(id, label, verdi, type) {
+// `reserve`: det som brukes når feltet står tomt (🗂 Prosjektinfo), vist grått
+export function felt(id, label, verdi, type, reserve) {
   return '<label>' + t(label) +
-    '<input type="' + (type || "number") + '" id="' + id + '" value="' + esc(String(verdi)) + '"' +
+    '<input type="' + (type || "number") + '" id="' + id + '" value="' + esc(String(verdi == null ? "" : verdi)) + '"' +
+    (reserve ? ' placeholder="' + esc(String(reserve)) + '"' : "") +
     (type === "text" ? ' maxlength="60"' : ' step="10" min="0" max="30000"') + '></label>';
 }
 

@@ -28,12 +28,14 @@ import { varsel } from "../varsel.js";
 // Feltene tittelfeltet skal fylles med. Tomt «Utfyll PDF»-felt arver fra
 // Til lista-feltet over, så ingen trenger å skrive prosjektnavnet to ganger.
 export function pdfFelt(o, iDag) {
+  const pi = (S.prosjektInfo && S.prosjektInfo()) || {};
   return {
     fase: o.pdfFase || "",
-    prosjekt: o.pdfProsjekt || o.prosjekt || "",
-    undertittel: o.pdfUndertittel || o.sted || "",
+    // 🗂 Siste reserve: Prosjektinfo i Innstillinger
+    prosjekt: o.pdfProsjekt || o.prosjekt || pi.navn || "",
+    undertittel: o.pdfUndertittel || o.sted || pi.adresse || "",
     tittel: o.pdfTittel || t("SW-Elementer"),
-    oppdragsnr: o.pdfOppdrag || o.oppdragsnr || "",
+    oppdragsnr: o.pdfOppdrag || o.oppdragsnr || pi.nummer || "",
     tegnet: o.pdfTegnet || o.sign || "",
     kontroll: o.pdfKontroll || "",
     godkjent: o.pdfGodkjent || "",
