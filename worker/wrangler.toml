@@ -1,10 +1,29 @@
 # Storm byggeplass-Worker. INGEN hemmeligheter her — fila er offentlig.
 # ADMIN_TOKEN legges inn i Cloudflare-panelet (Settings → Variables and Secrets),
 # eller med: wrangler secret put ADMIN_TOKEN
-# Det samme gjelder VARSEL_URL (Teams-webhooken).
+# Det samme gjelder VARSEL_URL (Teams-webhooken) og FROST_KLIENT (klient-ID fra
+# frost.met.no — gir målt vær for passerte dager i Vis vær og Framdriftsplan).
 name = "storm-byggeplass"
 main = "worker.js"
 compatibility_date = "2026-08-04"
+
+# ---------------------------------------------------------------------------
+# Morgenvarselet (v11, 11. aug 2026). Cloudflare kaller scheduled() i worker.js
+# uten at noen har nettleseren åpen.
+#
+# 05:00 UTC = 07:00 norsk sommertid, 06:00 om vinteren. Begge deler er samme
+# KALENDERDAG i Norge, så «i dag» blir riktig hele året.
+#
+# ⚠ FLYTT DEN ALDRI TIL FØR 22:00 UTC. Da er klokka allerede neste dag i Norge,
+# og Workeren ville regnet fristene mot gårsdagen.
+#
+# 1-5 = mandag til fredag. Ingen skal få purringer i helga på et avvik som uansett
+# ikke kan lukkes før mandag.
+#
+# Krever at scheduled() finnes i worker.js. Ruller du ut denne uten den, feiler
+# kjøringen stille hver morgen — den vises bare i Workers Logs.
+[triggers]
+crons = ["0 5 * * 1-5"]
 
 # Slår på Workers Logs i panelet. Uten dette ser du ikke HVORFOR en opplasting
 # feiler — bare at den gjorde det. Lagt til 6. aug 2026.
@@ -15,10 +34,18 @@ enabled = true
 binding = "MODELLER"
 bucket_name = "storm-modeller"
 
-# KV-navnerommet var ikke deklarert her før. Bindingen finnes i panelet, så
-# Workeren virker i drift — men en ren «wrangler deploy» fra en tom maskin ga
-# env.KODER === undefined og 500 på /åpne, /ny-kode og all logging.
-# ID-en finner du i panelet: Storage & Databases → KV → navnerommet → ID.
+# KV-navnerommet. ID-en er IKKE en hemmelighet — den er NAVNET på lagringsplassen,
+# ikke en nøkkel til den. Uten en API-token på kontoen gir den ingenting, og fila
+# sier alt på linje 1: hemmelighetene (ADMIN_TOKEN, VARSEL_URL) ligger i panelet.
+#
+# HVORFOR DEN MÅ STÅ HER: bindingen finnes ALLEREDE i Cloudflare-panelet, og
+# derfor virket Workeren i drift selv om feltet sto tomt fram til 18.08.2026.
+# Men en ren «wrangler deploy» fra en tom maskin — ny PC, en kollega, en CI-jobb —
+# leser DENNE fila som fasit. Da blir env.KODER undefined, og /åpne, /ny-kode og
+# all logging svarer 500. Byggeplass-lenkene slutter å virke uten at én linje kode
+# er endret, og feilen viser seg ikke før noen skanner QR-en ute på plassen.
+#
+# ID-en finner du igjen i panelet: Storage & Databases → KV → navnerommet → ID.
 [[kv_namespaces]]
 binding = "KODER"
-id = "LIM_INN_ID_HER"
+id = "ac307d934e8240feac2f2d52db4dd276"
