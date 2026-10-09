@@ -1212,7 +1212,7 @@ const BYGG = {
 
   // 🧱 Stillas (Emil 08.10): hele modellen bygges av delelista i
   // stillas-regn.js — den samme lista som mengdene telles av.
-  stillas(g, o, _h, opts) { byggStillas(g, o, opts); },
+  stillas(g, o, bakke, opts) { byggStillas(g, o, opts, bakke); },
 
   vaskeplass(g, o, _h, opts) {
     const tykk = sone(g, o);

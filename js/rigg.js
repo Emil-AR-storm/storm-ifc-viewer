@@ -47,7 +47,7 @@ import {
 } from "./rigg-regn.js";
 import {
   aktivRef, byggRiggObjekt, finnRiggObjekt, gjerdeDelLabel, lappStorrelse, oppdaterRiggValgEffekt, riggBase, riggGroup,
-  riggTypeLabel, settGjerdeMarkering, tegnEnRigg, tegnRigg
+  riggTypeLabel, settGjerdeMarkering, stillasBakkeFor, tegnEnRigg, tegnRigg
 } from "./rigg-vis.js";
 import { varsel } from "./varsel.js";
 
@@ -1619,7 +1619,12 @@ function stillasSkjema(o) {
   let h = sel("riggStForm", "Form", o.form, [["linje", "Normalt (linje)"], ["lukket", "Lukket (rundt bygget)"]]) +
     sel("riggStSystem", "Stillastype", o.system, [["alu", "Aluminium (rammer, plate 3 × 1 m)"], ["haki", "Haki (bein, planker 3 × 0,25 m)"]]) +
     sel("riggStVisning", "Visning", o.visning, [["forenklet", "Forenklet"], ["fargekodet", "Fargekodet etter del"]]) +
-    tall_("riggL", "Feltlengde (m)", o.L, 0.5, 6, 0.01) + tall_("riggB", "Bredde (m)", o.B, 0.5, 3, 0.01) +
+    tall_("riggL", o.form === "lukket" ? "Lengste felt (m)" : "Feltlengde (m)", o.L, 0.5, 6, 0.01) +
+    '<label>' + t("Faste feltlengder (m)") + '<input type="text" id="riggStFaste" value="' +
+      esc((o.faste || []).map(f => f.toFixed(1).replace(".", ",")).join(" ")) + '"></label>' +
+    "<p " + LITEN + ">" + t("Hvert felt snappes til nærmeste faste lengde (under den korteste → den korteste).") + "</p>" +
+    stillasSideTekst(o) +
+    tall_("riggB", "Bredde (m)", o.B, 0.5, 3, 0.01) +
     tall_("riggH", "Etasjehøyde (m)", o.H, 0.5, 4, 0.01) +
     (o.form === "lukket" ? "" : tall_("riggMod", "Felt side om side", o.moduler, 1, STILLAS_MAKS_FELT, 1)) +
     tall_("riggEt", "Etasjer", o.etasjer, 1, STILLAS_MAKS_ETASJER, 1) +
@@ -1649,9 +1654,22 @@ function stillasSkjema(o) {
     planke: "planke", hjorneplanke: "planke", stigeplate: "stige", stige: "stige", trappelop: "trapp", repos: "trapp", handlist: "trapp",
     rekkverk: "rekk", stolpe: "rekk", fotlist: "fot", diagonal: "diag", forankring: "anker" }[k]] || "#9ca3af";
   h += '<h4 style="margin:10px 0 4px">' + t("Mengder") + '</h4><table style="width:100%;font-size:12px;border-collapse:collapse">' +
-    stillasMengder(o).map(r => "<tr><td style=\"padding:1px 4px\"><span style=\"display:inline-block;width:9px;height:9px;border-radius:2px;background:" + farge(r.tell) + "\"></span></td>" +
+    stillasMengder(o, stillasBakkeFor(o)).map(r => "<tr><td style=\"padding:1px 4px\"><span style=\"display:inline-block;width:9px;height:9px;border-radius:2px;background:" + farge(r.tell) + "\"></span></td>" +
       "<td>" + esc(t(STILLAS_DELNAVN[r.tell] || r.tell)) + (r.mal ? " " + esc(r.mal) : "") + '</td><td style="text-align:right">' + r.antall + "</td></tr>").join("") + "</table>";
   return h;
+}
+
+// Feltene per side, og hvor mye stillaset går forbi / stopper før hjørnet
+// fordi feltene har faste lengder.
+function stillasSideTekst(o) {
+  const fm = (v) => (Math.round(v * 100) / 100).toFixed(2).replace(".", ",");
+  const sider = stillasSider(o);
+  const linjer = sider.map(sd => {
+    const felt = sd.felter.map(f => fm(f).replace(/0$/, "")).join(" + ");
+    const av = Math.abs(sd.avvik) < 0.005 ? "" : " · " + (sd.avvik > 0 ? t("{0} m forbi", fm(sd.avvik)) : t("{0} m kort", fm(-sd.avvik)));
+    return (sider.length > 1 ? t("side {0}", sd.i + 1) + ": " : "") + felt + " = " + fm(sd.lengde) + " m" + av;
+  });
+  return '<p id="riggStSider" ' + LITEN + ">" + linjer.map(esc).join("<br>") + "</p>";
 }
 
 function stillasAvstandTekst(o) {
@@ -1673,6 +1691,7 @@ function stillasFelter(o) {
     etasjer: v("riggEt"), rekkverkH: v("riggStRekk"), kneH: v("riggStKne"),
     innvendig: !!($("riggStInnv") && $("riggStInnv").checked),
     diagonalHvert: v("riggStDiag"), forankringBort: v("riggStAnkB"), forankringOpp: v("riggStAnkO"),
+    faste: v("riggStFaste"),
     plan: [...document.querySelectorAll("#riggSkjema input[data-st-plan]")].filter(x => x.checked).map(x => Number(x.dataset.stPlan))
   };
   if ($("riggMod")) f.moduler = v("riggMod");
