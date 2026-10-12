@@ -573,6 +573,17 @@ export function leggSwIMengder(groups, rows) {
     g.vol += r.vol; g.forskaling += r.forskaling; g.utenVekt++;
     rows.push(r);
   }
+  // 🏔 TRP-platene på det genererte taket (Emil 12.10) — se takMengdeRader i tak.js.
+  // Kroken på S fordi tak.js importerer denne fila (ellers en importsløyfe).
+  const tak = S.takMengdeRader ? S.takMengdeRader() : [];
+  for (const r of tak) {
+    if (!groups.has(r.key)) groups.set(r.key,
+      { count: 0, length: 0, vol: 0, area: 0, flate: 0, forskaling: 0, kg: 0, kgGeo: 0,
+        utenVekt: 0, umulige: 0, nominelle: 0, type: r.type, material: r.material });
+    const g = groups.get(r.key);
+    g.count++; g.length += r.len; g.area += r.area; g.flate += r.flate; g.utenVekt++;
+    rows.push(r);
+  }
 }
 
 export function lagringsNokkel() { return "storm-ifc-sw::" + S.fileName; }
