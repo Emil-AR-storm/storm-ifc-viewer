@@ -1485,6 +1485,7 @@ body:not(.har-modell) #btnFit { display: none !important; }
 /* … bortsett fra den valgte gruppas. */
 #toolbar[data-gruppe="mal"]      button[data-gruppe="mal"],
 #toolbar[data-gruppe="info"]     button[data-gruppe="info"],
+#toolbar[data-gruppe="plan"]     button[data-gruppe="plan"],
 #toolbar[data-gruppe="utseende"] button[data-gruppe="utseende"],
 #toolbar[data-gruppe="bygg"]     button[data-gruppe="bygg"],
 #toolbar[data-gruppe="dok"]      button[data-gruppe="dok"] { display: inline-flex; }
@@ -1495,6 +1496,7 @@ body:not(.har-modell) #btnFit { display: none !important; }
 body[data-vgruppe] #moreMenu button[data-gruppe] { display: none; }
 body[data-vgruppe="mal"]      #moreMenu button[data-gruppe="mal"],
 body[data-vgruppe="info"]     #moreMenu button[data-gruppe="info"],
+body[data-vgruppe="plan"]     #moreMenu button[data-gruppe="plan"],
 body[data-vgruppe="utseende"] #moreMenu button[data-gruppe="utseende"],
 body[data-vgruppe="bygg"]     #moreMenu button[data-gruppe="bygg"],
 body[data-vgruppe="dok"]      #moreMenu button[data-gruppe="dok"] { display: inline-flex; }
