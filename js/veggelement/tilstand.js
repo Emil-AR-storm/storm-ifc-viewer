@@ -565,6 +565,9 @@ export function swUtspForByggeplass() {
 export function leggSwIMengder(groups, rows) {
   for (const { v, erRm } of swAlle()) {
     const r = swMengdeRad(v, erRm, t);
+    // 💰 Id-en trengs for «Vis i modellen» i Priskalkulasjon (12.10). Prefikset
+    // gjør at den aldri kan forveksles med et IFC-element.
+    r.id = "sw:" + v.id; r.swId = v.id;
     if (!groups.has(r.key)) groups.set(r.key,
       { count: 0, length: 0, vol: 0, area: 0, flate: 0, forskaling: 0, kg: 0, kgGeo: 0,
         utenVekt: 0, umulige: 0, nominelle: 0, type: r.type, material: r.material });
