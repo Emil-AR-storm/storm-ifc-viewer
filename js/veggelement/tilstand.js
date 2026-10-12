@@ -342,7 +342,9 @@ export function swMengdeRad(v, erRm, tekst) {
   const forskaling = erRm ? 2 * L * H : 0;
   return {
     key: key + " · " + material, name: navn, objType: key,
-    type: "SW", material,
+    // 🧱 Ringmuren er betong, ikke et SW-element (Emil 12.10: «Vis» på
+    // «SW · 40 stk» tok med ringmuren). Egen objekttype, så den prises for seg.
+    type: erRm ? "Ringmur" : "SW", material,
     L, B: H, H: T, len: Math.max(L, H, T),
     vol: L * H * T, area, flate: area, forskaling,
     kg: 0, kgGeo: 0, kjentVekt: false, umuligVolum: false,
@@ -562,6 +564,30 @@ export function swUtspForByggeplass() {
   return ut;
 }
 
+export function gulvMengdeRader(tekst) {
+  const tt = tekst || ((x) => x);
+  const m = gulvMaal();
+  if (!m || swSkjultId.has(GULV_ID)) return [];
+  const o = (lagret && lagret.oppsett) || STD_OPPSETT;
+  const L = m.L / 1000, B = m.B / 1000, T = m.T / 1000, I = (m.isoMm || 0) / 1000;
+  const felles = { swId: GULV_ID, velgNokkel: "sw:" + GULV_ID, type: "Gulv", len: Math.max(L, B),
+    kg: 0, kgGeo: 0, kjentVekt: false, umuligVolum: false, vektKilde: "", profil: "", nomKgPerM: 0, avvik: null };
+  const ut = [];
+  if (T > 0) ut.push(Object.assign({}, felles, {
+    id: "sw:" + GULV_ID, key: tt("Betonggulv") + " · " + tt("Betong"), name: tt("Betonggulv"), objType: tt("Betonggulv"),
+    material: tt("Betong"), L, B, H: T, vol: L * B * T, area: L * B, flate: L * B,
+    forskaling: 2 * (L + B) * T          // kantforskalingen rundt plata
+  }));
+  if (I > 0) {
+    const isoNavn = String(o.isolasjon || "").trim() || tt("Isolasjon");
+    ut.push(Object.assign({}, felles, {
+      id: "sw:" + GULV_ID + ":iso", key: tt("Isolasjon under gulv") + " · " + isoNavn, name: tt("Isolasjon under gulv"),
+      objType: tt("Isolasjon under gulv"), material: isoNavn, L, B, H: I, vol: L * B * I, area: L * B, flate: L * B, forskaling: 0
+    }));
+  }
+  return ut;
+}
+
 export function leggSwIMengder(groups, rows) {
   for (const { v, erRm } of swAlle()) {
     const r = swMengdeRad(v, erRm, t);
@@ -576,9 +602,25 @@ export function leggSwIMengder(groups, rows) {
     g.vol += r.vol; g.forskaling += r.forskaling; g.utenVekt++;
     rows.push(r);
   }
+  // 🧅 BETONGGULVET ER TO VARER (Emil 12.10: «betong gulv har isolasjonen og
+  // betongen i 1 objekt … det må være to egne materielltyper»). Gulvet sto
+  // ikke i Mengder i det hele tatt — derfor 0 i alle enheter i
+  // Priskalkulasjon. Nå: én rad for betongen (m³, m², forskaling på kanten)
+  // og én for isolasjonen under (m², m³). Begge peker på gulvet («sw:gulv»),
+  // så «Vis i modellen» og markeringen treffer det.
+  for (const r of gulvMengdeRader(t)) {
+    if (!groups.has(r.key)) groups.set(r.key,
+      { count: 0, length: 0, vol: 0, area: 0, flate: 0, forskaling: 0, kg: 0, kgGeo: 0,
+        utenVekt: 0, umulige: 0, nominelle: 0, type: r.type, material: r.material });
+    const g = groups.get(r.key);
+    g.count++; g.length += r.len; g.area += r.area; g.flate += r.flate;
+    g.vol += r.vol; g.forskaling += r.forskaling; g.utenVekt++;
+    rows.push(r);
+  }
   // 🏔 TRP-platene på det genererte taket (Emil 12.10) — se takMengdeRader i tak.js.
-  // Kroken på S fordi tak.js importerer denne fila (ellers en importsløyfe).
-  const tak = S.takMengdeRader ? S.takMengdeRader() : [];
+  // 🟫 Det genererte blikket på bygget — se blikkMengdeRader i framdrift-plukk.js.
+  // Krokene på S fordi de filene importerer denne (ellers en importsløyfe).
+  const tak = (S.takMengdeRader ? S.takMengdeRader() : []).concat(S.blikkMengdeRader ? S.blikkMengdeRader() : []);
   for (const r of tak) {
     if (!groups.has(r.key)) groups.set(r.key,
       { count: 0, length: 0, vol: 0, area: 0, flate: 0, forskaling: 0, kg: 0, kgGeo: 0,
