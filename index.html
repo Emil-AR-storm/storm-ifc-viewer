@@ -86,6 +86,7 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
   <symbol id="i-sok" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></symbol>
   <symbol id="i-transparent" viewBox="0 0 24 24"><path d="M9 10h.01" /><path d="M15 10h.01" /><path d="M12 2a8 8 0 0 0-8 8v12l3-3 2.5 2.5L12 19l2.5 2.5L17 19l3 3V10a8 8 0 0 0-8-8z" /></symbol>
   <symbol id="i-mengder" viewBox="0 0 24 24"><path d="M3 3v16a2 2 0 0 0 2 2h16" /><path d="M18 17V9" /><path d="M13 17V5" /><path d="M8 17v-3" /></symbol>
+  <symbol id="i-pris" viewBox="0 0 24 24"><rect width="16" height="20" x="4" y="2" rx="2" /><line x1="8" x2="16" y1="6" y2="6" /><line x1="16" x2="16" y1="14" y2="18" /><path d="M16 10h.01" /><path d="M12 10h.01" /><path d="M8 10h.01" /><path d="M12 14h.01" /><path d="M8 14h.01" /><path d="M12 18h.01" /><path d="M8 18h.01" /></symbol>
   <symbol id="i-utseende" viewBox="0 0 24 24"><path d="M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z" /><circle cx="13.5" cy="6.5" r=".5" fill="currentColor" /><circle cx="17.5" cy="10.5" r=".5" fill="currentColor" /><circle cx="6.5" cy="12.5" r=".5" fill="currentColor" /><circle cx="8.5" cy="7.5" r=".5" fill="currentColor" /></symbol>
   <symbol id="i-sammenlign" viewBox="0 0 24 24"><circle cx="5" cy="6" r="3" /><path d="M12 6h5a2 2 0 0 1 2 2v7" /><path d="m15 9-3-3 3-3" /><circle cx="19" cy="18" r="3" /><path d="M12 18H7a2 2 0 0 1-2-2V9" /><path d="m9 15 3 3-3 3" /></symbol>
   <symbol id="i-del" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></symbol>
@@ -177,6 +178,7 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
   <button id="btnSearch" title="Søk etter element på navn, type eller merking" data-i18n-title><svg class="ikon"><use href="#i-sok"/></svg><span class="btn-t" data-i18n>Søk</span></button>
   <button id="btnGhost" title="Gjør alt gjennomsiktig så det som ligger bak synes" data-i18n-title><svg class="ikon"><use href="#i-transparent"/></svg><span class="btn-t" data-i18n>Gjennomsiktig</span></button>
   <button id="btnQty" title="Mengder: antall, lengde, volum og vekt per elementtype" data-i18n-title><svg class="ikon"><use href="#i-mengder"/></svg><span class="btn-t" data-i18n>Mengder</span></button>
+  <button id="btnPris" title="Priskalkulasjon: mengder fra modellen × dine priser — Excel med formler" data-i18n-title><svg class="ikon"><use href="#i-pris"/></svg><span class="btn-t" data-i18n>Priskalkulasjon</span></button>
   <button id="btnColors" title="Farge, skjul og vis elementtyper – og kantlinjer" data-i18n-title><svg class="ikon"><use href="#i-utseende"/></svg><span class="btn-t" data-i18n>Utseende</span></button>
   <button id="btnCompare" title="Sammenlign med en annen versjon av modellen" data-i18n-title><svg class="ikon"><use href="#i-sammenlign"/></svg><span class="btn-t" data-i18n>Sammenlign</span></button>
   <button id="btnShare" title="Lag en lenke som gjenskaper denne visningen hos andre" data-i18n-title><svg class="ikon"><use href="#i-del"/></svg><span class="btn-t" data-i18n>Del visning</span></button>
@@ -327,6 +329,12 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
 <div class="panel" id="materiellPanel">
   <header><span data-i18n>Materiell</span><button onclick="document.getElementById('materiellPanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="materiellBody"></div>
+</div>
+
+<!-- 💰 Priskalkulasjon (js/priskalk.js) — kun kontoret. Prisene lagres bare i SharePoint. -->
+<div class="panel pk-panel" id="prisPanel">
+  <header><span data-i18n>Priskalkulasjon</span><button onclick="document.getElementById('prisPanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <div class="body" id="prisBody"></div>
 </div>
 
 <div class="panel" id="qtyPanel">

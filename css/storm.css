@@ -2138,3 +2138,61 @@ body.st-tid-paa .st-velgbar { bottom: 112px; }
   padding: 5px 10px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--flate-88); color: var(--text); font-size: 12px; cursor: pointer; }
 .vaer3d-av:hover { border-color: var(--text); }
 @media (max-width: 899px) { .vaer3d-av { top: auto; bottom: calc(55vh + 120px); } }
+
+/* ---------- 💰 Priskalkulasjon (js/priskalk.js, 12.10.2026) ----------
+   Oppsett B fra prøvebildene: et stort tabellvindu, ikke et smalt sidepanel —
+   kolonnene (kilde, mengde, geometri/fila, pris, påslag, sum) trenger bredden. */
+#prisPanel {
+  left: 16px; right: 16px; bottom: 16px; width: auto; max-width: 1180px;
+  margin: 0 auto; max-height: 78vh; border-radius: var(--radius-stor);
+}
+#prisPanel .body { padding: 0; display: flex; flex-direction: column; min-height: 0; flex: 1; overflow: hidden; }
+#prisBody .pk-topp { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 14px 4px; }
+#prisBody .pk-fyll { flex: 1; }
+#prisBody .pk-dim { color: var(--muted); font-size: 12px; }
+#prisBody .pk-status { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: var(--panel2); color: var(--muted); }
+#prisBody .pk-status-ok { color: var(--ok); }
+#prisBody .pk-status-varsel { color: var(--warn); }
+#prisBody .pk-qto-info { padding: 0 14px 8px; }
+#prisBody .pk-felles { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+#prisBody .pk-ny { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; padding: 8px 14px; margin: 0 14px 8px;
+  border: 1px dashed var(--border); border-radius: var(--radius); }
+#prisBody .pk-ny label { display: flex; flex-direction: column; font-size: 11px; color: var(--muted); gap: 3px; min-width: 150px; }
+#prisBody .pk-ny-treff { font-size: 12px; color: var(--muted); padding-bottom: 6px; }
+#prisBody .pk-tabell-ramme { overflow: auto; flex: 1; min-height: 80px; padding: 0 14px; }
+#prisBody .pk-tabell { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+#prisBody .pk-tabell th { position: sticky; top: 0; background: var(--panel); z-index: 1; text-align: left; font-size: 11px;
+  font-weight: 600; color: var(--muted); padding: 6px 5px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+#prisBody .pk-tabell td { padding: 4px 5px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+#prisBody .pk-tabell .pk-tall { text-align: right; white-space: nowrap; }
+#prisBody input, #prisBody select {
+  background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 4px 6px; font: inherit; font-size: 12.5px; color-scheme: dark;
+}
+html[data-tema="lys"] #prisBody input, html[data-tema="lys"] #prisBody select { background: #fff; color-scheme: light; }
+#prisBody .pk-tabell input { width: 100%; min-width: 0; }
+#prisBody .pk-nr { width: 52px !important; }
+#prisBody .pk-tekst { min-width: 170px !important; }
+#prisBody .pk-num { text-align: right; width: 92px !important; }
+#prisBody .pk-smal { width: 56px !important; }
+#prisBody .pk-mangler { border-color: var(--warn) !important; }
+#prisBody .pk-opphav { font-size: 11px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 280px; }
+#prisBody .pk-sum { font-weight: 600; }
+#prisBody .pk-tom td { opacity: .6; }
+#prisBody .pk-tom-liste { padding: 18px 6px; text-align: center; }
+#prisBody .pk-knapper { white-space: nowrap; }
+#prisBody .pk-knapper button { padding: 3px 6px; font-size: 12px; }
+#prisBody .pk-avvik { font-size: 12px; padding: 1px 6px; border-radius: 8px; }
+#prisBody .pk-avvik-ok { color: var(--ok); }
+#prisBody .pk-avvik-middels { color: var(--text); }
+#prisBody .pk-avvik-hoy { color: var(--warn); font-weight: 600; }
+#prisBody .pk-avvik-ingen { color: var(--muted); }
+#prisBody .pk-fot { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; padding: 10px 14px;
+  border-top: 1px solid var(--border); background: var(--panel2); }
+#prisBody .pk-total { font-size: 16px; font-weight: 700; }
+#prisBody .pk-varsel { color: var(--warn); }
+#prisBody .pk-fot button .ikon { margin-right: 4px; }
+@media (max-width: 700px) {
+  #prisPanel { left: 0; right: 0; bottom: 0; max-height: 85vh; border-radius: var(--radius-stor) var(--radius-stor) 0 0; }
+  #prisBody .pk-fot { gap: 8px; }
+}
