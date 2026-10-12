@@ -19,7 +19,7 @@ import { clearSelection, lastNedXlsxFlere, markerRader, materialGruppe, veksleMa
 import { spLes, spPaalogget, spSkriv } from "./sp-lager.js";
 import {
   ENHETER, OPPSETT_ID, avvikKlasse, beregnPost, enhetForMateriale, excelArk, filnavn, fraLagret, materialerIUtvalg,
-  kontrollArk, lesTall, linjesum, mengdeDesimaler, nyId, postNr, prislisteNokkel, raderForPost, vaskOppsett, vaskPost
+  elementArk, kontrollArk, lesTall, linjesum, mengdeDesimaler, nyId, postNr, prislisteNokkel, raderForPost, vaskOppsett, vaskPost
 } from "./priskalk-regn.js";
 
 const SP_MAPPE = "Priskalkulasjon";
@@ -503,10 +503,12 @@ async function lastNedExcel() {
   const d = new Date();
   const dato = String(d.getDate()).padStart(2, "0") + "." + String(d.getMonth() + 1).padStart(2, "0") + "." + d.getFullYear();
   const a = excelArk(beregnede, oppsett, info, dato, S.fileName || "", t);
-  const k = kontrollArk(beregnede, t);
+  const k = kontrollArk(beregnede, t, oppsett.felles);
+  const e = elementArk(beregnede, S.qto || new Map(), t);
   await lastNedXlsxFlere(filnavn(info, S.fileName, dato), [
     { navn: t("Priskalkulasjon"), rader: a.rader, stil: a.stil, bredder: a.bredder },
-    { navn: t("Kontroll mengder"), rader: k.rader, stil: k.stil, bredder: k.bredder }
+    { navn: t("Kontroll mengder"), rader: k.rader, stil: k.stil, bredder: k.bredder },
+    { navn: t("Elementer per post"), rader: e.rader, stil: e.stil, bredder: e.bredder }
   ]);
 }
 

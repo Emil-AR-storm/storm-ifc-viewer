@@ -30,6 +30,15 @@ const NORSK_TALL = /^-?(0|[1-9]\d*)(,\d+)?$/;
 
 export function celleVerdi(v) {
   if (v == null || v === "") return null;
+  // 💰 Formel MED ferdig regnet svar: { formel: "=A1*B1", verdi: 42 }.
+  // Excel i «Beskyttet visning» (fil fra nett/e-post) regner IKKE formler —
+  // da viser cellen bare det som er lagret. Uten svaret sto alle summene
+  // tomme til man trykket «Aktiver redigering» (Emil 12.10). Formelen står
+  // fortsatt, så tallet regnes på nytt så snart noe endres.
+  if (typeof v === "object" && typeof v.formel === "string") {
+    const n = Number(v.verdi);
+    return { formel: v.formel.replace(/^=/, ""), verdi: isFinite(n) ? n : undefined };
+  }
   if (typeof v === "number") return isFinite(v) ? { tall: v } : null;
   const s = String(v);
   if (s[0] === "=") return { formel: s.slice(1) };
@@ -70,14 +79,19 @@ export const STILER_XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"
   '</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>' +
   '</styleSheet>';
 
-function celleXml(rad, kol, v, s) {
+function celleXml(rad, kol, v, s, hent) {
   const st = s ? ' s="' + s + '"' : "";
   const c = celleVerdi(v);
+  if (c && c.formel !== undefined && c.verdi === undefined && hent) {
+    const x = hent(rad, kol);
+    if (isFinite(x)) c.verdi = Math.round(x * 1e9) / 1e9;
+  }
   const r = celleRef(rad, kol);
   // En tom celle MED stil skrives likevel — den gule pris-cellen skal synes
   // før prisen er fylt inn.
   if (!c) return st ? '<c r="' + r + '"' + st + "/>" : "";
-  if (c.formel) return '<c r="' + r + '"' + st + "><f>" + xmlEsc(c.formel) + "</f></c>";
+  if (c.formel) return '<c r="' + r + '"' + st + "><f>" + xmlEsc(c.formel) + "</f>" +
+    (c.verdi !== undefined ? "<v>" + c.verdi + "</v>" : "") + "</c>";
   if (c.tall !== undefined) return '<c r="' + r + '"' + st + "><v>" + c.tall + "</v></c>";
   // Innebygd streng: sparer oss for hele sharedStrings-fila, og Excel,
   // Excel på nett, Numbers og Google Sheets leser den likt.
@@ -85,18 +99,99 @@ function celleXml(rad, kol, v, s) {
     xmlEsc(c.tekst) + "</t></is></c>";
 }
 
+// ---------- 🧮 Ferdige svar for formlene (Emil 12.10) ----------
+// En .xlsx som kommer fra nett eller e-post åpnes i «Beskyttet visning», og
+// der regner ikke Excel formler: cellen viser bare det svaret som er LAGRET i
+// fila. Vi lagret ingen svar, så alle summer sto tomme til man trykket
+// «Aktiver redigering». Nå regnes svaret ut her og lagres sammen med formelen
+// — i ALLE regneark programmet lager (Mengder, SW-lister, blikk, priser).
+// Excel regner likevel på nytt ved redigering (fullCalcOnLoad i workbook.xml).
+//
+// Bare det enkle vi selv skriver: tall, cellereferanser (også $A$1), + − * /,
+// parenteser og SUM(A1:A9). Alt annet gir ingen lagret verdi (som før).
+function kolTall(bokst) { let n = 0; for (const c of bokst) n = n * 26 + (c.charCodeAt(0) - 64); return n - 1; }
+export function regnFormel(formel, hent) {
+  const s = String(formel || "").replace(/^=/, "").replace(/\s+/g, "");
+  let i = 0;
+  const feil = () => { throw new Error("formel"); };
+  const ref = () => {
+    const m = /^\$?([A-Z]{1,3})\$?(\d+)/.exec(s.slice(i));
+    if (!m) return null;
+    i += m[0].length;
+    return { k: kolTall(m[1]), r: Number(m[2]) - 1 };
+  };
+  const tallEller = (v) => { const n = Number(v); return isFinite(n) ? n : 0; };
+  function faktor() {
+    if (s[i] === "(") { i++; const v = uttrykk(); if (s[i] !== ")") feil(); i++; return v; }
+    if (s[i] === "-") { i++; return -faktor(); }
+    if (s[i] === "+") { i++; return faktor(); }
+    if (s.startsWith("SUM(", i)) {
+      i += 4;
+      const a = ref(); if (!a || s[i] !== ":") feil(); i++;
+      const b = ref(); if (!b || s[i] !== ")") feil(); i++;
+      let sum = 0;
+      for (let r = Math.min(a.r, b.r); r <= Math.max(a.r, b.r); r++)
+        for (let k = Math.min(a.k, b.k); k <= Math.max(a.k, b.k); k++) sum += tallEller(hent(r, k));
+      return sum;
+    }
+    const m = /^\d+(\.\d+)?/.exec(s.slice(i));
+    if (m) { i += m[0].length; return Number(m[0]); }
+    const c = ref();
+    if (c) return tallEller(hent(c.r, c.k));
+    return feil();
+  }
+  function ledd() {
+    let v = faktor();
+    while (s[i] === "*" || s[i] === "/") { const op = s[i++]; const w = faktor(); v = op === "*" ? v * w : v / w; }
+    return v;
+  }
+  function uttrykk() {
+    let v = ledd();
+    while (s[i] === "+" || s[i] === "-") { const op = s[i++]; const w = ledd(); v = op === "+" ? v + w : v - w; }
+    return v;
+  }
+  try {
+    const v = uttrykk();
+    return i === s.length && isFinite(v) ? v : undefined;
+  } catch (_) { return undefined; }
+}
+
+// Svarene for et helt ark. Formler kan peke på andre formler (sum av
+// linjesummer, mva av summen) — de regnes ved behov, med vakt mot sirkler.
+export function arkSvar(rader) {
+  const svar = new Map(), underveis = new Set();
+  function hent(r, k) {
+    const v = ((rader || [])[r] || [])[k];
+    const c = celleVerdiRa(v);
+    if (!c) return 0;
+    if (c.tall !== undefined) return c.tall;
+    if (c.formel === undefined) return 0;
+    const nk = r + "," + k;
+    if (svar.has(nk)) return svar.get(nk);
+    if (underveis.has(nk)) return 0;
+    underveis.add(nk);
+    const x = c.verdi !== undefined ? c.verdi : regnFormel(c.formel, hent);
+    underveis.delete(nk);
+    svar.set(nk, x === undefined ? 0 : x);
+    return svar.get(nk);
+  }
+  return hent;
+}
+function celleVerdiRa(v) { return celleVerdi(v); }
+
 // oppsett (valgfritt): { stil(rad, kol) → indeks i STILER, bredder: [tegn per kolonne] }
 export function arkXml(rader, oppsett) {
   const o = oppsett || {};
   const stilFn = typeof o.stil === "function" ? o.stil : null;
   const linjer = [];
+  const hent = arkSvar(rader);
   (rader || []).forEach((rad, i) => {
     const r = rad || [];
     // Stilte celler kan stå UTENFOR det raden har verdier for (tom gul celle)
     let bredde = r.length;
     if (stilFn) for (let k = r.length; k < 30; k++) if (stilFn(i, k)) bredde = k + 1;
     const celler = [];
-    for (let k = 0; k < bredde; k++) celler.push(celleXml(i, k, r[k], stilFn ? stilFn(i, k) : 0));
+    for (let k = 0; k < bredde; k++) celler.push(celleXml(i, k, r[k], stilFn ? stilFn(i, k) : 0, hent));
     const x = celler.join("");
     if (x) linjer.push('<row r="' + (i + 1) + '">' + x + "</row>");
     else linjer.push('<row r="' + (i + 1) + '"/>');     // tom rad, men raden finnes
@@ -152,7 +247,9 @@ export function xlsxFilerFlere(arkListe) {
         '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ' +
         'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
         '<sheets>' + ark.map((_, i) => '<sheet name="' + xmlEsc(navn[i]) + '" sheetId="' + (i + 1) + '" r:id="rId' + (i + 1) + '"/>').join("") +
-        '</sheets></workbook>' },
+        // Regn alt på nytt når fila åpnes for redigering — de lagrede svarene
+        // er bare til «Beskyttet visning» og forhåndsvisningen i Outlook.
+        '</sheets><calcPr calcId="191029" fullCalcOnLoad="1"/></workbook>' },
     { navn: "xl/_rels/workbook.xml.rels",
       data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
         '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
