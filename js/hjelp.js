@@ -36,7 +36,7 @@ import { LETT } from "./lett.js";
 // hvor: "bygg" = byggeplass-siden, "kontor" = index.html, "begge" = begge
 export const KORT = [
   // Gruppenavnene her MÅ være de samme som i js/verktoygrupper.js
-  // («Måleverktøy», «Bygg Info», «Visning», «Storm-Byggeplass»). Kortene sa
+  // («Måleverktøy», «Bygg Info», «Planlegging», «Visning», «Storm-Byggeplass»). Kortene sa
   // «Mål» og «Utseende» lenge etter at gruppene ble omdøpt (Emil 08.09) —
   // test-hjelp.mjs sjekker nå at hvert gruppenavn står i et kort.
   // ---------- Byggeplass ----------
@@ -78,7 +78,7 @@ export const KORT = [
   {
     hvor: "bygg", ikonNavn: "sok",
     tittel: "Verktøyene ligger i grupper",
-    tekst: "Knappene øverst — Måleverktøy, Bygg Info, Visning og Storm-Byggeplass — bytter hvilke verktøy verktøylinja viser. Er et verktøy borte, ligger det i en annen gruppe."
+    tekst: "Knappene øverst — Måleverktøy, Bygg Info, Planlegging, Visning og Storm-Byggeplass — bytter hvilke verktøy verktøylinja viser. Framdriftsplan ligger i Planlegging. Er et verktøy borte, ligger det i en annen gruppe."
   },
   {
     hvor: "bygg", ikonNavn: "tegning",
@@ -109,8 +109,8 @@ export const KORT = [
   },
   {
     hvor: "kontor", ikonNavn: "sok",
-    tittel: "Verktøyene ligger i fem grupper",
-    tekst: "Måleverktøy, Bygg Info, Visning, Storm-Byggeplass og Dokumentasjon øverst bytter hvilke verktøy verktøylinja viser. Hold musepekeren over en knapp, så står det hva den gjør."
+    tittel: "Verktøyene ligger i seks grupper",
+    tekst: "Måleverktøy, Bygg Info, Planlegging, Visning, Storm-Byggeplass og Dokumentasjon øverst bytter hvilke verktøy verktøylinja viser. Bygg Info er det du leser av modellen (markeringer, mengder, priser, laster); Planlegging er det du lager rundt den (terreng, rigg, støpeplan, framdrift og vær). Hold musepekeren over en knapp, så står det hva den gjør."
   },
   {
     hvor: "kontor", ikonNavn: "markering",
@@ -180,7 +180,7 @@ export const KORT = [
   {
     hvor: "kontor", ikonNavn: "kote",
     tittel: "Terrenget rundt bygget",
-    tekst: "Terreng (i Bygg Info) henter høydedata og kart fra Kartverket for en adresse. Flytt og roter bygget på plass, skriv gulvkoten fra tegningen og trykk Lagre terreng — da kommer terrenget av seg selv neste gang modellen åpnes, også hos kollegaene. Publiser Byggeplass tar terrenget og kartet med ut til byggeplass-lenka. Plasseringen er omtrentlig og skal aldri brukes til utstikking."
+    tekst: "Terreng (i Planlegging) henter høydedata og kart fra Kartverket for en adresse. Flytt og roter bygget på plass, skriv gulvkoten fra tegningen og trykk Lagre terreng — da kommer terrenget av seg selv neste gang modellen åpnes, også hos kollegaene. Publiser Byggeplass tar terrenget og kartet med ut til byggeplass-lenka. Plasseringen er omtrentlig og skal aldri brukes til utstikking."
   },
   {
     hvor: "kontor", ikonNavn: "markering",
@@ -195,22 +195,22 @@ export const KORT = [
   {
     hvor: "bygg", ikonNavn: "stope",
     tittel: "Støpeplanen",
-    tekst: "Har prosjektlederen laget en støpeplan, står knappen Støpeplan i Bygg Info. Betongen er farget etter etappen den støpes i: full farge er støpt, svakere farge kommer senere. Tidslinjen nederst viser datoene — dra i den for å se hvordan det skal se ut en annen dag, og trykk I dag for å komme tilbake. Trykk på et felt på plata for etappe, dato og mengde."
+    tekst: "Har prosjektlederen laget en støpeplan, står knappen Støpeplan i Planlegging. Betongen er farget etter etappen den støpes i: full farge er støpt, svakere farge kommer senere. Tidslinjen nederst viser datoene — dra i den for å se hvordan det skal se ut en annen dag, og trykk I dag for å komme tilbake. Trykk på et felt på plata for etappe, dato og mengde."
   },
   {
     hvor: "kontor", ikonNavn: "stope",
     tittel: "Støpeplan: etapper, felt og tidslinje",
-    tekst: "Støpeplan (i Bygg Info) deler støpene i etapper. Trykk + Legg til på etappen og velg elementene i modellen, eller + Felt for å tegne et felt på plata — dra hjørner og kanter for å justere. Merk som støpt når etappen er ferdig. Tidslinjen nederst viser planen på en valgt dag, og Vis etappeplan skrur fargingen av og på. Planen følger med ut til byggeplassen når du trykker Storm-Byggeplass."
+    tekst: "Støpeplan (i Planlegging) deler støpene i etapper. Trykk + Legg til på etappen og velg elementene i modellen, eller + Felt for å tegne et felt på plata — dra hjørner og kanter for å justere. Merk som støpt når etappen er ferdig. Tidslinjen nederst viser planen på en valgt dag, og Vis etappeplan skrur fargingen av og på. Planen følger med ut til byggeplassen når du trykker Storm-Byggeplass."
   },
   {
     hvor: "bygg", ikonNavn: "framdrift",
     tittel: "Framdriftsplanen",
-    tekst: "Har prosjektlederen laget en framdriftsplan, står knappen Framdriftsplan i Bygg Info. Panelet viser trinnene med datoer og hva som utføres i hvert. Dra glideren nederst for å se hva som er bygget en bestemt dag: det som kommer senere er skjult, det som er i arbeid tones inn, og materiellbunkene blir mindre etter hvert som det de er levert til monteres — antallet på navnelappen teller ned. Trykk på et trinn for å gå dit det er ferdig, Spill av for å se hele planen, og I dag for å komme tilbake."
+    tekst: "Har prosjektlederen laget en framdriftsplan, står knappen Framdriftsplan i Planlegging. Panelet viser trinnene med datoer og hva som utføres i hvert. Dra glideren nederst for å se hva som er bygget en bestemt dag: det som kommer senere er skjult, det som er i arbeid tones inn, og materiellbunkene blir mindre etter hvert som det de er levert til monteres — antallet på navnelappen teller ned. Trykk på et trinn for å gå dit det er ferdig, Spill av for å se hele planen, og I dag for å komme tilbake."
   },
   {
     hvor: "kontor", ikonNavn: "framdrift",
     tittel: "Framdriftsplan: trinn, glider, PDF og video",
-    tekst: "Framdriftsplan (i Bygg Info) deler arbeidet i trinn med Fra- og Til-dato. Trykk + Legg til på trinnet og velg det som utføres da — elementer, SW-elementer, takplater, blikk, rigg, materiell og markeringer (trykk, eller shift + dra en boks). Det som allerede ligger i et trinn, er skjult mens du velger. − Fjern tar ting ut igjen. Glideren nederst viser bygget en valgt dag, og materiellbunkene brukes opp etter hvert som det de er levert til monteres. Last ned PDF gir én side per trinn, Lag video en film der kameraet går rundt bygget — videoen lagres i SharePoint, og PDF-en får en QR-kode til den. Planen følger med ut til byggeplassen når du trykker Storm-Byggeplass."
+    tekst: "Framdriftsplan (i Planlegging) deler arbeidet i trinn med Fra- og Til-dato. Trykk + Legg til på trinnet og velg det som utføres da — elementer, SW-elementer, takplater, blikk, rigg, materiell og markeringer (trykk, eller shift + dra en boks). Det som allerede ligger i et trinn, er skjult mens du velger. − Fjern tar ting ut igjen. Glideren nederst viser bygget en valgt dag, og materiellbunkene brukes opp etter hvert som det de er levert til monteres. Last ned PDF gir én side per trinn, Lag video en film der kameraet går rundt bygget — videoen lagres i SharePoint, og PDF-en får en QR-kode til den. Planen følger med ut til byggeplassen når du trykker Storm-Byggeplass."
   },
   {
     hvor: "kontor", ikonNavn: "laster",
@@ -218,9 +218,19 @@ export const KORT = [
     tekst: "Snø & Last (i Bygg Info) regner snølasten på hver takflate og vindtrykket på fasadene og et flatt tak. Skriv inn kommuneverdiene fra standarden eller RIBs lastforutsetninger (sk,0, Hg, Δsk, vb,0), velg terrengkategori og vindretning, og trykk Vis snølast eller Vis vindlast for å se lastene i farger i modellen. Taket Automatisk bruker tak-generatorens regler (de øverste bjelkene), og fasadene er kantene av byggets omriss — likt med og uten veggelementer. Høyden over havet kan hentes fra terrenget. Dette er en veiledende kontroll — den erstatter ikke RIB."
   },
   {
+    hvor: "kontor", ikonNavn: "pris",
+    tittel: "Priskalkulasjon: mengder × priser til Excel",
+    tekst: "Priskalkulasjon (i Bygg Info) lager en kalkyle av mengdene i modellen. Legg til poster Fra modellen (objekttype og materiale, som i Mengder), med Marker i modellen (trykk på det som skal med og så Ferdig) eller som Egen linje. Velg enhet — m³, m², lm, stk eller kg — og fyll inn enhetspris og påslag. Objekter med flere materialer, som et gulv med betong og isolasjon, blir én post per materiale. Øyet viser postens objekter i 3D."
+  },
+  {
+    hvor: "kontor", ikonNavn: "lastned",
+    tittel: "Priskalkulasjon: kilde, lagring og Excel",
+    tekst: "Kilde velger om mengden kommer fra 3D-geometrien eller fra tallene prosjekterende har lagt i IFC-fila; Geometri / fila viser begge og avviket i farger. Prisene lagres bare i SharePoint, én liste per prosjektnummer (Innstillinger → Prosjektinfo) — er du ikke logget inn, lagres de ikke. Last ned Excel gir kalkylen med formler og ferdige summer, et kontrollark som viser hvordan hvert tall er regnet, og alle elementene per post."
+  },
+  {
     hvor: "kontor", ikonNavn: "rigg",
     tittel: "Rigg: planlegg riggen på tomta",
-    tekst: "Rigg (i Bygg Info) setter brakker, toalett, container, strømskap, søppelcontainer, lys, parkering, lagrings- og vaskeområde på tomta. Trykk på en type i katalogen, og så der den skal stå. Trykk på et objekt for å flytte, rotere, redigere eller slette det. Endringene lagres med en gang i SharePoint, så alle med tilgang ser det samme."
+    tekst: "Rigg (i Planlegging) setter brakker, toalett, container, strømskap, søppelcontainer, lys, parkering, lagrings- og vaskeområde på tomta. Trykk på en type i katalogen, og så der den skal stå. Trykk på et objekt for å flytte, rotere, redigere eller slette det. Endringene lagres med en gang i SharePoint, så alle med tilgang ser det samme."
   },
   {
     hvor: "kontor", ikonNavn: "rigg",
