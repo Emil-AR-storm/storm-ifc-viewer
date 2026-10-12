@@ -396,6 +396,7 @@ export function materiellMengdeRader() {
       mengdeTeller++;
       ut.push({
         id: -(1000000 + mengdeTeller),   // syntetisk, kolliderer aldri med IFC-id-er
+        matId: p.id,                     // 💰 objektet raden kom fra («Vis i modellen», 12.10)
         key, name: p.navn || label, objType: label,
         type: "Materiell", material: label,
         L, B, H, len: Math.max(L, B, H),

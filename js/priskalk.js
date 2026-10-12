@@ -15,7 +15,7 @@ import { t } from "./i18n.js";
 import { LETT } from "./lett.js";
 import { varsel } from "./varsel.js";
 import { hentQto, metaFor } from "./ifcrpc.js";
-import { lastNedXlsxFlere, markerElementer, materialGruppe, materialVisning, sikreMengder, typeVisning } from "./elements.js";
+import { lastNedXlsxFlere, markerRader, materialGruppe, materialVisning, sikreMengder, typeVisning } from "./elements.js";
 import { spLes, spPaalogget, spSkriv } from "./sp-lager.js";
 import {
   ENHETER, OPPSETT_ID, avvikKlasse, beregnPost, excelArk, filnavn, fraLagret,
@@ -184,26 +184,59 @@ function radHtml({ post, rader, b }, i) {
     "</td></tr>";
 }
 
-function typeOgMatValg() {
-  const full = S.qtyCache || { rows: [], types: [], materialer: [] };
-  const typer = (full.types || []).map(([typ, e]) => '<option value="' + esc(typ) + '">' + esc(typeVisning(typ)) + " (" + e.count + t(" stk") + ")</option>").join("");
-  const grupper = new Map();
-  (full.materialer || []).forEach(([m, e]) => { const g = materialGruppe(m); if (g) grupper.set(g, (grupper.get(g) || 0) + e.count); });
-  const gr = [...grupper.entries()].sort((a, b) => b[1] - a[1]).map(([g, n]) => '<option value="g:' + esc(g) + '">' + esc(t(g)) + " (" + n + t(" stk") + ")</option>").join("");
-  const mat = (full.materialer || []).map(([m, e]) => '<option value="m:' + esc(m) + '">' + esc(materialVisning(m)) + " (" + e.count + t(" stk") + ")</option>").join("");
-  return { typer, gr, mat };
+// «Fra modellen»: SAMME filter som 📊 Mengder (Emil 12.10, bilde 3 og 4).
+// Listene henger sammen: velger du objekttype, viser materiallista bare
+// materialene som FINNES i den typen — med antall innenfor typen — og
+// omvendt. Da kan du ikke sette sammen «Takplater + Gjerdefot» og få 0 stk.
+// Samme telleregel som renderQuantities i elements.js: tell én gang per
+// gruppe, og vis bare valg som gir treff.
+let nyType = "", nyMat = "", nyEnhet = "";
+const passerMat = (r, mat) => !mat ||
+  (mat.slice(0, 2) === "g:" ? materialGruppe(r.material) === mat.slice(2) : (r.material || "") === mat.slice(2));
+export function filterValg(rows, type, mat) {
+  const alle = rows || [];
+  const forType = alle.filter(r => passerMat(r, mat));          // typelista teller innenfor materialet
+  const forMat = alle.filter(r => !type || (r.type || "") === type);   // materiallista teller innenfor typen
+  const tell = (rader, f) => rader.reduce((n, r) => n + (f(r) ? 1 : 0), 0);
+  const typer = [...new Set(alle.map(r => r.type || ""))]
+    .map(typ => [typ, tell(forType, r => (r.type || "") === typ)]).filter(([, n]) => n > 0)
+    .sort((a, b) => b[1] - a[1]);
+  const grupper = [...new Set(forMat.map(r => materialGruppe(r.material)).filter(Boolean))]
+    .map(g => [g, tell(forMat, r => materialGruppe(r.material) === g)]).filter(([, n]) => n > 0)
+    .sort((a, b) => b[1] - a[1]);
+  const mater = [...new Set(forMat.map(r => r.material || ""))]
+    .map(m => [m, tell(forMat, r => (r.material || "") === m)]).filter(([, n]) => n > 0)
+    .sort((a, b) => b[1] - a[1]);
+  return { typer, grupper, mater, nType: forType.length, nMat: forMat.length,
+    treff: alle.filter(r => (!type || (r.type || "") === type) && passerMat(r, mat)).length };
 }
 
 function nyModellForm() {
-  const v = typeOgMatValg();
+  const rows = (S.qtyCache || { rows: [] }).rows;
+  let v = filterValg(rows, nyType, nyMat);
+  // Et valg som ikke finnes lenger (typen ble byttet) nullstilles — ellers
+  // står det et materiale i lista som ikke hører til typen.
+  if (nyMat && !(nyMat.slice(0, 2) === "g:" ? v.grupper.some(([g]) => "g:" + g === nyMat) : v.mater.some(([m]) => "m:" + m === nyMat))) {
+    nyMat = ""; v = filterValg(rows, nyType, nyMat);
+  }
+  if (nyType && !v.typer.some(([typ]) => typ === nyType)) { nyType = ""; v = filterValg(rows, nyType, nyMat); }
+  const opt = (verdi, tekst, valgt) => '<option value="' + esc(verdi) + '"' + (valgt ? " selected" : "") + ">" + esc(tekst) + "</option>";
+  const enhet = nyEnhet || foreslaattEnhet(nyType, nyMat) || "m³";
   return '<div class="pk-ny" id="pkNyForm">' +
-    '<label>' + esc(t("Objekttype")) + '<select id="pkNyType"><option value="">' + esc(t("Alle typer")) + "</option>" + v.typer + "</select></label>" +
-    '<label>' + esc(t("Materiale")) + '<select id="pkNyMat"><option value="">' + esc(t("Alle materialer")) + "</option>" +
-      (v.gr ? '<optgroup label="' + esc(t("Materialgrupper")) + '">' + v.gr + "</optgroup>" : "") +
-      '<optgroup label="' + esc(t("Enkeltmaterialer")) + '">' + v.mat + "</optgroup></select></label>" +
-    '<label>' + esc(t("Enhet")) + enhetValg("m³", 'id="pkNyEnhet"') + "</label>" +
-    '<span class="pk-ny-treff" id="pkNyTreff"></span>' +
-    '<button class="primary" id="pkNyLegg">' + esc(t("Legg til")) + "</button>" +
+    '<label>' + esc(t("Objekttype")) + '<select id="pkNyType">' +
+      opt("", t("Alle typer ({0} stk)", v.nType), !nyType) +
+      v.typer.map(([typ, n]) => opt(typ, typeVisning(typ) + " (" + n + t(" stk") + ")", typ === nyType)).join("") +
+    "</select></label>" +
+    '<label>' + esc(t("Materiale")) + '<select id="pkNyMat">' +
+      opt("", t("Alle materialer ({0} stk)", v.nMat), !nyMat) +
+      (v.grupper.length ? '<optgroup label="' + esc(t("Materialgrupper")) + '">' +
+        v.grupper.map(([g, n]) => opt("g:" + g, t(g) + " (" + n + t(" stk") + ")", "g:" + g === nyMat)).join("") + "</optgroup>" : "") +
+      '<optgroup label="' + esc(t("Enkeltmaterialer")) + '">' +
+        v.mater.map(([m, n]) => opt("m:" + m, materialVisning(m) + " (" + n + t(" stk") + ")", "m:" + m === nyMat)).join("") + "</optgroup>" +
+    "</select></label>" +
+    '<label>' + esc(t("Enhet")) + enhetValg(enhet, 'id="pkNyEnhet"') + "</label>" +
+    '<span class="pk-ny-treff" id="pkNyTreff">' + esc(t("{0} stk", v.treff)) + "</span>" +
+    '<button class="primary" id="pkNyLegg"' + (v.treff ? "" : " disabled") + ">" + esc(t("Legg til")) + "</button>" +
     '<button id="pkNyAvbryt">' + esc(t("Avbryt")) + "</button></div>";
 }
 
@@ -295,23 +328,18 @@ function kobl(body) {
   $("pkExcel").addEventListener("click", lastNedExcel);
 
   if (nyForm === "modell") {
-    const oppdTreff = () => {
-      const type = $("pkNyType").value, mat = $("pkNyMat").value;
-      const n = raderForPost({ modus: "modell", type, mat }, (S.qtyCache || { rows: [] }).rows, materialGruppe).length;
-      $("pkNyTreff").textContent = t("{0} stk", n);
-      const e = foreslaattEnhet(type, mat);
-      if (e) $("pkNyEnhet").value = e;
-    };
-    $("pkNyType").addEventListener("change", oppdTreff);
-    $("pkNyMat").addEventListener("change", oppdTreff);
-    oppdTreff();
+    // Hvert valg tegner skjemaet på nytt, så den andre lista følger med
+    $("pkNyType").addEventListener("change", () => { nyType = $("pkNyType").value; nyEnhet = ""; tegn(); });
+    $("pkNyMat").addEventListener("change", () => { nyMat = $("pkNyMat").value; nyEnhet = ""; tegn(); });
+    $("pkNyEnhet").addEventListener("change", () => { nyEnhet = $("pkNyEnhet").value; });
     $("pkNyAvbryt").addEventListener("click", () => { nyForm = ""; tegn(); });
     $("pkNyLegg").addEventListener("click", () => {
-      const type = $("pkNyType").value, mat = $("pkNyMat").value;
+      const type = nyType, mat = nyMat;
       const navn = [type ? typeVisning(type) : t("Alle typer"),
         mat ? (mat.slice(0, 2) === "g:" ? t(mat.slice(2)) : materialVisning(mat.slice(2))) : ""].filter(Boolean).join(" · ");
-      nyForm = "";
-      leggTil({ modus: "modell", type, mat, enhet: $("pkNyEnhet").value, tekst: navn });
+      const enhet = $("pkNyEnhet").value;
+      nyForm = ""; nyType = ""; nyMat = ""; nyEnhet = "";
+      leggTil({ modus: "modell", type, mat, enhet, tekst: navn });
     });
   }
 
@@ -352,8 +380,10 @@ function kobl(body) {
         }
       } else if (gjor === "vis") {
         const rader = raderForPost(p, (S.qtyCache || { rows: [] }).rows, materialGruppe, guidTilId);
-        const n = markerElementer(rader.map(r => r.id));
-        if (!n) varsel(t("Ingen av objektene finnes i denne modellen."));
+        const n = markerRader(rader);
+        if (!n) varsel(rader.length
+          ? t("Disse objektene kan ikke markeres i 3D ennå (takplater og generert blikk).")
+          : t("Ingen av objektene finnes i denne modellen."));
       } else if (gjor === "oppdater") {
         const gids = gidsForIder(valgteIder());
         if (!gids.length) { varsel(t("Marker objektene i modellen først (shift-klikk for flere), og trykk så her.")); return; }
