@@ -174,6 +174,8 @@ export function modellStartverdier() {
     qtyCache: null,
     qtyType: "",              // valgt objekttype i 📊 Mengder ("" = alle typer)
     qtyMat: "",               // valgt materiale: "" | "g:<gruppe>" | "m:<navn>"
+    qto: null,                // 📐 mengdesett fra fila: Map id → [[sett, navn, art, SI-verdi]] (ifcrpc.js hentQto)
+    qtoEnheter: null,         // 📐 fila sine enheter, som faktor til SI (bare til visning/feilsøking)
     lastLoadInfo: null,
     bufferITråd: false,       // IFC-tråden holder på filbufferen (🪶-omlasting)
     enhetSkala: 1,            // meter per modellenhet – settes av ifc.js etter lasting

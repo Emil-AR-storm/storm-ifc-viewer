@@ -1297,6 +1297,26 @@ på("btnQty", "click", async () => {
   apnePanel("qtyPanel");
 });
 
+// 💰 Priskalkulasjonen (js/priskalk.js) trenger de SAMME mengdene som panelet
+// over — samme rader, samme gruppering — uten å åpne Mengder-panelet.
+export async function sikreMengder() {
+  if (!S.modelGroup) return null;
+  if (!S.qtyCache) {
+    await sikreMeta(alleElementIder);
+    S.qtyCache = computeQuantities();
+  }
+  return S.qtyCache;
+}
+
+// 💰 «Vis i modellen»: marker elementene til en post uten å åpne
+// egenskapspanelet (det ville lukket priskalkulasjonen — ett panel om gangen).
+export function markerElementer(ider) {
+  S.multiSel.clear();
+  for (const id of (ider || [])) if (typeof id === "number" && id > 0) S.multiSel.set(id, elementQuantities(id));
+  selectElementsSet(new Set(S.multiSel.keys()));
+  return S.multiSel.size;
+}
+
 // Samler mengder både gruppert (til panelet) og per element (til regneark).
 // Volum regnes i samme gjennomgang som sammenligningen bruker, så det koster én
 // runde gjennom geometrien uansett hvor mange elementer modellen har.
@@ -1452,7 +1472,7 @@ const TYPE_NAVN = {
   Reinforcing: "Armering", ReinforcingBar: "Armeringsjern",
   ReinforcingMesh: "Armeringsnett", Fastener: "Festemidler",
   MechanicalFastener: "Festemidler", DiscreteAccessory: "Tilbehør",
-  Materiell: "Materiell (leveranser)",
+  Materiell: "Materiell (leveranser)", Takplate: "Takplater (TRP)",
   BuildingElementProxy: "Øvrige bygningsdeler", ElementAssembly: "Sammenstillinger",
   Pipe: "Rør", PipeSegment: "Rør", DuctSegment: "Kanaler",
   Furniture: "Inventar", Space: "Rom", Site: "Tomt"

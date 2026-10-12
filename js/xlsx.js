@@ -40,28 +40,73 @@ export function celleVerdi(v) {
   return { tekst: s };
 }
 
-function celleXml(rad, kol, v) {
+// ---------- 🎨 Stiler (valgfritt) ----------
+// 💰 Priskalkulasjonen (12.10): cellene du skal fylle inn er GULE, overskriftene
+// fete, og kronebeløpene har tusenskille. Arkene uten `stil` skrives nøyaktig
+// som før — da kommer heller ingen styles.xml med i fila.
+// Indeksen er plassen i cellXfs nedenfor:
+//   0 vanlig · 1 fet · 2 gul (fyll inn) · 3 overskrift (fet, grå) ·
+//   4 tall 2 des. · 5 fet tall 2 des. · 6 tittel (stor, fet) · 7 gul tall 2 des.
+export const STILER = ["vanlig", "fet", "gul", "overskrift", "tall", "fet-tall", "tittel", "gul-tall"];
+export const STILER_XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+  '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+  '<fonts count="3"><font><sz val="11"/><name val="Calibri"/></font>' +
+  '<font><b/><sz val="11"/><name val="Calibri"/></font>' +
+  '<font><b/><sz val="14"/><name val="Calibri"/></font></fonts>' +
+  '<fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>' +
+  '<fill><patternFill patternType="solid"><fgColor rgb="FFFFF2CC"/><bgColor indexed="64"/></patternFill></fill>' +
+  '<fill><patternFill patternType="solid"><fgColor rgb="FFF3E1E2"/><bgColor indexed="64"/></patternFill></fill></fills>' +
+  '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>' +
+  '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
+  '<cellXfs count="8">' +
+  '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
+  '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>' +
+  '<xf numFmtId="0" fontId="0" fillId="2" borderId="0" xfId="0" applyFill="1"/>' +
+  '<xf numFmtId="0" fontId="1" fillId="3" borderId="0" xfId="0" applyFont="1" applyFill="1"/>' +
+  '<xf numFmtId="4" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>' +
+  '<xf numFmtId="4" fontId="1" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1"/>' +
+  '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>' +
+  '<xf numFmtId="4" fontId="0" fillId="2" borderId="0" xfId="0" applyNumberFormat="1" applyFill="1"/>' +
+  '</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>' +
+  '</styleSheet>';
+
+function celleXml(rad, kol, v, s) {
+  const st = s ? ' s="' + s + '"' : "";
   const c = celleVerdi(v);
-  if (!c) return "";
   const r = celleRef(rad, kol);
-  if (c.formel) return '<c r="' + r + '"><f>' + xmlEsc(c.formel) + "</f></c>";
-  if (c.tall !== undefined) return '<c r="' + r + '"><v>' + c.tall + "</v></c>";
+  // En tom celle MED stil skrives likevel — den gule pris-cellen skal synes
+  // før prisen er fylt inn.
+  if (!c) return st ? '<c r="' + r + '"' + st + "/>" : "";
+  if (c.formel) return '<c r="' + r + '"' + st + "><f>" + xmlEsc(c.formel) + "</f></c>";
+  if (c.tall !== undefined) return '<c r="' + r + '"' + st + "><v>" + c.tall + "</v></c>";
   // Innebygd streng: sparer oss for hele sharedStrings-fila, og Excel,
   // Excel på nett, Numbers og Google Sheets leser den likt.
-  return '<c r="' + r + '" t="inlineStr"><is><t xml:space="preserve">' +
+  return '<c r="' + r + '"' + st + ' t="inlineStr"><is><t xml:space="preserve">' +
     xmlEsc(c.tekst) + "</t></is></c>";
 }
 
-export function arkXml(rader) {
+// oppsett (valgfritt): { stil(rad, kol) → indeks i STILER, bredder: [tegn per kolonne] }
+export function arkXml(rader, oppsett) {
+  const o = oppsett || {};
+  const stilFn = typeof o.stil === "function" ? o.stil : null;
   const linjer = [];
   (rader || []).forEach((rad, i) => {
-    const celler = (rad || []).map((v, k) => celleXml(i, k, v)).join("");
-    if (celler) linjer.push('<row r="' + (i + 1) + '">' + celler + "</row>");
+    const r = rad || [];
+    // Stilte celler kan stå UTENFOR det raden har verdier for (tom gul celle)
+    let bredde = r.length;
+    if (stilFn) for (let k = r.length; k < 30; k++) if (stilFn(i, k)) bredde = k + 1;
+    const celler = [];
+    for (let k = 0; k < bredde; k++) celler.push(celleXml(i, k, r[k], stilFn ? stilFn(i, k) : 0));
+    const x = celler.join("");
+    if (x) linjer.push('<row r="' + (i + 1) + '">' + x + "</row>");
     else linjer.push('<row r="' + (i + 1) + '"/>');     // tom rad, men raden finnes
   });
+  const kol = Array.isArray(o.bredder) && o.bredder.length
+    ? "<cols>" + o.bredder.map((b, i) => '<col min="' + (i + 1) + '" max="' + (i + 1) + '" width="' + (Number(b) || 10) + '" customWidth="1"/>').join("") + "</cols>"
+    : "";
   return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
-    "<sheetData>" + linjer.join("") + "</sheetData></worksheet>";
+    kol + "<sheetData>" + linjer.join("") + "</sheetData></worksheet>";
 }
 
 // Arknavnet: Excel tåler maks 31 tegn, og ikke : \ / ? * [ ]
@@ -86,6 +131,7 @@ export function xlsxFilerFlere(arkListe) {
     brukte.add(n);
     return n;
   });
+  const medStil = ark.some(a => a && (typeof a.stil === "function" || (a.bredder && a.bredder.length)));
   const filer = [
     { navn: "[Content_Types].xml",
       data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
@@ -94,6 +140,7 @@ export function xlsxFilerFlere(arkListe) {
         '<Default Extension="xml" ContentType="application/xml"/>' +
         '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
         ark.map((_, i) => '<Override PartName="/xl/worksheets/sheet' + (i + 1) + '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>').join("") +
+        (medStil ? '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' : "") +
         "</Types>" },
     { navn: "_rels/.rels",
       data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
@@ -110,9 +157,11 @@ export function xlsxFilerFlere(arkListe) {
       data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
         '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
         ark.map((_, i) => '<Relationship Id="rId' + (i + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet' + (i + 1) + '.xml"/>').join("") +
+        (medStil ? '<Relationship Id="rId' + (ark.length + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' : "") +
         "</Relationships>" }
   ];
-  ark.forEach((a, i) => filer.push({ navn: "xl/worksheets/sheet" + (i + 1) + ".xml", data: arkXml(a.rader) }));
+  ark.forEach((a, i) => filer.push({ navn: "xl/worksheets/sheet" + (i + 1) + ".xml", data: arkXml(a.rader, a) }));
+  if (medStil) filer.push({ navn: "xl/styles.xml", data: STILER_XML });
   return filer;
 }
 
