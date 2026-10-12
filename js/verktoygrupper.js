@@ -181,10 +181,17 @@ export function oppdaterGruppeknapper() {
   const boks = $("verktoygrupper"), linje = $("toolbar");
   if (!boks || !linje) return [];
   const gammel = linje.dataset.gruppe || "", gammelBody = document.body.dataset.vgruppe || "";
-  linje.dataset.gruppe = ""; document.body.dataset.vgruppe = "";
+  // 🐞 Emil 12.10 (runde 2): attributtene må FJERNES, ikke settes til "".
+  // CSS-regelen «#toolbar[data-gruppe] button[data-gruppe] {display:none}»
+  // treffer også en tom verdi — da så ALLE grupper tomme ut, alle
+  // gruppeknappene ble skjult, og byggeplassen satt fast i Bygg Info.
+  delete linje.dataset.gruppe; delete document.body.dataset.vgruppe;
   let medInnhold;
   try { medInnhold = grupperMedInnhold(knappSynlig); }
   finally { linje.dataset.gruppe = gammel; document.body.dataset.vgruppe = gammelBody; }
+  // Sikring: ser ALT tomt ut er det målingen som er feil, ikke verktøyene —
+  // da røres ingenting.
+  if (!medInnhold.length) return medInnhold;
   boks.querySelectorAll("button[data-velg]").forEach(b => {
     b.style.display = medInnhold.includes(b.dataset.velg) ? "" : "none";
   });
