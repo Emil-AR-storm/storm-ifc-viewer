@@ -2383,6 +2383,8 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Skjul været i 3D": "Ukryj pogodę w 3D",
   "Skru av været i 3D (himmel, regn og snø). Slås på igjen i Vis vær.": "Wyłącz pogodę w 3D (niebo, deszcz i śnieg). Włącz ponownie w Pokaż pogodę.",
   // 💰 Priskalkulasjon og mengdesett fra fila (12.10.2026)
+  "Isolasjon under gulv": "Izolacja pod posadzką",
+  "Markerte objekter · {0}": "Zaznaczone obiekty · {0}",
   "Endre hvilke objekter posten gjelder": "Zmień obiekty, których dotyczy pozycja",
   "Trykk på objektene i modellen som skal med, og trykk Ferdig": "Kliknij obiekty w modelu, które mają być uwzględnione, i naciśnij Gotowe",
   "Marker i modellen": "Zaznacz w modelu",
