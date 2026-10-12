@@ -138,7 +138,11 @@ export function raderForPost(post, rader, matGruppe, guidTilId) {
     // én rad per enhet med objektets id i matId (hele stabelen kommer med).
     const nokler = new Set((p.nokler || []).filter(k => !k.startsWith("mat:")));
     const mat = new Set((p.nokler || []).filter(k => k.startsWith("mat:")).map(k => k.slice(4)));
-    return alle.filter(r => ider.has(r.id) || nokler.has(String(r.id)) || (r.matId && mat.has(String(r.matId))));
+    // velgNokkel: én ting i 3D som er flere varer (gulvet: betong + isolasjon)
+    const treff = alle.filter(r => ider.has(r.id) || nokler.has(String(r.id)) || (r.velgNokkel && nokler.has(r.velgNokkel)) ||
+      (r.matId && mat.has(String(r.matId))));
+    // Delt per materiale ved Ferdig (lagdelte elementer): bare dette materialet
+    return p.mat ? treff.filter(r => (r.material || "") === p.mat.slice(2) || (p.mat.slice(0, 2) === "g:" && matGruppe && matGruppe(r.material) === p.mat.slice(2))) : treff;
   }
   return [];
 }
@@ -182,7 +186,10 @@ export function qtoSum(rader, qto, enhet, navn) {
   let sum = 0, dekket = 0, qDel = 0, gDel = 0;
   for (const r of (rader || [])) {
     const g = geoVerdi(r, enhet);
-    const q = qtoTall(qto, r.id, navn, art);
+    // Et lagdelt element har én rad per materiale; fila oppgir tallet for HELE
+    // elementet, så hver rad får sin andel (samme fordeling som geometrien).
+    const q0 = qtoTall(qto, r.id, navn, art);
+    const q = q0 === null ? null : (art === "areal" || art === "lengde" ? q0 : q0 * (r.lagAndel || 1));
     if (q !== null && isFinite(q)) { sum += q; dekket++; qDel += q; gDel += g; }
     else sum += g;
   }
@@ -237,6 +244,24 @@ export function avvikKlasse(avvik) {
 export function linjesum(mengde, pris, paaslag, felles) {
   if (pris === null || pris === undefined || !isFinite(pris)) return null;
   return (Number(mengde) || 0) * pris * (1 + (Number(paaslag) || 0) / 100) * (1 + (Number(felles) || 0) / 100);
+}
+
+// Forslag til enhet for ett materiale (når en markering deles per materiale)
+export function enhetForMateriale(gruppe, type) {
+  if (gruppe === "Betong" || gruppe === "Mur") return "m³";
+  if (gruppe === "Stål" || gruppe === "Armering") return "kg";
+  if (gruppe === "Isolasjon" || type === "SW" || type === "Takplate" || type === "Gulv") return "m²";
+  if (type === "Blikk") return "lm";
+  return "";
+}
+
+// Deler et utvalg per materiale: [{ mat: "m:<navn>", material, n }] — tomt når
+// alt er samme materiale (da trengs ingen deling).
+export function materialerIUtvalg(rader) {
+  const m = new Map();
+  for (const r of (rader || [])) { const k = r.material || ""; m.set(k, (m.get(k) || 0) + 1); }
+  if (m.size < 2) return [];
+  return [...m.entries()].map(([material, n]) => ({ mat: "m:" + material, material, n }));
 }
 
 // Postnummer: det du skrev, ellers løpenummer i lista (1, 2, 3 …)

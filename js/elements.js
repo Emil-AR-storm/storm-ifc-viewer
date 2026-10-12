@@ -1383,86 +1383,106 @@ function computeQuantities() {
     // var ikke bare unyttig — det så ut som en mengde noen kunne prise.
     // Regnes bare for materialgruppen Betong; alt annet får 0 og faller ut av
     // visningen av seg selv (tomme deler vises ikke).
-    const erBetong = materialGruppe(material) === "Betong";
-    const forskaling = erBetong ? q.flateSide + q.flateUnder : 0;
-    // ---------------------------------------------------------------------
-    // ER VOLUMET I DET HELE TATT MULIG?
-    //
-    // Volumet regnes som en fortegnssum over tetraedre. Den matematikken
-    // forutsetter at meshen er LUKKET og konsekvent vridd. Er den ikke det —
-    // dupliserte flater, vrengte normaler, geometri som overlapper seg selv —
-    // gir summen et tall som ser helt normalt ut og er fullstendig galt.
-    //
-    // Målt på Geithus vaskehall: to CFSHS140x5-bjelker kom ut på 0,91 m³ mot
-    // 0,02 m³ i virkeligheten. 46 ganger for mye. Det ene avviket dro totalen
-    // fra 3,4 tonn (Revits fasit) til 10,7 tonn. To elementer av 67.
-    //
-    // SPERREN ER GEOMETRISK, IKKE EN TERSKEL: et legeme kan aldri ha større
-    // volum enn sin egen omsluttende boks. Er volumet større, er meshen
-    // beviselig ikke et gyldig lukket legeme, og tallet skal ikke brukes til
-    // noe. Ingen materialkunnskap, ingen tuning, ingen falske positive.
-    // De 2 % slark dekker at boksen er akse-justert og at flyttall runder.
-    const boksVol = q.dims[0] * q.dims[1] * q.dims[2];
-    const umuligVolum = boksVol > 0 && q.vol > boksVol * 1.02;
-    // VEKT. Volum × tetthet for materialgruppen. Har elementet ikke volum
-    // (flate uten tykkelse) eller et materiale vi ikke kjenner tettheten til,
-    // blir vekten NULL — og det er en løgn i et tilbud. Derfor telles den ikke
-    // som 0 kg, den telles som UKJENT, og summen sier hvor mange som mangler.
-    // ---------------------------------------------------------------------
-    // VEKT: NOMINELL PROFILVEKT FØRST, GEOMETRI SOM RESERVE.
-    //
-    // Målt mot Revit på to ekte bygg lå volum × tetthet systematisk skjevt, og
-    // skjevheten fulgte profiltypen: hulprofiler +2 %, I-profiler −5 %, en
-    // sveiset HSQ +14 %. Nominell kg/m × MÅLT lengde traff derimot innenfor
-    // 0,5 % på hver eneste gruppe. Det er ikke flaks — nominell vekt er det
-    // stålverket leverer og det du betaler for. Geometrien er en tilnærming av
-    // profilen; tabellen ER profilen. Se js/profiler.js.
-    //
-    // Kjennes profilen ikke igjen (sveiste tverrsnitt, betong, alt annet),
-    // brukes geometrien — og kilden merkes, så du vet hvilke tall som er
-    // kontrollert mot en katalog og hvilke som må sjekkes for hånd.
-    const tetthet = TETTHET[materialGruppe(material)] || 0;
-    const kgGeo = (tetthet > 0 && q.vol > 1e-9 && !umuligVolum) ? q.vol * tetthet : 0;
-    // Nominell vekt hentes fra navnet. Bare for stål: en betongsøyle som
-    // tilfeldigvis heter noe med «L200x20» skal ikke få stålvekt.
-    // Både ObjectType og Navn prøves: hos noen prosjekterende står profilen i
-    // det ene feltet, hos andre i det andre.
-    const prof = materialGruppe(material) === "Stål"
-      ? (profilKgPerM(objType) || profilKgPerM(name)) : null;
-    const kgNom = prof && len > 0 ? prof.kgPerM * len : 0;
-    // Nominell vinner. Merk at den også redder et element med ØDELAGT mesh:
-    // volumet er ubrukelig, men lengden og profilnavnet er det ikke.
-    const kg = kgNom || kgGeo;
-    const kjentVekt = kg > 0;
-    const vektKilde = kgNom ? (prof.kilde === "tabell" ? "tabell" : "formel") : (kgGeo ? "geometri" : "");
-    // Kontrollen: hvor mye spriker geometrien fra katalogen? Stort avvik betyr
-    // at modellen ikke er det den utgir seg for.
-    const avvik = (kgNom > 0 && kgGeo > 0) ? kgGeo / kgNom - 1 : null;
-    // Gruppene skilles også på materiale: en betongsøyle og en stålsøyle med
-    // samme mål skal ikke havne på samme rad i en vareordre.
-    const gkey = key + (material ? " · " + material : "");
-    if (!groups.has(gkey)) groups.set(gkey,
-      { count: 0, length: 0, vol: 0, area: 0, flate: 0, forskaling: 0, kg: 0, kgGeo: 0, utenVekt: 0,
-        umulige: 0, nominelle: 0, type: typeName, material });
-    const g = groups.get(gkey);
-    g.count++;
-    g.length += len;
-    g.vol += q.vol;
-    g.area += q.area;
-    g.flate += q.storsteFlate || 0;
-    g.forskaling += forskaling;
-    g.kg += kg;
-    g.kgGeo += kgGeo;
-    if (!kjentVekt) g.utenVekt++;
-    if (umuligVolum) g.umulige++;
-    if (kgNom) g.nominelle++;
-    rows.push({
-      id, key: gkey, name, objType, type: typeName, material,
-      L: q.dims[0], B: q.dims[1], H: q.dims[2], len, vol: q.vol, area: q.area,
-      flate: q.storsteFlate || 0,
-      forskaling, kg, kgGeo, kjentVekt, umuligVolum, vektKilde,
-      profil: prof ? prof.profil : "", nomKgPerM: prof ? prof.kgPerM : 0, avvik
-    });
+    // 🧅 LAGDELTE ELEMENTER (Emil 12.10: «betonggulv har isolasjonen og
+    // betongen i 1 objekt, som blir feil når du skal prise»). Har elementet et
+    // lagsett med tykkelser i IFC-fila (IfcMaterialLayerSet — typisk vegger og
+    // dekker med betong + isolasjon), blir det ÉN RAD PER MATERIALE, med
+    // volumet fordelt etter lagtykkelsen. Arealet er det samme for hvert lag
+    // (det er samme flate), vekten regnes per lag, og id-en er den samme, så
+    // «Vis i modellen» og markeringen treffer elementet. Uten lag: én rad, som før.
+    const lag = (!S.glbActive && metaFor(id) && Array.isArray(metaFor(id).lag)) ? metaFor(id).lag : null;
+    const sumT = lag ? lag.reduce((s2, l) => s2 + (Number(l[1]) || 0), 0) : 0;
+    const materialHele = material;
+    const deler = lag && lag.length > 1 && sumT > 0
+      ? lag.map(([navn, tykk]) => ({ material: String(navn || ""), andel: (Number(tykk) || 0) / sumT }))
+      : [{ material, andel: 1 }];
+    for (const del of deler) {
+    const material = del.material, andel = del.andel;
+    const vDel = q.vol * andel;
+      const erBetong = materialGruppe(material) === "Betong";
+      // Lagdelt: bare betonglagets egne kanter (sideflaten × lagets andel).
+      // Undersiden ligger mot isolasjonen og forskales ikke.
+      const forskaling = !erBetong ? 0 : deler.length > 1 ? q.flateSide * andel : q.flateSide + q.flateUnder;
+      // ---------------------------------------------------------------------
+      // ER VOLUMET I DET HELE TATT MULIG?
+      //
+      // Volumet regnes som en fortegnssum over tetraedre. Den matematikken
+      // forutsetter at meshen er LUKKET og konsekvent vridd. Er den ikke det —
+      // dupliserte flater, vrengte normaler, geometri som overlapper seg selv —
+      // gir summen et tall som ser helt normalt ut og er fullstendig galt.
+      //
+      // Målt på Geithus vaskehall: to CFSHS140x5-bjelker kom ut på 0,91 m³ mot
+      // 0,02 m³ i virkeligheten. 46 ganger for mye. Det ene avviket dro totalen
+      // fra 3,4 tonn (Revits fasit) til 10,7 tonn. To elementer av 67.
+      //
+      // SPERREN ER GEOMETRISK, IKKE EN TERSKEL: et legeme kan aldri ha større
+      // volum enn sin egen omsluttende boks. Er volumet større, er meshen
+      // beviselig ikke et gyldig lukket legeme, og tallet skal ikke brukes til
+      // noe. Ingen materialkunnskap, ingen tuning, ingen falske positive.
+      // De 2 % slark dekker at boksen er akse-justert og at flyttall runder.
+      const boksVol = q.dims[0] * q.dims[1] * q.dims[2];
+      const umuligVolum = boksVol > 0 && q.vol > boksVol * 1.02;
+      // VEKT. Volum × tetthet for materialgruppen. Har elementet ikke volum
+      // (flate uten tykkelse) eller et materiale vi ikke kjenner tettheten til,
+      // blir vekten NULL — og det er en løgn i et tilbud. Derfor telles den ikke
+      // som 0 kg, den telles som UKJENT, og summen sier hvor mange som mangler.
+      // ---------------------------------------------------------------------
+      // VEKT: NOMINELL PROFILVEKT FØRST, GEOMETRI SOM RESERVE.
+      //
+      // Målt mot Revit på to ekte bygg lå volum × tetthet systematisk skjevt, og
+      // skjevheten fulgte profiltypen: hulprofiler +2 %, I-profiler −5 %, en
+      // sveiset HSQ +14 %. Nominell kg/m × MÅLT lengde traff derimot innenfor
+      // 0,5 % på hver eneste gruppe. Det er ikke flaks — nominell vekt er det
+      // stålverket leverer og det du betaler for. Geometrien er en tilnærming av
+      // profilen; tabellen ER profilen. Se js/profiler.js.
+      //
+      // Kjennes profilen ikke igjen (sveiste tverrsnitt, betong, alt annet),
+      // brukes geometrien — og kilden merkes, så du vet hvilke tall som er
+      // kontrollert mot en katalog og hvilke som må sjekkes for hånd.
+      const tetthet = TETTHET[materialGruppe(material)] || 0;
+      const kgGeo = (tetthet > 0 && vDel > 1e-9 && !umuligVolum) ? vDel * tetthet : 0;
+      // Nominell vekt hentes fra navnet. Bare for stål: en betongsøyle som
+      // tilfeldigvis heter noe med «L200x20» skal ikke få stålvekt.
+      // Både ObjectType og Navn prøves: hos noen prosjekterende står profilen i
+      // det ene feltet, hos andre i det andre.
+      const prof = deler.length === 1 && materialGruppe(material) === "Stål"
+        ? (profilKgPerM(objType) || profilKgPerM(name)) : null;
+      const kgNom = prof && len > 0 ? prof.kgPerM * len : 0;
+      // Nominell vinner. Merk at den også redder et element med ØDELAGT mesh:
+      // volumet er ubrukelig, men lengden og profilnavnet er det ikke.
+      const kg = kgNom || kgGeo;
+      const kjentVekt = kg > 0;
+      const vektKilde = kgNom ? (prof.kilde === "tabell" ? "tabell" : "formel") : (kgGeo ? "geometri" : "");
+      // Kontrollen: hvor mye spriker geometrien fra katalogen? Stort avvik betyr
+      // at modellen ikke er det den utgir seg for.
+      const avvik = (kgNom > 0 && kgGeo > 0) ? kgGeo / kgNom - 1 : null;
+      // Gruppene skilles også på materiale: en betongsøyle og en stålsøyle med
+      // samme mål skal ikke havne på samme rad i en vareordre.
+      const gkey = key + (material ? " · " + material : "");
+      if (!groups.has(gkey)) groups.set(gkey,
+        { count: 0, length: 0, vol: 0, area: 0, flate: 0, forskaling: 0, kg: 0, kgGeo: 0, utenVekt: 0,
+          umulige: 0, nominelle: 0, type: typeName, material });
+      const g = groups.get(gkey);
+      g.count++;
+      g.length += len;
+      g.vol += vDel;
+      g.area += q.area;
+      g.flate += q.storsteFlate || 0;
+      g.forskaling += forskaling;
+      g.kg += kg;
+      g.kgGeo += kgGeo;
+      if (!kjentVekt) g.utenVekt++;
+      if (umuligVolum) g.umulige++;
+      if (kgNom) g.nominelle++;
+      rows.push({
+        id, key: gkey, name, objType, type: typeName, material,
+        ...(deler.length > 1 ? { lagAndel: andel, lagHele: materialHele } : {}),
+        L: q.dims[0], B: q.dims[1], H: q.dims[2], len, vol: vDel, area: q.area,
+        flate: q.storsteFlate || 0,
+        forskaling, kg, kgGeo, kjentVekt, umuligVolum, vektKilde,
+        profil: prof ? prof.profil : "", nomKgPerM: prof ? prof.kgPerM : 0, avvik
+      });
+    }
   }
   // 📦 Materiell-objektene får egne rader — parametriske tall fra målene
   // brukeren satte, ikke gjettet fra geometri (js/materiell-vis.js).
@@ -1493,7 +1513,7 @@ const TYPE_NAVN = {
   ReinforcingMesh: "Armeringsnett", Fastener: "Festemidler",
   MechanicalFastener: "Festemidler", DiscreteAccessory: "Tilbehør",
   Materiell: "Materiell (leveranser)", Takplate: "Takplater (TRP)",
-  SW: "SW-elementer", Ringmur: "Ringmur", Blikk: "Blikk (på bygget)",
+  SW: "SW-elementer", Ringmur: "Ringmur", Blikk: "Blikk (på bygget)", Gulv: "Gulv og isolasjon",
   BuildingElementProxy: "Øvrige bygningsdeler", ElementAssembly: "Sammenstillinger",
   Pipe: "Rør", PipeSegment: "Rør", DuctSegment: "Kanaler",
   Furniture: "Inventar", Space: "Rom", Site: "Tomt"

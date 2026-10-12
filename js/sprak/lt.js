@@ -2383,6 +2383,8 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Skjul været i 3D": "Slėpti orus 3D",
   "Skru av været i 3D (himmel, regn og snø). Slås på igjen i Vis vær.": "Išjungti orus 3D (dangus, lietus ir sniegas). Vėl įjungiama Rodyti orus.",
   // 💰 Priskalkulasjon og mengdesett fra fila (12.10.2026)
+  "Isolasjon under gulv": "Izoliacija po grindimis",
+  "Markerte objekter · {0}": "Pažymėti objektai · {0}",
   "Endre hvilke objekter posten gjelder": "Pakeisti, kuriems objektams taikoma eilutė",
   "Trykk på objektene i modellen som skal med, og trykk Ferdig": "Spustelėkite modelio objektus, kuriuos reikia įtraukti, ir paspauskite Baigta",
   "Marker i modellen": "Pažymėti modelyje",

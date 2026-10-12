@@ -54,6 +54,7 @@ async function cmdOpen({ buffer, light, minst, sirkel }) {
   await klar;
   if (modelID !== null) { try { ifcApi.CloseModel(modelID); } catch(_) {} modelID = null; }
   matKart = null;                 // materialkartet hører til forrige modell
+  lagKart = null;
   qtoEnheter = null;
   fil = new Uint8Array(buffer);
   modelID = ifcApi.OpenModel(fil, light
@@ -251,16 +252,63 @@ function matNavn(id, dybde) {
   return eget ? String(eget).trim() : "";
 }
 
+// 🧅 LAGSETT (Emil 12.10): et dekke eller en vegg med «200 mm betong + 300 mm
+// isolasjon» er ETT element, men to varer med hver sin pris. Navnet over slår
+// dem sammen («Betong + Isolasjon»); her leses lagene med TYKKELSE, så
+// mengdene kan deles per materiale (elements.js computeQuantities).
+// [[materialnavn, tykkelse i meter], …] — bare når det er minst to ULIKE lag.
+let lagKart = null;
+function matLag(id, dybde) {
+  if (!id || dybde > 4) return null;
+  let line;
+  try { line = ifcApi.GetLine(modelID, id); } catch (_) { return null; }
+  if (!line) return null;
+  if (line.ForLayerSet && line.ForLayerSet.value) return matLag(line.ForLayerSet.value, dybde + 1);
+  // IFC4: IfcMaterialConstituentSet med Fraction (andel av volumet). Andelen
+  // brukes som «tykkelse» — det er bare forholdet mellom lagene som teller.
+  if (Array.isArray(line.MaterialConstituents)) {
+    const perNavn = new Map();
+    for (const r of line.MaterialConstituents) {
+      let c;
+      try { c = ifcApi.GetLine(modelID, r && r.value); } catch (_) { continue; }
+      const fr = Number(val(c && c.Fraction));
+      if (!c || !isFinite(fr) || fr <= 0) return null;     // uten andel kan ikke volumet deles
+      const navn = (c.Material && c.Material.value ? matNavn(c.Material.value, dybde + 1) : "") || String(val(c.Name) || "").trim() || "Ukjent";
+      perNavn.set(navn, (perNavn.get(navn) || 0) + fr);
+    }
+    return perNavn.size > 1 ? [...perNavn.entries()] : null;
+  }
+  if (!Array.isArray(line.MaterialLayers)) return null;
+  const f = (qtoEnheter || (qtoEnheter = lesEnheter())).lengde || 1;
+  const perNavn = new Map();
+  for (const r of line.MaterialLayers) {
+    let l;
+    try { l = ifcApi.GetLine(modelID, r && r.value); } catch (_) { continue; }
+    if (!l) continue;
+    const t = Number(val(l.LayerThickness));
+    if (!isFinite(t) || t <= 0) continue;
+    const navn = (l.Material && l.Material.value ? matNavn(l.Material.value, dybde + 1) : "") || String(val(l.Name) || "").trim() || "Ukjent lag";
+    perNavn.set(navn, (perNavn.get(navn) || 0) + t * f);
+  }
+  return perNavn.size > 1 ? [...perNavn.entries()] : null;
+}
+
 function byggMatKart() {
   if (matKart) return matKart;
   matKart = new Map();
+  lagKart = new Map();
   try {
     const rels = ifcApi.GetLineIDsWithType(modelID, WebIFC.IFCRELASSOCIATESMATERIAL);
     for (let i = 0; i < rels.size(); i++) {
       const rel = ifcApi.GetLine(modelID, rels.get(i));
       const navn = matNavn(rel.RelatingMaterial && rel.RelatingMaterial.value, 0);
       if (!navn) continue;
-      (rel.RelatedObjects || []).forEach(o => { if (o && o.value) matKart.set(o.value, navn); });
+      const lag = matLag(rel.RelatingMaterial && rel.RelatingMaterial.value, 0);
+      (rel.RelatedObjects || []).forEach(o => {
+        if (!o || !o.value) return;
+        matKart.set(o.value, navn);
+        if (lag) lagKart.set(o.value, lag);
+      });
     }
   } catch(_) {}
   // Mange modeller henger materialet på typeobjektet (IfcColumnType) i stedet
@@ -272,8 +320,12 @@ function byggMatKart() {
       const t = rel.RelatingType && rel.RelatingType.value;
       const navn = t ? matKart.get(t) : null;
       if (!navn) continue;
+      const lag = lagKart.get(t);
       (rel.RelatedObjects || []).forEach(o => {
-        if (o && o.value && !matKart.has(o.value)) matKart.set(o.value, navn);
+        if (o && o.value && !matKart.has(o.value)) {
+          matKart.set(o.value, navn);
+          if (lag) lagKart.set(o.value, lag);
+        }
       });
     }
   } catch(_) {}
@@ -297,8 +349,10 @@ function cmdMeta({ ids }, post) {
       tag = val(line.Tag) || "";
       globalId = val(line.GlobalId) || "";
     } catch(_) {}
-    out.push({ id, name, objectType, tag, globalId, typeName: typeNavn(id),
-      material: mat.get(id) || "" });
+    const m = { id, name, objectType, tag, globalId, typeName: typeNavn(id),
+      material: mat.get(id) || "" };
+    if (lagKart && lagKart.has(id)) m.lag = lagKart.get(id);
+    out.push(m);
   }
   return out;
 }
@@ -556,6 +610,7 @@ function cmdClose() {
   if (modelID !== null) { try { ifcApi.CloseModel(modelID); } catch(_) {} }
   modelID = null;
   matKart = null;
+  lagKart = null;
   qtoEnheter = null;
   fil = null;
   return { ok: true };

@@ -18,7 +18,7 @@ import { hentQto, metaFor } from "./ifcrpc.js";
 import { clearSelection, lastNedXlsxFlere, markerRader, materialGruppe, veksleMateriellIUtvalg, materialVisning, sikreMengder, typeVisning } from "./elements.js";
 import { spLes, spPaalogget, spSkriv } from "./sp-lager.js";
 import {
-  ENHETER, OPPSETT_ID, avvikKlasse, beregnPost, excelArk, filnavn, fraLagret,
+  ENHETER, OPPSETT_ID, avvikKlasse, beregnPost, enhetForMateriale, excelArk, filnavn, fraLagret, materialerIUtvalg,
   kontrollArk, lesTall, linjesum, mengdeDesimaler, nyId, postNr, prislisteNokkel, raderForPost, vaskOppsett, vaskPost
 } from "./priskalk-regn.js";
 
@@ -162,7 +162,7 @@ function radHtml({ post, rader, b }, i) {
   const ingen = post.modus !== "egen" && b.n === 0;
   const opphav = post.modus === "modell"
     ? (post.type ? typeVisning(post.type) : t("Alle typer")) + (post.mat ? " · " + (post.mat.slice(0, 2) === "g:" ? t(post.mat.slice(2)) : materialVisning(post.mat.slice(2))) : "")
-    : post.modus === "manuell" ? t("{0} markerte objekter", (post.gids || []).length + (post.nokler || []).length) : t("Egen linje");
+    : post.modus === "manuell" ? t("{0} markerte objekter", (post.gids || []).length + (post.nokler || []).length) + (post.mat ? " · " + materialVisning(post.mat.slice(2)) : "") : t("Egen linje");
   return '<tr data-id="' + esc(post.id) + '"' + (ingen ? ' class="pk-tom"' : "") + ">" +
     '<td><input class="pk-nr" data-pk="nr" value="' + esc(post.nr) + '" placeholder="' + esc(postNr({}, i)) + '"></td>' +
     '<td><input class="pk-tekst" data-pk="tekst" value="' + esc(post.tekst) + '"><div class="pk-opphav">' + esc(opphav) +
@@ -400,7 +400,19 @@ export function avsluttVelg(medTil) {
   if (medTil && n) {
     const p = postId ? poster.find(x => x.id === postId) : null;
     if (p) { p.gids = v.gids; p.nokler = v.nokler; Object.assign(p, vaskPost(p)); merk(p.id); tegn(); }
-    else leggTil({ modus: "manuell", gids: v.gids, nokler: v.nokler, enhet: enhetForUtvalg(v), tekst: t("Markerte objekter ({0} stk)", n) });
+    else {
+      // 🧅 Flere materialer i utvalget (gulvet: betong + isolasjon, en vegg med
+      // lag) → én post PER MATERIALE, så hver får sin egen pris (Emil 12.10).
+      const rader = raderForPost({ modus: "manuell", gids: v.gids, nokler: v.nokler }, (S.qtyCache || { rows: [] }).rows, materialGruppe, guidTilId);
+      const deler = materialerIUtvalg(rader);
+      if (!deler.length) leggTil({ modus: "manuell", gids: v.gids, nokler: v.nokler, enhet: enhetForUtvalg(v), tekst: t("Markerte objekter ({0} stk)", n) });
+      else for (const d of deler) {
+        const r0 = rader.find(r => (r.material || "") === d.material) || {};
+        leggTil({ modus: "manuell", gids: v.gids, nokler: v.nokler, mat: d.mat,
+          enhet: enhetForMateriale(materialGruppe(d.material), r0.type) || enhetForUtvalg(v),
+          tekst: t("Markerte objekter · {0}", materialVisning(d.material)) });
+      }
+    }
   } else tegn();
   return medTil ? n : 0;
 }
