@@ -2,7 +2,7 @@
 import * as THREE from "three";
 import { $, på, S, esc, loadingEl, loadingText, lukkPaneler, nullstillModellState, statusEl, velgEnhetSkala, writePrefs } from "./state.js";
 import { t } from "./i18n.js";
-import { harWorker, kall, metaFor, tømMeta } from "./ifcrpc.js";
+import { harWorker, kall, metaFor, tømMeta, tømQto } from "./ifcrpc.js";
 import { byggLettKopi, lettNavn } from "./lite.js";
 import { hiddenIDs, typeSkjultLett } from "./display.js";
 import { clearSelection } from "./elements.js";
@@ -209,6 +209,7 @@ function clearModel() {
   // be IFC-tråden lukke modellen FØR tilstanden nullstilles
   if (S.modelID !== null) kall("close").catch(() => {});
   tømMeta();
+  tømQto();               // 📐 også den pågående jobben, så svaret fra forrige modell ikke lander her
 
   // all S-tilstand som hører til modellen – samlet på ETT sted (state.js).
   // Nye modell-felter legges i modellStartverdier(), ikke i en liste her.

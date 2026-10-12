@@ -27,6 +27,7 @@ import "./stopeplan.js";      // 🧱 støpeplan i 3D (kun kontor)
 import "./stopeplan-felt.js"; // 🧱 trinn 3: felt på plata — tegne og dra (kun kontor)
 import "./framdrift.js";
 import "./vaer-3d.js";         // 🌦 været i 3D: himmel, skyer, nedbør og lyn (KUN kontoret — Emil 09.10)
+import "./priskalk.js";        // 💰 priskalkulasjon: mengder × priser → Excel med formler (kun kontor)
 import "./vaer.js";            // 🌦 Vis vær (kun kontor — byggeplassen ser været i Framdriftsplan)
 import "./laster.js";          // ❄🌬 snø og vind (kun kontor)      // 📅 framdriftsplan: etapper med alle slags objekter (kun kontor)
 import "./dokumentasjon.js";  // 📄 snarveiene i gruppa Dokumentasjon (kun kontor)

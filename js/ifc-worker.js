@@ -54,6 +54,7 @@ async function cmdOpen({ buffer, light, minst, sirkel }) {
   await klar;
   if (modelID !== null) { try { ifcApi.CloseModel(modelID); } catch(_) {} modelID = null; }
   matKart = null;                 // materialkartet hører til forrige modell
+  qtoEnheter = null;
   fil = new Uint8Array(buffer);
   modelID = ifcApi.OpenModel(fil, light
     ? { COORDINATE_TO_ORIGIN: true, CIRCLE_SEGMENTS: sirkel || 6 }
@@ -303,6 +304,13 @@ function cmdMeta({ ids }, post) {
 }
 
 // Full egenskapsliste for ETT element (åpnes bare når man trykker på noe)
+const QTO_ENHET = { lengde: "m", areal: "m²", volum: "m³", masse: "kg", antall: "stk" };
+function qtoTekst(art, v) {
+  const d = art === "antall" ? 0 : art === "masse" ? 1 : 3;
+  return String(Math.round(v * 10 ** d) / 10 ** d).replace(".", ",") + " " + QTO_ENHET[art];
+}
+let qtoEnheter = null;            // enhetene hører til modellen — nullstilles i cmdOpen/cmdClose
+
 function cmdProps({ id }, post) {
   const puls = pulsGiver(post);
   const felt = [];
@@ -327,6 +335,14 @@ function cmdProps({ id }, post) {
       const ref = rel.RelatingPropertyDefinition;
       if (!ref) continue;
       const pset = ifcApi.GetLine(modelID, ref.value);
+      // 📐 Mengdesett (Qto_…) vises også, i SI-enheter, så du kan se hva
+      // prosjekterende har oppgitt når du feilsøker kg og m³.
+      if (pset && pset.Quantities) {
+        const liste = [];
+        lesMengdesett(pset, qtoEnheter || (qtoEnheter = lesEnheter()), liste);
+        for (const [sett, navn, art, v] of liste) psets.push([sett + " · " + navn, qtoTekst(art, v)]);
+        continue;
+      }
       if (!pset || !pset.HasProperties) continue;
       const psetName = val(pset.Name) || "Pset";
       for (const pRef of pset.HasProperties) {
@@ -339,6 +355,141 @@ function cmdProps({ id }, post) {
     }
   } catch(_) {}
   return { typeName, felt, psets };
+}
+
+// ---------- 📐 Mengdesettene fra prosjekterende (IfcElementQuantity) ----------
+// Byggeplan: «Storm IFC-Viewer Priskalkulasjon kartlegging … 2026-10-12».
+// Fram til nå leste vi BARE egenskapssett (HasProperties). Mengdesettene
+// (Qto_WallBaseQuantities osv.) har Quantities i stedet, og ble hoppet over
+// uten et ord — Revit og Tekla eksporterer NetVolume, GrossVolume,
+// NetSideArea, Length og ofte NetWeight der. Emil 12.10: priskalkulasjonen
+// skal vise BÅDE det vi regner fra geometrien og det som står i fila, med
+// avvik, så kg- og m³-tallene blir mer treffsikre.
+//
+// ENHETENE er fallgruva. Tallene i fila står i prosjektets enheter
+// (IfcUnitAssignment): lengde ofte i mm, volum likevel i m³, masse i kg eller
+// tonn. Alt gjøres om til SI her (m, m², m³, kg), så hovedtråden aldri må
+// gjette. Mangler areal/volum i enhetslista, avledes de av lengden.
+const SI_PREFIKS = { EXA: 1e18, PETA: 1e15, TERA: 1e12, GIGA: 1e9, MEGA: 1e6, KILO: 1e3,
+  HECTO: 1e2, DECA: 1e1, DECI: 1e-1, CENTI: 1e-2, MILLI: 1e-3, MICRO: 1e-6, NANO: 1e-9,
+  PICO: 1e-12, FEMTO: 1e-15, ATTO: 1e-18 };
+const ENHET_ART = { LENGTHUNIT: "lengde", AREAUNIT: "areal", VOLUMEUNIT: "volum", MASSUNIT: "masse" };
+const QTO_FELT = [["LengthValue", "lengde"], ["AreaValue", "areal"], ["VolumeValue", "volum"],
+  ["WeightValue", "masse"], ["CountValue", "antall"]];
+
+// Hvor mange SI-enheter én enhet i fila er. null = ukjent enhet (da brukes ikke tallet).
+export function siFaktor(navn, prefiks) {
+  const n = String(navn || "").toUpperCase().replace(/^\./, "").replace(/\.$/, "");
+  const pr = String(prefiks || "").toUpperCase().replace(/^\./, "").replace(/\.$/, "");
+  const p = pr ? SI_PREFIKS[pr] : 1;
+  if (p === undefined) return null;
+  if (n === "METRE") return p;
+  if (n === "SQUARE_METRE") return p * p;
+  if (n === "CUBIC_METRE") return p * p * p;
+  if (n === "GRAM") return p / 1000;
+  return null;
+}
+
+function enhetFaktor(id, dybde) {
+  if (!id || dybde > 4) return null;
+  let line;
+  try { line = ifcApi.GetLine(modelID, id); } catch (_) { return null; }
+  if (!line) return null;
+  // Konverteringsbasert (fot, tonn …): verdien × SI-enheten den peker på
+  if (line.ConversionFactor && line.ConversionFactor.value) {
+    try {
+      const mw = ifcApi.GetLine(modelID, line.ConversionFactor.value);
+      const v = Number(val(mw.ValueComponent));
+      const under = mw.UnitComponent && mw.UnitComponent.value ? enhetFaktor(mw.UnitComponent.value, dybde + 1) : 1;
+      return isFinite(v) && under ? v * under : null;
+    } catch (_) { return null; }
+  }
+  return siFaktor(val(line.Name), val(line.Prefix));
+}
+
+function lesEnheter() {
+  const e = { lengde: null, areal: null, volum: null, masse: null };
+  try {
+    const ua = ifcApi.GetLineIDsWithType(modelID, WebIFC.IFCUNITASSIGNMENT);
+    for (let i = 0; i < ua.size(); i++) {
+      const linje = ifcApi.GetLine(modelID, ua.get(i));
+      for (const ref of (linje.Units || [])) {
+        const id = ref && ref.value;
+        if (!id) continue;
+        let u;
+        try { u = ifcApi.GetLine(modelID, id); } catch (_) { continue; }
+        const art = ENHET_ART[String(val(u && u.UnitType) || "").toUpperCase().replace(/\./g, "")];
+        if (!art || e[art] !== null) continue;
+        const f = enhetFaktor(id, 0);
+        if (f) e[art] = f;
+      }
+    }
+  } catch (_) {}
+  if (e.lengde === null) e.lengde = 1;
+  if (e.areal === null) e.areal = e.lengde * e.lengde;
+  if (e.volum === null) e.volum = e.lengde * e.lengde * e.lengde;
+  if (e.masse === null) e.masse = 1;
+  return e;
+}
+
+// Ett mengdesett → [[sett, navn, art, verdi i SI], …]
+function lesMengdesett(def, enheter, ut) {
+  const sett = String(val(def.Name) || "Qto");
+  for (const qRef of (def.Quantities || [])) {
+    let q;
+    try { q = ifcApi.GetLine(modelID, qRef.value); } catch (_) { continue; }
+    if (!q) continue;
+    const navn = String(val(q.Name) || "");
+    for (const [felt, art] of QTO_FELT) {
+      if (q[felt] === undefined || q[felt] === null) continue;
+      const v = Number(val(q[felt]));
+      if (!isFinite(v)) break;
+      let f = art === "antall" ? 1 : enheter[art];
+      // Mengden kan ha sin egen enhet (sjeldent, men lov)
+      if (art !== "antall" && q.Unit && q.Unit.value) { const egen = enhetFaktor(q.Unit.value, 0); if (egen) f = egen; }
+      if (f) ut.push([sett, navn, art, v * f]);
+      break;
+    }
+  }
+}
+
+function cmdQto(_a, post) {
+  const puls = pulsGiver(post);
+  const enheter = lesEnheter();
+  const perElement = new Map();
+  try {
+    // Bare relasjonene som peker på et mengdesett åpnes fullt — de vanlige
+    // egenskapssettene (som er de fleste) hoppes over på id-en.
+    const qtoIder = new Set();
+    const qv = ifcApi.GetLineIDsWithType(modelID, WebIFC.IFCELEMENTQUANTITY);
+    for (let i = 0; i < qv.size(); i++) qtoIder.add(qv.get(i));
+    if (qtoIder.size) {
+      const rels = ifcApi.GetLineIDsWithType(modelID, WebIFC.IFCRELDEFINESBYPROPERTIES);
+      for (let i = 0; i < rels.size(); i++) {
+        if ((i & 511) === 0) puls();
+        let rel;
+        try { rel = ifcApi.GetLine(modelID, rels.get(i)); } catch (_) { continue; }
+        const r = rel && rel.RelatingPropertyDefinition;
+        const refs = Array.isArray(r) ? r : [r];
+        for (const ref of refs) {
+          const did = ref && ref.value;
+          if (!did || !qtoIder.has(did)) continue;
+          let def;
+          try { def = ifcApi.GetLine(modelID, did); } catch (_) { continue; }
+          const liste = [];
+          lesMengdesett(def, enheter, liste);
+          if (!liste.length) continue;
+          for (const o of (rel.RelatedObjects || [])) {
+            const id = o && o.value;
+            if (!id) continue;
+            if (!perElement.has(id)) perElement.set(id, []);
+            perElement.get(id).push(...liste);
+          }
+        }
+      }
+    }
+  } catch (_) {}
+  return { enheter, elementer: [...perElement.entries()] };
 }
 
 // Etasjer med tilhørende elementer – hele utregningen gjøres her
@@ -405,6 +556,7 @@ function cmdClose() {
   if (modelID !== null) { try { ifcApi.CloseModel(modelID); } catch(_) {} }
   modelID = null;
   matKart = null;
+  qtoEnheter = null;
   fil = null;
   return { ok: true };
 }
@@ -417,6 +569,7 @@ export const KOMMANDOER = {
   geometryLight: cmdGeometryLight,
   meta: cmdMeta,
   props: cmdProps,
+  qto: cmdQto,
   storeys: cmdStoreys,
   axisSources: cmdAxisSources,
   buffer: cmdBuffer,

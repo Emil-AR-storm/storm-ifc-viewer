@@ -380,11 +380,15 @@ let mengdeTeller = 0;
 export function materiellMengdeRader() {
   const ut = [];
   mengdeTeller = 0;
+  const takBunker = S.takBunkeIder ? S.takBunkeIder() : new Set();
   for (const p of vaskMateriellListe(S.materiell)) {
     // 🔩 Stålbunkene er stålet I MODELLEN, pakket om. Det står allerede i
     // Mengder (fra IFC-en) — telles det her også, bestilles det to ganger.
     // Mengdelista for bunkene ligger i Materiell-panelet.
     if (p.maltype === "stal" || p.maltype === "fagverk") continue;
+    // 🏔 Takets egne TRP-bunker er platene som står på taket — de telles der
+    // (takMengdeRader i veggelement/tak.js), ikke en gang til her (12.10).
+    if (takBunker.has(p.id)) continue;
     const label = materiellTypeLabel(p);
     const L = p.lengde / 1000, B = p.bredde / 1000, H = p.tykkelse / 1000;
     const key = (p.navn || label) + " · " + label;

@@ -28,6 +28,7 @@ const STILLE_MS = {
   geometryLight: 45000,
   meta: 120000,          // romslig: sikreMeta kalles fra en setTimeout uten catch
   props: 60000,
+  qto: 120000,           // 📐 én runde gjennom alle egenskapsrelasjonene — puls underveis
   storeys: 120000,
   axisSources: 120000,
   buffer: 20000,
@@ -134,6 +135,28 @@ export function stoppWorker() {
 // egenskapspanelet, etasjene og aksene trenger å vente på svar.
 
 export function tømMeta() { S.meta = new Map(); }
+
+// ---------- 📐 Mengdesett fra fila (IfcElementQuantity) ----------
+// Hentes FØRST når noen trenger dem (Priskalkulasjon), i én runde, og
+// hurtigbufres per modell: S.qto = Map id → [[sett, navn, art, verdi SI], …].
+// GLB har ingen IFC-data igjen — da er lista tom, og geometrien brukes.
+export function tømQto() { S.qto = null; S.qtoEnheter = null; qtoJobb = null; }
+let qtoJobb = null;
+export function hentQto() {
+  if (S.qto) return Promise.resolve(S.qto);
+  if (S.glbActive || S.modelID === null || S.modelID === undefined) { S.qto = new Map(); return Promise.resolve(S.qto); }
+  if (!qtoJobb) {
+    const forModell = S.modelID;
+    qtoJobb = kall("qto", {}).then(svar => {
+      if (S.modelID !== forModell) return new Map();
+      S.qto = new Map((svar && svar.elementer) || []);
+      S.qtoEnheter = (svar && svar.enheter) || null;
+      return S.qto;
+    }).catch(() => { S.qto = new Map(); return S.qto; })
+      .finally(() => { qtoJobb = null; });
+  }
+  return qtoJobb;
+}
 
 export function metaFor(id) {
   return (S.meta && S.meta.get(id)) || null;
