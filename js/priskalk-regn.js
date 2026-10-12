@@ -302,15 +302,22 @@ export function excelArk(beregnede, oppsett, info, dato, modellNavn, t) {
   rader.push([tr("Post"), tr("Beskrivelse"), tr("Kilde"), tr("Mengde"), tr("Enhet"), tr("Enhetspris"), tr("Påslag %"), tr("Linjesum")]);
   for (let k = 0; k <= 7; k++) sett(5, k, 3);
   const forste = rader.length + 1;              // radnummer i Excel (1-basert)
+  const felles = Number((oppsett && oppsett.felles) || 0);
+  let sumVerdi = 0;
   (beregnede || []).forEach(({ post, b }, n) => {
     const r = rader.length + 1;
     const d = mengdeDesimaler(post.enhet);
+    const mengde = avrund(b.mengde, d);
+    // Svaret regnes av de SAMME tallene som står i cellene (avrundet mengde),
+    // så det lagrede svaret og Excels eget alltid er like.
+    const verdi = (linjesum(mengde, post.pris === null ? 0 : post.pris, post.paaslag, felles) || 0);
+    sumVerdi += verdi;
     rader.push([
       postNr(post, n), post.tekst || "", kildeTekst(b.kilde, t),
-      avrund(b.mengde, d), post.enhet,
+      mengde, post.enhet,
       post.pris === null ? "" : post.pris,
       Number(post.paaslag) || 0,
-      "=" + ref(KOL.mengde, r) + "*" + ref(KOL.pris, r) + "*(1+" + ref(KOL.paaslag, r) + "/100)*(1+$H$4/100)"
+      { formel: "=" + ref(KOL.mengde, r) + "*" + ref(KOL.pris, r) + "*(1+" + ref(KOL.paaslag, r) + "/100)*(1+$H$4/100)", verdi: avrund(verdi, 6) }
     ]);
     const ri = rader.length - 1;
     sett(ri, KOL.pris, 7); sett(ri, KOL.paaslag, 2); sett(ri, KOL.sum, 4);
@@ -318,22 +325,71 @@ export function excelArk(beregnede, oppsett, info, dato, modellNavn, t) {
   const siste = rader.length;
   const sumRad = rader.length + 1;
   const tom = siste < forste;
-  rader.push(["", tr("Sum eks. mva"), "", "", "", "", "", tom ? 0 : "=SUM(H" + forste + ":H" + siste + ")"]);
+  rader.push(["", tr("Sum eks. mva"), "", "", "", "", "", tom ? 0 : { formel: "=SUM(H" + forste + ":H" + siste + ")", verdi: avrund(sumVerdi, 6) }]);
   sett(sumRad - 1, 1, 1); sett(sumRad - 1, 7, 5);
-  rader.push(["", tr("Mva 25 %"), "", "", "", "", "", "=H" + sumRad + "*0.25"]);
+  rader.push(["", tr("Mva 25 %"), "", "", "", "", "", { formel: "=H" + sumRad + "*0.25", verdi: avrund(sumVerdi * 0.25, 6) }]);
   sett(sumRad, 7, 4);
-  rader.push(["", tr("Sum inkl. mva"), "", "", "", "", "", "=H" + sumRad + "+H" + (sumRad + 1)]);
+  rader.push(["", tr("Sum inkl. mva"), "", "", "", "", "", { formel: "=H" + sumRad + "+H" + (sumRad + 1), verdi: avrund(sumVerdi * 1.25, 6) }]);
   sett(sumRad + 1, 1, 1); sett(sumRad + 1, 7, 5);
-  return { rader, stil: (r, k) => stil.get(r + "," + k) || 0, bredder: [8, 38, 30, 12, 7, 12, 10, 16], forste, siste, sumRad };
+  return { rader, stil: (r, k) => stil.get(r + "," + k) || 0, bredder: [8, 38, 30, 12, 7, 12, 16, 16], forste, siste, sumRad };
 }
 
-// Ark 2: kontrollen — geometri mot fila, per post. Ingen formler, bare tall
-// å se etter: det er her kg- og m³-feilene skal fanges.
-export function kontrollArk(beregnede, t) {
+// ═══════════ HVORDAN TALLET BLE TIL (Emil 12.10) ═══════════
+// «Går det an å få med i Kontroll mengder selve kalkulasjonen som ble brukt
+// for å komme fram til svaret?» — Ja: hver post får en setning om HVOR
+// mengden kommer fra, regnestykket for linjesummen med tallene satt inn, og
+// et eget ark med hvert eneste element og hva det bidro med.
+const nbTall = (v, d) => (Number(v) || 0).toLocaleString("nb-NO", { minimumFractionDigits: d, maximumFractionDigits: d });
+const ENHET_TEKST = {
+  "m³": "volumet", "m²": "arealet (største flate)", "lm": "lengden", "kg": "vekten", "stk": "antallet"
+};
+export function mengdeForklaring(post, b, tr) {
+  const t2 = typeof tr === "function" ? tr : (s, ...a) => s.replace(/\{(\d)\}/g, (_, i) => a[i]);
+  const k = b.kilde || {};
+  if (k.art === "egen") return t2("Mengden er skrevet inn for hånd.");
+  if (k.art === "stk") return t2("Antall objekter i posten ({0} stk).", b.n);
+  if (k.art === "qto") return t2("Tallet «{0}» fra IFC-fila for {1} av {2} elementer; resten fra 3D-geometrien. Summert.", k.navn, k.dekket, k.n);
+  const hva = {
+    "m³": t2("Volumet av hvert element, målt i 3D-geometrien (SW, gulv og materiell: lengde × høyde/bredde × tykkelse). Lagdelte elementer: volumet fordelt etter lagtykkelse."),
+    "m²": t2("Største flate per element (veggside, dekkets overside, plate L × B). Summert."),
+    "lm": t2("Lengden av hvert element (lengste mål). Summert."),
+    "kg": t2("Stål: kg/m fra profiltabellen × lengde. Ellers volum × tetthet (betong 2400, stål 7850 kg/m³). Summert.")
+  }[post.enhet];
+  return (hva || "") + " " + t2("{0} elementer.", b.n);
+}
+export function utregningTekst(post, b, felles, tr) {
+  const t2 = typeof tr === "function" ? tr : (s, ...a) => s.replace(/\{(\d)\}/g, (_, i) => a[i]);
+  const d = mengdeDesimaler(post.enhet);
+  const mengde = avrund(b.mengde, d);
+  if (post.pris === null) return t2("Pris mangler");
+  const sum = linjesum(mengde, post.pris, post.paaslag, felles) || 0;
+  return nbTall(mengde, d) + " " + post.enhet + " × " + nbTall(post.pris, 2) + " kr × (1 + " + nbTall(post.paaslag || 0, 1) +
+    " %) × (1 + " + nbTall(felles || 0, 1) + " %) = " + nbTall(sum, 2) + " kr";
+}
+
+// Hva ett element bidro med, og hvordan
+function elementForklaring(r, enhet, qNavn, qVerdi) {
+  const m = (v) => nbTall(v, 3);
+  if (qVerdi !== null && qVerdi !== undefined) return "IFC-fila: " + qNavn;
+  const lag = r.lagAndel ? " × lag " + nbTall(r.lagAndel * 100, 0) + " %" : "";
+  const param = /^(SW|Ringmur|Gulv|Takplate|Blikk|Materiell)$/.test(r.type || "");
+  if (enhet === "m³") return param ? m(r.L) + " × " + m(r.B) + " × " + m(r.H) + " m" : "3D-volum" + lag;
+  if (enhet === "m²") return param ? m(r.L) + " × " + m(r.B) + " m" : "Største flate (3D)";
+  if (enhet === "lm") return "Lengde";
+  if (enhet === "kg") {
+    if (r.vektKilde === "tabell" || r.vektKilde === "formel") return nbTall(r.nomKgPerM, 2) + " kg/m × " + m(r.len) + " m (" + (r.profil || "profil") + ")";
+    if (r.vektKilde === "geometri") return "3D-volum" + lag + " × tetthet";
+    return "Ingen vekt";
+  }
+  return "1 stk";
+}
+
+// Ark 2: kontrollen — geometri mot fila, per post, og hvordan tallene ble til.
+export function kontrollArk(beregnede, t, felles) {
   const tr = typeof t === "function" ? t : (s) => s;
-  const rader = [[tr("Post"), tr("Beskrivelse"), tr("Enhet"), tr("Elementer"), tr("Geometri"), tr("Felt i fila"), tr("Fila"), tr("Dekket"), tr("Avvik %"), tr("Brukt i kalkylen")]];
+  const rader = [[tr("Post"), tr("Beskrivelse"), tr("Enhet"), tr("Elementer"), tr("Geometri"), tr("Felt i fila"), tr("Fila"), tr("Dekket"), tr("Avvik %"), tr("Brukt i kalkylen"), tr("Slik er mengden regnet"), tr("Utregning av linjesum")]];
   const stil = new Map();
-  for (let k = 0; k < 10; k++) stil.set("0," + k, 3);
+  for (let k = 0; k < 12; k++) stil.set("0," + k, 3);
   (beregnede || []).forEach(({ post, b }, n) => {
     const d = mengdeDesimaler(post.enhet);
     const q = b.qto;
@@ -344,10 +400,42 @@ export function kontrollArk(beregnede, t) {
       q ? avrund(q.sum, d) : "",
       q ? q.dekket + "/" + q.n : "",
       q && q.avvik !== null && isFinite(q.avvik) ? avrund(q.avvik * 100, 1) : "",
-      b.brukerQto ? tr("Fila") : tr("Geometri")
+      b.brukerQto ? tr("Fila") : b.kilde && b.kilde.art === "egen" ? tr("Egen mengde") : b.kilde && b.kilde.art === "stk" ? tr("Antall i modellen") : tr("Geometri"),
+      mengdeForklaring(post, b, t),
+      utregningTekst(post, b, felles, t)
     ]);
   });
-  return { rader, stil: (r, k) => stil.get(r + "," + k) || 0, bredder: [8, 38, 7, 10, 12, 18, 12, 9, 9, 16] };
+  return { rader, stil: (r, k) => stil.get(r + "," + k) || 0, bredder: [8, 38, 7, 10, 12, 18, 12, 9, 9, 16, 70, 60] };
+}
+
+// Ark 3: hvert element i hver post, og hva det bidro med. Summen per post
+// står nederst i posten og er lik mengden i ark 1.
+export function elementArk(beregnede, qto, t) {
+  const tr = typeof t === "function" ? t : (s) => s;
+  const rader = [[tr("Post"), tr("Element"), tr("Type"), tr("Materiale"), "L (m)", "B (m)", "H (m)", tr("Bidrag"), tr("Enhet"), tr("Slik")]];
+  const stil = new Map();
+  for (let k = 0; k < 10; k++) stil.set("0," + k, 3);
+  (beregnede || []).forEach(({ post, rader: elementer, b }, n) => {
+    if (post.modus === "egen") return;
+    const d = mengdeDesimaler(post.enhet);
+    const art = QTO_ART[post.enhet];
+    const qNavn = b.kilde && b.kilde.art === "qto" ? b.kilde.navn : "";
+    for (const r of (elementer || [])) {
+      let qv = null;
+      if (qNavn) {
+        const q0 = qtoTall(qto, r.id, qNavn, art);
+        if (q0 !== null) qv = art === "areal" || art === "lengde" ? q0 : q0 * (r.lagAndel || 1);
+      }
+      const bidrag = qv !== null ? qv : geoVerdi(r, post.enhet);
+      rader.push([postNr(post, n), r.name || r.objType || String(r.id), r.type || "", r.material || "",
+        avrund(r.L, 3), avrund(r.B, 3), avrund(r.H, 3), avrund(bidrag, d), post.enhet, elementForklaring(r, post.enhet, qNavn, qv)]);
+    }
+    const ri = rader.length;
+    rader.push([postNr(post, n), tr("Sum") + " — " + (post.tekst || ""), "", "", "", "", "", avrund(b.mengde, d), post.enhet, ""]);
+    stil.set(ri + ",1", 1); stil.set(ri + ",7", 1);
+    rader.push([]);
+  });
+  return { rader, stil: (r, k) => stil.get(r + "," + k) || 0, bredder: [8, 40, 14, 22, 9, 9, 9, 12, 7, 42] };
 }
 
 export function filnavn(info, modellNavn, dato) {
