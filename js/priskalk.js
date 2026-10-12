@@ -10,12 +10,12 @@
 // innlogget, kan du regne og laste ned Excel, men ingenting huskes — det står
 // tydelig i panelet. Derfor bruker vi spLes/spSkriv direkte og ikke den
 // lokale hurtigbufferen de andre delte listene har.
-import { $, S, apnePanel, esc, ikon, på } from "./state.js";
+import { $, S, apnePanel, ekstraLagSom, esc, ikon, på } from "./state.js";
 import { t } from "./i18n.js";
 import { LETT } from "./lett.js";
 import { varsel } from "./varsel.js";
 import { hentQto, metaFor } from "./ifcrpc.js";
-import { lastNedXlsxFlere, markerRader, materialGruppe, materialVisning, sikreMengder, typeVisning } from "./elements.js";
+import { clearSelection, lastNedXlsxFlere, markerRader, materialGruppe, veksleMateriellIUtvalg, materialVisning, sikreMengder, typeVisning } from "./elements.js";
 import { spLes, spPaalogget, spSkriv } from "./sp-lager.js";
 import {
   ENHETER, OPPSETT_ID, avvikKlasse, beregnPost, excelArk, filnavn, fraLagret,
@@ -162,7 +162,7 @@ function radHtml({ post, rader, b }, i) {
   const ingen = post.modus !== "egen" && b.n === 0;
   const opphav = post.modus === "modell"
     ? (post.type ? typeVisning(post.type) : t("Alle typer")) + (post.mat ? " · " + (post.mat.slice(0, 2) === "g:" ? t(post.mat.slice(2)) : materialVisning(post.mat.slice(2))) : "")
-    : post.modus === "manuell" ? t("{0} markerte objekter", (post.gids || []).length) : t("Egen linje");
+    : post.modus === "manuell" ? t("{0} markerte objekter", (post.gids || []).length + (post.nokler || []).length) : t("Egen linje");
   return '<tr data-id="' + esc(post.id) + '"' + (ingen ? ' class="pk-tom"' : "") + ">" +
     '<td><input class="pk-nr" data-pk="nr" value="' + esc(post.nr) + '" placeholder="' + esc(postNr({}, i)) + '"></td>' +
     '<td><input class="pk-tekst" data-pk="tekst" value="' + esc(post.tekst) + '"><div class="pk-opphav">' + esc(opphav) +
@@ -177,7 +177,7 @@ function radHtml({ post, rader, b }, i) {
     '<td><input class="pk-num pk-smal" data-pk="paaslag" value="' + esc(String(post.paaslag || 0).replace(".", ",")) + '"></td>' +
     '<td class="pk-tall pk-sum">' + esc(kr(sum)) + "</td>" +
     '<td class="pk-knapper">' +
-      (post.modus === "manuell" ? '<button data-pk-gjor="oppdater" title="' + esc(t("Bytt til det som er markert i modellen nå")) + '">' + ikon("fokus") + "</button>" : "") +
+      (post.modus === "manuell" ? '<button data-pk-gjor="oppdater" title="' + esc(t("Endre hvilke objekter posten gjelder")) + '">' + ikon("fokus") + "</button>" : "") +
       (post.modus !== "egen" ? '<button data-pk-gjor="vis" title="' + esc(t("Vis i modellen")) + '">' + ikon("vis") + "</button>" : "") +
       '<button data-pk-gjor="opp" title="' + esc(t("Flytt opp")) + '">↑</button>' +
       '<button data-pk-gjor="slett" title="' + esc(t("Slett posten")) + '">' + ikon("slett") + "</button>" +
@@ -287,7 +287,7 @@ function tegn() {
       (mangler ? '<div><div class="pk-dim">' + esc(t("Mangler pris")) + '</div><div class="pk-total pk-varsel">' + esc(mangler === 1 ? t("1 linje") : t("{0} linjer", mangler)) + "</div></div>" : "") +
       '<span class="pk-fyll"></span>' +
       '<button id="pkFraModell">' + ikon("pluss") + esc(t("Fra modellen")) + "</button>" +
-      '<button id="pkManuell" title="' + esc(t("Lager en post av objektene du har markert (shift-klikk for flere)")) + '">' + ikon("pluss") + esc(t("Markerte objekter")) + "</button>" +
+      '<button id="pkManuell" title="' + esc(t("Trykk på objektene i modellen som skal med, og trykk Ferdig")) + '">' + ikon("pluss") + esc(t("Marker i modellen")) + "</button>" +
       '<button id="pkEgen">' + ikon("pluss") + esc(t("Egen linje")) + "</button>" +
       '<button class="primary" id="pkExcel">' + ikon("lastned") + esc(t("Last ned Excel")) + "</button>" +
     "</div>";
@@ -303,14 +303,114 @@ function leggTil(p) {
   tegn();
 }
 
-function valgteIder() {
-  if (S.multiSel && S.multiSel.size) return [...S.multiSel.keys()].map(Number).filter(n => n > 0);
-  return S.currentPropID != null && S.currentPropID > 0 ? [S.currentPropID] : [];
+// ═══════════════════════ «MARKER I MODELLEN»: VELGEMODUSEN ═══════════════════════
+// Emil 12.10: «du trykker på Marker objekt, da går det inn i markeringsmodus,
+// du trykker på det du vil ha og trykker Ferdig eller Avbryt — på samme måte
+// som i Framdriftsplan». Det gamle (marker først, åpne panelet, trykk
+// «Markerte objekter») var tungvint, og det virket bare for IFC-elementer:
+// SW-elementer, takplater, blikk og materiell ble aldri med.
+//
+// Samme kroker som Framdriftsplan og Støpeplan bruker (S.velgModusAktiv …):
+// hvert trykk i modellen legger til / tar bort, shift + dra tar mange, og
+// egenskapspanelet åpnes ikke (det ville lukket priskalkulasjonen).
+let velger = null;            // { postId: null | id } — null = ny post
+let forrigeKroker = null;
+
+// Det som er valgt akkurat nå: GlobalId for IFC, nøkler for resten
+export function valgtNaa() {
+  const gids = [], nokler = [];
+  const ider = (S.multiSel && S.multiSel.size) ? [...S.multiSel.keys()] : (S.currentPropID != null ? [S.currentPropID] : []);
+  for (const id of ider.map(Number).filter(n => n > 0)) { const m = metaFor(id); if (m && m.globalId) gids.push(m.globalId); }
+  for (const l of ekstraLagSom("valgte")) {
+    if (!l.flervalg) continue;
+    if (l.id === "sw") for (const id of l.valgte()) nokler.push("sw:" + id);
+    else if (l.id === "fpTrpBlikk") for (const k of l.valgte()) if (/^(tak|blikk):/.test(k)) nokler.push(k);
+  }
+  const mat = new Set(S.multiSelMat || []);
+  if (S.materiellValgtId) mat.add(S.materiellValgtId);
+  for (const id of mat) nokler.push("mat:" + id);
+  return { gids: [...new Set(gids)], nokler: [...new Set(nokler)] };
 }
-function gidsForIder(ider) {
-  const ut = [];
-  for (const id of ider) { const m = metaFor(id); if (m && m.globalId) ut.push(m.globalId); }
-  return ut;
+function antallValgt() { const v = valgtNaa(); return v.gids.length + v.nokler.length; }
+
+// Enhet ut fra hva som er valgt: plater/vegger i m², blikk i lm, ellers m³
+export function enhetForUtvalg(v) {
+  const n = v.nokler || [];
+  if (!(v.gids || []).length && n.length) {
+    if (n.every(k => k.startsWith("blikk:"))) return "lm";
+    if (n.every(k => k.startsWith("tak:") || k.startsWith("sw:"))) return "m²";
+  }
+  return "m³";
+}
+
+function velgBar() {
+  let el = $("pkVelgBar");
+  if (!el) { el = document.createElement("div"); el.id = "pkVelgBar"; el.className = "st-velgbar pk-velgbar"; document.body.appendChild(el); }
+  return el;
+}
+function tegnVelgBar() {
+  const el = velgBar();
+  if (!velger) { el.style.display = "none"; el.innerHTML = ""; return; }
+  const n = antallValgt();
+  const p = velger.postId ? poster.find(x => x.id === velger.postId) : null;
+  el.style.display = "flex";
+  el.innerHTML =
+    '<span class="st-velg-tekst"><b>' + esc(p ? t("Bytt objektene i «{0}»", p.tekst || postNr(p, 0)) : t("Marker objektene som skal prises")) + "</b><br>" +
+      esc(t("Trykk på det som skal med — elementer, SW, takplater, blikk og materiell. Trykk igjen for å ta bort. Shift + dra for mange på en gang.")) + "</span>" +
+    '<span class="st-velg-ant">' + esc(t("{0} valgt", n)) + "</span>" +
+    '<button id="pkVelgFerdig" class="primary"' + (n ? "" : " disabled") + ">" + esc(t("Ferdig")) + "</button>" +
+    '<button id="pkVelgAvbryt">' + esc(t("Avbryt")) + "</button>";
+  $("pkVelgFerdig").onclick = () => avsluttVelg(true);
+  $("pkVelgAvbryt").onclick = () => avsluttVelg(false);
+}
+export function startVelg(postId) {
+  if (velger) avsluttVelg(false);
+  // En annen velgemodus (Framdriftsplan, Støpeplan) avsluttes først
+  if (S.avsluttVelgModus && S.velgModusAktiv) S.avsluttVelgModus();
+  clearSelection();
+  velger = { postId: postId || null };
+  // Panelet går ned mens du markerer, så hele modellen er fri å trykke i.
+  // Det kommer tilbake av seg selv når du trykker Ferdig eller Avbryt.
+  const pp = $("prisPanel");
+  if (pp) pp.classList.remove("open");
+  S.velgModusAktiv = true;
+  S.materiellIVelgModus = (id) => { veksleMateriellIUtvalg(id); tegnVelgBar(); };
+  S.velgModusBlokkert = null;
+  forrigeKroker = { o: S.velgModusOppdater, a: S.avsluttVelgModus };
+  S.velgModusOppdater = () => tegnVelgBar();
+  S.avsluttVelgModus = () => avsluttVelg(false);
+  // Eksisterende post: det den har fra før står markert, så du ser hva du endrer
+  const p = postId ? poster.find(x => x.id === postId) : null;
+  if (p) markerRader(raderForPost(p, (S.qtyCache || { rows: [] }).rows, materialGruppe, guidTilId));
+  tegnVelgBar();
+}
+export function avsluttVelg(medTil) {
+  if (!velger) return 0;
+  const v = valgtNaa();
+  const n = v.gids.length + v.nokler.length;
+  const postId = velger.postId;
+  velger = null;
+  S.velgModusAktiv = false;
+  S.materiellIVelgModus = null;
+  S.velgModusBlokkert = null;
+  if (forrigeKroker) { S.velgModusOppdater = forrigeKroker.o; S.avsluttVelgModus = forrigeKroker.a; forrigeKroker = null; }
+  clearSelection();
+  tegnVelgBar();
+  apnePanel("prisPanel");
+  if (medTil && n) {
+    const p = postId ? poster.find(x => x.id === postId) : null;
+    if (p) { p.gids = v.gids; p.nokler = v.nokler; Object.assign(p, vaskPost(p)); merk(p.id); tegn(); }
+    else leggTil({ modus: "manuell", gids: v.gids, nokler: v.nokler, enhet: enhetForUtvalg(v), tekst: t("Markerte objekter ({0} stk)", n) });
+  } else tegn();
+  return medTil ? n : 0;
+}
+if (typeof window !== "undefined") {
+  window.addEventListener("keydown", (ev) => {
+    if (velger && ev.key === "Escape") { ev.stopPropagation(); avsluttVelg(false); }
+  }, true);
+  // Telleren følger utvalget
+  window.addEventListener("pointerup", () => setTimeout(() => { if (velger) tegnVelgBar(); }, 0));
+  window.addEventListener("keyup", () => setTimeout(() => { if (velger) tegnVelgBar(); }, 0));
 }
 
 function kobl(body) {
@@ -319,12 +419,7 @@ function kobl(body) {
 
   $("pkFraModell").addEventListener("click", () => { nyForm = nyForm === "modell" ? "" : "modell"; tegn(); });
   $("pkEgen").addEventListener("click", () => leggTil({ modus: "egen", tekst: t("Egen linje"), enhet: "stk", mengdeEgen: 1 }));
-  $("pkManuell").addEventListener("click", () => {
-    const ider = valgteIder();
-    const gids = gidsForIder(ider);
-    if (!gids.length) { varsel(t("Marker objektene i modellen først (shift-klikk for flere), og trykk så her.")); return; }
-    leggTil({ modus: "manuell", gids, enhet: "m³", tekst: t("Markerte objekter ({0} stk)", gids.length) });
-  });
+  $("pkManuell").addEventListener("click", () => startVelg(null));
   $("pkExcel").addEventListener("click", lastNedExcel);
 
   if (nyForm === "modell") {
@@ -381,14 +476,9 @@ function kobl(body) {
       } else if (gjor === "vis") {
         const rader = raderForPost(p, (S.qtyCache || { rows: [] }).rows, materialGruppe, guidTilId);
         const n = markerRader(rader);
-        if (!n) varsel(rader.length
-          ? t("Disse objektene kan ikke markeres i 3D ennå (takplater og generert blikk).")
-          : t("Ingen av objektene finnes i denne modellen."));
+        if (!n) varsel(t("Ingen av objektene finnes i denne modellen."));
       } else if (gjor === "oppdater") {
-        const gids = gidsForIder(valgteIder());
-        if (!gids.length) { varsel(t("Marker objektene i modellen først (shift-klikk for flere), og trykk så her.")); return; }
-        p.gids = gids;
-        merk(id); tegn();
+        startVelg(id);
       }
     }));
   });

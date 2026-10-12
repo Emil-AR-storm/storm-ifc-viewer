@@ -2383,6 +2383,13 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Skjul været i 3D": "Slėpti orus 3D",
   "Skru av været i 3D (himmel, regn og snø). Slås på igjen i Vis vær.": "Išjungti orus 3D (dangus, lietus ir sniegas). Vėl įjungiama Rodyti orus.",
   // 💰 Priskalkulasjon og mengdesett fra fila (12.10.2026)
+  "Endre hvilke objekter posten gjelder": "Pakeisti, kuriems objektams taikoma eilutė",
+  "Trykk på objektene i modellen som skal med, og trykk Ferdig": "Spustelėkite modelio objektus, kuriuos reikia įtraukti, ir paspauskite Baigta",
+  "Marker i modellen": "Pažymėti modelyje",
+  "Bytt objektene i «{0}»": "Pakeisti objektus eilutėje „{0}“",
+  "Marker objektene som skal prises": "Pažymėkite objektus, kuriuos reikia įkainoti",
+  "Trykk på det som skal med — elementer, SW, takplater, blikk og materiell. Trykk igjen for å ta bort. Shift + dra for mange på en gang.": "Spustelėkite, ką įtraukti — elementus, SW, stogo lakštus, skardą ir medžiagas. Spustelėkite dar kartą, kad pašalintumėte. Shift + vilkite, kad pažymėtumėte daug iš karto.",
+  "Blikk (på bygget)": "Skarda (ant pastato)",
   "Disse objektene kan ikke markeres i 3D ennå (takplater og generert blikk).": "Šių objektų dar negalima pažymėti 3D (stogo lakštai ir sugeneruota skarda).",
   "Takplater (TRP)": "Stogo lakštai (TRP)",
   "Priskalkulasjon": "Kainų skaičiavimas",

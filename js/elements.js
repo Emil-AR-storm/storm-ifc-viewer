@@ -1320,18 +1320,21 @@ export function markerRader(rader) {
   S.multiSel.clear();
   if (!S.multiSelMat) S.multiSelMat = new Set();
   S.multiSelMat.clear();
-  const sw = [];
+  const sw = [], tb = [];
   for (const r of (rader || [])) {
     if (!r) continue;
     if (typeof r.id === "number" && r.id > 0) S.multiSel.set(r.id, elementQuantities(r.id));
     else if (r.swId) sw.push(r.swId);
     else if (r.matId) S.multiSelMat.add(r.matId);
+    else if (/^(tak|blikk):/.test(String(r.id))) tb.push(String(r.id));   // takplater og blikk på bygget
   }
   selectElementsSet(new Set(S.multiSel.keys()));
   const swLag = flervalgLag().find(l => l.id === "sw");
   if (swLag) swLag.velg(sw);
+  const tbLag = flervalgLag().find(l => l.id === "fpTrpBlikk");
+  if (tbLag) tbLag.velg(tb);
   oppdaterMateriellValgEffekt();
-  return S.multiSel.size + (swLag ? sw.length : 0) + S.multiSelMat.size;
+  return S.multiSel.size + (swLag ? sw.length : 0) + (tbLag ? tb.length : 0) + S.multiSelMat.size;
 }
 
 // Samler mengder både gruppert (til panelet) og per element (til regneark).
@@ -1490,6 +1493,7 @@ const TYPE_NAVN = {
   ReinforcingMesh: "Armeringsnett", Fastener: "Festemidler",
   MechanicalFastener: "Festemidler", DiscreteAccessory: "Tilbehør",
   Materiell: "Materiell (leveranser)", Takplate: "Takplater (TRP)",
+  SW: "SW-elementer", Ringmur: "Ringmur", Blikk: "Blikk (på bygget)",
   BuildingElementProxy: "Øvrige bygningsdeler", ElementAssembly: "Sammenstillinger",
   Pipe: "Rør", PipeSegment: "Rør", DuctSegment: "Kanaler",
   Furniture: "Inventar", Space: "Rom", Site: "Tomt"
