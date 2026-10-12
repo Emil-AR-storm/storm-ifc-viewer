@@ -69,6 +69,8 @@ export function vaskPost(p) {
     type: String(x.type || ""),
     mat: String(x.mat || ""),
     gids: Array.isArray(x.gids) ? x.gids.map(String).filter(Boolean) : [],
+    // 💰 Det som ikke er IFC: «sw:<id>», «tak:<id>», «blikk:<id>», «mat:<id>»
+    nokler: Array.isArray(x.nokler) ? x.nokler.map(String).filter(k => /^(sw|tak|blikk|mat):./.test(k)) : [],
     enhet,
     kilde: enhet === "stk" ? "geometri" : kilde,
     mengdeEgen: tall(x.mengdeEgen, 0),
@@ -132,7 +134,11 @@ export function raderForPost(post, rader, matGruppe, guidTilId) {
       const id = guidTilId ? guidTilId(g) : null;
       if (id !== null && id !== undefined) ider.add(id);
     }
-    return alle.filter(r => ider.has(r.id));
+    // SW, takplater og blikk har nøkkelen som id i Mengder; materiell har
+    // én rad per enhet med objektets id i matId (hele stabelen kommer med).
+    const nokler = new Set((p.nokler || []).filter(k => !k.startsWith("mat:")));
+    const mat = new Set((p.nokler || []).filter(k => k.startsWith("mat:")).map(k => k.slice(4)));
+    return alle.filter(r => ider.has(r.id) || nokler.has(String(r.id)) || (r.matId && mat.has(String(r.matId))));
   }
   return [];
 }

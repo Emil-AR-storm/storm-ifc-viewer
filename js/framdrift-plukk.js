@@ -130,6 +130,37 @@ registrerEkstraGruppe(gruppe, {
   visEgenskaper(k) { visInfo(k); }
 });
 
+// ---------- 📊 Det genererte blikket i Mengder (Emil 12.10) ----------
+// «Legg til at blikk og takplater vises»: blikket på bygget sto ikke i
+// Mengder (bare bunkene på bakken), og kunne dermed verken prises per stykke
+// eller vises fra 💰 Priskalkulasjon. Én rad per stykke, løpemeter = lengden,
+// id = samme nøkkel som plukkingen bruker («blikk:<id>»).
+// Bare det som er TEGNET telles — er blikket skjult, telles bunkene i stedet.
+export function blikkMengdeRader(barn) {
+  const ut = [];
+  const liste = barn || swGroup.children;      // `barn`: bare for testene
+  if (!liste.length) return ut;
+  const sett = new Set();
+  for (const o of liste) {
+    const k = nokkelForMesh(o);
+    if (!k || !k.startsWith("blikk:") || sett.has(k)) continue;
+    sett.add(k);
+    const r = blikkInfoRad(o.userData.blikkInfo);
+    if (!r) continue;
+    const navn = blikkNavn(r.t);
+    const L = (Number(r.l) || 0) / 1000;
+    ut.push({
+      id: k, key: navn + (r.fo ? " · " + t(r.fo) : "") + " · " + t("Blikk"), name: navn, objType: navn,
+      type: "Blikk", material: navn,
+      L, B: 0, H: 0, len: L, vol: 0, area: 0, flate: 0, forskaling: 0,
+      kg: 0, kgGeo: 0, kjentVekt: false, umuligVolum: false,
+      vektKilde: "", profil: "", nomKgPerM: 0, avvik: null
+    });
+  }
+  return ut;
+}
+S.blikkMengdeRader = () => blikkMengdeRader();
+
 // ---------- Hva plata / stykket ER ----------
 function blikkNavn(type) { return BLIKK_TYPE_NAVN[type] ? t(BLIKK_TYPE_NAVN[type]) : (type || t("Blikk")); }
 function forsteMesh(k) {

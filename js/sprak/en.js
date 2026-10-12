@@ -2383,6 +2383,13 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Skjul været i 3D": "Hide the weather in 3D",
   "Skru av været i 3D (himmel, regn og snø). Slås på igjen i Vis vær.": "Turn off the weather in 3D (sky, rain and snow). Turn it back on in Show weather.",
   // 💰 Priskalkulasjon og mengdesett fra fila (12.10.2026)
+  "Endre hvilke objekter posten gjelder": "Change which objects the item covers",
+  "Trykk på objektene i modellen som skal med, og trykk Ferdig": "Click the objects in the model to include, then press Done",
+  "Marker i modellen": "Select in the model",
+  "Bytt objektene i «{0}»": "Replace the objects in “{0}”",
+  "Marker objektene som skal prises": "Select the objects to be priced",
+  "Trykk på det som skal med — elementer, SW, takplater, blikk og materiell. Trykk igjen for å ta bort. Shift + dra for mange på en gang.": "Click what to include — elements, SW, roof sheets, flashing and materials. Click again to remove. Shift + drag for many at once.",
+  "Blikk (på bygget)": "Flashing (on the building)",
   "Disse objektene kan ikke markeres i 3D ennå (takplater og generert blikk).": "These objects cannot be highlighted in 3D yet (roof sheets and generated flashing).",
   "Takplater (TRP)": "Roof sheets (TRP)",
   "Priskalkulasjon": "Price calculation",

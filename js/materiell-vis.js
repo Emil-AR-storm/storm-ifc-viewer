@@ -381,6 +381,10 @@ export function materiellMengdeRader() {
   const ut = [];
   mengdeTeller = 0;
   const takBunker = S.takBunkeIder ? S.takBunkeIder() : new Set();
+  // 🟫 Blikkbunkene likeså — men BARE når blikket på bygget faktisk telles
+  // (det er tegnet). Ellers ville blikket forsvinne helt fra Mengder.
+  if (S.blikkBunkeIder && S.blikkMengdeRader && S.blikkMengdeRader().length)
+    for (const id of S.blikkBunkeIder()) takBunker.add(id);
   for (const p of vaskMateriellListe(S.materiell)) {
     // 🔩 Stålbunkene er stålet I MODELLEN, pakket om. Det står allerede i
     // Mengder (fra IFC-en) — telles det her også, bestilles det to ganger.

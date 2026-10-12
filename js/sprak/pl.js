@@ -2383,6 +2383,13 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Skjul været i 3D": "Ukryj pogodę w 3D",
   "Skru av været i 3D (himmel, regn og snø). Slås på igjen i Vis vær.": "Wyłącz pogodę w 3D (niebo, deszcz i śnieg). Włącz ponownie w Pokaż pogodę.",
   // 💰 Priskalkulasjon og mengdesett fra fila (12.10.2026)
+  "Endre hvilke objekter posten gjelder": "Zmień obiekty, których dotyczy pozycja",
+  "Trykk på objektene i modellen som skal med, og trykk Ferdig": "Kliknij obiekty w modelu, które mają być uwzględnione, i naciśnij Gotowe",
+  "Marker i modellen": "Zaznacz w modelu",
+  "Bytt objektene i «{0}»": "Zmień obiekty w „{0}”",
+  "Marker objektene som skal prises": "Zaznacz obiekty do wyceny",
+  "Trykk på det som skal med — elementer, SW, takplater, blikk og materiell. Trykk igjen for å ta bort. Shift + dra for mange på en gang.": "Kliknij to, co ma być uwzględnione — elementy, SW, blachy dachowe, obróbki i materiały. Kliknij ponownie, aby usunąć. Shift + przeciągnij, aby zaznaczyć wiele naraz.",
+  "Blikk (på bygget)": "Obróbki blacharskie (na budynku)",
   "Disse objektene kan ikke markeres i 3D ennå (takplater og generert blikk).": "Tych obiektów nie można jeszcze zaznaczyć w 3D (blachy dachowe i wygenerowane obróbki blacharskie).",
   "Takplater (TRP)": "Blachy dachowe (TRP)",
   "Priskalkulasjon": "Kalkulacja cen",
