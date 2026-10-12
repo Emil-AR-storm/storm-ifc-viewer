@@ -2383,6 +2383,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Skjul været i 3D": "Hide the weather in 3D",
   "Skru av været i 3D (himmel, regn og snø). Slås på igjen i Vis vær.": "Turn off the weather in 3D (sky, rain and snow). Turn it back on in Show weather.",
   // 💰 Priskalkulasjon og mengdesett fra fila (12.10.2026)
+  "Disse objektene kan ikke markeres i 3D ennå (takplater og generert blikk).": "These objects cannot be highlighted in 3D yet (roof sheets and generated flashing).",
   "Takplater (TRP)": "Roof sheets (TRP)",
   "Priskalkulasjon": "Price calculation",
   "Priskalkulasjon: mengder fra modellen × dine priser — Excel med formler": "Price calculation: quantities from the model × your prices — Excel with formulas",

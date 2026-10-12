@@ -2383,6 +2383,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Skjul været i 3D": "Slėpti orus 3D",
   "Skru av været i 3D (himmel, regn og snø). Slås på igjen i Vis vær.": "Išjungti orus 3D (dangus, lietus ir sniegas). Vėl įjungiama Rodyti orus.",
   // 💰 Priskalkulasjon og mengdesett fra fila (12.10.2026)
+  "Disse objektene kan ikke markeres i 3D ennå (takplater og generert blikk).": "Šių objektų dar negalima pažymėti 3D (stogo lakštai ir sugeneruota skarda).",
   "Takplater (TRP)": "Stogo lakštai (TRP)",
   "Priskalkulasjon": "Kainų skaičiavimas",
   "Priskalkulasjon: mengder fra modellen × dine priser — Excel med formler": "Kainų skaičiavimas: kiekiai iš modelio × jūsų kainos — Excel su formulėmis",

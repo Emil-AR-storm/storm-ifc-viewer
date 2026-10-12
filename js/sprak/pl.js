@@ -2383,6 +2383,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Skjul været i 3D": "Ukryj pogodę w 3D",
   "Skru av været i 3D (himmel, regn og snø). Slås på igjen i Vis vær.": "Wyłącz pogodę w 3D (niebo, deszcz i śnieg). Włącz ponownie w Pokaż pogodę.",
   // 💰 Priskalkulasjon og mengdesett fra fila (12.10.2026)
+  "Disse objektene kan ikke markeres i 3D ennå (takplater og generert blikk).": "Tych obiektów nie można jeszcze zaznaczyć w 3D (blachy dachowe i wygenerowane obróbki blacharskie).",
   "Takplater (TRP)": "Blachy dachowe (TRP)",
   "Priskalkulasjon": "Kalkulacja cen",
   "Priskalkulasjon: mengder fra modellen × dine priser — Excel med formler": "Kalkulacja cen: ilości z modelu × twoje ceny — Excel z formułami",

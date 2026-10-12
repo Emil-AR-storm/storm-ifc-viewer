@@ -1310,11 +1310,28 @@ export async function sikreMengder() {
 
 // 💰 «Vis i modellen»: marker elementene til en post uten å åpne
 // egenskapspanelet (det ville lukket priskalkulasjonen — ett panel om gangen).
+// Radene kan være IFC-elementer (tall-id), SW-elementer (swId) og materiell
+// (matId). Emil 12.10: «40 sandwichelement … finnes ikke noe sted» — de fantes,
+// men knappen kunne bare markere IFC-elementer, og sa da «finnes ikke».
 export function markerElementer(ider) {
+  return markerRader((ider || []).map(id => ({ id })));
+}
+export function markerRader(rader) {
   S.multiSel.clear();
-  for (const id of (ider || [])) if (typeof id === "number" && id > 0) S.multiSel.set(id, elementQuantities(id));
+  if (!S.multiSelMat) S.multiSelMat = new Set();
+  S.multiSelMat.clear();
+  const sw = [];
+  for (const r of (rader || [])) {
+    if (!r) continue;
+    if (typeof r.id === "number" && r.id > 0) S.multiSel.set(r.id, elementQuantities(r.id));
+    else if (r.swId) sw.push(r.swId);
+    else if (r.matId) S.multiSelMat.add(r.matId);
+  }
   selectElementsSet(new Set(S.multiSel.keys()));
-  return S.multiSel.size;
+  const swLag = flervalgLag().find(l => l.id === "sw");
+  if (swLag) swLag.velg(sw);
+  oppdaterMateriellValgEffekt();
+  return S.multiSel.size + (swLag ? sw.length : 0) + S.multiSelMat.size;
 }
 
 // Samler mengder både gruppert (til panelet) og per element (til regneark).
