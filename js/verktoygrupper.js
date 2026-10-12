@@ -170,6 +170,48 @@ export function byggGruppeknapper(medInnhold) {
     b.addEventListener("click", () => settGruppe(b.dataset.velg)));
 }
 
+// 🐞 Emil 12.10: «jeg finner ikke framdriftsplan noe sted i storm-byggeplass
+// eller planlegging seksjon». På byggeplassen er Framdriftsplan (og Støpeplan)
+// skjult til planen er lastet fra Worker-en — da var Planlegging tom ved
+// oppstart, gruppeknappen ble skjult, og den kom aldri tilbake. Nå måles
+// gruppene på nytt hver gang en verktøyknapp viser eller skjuler seg selv.
+// Gruppefilteret tas midlertidig av under målingen (samme tråd, ingen
+// opptegning imellom), så det er knappens EGEN synlighet som telles.
+export function oppdaterGruppeknapper() {
+  const boks = $("verktoygrupper"), linje = $("toolbar");
+  if (!boks || !linje) return [];
+  const gammel = linje.dataset.gruppe || "", gammelBody = document.body.dataset.vgruppe || "";
+  linje.dataset.gruppe = ""; document.body.dataset.vgruppe = "";
+  let medInnhold;
+  try { medInnhold = grupperMedInnhold(knappSynlig); }
+  finally { linje.dataset.gruppe = gammel; document.body.dataset.vgruppe = gammelBody; }
+  boks.querySelectorAll("button[data-velg]").forEach(b => {
+    b.style.display = medInnhold.includes(b.dataset.velg) ? "" : "none";
+  });
+  // Var den valgte gruppa tom (f.eks. ingen gruppe med innhold ved oppstart),
+  // velges en som har innhold nå.
+  if (!gammel || !medInnhold.includes(gammel)) {
+    const ny = velgStartgruppe(S.settings && S.settings.verktoygruppe, medInnhold);
+    if (ny && ny !== gammel) settGruppe(ny);
+  }
+  return medInnhold;
+}
+
+function følgKnapper() {
+  const MO = typeof window !== "undefined" && window.MutationObserver;
+  if (!MO) return;
+  let venter = false;
+  const obs = new MO(() => {
+    if (venter) return;
+    venter = true;
+    Promise.resolve().then(() => { venter = false; oppdaterGruppeknapper(); });
+  });
+  for (const id of alleKjente()) {
+    const b = $(id);
+    if (b && !ALLTID.includes(id)) obs.observe(b, { attributes: true, attributeFilter: ["style", "hidden", "class"] });
+  }
+}
+
 export function start() {
   if (!$("toolbar")) return;
   merkKnapper();
@@ -179,6 +221,7 @@ export function start() {
   const medInnhold = grupperMedInnhold(knappSynlig);
   byggGruppeknapper(medInnhold);
   settGruppe(velgStartgruppe(S.settings && S.settings.verktoygruppe, medInnhold));
+  følgKnapper();
 }
 
 start();
