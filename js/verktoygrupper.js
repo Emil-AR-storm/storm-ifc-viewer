@@ -35,8 +35,17 @@ export const GRUPPER = [
     hjelp: "Måleverktøy: avstand, kjedemål, vinkel og fall, kote og aksesystem",
     knapper: ["btnMeasure", "btnKjede", "btnVinkel", "btnKote", "btnAxes"] },
   { id: "info",     navn: "Bygg Info",        ikonNavn: "sok",
-    hjelp: "Informasjon om bygget: markeringer, mengder, søk og sammenligning",
-    knapper: ["btnMarker", "btnQty", "btnPris", "btnSearch", "btnGrupper", "btnTerreng", "btnRigg", "btnStopeplan", "btnFramdrift", "btnVaer", "btnLaster", "btnCompare"] },
+    hjelp: "Informasjon om bygget: markeringer, mengder, priskalkulasjon, søk, laster og sammenligning",
+    knapper: ["btnMarker", "btnQty", "btnPris", "btnSearch", "btnGrupper", "btnLaster", "btnCompare"] },
+  // 🗓 Planlegging (Emil 12.10): Bygg Info hadde 12 knapper og ble rotete.
+  // Skillet: Bygg Info er det du LESER av modellen (markeringer, mengder,
+  // priser, søk, laster); Planlegging er det du LAGER rundt den — tomta,
+  // riggen, støpene, framdriften og været. Snø & Last blir i Bygg Info: det er
+  // tall om bygget, ikke om plassen. Byggeplass-siden har bare Framdriftsplan
+  // av de fem — samme gruppe der også, så oppbygningen er lik ute og inne.
+  { id: "plan",     navn: "Planlegging",      ikonNavn: "framdrift",
+    hjelp: "Planlegging av byggeplassen: terreng, rigg, støpeplan, framdriftsplan og vær",
+    knapper: ["btnTerreng", "btnRigg", "btnStopeplan", "btnFramdrift", "btnVaer"] },
   { id: "utseende", navn: "Visning",          ikonNavn: "utseende",
     hjelp: "Snitt, etasjer, gjennomsiktig og farger",
     knapper: ["btnClip", "btnStorey", "btnGhost", "btnColors"] },
