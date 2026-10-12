@@ -699,6 +699,46 @@ export function takForByggeplass() {
   return { farge: (data && data.o && data.o.farge) || "#8fa3b8", plater };
 }
 
+// ───────────────── 📊 TRP-PLATENE I MENGDER ─────────────────
+//
+// Emil 12.10: «vi må legge inn at TRP-takplate kan bli funnet i mengder, de
+// finnes som en gruppe i utseende-verktøyet». Taket var med i Utseende, men
+// aldri i 📊 Mengder — og dermed heller ikke i 💰 Priskalkulasjon.
+//
+// ÉN RAD PER PLATE, så «Antall» teller plater (stk), og arealet er platens
+// L × B (m²). Samme lista som Excel-bestillingen (trpListe), så Mengder,
+// bestillingen og bunkene kan ikke komme i utakt.
+//
+// DOBBELTTELLING: takets egne bunker (materiellIder) er DE SAMME platene,
+// pakket om. De holdes utenfor Mengder (materiell-vis.js leser
+// S.takBunkeIder) — samme regel som stålbunkene. En TRP-bunke du har lagt
+// inn selv i Materiell telles fortsatt, den er ikke taket.
+export const TAK_MATERIALE = "TRP takplate";
+export function takMengdeRader() {
+  if (!takPa()) return [];
+  let data = null;
+  try { data = takData(); } catch (_) { data = null; }
+  if (!data || !data.liste || !(data.liste.plater || []).length) return [];
+  const mat = t(TAK_MATERIALE);
+  const ut = [];
+  for (const pl of data.liste.plater) {
+    const L = (Number(pl.lengdeMm) || 0) / 1000, B = (Number(pl.breddeMm) || 0) / 1000;
+    for (let i = 0; i < (pl.antall || 0); i++) {
+      ut.push({
+        id: "tak:" + pl.kode + ":" + (i + 1),
+        key: pl.navn + " · " + mat, name: pl.kode + " · " + pl.navn, objType: pl.navn,
+        type: "Takplate", material: mat,
+        L, B, H: 0, len: L, vol: 0, area: L * B, flate: L * B, forskaling: 0,
+        kg: 0, kgGeo: 0, kjentVekt: false, umuligVolum: false,
+        vektKilde: "", profil: "", nomKgPerM: 0, avvik: null
+      });
+    }
+  }
+  return ut;
+}
+S.takMengdeRader = takMengdeRader;
+S.takBunkeIder = () => new Set((lagret && lagret.tak && lagret.tak.materiellIder) || []);
+
 // ───────────────── 📦 TRP-BUNKENE RUNDT BYGGET ─────────────────
 //
 // Emil 21.09: «vi må legge til at TRP-plate og blikk kommer opp som
@@ -1034,6 +1074,7 @@ export function koblTakPanel(paaNytt) {
       takTilstand().pa = true;
       skrivLagret();
       tegnAlt();
+      S.qtyCache = null;          // 📊 TRP-platene står i Mengder nå
     } catch (err) {
       console.warn("Taket kunne ikke genereres:", err);
       varsel(t("Klarte ikke å hente stålet: ") + (err && err.message || err));
@@ -1053,6 +1094,7 @@ export function koblTakPanel(paaNytt) {
     lagret.tak = { pa: false, just: {}, ekstra: [], nesteNr: 1, snap: null, materiellIder: [] };
     skrivLagret();
     tegnAlt();
+    S.qtyCache = null;            // 📊 …og forsvinner fra Mengder
     if (paaNytt) paaNytt();
   };
   if ($("takJusterBtn")) $("takJusterBtn").onclick = () => startTakJuster(paaNytt);
