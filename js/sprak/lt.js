@@ -2474,4 +2474,9 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Trykk på et kort for å gå rett dit.": "Paspauskite kortelę, kad iškart ją atvertumėte.",
   "Vis vær: været på byggeplassen en bestemt dag": "Rodyti orus: oras statybvietėje pasirinktą dieną",
   "Vis vær (i Planlegging) viser været på byggeplassens adresse fra Innstillinger → Prosjektinfo. Velg dag i kalenderen — den står på i dag når den åpnes — og dra glideren for å se hver time: temperatur, vind og vindkast, regn og snø. Øverst svarer den på tre spørsmål: kan tårnkrana gå, kan vi støpe, og blir det frost? Grensene for varsel stiller du selv. Bakover i tid vises målt vær, framover MET-varselet (ca. 9–10 dager). Kryss av for å vise været i Framdriftsplan og i 3D — det følger også med ut til byggeplassen.": "Rodyti orus (skiltyje Planavimas) rodo orą statybvietės adresu iš Nustatymai → Projekto informacija. Kalendoriuje pasirinkite dieną — atidarius rodoma šiandiena — ir tempkite slankiklį, kad matytumėte kiekvieną valandą: temperatūrą, vėją ir gūsius, lietų ir sniegą. Viršuje atsakoma į tris klausimus: ar gali dirbti bokštinis kranas, ar galime betonuoti ir ar bus šalna? Įspėjimų ribas nustatote patys. Praeities dienoms rodomas išmatuotas oras, ateities – MET prognozė (apie 9–10 dienų). Pažymėkite langelį, kad oras būtų rodomas darbų grafike ir 3D – jis perduodamas ir į statybvietės puslapį.",
+  "Feilinfo": "Klaidos informacija",
+  "Vis feilinfo": "Rodyti klaidos informaciją",
+  "Ta et skjermbilde av denne boksen og send det til den som ga deg koden.": "Padarykite šio lango ekrano kopiją ir nusiųskite ją asmeniui, kuris jums davė kodą.",
+  "Forrige forsøk stoppet mens modellen ble lastet. Telefonen kan ha gått tom for minne.": "Ankstesnis bandymas sustojo įkeliant modelį. Telefonui galėjo pritrūkti atminties.",
+  "3D-grafikken ble stoppet av telefonen.": "Telefonas sustabdė 3D grafiką.",
 };

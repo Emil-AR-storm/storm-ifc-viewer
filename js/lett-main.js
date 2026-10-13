@@ -1,6 +1,8 @@
 // Oppstart for LETTMODUS (bygg.html): som main.js, men uten bibliotek,
 // sammenligning, «Fortsett med»-knapp og personlig oppsett fra SharePoint.
 // Innlogging startes aldri – se LETT-flagget i lett.js og gaten i sharepoint.js.
+// 🩺 Feilinfo FØRST: feilfangeren må stå før resten av modulene kjører.
+import { diagFerdig, diagNullstill, diagSteg, feilTekst, sjekkForrigeForsok, visDiagnose } from "./diagnose.js";
 import * as THREE from "three";
 import { $, S, esc, fmtLen, loadingEl, loadingText, tilM } from "./state.js";
 import { lastSprak, oversettDom, setLang, t } from "./i18n.js";
@@ -182,20 +184,31 @@ canvas.addEventListener("pointerup", (e) => {
 async function åpneFraUrl(url) {
   loadingText.textContent = t("Laster modell …");
   loadingEl.classList.add("open");
+  // 🩺 Hvert steg skrives ned FØR det startes (js/diagnose.js). Dør fanen av
+  // minnemangel midt i, viser neste oppstart hvor den stoppet.
+  diagSteg("henter", { url });
   try {
     await ifcReady;
     // Tidsavbruddet gjelder SVARET, ikke nedlastingen — se hentMedFrist i
     // nett.js. En stor modell over dårlig dekning skal få bruke den tida den
     // trenger; det vi vil fange er en forbindelse som aldri svarer.
     const r = await hentMedFrist(url, {}, MODELL_FRIST_MS);
+    diagSteg("laster ned", { status: r.status, forventet: Number(r.headers.get("content-length")) || 0 });
     if (!r.ok) throw new Error("HTTP " + r.status);
     S.fileName = decodeURIComponent((url.split("/").pop() || "modell.glb").split("?")[0]);
-    await loadGlb(new Uint8Array(await r.arrayBuffer()));
+    const buf = new Uint8Array(await r.arrayBuffer());
+    diagSteg("leser modellen", { bytes: buf.byteLength });
+    await loadGlb(buf);
+    diagSteg("tegner");
     afterLoad();
+    // Ferdig først når 3D-en faktisk har tegnet et par bilder
+    requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(diagFerdig, 1500)));
   } catch (err) {
     varsel(err && err.tidsavbrudd
       ? t("Modellen svarte ikke. Sjekk dekningen og prøv igjen.")
       : t("Klarte ikke å laste modellen: ") + err.message);
+    visDiagnose(feilTekst(err));
+    diagFerdig();   // feilen er vist — ikke vis den igjen som «kræsj» ved neste oppstart
   } finally {
     loadingEl.classList.remove("open");
   }
@@ -219,6 +232,9 @@ window.åpneFraUrl = åpneFraUrl;   // trinn 3 kaller denne
     if (!/^\d{5}$/.test(prosjekt)) { feilEl.textContent = t("Prosjektnummeret må være 5 siffer."); return; }
     if (kode.length !== 6) { feilEl.textContent = ""; return; }
     feilEl.textContent = "";
+    fjernFeilKnapp();
+    diagNullstill();
+    diagSteg("kode", { prosjekt, kode });
     knapp.disabled = true;
     try {
       // Tidsavbrudd på selve kodesjekken. Den er liten og rask når den virker;
@@ -231,15 +247,21 @@ window.åpneFraUrl = åpneFraUrl;   // trinn 3 kaller denne
         body: JSON.stringify({ prosjekt, kode })
       });
       const svar = await r.json().catch(() => ({}));
-      if (!r.ok) { feilEl.textContent = t(svar.feil || "Feil kode eller prosjekt."); return; }
+      if (!r.ok) {
+        feilEl.textContent = t(svar.feil || "Feil kode eller prosjekt.");
+        diagSteg("kode", { status: r.status, svar: svar.feil || "" });
+        visFeilKnapp(feilEl.textContent);
+        return;
+      }
       S.lettProsjekt = prosjekt;   // trinn 5: markeringer og bilder hentes per prosjekt
-      if (!svar.modeller || !svar.modeller.length) { feilEl.textContent = t("Ingen modeller i prosjektet ennå."); return; }
+      if (!svar.modeller || !svar.modeller.length) { feilEl.textContent = t("Ingen modeller i prosjektet ennå."); visFeilKnapp(feilEl.textContent); return; }
       lagreApning(prosjekt, svar.modeller);   // så neste åpning virker uten dekning
       visModeller(svar.modeller);
     } catch (e) {
       feilEl.textContent = (e && e.tidsavbrudd)
         ? t("Nettet svarte ikke. Gå ut dit du har dekning og prøv igjen.")
         : t("Fikk ikke kontakt – sjekk nettet og prøv igjen.");
+      visFeilKnapp(feilTekst(e));
       // Nettet er borte, men telefonen har åpnet dette prosjektet før. Da
       // finnes modellen i cachen, og montøren skal få velge å bruke den —
       // han skal ikke stå med en feilmelding foran en modell han har.
@@ -249,6 +271,19 @@ window.åpneFraUrl = åpneFraUrl;   // trinn 3 kaller denne
       knapp.disabled = false;
     }
   }
+
+  // 🩺 «Vis feilinfo» under feilteksten i kodeboksen. Ikke en boks som spretter
+  // opp av seg selv: «Feil kode» er som regel bare en skrivefeil.
+  function visFeilKnapp(feil) {
+    fjernFeilKnapp();
+    const b = document.createElement("button");
+    b.id = "diagKnapp";
+    b.className = "btn diag-knapp";
+    b.textContent = "🩺 " + t("Vis feilinfo");
+    b.onclick = () => visDiagnose(feil, "kode");
+    feilEl.insertAdjacentElement("afterend", b);
+  }
+  function fjernFeilKnapp() { const g = $("diagKnapp"); if (g) g.remove(); }
 
   function visModeller(modeller) {
     if (modeller.length === 1) { åpneFraUrl(modeller[0].url); return; }
@@ -374,3 +409,11 @@ window.åpneFraUrl = åpneFraUrl;   // trinn 3 kaller denne
 // jobben er feil koblet, uansett hvor godt den er testet — så nå lastes den
 // for seg, etter at alt annet står, og en feil her stopper ingenting.
 import("./sw-reg.js").catch(() => {});
+
+// 🩺 Døde fanen under forrige lasting? Vis hvor den stoppet.
+sjekkForrigeForsok();
+// 🩺 Telefonen kan ta fra oss 3D-grafikken (minne, grafikkdriver). Da blir
+// skjermen svart uten et ord — nå får montøren beskjed og feilinfo.
+canvas.addEventListener("webglcontextlost", () => {
+  visDiagnose("WebGL context lost", "3d", t("3D-grafikken ble stoppet av telefonen."));
+});
