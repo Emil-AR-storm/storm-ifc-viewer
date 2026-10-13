@@ -959,7 +959,7 @@ export function bildeFormat(logo) {
   return "PNG";
 }
 
-async function logoBilde() {
+export async function logoBilde() {
   try {
     if (!document.getElementById("storm-ord")) return null;
     const svg = logoSvg();

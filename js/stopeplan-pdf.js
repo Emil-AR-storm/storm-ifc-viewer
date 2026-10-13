@@ -489,7 +489,8 @@ export async function lagStopeplanXlsx(volumFor) {
   rader.push([t("Volum fra modellen (elementer) og felt × tykkelse, uten svinn eller ekstra betong. Cemflex VB 150, plater à {0} m, minst 5 cm omlegg per skjøt. Injeksjonsslange uten skjøt.",
     String(S.stopePlateM || 2).replace(".", ","))]);
   const { lagXlsx, XLSX_MIME } = await import("./xlsx.js");
-  const data = lagXlsx(t("Støpeplan"), rader);
+  const { excelLogo } = await import("./excel-logo.js");     // 🏷 logoen fra Prosjektinfo
+  const data = lagXlsx(t("Støpeplan"), rader, { logo: await excelLogo() });
   lastNedFil(new Blob([data], { type: XLSX_MIME }), stopeplanFilnavn(S.fileName, iDag, "xlsx"));
   return rader.length;
 }

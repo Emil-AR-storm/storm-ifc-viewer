@@ -2287,7 +2287,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Bytt": "Change",
   "Bruker {0} ({1}) til du velger en egen.": "Using {0} ({1}) until you choose one.",
   "Gate og nummer, sted": "Street and number, town",
-  "Logo på PDF-er og rigg-objekter": "Logo on PDFs and site facilities",
+  "Logo på PDF-er, Excel-ark og rigg-objekter": "Logo on PDFs, Excel sheets and site facilities",
   "Prosjektinfo": "Project info",
   "Storm: middelvind opp mot {0} m/s": "Storm: mean wind up to {0} m/s",
   "Tårnkran: vindkast over grensen kl. {0}": "Tower crane: gusts above the limit at {0}",

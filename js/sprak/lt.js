@@ -2287,7 +2287,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Bytt": "Keisti",
   "Bruker {0} ({1}) til du velger en egen.": "Naudojama {0} ({1}), kol pasirinksite savo.",
   "Gate og nummer, sted": "Gatvė ir numeris, vietovė",
-  "Logo på PDF-er og rigg-objekter": "Logotipas PDF failuose ir statybvietės objektuose",
+  "Logo på PDF-er, Excel-ark og rigg-objekter": "Logotipas PDF failuose, Excel lapuose ir statybvietės objektuose",
   "Prosjektinfo": "Projekto informacija",
   "Storm: middelvind opp mot {0} m/s": "Audra: vidutinis vėjas iki {0} m/s",
   "Tårnkran: vindkast over grensen kl. {0}": "Bokštinis kranas: gūsiai virš ribos {0} val.",
