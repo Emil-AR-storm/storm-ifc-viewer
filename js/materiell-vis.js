@@ -385,6 +385,9 @@ export function materiellMengdeRader() {
   // (det er tegnet). Ellers ville blikket forsvinne helt fra Mengder.
   if (S.blikkBunkeIder && S.blikkMengdeRader && S.blikkMengdeRader().length)
     for (const id of S.blikkBunkeIder()) takBunker.add(id);
+  // 🧱 SW-generatorens leveransestabler er SW-elementene på bygget, pakket om.
+  // De telles der (leggSwIMengder), ikke en gang til her (Emil 13.10).
+  if (S.swBunkeIder) for (const id of S.swBunkeIder()) takBunker.add(id);
   for (const p of vaskMateriellListe(S.materiell)) {
     // 🔩 Stålbunkene er stålet I MODELLEN, pakket om. Det står allerede i
     // Mengder (fra IFC-en) — telles det her også, bestilles det to ganger.
