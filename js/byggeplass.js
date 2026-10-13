@@ -55,9 +55,14 @@ if (btn) btn.addEventListener("click", async () => {
     return;
   }
 
-  // Prosjektnummer: felt med sist brukte som forslag (jf. planens «ikke avklart»)
-  const prosjekt = (prompt(t("Prosjektnummer (5 siffer):"),
-    localStorage.getItem("storm-bp-prosjekt") || "") || "").trim();
+  // Prosjektnummer: hentes fra Prosjektinfo, så det bare føres ett sted (mål 1,
+  // malkartlegging 12.10). Bare når det mangler der, eller ikke er 5 siffer,
+  // spør vi — med Prosjektinfo-nummeret eller sist brukte som forslag.
+  let fraInfo = "";
+  try { fraInfo = String((S.prosjektInfo && S.prosjektInfo() || {}).nummer || "").replace(/\s+/g, ""); } catch (_) { fraInfo = ""; }
+  const prosjekt = /^\d{5}$/.test(fraInfo) ? fraInfo
+    : (prompt(t("Prosjektnummer (5 siffer):"),
+        fraInfo || localStorage.getItem("storm-bp-prosjekt") || "") || "").trim();
   if (!prosjekt) return;
   if (!/^\d{5}$/.test(prosjekt)) { varsel(t("Prosjektnummeret må være 5 siffer.")); return; }
   localStorage.setItem("storm-bp-prosjekt", prosjekt);
