@@ -2474,4 +2474,9 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Trykk på et kort for å gå rett dit.": "Dotknij karty, aby przejść prosto do niej.",
   "Vis vær: været på byggeplassen en bestemt dag": "Pokaż pogodę: pogoda na budowie w wybranym dniu",
   "Vis vær (i Planlegging) viser været på byggeplassens adresse fra Innstillinger → Prosjektinfo. Velg dag i kalenderen — den står på i dag når den åpnes — og dra glideren for å se hver time: temperatur, vind og vindkast, regn og snø. Øverst svarer den på tre spørsmål: kan tårnkrana gå, kan vi støpe, og blir det frost? Grensene for varsel stiller du selv. Bakover i tid vises målt vær, framover MET-varselet (ca. 9–10 dager). Kryss av for å vise været i Framdriftsplan og i 3D — det følger også med ut til byggeplassen.": "Pokaż pogodę (w Planowaniu) pokazuje pogodę pod adresem budowy z Ustawienia → Informacje o projekcie. Wybierz dzień w kalendarzu — otwiera się na dzisiejszym — i przeciągnij suwak, aby zobaczyć każdą godzinę: temperaturę, wiatr i porywy, deszcz i śnieg. Na górze są odpowiedzi na trzy pytania: czy żuraw wieżowy może pracować, czy możemy betonować i czy będzie przymrozek? Progi ostrzeżeń ustawiasz sam. Dla dni minionych pokazywana jest zmierzona pogoda, dla przyszłych prognoza MET (ok. 9–10 dni). Zaznacz pole, aby pokazać pogodę w harmonogramie i w 3D — trafia ona też na stronę budowy.",
+  "Feilinfo": "Informacje o błędzie",
+  "Vis feilinfo": "Pokaż informacje o błędzie",
+  "Ta et skjermbilde av denne boksen og send det til den som ga deg koden.": "Zrób zrzut ekranu tego okna i wyślij go osobie, która dała ci kod.",
+  "Forrige forsøk stoppet mens modellen ble lastet. Telefonen kan ha gått tom for minne.": "Poprzednia próba zatrzymała się podczas ładowania modelu. W telefonie mogło zabraknąć pamięci.",
+  "3D-grafikken ble stoppet av telefonen.": "Grafika 3D została zatrzymana przez telefon.",
 };
