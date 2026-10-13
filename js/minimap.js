@@ -278,6 +278,10 @@ function plasserEtasjeBoks() {
   etasjeBoks.style.display = vis ? "block" : "none";
   if (!vis) { etasjeListe.classList.remove("open"); return; }
   const r = miniCanvas.getBoundingClientRect();
+  // Kartet kan være skjult av CSS alene (mobil: «minikartet viker» mens et
+  // verktøy er åpent). Da er rektangelet 0×0, og boksen ville havnet oppe i
+  // venstre hjørne av skjermen.
+  if (!r.width || !r.height) { etasjeBoks.style.display = "none"; etasjeListe.classList.remove("open"); return; }
   etasjeBoks.style.left = (r.left + 6) + "px";
   etasjeBoks.style.top = (r.top + 6) + "px";
   etasjeBoks.style.bottom = "auto";
@@ -287,6 +291,20 @@ function plasserEtasjeBoks() {
 }
 
 window.addEventListener("resize", plasserEtasjeBoks);
+
+// FØLG KARTET. «resize» er ikke nok: kartet flytter seg også uten at vinduet
+// endrer størrelse — nett-banneret (--nett-hoyde, js/nett.js) dukker opp og
+// forsvinner ved oppstart på byggeplassen, mobil-CSS slår inn, og kartet
+// skjules mens et verktøy er åpent. Da ble «Original» stående midt på
+// skjermen til man trykket på den (Emil 13.10, iPhone). Én rektangel-lesing
+// per frame, og bare flytting når noe faktisk har endret seg.
+let sistKart = "";
+frameHooks.push(() => {
+  if (!(S.miniOn && S.miniBase)) { sistKart = ""; return; }
+  const r = miniCanvas.getBoundingClientRect();
+  const k = r.left + "," + r.top + "," + r.width + "," + r.height + "," + window.innerHeight;
+  if (k !== sistKart) { sistKart = k; plasserEtasjeBoks(); }
+});
 
 async function apneEtasjeliste() {
   const liste = S.sikreEtasjeliste ? await S.sikreEtasjeliste() : (S.storeyList || []);
