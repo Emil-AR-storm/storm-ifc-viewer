@@ -1642,14 +1642,16 @@ function lastNed(name, blob) {
 // kolonne A. En .xlsx har ingen skilletegn, så den åpnes likt overalt; i
 // tillegg overlever SUM-formlene og «mulig tap av data»-advarselen forsvinner.
 // Modulen lastes DYNAMISK, så den ligger ikke i lettmodus-skallet.
+// 🏷 Alle Excel-arkene får logoen fra Prosjektinfo øverst (js/excel-logo.js).
 export async function lastNedXlsx(filnavn, arknavn, rader) {
-  const X = await import("./xlsx.js");
-  lastNed(filnavn, new Blob([X.lagXlsx(arknavn, rader)], { type: X.XLSX_MIME }));
+  return lastNedXlsxFlere(filnavn, [{ navn: arknavn, rader }]);
 }
 // Flere ark i én fil: [{ navn, rader }, …]
 export async function lastNedXlsxFlere(filnavn, arkListe) {
   const X = await import("./xlsx.js");
-  lastNed(filnavn, new Blob([X.lagXlsxFlere(arkListe)], { type: X.XLSX_MIME }));
+  const { excelLogo } = await import("./excel-logo.js");
+  const logo = await excelLogo();
+  lastNed(filnavn, new Blob([X.lagXlsxFlere(arkListe, { logo })], { type: X.XLSX_MIME }));
 }
 
 function baseName() {

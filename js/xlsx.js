@@ -199,6 +199,11 @@ export function arkXml(rader, oppsett) {
   const kol = Array.isArray(o.bredder) && o.bredder.length
     ? "<cols>" + o.bredder.map((b, i) => '<col min="' + (i + 1) + '" max="' + (i + 1) + '" width="' + (Number(b) || 10) + '" customWidth="1"/>').join("") + "</cols>"
     : "";
+  // 🏷 Med logo peker arket på tegningen sin (xl/drawings/drawingN.xml)
+  if (o.tegning) return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ' +
+    'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+    kol + "<sheetData>" + linjer.join("") + '</sheetData><drawing r:id="rId1"/></worksheet>';
   return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
     kol + "<sheetData>" + linjer.join("") + "</sheetData></worksheet>";
@@ -210,14 +215,72 @@ export function arkNavn(navn) {
   return s || "Ark1";
 }
 
+// ---------- 🏷 Logo øverst i arket (Emil 13.10) ----------
+// «samme logo funksjon som vi bruker på pdf-ene … koble opp alt til "Logo på
+// PDF-er og rigg-objekter"». Logoen legges som et bilde øverst til venstre i
+// HVERT ark, over tabellen — som i tittelfeltet på PDF-ene. Tabellen flyttes
+// LOGO_RADER rader ned, og alle cellereferansene i formlene flyttes like
+// mye, så summene peker på de samme tallene som før. Uten logo skrives fila
+// nøyaktig som før.
+export const LOGO_RADER = 4;
+const LOGO_HOYDE_PX = 64, LOGO_MAKS_BREDDE_PX = 320, EMU = 9525;
+
+// Flytter alle radnumre i en formel n rader ned — også $A$1 (hele tabellen
+// flyttes, ikke bare formelen). Navn som SUM( og LOG10( røres ikke.
+export function flyttFormel(formel, n) {
+  return String(formel).replace(/(?<![A-Za-z_\d.])(\$?)([A-Z]{1,3})(\$?)(\d+)(?![\d(A-Za-z_])/g,
+    (_, a, k, b, r) => a + k + b + (Number(r) + n));
+}
+function flyttCelle(v, n) {
+  if (v && typeof v === "object" && typeof v.formel === "string") return Object.assign({}, v, { formel: flyttFormel(v.formel, n) });
+  if (typeof v === "string" && v[0] === "=") return "=" + flyttFormel(v.slice(1), n);
+  return v;
+}
+export function flyttArk(a, n) {
+  const rader = [];
+  for (let i = 0; i < n; i++) rader.push([]);
+  for (const r of (a.rader || [])) rader.push((r || []).map(v => flyttCelle(v, n)));
+  const ut = Object.assign({}, a, { rader });
+  if (typeof a.stil === "function") ut.stil = (i, k) => (i < n ? 0 : a.stil(i - n, k));
+  return ut;
+}
+function logoStr(logo) {
+  const b = Number(logo.b) || 1000, h = Number(logo.h) || 260;
+  let hoy = LOGO_HOYDE_PX, bred = Math.round(hoy * b / h);
+  if (bred > LOGO_MAKS_BREDDE_PX) { bred = LOGO_MAKS_BREDDE_PX; hoy = Math.round(bred * h / b); }
+  return { cx: bred * EMU, cy: hoy * EMU };
+}
+function tegningXml(logo) {
+  const { cx, cy } = logoStr(logo);
+  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" ' +
+    'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" ' +
+    'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+    '<xdr:oneCellAnchor><xdr:from><xdr:col>0</xdr:col><xdr:colOff>' + 4 * EMU + '</xdr:colOff>' +
+    '<xdr:row>0</xdr:row><xdr:rowOff>' + 4 * EMU + '</xdr:rowOff></xdr:from>' +
+    '<xdr:ext cx="' + cx + '" cy="' + cy + '"/>' +
+    '<xdr:pic><xdr:nvPicPr><xdr:cNvPr id="2" name="Logo"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr>' +
+    '<xdr:blipFill><a:blip r:embed="rId1"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill>' +
+    '<xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="' + cx + '" cy="' + cy + '"/></a:xfrm>' +
+    '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:oneCellAnchor></xdr:wsDr>';
+}
+const RELS_START = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+  '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">';
+// Gyldig logo: bildebytes + filtype Excel kan vise (png/jpeg).
+export function gyldigLogo(logo) {
+  return !!(logo && logo.bytes && logo.bytes.length && (logo.ext === "png" || logo.ext === "jpeg"));
+}
+
 // Én arbeidsbok, ett eller flere ark. `xlsxFiler(navn, rader)` er det gamle
 // kallet med ett ark; `xlsxFilerFlere([{ navn, rader }, …])` gir flere ark i
 // samme fil — SW-lista i det første, «Materiell» i det andre (Emil 08.09).
 export function xlsxFiler(navn, rader) {
   return xlsxFilerFlere([{ navn, rader }]);
 }
-export function xlsxFilerFlere(arkListe) {
-  const ark = (arkListe || []).length ? arkListe : [{ navn: "Ark1", rader: [] }];
+export function xlsxFilerFlere(arkListe, valg) {
+  const logo = valg && gyldigLogo(valg.logo) ? valg.logo : null;
+  let ark = (arkListe || []).length ? arkListe : [{ navn: "Ark1", rader: [] }];
+  if (logo) ark = ark.map(a => flyttArk(a || {}, LOGO_RADER));
   // To ark kan ikke hete det samme — Excel nekter å åpne fila.
   const brukte = new Set();
   const navn = ark.map(a => {
@@ -236,6 +299,8 @@ export function xlsxFilerFlere(arkListe) {
         '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
         ark.map((_, i) => '<Override PartName="/xl/worksheets/sheet' + (i + 1) + '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>').join("") +
         (medStil ? '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' : "") +
+        (logo ? '<Default Extension="' + logo.ext + '" ContentType="image/' + logo.ext + '"/>' +
+          ark.map((_, i) => '<Override PartName="/xl/drawings/drawing' + (i + 1) + '.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>').join("") : "") +
         "</Types>" },
     { navn: "_rels/.rels",
       data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
@@ -257,16 +322,29 @@ export function xlsxFilerFlere(arkListe) {
         (medStil ? '<Relationship Id="rId' + (ark.length + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' : "") +
         "</Relationships>" }
   ];
-  ark.forEach((a, i) => filer.push({ navn: "xl/worksheets/sheet" + (i + 1) + ".xml", data: arkXml(a.rader, a) }));
+  ark.forEach((a, i) => filer.push({ navn: "xl/worksheets/sheet" + (i + 1) + ".xml",
+    data: arkXml(a.rader, logo ? Object.assign({}, a, { tegning: true }) : a) }));
   if (medStil) filer.push({ navn: "xl/styles.xml", data: STILER_XML });
+  if (logo) {
+    // Ett bilde i fila, én tegning per ark som viser det
+    filer.push({ navn: "xl/media/logo." + logo.ext, data: logo.bytes });
+    ark.forEach((_, i) => {
+      filer.push({ navn: "xl/worksheets/_rels/sheet" + (i + 1) + ".xml.rels", data: RELS_START +
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing' + (i + 1) + '.xml"/></Relationships>' });
+      filer.push({ navn: "xl/drawings/drawing" + (i + 1) + ".xml", data: tegningXml(logo) });
+      filer.push({ navn: "xl/drawings/_rels/drawing" + (i + 1) + ".xml.rels", data: RELS_START +
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/logo.' + logo.ext + '"/></Relationships>' });
+    });
+  }
   return filer;
 }
 
-export function lagXlsx(navn, rader) {
-  return lagZip(xlsxFiler(navn, rader).map(f => ({ navn: f.navn, data: tilBytes(f.data) })));
+const somBytes = (d) => (d instanceof Uint8Array ? d : tilBytes(d));
+export function lagXlsx(navn, rader, valg) {
+  return lagZip(xlsxFilerFlere([{ navn, rader }], valg).map(f => ({ navn: f.navn, data: somBytes(f.data) })));
 }
-export function lagXlsxFlere(arkListe) {
-  return lagZip(xlsxFilerFlere(arkListe).map(f => ({ navn: f.navn, data: tilBytes(f.data) })));
+export function lagXlsxFlere(arkListe, valg) {
+  return lagZip(xlsxFilerFlere(arkListe, valg).map(f => ({ navn: f.navn, data: somBytes(f.data) })));
 }
 
 export const XLSX_MIME =

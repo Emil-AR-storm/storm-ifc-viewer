@@ -225,7 +225,7 @@ export function prosjektinfoHtml() {
           '<div class="pi-sok"><input type="text" id="piAdresseSok" placeholder="' + esc(t("Gate og nummer, sted")) + '"><button id="piSok">' + esc(t("Søk")) + "</button></div>") +
       (sokMelding ? '<p class="hint">' + esc(sokMelding) + "</p>" : "") +
       sokTreff.map((a, i) => '<button class="pi-treff" data-i="' + i + '">' + esc(a.tekst + ", " + a.postnummer + " " + a.poststed) + "</button>").join("") +
-      '<label class="pi-felt">' + esc(t("Logo på PDF-er og rigg-objekter")) + ' <select id="piLogo"></select></label>' +
+      '<label class="pi-felt">' + esc(t("Logo på PDF-er, Excel-ark og rigg-objekter")) + ' <select id="piLogo"></select></label>' +
       '<p id="piStatus" style="color:var(--muted);font-size:11px;margin:6px 0 0">' + esc(statusTekst()) + "</p>";
   }
   return '<details id="piSeksjon"' + (apen ? " open" : "") + '><summary><h4 style="display:inline">' + esc(t("Prosjektinfo")) + "</h4>" + merke + "</summary>" + inni + "</details>";
