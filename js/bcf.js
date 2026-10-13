@@ -170,6 +170,14 @@ export function xmlEsc(s) {
 // Markeringens norske dato «17.08.2026, 14:13» → ISO. BCF krever xs:dateTime,
 // og et felt som ikke lar seg tolke skal stå TOMT, ikke som dagens dato — en
 // oppdiktet opprettelsesdato er verre enn ingen.
+// Nå, i samme form som tilIsoTid gir (lokal tid, uten sone).
+export function naIsoTid(d) {
+  const n = d || new Date();
+  const p = (x) => String(x).padStart(2, "0");
+  return n.getFullYear() + "-" + p(n.getMonth() + 1) + "-" + p(n.getDate()) +
+    "T" + p(n.getHours()) + ":" + p(n.getMinutes()) + ":" + p(n.getSeconds());
+}
+
 export function tilIsoTid(norsk) {
   const m = /^(\d{2})\.(\d{2})\.(\d{4})(?:,?\s+(\d{2}):(\d{2}))?/.exec(String(norsk || "").trim());
   if (!m) return "";
@@ -227,8 +235,11 @@ export function markupXml(s) {
     "    <Title>" + xmlEsc(s.tittel) + "</Title>\n" +
     "    <Priority>" + xmlEsc(s.prioritet) + "</Priority>\n" +
     "    <Index>" + (Number(s.nr) || 0) + "</Index>\n" +
-    (s.opprettet ? "    <CreationDate>" + xmlEsc(s.opprettet) + "</CreationDate>\n" : "") +
-    (s.forfatter ? "    <CreationAuthor>" + xmlEsc(s.forfatter) + "</CreationAuthor>\n" : "") +
+    // BCF 2.1 krever CreationDate og CreationAuthor på hver sak. Sløyfes de,
+    // avviser strenge mottakere (Solibri, BIMcollab) hele fila. Mangler de på
+    // markeringen, brukes «nå» og «Storm» (F1, malkartlegging 12.10).
+    "    <CreationDate>" + xmlEsc(s.opprettet || naIsoTid()) + "</CreationDate>\n" +
+    "    <CreationAuthor>" + xmlEsc(String(s.forfatter || "").trim() || "Storm") + "</CreationAuthor>\n" +
     (s.frist ? "    <DueDate>" + xmlEsc(s.frist) + "T00:00:00</DueDate>\n" : "") +
     (s.ansvarlig ? "    <AssignedTo>" + xmlEsc(s.ansvarlig) + "</AssignedTo>\n" : "") +
     (s.beskrivelse ? "    <Description>" + xmlEsc(s.beskrivelse) + "</Description>\n" : "") +
