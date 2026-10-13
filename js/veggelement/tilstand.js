@@ -303,6 +303,20 @@ S.swTrekanter = (ider) => {
 // `v.skjult` betyr «dratt bort, ikke slettet» og teller derfor ikke. Skjult
 // med øyeknappen eller 🎨-rada er en VISNINGStilstand og teller fortsatt —
 // mengden er bestilt uansett om du ser den på skjermen akkurat nå.
+// 🧱 DOBBELTTELLING (Emil 13.10, «ja … fiks det»): SW-generatoren legger de
+// samme panelene som står på bygget i leveransestabler i Materiell
+// («Sandwichpanel», én stabel per SW-nummer — både yttervegger og innervegger).
+// Id-ene til de stablene holdes utenfor Mengder (materiell-vis.js), akkurat som
+// takets TRP-bunker. Sandwichpaneler du har lagt inn SELV i Materiell har ikke
+// disse id-ene og telles fortsatt — de er ekstra materiell, ikke bygget.
+export function swBunkeIder() {
+  const ut = new Set();
+  for (const b of [lagret, lagretInner])
+    for (const id of ((b && b.materiellIder) || [])) ut.add(id);
+  return ut;
+}
+S.swBunkeIder = swBunkeIder;
+
 export function swAlle() {
   const ut = [];
   for (const b of [lagret, lagretInner]) {
