@@ -16,6 +16,7 @@
 // UTEN logo — en manglende logo skal aldri stoppe en nedlasting.
 import { S } from "./state.js";
 import { dataUrlTilBytes } from "./bcf.js";
+import { t } from "./i18n.js";
 
 const MAKS_PX = 640;   // høyeste side i bildet som legges i fila
 
@@ -81,4 +82,17 @@ async function hentExcelLogo() {
     console.warn("Excel-logo:", err && err.message);
     return null;
   }
+}
+
+// 📋 Prosjektnavn og -nummer fra Prosjektinfo, ved siden av logoen (Emil 13.10)
+export function excelTopp(info) {
+  const pi = info || (S.prosjektInfo ? S.prosjektInfo() : {}) || {};
+  const ut = [];
+  if (pi.navn) ut.push(String(pi.navn));
+  if (pi.nummer) ut.push(t("Prosjektnr. {0}", String(pi.nummer)));
+  return ut;
+}
+// Alt toppfeltet trenger, klart for xlsx.js: { logo, topp }
+export async function excelToppfelt() {
+  return { logo: await excelLogo(), topp: excelTopp() };
 }

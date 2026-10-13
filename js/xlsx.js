@@ -236,18 +236,45 @@ function flyttCelle(v, n) {
   if (typeof v === "string" && v[0] === "=") return "=" + flyttFormel(v.slice(1), n);
   return v;
 }
-export function flyttArk(a, n) {
+// 📋 Prosjektnavn og -nummer ved siden av logoen (Emil 13.10). `topp` er
+// ferdige tekstlinjer (oversatt av den som kaller): linje 1 med stor, fet
+// skrift, resten vanlig. De står i første kolonne til HØYRE for logoen —
+// regnet ut fra kolonnebreddene, så de aldri ligger under bildet.
+const KOL_STD_PX = 64;
+export function kolPx(bredder, k) {
+  const b = Array.isArray(bredder) ? Number(bredder[k]) : NaN;
+  return isFinite(b) && b > 0 ? Math.round(b * 7 + 5) : KOL_STD_PX;
+}
+export function toppKolonne(bredder, logo) {
+  if (!logo) return 0;
+  const hoyre = 4 + logoPx(logo).bred + 12;
+  let x = 0, k = 0;
+  while (x < hoyre && k < 50) x += kolPx(bredder, k++);
+  return k;
+}
+export function flyttArk(a, n, topp, logo) {
   const rader = [];
   for (let i = 0; i < n; i++) rader.push([]);
+  const linjer = (topp || []).map(x => String(x == null ? "" : x).trim()).filter(Boolean).slice(0, n);
+  const kol = toppKolonne(a.bredder, logo);
+  linjer.forEach((l, i) => { rader[i] = []; rader[i][kol] = l; });
   for (const r of (a.rader || [])) rader.push((r || []).map(v => flyttCelle(v, n)));
   const ut = Object.assign({}, a, { rader });
-  if (typeof a.stil === "function") ut.stil = (i, k) => (i < n ? 0 : a.stil(i - n, k));
+  const gammel = typeof a.stil === "function" ? a.stil : null;
+  if (gammel || linjer.length) ut.stil = (i, k) => {
+    if (i < n) return (i === 0 && k === kol && linjer.length) ? 6 : 0;   // navnet: stor, fet
+    return gammel ? gammel(i - n, k) : 0;
+  };
   return ut;
 }
-function logoStr(logo) {
+function logoPx(logo) {
   const b = Number(logo.b) || 1000, h = Number(logo.h) || 260;
   let hoy = LOGO_HOYDE_PX, bred = Math.round(hoy * b / h);
   if (bred > LOGO_MAKS_BREDDE_PX) { bred = LOGO_MAKS_BREDDE_PX; hoy = Math.round(bred * h / b); }
+  return { bred, hoy };
+}
+function logoStr(logo) {
+  const { bred, hoy } = logoPx(logo);
   return { cx: bred * EMU, cy: hoy * EMU };
 }
 function tegningXml(logo) {
@@ -279,8 +306,10 @@ export function xlsxFiler(navn, rader) {
 }
 export function xlsxFilerFlere(arkListe, valg) {
   const logo = valg && gyldigLogo(valg.logo) ? valg.logo : null;
+  const topp = valg && Array.isArray(valg.topp) ? valg.topp.filter(x => x != null && String(x).trim()) : [];
   let ark = (arkListe || []).length ? arkListe : [{ navn: "Ark1", rader: [] }];
-  if (logo) ark = ark.map(a => flyttArk(a || {}, LOGO_RADER));
+  // Toppfeltet (logo og/eller prosjektnavn) får sine egne rader over tabellen
+  if (logo || topp.length) ark = ark.map(a => flyttArk(a || {}, LOGO_RADER, topp, logo));
   // To ark kan ikke hete det samme — Excel nekter å åpne fila.
   const brukte = new Set();
   const navn = ark.map(a => {

@@ -213,6 +213,11 @@ export const KORT = [
     tekst: "Framdriftsplan (i Planlegging) deler arbeidet i trinn med Fra- og Til-dato. Trykk + Legg til på trinnet og velg det som utføres da — elementer, SW-elementer, takplater, blikk, rigg, materiell og markeringer (trykk, eller shift + dra en boks). Det som allerede ligger i et trinn, er skjult mens du velger. − Fjern tar ting ut igjen. Glideren nederst viser bygget en valgt dag, og materiellbunkene brukes opp etter hvert som det de er levert til monteres. Last ned PDF gir én side per trinn, Lag video en film der kameraet går rundt bygget — videoen lagres i SharePoint, og PDF-en får en QR-kode til den. Planen følger med ut til byggeplassen når du trykker Storm-Byggeplass."
   },
   {
+    hvor: "kontor", ikonNavn: "vaer",
+    tittel: "Vis vær: været på byggeplassen en bestemt dag",
+    tekst: "Vis vær (i Planlegging) viser været på byggeplassens adresse fra Innstillinger → Prosjektinfo. Velg dag i kalenderen — den står på i dag når den åpnes — og dra glideren for å se hver time: temperatur, vind og vindkast, regn og snø. Øverst svarer den på tre spørsmål: kan tårnkrana gå, kan vi støpe, og blir det frost? Grensene for varsel stiller du selv. Bakover i tid vises målt vær, framover MET-varselet (ca. 9–10 dager). Kryss av for å vise været i Framdriftsplan og i 3D — det følger også med ut til byggeplassen."
+  },
+  {
     hvor: "kontor", ikonNavn: "laster",
     tittel: "Snø & Last: veiledende laster",
     tekst: "Snø & Last (i Bygg Info) regner snølasten på hver takflate og vindtrykket på fasadene og et flatt tak. Skriv inn kommuneverdiene fra standarden eller RIBs lastforutsetninger (sk,0, Hg, Δsk, vb,0), velg terrengkategori og vindretning, og trykk Vis snølast eller Vis vindlast for å se lastene i farger i modellen. Taket Automatisk bruker tak-generatorens regler (de øverste bjelkene), og fasadene er kantene av byggets omriss — likt med og uten veggelementer. Høyden over havet kan hentes fra terrenget. Dette er en veiledende kontroll — den erstatter ikke RIB."
@@ -281,25 +286,65 @@ export function skalVisesAvSegSelv(lett, alleredeVist) {
 
 // ═══════════════════════ NETTLESER ═══════════════════════
 
+// 📚 SIDE 1 ER EN INNHOLDSLISTE (Emil 13.10): «side 1 i hjelpekortet skal være
+// en katalog med overskriften til alle kortene, sånn at hvis man vil vite om
+// punkt 25 … kan du bare trykke på den … i stedet for å trykke 24 ganger».
+// Innholdslista er et eget kort FØRST i bunken (indeks 0). De ekte kortene
+// beholder numrene sine 1, 2, 3 … — «punkt 25» i lista er kort 25 av N.
+export const INNHOLD = { katalog: true, ikonNavn: "sok", tittel: "Innhold", tekst: "Trykk på et kort for å gå rett dit." };
+export function bunke(lett) {
+  return [INNHOLD].concat(kortFor(lett));
+}
+
 let kort = [];
 let nå = 0;
+
+// Teksten øverst: «Innhold» på lista, «25 av 43» på kortene (lista telles ikke)
+export function tellerTekst(indeks, antallMedInnhold) {
+  if (indeks === 0) return t("Innhold");
+  return t("{0} av {1}", indeks, antallMedInnhold - 1);
+}
+
+function tegnKatalog() {
+  const liste = $("hkKatalog");
+  if (!liste) return;
+  liste.innerHTML = kort.slice(1).map((k, i) =>
+    '<button type="button" class="hk-kat-rad" data-til="' + (i + 1) + '">' +
+      '<span class="hk-kat-nr">' + (i + 1) + "</span>" +
+      '<span class="hk-kat-ikon">' + ikon(k.ikonNavn) + "</span>" +
+      '<span class="hk-kat-tittel"></span></button>').join("");
+  // Titlene settes som tekst, ikke HTML — de kommer fra ordboken
+  liste.querySelectorAll(".hk-kat-tittel").forEach((el, i) => { el.textContent = t(kort[i + 1].tittel); });
+}
 
 export function tegn() {
   const boks = $("hjelpKort");
   if (!boks || !kort.length) return;
   const k = kort[nå];
   const sisteKort = nå === kort.length - 1;
+  boks.classList.toggle("hk-pa-innhold", !!k.katalog);
 
   const ikonEl = $("hkIkon");
   if (ikonEl) ikonEl.innerHTML = ikon(k.ikonNavn);
   const tit = $("hkTittel");
   if (tit) tit.textContent = t(k.tittel);
   const tek = $("hkTekst");
-  if (tek) tek.textContent = t(k.tekst);
+  if (tek) { tek.textContent = t(k.tekst); tek.scrollTop = 0; }
+  const liste = $("hkKatalog");
+  if (liste) {
+    liste.style.display = k.katalog ? "" : "none";
+    if (k.katalog) tegnKatalog();
+  }
+  const innhold = $("hkInnhold");
+  if (innhold) {
+    innhold.textContent = t("Innhold");
+    innhold.style.visibility = k.katalog ? "hidden" : "";
+  }
 
+  // Prikkene gjelder de ekte kortene — lista har ingen prikk
   const prikker = $("hkPrikker");
-  if (prikker) prikker.innerHTML = kort.map((_, i) =>
-    '<span class="hk-prikk' + (i === nå ? " på" : "") + '"></span>').join("");
+  if (prikker) prikker.innerHTML = k.katalog ? "" : kort.slice(1).map((_, i) =>
+    '<span class="hk-prikk' + (i + 1 === nå ? " på" : "") + '"></span>').join("");
 
   const forrige = $("hkForrige");
   if (forrige) {
@@ -314,14 +359,20 @@ export function tegn() {
   if (neste) neste.textContent = sisteKort ? t("Ferdig") : t("Neste");
 
   const teller = $("hkTeller");
-  if (teller) teller.textContent = t("{0} av {1}", nå + 1, kort.length);
+  if (teller) teller.textContent = tellerTekst(nå, kort.length);
+}
+
+export function gaTilKort(indeks) {
+  if (!kort.length) return;
+  nå = gaTil(Number(indeks) || 0, 0, kort.length);
+  tegn();
 }
 
 export function apneHjelp(start) {
   const boks = $("hjelpKort");
   if (!boks) return;
-  kort = kortFor(LETT);
-  if (!kort.length) return;
+  kort = bunke(LETT);
+  if (kort.length < 2) return;
   nå = gaTil(Number(start) || 0, 0, kort.length);
   tegn();
   boks.classList.add("open");
@@ -372,6 +423,13 @@ const forrige = $("hkForrige");
 if (forrige) forrige.addEventListener("click", () => bytt(-1));
 const lukk = $("hkLukk");
 if (lukk) lukk.addEventListener("click", lukkHjelp);
+const tilInnhold = $("hkInnhold");
+if (tilInnhold) tilInnhold.addEventListener("click", () => gaTilKort(0));
+const katalog = $("hkKatalog");
+if (katalog) katalog.addEventListener("click", (e) => {
+  const rad = e.target.closest && e.target.closest(".hk-kat-rad");
+  if (rad) gaTilKort(Number(rad.dataset.til));
+});
 
 // Trykk på sløret utenfor kortet lukker. Sjekken på e.target er det som skiller
 // «trykket utenfor» fra «trykket på kortet» — uten den lukket hvert trykk på

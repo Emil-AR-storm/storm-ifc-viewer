@@ -1649,9 +1649,9 @@ export async function lastNedXlsx(filnavn, arknavn, rader) {
 // Flere ark i én fil: [{ navn, rader }, …]
 export async function lastNedXlsxFlere(filnavn, arkListe) {
   const X = await import("./xlsx.js");
-  const { excelLogo } = await import("./excel-logo.js");
-  const logo = await excelLogo();
-  lastNed(filnavn, new Blob([X.lagXlsxFlere(arkListe, { logo })], { type: X.XLSX_MIME }));
+  const { excelToppfelt } = await import("./excel-logo.js");
+  const valg = await excelToppfelt();          // logo + prosjektnavn og -nummer
+  lastNed(filnavn, new Blob([X.lagXlsxFlere(arkListe, valg)], { type: X.XLSX_MIME }));
 }
 
 function baseName() {
