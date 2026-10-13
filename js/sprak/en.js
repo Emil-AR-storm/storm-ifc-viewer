@@ -2470,4 +2470,8 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Fila": "File",
   "Dekket": "Covered",
   "Brukt i kalkylen": "Used in the calculation",
+  "Prosjektnr. {0}": "Project no. {0}",
+  "Trykk på et kort for å gå rett dit.": "Tap a card to go straight to it.",
+  "Vis vær: været på byggeplassen en bestemt dag": "Show weather: the weather on site on a given day",
+  "Vis vær (i Planlegging) viser været på byggeplassens adresse fra Innstillinger → Prosjektinfo. Velg dag i kalenderen — den står på i dag når den åpnes — og dra glideren for å se hver time: temperatur, vind og vindkast, regn og snø. Øverst svarer den på tre spørsmål: kan tårnkrana gå, kan vi støpe, og blir det frost? Grensene for varsel stiller du selv. Bakover i tid vises målt vær, framover MET-varselet (ca. 9–10 dager). Kryss av for å vise været i Framdriftsplan og i 3D — det følger også med ut til byggeplassen.": "Show weather (in Planning) shows the weather at the site address from Settings → Project info. Pick a day in the calendar — it opens on today — and drag the slider to see each hour: temperature, wind and gusts, rain and snow. At the top it answers three questions: can the tower crane run, can we pour concrete, and will there be frost? You set the warning limits yourself. Past days show measured weather, future days the MET forecast (about 9–10 days ahead). Tick the box to show the weather in the Progress plan and in 3D — it also goes out to the site page.",
 };
