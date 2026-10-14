@@ -1,0 +1,230 @@
+/* 🔒 Tilgang (post 11, 14.10.2026): hengelåsene, kodeboksen (alternativ B)
+   og adminpanelet (alternativ C). Bare kontorsiden (index.html) laster fila —
+   bygg.html og service workeren for byggeplassen er uendret.
+   Fargene er variablene fra css/storm.css, så lyst tema virker av seg selv. */
+
+/* ---------- Hengelåsene ---------- */
+button.laast {
+  color: var(--muted);
+  border-style: dashed;
+  background: transparent;
+}
+button.laast .ikon { opacity: .7; }
+button.laast:hover { border-color: var(--accent); color: var(--text); }
+/* En låst gruppeknapp kan aldri være «valgt», selv om den var husket */
+#verktoygrupper button.laast.active { background: transparent; color: var(--muted); font-weight: 400; border-color: var(--border); }
+.laas-ikon { font-size: 10px; margin-left: 5px; opacity: .85; }
+
+.gratis-merke {
+  color: var(--muted);
+  background: transparent;
+  font-size: 12px;
+  margin-left: 8px;
+}
+.gratis-merke:hover { color: var(--text); }
+
+.admin-knapp {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--paa-accent);
+  font-weight: 600;
+  margin-left: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.admin-knapp:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.admin-tall {
+  background: #fff;
+  color: var(--storm-rod);
+  border-radius: 9px;
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 16px;
+}
+
+/* ---------- Kodeboksen: «Hva du får» ---------- */
+.kodeboks-bak {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(0, 0, 0, .55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.kodeboks {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  max-width: 960px;
+  width: 100%;
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-stor, 12px);
+  box-shadow: var(--skygge);
+}
+.kodeboks.kb-smal { grid-template-columns: 1fr; max-width: 440px; }
+.kb-venstre { padding: 26px 26px 20px; }
+.kb-hoyre { padding: 26px; background: var(--panel2); border-left: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
+.kb-smal .kb-hoyre { border-left: 0; }
+.kodeboks h2 { margin: 0 0 6px; font-size: 20px; }
+.kodeboks h3 { margin: 0; font-size: 16px; }
+.kb-under { margin: 0 0 18px; font-size: 13px; color: var(--muted); }
+.kb-liste { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.kb-liste li { display: flex; gap: 12px; align-items: flex-start; font-size: 13px; line-height: 1.35; }
+.kb-liste li > span:last-child > span { color: var(--muted); }
+.kb-ikon {
+  flex: 0 0 30px; height: 30px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 6px;
+  background: var(--sone, rgba(210, 43, 52, .09));
+  border: 1px solid rgba(210, 43, 52, .25);
+  font-size: 15px;
+}
+.kb-bunn {
+  display: flex; align-items: center; gap: 10px;
+  margin-top: 18px; padding-top: 14px;
+  border-top: 1px solid var(--border);
+  font-size: 13px; color: var(--muted);
+}
+.kb-hode { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.kb-lukk { background: transparent; border: 0; font-size: 16px; padding: 4px 8px; color: var(--muted); }
+.kb-lukk:hover { color: var(--text); }
+.kb-etikett { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.kb-kode {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 14px 12px;
+  font: 600 26px/1.1 ui-monospace, "SFMono-Regular", Consolas, monospace;
+  letter-spacing: 6px;
+  text-align: center;
+  text-transform: uppercase;
+  color: var(--text);
+  background: var(--bg);
+  border: 2px solid var(--storm-rod);
+  border-radius: var(--radius, 8px);
+}
+.kb-kode:focus { outline: 3px solid rgba(210, 43, 52, .35); outline-offset: 1px; }
+.kb-rad { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 4px; }
+.kb-rad input, .ap-kol input:not([type=checkbox]) {
+  width: 100%; box-sizing: border-box;
+  padding: 8px 10px; font-size: 13px;
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius, 8px);
+}
+.kb-vilkar { font-size: 13px; display: flex; align-items: center; gap: 6px; margin: 8px 0 4px; }
+.kb-vilkar a, .kb-hoyre a { color: var(--text); text-decoration: underline; }
+.kb-las-opp {
+  width: 100%;
+  justify-content: center;
+  text-align: center;
+  padding: 11px;
+  font-size: 14px;
+  font-weight: 600;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--paa-accent);
+}
+.kb-las-opp:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+.kb-las-opp:disabled { background: var(--border); border-color: var(--border); color: var(--muted); cursor: not-allowed; transform: none; }
+.kb-personvern { font-size: 11px; color: var(--muted); margin: 6px 0 0; line-height: 1.45; }
+.kb-feil { color: var(--danger); font-size: 12px; margin: 0; min-height: 0; }
+.kb-feil:empty { display: none; }
+
+@media (max-width: 760px) {
+  .kodeboks { grid-template-columns: 1fr; }
+  /* Kodefeltet først på mobil */
+  .kodeboks .kb-hoyre { order: -1; border-left: 0; border-bottom: 1px solid var(--border); padding: 20px; }
+  .kb-venstre { padding: 20px; }
+  .kb-rad { grid-template-columns: 1fr; }
+  .kb-kode { font-size: 22px; letter-spacing: 4px; }
+}
+
+/* ---------- Adminpanelet: dashbord ---------- */
+.admin-panel {
+  position: fixed;
+  left: 0; right: 0; bottom: 0; top: 52px;
+  z-index: 150;
+  overflow: auto;
+  background: var(--bg);
+  color: var(--text);
+  padding: 18px 22px 30px;
+  box-sizing: border-box;
+}
+.ap-hode { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.ap-hode h2 { margin: 0; font-size: 19px; }
+.ap-tall { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 14px; }
+.ap-tall > div {
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius, 8px);
+  padding: 12px; text-align: center; display: flex; flex-direction: column; gap: 2px;
+}
+.ap-tall b { font-size: 26px; line-height: 1.1; }
+.ap-tall span { font-size: 12px; color: var(--muted); }
+.ap-oransje { color: var(--warn); }
+.ap-kolonner { display: grid; grid-template-columns: 1fr 1.1fr 2fr; gap: 14px; align-items: stretch; }
+.ap-kol {
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius, 8px);
+  padding: 12px; display: flex; flex-direction: column; gap: 8px; min-height: 380px; min-width: 0;
+}
+.ap-kol h3 { margin: 0 0 4px; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+.ap-kol label { font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 4px; }
+.ap-kol label.ap-sjekk { flex-direction: row; align-items: center; gap: 8px; color: var(--text); font-size: 13px; }
+.ap-kol button.primary { align-self: flex-start; }
+.ap-kolhode { display: flex; justify-content: space-between; align-items: center; }
+.ap-merke { background: var(--danger); color: #fff; border-radius: 9px; padding: 0 7px; font-size: 11px; letter-spacing: 0; }
+.ap-tom { color: var(--muted); font-size: 12px; margin: 4px 0; }
+.ap-kodetekst { font-size: 12px; color: var(--muted); margin: 8px 0 4px; }
+.ap-kode {
+  border: 1px dashed var(--storm-rod);
+  background: var(--sone, rgba(210, 43, 52, .09));
+  border-radius: var(--radius, 8px);
+  text-align: center;
+  padding: 10px;
+  font: 600 24px/1.2 ui-monospace, "SFMono-Regular", Consolas, monospace;
+  letter-spacing: 5px;
+  user-select: all;
+}
+.ap-knapper { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.ap-knapper button { font-size: 12px; padding: 5px 9px; }
+.ap-venter { background: var(--panel2); border: 1px solid var(--border); border-radius: var(--radius, 8px); padding: 10px 12px; }
+.ap-venter-topp { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+.ap-venter-topp span { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.ap-venter p { margin: 4px 0 2px; font-size: 12px; color: var(--muted); }
+button.ap-ok { background: var(--ok); border-color: var(--ok); color: #fff; font-weight: 600; }
+.ap-tabell-boks { overflow-x: auto; }
+.ap-tabell { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ap-tabell th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12px; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.ap-tabell td { padding: 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.ap-handling { text-align: right; }
+.ap-handling button { font-size: 12px; padding: 4px 10px; }
+.ap-dempet { color: var(--muted); font-size: 12px; }
+.ap-type { display: inline-block; border: 1px solid var(--border); border-radius: 9px; padding: 0 7px; font-size: 11px; color: var(--muted); }
+.ap-type.ap-storm, .ap-type.ap-sperret { border-color: var(--storm-rod); color: var(--accent2); }
+.ap-rad-sperret td:nth-child(-n+2), .ap-rad-sperret td:nth-child(5) { text-decoration: line-through; color: var(--muted); }
+.ap-rad-ventende td { color: var(--muted); font-style: italic; }
+
+@media (max-width: 1100px) {
+  .ap-kolonner { grid-template-columns: 1fr 1fr; }
+  .ap-brukere { grid-column: 1 / -1; }
+}
+@media (max-width: 700px) {
+  .admin-panel { padding: 12px; }
+  .ap-tall { grid-template-columns: 1fr 1fr; }
+  .ap-kolonner { grid-template-columns: 1fr; }
+  .ap-kol { min-height: 0; }
+}
+
+/* Når toppbaren brekker over to linjer (mange knapper og en modell åpen),
+   havner Gratisversjon/Admin (og den røde innloggingsprikken) på samme høyde
+   som verktøylinja, som ligger OVER toppbaren og tok trykkene. Den tomme
+   flaten i verktøylinja slipper nå trykk gjennom; knappene i den virker som før.
+   Bare på PC — på telefon er verktøylinja en rullelinje. */
+@media (min-width: 761px) {
+  #toolbar { pointer-events: none; }
+  #toolbar > * { pointer-events: auto; }
+}
