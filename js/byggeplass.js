@@ -81,6 +81,24 @@ if (btn) btn.addEventListener("click", async () => {
   // Prosjektnavnet følger med, så Emil ser HVA som venter på godkjenning
   let prosjektnavn = "";
   try { prosjektnavn = String((S.prosjektInfo && S.prosjektInfo() || {}).navn || "").trim().slice(0, 80); } catch (_) {}
+  // 🏷 Emil 14.10: «20581 Lørenskog» ble opprettet uten navn, fordi Prosjektinfo
+  // ikke hadde noe navn. Uten navn spør vi — én gang per prosjektnummer på
+  // denne maskinen (huskes), med filnavnet som forslag. Navnet vises i
+  // adminpanelet, i Teams-varslene og når et nytt prosjekt venter på godkjenning.
+  if (!prosjektnavn) {
+    let husket = {};
+    try { husket = JSON.parse(localStorage.getItem("storm-bp-navn") || "{}"); } catch (_) {}
+    prosjektnavn = String(husket[prosjekt] || "").trim();
+    if (!prosjektnavn) {
+      const forslag = String(S.fileName || "").replace(/\.(ifc|glb)$/i, "").replace(/[_]+/g, " ").trim().slice(0, 80);
+      const svar = prompt(norsk("Prosjektnavn for {0} (vises i adminpanelet og i varslene). Tips: fyll inn navnet under Innstillinger → Prosjektinfo, så slipper du dette spørsmålet:", prosjekt), forslag);
+      if (svar === null) return;   // Avbryt = ingen opplasting
+      prosjektnavn = svar.trim().slice(0, 80);
+      if (!prosjektnavn) { varsel(norsk("Prosjektet må ha et navn.")); return; }
+      husket[prosjekt] = prosjektnavn;
+      try { localStorage.setItem("storm-bp-navn", JSON.stringify(husket)); } catch (_) {}
+    }
+  }
 
   // 🏗 Normalt eller stort prosjekt? Valget BOR HOS WORKEREN (modus.json i
   // prosjektmappa), så det følger prosjektet og ikke maskinen. Finnes det
