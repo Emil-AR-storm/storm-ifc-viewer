@@ -412,6 +412,16 @@ function tilgangHtml() {
     html += '<div class="set-row"><span class="n">' + esc(norsk("Kortet tilhører")) + '</span><span>' +
       esc(k.navn || "") + (k.firma ? " · " + esc(k.firma) : "") + '</span></div>' +
       '<div class="prop-actions"><button id="tgFjern">' + esc(norsk("Fjern kortet fra denne PC-en")) + '</button></div>';
+  } else if (erAdmin() || document.body.classList.contains("har-kort")) {
+    // Åpent uten eget kort: enten admin-nøkkelen nå, eller admin-nøkkelen
+    // som ble logget ut etter 15 min (verktøyene er lastet og står åpne til
+    // siden lastes på nytt — vi laster ikke om selv, det kan koste ulagret arbeid).
+    html += '<p style="font-size:12px; margin:0 0 6px; color:' + (erAdmin() ? 'var(--ok)">🛡 ' +
+        esc(norsk("Åpnet med admin-nøkkelen. Alle verktøy er tilgjengelige i denne fanen.")) :
+        'var(--warn)">' + esc(norsk("Admin-nøkkelen er logget ut. Verktøyene er åpne til siden lastes på nytt."))) + '</p>' +
+      '<p style="color:var(--muted); font-size:11px; margin:0 0 6px">' +
+        esc(norsk("Uten eget kort låses verktøyene igjen når fanen lukkes. Løs inn en Storm-kode for å bli husket på denne PC-en.")) + '</p>' +
+      '<div class="prop-actions"><button id="tgLasOpp">🔑 ' + esc(norsk("Løs inn eget kort")) + '</button></div>';
   } else {
     html += '<p style="color:var(--muted); font-size:12px; margin:0 0 6px">' +
       esc(tilstand === "sperret" ? norsk("Kortet på denne PC-en er sperret.") :
@@ -434,7 +444,7 @@ function tilgangHtml() {
 }
 
 function koblTilgang() {
-  if ($("tgLasOpp")) $("tgLasOpp").onclick = () => krevKort();
+  if ($("tgLasOpp")) $("tgLasOpp").onclick = () => { if (tilstand === "vilkar") visVilkarBoks(); else visKodeboks(); };
   if ($("tgFjern")) $("tgFjern").onclick = () => {
     if (!confirm(norsk("Fjerne kortet fra denne PC-en? Du trenger en ny kode for å låse opp igjen."))) return;
     fjernKort();
