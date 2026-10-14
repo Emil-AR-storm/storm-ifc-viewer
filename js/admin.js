@@ -157,13 +157,26 @@ function tegnProsjekter() {
     avsluttet: '<span class="ap-type ap-sperret">' + esc(norsk("Avsluttet")) + '</span>' };
   kropp.innerHTML = liste.map(p =>
     '<tr class="' + (p.status === "avsluttet" ? "ap-rad-sperret" : "") + '">' +
-      '<td><b>' + esc(p.prosjekt) + '</b></td><td>' + esc(p.navn || "–") + '</td>' +
+      '<td><b>' + esc(p.prosjekt) + '</b></td><td>' +
+        (p.navn ? esc(p.navn) + ' <button type="button" class="ap-navn" data-navn="' + esc(p.prosjekt) + '" title="' + esc(norsk("Bytt navn")) + '">✎</button>'
+                : '<button type="button" class="ap-navn ap-mangler" data-navn="' + esc(p.prosjekt) + '">✎ ' + esc(norsk("Gi navn")) + '</button>') + '</td>' +
       '<td>' + esc(p.eier) + (p.firma ? ' <span class="ap-dempet">· ' + esc(p.firma) + '</span>' : "") + '</td>' +
       '<td>' + (p.harKode ? esc(norsk("Ja")) : '<span class="ap-dempet">' + esc(norsk("Ikke laget")) + '</span>') + '</td>' +
       '<td>' + merke[p.status] + (p.status === "avsluttet" ? ' <span class="ap-dempet">' + esc(når(p.avsluttetTid)) + '</span>' : "") + '</td>' +
       '<td class="ap-handling"><button type="button" data-nr="' + esc(p.prosjekt) + '" data-aktiv="' + (p.status === "avsluttet" ? "1" : "0") + '"' +
         (p.status === "avsluttet" ? ' class="ap-ok"' : "") + '>' +
         esc(p.status === "avsluttet" ? norsk("▶ Aktiver") : norsk("⏹ Avslutt")) + '</button></td></tr>').join("");
+  kropp.querySelectorAll("button[data-navn]").forEach(b => {
+    b.onclick = async () => {
+      const nr = b.dataset.navn, p = prosjektListe.find(x => x.prosjekt === nr) || {};
+      const navn = prompt(norsk("Navn på prosjekt {0}:", nr), p.navn || "");
+      if (navn === null || !navn.trim()) return;
+      try {
+        await kall("/admin/prosjekt-navn", { json: { prosjekt: nr, navn: navn.trim() } });
+        await hentProsjekter();
+      } catch (err) { if (err.message !== "403") varsel(norsk("Klarte ikke: ") + err.message); }
+    };
+  });
   kropp.querySelectorAll("button[data-nr]").forEach(b => {
     b.onclick = async () => {
       const aktiv = b.dataset.aktiv === "1", nr = b.dataset.nr;
