@@ -235,3 +235,5 @@ button.ap-ok { background: var(--ok); border-color: var(--ok); color: #fff; font
 .ap-type.ap-aktiv { border-color: var(--ok); color: var(--ok); }
 .ap-type.ap-venter-merke { border-color: var(--warn); color: var(--warn); }
 .ap-prosjekter .ap-rad-sperret td:nth-child(5) { text-decoration: none; }
+.ap-navn { font-size: 11px; padding: 1px 6px; margin-left: 4px; background: transparent; color: var(--muted); }
+.ap-navn.ap-mangler { color: var(--warn); border-color: var(--warn); margin-left: 0; }
