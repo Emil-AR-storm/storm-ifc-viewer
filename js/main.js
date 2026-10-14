@@ -73,17 +73,41 @@ const MODULER = [
 ];
 
 const medKort = await sjekkKort();
+// 🔁 Emil 14.10: «noen ganger laster ikke rigg inn» — feilen var «Failed to
+// fetch dynamically imported module …/rigg.js». Det er NETTET (eller GitHub
+// Pages midt i en opplasting), ikke koden: neste omlasting virket. Hentingen
+// prøves derfor tre ganger før vi gir opp. Andre og tredje forsøk har
+// «?forsok=» på adressen, så nettleseren ikke gjenbruker den feilede hentingen.
+// Avhengighetene til modulen har uendrede adresser, så ingenting lastes dobbelt.
+const pause = (ms) => new Promise(r => setTimeout(r, ms));
+async function lastModul(sti) {
+  for (let forsøk = 1; ; forsøk++) {
+    try { return await import(forsøk === 1 ? sti : sti + "?forsok=" + forsøk); }
+    catch (err) {
+      // Bare nettfeil prøves på nytt. En feil INNI modulen (SyntaxError,
+      // TypeError fra koden) blir ikke bedre av å vente.
+      const nett = /fetch|load|network|import/i.test(String(err && err.message || err)) && !(err instanceof SyntaxError);
+      if (!nett || forsøk >= 3) throw err;
+      await pause(800 * forsøk);
+    }
+  }
+}
+const feilet = [];
 for (const [sti, låst] of MODULER) {
   if (låst && !medKort) continue;
   // En modul som ikke lar seg laste, skal ikke ta med seg resten av appen.
   // (Med statiske import-linjer stoppet ALT på første feil.)
-  try { await import(sti); }
+  try { await lastModul(sti); }
   catch (err) {
     console.error("Klarte ikke å laste " + sti, err);
+    feilet.push(sti.slice(2).replace(/\.js$/, ""));
     const st = document.getElementById("status");
     if (st) st.textContent = "Feil: " + sti.slice(2) + " – " + (err && err.message || err);
   }
 }
+// Sier fra i varselboksen også — teksten oppe til høyre er lett å overse, og
+// uten den ser det bare ut som om riggen (eller et annet verktøy) er borte.
+if (feilet.length) varsel("Klarte ikke å laste " + feilet.join(", ") + " (nettet eller GitHub svarte ikke). Last siden på nytt (F5).");
 // Hengelåsene, «Gratisversjon» og Admin-knappen — når alle knapper finnes
 startTilgang();
 
