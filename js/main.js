@@ -10,47 +10,82 @@ import { addMeasure, koteValue, rettPunkt, snapPoint } from "./measure.js";
 import { canvas, koteGroup, makeLabel, measureGroup } from "./scene.js";
 import { naermesteMaaleflate, registrerPeker } from "./pek-eier.js";
 
-// last inn resten av modulene (rekkefølgen bestemmer oppstart)
-import "./prefs.js";
-import "./display.js";
-import "./outline.js";
-import "./hjelp.js";
-import "./materiell-vis.js";   // 📦 materiell: visningen (lastes av begge sider)
-import "./materiell.js";       // 📦 materiell: verktøyet (kun kontor)
-import "./stalbunker.js";     // 🔩 stålbunker fra stålmodellen (kun kontor, en seksjon i Materiell)
-import "./grupper.js";
-import "./terreng.js";     // ⛰ terreng fra Kartverket (kun kontor — IKKE i lett-main.js)
-import "./rigg-vis.js";    // 🏕 rigg: visningen (lastes av begge sider) — ETTER terreng.js
-import "./rigg.js";        // 🏕 rigg: verktøyet (kun kontor)
-import "./veggelement.js";   // 🧱 SW-generator: veggelementer på stålmodeller (kun kontor)         // 🎯 objektgrupper: lagre og hente fram flervalg
-import "./stopeplan.js";      // 🧱 støpeplan i 3D (kun kontor)
-import "./stopeplan-felt.js"; // 🧱 trinn 3: felt på plata — tegne og dra (kun kontor)
-import "./framdrift.js";
-import "./vaer-3d.js";         // 🌦 været i 3D: himmel, skyer, nedbør og lyn (KUN kontoret — Emil 09.10)
-import "./priskalk.js";        // 💰 priskalkulasjon: mengder × priser → Excel med formler (kun kontor)
-import "./vaer.js";            // 🌦 Vis vær (kun kontor — byggeplassen ser været i Framdriftsplan)
-import "./laster.js";          // ❄🌬 snø og vind (kun kontor)      // 📅 framdriftsplan: etapper med alle slags objekter (kun kontor)
-import "./dokumentasjon.js";  // 📄 snarveiene i gruppa Dokumentasjon (kun kontor)
-import "./markers.js";
-import "./minimap.js";
-import "./viewcube.js";
-import "./axes.js";
-import "./maal-verktoy.js";   // 📏📐 kjedemål og vinkel/fall — FØR modes.js (kontrollinja)
-import "./modes.js";
-import "./angre.js";   // ↩ angre/gjenopprett – må lastes før ui.js (hurtigtastene)
-import "./sharepoint.js";
-import "./prosjektinfo.js";   // 🗂 felles prosjektinfo i Innstillinger — FØR ui.js
-import "./ui.js";
-import "./tema.js";   // lyst/mørkt tema – trenger knappen i toppbaren
-import "./hjul.js";   // navigasjonshjul – trenger knappen i verktøylinja
-import "./compare.js";
-import "./recent.js";
-import "./share.js";
-import "./byggeplass.js";
-import "./mobile.js";   // må lastes etter at alle knapper har fått lyttere
-import "./oppsett.js";   // ansattliste og Planner-plan fra SharePoint
-import "./usersync.js";   // personlig oppsett fra SharePoint – må lastes sist
+import { sjekkKort, startTilgang } from "./tilgang.js";   // 🔒 gratisdel og enhetskort (post 11)
 import { varsel } from "./varsel.js";
+
+// ---------- Resten av modulene (rekkefølgen bestemmer oppstart) ----------
+// 🔒 Post 11 (14.10.2026): de LÅSTE verktøyene lastes bare når denne
+// nettleseren har et godkjent enhetskort (eller admin-nøkkelen). Derfor er
+// lista under dynamisk import() i stedet for statiske import-linjer.
+//
+// REKKEFØLGEN ER NØYAKTIG DEN SAMME SOM FØR. Lista lastes én og én med await,
+// så en modul evalueres først når den forrige er ferdig — akkurat som de
+// statiske linjene gjorde. Kommentarene gjelder fortsatt: «FØR ui.js»,
+// «terreng.js før rigg-vis.js», «mobile.js etter at alle knapper har fått
+// lyttere», «usersync.js sist». Uten kort hoppes de låste over, og resten
+// lastes i samme innbyrdes rekkefølge.
+//
+// LÅST = true betyr «bare med kort». Lista over låste moduler er byggeplanen
+// 3c. FØR EN MODUL FLYTTES INN HER: sjekk at ingen GRATIS modul importerer den
+// statisk (grep "from \"./<navn>.js\"") — ellers lastes den uansett. Sjekket
+// 14.10: bare lett-main.js (bygg.html) importerer grupper/compare/share, og
+// byggeplass.js importerer grupper/veggelement — alle låste selv.
+const MODULER = [
+  ["./prefs.js"],
+  ["./display.js"],
+  ["./outline.js"],
+  ["./hjelp.js"],
+  ["./materiell-vis.js"],          // 📦 materiell: visningen (lastes av begge sider)
+  ["./materiell.js", true],        // 📦 materiell: verktøyet (kun kontor)
+  ["./stalbunker.js", true],       // 🔩 stålbunker fra stålmodellen (en seksjon i Materiell)
+  ["./grupper.js", true],          // 🎯 objektgrupper: lagre og hente fram flervalg
+  ["./terreng.js", true],          // ⛰ terreng fra Kartverket (kun kontor — IKKE i lett-main.js)
+  ["./rigg-vis.js"],               // 🏕 rigg: visningen (lastes av begge sider) — ETTER terreng.js
+  ["./rigg.js", true],             // 🏕 rigg: verktøyet (kun kontor)
+  ["./veggelement.js", true],      // 🧱 SW-generator: veggelementer på stålmodeller (kun kontor)
+  ["./stopeplan.js", true],        // 🧱 støpeplan i 3D (kun kontor)
+  ["./stopeplan-felt.js", true],   // 🧱 trinn 3: felt på plata — tegne og dra (kun kontor)
+  ["./framdrift.js", true],        // 📅 framdriftsplan: etapper med alle slags objekter (kun kontor)
+  ["./vaer-3d.js", true],          // 🌦 været i 3D: himmel, skyer, nedbør og lyn (KUN kontoret — Emil 09.10)
+  ["./priskalk.js", true],         // 💰 priskalkulasjon: mengder × priser → Excel med formler (kun kontor)
+  ["./vaer.js", true],             // 🌦 Vis vær (kun kontor — byggeplassen ser været i Framdriftsplan)
+  ["./laster.js", true],           // ❄🌬 snø og vind (kun kontor)
+  ["./dokumentasjon.js", true],    // 📄 snarveiene i gruppa Dokumentasjon (kun kontor)
+  ["./markers.js"],
+  ["./minimap.js"],
+  ["./viewcube.js"],
+  ["./axes.js"],
+  ["./maal-verktoy.js"],           // 📏📐 kjedemål og vinkel/fall — FØR modes.js (kontrollinja)
+  ["./modes.js"],
+  ["./angre.js"],                  // ↩ angre/gjenopprett – må lastes før ui.js (hurtigtastene)
+  ["./sharepoint.js"],
+  ["./prosjektinfo.js"],           // 🗂 felles prosjektinfo i Innstillinger — FØR ui.js
+  ["./ui.js"],
+  ["./tema.js"],                   // lyst/mørkt tema – trenger knappen i toppbaren
+  ["./hjul.js"],                   // navigasjonshjul – trenger knappen i verktøylinja
+  ["./compare.js", true],
+  ["./recent.js"],
+  ["./share.js", true],
+  ["./byggeplass.js", true],
+  ["./mobile.js"],                 // må lastes etter at alle knapper har fått lyttere
+  ["./oppsett.js"],                // ansattliste og Planner-plan fra SharePoint
+  ["./usersync.js"]                // personlig oppsett fra SharePoint – må lastes sist
+];
+
+const medKort = await sjekkKort();
+for (const [sti, låst] of MODULER) {
+  if (låst && !medKort) continue;
+  // En modul som ikke lar seg laste, skal ikke ta med seg resten av appen.
+  // (Med statiske import-linjer stoppet ALT på første feil.)
+  try { await import(sti); }
+  catch (err) {
+    console.error("Klarte ikke å laste " + sti, err);
+    const st = document.getElementById("status");
+    if (st) st.textContent = "Feil: " + sti.slice(2) + " – " + (err && err.message || err);
+  }
+}
+// Hengelåsene, «Gratisversjon» og Admin-knappen — når alle knapper finnes
+startTilgang();
 
 // JavaScript kjører – skjul advarselen
 const jsCheck = document.getElementById("jsCheck");

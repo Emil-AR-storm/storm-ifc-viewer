@@ -22,26 +22,33 @@ import { framdriftForByggeplass } from "./framdrift-regn.js";
 import { kilderForByggeplass } from "./framdrift-kilde.js";
 import { forByggeplass } from "./prosjektinfo-regn.js";
 import { varsel } from "./varsel.js";
+// 🔒 Post 11: kortet (eller Emils admin-nøkkel) erstatter «Opplastingsnøkkel:»-spørsmålet
+import { erAdmin, glemAdminNøkkel, krevKort, tilgangsNøkkel } from "./tilgang.js";
+// De nye tekstene fra post 11 er bare på norsk foreløpig (se js/tilgang.js).
+const norsk = (s, ...a) => a.reduce((r, v, i) => r.split("{" + i + "}").join(v), s);
 
 // Adressen til Workeren står i config.js, og kan overstyres av oppsett.json i
 // SharePoint. Leses gjennom TJENESTER hver gang – verdien kan komme etter at
 // denne fila er lastet.
 
-// ---------- Nøkler i nettleseren ----------
-// Begge ligger i sessionStorage, ikke localStorage: de skal ikke bli liggende
-// på disk mellom økter. Gammel localStorage-nøkkel ryddes bort under.
-const TOKEN_KEY = "storm-bp-token";     // opplasting og admin
+// ---------- Nøkkelen til Worker-en ----------
+// 🔒 Post 11 (14.10.2026): Byggeplass-knappen spør ikke lenger om
+// «Opplastingsnøkkel». Den bruker enhetskortet fra js/tilgang.js — eller
+// ADMIN_TOKEN hvis Emil har limt den inn under Innstillinger → Tilgang →
+// Administrator (sessionStorage, som før). tilgangsNøkkel() velger.
 
-const nøkkel = (k) => { try { return sessionStorage.getItem(k); } catch (_) { return null; } };
-const settNøkkel = (k, v) => { try { sessionStorage.setItem(k, v); } catch (_) {} };
-const glemNøkkel = (k) => { try { sessionStorage.removeItem(k); } catch (_) {} };
-
-// Engangsopprydding: nøkkelen lå i localStorage fram til 6. aug 2026, og skal
-// ikke bli liggende igjen der på maskiner som har brukt verktøyet før.
-try {
-  const gml = localStorage.getItem(TOKEN_KEY);
-  if (gml) { settNøkkel(TOKEN_KEY, gml); localStorage.removeItem(TOKEN_KEY); }
-} catch (_) {}
+// Worker-en svarer 403 av flere grunner. Teksten sier hvilken, og den
+// brukeren skal se er en annen enn «feil nøkkel».
+async function nektetTekst(r) {
+  const tekst = await r.text().catch(() => "");
+  if (r.status === 429) return norsk("For mange forsøk. Prøv igjen om en time.");
+  if (/annen bruker/i.test(tekst)) return norsk("Prosjektet tilhører en annen bruker.") +
+    (erAdmin() ? "" : " " + norsk("Er det ditt prosjekt fra før, må administrator gi deg tilgang."));
+  if (/ikke godkjent/i.test(tekst)) return norsk("Prosjektet ble ikke godkjent av administrator.");
+  if (/sperret/i.test(tekst)) return norsk("Kortet ditt er sperret. Ta kontakt for en ny kode.");
+  if (erAdmin()) { glemAdminNøkkel(); return norsk("Admin-nøkkelen ble ikke godtatt. Lim den inn på nytt under Innstillinger → Tilgang."); }
+  return norsk("Kortet ble ikke godtatt. Lås opp på nytt under Innstillinger → Tilgang.");
+}
 
 const btn = $("btnByggeplass");
 if (btn) btn.addEventListener("click", async () => {
@@ -67,19 +74,13 @@ if (btn) btn.addEventListener("click", async () => {
   if (!/^\d{5}$/.test(prosjekt)) { varsel(t("Prosjektnummeret må være 5 siffer.")); return; }
   localStorage.setItem("storm-bp-prosjekt", prosjekt);
 
-  // Opplastingsnøkkelen finnes BARE hos den som laster opp (aldri i offentlig kode).
-  //
-  // sessionStorage og ikke localStorage: nøkkelen forsvinner når fanen lukkes,
-  // så det ligger ingen kopi igjen på disk mellom økter. localStorage er en
-  // ukryptert fil i nettleserprofilen – kopierer noen profilmappa, eller kjører
-  // det skadevare på maskinen, følger nøkkelen med. Prisen er at du taster den
-  // én gang per nettleserøkt i stedet for én gang i livet.
-  let token = nøkkel(TOKEN_KEY) || "";
-  if (!token) {
-    token = (prompt(t("Opplastingsnøkkel:")) || "").trim();
-    if (!token) return;
-    settNøkkel(TOKEN_KEY, token);
-  }
+  // 🔒 Kortet eller admin-nøkkelen (se tilgang.js). Finnes ingen av dem,
+  // vises kodeboksen — knappen er låst uten kort, så dette er en sikring.
+  const token = tilgangsNøkkel();
+  if (!token) { krevKort(); return; }
+  // Prosjektnavnet følger med, så Emil ser HVA som venter på godkjenning
+  let prosjektnavn = "";
+  try { prosjektnavn = String((S.prosjektInfo && S.prosjektInfo() || {}).navn || "").trim().slice(0, 80); } catch (_) {}
 
   // 🏗 Normalt eller stort prosjekt? Valget BOR HOS WORKEREN (modus.json i
   // prosjektmappa), så det følger prosjektet og ikke maskinen. Finnes det
@@ -92,9 +93,8 @@ if (btn) btn.addEventListener("click", async () => {
     // 403 er FEIL NØKKEL, ikke «størrelsen er ikke valgt». Sa vi ikke fra her,
     // fikk du størrelsesdialogen, valgte, og opplastingen feilet først et
     // halvt minutt senere med en melding om noe helt annet (Emil 16.09).
-    else if (mr.status === 403) {
-      settNøkkel(TOKEN_KEY, "");
-      varsel(t("Opplastingsnøkkelen ble ikke godtatt. Prøv igjen, så spør den om nøkkelen på nytt."));
+    else if (mr.status === 403 || mr.status === 429) {
+      varsel(norsk("Prosjekt {0}: ", prosjekt) + await nektetTekst(mr));
       return;
     }
   } catch (_) {}
@@ -141,15 +141,13 @@ if (btn) btn.addEventListener("click", async () => {
       headers: {
         "content-type": "model/gltf-binary",
         "x-prosjekt": prosjekt,
+        "x-prosjektnavn": encodeURIComponent(prosjektnavn),
         "x-token": token,
         "x-innhold-hash": hash
       },
       body: bytes
     });
-    if (r.status === 403) {
-      glemNøkkel(TOKEN_KEY);
-      throw new Error(t("Feil opplastingsnøkkel – trykk på knappen og skriv den på nytt."));
-    }
+    if (r.status === 403 || r.status === 429) throw new Error(await nektetTekst(r));
     if (!r.ok) throw new Error("HTTP " + r.status + ": " + (await r.text()).slice(0, 200));
     const uendret = (await r.text()).startsWith("UENDRET");
     huskProsjektFor(fil, prosjekt);   // den røde telleren vet nå hvilket prosjekt modellen hører til
@@ -282,7 +280,16 @@ if (btn) btn.addEventListener("click", async () => {
     loadingText.textContent = t("Laster opp arbeidstegningene …");
     const antTegninger = await lastOppTegninger(prosjekt, token);
 
-    await visQr(prosjekt, fil, ids.size, vaskede.length, bildeteller, antallInn, antTegninger, uendret, grupperForEksport().length);
+    // 🔒 Post 11: godkjent? montørkode? Venter et nytt prosjekt fra et
+    // eksternt kort på Emils godkjenning, er modellen lastet opp, men det
+    // lages ingen montørkode og ingen QR ennå.
+    const mk = await montørkode(prosjekt, prosjektnavn, token);
+    if (mk.venter) {
+      varsel(norsk("Prosjekt {0} er lastet opp og venter på godkjenning. Når det er godkjent, trykker du Publiser Byggeplass igjen og får montørkoden og QR-koden.", prosjekt));
+      oppdaterBadge();
+      return;
+    }
+    await visQr(prosjekt, fil, ids.size, vaskede.length, bildeteller, antallInn, antTegninger, uendret, grupperForEksport().length, mk.kode);
     oppdaterBadge();   // innboksen er tømt nå — telleren skal bort
   } catch (err) {
     console.error(err);
@@ -294,6 +301,34 @@ if (btn) btn.addEventListener("click", async () => {
 
 
 // ---------- 🏗 Normalt / stort prosjekt ----------
+
+// ---------- 🔒 Montørkoden (post 11) ----------
+// Fram til 14.10 laget Emil montørkoden selv i konsollen (POST /ny-kode).
+// Nå lager knappen den første gang et GODKJENT prosjekt publiseres, og viser
+// den ÉN gang på QR-kortet. Finnes koden fra før, røres den ikke — en ny kode
+// ville gjort QR-plakaten på brakkeveggen ubrukelig.
+// Svar: { venter: true } | { kode: "K7M4XP" } | {} (koden finnes, eller eldre Worker)
+async function montørkode(prosjekt, navn, token) {
+  try {
+    const s = await fetch(TJENESTER.worker + "/kort/prosjekt/" + prosjekt, { headers: { "x-token": token } });
+    if (!s.ok) return {};   // eldre Worker uten ruta — oppfør deg som før
+    const st = await s.json();
+    if (st.status === "venter") return { venter: true };
+    if (st.harKode) return {};
+    return await nyMontørkode(prosjekt, navn, token);
+  } catch (_) { return {}; }
+}
+
+async function nyMontørkode(prosjekt, navn, token) {
+  const r = await fetch(TJENESTER.worker + "/ny-kode", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-token": token },
+    body: JSON.stringify({ prosjekt, navn })
+  });
+  if (r.status === 202) return { venter: true };
+  if (!r.ok) throw new Error(await nektetTekst(r));
+  return { kode: (await r.json()).kode };
+}
 
 async function lagreModus(prosjekt, token, modus) {
   try {
@@ -391,7 +426,7 @@ function prosjektFor(fil) {
 async function oppdaterBadge() {
   if (!btn) return;
   const prosjekt = prosjektFor(lettNavn(S.fileName || ""));
-  const token = nøkkel(TOKEN_KEY) || "";
+  const token = tilgangsNøkkel();
   let antall = 0;
   if (prosjekt && token) {
     try {
@@ -562,11 +597,18 @@ async function lastOppTegninger(prosjekt, token) {
   return opp;
 }
 
+// Montørkoden på QR-kortet. Koden er seks tegn fra KODE_TEGN (validert av
+// Worker-en), men escapes likevel.
+function montørkodeHtml(kode) {
+  return "<p style='margin:12px 0 2px;font-size:13px;color:#555'>" + norsk("Montørkode — vises bare nå, skriv den ned:") + "</p>" +
+    "<p style='margin:0 0 6px;font:700 26px ui-monospace,Consolas,monospace;letter-spacing:4px;color:#d22b34'>" + esc(kode) + "</p>";
+}
+
 // ---------- QR-plakat (trinn 4) ----------
 // Vises etter vellykket opplasting: QR-en peker på WORKER/<prosjektnr>.
 // Koden er IKKE i QR-en — montøren skal skrive den selv. Last ned som PNG
 // og lim inn i en arbeidstegning eller heng på brakkeveggen.
-async function visQr(prosjekt, fil, antall, antMark, antBilder, antInn, antTegninger, uendret, antGrupper) {
+async function visQr(prosjekt, fil, antall, antMark, antBilder, antInn, antTegninger, uendret, antGrupper, nyKode) {
   // Biblioteket hentes av js/qr.js (samme fil og hash som før, nå på ett sted)
   await hentQRCode();
   const adresse = TJENESTER.worker + "/" + prosjekt;
@@ -587,6 +629,8 @@ async function visQr(prosjekt, fil, antall, antMark, antBilder, antInn, antTegni
       (antInn ? " · " + antInn + " fra byggeplassen hentet inn" : "") +
       (uendret ? "<br><span style='color:#16a34a'>Modellen er uendret — ingen ny revisjon laget</span>" : "") + "</p>" +
     "<div id='qrRute' style='display:flex;justify-content:center'></div>" +
+    // 🔒 Ny montørkode: vises BARE nå. Worker-en lagrer bare hashen.
+    "<div id='qrKode'>" + (nyKode ? montørkodeHtml(nyKode) : "") + "</div>" +
     "<p style='font-size:13px;color:#555;margin:12px 0 2px'>" + adresse + "</p>" +
     "<p style='font-size:13px;color:#555;margin:2px 0 6px'>Skann → skriv prosjektkoden → se modellen</p>" +
     // Rådet står på plakaten og ikke i verktøyet, fordi det må leses FØR
@@ -605,7 +649,19 @@ async function visQr(prosjekt, fil, antall, antMark, antBilder, antInn, antTegni
   lastNed.style.cssText = "margin-right:8px";
   const lukk = document.createElement("button");
   lukk.className = "btn"; lukk.textContent = "Lukk";
-  kort.appendChild(lastNed); kort.appendChild(lukk);
+  // 🔒 Ny montørkode — for den som har mistet koden. Den gamle slutter å
+  // virke med en gang, så det spørres først.
+  const nyK = document.createElement("button");
+  nyK.className = "btn"; nyK.textContent = norsk("Ny montørkode");
+  nyK.style.cssText = "margin-right:8px";
+  nyK.onclick = async () => {
+    if (!confirm(norsk("Lage ny montørkode for prosjekt {0}? Den gamle koden slutter å virke med en gang, og alle montører må skrive den nye.", prosjekt))) return;
+    try {
+      const svar = await nyMontørkode(prosjekt, "", tilgangsNøkkel());
+      if (svar.kode) kort.querySelector("#qrKode").innerHTML = montørkodeHtml(svar.kode);
+    } catch (err) { varsel(norsk("Klarte ikke å lage ny montørkode: ") + err.message); }
+  };
+  kort.appendChild(lastNed); kort.appendChild(nyK); kort.appendChild(lukk);
   bak.appendChild(kort); document.body.appendChild(bak);
   new QRCode(kort.querySelector("#qrRute"), { text: adresse, width: 256, height: 256, correctLevel: QRCode.CorrectLevel.M });
   lastNed.onclick = () => {
