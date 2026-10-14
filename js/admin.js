@@ -90,7 +90,18 @@ export function visAdmin() {
           '<th>' + esc(norsk("Vilkår")) + '</th><th>' + esc(norsk("Sist brukt")) + '</th><th></th>' +
         '</tr></thead><tbody id="apBrukere"><tr><td colspan="6" class="ap-tom">' + esc(norsk("Henter …")) + '</td></tr></tbody></table></div>' +
       '</section>' +
-    '</div>';
+    '</div>' +
+    // 🏗 Byggeplass-prosjekter (Emil 14.10): avslutt et ferdig prosjekt, så
+    // kommer ingen montør inn lenger — og aktiver det igjen ved et feiltrykk.
+    '<section class="ap-kol ap-prosjekter"><div class="ap-kolhode"><h3>' + esc(norsk("Byggeplass-prosjekter")) +
+        ' <span class="ap-dempet" id="apProsjektTall"></span></h3>' +
+        '<label class="ap-sjekk ap-filter"><input type="checkbox" id="apVisAvsluttet" checked> ' + esc(norsk("Vis avsluttede")) + '</label></div>' +
+      '<p class="ap-tom" style="margin-top:0">' + esc(norsk("Avsluttet = montørene kommer ikke inn, og det kommer ingen morgenvarsler. Ingenting slettes: aktiverer du igjen, virker samme montørkode og QR.")) + '</p>' +
+      '<div class="ap-tabell-boks"><table class="ap-tabell"><thead><tr>' +
+        '<th>' + esc(norsk("Nr.")) + '</th><th>' + esc(norsk("Navn")) + '</th><th>' + esc(norsk("Eier")) + '</th>' +
+        '<th>' + esc(norsk("Montørkode")) + '</th><th>' + esc(norsk("Status")) + '</th><th></th>' +
+      '</tr></thead><tbody id="apProsjekter"><tr><td colspan="6" class="ap-tom">' + esc(norsk("Henter …")) + '</td></tr></tbody></table></div>' +
+    '</section>';
   document.body.appendChild(p);
   // Under toppbaren, så Admin-knappen og gruppene fortsatt synes (som i bildet)
   const topp = $("topbar");
@@ -117,7 +128,53 @@ export function lukkAdmin() {
 }
 
 async function oppdaterAlt() {
-  await Promise.all([hentTall(), hentVenter(), hentBrukere()]);
+  await Promise.all([hentTall(), hentVenter(), hentBrukere(), hentProsjekter()]);
+}
+
+let prosjektListe = [];
+async function hentProsjekter() {
+  const kropp = $("apProsjekter");
+  if (!kropp) return;
+  try {
+    prosjektListe = await (await kall("/admin/prosjekter")).json();
+    tegnProsjekter();
+  } catch (err) {
+    if (err.message !== "403") kropp.innerHTML = '<tr><td colspan="6" class="kb-feil">' + esc(err.message) + '</td></tr>';
+  }
+}
+
+function tegnProsjekter() {
+  const kropp = $("apProsjekter");
+  if (!kropp) return;
+  const visAvsl = $("apVisAvsluttet").checked;
+  $("apVisAvsluttet").onchange = tegnProsjekter;
+  const aktive = prosjektListe.filter(p => p.status !== "avsluttet").length;
+  $("apProsjektTall").textContent = aktive + " " + norsk("aktive") + " · " + (prosjektListe.length - aktive) + " " + norsk("avsluttet");
+  const liste = prosjektListe.filter(p => visAvsl || p.status !== "avsluttet");
+  if (!liste.length) { kropp.innerHTML = '<tr><td colspan="6" class="ap-tom">' + esc(norsk("Ingen prosjekter.")) + '</td></tr>'; return; }
+  const merke = { aktiv: '<span class="ap-type ap-aktiv">' + esc(norsk("Aktiv")) + '</span>',
+    venter: '<span class="ap-type ap-venter-merke">' + esc(norsk("Venter")) + '</span>',
+    avsluttet: '<span class="ap-type ap-sperret">' + esc(norsk("Avsluttet")) + '</span>' };
+  kropp.innerHTML = liste.map(p =>
+    '<tr class="' + (p.status === "avsluttet" ? "ap-rad-sperret" : "") + '">' +
+      '<td><b>' + esc(p.prosjekt) + '</b></td><td>' + esc(p.navn || "–") + '</td>' +
+      '<td>' + esc(p.eier) + (p.firma ? ' <span class="ap-dempet">· ' + esc(p.firma) + '</span>' : "") + '</td>' +
+      '<td>' + (p.harKode ? esc(norsk("Ja")) : '<span class="ap-dempet">' + esc(norsk("Ikke laget")) + '</span>') + '</td>' +
+      '<td>' + merke[p.status] + (p.status === "avsluttet" ? ' <span class="ap-dempet">' + esc(når(p.avsluttetTid)) + '</span>' : "") + '</td>' +
+      '<td class="ap-handling"><button type="button" data-nr="' + esc(p.prosjekt) + '" data-aktiv="' + (p.status === "avsluttet" ? "1" : "0") + '"' +
+        (p.status === "avsluttet" ? ' class="ap-ok"' : "") + '>' +
+        esc(p.status === "avsluttet" ? norsk("▶ Aktiver") : norsk("⏹ Avslutt")) + '</button></td></tr>').join("");
+  kropp.querySelectorAll("button[data-nr]").forEach(b => {
+    b.onclick = async () => {
+      const aktiv = b.dataset.aktiv === "1", nr = b.dataset.nr;
+      if (!aktiv && !confirm(norsk("Avslutte prosjekt {0}? Montørene kommer ikke inn lenger, heller ikke de som har siden åpen. Ingenting slettes, og du kan aktivere det igjen.", nr))) return;
+      b.disabled = true;
+      try {
+        await kall("/admin/prosjekt-aktiv", { json: { prosjekt: nr, aktiv } });
+        await hentProsjekter();
+      } catch (err) { b.disabled = false; if (err.message !== "403") varsel(norsk("Klarte ikke: ") + err.message); }
+    };
+  });
 }
 
 async function hentTall() {
