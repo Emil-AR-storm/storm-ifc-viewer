@@ -228,3 +228,10 @@ button.ap-ok { background: var(--ok); border-color: var(--ok); color: #fff; font
   #toolbar { pointer-events: none; }
   #toolbar > * { pointer-events: auto; }
 }
+
+/* 🏗 Byggeplass-prosjekter i adminpanelet (14.10): egen rad under kolonnene */
+.ap-prosjekter { margin-top: 14px; min-height: 0; }
+.ap-filter { font-size: 12px !important; color: var(--muted) !important; }
+.ap-type.ap-aktiv { border-color: var(--ok); color: var(--ok); }
+.ap-type.ap-venter-merke { border-color: var(--warn); color: var(--warn); }
+.ap-prosjekter .ap-rad-sperret td:nth-child(5) { text-decoration: none; }
