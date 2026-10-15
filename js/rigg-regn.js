@@ -35,6 +35,12 @@ export const RIGG_TYPER = {
   forstehjelp:{ label: "Førstehjelp", L: 0.7, B: 0.3, H: 2.2, farge: "#1e8e3e", logo: true },
   mote:       { label: "Møteområde", L: 3.0, B: 3.0, H: 2.5, farge: "#1f5fbf", logo: true },
   strom:      { label: "Strømskap", L: 0.6, B: 0.4, H: 1.4, farge: "#e67e22", logo: true },
+  // 💧 Vannkran (Emil 15.10, valgte prøvebilde B «Stolpe med skilt»): stålstolpe
+  // med blått VANN-skilt øverst, kran på 0,8 m, slangeopphenger med kveilet
+  // slange og rist under. L × B er rista, H toppen av skiltet. Feltene
+  // frostsikret, tilkobling og merknad står i skjemaet og i tegnforklaringen
+  // {Source not found: typiske mål, ikke sjekket mot leverandør}.
+  vann:       { label: "Vannkran", L: 0.6, B: 0.4, H: 1.8, farge: "#1f5fbf", vann: true },
   // 💡 Byggeplasslys (Emil 29.09): lyskaster på stativ — tre bein, mast og
   // to lyskastere på toppen. L × B er stativets fotavtrykk, H toppen av
   // lyskasterne {Source not found: typiske mål, ikke sjekket mot leverandør}.
@@ -115,6 +121,26 @@ export const AVFALLSTYPER = [
 ];
 export function avfallstype(id) { return AVFALLSTYPER.find(a => a.id === id) || null; }
 
+// 💧 Hvor vannet til vannkranen kommer fra (Emil 15.10). `id` lagres — endre
+// aldri en id, bare etiketten. Tom = ikke valgt.
+export const VANN_TILKOBLINGER = [
+  { id: "kommunal", label: "Kommunalt nett" },
+  { id: "bronn", label: "Brønn" },
+  { id: "tank", label: "Tank" }
+];
+export function vannTilkobling(id) { return VANN_TILKOBLINGER.find(a => a.id === id) || null; }
+export const VANN_MERKNAD_MAKS = 200;
+// Kort tekst om vannkranen til lista og tegnforklaringen: «frostsikret ·
+// Kommunalt nett». `tr` oversetter. Tomt når ingenting er fylt ut.
+export function vannTekst(o, tr) {
+  const lab = tr || ((x) => x);
+  if (!o || !RIGG_TYPER[o.type] || !RIGG_TYPER[o.type].vann) return "";
+  const del = [lab(o.frostsikret ? "frostsikret" : "ikke frostsikret")];
+  const tk = vannTilkobling(o.tilkobling);
+  if (tk) del.push(lab(tk.label));
+  return del.join(" · ");
+}
+
 // Objekter med skjøter ({ x, z }-punkter): gjerdet (lukket ring) og pilene
 // (åpen linje).
 export function harPunkter(type) { return !!(RIGG_TYPER[type] && (RIGG_TYPER[type].gjerde || RIGG_TYPER[type].pil)); }
@@ -126,7 +152,7 @@ export function minPunkter(o) { return erPil(o) ? 2 : 3; }
 
 // Rekkefølgen knappene står i panelet — det man rigger først, først.
 export const RIGG_REKKEFOLGE = ["gjerde", "pilKjoretoy", "pilGaende", "taarnkran", "brakke", "hjulbrakke", "toalett", "forstehjelp", "mote",
-  "strom", "lys", "container", "hms", "hmstavle", "soppel", "parkering", "lagring", "vaskeplass", "royk", "stillas"];
+  "strom", "vann", "lys", "container", "hms", "hmstavle", "soppel", "parkering", "lagring", "vaskeplass", "royk", "stillas"];
 
 // Kort forklaring per type. Står i panelet nå, og blir teksten i
 // tegnforklaringen på riggplan-PDF-en (trinn 6).
@@ -137,6 +163,7 @@ export const RIGG_FORKLARING = {
   forstehjelp: "Førstehjelpsutstyr og båre",
   mote: "Møteplass ved alarm og for morgenmøte",
   strom: "Byggestrøm — tilkobling for verktøy og brakker",
+  vann: "Vanntilgang for verktøy, vasking og rengjøring",
   lys: "Lyskaster på stativ for belysning av arbeidsområdet",
   container: "Lager for verktøy og materiell",
   hms: "Registrering av HMS-kort ved inngangen",
@@ -292,6 +319,13 @@ export function vaskRiggObjekt(p) {
   // ♻ Søppelcontaineren: avfallstypen (Emil 29.09) — kommer som et skilt på
   // containeren. Ukjent eller tom → ikke valgt (intet skilt).
   if (M.avfall) ut.avfall = AVFALLSTYPER.some(a => a.id === p.avfall) ? p.avfall : "";
+  // 💧 Vannkranen (Emil 15.10): frostsikret ja/nei, tilkobling og merknad.
+  // Bare true er ja — en fil med "ja" eller 1 er ikke frostsikret.
+  if (M.vann) {
+    ut.frostsikret = p.frostsikret === true;
+    ut.tilkobling = VANN_TILKOBLINGER.some(a => a.id === p.tilkobling) ? p.tilkobling : "";
+    ut.merknad = tekst(p.merknad, VANN_MERKNAD_MAKS);
+  }
   if (M.moduler) {
     ut.etasjer = heltall(p.etasjer, 1, MAKS_ETASJER, 1);
     ut.moduler = heltall(p.moduler, 1, MAKS_MODULER, 1);
@@ -997,6 +1031,11 @@ export function riggplanTegnforklaring(liste, tr) {
       // sirkelen sier ingenting ekstra)
       const delvis = av.map(o => kranSektor(o)).filter(q => !q.full);
       if (delvis.length) ekstraForklaring = " · " + lab("tillatt sving {0}").replace("{0}", delvis.map(q => q.bredde + "°").join(" / "));
+    } else if (M.vann) {
+      // 💧 Frostsikret og tilkobling per vannkran: «Vannkran 1: frostsikret ·
+      // Kommunalt nett». Merknaden står ikke på arket — den er for panelet.
+      antall = av.length + " " + lab("stk");
+      ekstraForklaring = av.map((o, i) => " · " + (av.length > 1 ? (o.navn || lab(M.label) + " " + (i + 1)) + ": " : "") + vannTekst(o, lab)).join("");
     } else if (M.parkering) {
       const pl = av.reduce((a, o) => a + parkeringsPlasser(o.L, o.B).totalt, 0);
       antall = lab("{0} plasser").replace("{0}", pl);

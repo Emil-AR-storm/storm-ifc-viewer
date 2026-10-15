@@ -235,7 +235,7 @@ export const KORT = [
   {
     hvor: "kontor", ikonNavn: "rigg",
     tittel: "Rigg: planlegg riggen på tomta",
-    tekst: "Rigg (i Planlegging) setter brakker, toalett, container, strømskap, søppelcontainer, lys, parkering, lagrings- og vaskeområde på tomta. Trykk på en type i katalogen, og så der den skal stå. Trykk på et objekt for å flytte, rotere, redigere eller slette det. Endringene lagres med en gang i SharePoint, så alle med tilgang ser det samme."
+    tekst: "Rigg (i Planlegging) setter brakker, toalett, container, strømskap, vannkran, søppelcontainer, lys, parkering, lagrings- og vaskeområde på tomta. Trykk på en type i katalogen, og så der den skal stå. Trykk på et objekt for å flytte, rotere, redigere eller slette det. Endringene lagres med en gang i SharePoint, så alle med tilgang ser det samme."
   },
   {
     hvor: "kontor", ikonNavn: "rigg",
