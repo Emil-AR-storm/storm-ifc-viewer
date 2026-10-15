@@ -33,11 +33,13 @@ import {
   binTilGrid, gridTilBin, navneforslag, nyTerrengId, vaskPlassering, vaskTerrengListe,
   planumKote, vaskPlanum, terrengForByggeplass,
   erEgenPad, iPad, polyFeil, padPrikker, padFraPunkter, polyAreal, polyRamme, PAD_PRIKK_M,
+  gyldigeOmrader, omradeStatus, omradeDz, OMR_STD, OMR_MAKS, OMR_MAKS_DZ, OMR_MAKS_N, padHoyder, polyMotRekt, vaskOmrader, omrRen,
   KOORDSYS, SIDER, dzFarger, ferdigGrid, masseRader, sideRetning, festEttPunkt, festSjekk, festToPunkt, masseFelt, vaskFest, vaskSkraning
 } from "./terreng-regn.js";
 import { lastNedXlsx, pick } from "./elements.js";
 import { snapPoint } from "./measure.js";
 import { varsel } from "./varsel.js";
+import { byggPlate3D, ryddPlate3D } from "./terreng-plate3d.js";
 
 // ═══════════════════════ TILSTAND ═══════════════════════
 // Alt om det lastede terrenget. null = ingen terreng.
@@ -82,6 +84,10 @@ let festNed = null;
 let padTegner = null;
 let padTegnerNed = null;
 let valgtPrikk = null;
+// ⛰ Heve/senke-områdene (Emil 15.10): det valgte området (id) får prikker
+// som kan dras; valgtOmrPrikk er prikken Delete fjerner.
+let valgtOmrade = null;
+let valgtOmrPrikk = null;
 let festMelding = "", festFeil = false;
 function erLaast() { return !!(terreng && terreng.fest && terreng.fest.laast); }
 
@@ -213,6 +219,7 @@ S.terrengRef = () => {
   const mr = modellRef();
   const { E0, N0, plass, pad, gulv, grid: g } = terreng;
   const synlig = !skjult;
+  const om = gyldigeOmrader(pad), harOmr = om.st.some(q => q.gyldig);
   return {
     E0, N0, plass: { pE: plass.pE || 0, pN: plass.pN || 0, rot: plass.rot || 0 },
     synlig,
@@ -228,7 +235,8 @@ S.terrengRef = () => {
       if (!synlig) return null;
       if (pad && pad.paa && gulv && !visMasser) {
         const b = terrengTilBygg(E, N, E0, N0, plass);
-        if (iPad(pad, b.bx, b.bz)) return mr.gulvY;
+        // ⛰ i en grop står riggen på bunnen, på en haug på toppen
+        if (iPad(pad, b.bx, b.bz)) return mr.gulvY + (harOmr ? mTilScene(omradeDz(om.liste, om.st, b.bx, b.bz), mr.skala) : 0);
       }
       const h = hoydeVed(g, E, N);
       return h == null ? null : yFraMoh(h, mr);
@@ -282,7 +290,7 @@ function flateTreff(x, y) {
   _p.set((x / innerWidth) * 2 - 1, -(y / innerHeight) * 2 + 1);
   _ray.setFromCamera(_p, camera);
   const mål = [flateMesh, plateMesh].filter(m => m && m.visible);
-  const h = _ray.intersectObjects(mål, false)[0];
+  const h = _ray.intersectObjects(mål, true)[0];   // plata er en gruppe (områdene)
   if (!h) return null;
   // utenSnap: kant-snappen i measure.js bygger kantliste per element og er
   // laget for stål. På 300 000 terrengtrekanter finnes ingen «hjørner» å
@@ -307,11 +315,15 @@ const handtakMat = {
   klipp: new THREE.MeshBasicMaterial({ color: FARGE_KLIPP, depthTest: false }),
   pad: new THREE.MeshBasicMaterial({ color: FARGE_PAD, depthTest: false }),
   padValgt: new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false }),
+  omr: new THREE.MeshBasicMaterial({ color: 0x29b6f6, depthTest: false }),
   rot: new THREE.MeshBasicMaterial({ color: FARGE_FOT, depthTest: false }),
   fest: new THREE.MeshBasicMaterial({ color: 0x00c853, depthTest: false })
 };
 
 // ✏ den lukkede formen mens man tegner: lys gul, halvgjennomsiktig
+// ⛰ omrisset av et valgt område (blått) og et ugyldig område (rødt)
+const omrValgtMat = new THREE.LineBasicMaterial({ color: 0x29b6f6, depthTest: false, transparent: true, opacity: 0.95 });
+const omrFeilMat = new THREE.LineBasicMaterial({ color: 0xe53935, depthTest: false, transparent: true, opacity: 0.95 });
 const tegnFyllMat = new THREE.MeshBasicMaterial({ color: FARGE_PAD, transparent: true, opacity: 0.3, depthTest: false, side: THREE.DoubleSide });
 
 const klippGroup = new THREE.Group();   // i innhold (følger terrenget)
@@ -332,6 +344,7 @@ let handtakene = [];    // [{ type: "klipp"|"pad"|"rot", kant, mesh }]
 function tomGruppe(g) {
   for (const o of g.children.slice()) {
     g.remove(o);
+    if (o.isGroup) { ryddPlate3D(o); continue; }      // ⛰ plata med områdene
     if (o.geometry && o.geometry !== handtakGeo) o.geometry.dispose();
     if (o.userData.egetMat && o.material) o.material.dispose();   // plata har sitt eget
     if (o.isSprite && o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); }
@@ -412,19 +425,20 @@ function tegnHandtak() {
   const p = terreng.pad;
   const egen = erEgenPad(p);
   if (p && p.paa && !visMasser) {
-    const geo = egen ? polyGeo(p.punkter, s) : new THREE.PlaneGeometry((p.x1 - p.x0) / s, (p.z1 - p.z0) / s);
-    geo.rotateX(-Math.PI / 2);
-    plateMesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({
-      color: FARGE_PLATE, side: THREE.DoubleSide,
-      // Samme triks som terrenget: gulvet i modellen ligger i nøyaktig samme
-      // høyde som plata, og modellen skal vinne — ikke flimre.
-      polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1
-    }));
-    plateMesh.position.copy(egen ? byggPunkt(0, 0, gulvY) : byggPunkt((p.x0 + p.x1) / 2, (p.z0 + p.z1) / 2, gulvY));
-    plateMesh.name = "terrengplate";
-    plateMesh.userData.egetMat = true;
+    // ⛰ plata med hull for gropene/haugene, og områdene selv (terreng-plate3d.js)
+    plateMesh = byggPlate3D(p, s, FARGE_PLATE);
+    plateMesh.position.copy(byggPunkt(0, 0, gulvY));
     padGroup.add(plateMesh);
     const loft = LOFT_M * 0.25 / s;
+    // Omrisset av hvert område (gult, rødt når det er ugyldig), og prikkene på
+    // det valgte
+    const L = p.omrader || [], st = L.length ? omradeStatus(p, L) : [];
+    L.forEach((o, i) => {
+      const y = gulvY + (st[i].gyldig ? st[i].base / s : 0) + loft;
+      padGroup.add(linje(o.punkter, y, st[i].gyldig ? (o.id === valgtOmrade ? omrValgtMat : padLinjeMat) : omrFeilMat, true));
+      if (o.id === valgtOmrade && !padTegner)
+        o.punkter.forEach((q, k) => nyttHandtak(padGroup, k === valgtOmrPrikk ? "padValgt" : "omr", "o" + k, byggPunkt(q.x, q.z, y)));
+    });
     if (egen) {
       // ✏ omrisset og én prikk per punkt (hver 5. meter fra start). Den
       // valgte prikken er hvit, så man ser hva Delete fjerner.
@@ -644,11 +658,13 @@ function byggFlate(mr) {
   const felt = terreng.masser;
   const g = visFerdig && felt ? ferdigGrid(terreng.grid, felt.dz) : terreng.grid;
   const p = terreng.pad;
-  const flat = (p && p.paa && terreng.gulv && !visMasser)
-    // Litt under plata: terrenget skal ikke stikke opp gjennom den i skrå
-    // ruter langs kanten.
-    ? { flagg: felt ? felt.flagg : padFlagg(g, E0, N0, terreng.plass, p), hoyde: terreng.gulv.kote - 0.05 }
-    : null;
+  // Litt under plata: terrenget skal ikke stikke opp gjennom den i skrå
+  // ruter langs kanten. Under gropene senkes det til under bunnen (padHoyder).
+  let flat = null;
+  if (p && p.paa && terreng.gulv && !visMasser) {
+    const ph = padHoyder(g, E0, N0, terreng.plass, p, terreng.gulv.kote);
+    flat = { flagg: ph.flagg, hoyder: ph.hoyder, hoyde: terreng.gulv.kote - 0.05 };
+  }
   const tr = gridTilTrekanter(g, E0, N0, h0, mr.skala, flat);
   const geo = flateMesh.geometry;
   geo.setAttribute("position", new THREE.BufferAttribute(tr.pos, 3));
@@ -920,10 +936,15 @@ function leggOppaa(medAngre) {
 
 // ═══════════════════════ PLATA (utskjæring) ═══════════════════════
 function settPad(ny, medAngre) {
-  if (!terreng || likePad(ny, terreng.pad)) return;
+  if (!terreng) return;
+  // ⛰ områdene følger plata når formen eller størrelsen byttes
+  if (ny && ny.omrader === undefined && terreng.pad && terreng.pad.omrader) ny = Object.assign({}, ny, { omrader: terreng.pad.omrader });
+  if (likePad(ny, terreng.pad)) return;
   const fra = Object.assign({}, terreng.pad), til = Object.assign({}, ny), gjeldende = terreng;
   terreng.pad = til;
   if (!erEgenPad(til) || valgtPrikk >= til.punkter.length) valgtPrikk = null;
+  const vo = (til.omrader || []).find(o => o.id === valgtOmrade);
+  if (!vo) { valgtOmrade = null; valgtOmrPrikk = null; } else if (valgtOmrPrikk >= vo.punkter.length) valgtOmrPrikk = null;
   oppdaterAlt();
   if (medAngre && S.pushAngre) S.pushAngre({
     tekst: "Utskjæring",
@@ -990,7 +1011,14 @@ window.addEventListener("pointerdown", (e) => {
     e.stopPropagation();   // kameraet skal ikke rotere mens håndtaket dras
     const planY = h.mesh.getWorldPosition(new THREE.Vector3()).y;
     if (h.type === "klipp") drar = { type: "klipp", kant: h.kant, fra: Object.assign({}, terreng.klipp), planY };
+    else if (h.type === "omr" || (h.type === "padValgt" && h.kant[0] === "o")) {
+      // ⛰ en prikk på det valgte området
+      valgtOmrPrikk = Number(h.kant.slice(1)); valgtPrikk = null;
+      drar = { type: "omrP", id: valgtOmrade, i: valgtOmrPrikk, fra: Object.assign({}, terreng.pad), planY };
+      tegnHandtak();
+    }
     else if ((h.type === "pad" || h.type === "padValgt") && erEgenPad(terreng.pad)) {
+      valgtOmrPrikk = null;
       // ✏ en prikk på den egendefinerte plata
       valgtPrikk = Number(h.kant.slice(1));
       drar = { type: "padP", i: valgtPrikk, fra: Object.assign({}, terreng.pad), planY };
@@ -1055,6 +1083,19 @@ window.addEventListener("pointermove", (e) => {
     return;
   }
   const mr = modellRef();
+  if (drar.type === "omrP") {
+    const r10 = (v) => Math.round(v * 10) / 10;
+    const L = terreng.pad.omrader || [], i = L.findIndex(o => o.id === drar.id);
+    if (i < 0) return;
+    const pts = L[i].punkter.slice();
+    const q = { x: r10((p.x - mr.c.x) * mr.skala), z: r10((p.z - mr.c.z) * mr.skala) };
+    if (pts[drar.i].x === q.x && pts[drar.i].z === q.z) return;
+    pts[drar.i] = q;
+    const ny = L.slice(); ny[i] = Object.assign({}, omrRen([L[i]])[0], { punkter: pts });
+    terreng.pad = Object.assign({}, terreng.pad, { omrader: ny });
+    if (!venter) venter = requestAnimationFrame(() => { venter = 0; tegnHandtak(); });
+    return;
+  }
   if (drar.type === "padP") {
     // Rundes til 10 cm, som firkanten. Formen sjekkes først når du slipper:
     // underveis kan en kant godt krysse en annen.
@@ -1117,6 +1158,11 @@ window.addEventListener("pointerup", (e) => {
     terreng.klipp = d.fra;              // settKlipp lager angre-posten fra→til
     if (likeKlipp(d.fra, til)) { brukKlipp(); return; }
     settKlipp(til, true);
+  } else if (d.type === "omrP") {
+    const til = terreng.pad;
+    terreng.pad = d.fra;
+    if (likePad(d.fra, til)) { tegnHandtak(); return; }
+    settOmrader(til.omrader, d.id, "Prikken er satt tilbake.");
   } else if (d.type === "padP") {
     const til = terreng.pad;
     terreng.pad = d.fra;
@@ -1161,6 +1207,10 @@ window.addEventListener("keydown", (e) => {
     if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); avbrytPadTegning(); return; }
     if (e.key === "Backspace") { e.preventDefault(); e.stopPropagation(); angreSistePunkt(); return; }
     if (e.key === "Enter" && padTegner.lukket) { e.preventDefault(); e.stopPropagation(); ferdigPadTegning(); return; }
+  }
+  // ⛰ Delete fjerner den valgte prikken på det valgte området
+  if ((e.key === "Delete" || e.key === "Backspace") && !iFelt && !padTegner && valgtOmrade && valgtOmrPrikk != null && erApen() && terreng) {
+    e.preventDefault(); e.stopPropagation(); fjernOmrPrikk(); return;
   }
   // Delete fjerner den valgte prikken på en egendefinert plate
   if ((e.key === "Delete" || e.key === "Backspace") && !iFelt && !padTegner && valgtPrikk != null && erApen() && terreng && erEgenPad(terreng.pad)) {
@@ -1230,10 +1280,11 @@ function byggVed(x, y) {
   return { x: r10(lok.x * mr.skala), z: r10(lok.z * mr.skala) };
 }
 
-function startPadTegning() {
+function startPadTegning(mal) {
   if (!terreng || !S.modelGroup) return;
-  flyttModus = false; festVelger = 0; valgtPrikk = null;
-  padTegner = { punkter: [], lukket: false, mus: null };
+  flyttModus = false; festVelger = 0; valgtPrikk = null; valgtOmrPrikk = null;
+  // mal: "pad" = plata selv, "omrade" = et nytt heve/senke-område på plata
+  padTegner = { mal: mal === "omrade" ? "omrade" : "pad", punkter: [], lukket: false, mus: null };
   tegnHandtak();
   if (erApen()) tegnPanel();
 }
@@ -1252,6 +1303,32 @@ function angreSistePunkt() {
 }
 function ferdigPadTegning() {
   if (!padTegner || !padTegner.lukket) return;
+  if (padTegner.mal === "omrade") {
+    // ⛰ nytt område: senk 1 m med kant 1:1 som start — tallene endres i panelet
+    const p = terreng.pad, L = (p.omrader || []).slice();
+    if (L.length >= OMR_MAKS) { varsel(t("Plata kan ha høyst {0} områder.", OMR_MAKS)); return; }
+    const id = "o" + Date.now().toString(36) + Math.floor(Math.random() * 1296).toString(36);
+    const nr = L.length + 1;
+    L.push({ id, navn: t("Område {0}", nr), punkter: padPrikker(padTegner.punkter, PAD_PRIKK_M), dz: OMR_STD.dz, n: OMR_STD.n });
+    const v = vaskOmrader(L);
+    const st = omradeStatus(p, v), k = v.findIndex(o => o.id === id);
+    // Det nye området må være gyldig, og ingen som var gyldige før får bli ugyldige
+    const forSt = omradeStatus(p, p.omrader || []);
+    const brutt = (p.omrader || []).findIndex((o, i) => forSt[i].gyldig && !st[v.findIndex(q => q.id === o.id)].gyldig);
+    if (k < 0 || !st[k].gyldig || brutt >= 0) {
+      const grunn = k < 0 ? "Formen kan ikke brukes." : !st[k].gyldig ? st[k].grunn : st[v.findIndex(q => q.id === p.omrader[brutt].id)].grunn;
+      varsel(t(grunn) + " " + t("Tegn området på nytt, eller ta bort punkter med Backspace."));
+      padTegner.lukket = false;
+      tegnHandtak(); if (erApen()) tegnPanel();
+      return;
+    }
+    padTegner = null;
+    canvas.style.cursor = ""; satteMarkor = "";
+    valgtOmrade = id; valgtOmrPrikk = null;
+    settPad(Object.assign({}, p, { omrader: v }), true);
+    if (erApen()) tegnPanel();
+    return;
+  }
   const ny = padFraPunkter(padPrikker(padTegner.punkter, PAD_PRIKK_M), true);
   if (!ny) { varsel(t(polyFeil(padTegner.punkter) || "Formen kan ikke brukes.")); return; }
   padTegner = null;
@@ -1280,6 +1357,39 @@ function fjernPrikk(i) {
   settPad(padFraPunkter(pts, p.paa), true);
   if (erApen()) tegnPanel();
 }
+// ⛰ Ny liste med områder: sjekkes før den tas i bruk. Gjør endringen et
+// område ugyldig (delvis overlapp, utenfor plata, i kanten av et annet),
+// står det som det var, med grunnen i et varsel.
+function settOmrader(liste, id, tilbake) {
+  const p = terreng.pad, v = vaskOmrader(liste), st = omradeStatus(p, v);
+  const forSt = omradeStatus(p, p.omrader || []);
+  // Bare områder som var gyldige før og nå er ugyldige er en feil av DENNE
+  // endringen (et område utenfor en plate som er gjort mindre, står som før)
+  const feil = v.findIndex((o, i) => !st[i].gyldig && (o.id === id || (forSt[(p.omrader || []).findIndex(q => q.id === o.id)] || {}).gyldig));
+  if (feil >= 0) { varsel(t(st[feil].grunn) + (tilbake ? " " + t(tilbake) : "")); oppdaterAlt(); if (erApen()) tegnPanel(); return false; }
+  settPad(Object.assign({}, p, { omrader: v }), true);
+  if (erApen()) tegnPanel();
+  return true;
+}
+function fjernOmrPrikk() {
+  const L = terreng.pad.omrader || [], i = L.findIndex(o => o.id === valgtOmrade);
+  if (i < 0 || valgtOmrPrikk == null) return;
+  if (L[i].punkter.length <= 3) { varsel(t("Formen trenger minst tre punkter.")); return; }
+  const pts = L[i].punkter.filter((_, k) => k !== valgtOmrPrikk);
+  if (polyFeil(pts)) { varsel(t(polyFeil(pts))); return; }
+  const ny = omrRen(L); ny[i].punkter = pts;
+  valgtOmrPrikk = null;
+  settOmrader(ny, valgtOmrade);
+}
+function slettOmrade(id) {
+  const L = omrRen(terreng.pad.omrader);
+  // Områdene som lå inni det slettede flyttes ikke — de blir stående på plata
+  // og kan bli ugyldige (de vises da i rødt med grunnen)
+  if (valgtOmrade === id) { valgtOmrade = null; valgtOmrPrikk = null; }
+  settPad(Object.assign({}, terreng.pad, { omrader: L.filter(o => o.id !== id) }), true);
+  if (erApen()) tegnPanel();
+}
+
 function visPrikkKnapp() {
   const b = $("trPadFjern");
   if (b) b.disabled = valgtPrikk == null;
@@ -1330,6 +1440,29 @@ window.addEventListener("pointerup", (e) => {
 window.addEventListener("dblclick", (e) => {
   if (e.target !== canvas || padTegner || !terreng || !S.modelGroup || !erApen() || skjult || visMasser) return;
   const p = terreng.pad;
+  // ⛰ først kanten av det valgte området
+  const L = p.omrader || [], oi = L.findIndex(o => o.id === valgtOmrade);
+  if (oi >= 0) {
+    const pts = L[oi].punkter, n = pts.length;
+    let best = null, bestD = TREFF_PX;
+    for (let i = 0; i < n; i++) {
+      const a = skjermPx(pts[i].x, pts[i].z), b = skjermPx(pts[(i + 1) % n].x, pts[(i + 1) % n].z);
+      if (a.bak || b.bak) continue;
+      const ex = b.x - a.x, ey = b.y - a.y, L2 = ex * ex + ey * ey;
+      const tt = L2 > 0 ? Math.max(0, Math.min(1, ((e.clientX - a.x) * ex + (e.clientY - a.y) * ey) / L2)) : 0;
+      const d = Math.hypot(e.clientX - (a.x + ex * tt), e.clientY - (a.y + ey * tt));
+      if (d < bestD && tt > 0.02 && tt < 0.98) { bestD = d; best = i; }
+    }
+    if (best != null) {
+      const q = byggVed(e.clientX, e.clientY);
+      if (!q) return;
+      e.stopPropagation(); e.preventDefault();
+      const ny = omrRen(L); ny[oi].punkter = pts.slice(0, best + 1).concat([q], pts.slice(best + 1));
+      valgtOmrPrikk = best + 1;
+      settOmrader(ny, valgtOmrade);
+      return;
+    }
+  }
   if (!erEgenPad(p) || !p.paa) return;
   let best = null, bestD = TREFF_PX;
   const n = p.punkter.length;
@@ -1560,7 +1693,7 @@ function katalogPost(t0, navn) {
 
 function plassPost() {
   return {
-    id: "plassering", terreng: terreng.id, plass: terreng.plass, gulv: terreng.gulv, pad: terreng.pad,
+    id: "plassering", terreng: terreng.id, plass: terreng.plass, gulv: terreng.gulv, pad: terreng.pad && terreng.pad.omrader ? Object.assign({}, terreng.pad, { omrader: omrRen(terreng.pad.omrader) }) : terreng.pad,
     klipp: terreng.klipp, planum: terreng.planum,
     skraning: terreng.skraning, fest: terreng.fest, kart: kartValg, av: mittNavn(), endret: new Date().toISOString()
   };
@@ -1804,6 +1937,9 @@ function tegnMasser() {
     rad(t("Fylling (fylle inn)"), m3(m.fylling), "#3b82f6") + del(m.fyllingPlate, m.fyllingSkraning) +
     rad(m.netto >= 0 ? t("Overskudd av masser") : t("Underskudd av masser"), m3(Math.abs(m.netto))) +
     rad(t("Areal under plata"), Math.round(m.areal).toLocaleString("no-NO") + " m²") +
+    // ⛰ gropene og haugene (er med i skjæring/fylling over)
+    (m.omrSenket ? rad(t("Herav senkede områder"), m3(m.omrSenket)) : "") +
+    (m.omrHevet ? rad(t("Herav hevede områder"), m3(m.omrHevet)) : "") +
     (sk.paa ? rad(t("Areal i skråningene"), Math.round(m.arealSkraning).toLocaleString("no-NO") + " m²") : "") +
     (sk.paa && m.skraningUtAvUtsnitt
       ? '<p style="font-size:11px;margin:4px 0 0;color:var(--accent)">' + ikon("advarsel") + " " +
@@ -2093,7 +2229,8 @@ function padSkjema(pad) {
   const egen = erEgenPad(pad);
   let h = '<label>' + t("Form") + '<select id="trPadForm">' +
     '<option value="firkant"' + (egen ? "" : " selected") + ">" + t("Firkant") + "</option>" +
-    '<option value="egen"' + (egen || padTegner ? " selected" : "") + ">" + t("Egendefinert") + "</option></select></label>";
+    '<option value="egen"' + (egen || (padTegner && padTegner.mal === "pad") ? " selected" : "") + ">" + t("Egendefinert") + "</option></select></label>";
+  if (padTegner && padTegner.mal === "omrade") h = '<p style="font-size:12px;margin:6px 0 2px;font-weight:700">' + t("Nytt heve/senke-område") + "</p>";
   if (padTegner) {
     const n = padTegner.punkter.length;
     h += '<p style="font-size:12px;margin:4px 0">' + (padTegner.lukket
@@ -2118,12 +2255,71 @@ function padSkjema(pad) {
     t("Tilbakestill (2 m rundt bygget)") + "</button></div>";
 }
 
+// ⛰ Heve/senke-områdene: lista, «+ Nytt område» og feltene for det valgte
+function omraderSkjema(pad) {
+  if (padTegner && padTegner.mal === "pad") return "";
+  const L = pad.omrader || [], st = L.length ? omradeStatus(pad, L) : [];
+  const fp = S.modelGroup ? modellRef().fp : null;
+  const f2 = (v) => (Math.round(v * 100) / 100).toLocaleString("no-NO");
+  let h = '<h5 style="margin:12px 0 4px;font-size:12px">' + t("Heve/senke områder") + "</h5>";
+  if (!L.length) h += "<p " + LITEN + ">" + t("Marker en byggegrop, en rampe eller et høyt parti på plata og hev eller senk det.") + "</p>";
+  h += L.map((o, i) => {
+    const valgt = o.id === valgtOmrade;
+    const info = st[i].gyldig
+      ? (o.dz < 0 ? t("senket {0} m", f2(-o.dz)) : o.dz > 0 ? t("hevet {0} m", f2(o.dz)) : t("flatt")) + " · " +
+        (o.n > 0 ? t("kant 1:{0}", String(o.n).replace(".", ",")) : t("loddrett kant")) + " · " + Math.round(polyAreal(o.punkter)).toLocaleString("no-NO") + " m²" +
+        (st[i].forelder >= 0 ? " · " + t("i {0}", L[st[i].forelder].navn || "") : "")
+      : '<span style="color:var(--accent)">' + esc(t(st[i].grunn)) + "</span>";
+    const underBygg = st[i].gyldig && fp && polyMotRekt(o.punkter, fp);
+    return '<div class="qty-row"' + (valgt ? ' style="outline:1px solid #29b6f6;border-radius:4px"' : "") + '><div class="n" data-tr-omr="' + esc(o.id) + '" style="cursor:pointer">' +
+      esc(o.navn || t("Område")) + ' <span style="color:var(--muted);font-size:11px">' + info + "</span>" +
+      (underBygg ? '<div style="font-size:11px;color:var(--accent)">' + ikon("advarsel") + " " + t("Ligger under bygget.") + "</div>" : "") + "</div>" +
+      '<div class="c"><button data-tr-omr-slett="' + esc(o.id) + '" title="' + t("Slett") + '" style="padding:3px 8px">' + ikon("slett") + "</button></div></div>";
+  }).join("");
+  if (padTegner && padTegner.mal === "omrade") return h;      // tegneknappene står i padSkjema
+  h += '<div class="prop-actions"><button id="trOmrNy"' + (L.length >= OMR_MAKS ? " disabled" : "") + ">" + ikon("pluss") + " " + t("Heve/senke område") + "</button></div>";
+  const v = L.find(o => o.id === valgtOmrade);
+  if (v) {
+    const n1 = (x) => String(x).replace(".", ",");
+    h += '<div id="trOmrSkjema" style="margin-top:6px">' +
+      "<label>" + t("Navn") + '<input type="text" id="trOmrNavn" maxlength="60" value="' + esc(v.navn) + '"></label>' +
+      '<div style="display:flex;gap:8px">' +
+      '<label style="flex:1">' + t("Høyde (m) — minus senker") + '<input type="text" id="trOmrDz" inputmode="decimal" value="' + esc(n1(v.dz)) + '"></label>' +
+      '<label style="flex:1">' + t("Kant 1:n (0 = loddrett)") + '<input type="text" id="trOmrN" inputmode="decimal" value="' + esc(n1(v.n)) + '"></label></div>' +
+      "<p " + LITEN + ">" + t("Kanten regnes innover fra omrisset: omrisset er toppen av en grop og foten av en haug. Et område kan ligge helt inni et annet (f.eks. heissjakt i byggegropa) — da regnes høyden fra bunnen av det ytre.") + "</p>" +
+      "<p " + LITEN + ">" + t("Dra i de blå prikkene for å forme området. Dobbeltklikk på kanten for en ny prikk. Trykk på en prikk og Delete for å fjerne den.") + "</p></div>";
+  }
+  return h;
+}
+
 function koblPadSkjema() {
   const kobl = (id, fn) => { const el = $(id); if (el) el.onclick = fn; };
   kobl("trPadFerdig", () => ferdigPadTegning());
   kobl("trPadAngre", () => angreSistePunkt());
   kobl("trPadAvbryt", () => avbrytPadTegning());
-  kobl("trPadTegn", () => startPadTegning());
+  kobl("trPadTegn", () => startPadTegning("pad"));
+  // ⛰ områdene
+  kobl("trOmrNy", () => { valgtOmrade = null; startPadTegning("omrade"); });
+  document.querySelectorAll("[data-tr-omr]").forEach(d => d.onclick = () => {
+    valgtOmrade = valgtOmrade === d.dataset.trOmr ? null : d.dataset.trOmr; valgtOmrPrikk = null; valgtPrikk = null;
+    tegnHandtak(); tegnPanel();
+  });
+  document.querySelectorAll("[data-tr-omr-slett]").forEach(d => d.onclick = () => slettOmrade(d.dataset.trOmrSlett));
+  const omrFelt = (id, fn) => {
+    const el = $(id);
+    if (!el) return;
+    el.onchange = () => {
+      const L = omrRen(terreng.pad.omrader), i = L.findIndex(o => o.id === valgtOmrade);
+      if (i < 0) return;
+      if (fn(L[i], el.value) === false) { tegnPanel(); return; }
+      settOmrader(L, valgtOmrade);
+    };
+    el.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); el.blur(); } };
+  };
+  const tallFelt = (v) => { const x = Number(String(v).replace(/\s/g, "").replace(",", ".")); return Number.isFinite(x) ? x : null; };
+  omrFelt("trOmrNavn", (o, v) => { o.navn = String(v).trim().slice(0, 60); });
+  omrFelt("trOmrDz", (o, v) => { const x = tallFelt(v); if (x == null || Math.abs(x) > OMR_MAKS_DZ) return false; o.dz = x; });
+  omrFelt("trOmrN", (o, v) => { const x = tallFelt(v); if (x == null || x < 0 || x > OMR_MAKS_N) return false; o.n = x; });
   kobl("trPadFjern", () => { if (valgtPrikk != null) fjernPrikk(valgtPrikk); });
   kobl("trPadPrikker", () => {
     const p = terreng && terreng.pad;
@@ -2140,7 +2336,7 @@ function koblPadSkjema() {
     if (form.value === "egen") {
       if (erEgenPad(p)) return;
       // Tegn en ny form. (Firkanten står til formen er ferdig.)
-      startPadTegning();
+      startPadTegning("pad");
       return;
     }
     if (padTegner) { avbrytPadTegning(); return; }
@@ -2251,7 +2447,7 @@ function tegnPanel() {
       (pad && pad.paa ? ' <span id="trPadTall" style="font-weight:700;margin-left:6px">' + esc(padTekst()) + "</span>" : "") + "</h4>" +
       '<label style="display:flex;gap:6px;align-items:center;font-size:12px"><input type="checkbox" id="trPadPaa"' +
       (pad && pad.paa ? " checked" : "") + "> " + t("Skjær ut terrenget og legg en flat plate i gulvhøyde") + "</label>" +
-      (pad && pad.paa ? padSkjema(pad) : "") +
+      (pad && pad.paa ? padSkjema(pad) + omraderSkjema(pad) : "") +
 
       // 📍 Fest hjørne: landmålerens koordinater
       tegnFest() +

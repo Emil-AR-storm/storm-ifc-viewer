@@ -356,7 +356,7 @@ export function gridTilTrekanter(grid, E0, N0, h0, skala, flat) {
       const v = grid.data[k];
       ok[k] = gyldigHoyde(v, grid.nodata) ? 1 : 0;
       pos[k * 3] = mTilScene(c.E - E0, skala);
-      const hv = (flat && flat.flagg[k]) ? flat.hoyde : v;
+      const hv = (flat && flat.flagg[k]) ? (flat.hoyder ? flat.hoyder[k] : flat.hoyde) : v;
       pos[k * 3 + 1] = ok[k] ? mTilScene(hv - h0, skala) : 0;
       pos[k * 3 + 2] = -mTilScene(c.N - N0, skala);
     }
@@ -584,6 +584,11 @@ export const PAD_PRIKK_M = 5;          // prikk langs kanten hver 5. meter
 export const PAD_MAKS_PUNKT = 400;
 export const PAD_MIN_AREAL = 1;        // m²
 
+// Områdene uten bufrede hjelpefelt (_r), til sammenligning og lagring
+export function omrRen(l) {
+  return (Array.isArray(l) ? l : []).map(o => ({ id: o.id, navn: o.navn, punkter: o.punkter, dz: o.dz, n: o.n }));
+}
+
 export function erEgenPad(pad) {
   return !!(pad && pad.form === "egen" && Array.isArray(pad.punkter) && pad.punkter.length >= 3);
 }
@@ -710,6 +715,244 @@ function polySum(pts) {
   for (let i = 0, n = pts.length; i < n; i++) { const p = pts[i], q = pts[(i + 1) % n]; a += p.x * q.z - q.x * p.z; }
   return a;
 }
+// ═══════════════════════ ⛰ HEVE/SENKE OMRÅDER (Emil 15.10) ═══════════════════════
+//
+// Et område er en lukket form PÅ plata som heves eller senkes (byggegrop,
+// rampe, høyt parti) — som extrude i Blender. Områdene hører til plata og står
+// i byggrammen:
+//   pad.omrader = [{ id, navn, punkter: [{x, z}], dz, n }]
+//     dz — meter: + heve, − senke (fra flata det står på)
+//     n  — kanten: helning 1:n (1 opp, n bort), 0 = loddrett vegg
+// Kanten regnes INNOVER fra omrisset: omrisset er toppen av en grop og foten
+// av en haug, så området aldri blir større enn det som er tegnet.
+// REGELEN (endret fra «siste vinner», se byggeplanen): et område kan ligge
+// HELT INNI et annet (heissjakt i byggegropa) — da regnes høyden fra bunnen
+// av det ytre. Områder kan ikke delvis overlappe, og må ligge på plata.
+export const OMR_MAKS = 50;
+export const OMR_MAKS_DZ = 30;
+export const OMR_MAKS_N = 10;
+export const OMR_STD = { dz: -1, n: 1 };
+
+export function vaskOmrader(liste) {
+  if (!Array.isArray(liste)) return [];
+  const ut = [], sett = new Set();
+  for (const q of liste.slice(0, OMR_MAKS)) {
+    if (!q || typeof q !== "object") continue;
+    const id = String(q.id == null ? "" : q.id).slice(0, 40).trim();
+    if (!id || sett.has(id)) continue;
+    const punkter = vaskPadPunkter(q.punkter);
+    if (!punkter) continue;
+    const dzT = tall(q.dz), nT = tall(q.n);
+    const dz = dzT == null ? OMR_STD.dz : Math.round(Math.max(-OMR_MAKS_DZ, Math.min(OMR_MAKS_DZ, dzT)) * 100) / 100;
+    const n = nT == null || nT < 0 ? OMR_STD.n : Math.round(Math.min(OMR_MAKS_N, nT) * 100) / 100;
+    sett.add(id);
+    ut.push({ id, navn: String(q.navn == null ? "" : q.navn).slice(0, 60).trim(), punkter, dz, n });
+  }
+  return ut;
+}
+
+// Omrisset flyttet innover med w meter (bunnen av en grop med skrå kant).
+// Hjørnene flyttes langs halveringslinja (gjæring). Svarer null når formen
+// ikke tåler det — da er gropa for smal til å få flat bunn.
+export function polyInnover(pts, w) {
+  if (!(w > 1e-6)) return pts.map(q => ({ x: q.x, z: q.z }));
+  const n = pts.length, sg = polySum(pts) > 0 ? 1 : -1;
+  // innovernormal for kant i (fra i til i+1)
+  const nrm = [];
+  for (let i = 0; i < n; i++) {
+    const a = pts[i], b = pts[(i + 1) % n], ex = b.x - a.x, ez = b.z - a.z, L = Math.hypot(ex, ez) || 1;
+    nrm.push({ x: -sg * ez / L, z: sg * ex / L });
+  }
+  const ut = [];
+  for (let i = 0; i < n; i++) {
+    const p = pts[i], n1 = nrm[(i - 1 + n) % n], n2 = nrm[i];
+    const sx = n1.x + n2.x, sz = n1.z + n2.z, dot = n1.x * n2.x + n1.z * n2.z;
+    const k = 1 + dot;
+    if (k < 1e-3) return null;                         // kanten snur 180°
+    ut.push({ x: p.x + w * sx / k, z: p.z + w * sz / k });
+  }
+  if (polyFeil(ut)) return null;
+  for (let i = 0; i < n; i++) {
+    const a = pts[i], b = pts[(i + 1) % n], c = ut[i], d = ut[(i + 1) % n];
+    if ((b.x - a.x) * (d.x - c.x) + (b.z - a.z) * (d.z - c.z) <= 0) return null;   // en kant har snudd
+    if (!iPolygon(pts, c.x, c.z)) return null;
+  }
+  return ut;
+}
+
+// Hvor mye området hever/senker i punktet (relativt til flata det står på).
+export function omradeProfil(o, bx, bz) {
+  const r = o._r || (o._r = polyRamme(o.punkter));
+  if (bx < r.x0 || bx > r.x1 || bz < r.z0 || bz > r.z1 || !iPolygon(o.punkter, bx, bz)) return 0;
+  if (!(o.n > 0)) return o.dz;
+  const d = avstandTilPoly(o.punkter, bx, bz).d;
+  return Math.sign(o.dz) * Math.min(Math.abs(o.dz), d / o.n);
+}
+
+// Ligger formen a helt inni formen b? (alle punkter inni, ingen kanter krysser)
+export function polyInni(a, b) {
+  if (!a.every(q => iPolygon(b, q.x, q.z))) return false;
+  return !polyKrysser(a, b);
+}
+function polyKrysser(a, b) {
+  for (let i = 0; i < a.length; i++) for (let j = 0; j < b.length; j++)
+    if (kryss(a[i], a[(i + 1) % a.length], b[j], b[(j + 1) % b.length])) return true;
+  return false;
+}
+function polyUtenfor(a, b) {
+  return !polyKrysser(a, b) && !a.some(q => iPolygon(b, q.x, q.z)) && !b.some(q => iPolygon(a, q.x, q.z));
+}
+
+// Status for hvert område på plata: gyldig, og hvem det ligger inni.
+//   → [{ gyldig, grunn, forelder (indeks | −1), base (meter fra plata), bunn }]
+//     bunn = flat bunn (omrisset flyttet innover), null når gropa er for smal
+// Et ugyldig område regnes ikke med i massene og tegnes ikke, men står i
+// lista med grunnen, så det kan rettes (f.eks. når plata er gjort mindre).
+export function omradeStatus(pad, liste) {
+  const L = Array.isArray(liste) ? liste : [];
+  const plate = padPolygon(pad);
+  const st = L.map(o => ({ gyldig: true, grunn: "", forelder: -1, base: 0,
+    bunn: polyInnover(o.punkter, o.n > 0 ? Math.abs(o.dz) * o.n : 0) }));
+  L.forEach((o, i) => {
+    if (!pad || !pad.punkter && pad.x0 == null) { st[i].gyldig = false; st[i].grunn = "Ingen plate."; return; }
+    if (!polyInni(o.punkter, plate)) { st[i].gyldig = false; st[i].grunn = "Området ligger utenfor plata."; }
+  });
+  // Delvis overlapp: det SISTE av de to blir ugyldig (det som nettopp ble
+  // tegnet eller endret), ikke det som sto der fra før.
+  for (let j = 0; j < L.length; j++) {
+    if (!st[j].gyldig) continue;
+    for (let i = 0; i < j; i++) {
+      if (!st[i].gyldig) continue;
+      const a = L[j].punkter, b = L[i].punkter;
+      if (polyUtenfor(a, b) || polyInni(a, b) || polyInni(b, a)) continue;
+      st[j].gyldig = false; st[j].grunn = "Områdene kan ikke delvis overlappe hverandre."; break;
+    }
+  }
+  // Hvem ligger inni hvem? Forelder = det minste området det ligger inni.
+  for (let i = 0; i < L.length; i++) {
+    if (!st[i].gyldig) continue;
+    let best = -1, bestA = Infinity;
+    for (let j = 0; j < L.length; j++) {
+      if (i === j || !st[j].gyldig) continue;
+      if (polyInni(L[i].punkter, L[j].punkter)) {
+        const ar = polyAreal(L[j].punkter);
+        if (ar < bestA) { bestA = ar; best = j; }
+      }
+    }
+    if (best >= 0) {
+      const f = st[best].bunn;
+      if (!f) { st[i].gyldig = false; st[i].grunn = "Det ytre området har ikke flat bunn å stå på."; continue; }
+      if (!polyInni(L[i].punkter, f)) { st[i].gyldig = false; st[i].grunn = "Området må ligge på den flate bunnen, ikke i kanten."; continue; }
+      st[i].forelder = best;
+    }
+  }
+  // Base: summen av alle foreldrene (et område i et ugyldig område er ugyldig)
+  for (let i = 0; i < L.length; i++) {
+    if (!st[i].gyldig) continue;
+    let b = 0, f = st[i].forelder, n = 0;
+    while (f >= 0 && n++ < OMR_MAKS) {
+      if (!st[f].gyldig) { st[i].gyldig = false; st[i].grunn = "Det ytre området er ugyldig."; break; }
+      b += L[f].dz; f = st[f].forelder;
+    }
+    st[i].base = b;
+  }
+  return st;
+}
+
+// Summen av områdene i punktet (bare de gyldige). `st` fra omradeStatus.
+export function omradeDz(liste, st, bx, bz) {
+  let dz = 0;
+  for (let i = 0; i < liste.length; i++) if (st[i].gyldig) dz += omradeProfil(liste[i], bx, bz);
+  return dz;
+}
+export function gyldigeOmrader(pad) {
+  const L = pad && Array.isArray(pad.omrader) ? pad.omrader : [];
+  if (!L.length) return { liste: [], st: [] };
+  return { liste: L, st: omradeStatus(pad, L) };
+}
+
+// Ligger formen (helt eller delvis) under byggets fotavtrykk?
+export function polyMotRekt(pts, r) {
+  const rekt = [{ x: r.x0, z: r.z0 }, { x: r.x1, z: r.z0 }, { x: r.x1, z: r.z1 }, { x: r.x0, z: r.z1 }];
+  return !polyUtenfor(pts, rekt);
+}
+
+// Terrenget under plata: litt under plata som før, men under en grop senkes
+// det til under bunnen — og i en ring på to ruter rundt, så trekantene mellom
+// et senket og et vanlig punkt ligger skjult under plata, ikke inni gropa.
+export function padHoyder(grid, E0, N0, plass, pad, gulvKote) {
+  const flagg = padFlagg(grid, E0, N0, plass, pad);
+  const { liste, st } = gyldigeOmrader(pad);
+  if (!liste.length || !st.some(q => q.gyldig)) return { flagg, hoyder: null };
+  const w = grid.w, h = grid.h, dz = new Float32Array(w * h);
+  const t = (plass.rot || 0) * RAD, c = Math.cos(t), s = Math.sin(t);
+  for (let j = 0; j < h; j++) {
+    const N = grid.y0 - (j + 0.5) * grid.dy, lz = -(N - N0 - (plass.pN || 0));
+    for (let i = 0; i < w; i++) {
+      const k = j * w + i;
+      if (!flagg[k]) continue;
+      const lx = grid.x0 + (i + 0.5) * grid.dx - E0 - (plass.pE || 0);
+      dz[k] = Math.min(0, omradeDz(liste, st, lx * c + lz * s, -lx * s + lz * c));
+    }
+  }
+  const hoyder = new Float32Array(w * h);
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+    const k = j * w + i;
+    if (!flagg[k]) continue;
+    let m = 0;
+    for (let b = Math.max(0, j - 2); b <= Math.min(h - 1, j + 2); b++)
+      for (let a = Math.max(0, i - 2); a <= Math.min(w - 1, i + 2); a++) { const q = b * w + a; if (flagg[q] && dz[q] < m) m = dz[q]; }
+    hoyder[k] = gulvKote - 0.05 + m;
+  }
+  return { flagg, hoyder };
+}
+
+// 3D-delene til plata som rene tall (meter i byggrammen, y = høyde over
+// plata). terreng.js og terreng-vis.js lager three-geometrien av dette.
+//   → { hull: [punkter] (ytterste områder, hull i plata),
+//       deler: [{ topp: { ytre, hull, y } , sider: [[x,y,z]×4 …], felt: null | { pos, idx } }] }
+// Et område med flat bunn tegnes eksakt: bunn (med hull for områdene inni) og
+// én firkant per kant fra omrisset ned/opp til bunnen. Uten flat bunn (for
+// smalt for kanten) tegnes det som et lite høydefelt.
+export function plateDeler(pad) {
+  const { liste, st } = gyldigeOmrader(pad);
+  const ut = { hull: [], deler: [] };
+  liste.forEach((o, i) => {
+    if (!st[i].gyldig) return;
+    if (st[i].forelder < 0) ut.hull.push(o.punkter);
+    const barn = liste.filter((_, k) => st[k].gyldig && st[k].forelder === i).map(b => b.punkter);
+    const y0 = st[i].base, y1 = st[i].base + o.dz, bunn = st[i].bunn;
+    if (bunn) {
+      const sider = [];
+      for (let k = 0, n = o.punkter.length; k < n; k++) {
+        const a = o.punkter[k], b = o.punkter[(k + 1) % n], c = bunn[(k + 1) % n], d = bunn[k];
+        sider.push([[a.x, y0, a.z], [b.x, y0, b.z], [c.x, y1, c.z], [d.x, y1, d.z]]);
+      }
+      ut.deler.push({ topp: { ytre: bunn, hull: barn, y: y1 }, sider, felt: null });
+    } else {
+      ut.deler.push({ topp: null, sider: [], felt: hoydeFelt(o, y0) });
+    }
+  });
+  return ut;
+}
+function hoydeFelt(o, y0) {
+  const r = polyRamme(o.punkter), A = (r.x1 - r.x0) * (r.z1 - r.z0);
+  const st = Math.max(0.1, Math.sqrt(A) / 80);
+  const nx = Math.max(2, Math.ceil((r.x1 - r.x0) / st) + 1), nz = Math.max(2, Math.ceil((r.z1 - r.z0) / st) + 1);
+  const pos = new Float32Array(nx * nz * 3), inne = new Uint8Array(nx * nz);
+  for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
+    const x = Math.min(r.x1, r.x0 + i * st), z = Math.min(r.z1, r.z0 + j * st), k = j * nx + i;
+    inne[k] = iPolygon(o.punkter, x, z) ? 1 : 0;
+    pos[k * 3] = x; pos[k * 3 + 1] = y0 + omradeProfil(o, x, z); pos[k * 3 + 2] = z;
+  }
+  const idx = [];
+  for (let j = 0; j < nz - 1; j++) for (let i = 0; i < nx - 1; i++) {
+    const a = j * nx + i, b = a + 1, c = a + nx, d = c + 1;
+    if (inne[a] || inne[b] || inne[c] || inne[d]) idx.push(a, c, b, b, c, d);
+  }
+  return { pos, idx: Uint32Array.from(idx) };
+}
+
 // Normalen → siden av byggrammen den vender mest mot (skråning per side).
 export function sideFraNormal(nx, nz) {
   return Math.abs(nx) >= Math.abs(nz) ? (nx < 0 ? "x0" : "x1") : (nz < 0 ? "z0" : "z1");
@@ -737,6 +980,7 @@ export function padHandtak(p) {
 
 export function likePad(a, b) {
   if (!a || !b || a.paa !== b.paa || erEgenPad(a) !== erEgenPad(b)) return false;
+  if (JSON.stringify(omrRen(a.omrader)) !== JSON.stringify(omrRen(b.omrader))) return false;
   if (erEgenPad(a)) return a.punkter.length === b.punkter.length && a.punkter.every((q, i) => q.x === b.punkter[i].x && q.z === b.punkter[i].z);
   return a.x0 === b.x0 && a.x1 === b.x1 && a.z0 === b.z0 && a.z1 === b.z1;
 }
@@ -897,6 +1141,8 @@ export function vaskPlassering(p) {
       const eg = padFraPunkter(q.punkter, q.paa !== false);
       if (eg) pad = eg;
     }
+    // ⛰ heve/senke-områdene følger plata
+    if (pad && Array.isArray(q.omrader) && q.omrader.length) pad.omrader = vaskOmrader(q.omrader);
   }
   let klipp = null;
   if (p.klipp && typeof p.klipp === "object") {
@@ -1158,6 +1404,9 @@ export function masseFelt(grid, E0, N0, plass, pad, planum, skraning) {
   // slippe å måle mot hver kant for hvert punkt i gridet: lenger ut enn
   // skråningen kan nå (høydeforskjellen × helningen) er terrenget urørt.
   const egen = erEgenPad(pad), poly = egen ? pad.punkter : null;
+  // ⛰ heve/senke-områdene: planum flyttes like mye som plata i området
+  const om = gyldigeOmrader(pad), harOmr = om.st.some(q => q.gyldig);
+  r.senket = 0; r.hevet = 0;
   let rekk = Infinity;
   if (egen) {
     let lo = Infinity, hi = -Infinity;
@@ -1177,7 +1426,9 @@ export function masseFelt(grid, E0, N0, plass, pad, planum, skraning) {
       if (inne) flagg[k] = 1;
       if (!gyldigHoyde(v, grid.nodata)) { if (inne) r.uten++; continue; }
       if (inne) {
-        const d = v - planum;
+        const oz = harOmr ? omradeDz(om.liste, om.st, bx, bz) : 0;
+        if (oz < 0) r.senket -= oz * A; else r.hevet += oz * A;
+        const d = v - (planum + oz);
         dz[k] = d; r.nP++; r.sum += v; r.arealP += A;
         if (d > 0) r.skjP += d * A; else r.fylP -= d * A;
         continue;
@@ -1234,6 +1485,7 @@ export function masseFelt(grid, E0, N0, plass, pad, planum, skraning) {
     per10cm: r.arealP * 0.1, utenHoyde: r.uten,
     skraningUtAvUtsnitt: r.kant,        // skråningen treffer kanten av det hentede terrenget
     perSide,                            // skråningsmassene fordelt på platas fire sider
+    omrSenket: r.senket, omrHevet: r.hevet,   // ⛰ volumet av gropene og haugene (er med i «under plata»)
     dz, flagg
   };
 }
@@ -1341,6 +1593,11 @@ export function masseRader(inn) {
   const sumRad = rader.length;
   rader.push(["Netto (+ overskudd, − underskudd)", "", "", "=D" + sumRad + "-E" + sumRad]);
   rader.push(["10 cm høyere/lavere planum ≈ (m³)", "", "", avr(m.per10cm)]);
+  // ⛰ gropene og haugene står for seg — de er allerede med i «Under plata»
+  if (m.omrSenket || m.omrHevet) {
+    rader.push(["Herav senkede områder (m³)", "", "", avr(m.omrSenket)]);
+    rader.push(["Herav hevede områder (m³)", "", "", avr(m.omrHevet)]);
+  }
   rader.push([]);
   const f = inn.fest;
   rader.push(["Plassering", f && f.laast
@@ -1439,7 +1696,8 @@ export function terrengForByggeplass(t, steg) {
       plass: { pE: p.pE || 0, pN: p.pN || 0, rot: p.rot || 0 },
       gulv: t.gulv ? { kote: t.gulv.kote } : null,
       pad: t.pad && t.pad.paa ? Object.assign({ paa: true, x0: t.pad.x0, x1: t.pad.x1, z0: t.pad.z0, z1: t.pad.z1 },
-        erEgenPad(t.pad) ? { form: "egen", punkter: t.pad.punkter.map(q => ({ x: q.x, z: q.z })) } : {}) : null,
+        erEgenPad(t.pad) ? { form: "egen", punkter: t.pad.punkter.map(q => ({ x: q.x, z: q.z })) } : {},
+        t.pad.omrader && t.pad.omrader.length ? { omrader: omrRen(t.pad.omrader) } : {}) : null,
       grid: { w, h, x0, y0, dx, dy, hMin, data: tilBase64(new Uint8Array(u16.buffer)) },
       kart: ""   // fylles av byggeplass.js med navnet på JPEG-en
     }

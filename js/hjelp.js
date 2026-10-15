@@ -188,6 +188,11 @@ export const KORT = [
     tekst: "Plata under bygget kan ha fri form. Under Utskjæring rundt bygget velger du Form: Egendefinert og trykker punkt for punkt på bakken. Trykk på det første punktet for å lukke formen — Ferdig virker ikke før den er lukket. Etterpå kommer det gule prikker langs kanten hver 5. meter: dra i dem for å justere, dobbeltklikk på kanten for en ny prikk, og trykk på en prikk og Delete for å fjerne den. Massene regnes innenfor formen."
   },
   {
+    hvor: "kontor", ikonNavn: "kote",
+    tittel: "Heve og senke områder på plata",
+    tekst: "Under Utskjæring rundt bygget: trykk Heve/senke område og tegn formen på plata som du tegner plata (trykk på første punkt for å lukke, så Ferdig). Skriv høyden — minus senker (byggegrop), pluss hever — og kanten 1:n (0 er loddrett vegg). Kanten regnes innover fra omrisset. Et område kan ligge helt inni et annet, for eksempel en heissjakt i byggegropa; da regnes høyden fra bunnen av det ytre. Områder kan ikke delvis overlappe og må ligge på plata. Gropene og haugene er med i massene og vises på byggeplass-siden."
+  },
+  {
     hvor: "kontor", ikonNavn: "markering",
     tittel: "Fest bygget med landmålerens koordinater",
     tekst: "Under Fest til landmålerens koordinater i Terreng-panelet: trykk Velg i modellen, trykk på et hjørne, og skriv nord (x) og øst (y) fra landmåleren. Velg koordinatsystemet landmåleren bruker (UTM32, UTM33 eller NTM). To hjørner gir også rotasjonen og en kontroll av avstanden. Bygget låses til du trykker Løsne bygget."
