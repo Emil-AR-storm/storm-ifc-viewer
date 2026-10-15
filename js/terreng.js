@@ -88,6 +88,8 @@ let valgtPrikk = null;
 // som kan dras; valgtOmrPrikk er prikken Delete fjerner.
 let valgtOmrade = null;
 let valgtOmrPrikk = null;
+let omrBoksModus = false;   // ⛰ Firkant: venter på at en boks dras ut
+let omrBoks = null;         //   { start, slutt } mens den dras
 let festMelding = "", festFeil = false;
 function erLaast() { return !!(terreng && terreng.fest && terreng.fest.laast); }
 
@@ -436,17 +438,17 @@ function tegnHandtak() {
     L.forEach((o, i) => {
       const y = gulvY + (st[i].gyldig ? st[i].base / s : 0) + loft;
       padGroup.add(linje(o.punkter, y, st[i].gyldig ? (o.id === valgtOmrade ? omrValgtMat : padLinjeMat) : omrFeilMat, true));
-      if (o.id === valgtOmrade && !padTegner)
+      if (o.id === valgtOmrade && !padTegner && !omrBoksModus)
         o.punkter.forEach((q, k) => nyttHandtak(padGroup, k === valgtOmrPrikk ? "padValgt" : "omr", "o" + k, byggPunkt(q.x, q.z, y)));
     });
     if (egen) {
       // ✏ omrisset og én prikk per punkt (hver 5. meter fra start). Den
       // valgte prikken er hvit, så man ser hva Delete fjerner.
       padGroup.add(linje(p.punkter, gulvY + loft, padLinjeMat, true));
-      if (!padTegner) p.punkter.forEach((q, i) => nyttHandtak(padGroup, i === valgtPrikk ? "padValgt" : "pad", "p" + i, byggPunkt(q.x, q.z, gulvY + loft)));
+      if (!padTegner && !omrBoksModus) p.punkter.forEach((q, i) => nyttHandtak(padGroup, i === valgtPrikk ? "padValgt" : "pad", "p" + i, byggPunkt(q.x, q.z, gulvY + loft)));
     } else {
       padGroup.add(rektangel(p.x0, p.x1, p.z0, p.z1, gulvY + loft, padLinjeMat));
-      if (!padTegner) for (const hd of padHandtak(p)) nyttHandtak(padGroup, "pad", hd.kant, byggPunkt(hd.bx, hd.bz, gulvY + loft));
+      if (!padTegner && !omrBoksModus) for (const hd of padHandtak(p)) nyttHandtak(padGroup, "pad", hd.kant, byggPunkt(hd.bx, hd.bz, gulvY + loft));
     }
   }
   // ✏ Formen som tegnes: punktene, strekene mellom dem og en strek til
@@ -471,6 +473,18 @@ function tegnHandtak() {
       m.renderOrder = 998;
       padGroup.add(m);
     });
+  }
+
+  // ⛰ boksen som dras ut
+  if (omrBoks) {
+    const pts = boksPunkter(omrBoks.start, omrBoks.slutt), loft = LOFT_M * 0.5 / s;
+    if (pts[1].x - pts[0].x > 0.01 && pts[2].z - pts[1].z > 0.01) {
+      const fyll = new THREE.Mesh(polyGeo(pts, s).rotateX(-Math.PI / 2), tegnFyllMat);
+      fyll.position.copy(byggPunkt(0, 0, gulvY + loft * 0.5));
+      fyll.renderOrder = 996;
+      padGroup.add(fyll);
+      padGroup.add(linje(pts, gulvY + loft, padLinjeMat, true));
+    }
   }
 
   // ✥ fotavtrykket og rotasjonshåndtaket (bare i flyttemodus)
@@ -1203,6 +1217,7 @@ window.addEventListener("keydown", (e) => {
   const iFelt = e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
   // ✏ Tegning av plata: Esc avbryter, Backspace tar bort siste punkt, Enter
   // er «Ferdig» (bare når formen er lukket)
+  if (omrBoksModus && erApen() && !iFelt && e.key === "Escape") { e.preventDefault(); e.stopPropagation(); avbrytOmrBoks(); return; }
   if (padTegner && erApen() && !iFelt) {
     if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); avbrytPadTegning(); return; }
     if (e.key === "Backspace") { e.preventDefault(); e.stopPropagation(); angreSistePunkt(); return; }
@@ -1284,6 +1299,7 @@ function startPadTegning(mal) {
   if (!terreng || !S.modelGroup) return;
   flyttModus = false; festVelger = 0; valgtPrikk = null; valgtOmrPrikk = null;
   // mal: "pad" = plata selv, "omrade" = et nytt heve/senke-område på plata
+  omrBoksModus = false; omrBoks = null;
   padTegner = { mal: mal === "omrade" ? "omrade" : "pad", punkter: [], lukket: false, mus: null };
   tegnHandtak();
   if (erApen()) tegnPanel();
@@ -1301,31 +1317,89 @@ function angreSistePunkt() {
   tegnHandtak();
   if (erApen()) tegnPanel();
 }
+// ⛰ Nytt område fra punktene (tegnet selv eller dratt ut som firkant):
+// senk 1 m med kant 1:1 som start — tallene endres i panelet. Det nye området
+// må være gyldig, og ingen som var gyldige før får bli ugyldige.
+function leggTilOmrade(punkter, hint) {
+  const p = terreng.pad, L = (p.omrader || []).slice();
+  if (L.length >= OMR_MAKS) { varsel(t("Plata kan ha høyst {0} områder.", OMR_MAKS)); return false; }
+  const id = "o" + Date.now().toString(36) + Math.floor(Math.random() * 1296).toString(36);
+  L.push({ id, navn: t("Område {0}", L.length + 1), punkter: padPrikker(punkter, PAD_PRIKK_M), dz: OMR_STD.dz, n: OMR_STD.n });
+  const v = vaskOmrader(L);
+  const st = omradeStatus(p, v), k = v.findIndex(o => o.id === id);
+  const forSt = omradeStatus(p, p.omrader || []);
+  const brutt = (p.omrader || []).findIndex((o, i) => forSt[i].gyldig && !st[v.findIndex(q => q.id === o.id)].gyldig);
+  if (k < 0 || !st[k].gyldig || brutt >= 0) {
+    const grunn = k < 0 ? "Formen kan ikke brukes." : !st[k].gyldig ? st[k].grunn : st[v.findIndex(q => q.id === p.omrader[brutt].id)].grunn;
+    varsel(t(grunn) + (hint ? " " + t(hint) : ""));
+    return false;
+  }
+  valgtOmrade = id; valgtOmrPrikk = null;
+  settPad(Object.assign({}, p, { omrader: v }), true);
+  return true;
+}
+
+// ⛰ FIRKANT (Emil 15.10): dra ut en boks på plata. Boksen følger byggets
+// akser (byggrammen), som firkant-plata. Draget går ikke til kameraet.
+//   omrBoks = { start, slutt } mens man drar; omrBoksModus = venter på draget
+function startOmrBoks() {
+  if (!terreng || !S.modelGroup) return;
+  padTegner = null; flyttModus = false; festVelger = 0; valgtPrikk = null; valgtOmrPrikk = null; valgtOmrade = null;
+  omrBoksModus = true; omrBoks = null;
+  tegnHandtak();
+  if (erApen()) tegnPanel();
+}
+function avbrytOmrBoks() {
+  omrBoksModus = false; omrBoks = null;
+  canvas.style.cursor = ""; satteMarkor = "";
+  tegnHandtak();
+  if (erApen()) tegnPanel();
+}
+function boksPunkter(a, b) {
+  const x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x), z0 = Math.min(a.z, b.z), z1 = Math.max(a.z, b.z);
+  return [{ x: x0, z: z0 }, { x: x1, z: z0 }, { x: x1, z: z1 }, { x: x0, z: z1 }];
+}
+window.addEventListener("pointerdown", (e) => {
+  if (!omrBoksModus || e.target !== canvas || e.button !== 0 || !terreng || !S.modelGroup || !erApen()) return;
+  const q = byggVed(e.clientX, e.clientY);
+  if (!q) return;
+  e.stopPropagation();                     // kameraet skal ikke rotere mens boksen dras
+  omrBoks = { start: q, slutt: q };
+}, true);
+window.addEventListener("pointermove", (e) => {
+  if (!omrBoksModus) return;
+  if (e.target === canvas && satteMarkor !== "crosshair") { canvas.style.cursor = "crosshair"; satteMarkor = "crosshair"; }
+  if (!omrBoks) return;
+  e.stopPropagation();
+  const q = byggVed(e.clientX, e.clientY);
+  if (!q || (q.x === omrBoks.slutt.x && q.z === omrBoks.slutt.z)) return;
+  omrBoks.slutt = q;
+  if (!venter) venter = requestAnimationFrame(() => { venter = 0; tegnHandtak(); });
+}, true);
+window.addEventListener("pointerup", (e) => {
+  if (!omrBoksModus || !omrBoks) return;
+  e.stopPropagation();
+  const q = byggVed(e.clientX, e.clientY) || omrBoks.slutt, a = omrBoks.start;
+  omrBoks = null;
+  // Et trykk uten drag (eller en smal strek) er ingen boks — prøv igjen
+  if (Math.abs(q.x - a.x) < 0.5 || Math.abs(q.z - a.z) < 0.5) { tegnHandtak(); return; }
+  if (leggTilOmrade(boksPunkter(a, q), "Dra ut boksen på nytt.")) {
+    omrBoksModus = false;
+    canvas.style.cursor = ""; satteMarkor = "";
+  } else tegnHandtak();
+  if (erApen()) tegnPanel();
+}, true);
+
 function ferdigPadTegning() {
   if (!padTegner || !padTegner.lukket) return;
   if (padTegner.mal === "omrade") {
-    // ⛰ nytt område: senk 1 m med kant 1:1 som start — tallene endres i panelet
-    const p = terreng.pad, L = (p.omrader || []).slice();
-    if (L.length >= OMR_MAKS) { varsel(t("Plata kan ha høyst {0} områder.", OMR_MAKS)); return; }
-    const id = "o" + Date.now().toString(36) + Math.floor(Math.random() * 1296).toString(36);
-    const nr = L.length + 1;
-    L.push({ id, navn: t("Område {0}", nr), punkter: padPrikker(padTegner.punkter, PAD_PRIKK_M), dz: OMR_STD.dz, n: OMR_STD.n });
-    const v = vaskOmrader(L);
-    const st = omradeStatus(p, v), k = v.findIndex(o => o.id === id);
-    // Det nye området må være gyldig, og ingen som var gyldige før får bli ugyldige
-    const forSt = omradeStatus(p, p.omrader || []);
-    const brutt = (p.omrader || []).findIndex((o, i) => forSt[i].gyldig && !st[v.findIndex(q => q.id === o.id)].gyldig);
-    if (k < 0 || !st[k].gyldig || brutt >= 0) {
-      const grunn = k < 0 ? "Formen kan ikke brukes." : !st[k].gyldig ? st[k].grunn : st[v.findIndex(q => q.id === p.omrader[brutt].id)].grunn;
-      varsel(t(grunn) + " " + t("Tegn området på nytt, eller ta bort punkter med Backspace."));
+    if (!leggTilOmrade(padTegner.punkter, "Tegn området på nytt, eller ta bort punkter med Backspace.")) {
       padTegner.lukket = false;
       tegnHandtak(); if (erApen()) tegnPanel();
       return;
     }
     padTegner = null;
     canvas.style.cursor = ""; satteMarkor = "";
-    valgtOmrade = id; valgtOmrPrikk = null;
-    settPad(Object.assign({}, p, { omrader: v }), true);
     if (erApen()) tegnPanel();
     return;
   }
@@ -1618,7 +1692,7 @@ async function hentTerreng(adr) {
 function fjernTerreng() {
   if (!terreng) return;
   const forrige = terreng;
-  terreng = null; skjult = false; flyttModus = false; padTegner = null; valgtPrikk = null;
+  terreng = null; skjult = false; flyttModus = false; padTegner = null; valgtPrikk = null; omrBoksModus = false; omrBoks = null;
   tegnTerreng();
   tegnPanel();
   if (S.oppdaterVisAlle) S.oppdaterVisAlle();
@@ -1635,7 +1709,7 @@ function fjernTerreng() {
 S.ryddTerreng = () => {
   clearTimeout(lagreTid);
   ryddKart(terreng);
-  terreng = null; skjult = false; treff = []; flyttModus = false; padTegner = null; valgtPrikk = null;
+  terreng = null; skjult = false; treff = []; flyttModus = false; padTegner = null; valgtPrikk = null; omrBoksModus = false; omrBoks = null;
   ryddScene();
   oppdaterRutenett();
   if (S.riggOmplasser) S.riggOmplasser();   // 🏕 riggen faller tilbake på gulvhøyde
@@ -2277,7 +2351,18 @@ function omraderSkjema(pad) {
       '<div class="c"><button data-tr-omr-slett="' + esc(o.id) + '" title="' + t("Slett") + '" style="padding:3px 8px">' + ikon("slett") + "</button></div></div>";
   }).join("");
   if (padTegner && padTegner.mal === "omrade") return h;      // tegneknappene står i padSkjema
-  h += '<div class="prop-actions"><button id="trOmrNy"' + (L.length >= OMR_MAKS ? " disabled" : "") + ">" + ikon("pluss") + " " + t("Heve/senke område") + "</button></div>";
+  // To måter å sette ut et område på (Emil 15.10): dra ut en boks (Firkant)
+  // eller tegn formen punkt for punkt (Egendefinert)
+  if (omrBoksModus) {
+    h += '<p style="font-size:12px;margin:6px 0 2px;font-weight:700">' + t("Nytt heve/senke-område") + "</p>" +
+      '<p style="font-size:12px;margin:2px 0">' + t("Dra ut en boks på plata. Esc avbryter.") + "</p>" +
+      '<div class="prop-actions"><button id="trOmrBoksAvbryt">' + t("Avbryt") + "</button></div>";
+    return h;
+  }
+  const full = L.length >= OMR_MAKS ? " disabled" : "";
+  h += '<p style="font-size:12px;margin:6px 0 2px">' + ikon("pluss") + " " + t("Nytt heve/senke-område:") + "</p>" +
+    '<div class="prop-actions"><button id="trOmrFirkant"' + full + ' title="' + t("Dra ut en boks på plata") + '">' + ikon("boks") + " " + t("Firkant") + "</button>" +
+    '<button id="trOmrNy"' + full + ' title="' + t("Tegn formen punkt for punkt") + '">' + t("Egendefinert") + "</button></div>";
   const v = L.find(o => o.id === valgtOmrade);
   if (v) {
     const n1 = (x) => String(x).replace(".", ",");
@@ -2299,7 +2384,9 @@ function koblPadSkjema() {
   kobl("trPadAvbryt", () => avbrytPadTegning());
   kobl("trPadTegn", () => startPadTegning("pad"));
   // ⛰ områdene
-  kobl("trOmrNy", () => { valgtOmrade = null; startPadTegning("omrade"); });
+  kobl("trOmrNy", () => { valgtOmrade = null; omrBoksModus = false; startPadTegning("omrade"); });
+  kobl("trOmrFirkant", () => startOmrBoks());
+  kobl("trOmrBoksAvbryt", () => avbrytOmrBoks());
   document.querySelectorAll("[data-tr-omr]").forEach(d => d.onclick = () => {
     valgtOmrade = valgtOmrade === d.dataset.trOmr ? null : d.dataset.trOmr; valgtOmrPrikk = null; valgtPrikk = null;
     tegnHandtak(); tegnPanel();

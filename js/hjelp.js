@@ -190,7 +190,7 @@ export const KORT = [
   {
     hvor: "kontor", ikonNavn: "kote",
     tittel: "Heve og senke områder på plata",
-    tekst: "Under Utskjæring rundt bygget: trykk Heve/senke område og tegn formen på plata som du tegner plata (trykk på første punkt for å lukke, så Ferdig). Skriv høyden — minus senker (byggegrop), pluss hever — og kanten 1:n (0 er loddrett vegg). Kanten regnes innover fra omrisset. Et område kan ligge helt inni et annet, for eksempel en heissjakt i byggegropa; da regnes høyden fra bunnen av det ytre. Områder kan ikke delvis overlappe og må ligge på plata. Gropene og haugene er med i massene og vises på byggeplass-siden."
+    tekst: "Under Utskjæring rundt bygget: velg Firkant og dra ut en boks på plata, eller Egendefinert og tegn formen punkt for punkt som du tegner plata (trykk på første punkt for å lukke, så Ferdig). Skriv høyden — minus senker (byggegrop), pluss hever — og kanten 1:n (0 er loddrett vegg). Kanten regnes innover fra omrisset. Et område kan ligge helt inni et annet, for eksempel en heissjakt i byggegropa; da regnes høyden fra bunnen av det ytre. Områder kan ikke delvis overlappe og må ligge på plata. Gropene og haugene er med i massene og vises på byggeplass-siden."
   },
   {
     hvor: "kontor", ikonNavn: "markering",
