@@ -16,7 +16,7 @@ import { S, registrerEkstraGruppe } from "./state.js";
 import { LETT } from "./lett.js";
 import { camera, frameHooks, grid, renderer, scene } from "./scene.js";
 import {
-  gridTilTrekanter, hoydeFarger, hoydeSpenn, hoydeVed, kartUv, mTilScene, padFlagg,
+  gridTilTrekanter, hoydeFarger, hoydeSpenn, hoydeVed, kartUv, mTilScene, padFlagg, erEgenPad, iPad,
   terrengFraByggeplass, terrengTilBygg
 } from "./terreng-regn.js";
 
@@ -101,13 +101,21 @@ function tegn() {
   byggGroup.position.set(mr.c.x, 0, mr.c.z);
   if (p && p.paa && ter.gulv) {
     const s = mr.skala;
-    const pg = new THREE.PlaneGeometry((p.x1 - p.x0) / s, (p.z1 - p.z0) / s);
+    // ✏ egendefinert form (Emil 15.10): samme flate som på kontoret
+    const egen = erEgenPad(p);
+    let pg;
+    if (egen) {
+      const f = new THREE.Shape();
+      p.punkter.forEach((q, i) => (i ? f.lineTo(q.x / s, -q.z / s) : f.moveTo(q.x / s, -q.z / s)));
+      f.closePath();
+      pg = new THREE.ShapeGeometry(f);
+    } else pg = new THREE.PlaneGeometry((p.x1 - p.x0) / s, (p.z1 - p.z0) / s);
     pg.rotateX(-Math.PI / 2);
     const plate = new THREE.Mesh(pg, new THREE.MeshLambertMaterial({
       color: FARGE_PLATE, side: THREE.DoubleSide,
       polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1
     }));
-    plate.position.set((p.x0 + p.x1) / 2 / s, mr.gulvY, (p.z0 + p.z1) / 2 / s);
+    plate.position.set(egen ? 0 : (p.x0 + p.x1) / 2 / s, mr.gulvY, egen ? 0 : (p.z0 + p.z1) / 2 / s);
     byggGroup.add(plate);
   }
   trengerFar = mTilScene(g.w * g.dx * 4, mr.skala);
@@ -180,7 +188,7 @@ if (LETT) S.terrengRef = () => {
     yVed(E, N) {
       if (pad && pad.paa && gulv) {
         const b = terrengTilBygg(E, N, E0, N0, plass);
-        if (b.bx >= pad.x0 && b.bx <= pad.x1 && b.bz >= pad.z0 && b.bz <= pad.z1) return mr.gulvY;
+        if (iPad(pad, b.bx, b.bz)) return mr.gulvY;
       }
       const h = hoydeVed(g, E, N);
       return h == null ? null : yFraMoh(h, mr);

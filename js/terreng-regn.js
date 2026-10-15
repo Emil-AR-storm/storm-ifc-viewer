@@ -567,6 +567,154 @@ export function padMeter(pad) {
   return { bredde: pad.x1 - pad.x0, lengde: pad.z1 - pad.z0 };
 }
 
+// ═══════════════════════ ✏ EGENDEFINERT PLATE (Emil 15.10) ═══════════════════════
+//
+// Plata kan være en fri form i stedet for en firkant: brukeren tegner den
+// punkt for punkt (som pilene i Rigg) og må LUKKE formen før «Ferdig» virker.
+// Etterpå legges det prikker langs kanten hver 5. meter (som skjøtene på
+// byggegjerdet), og prikkene kan dras, legges til (dobbeltklikk på kanten)
+// og fjernes (Delete).
+//   pad = { paa, form: "egen", punkter: [{ x, z }, …], x0, x1, z0, z1 }
+// Punktene er meter i BYGGRAMMEN, som firkanten. x0…z1 er rammen rundt
+// punktene (bbox) — den brukes av alt som bare trenger størrelsen (tallet i
+// panelet, Excel, rotasjonshåndtaket), og gjør at gamle filer og gammel kode
+// som bare kjenner firkanten fortsatt får noe fornuftig.
+// En plate UTEN `form` er en firkant — alle gamle lagrede plasseringer.
+export const PAD_PRIKK_M = 5;          // prikk langs kanten hver 5. meter
+export const PAD_MAKS_PUNKT = 400;
+export const PAD_MIN_AREAL = 1;        // m²
+
+export function erEgenPad(pad) {
+  return !!(pad && pad.form === "egen" && Array.isArray(pad.punkter) && pad.punkter.length >= 3);
+}
+
+// Omrisset som punkter, uansett form (firkanten med klokka sett ovenfra).
+export function padPolygon(pad) {
+  if (!pad) return [];
+  if (erEgenPad(pad)) return pad.punkter.map(q => ({ x: q.x, z: q.z }));
+  return [{ x: pad.x0, z: pad.z0 }, { x: pad.x1, z: pad.z0 }, { x: pad.x1, z: pad.z1 }, { x: pad.x0, z: pad.z1 }];
+}
+
+export function polyRamme(pts) {
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  for (const q of pts) { x0 = Math.min(x0, q.x); x1 = Math.max(x1, q.x); z0 = Math.min(z0, q.z); z1 = Math.max(z1, q.z); }
+  return { x0, x1, z0, z1 };
+}
+
+export function polyAreal(pts) {
+  let a = 0;
+  for (let i = 0, n = pts.length; i < n; i++) { const p = pts[i], q = pts[(i + 1) % n]; a += p.x * q.z - q.x * p.z; }
+  return Math.abs(a) / 2;
+}
+
+// Punkt i polygon (stråle mot +x). Punktene på kanten kan havne på begge
+// sider — for en 1 m-rute betyr det ingenting.
+export function iPolygon(pts, x, z) {
+  let inne = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const a = pts[i], b = pts[j];
+    if ((a.z > z) !== (b.z > z) && x < (b.x - a.x) * (z - a.z) / (b.z - a.z) + a.x) inne = !inne;
+  }
+  return inne;
+}
+
+// Ligger punktet (byggrammen, meter) på plata? Firkanten som før.
+export function iPad(pad, bx, bz) {
+  if (!pad || !pad.paa) return false;
+  if (bx < pad.x0 || bx > pad.x1 || bz < pad.z0 || bz > pad.z1) return false;
+  return erEgenPad(pad) ? iPolygon(pad.punkter, bx, bz) : true;
+}
+
+function kryss(a, b, c, d) {
+  const o = (p, q, r) => (q.x - p.x) * (r.z - p.z) - (q.z - p.z) * (r.x - p.x);
+  const d1 = o(c, d, a), d2 = o(c, d, b), d3 = o(a, b, c), d4 = o(a, b, d);
+  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+}
+
+// Kan formen brukes som plate? Svar: "" (ja) eller en grunn som kan vises.
+//   lukket = true: siste punkt kobles til første (en ferdig form).
+export function polyFeil(pts, lukket) {
+  if (!Array.isArray(pts) || pts.length < 3) return "Formen trenger minst tre punkter.";
+  const n = pts.length, m = lukket === false ? n - 1 : n;
+  for (let i = 0; i < m; i++) {
+    const a = pts[i], b = pts[(i + 1) % n];
+    for (let j = i + 2; j < m; j++) {
+      if (lukket !== false && i === 0 && j === n - 1) continue;      // naboer gjennom første punkt
+      if (kryss(a, b, pts[j], pts[(j + 1) % n])) return "Kantene krysser hverandre.";
+    }
+  }
+  if (lukket !== false && polyAreal(pts) < PAD_MIN_AREAL) return "Formen er for liten.";
+  return "";
+}
+
+// Prikker langs kanten: hver side deles i ceil(L / avstand) like stykker.
+// Hjørnene (punktene brukeren satte) står alltid.
+export function padPrikker(pts, avstand) {
+  const a = avstand || PAD_PRIKK_M, ut = [];
+  for (let i = 0, n = pts.length; i < n; i++) {
+    const p = pts[i], q = pts[(i + 1) % n];
+    const L = Math.hypot(q.x - p.x, q.z - p.z), k = Math.max(1, Math.ceil(L / a - 1e-9));
+    for (let s = 0; s < k; s++) ut.push({ x: rundCm(p.x + (q.x - p.x) * s / k), z: rundCm(p.z + (q.z - p.z) * s / k) });
+    if (ut.length > PAD_MAKS_PUNKT) break;
+  }
+  return ut.slice(0, PAD_MAKS_PUNKT);
+}
+
+function rundCm(v) { return Math.round(v * 100) / 100; }
+
+// Punktene fra en fil: tall, cm, ingen doble punkter etter hverandre.
+export function vaskPadPunkter(arr) {
+  if (!Array.isArray(arr)) return null;
+  const ut = [];
+  for (const q of arr.slice(0, PAD_MAKS_PUNKT)) {
+    const x = tall(q && q.x), z = tall(q && q.z);
+    if (x == null || z == null || Math.abs(x) >= 5000 || Math.abs(z) >= 5000) return null;
+    const p = { x: rundCm(x), z: rundCm(z) }, f = ut[ut.length - 1];
+    if (f && Math.abs(f.x - p.x) < 0.01 && Math.abs(f.z - p.z) < 0.01) continue;
+    ut.push(p);
+  }
+  const a = ut[0], b = ut[ut.length - 1];
+  if (ut.length > 3 && Math.abs(a.x - b.x) < 0.01 && Math.abs(a.z - b.z) < 0.01) ut.pop();
+  return ut.length >= 3 && !polyFeil(ut) ? ut : null;
+}
+
+// Plata fra punktene (paa står på). Ugyldig form → null.
+export function padFraPunkter(pts, paa) {
+  const v = vaskPadPunkter(pts);
+  if (!v) return null;
+  return Object.assign({ paa: paa !== false, form: "egen", punkter: v }, polyRamme(v));
+}
+
+// Firkanten som en egendefinert form (hjørnene), med prikkene hver 5. meter
+// — når man bytter fra Firkant til Egendefinert, starter man fra det man har.
+export function padSomEgen(pad) {
+  return padFraPunkter(padPrikker(padPolygon(pad)), pad ? pad.paa : true);
+}
+
+// Avstanden fra punktet til nærmeste kant, og hvilken vei kanten vender ut
+// (utoverpekende normal i byggrammen). Til skråningene rundt en fri form.
+export function avstandTilPoly(pts, x, z) {
+  let best = Infinity, nx = 0, nz = 0;
+  const med = polySum(pts) > 0 ? 1 : -1;       // omløpsretningen avgjør hvilken side som er «ut»
+  for (let i = 0, n = pts.length; i < n; i++) {
+    const a = pts[i], b = pts[(i + 1) % n];
+    const ex = b.x - a.x, ez = b.z - a.z, L2 = ex * ex + ez * ez;
+    const t = L2 > 0 ? Math.max(0, Math.min(1, ((x - a.x) * ex + (z - a.z) * ez) / L2)) : 0;
+    const d = Math.hypot(x - (a.x + ex * t), z - (a.z + ez * t));
+    if (d < best) { best = d; const L = Math.sqrt(L2) || 1; nx = med * ez / L; nz = -med * ex / L; }
+  }
+  return { d: best, nx, nz };
+}
+function polySum(pts) {
+  let a = 0;
+  for (let i = 0, n = pts.length; i < n; i++) { const p = pts[i], q = pts[(i + 1) % n]; a += p.x * q.z - q.x * p.z; }
+  return a;
+}
+// Normalen → siden av byggrammen den vender mest mot (skråning per side).
+export function sideFraNormal(nx, nz) {
+  return Math.abs(nx) >= Math.abs(nz) ? (nx < 0 ? "x0" : "x1") : (nz < 0 ? "z0" : "z1");
+}
+
 // Samme kanter som beskjæringen: NORD = z0 (−Z), SØR = z1, VEST = x0, ØST = x1.
 // Rundes til 10 cm — ingen trenger millimeter på en utgravingsplate.
 export function flyttPadKant(pad, kant, bx, bz) {
@@ -588,7 +736,9 @@ export function padHandtak(p) {
 }
 
 export function likePad(a, b) {
-  return !!a && !!b && a.paa === b.paa && a.x0 === b.x0 && a.x1 === b.x1 && a.z0 === b.z0 && a.z1 === b.z1;
+  if (!a || !b || a.paa !== b.paa || erEgenPad(a) !== erEgenPad(b)) return false;
+  if (erEgenPad(a)) return a.punkter.length === b.punkter.length && a.punkter.every((q, i) => q.x === b.punkter[i].x && q.z === b.punkter[i].z);
+  return a.x0 === b.x0 && a.x1 === b.x1 && a.z0 === b.z0 && a.z1 === b.z1;
 }
 
 // Hvilke punkter i gridet ligger under plata?
@@ -602,7 +752,7 @@ export function padFlagg(grid, E0, N0, plass, pad) {
     for (let i = 0; i < grid.w; i++) {
       const lx = grid.x0 + (i + 0.5) * grid.dx - E0 - (plass.pE || 0);
       const bx = lx * c + lz * s, bz = -lx * s + lz * c;
-      if (bx >= pad.x0 && bx <= pad.x1 && bz >= pad.z0 && bz <= pad.z1) f[j * grid.w + i] = 1;
+      if (iPad(pad, bx, bz)) f[j * grid.w + i] = 1;
     }
   }
   return f;
@@ -741,6 +891,12 @@ export function vaskPlassering(p) {
     const q = p.pad, v = [q.x0, q.x1, q.z0, q.z1].map(tall);
     if (v.every(x => x != null) && v[1] > v[0] && v[3] > v[2] && v.every(x => Math.abs(x) < 5000))
       pad = { paa: q.paa !== false, x0: v[0], x1: v[1], z0: v[2], z1: v[3] };
+    // ✏ egendefinert form: en ugyldig form blir firkanten rundt den (rammen
+    // står i fila), ikke borte
+    if (q.form === "egen") {
+      const eg = padFraPunkter(q.punkter, q.paa !== false);
+      if (eg) pad = eg;
+    }
   }
   let klipp = null;
   if (p.klipp && typeof p.klipp === "object") {
@@ -998,6 +1154,17 @@ export function masseFelt(grid, E0, N0, plass, pad, planum, skraning) {
   const flagg = new Uint8Array(n);
   const t = (plass.rot || 0) * RAD, c = Math.cos(t), s = Math.sin(t);
   const r = { skjP: 0, fylP: 0, skjS: 0, fylS: 0, arealP: 0, arealS: 0, sum: 0, nP: 0, uten: 0, kant: false };
+  // ✏ Egendefinert form: avstanden måles til nærmeste kant av formen. For å
+  // slippe å måle mot hver kant for hvert punkt i gridet: lenger ut enn
+  // skråningen kan nå (høydeforskjellen × helningen) er terrenget urørt.
+  const egen = erEgenPad(pad), poly = egen ? pad.punkter : null;
+  let rekk = Infinity;
+  if (egen) {
+    let lo = Infinity, hi = -Infinity;
+    for (let q = 0; q < n; q++) { const v = grid.data[q]; if (gyldigHoyde(v, grid.nodata)) { if (v < lo) lo = v; if (v > hi) hi = v; } }
+    const maksN = Math.max(sk.skjaering, sk.fylling, ...SIDER.map(k => Math.max(sk.sider[k].skjaering, sk.sider[k].fylling)));
+    rekk = Math.max(hi - planum, planum - lo, 0) * maksN + 1;
+  }
   const perSide = {};
   for (const k of SIDER) perSide[k] = { skjaering: 0, fylling: 0, areal: 0 };
   for (let j = 0; j < grid.h; j++) {
@@ -1006,7 +1173,7 @@ export function masseFelt(grid, E0, N0, plass, pad, planum, skraning) {
       const k = j * grid.w + i, v = grid.data[k];
       const lx = grid.x0 + (i + 0.5) * grid.dx - E0 - (plass.pE || 0);
       const bx = lx * c + lz * s, bz = -lx * s + lz * c;
-      const inne = bx >= pad.x0 && bx <= pad.x1 && bz >= pad.z0 && bz <= pad.z1;
+      const inne = egen ? iPad(pad, bx, bz) : bx >= pad.x0 && bx <= pad.x1 && bz >= pad.z0 && bz <= pad.z1;
       if (inne) flagg[k] = 1;
       if (!gyldigHoyde(v, grid.nodata)) { if (inne) r.uten++; continue; }
       if (inne) {
@@ -1016,6 +1183,22 @@ export function masseFelt(grid, E0, N0, plass, pad, planum, skraning) {
         continue;
       }
       if (!sk.paa) continue;
+      if (egen) {
+        // ✏ fri form: én side per punkt (den kanten er nærmest vender mot),
+        // ingen blanding rundt hjørnene
+        if (avstandTilRekt(bx, bz, pad) > rekk) { dz[k] = 0; continue; }
+        const a = avstandTilPoly(poly, bx, bz), side = sideFraNormal(a.nx, a.nz);
+        const h = sk.perSide ? sk.sider[side] : sk;
+        const opp = planum + a.d / h.skjaering, ned = planum - a.d / h.fylling;
+        let dd = 0;
+        if (v > opp) { dd = v - opp; r.skjS += dd * A; perSide[side].skjaering += dd * A; }
+        else if (v < ned) { dd = v - ned; r.fylS -= dd * A; perSide[side].fylling -= dd * A; }
+        if (dd !== 0) {
+          dz[k] = dd; r.arealS += A; perSide[side].areal += A;
+          if (i === 0 || j === 0 || i === grid.w - 1 || j === grid.h - 1) r.kant = true;
+        } else dz[k] = 0;
+        continue;
+      }
       // Avstanden ut fra plata, og hvilken side punktet hører til. Ved
       // hjørnene blandes helningen til de to sidene etter vinkelen, så
       // skråningsflata henger sammen rundt hjørnet uten et sprang.
@@ -1255,7 +1438,8 @@ export function terrengForByggeplass(t, steg) {
       E0: t.E0, N0: t.N0, h0: t.h0,
       plass: { pE: p.pE || 0, pN: p.pN || 0, rot: p.rot || 0 },
       gulv: t.gulv ? { kote: t.gulv.kote } : null,
-      pad: t.pad && t.pad.paa ? { paa: true, x0: t.pad.x0, x1: t.pad.x1, z0: t.pad.z0, z1: t.pad.z1 } : null,
+      pad: t.pad && t.pad.paa ? Object.assign({ paa: true, x0: t.pad.x0, x1: t.pad.x1, z0: t.pad.z0, z1: t.pad.z1 },
+        erEgenPad(t.pad) ? { form: "egen", punkter: t.pad.punkter.map(q => ({ x: q.x, z: q.z })) } : {}) : null,
       grid: { w, h, x0, y0, dx, dy, hMin, data: tilBase64(new Uint8Array(u16.buffer)) },
       kart: ""   // fylles av byggeplass.js med navnet på JPEG-en
     }
