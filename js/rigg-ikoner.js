@@ -38,7 +38,7 @@ export function riggIkon(type, farge, px) {
 }
 
 // Til testene: typene som har en egen tegning (resten får et fargemerke).
-export const IKON_TYPER = ["brakke", "hjulbrakke", "toalett", "forstehjelp", "mote", "strom", "lys", "container", "hms",
+export const IKON_TYPER = ["brakke", "hjulbrakke", "toalett", "forstehjelp", "mote", "strom", "vann", "lys", "container", "hms",
   "soppel", "parkering", "lagring", "vaskeplass", "gjerde", "gjerdePort", "pilKjoretoy", "pilGaende", "taarnkran", "royk", "hmstavle", "stillas"];
 
 function tone(hex, f) {
@@ -96,6 +96,16 @@ function tegn(x, s, type, farge) {
       R(28, 14, 40, 60, farge); R(26, 12, 44, 5, kant); R(36, 74, 24, 10, "#546e7a");
       P([[52, 22], [38, 48], [48, 48], [42, 68], [60, 38], [50, 38], [56, 22]], "#fdd835", "#111");
       break;
+    case "vann": {
+      // 💧 stolpe med blått skilt (hvit dråpe), kran og grønn slange
+      R(44, 30, 8, 54, "#7d858c"); R(24, 82, 48, 6, "#3a3f45");
+      R(30, 8, 36, 34, farge);
+      f("#ffffff"); x.beginPath(); x.moveTo(48, 13); x.bezierCurveTo(48, 13, 38, 26, 38, 30); x.arc(48, 30, 10, Math.PI, 0, true);
+      x.bezierCurveTo(58, 26, 48, 13, 48, 13); x.fill();
+      R(34, 56, 10, 5, "#c9a24a"); R(34, 56, 4, 10, "#c9a24a");
+      st("#2e9e44", 4); x.beginPath(); x.arc(66, 60, 10, 0, Math.PI * 2); x.stroke();
+      break;
+    }
     case "lys":
       st("#4a5157", 4);
       x.beginPath(); x.moveTo(48, 30); x.lineTo(48, 84); x.moveTo(48, 60); x.lineTo(26, 86); x.moveTo(48, 60); x.lineTo(70, 86); x.stroke();

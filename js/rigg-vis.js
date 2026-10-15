@@ -266,7 +266,7 @@ export function byggRiggObjekt(o, skala, hoyder) {
   const kran = { rediger: !!red, info: !!red || (!LETT && o.id === S.riggValgtId) };
   byggModell(modell, o, hoyder, { enkel: LETT, logo, avfall, mark: gjerdeMark, kran, skiltTekster: {
     vaskeplass: t("Vaskeplass").toUpperCase(), lagring: t("Lagringsområde").toUpperCase(),
-    royk: t("Røykeområde").toUpperCase(), hmstavle: t("HMS-tavle").toUpperCase() } });
+    royk: t("Røykeområde").toUpperCase(), hmstavle: t("HMS-tavle").toUpperCase(), vann: t("Vann").toUpperCase() } });
   ytre.add(modell);
   const n = riggAntall(o);
   let tekst = (o.navn || riggTypeLabel(o.type)) + (n > 1 ? "  ×" + n : "");

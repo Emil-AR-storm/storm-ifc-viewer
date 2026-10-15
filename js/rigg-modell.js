@@ -182,13 +182,14 @@ function skiltMat(nokkel) {
     if (typeof document !== "undefined" && THREE.CanvasTexture) {
       const tekst = nokkel.startsWith("tekst:") ? nokkel.slice(6) : null;
       const c = document.createElement("canvas");
-      c.width = 512; c.height = tekst ? 146 : 512;
+      c.width = 512; c.height = tekst ? 146 : nokkel.startsWith("vann:") ? 640 : 512;
       const x = c.getContext("2d");
       if (x && typeof x.fillRect === "function") {
         if (tekst) tegnTekstskilt(x, c.width, c.height, tekst);
         else if (nokkel === "P") tegnParkering(x, c.width);
         else if (nokkel === "lager") tegnLager(x, c.width);
         else if (nokkel === "royk") tegnRoyk(x, c.width);
+        else if (nokkel.startsWith("vann:")) tegnVann(x, c.width, nokkel.slice(5));
         else if (nokkel.startsWith("avfall:")) { const [id, farge, ...t] = nokkel.slice(7).split("|"); tegnAvfall(x, c.width, id, farge, t.join("|")); }
         else tegnVaskebil(x, c.width);
         const tex = new THREE.CanvasTexture(c);
@@ -206,7 +207,8 @@ function skiltFlate(g, nokkel, b, h, x, y, z, n) {
   if (!m) return;
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(b, h), m);
   mesh.position.set(x, y, z);
-  mesh.rotation.y = n === "x" ? Math.PI / 2 : -Math.PI / 2;
+  // "z"/"-z": skiltet vender fram/bak (vannkranen). "x"/"-x" som før.
+  mesh.rotation.y = n === "x" ? Math.PI / 2 : n === "-x" ? -Math.PI / 2 : n === "-z" ? Math.PI : 0;
   mesh.userData.egen = true;       // eget materiale med tekstur, slås ikke sammen
   g.add(mesh);
 }
@@ -245,6 +247,26 @@ function tegnRoyk(x, s) {
     x.bezierCurveTo((x0 + 30 * a) * k, 110 * k, (x0 - 10 * a) * k, 90 * k, x0 * k, 70 * k);
     x.stroke();
   }
+}
+
+// 💧 Vannskiltet (Emil 15.10, prøvebilde B): hvit dråpe og teksten VANN på
+// blått, hvit kant. Vår egen enkle tegning, ikke et offisielt skilt. Lerretet
+// er 512 × 640 (skiltet er høyere enn bredt).
+function tegnVann(x, b, tekst) {
+  const h = b * 1.25, k = b / 256;
+  x.fillStyle = "#0d5fb3"; x.fillRect(0, 0, b, h);
+  x.strokeStyle = "#ffffff"; x.lineWidth = 10 * k; x.strokeRect(10 * k, 10 * k, b - 20 * k, h - 20 * k);
+  x.fillStyle = "#ffffff";
+  x.beginPath(); x.moveTo(128 * k, 40 * k);
+  x.bezierCurveTo(128 * k, 40 * k, 62 * k, 128 * k, 62 * k, 156 * k);
+  x.arc(128 * k, 156 * k, 66 * k, Math.PI, 0, true);
+  x.bezierCurveTo(194 * k, 128 * k, 128 * k, 40 * k, 128 * k, 40 * k);
+  x.fill();
+  x.textAlign = "center"; x.textBaseline = "alphabetic";
+  let px = Math.round(64 * k);
+  x.font = "bold " + px + "px Arial, Helvetica, sans-serif";
+  while (px > 20 && x.measureText && x.measureText(tekst).width > b - 50 * k) { px -= 4; x.font = "bold " + px + "px Arial, Helvetica, sans-serif"; }
+  x.fillText(tekst || "VANN", b / 2, 290 * k);
 }
 
 // 📋 HMS-tavla: overskrift i et blått bånd, og ark som henger på tavla.
@@ -862,6 +884,52 @@ const BYGG = {
     flat(g, L * 0.24, L * 0.08, HVIT, 0, 1.0, front, "z", true);
     flat(g, L * 0.08, L * 0.24, HVIT, 0, 1.0, front, "z", true);
     leggLogo(g, opts.logo, L * 0.6, 0.25, 0, 1.0, skapZ - skapD / 2 - 0.001, "-z");   // bak på skapet
+  },
+
+  // 💧 Vannkran (Emil 15.10, prøvebilde B «Stolpe med skilt»): rist på
+  // bakken (L × B), stålstolpe bak, blått VANN-skilt øverst (toppen = H),
+  // messingkran på 0,8 m med svart spak, og slangeopphenger med kveilet
+  // grønn slange til høyre. Fronten er +z. Alt ligger innenfor L × B × H.
+  vann(g, o, _h, opts) {
+    const { L, B, H } = o, enkel = !!opts.enkel;
+    const RIST = "#3a3f45", STOLPE = "#8e979e", MESS = "#c9a24a", SVART = "#22262b", SLANGE = "#2e9e44";
+    // rista: mørk ramme, og spiler oppå (ikke på telefonen)
+    boks(g, L, 0.02, B, "#5d636b", 0, 0.01, 0, { r: enkel ? 0 : 0.004 });
+    if (!enkel) {
+      const n = Math.max(3, Math.round(L / 0.06));
+      for (let i = 1; i < n; i++) boks(g, 0.012, 0.012, B - 0.04, RIST, -L / 2 + i * L / n, 0.026, 0);
+    }
+    // stolpen står bak, midt på
+    const sz = -B / 2 + 0.06, st = 0.08;
+    boks(g, st, H - 0.02, st, STOLPE, 0, 0.02 + (H - 0.02) / 2, sz, { r: enkel ? 0 : 0.01 });
+    // skiltet foran stolpen, øverst
+    const sb = Math.min(L * 0.5, 0.3), sh = sb * 1.25, sy = H - sh / 2 - 0.02, skz = sz + st / 2 + 0.015;
+    boks(g, sb + 0.02, sh + 0.02, 0.02, "#0d5fb3", 0, sy, skz, { r: enkel ? 0 : 0.004 });
+    const tekst = (opts.skiltTekster && opts.skiltTekster.vann) || "VANN";
+    skiltFlate(g, "vann:" + tekst, sb, sh, 0, sy, skz + 0.0101, "z");
+    // kranen: rør ut fra stolpen, tut ned, svart spak
+    const ky = Math.min(0.8, H * 0.45), kz0 = sz + st / 2;
+    sylinder(g, 0.02, 0.1, STOLPE, 0, ky, kz0 + 0.05, "z");
+    if (!enkel) {
+      boks(g, 0.035, 0.035, 0.045, MESS, 0, ky + 0.01, kz0 + 0.115, { r: 0.006 });
+      sylinder(g, 0.016, 0.08, MESS, 0, ky - 0.05, kz0 + 0.125);
+      sylinder(g, 0.01, 0.14, SVART, 0.06, ky + 0.04, kz0 + 0.115, "x");
+    } else {
+      sylinder(g, 0.016, 0.08, MESS, 0, ky - 0.05, kz0 + 0.1);
+    }
+    // slangeopphenger og kveilet slange (torus i xy-planet, inntil stolpen)
+    const sr = Math.min(0.11, (L / 2 - st / 2 - 0.055) / 2), sx = st / 2 + sr + 0.03, sly = Math.min(1.0, H * 0.55);
+    if (sx + sr + 0.025 <= L / 2 + 1e-6) {
+      boks(g, 0.12, 0.04, 0.04, STOLPE, st / 2 + 0.06, sly + sr - 0.01, kz0 + 0.02);
+      const t = new THREE.Mesh(new THREE.TorusGeometry(sr, 0.022, enkel ? 5 : 8, enkel ? 14 : 20), mat(SLANGE));
+      t.position.set(sx, sly, kz0 + 0.05);
+      g.add(t);
+      if (!enkel) {
+        const t2 = new THREE.Mesh(new THREE.TorusGeometry(sr * 0.82, 0.02, 6, 18), mat(SLANGE));
+        t2.position.set(sx, sly - sr * 0.15, kz0 + 0.09);
+        g.add(t2);
+      }
+    }
   },
 
   // Møteområde: blå kasse med fasede kanter og hvit M på alle sider og på

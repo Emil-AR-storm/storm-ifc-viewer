@@ -44,6 +44,7 @@ import {
   gjorOmTilPort, gjorTilbake, leggTilSkjot, naboStykker, nyRiggId, normVinkel, riggAntall, riggObjekter,
   riggTelling, trengerOpplasting, vaskRiggListe, vaskRiggObjekt, erGjerde, erStillas, MALESTOKKER, riggplanDekning, vaskMalestokkValg, erPil, minPunkter, parkeringsPlasser, pilFraPunkter, pilLengde,
   RIGGPLAN_NAVN_MAKS, riggFraLagret, riggOyeblikk, riggplanSammendrag, AVFALLSTYPER, avfallstype,
+  VANN_TILKOBLINGER, VANN_MERKNAD_MAKS, vannTekst,
   KRAN_MAKS_H, KRAN_MAKS_R, KRAN_MIN_R, draSektor, kranSektor, vinkelTil
 } from "./rigg-regn.js";
 import {
@@ -1454,6 +1455,7 @@ function tegnPanel() {
     return '<div class="qty-row"' + (o.skjult ? ' style="opacity:.55"' : "") + '><div class="n" data-rigg-velg="' + esc(o.id) + '" style="cursor:pointer">' +
       ikonImg(o.type, o.farge) + esc(o.navn || riggTypeLabel(o.type)) +
       (o.avfall && avfallstype(o.avfall) ? ' <span style="color:var(--muted);font-size:11px">· ' + esc(t(avfallstype(o.avfall).label)) + "</span>" : "") +
+      (RIGG_TYPER[o.type].vann ? ' <span style="color:var(--muted);font-size:11px">· ' + esc(vannTekst(o, t)) + "</span>" : "") +
       ' <span style="color:var(--muted);font-size:11px">' + esc(riggTypeLabel(o.type)) +
       (erPil(o) ? " · " + (Math.round(pilLengde(o) * 10) / 10) + " m" : erStillas(o) ? " · " + (o.form === "lukket" ? t("Lukket") : t("{0} felt", o.moduler)) + " · " + t("{0} etasjer", o.etasjer) : o.punkter ? " · " + gjerdeTekst(o) : " · " + o.L + " × " + o.B + " m" + (n > 1 ? " · ×" + n : "") +
         (RIGG_TYPER[o.type].parkering ? " · " + t("{0} plasser", parkeringsPlasser(o.L, o.B).totalt) : "")) + "</span></div>" +
@@ -1778,6 +1780,14 @@ function skjemaHtml(o) {
     (M.avfall ? "<label>" + t("Avfallstype") + '<select id="riggAvfall"><option value="">' + t("Ikke valgt") + "</option>" +
       AVFALLSTYPER.map(a => '<option value="' + a.id + '"' + (o.avfall === a.id ? " selected" : "") + ">" + esc(t(a.label)) + "</option>").join("") +
       "</select></label>" : "") +
+    // 💧 Vannkranen (Emil 15.10): frostsikret, tilkobling og merknad
+    (M.vann ? '<label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="riggFrost"' + (o.frostsikret ? " checked" : "") +
+      ' style="width:auto;margin:0">' + t("Frostsikret") + "</label>" +
+      "<label>" + t("Tilkobling") + '<select id="riggTilkobling"><option value="">' + t("Ikke valgt") + "</option>" +
+      VANN_TILKOBLINGER.map(a => '<option value="' + a.id + '"' + (o.tilkobling === a.id ? " selected" : "") + ">" + esc(t(a.label)) + "</option>").join("") +
+      "</select></label>" +
+      "<label>" + t("Merknad") + '<input type="text" id="riggMerknad" maxlength="' + VANN_MERKNAD_MAKS + '" placeholder="' +
+      esc(t("F.eks. hvor stoppekranen står")) + '" value="' + esc(o.merknad || "") + '"></label>' : "") +
     (M.logo ? "<label>" + t("Logo") + '<select id="riggLogo"></select></label>' +
       "<p " + LITEN + ">" + t(spPaalogget() ? "Logoene hentes fra SharePoint-mappa Logoer (samme som rapportene)." : "Logg inn for å velge logo fra SharePoint-mappa Logoer.") + "</p>" : "") +
     "<p " + LITEN + ">" + t("Standardmål: {0} × {1} × {2} m", M.L, M.B, M.H) + "</p>" +
@@ -1799,6 +1809,11 @@ function koblSkjema(o) {
     if (M.moduler && $("riggDorSide")) felter.dorSide = $("riggDorSide").value;
     if (M.moduler && $("riggDorEnde")) felter.dorEnde = $("riggDorEnde").value;
     if (M.avfall && $("riggAvfall")) felter.avfall = $("riggAvfall").value;
+    if (M.vann) {
+      if ($("riggFrost")) felter.frostsikret = $("riggFrost").checked;
+      if ($("riggTilkobling")) felter.tilkobling = $("riggTilkobling").value;
+      if ($("riggMerknad")) felter.merknad = $("riggMerknad").value.trim();
+    }
     if (M.moduler) { felter.moduler = $("riggMod").value; felter.etasjer = $("riggEt").value; }
     if (M.kran && $("riggRadius")) felter.radius = $("riggRadius").value;
     if (M.stillas) Object.assign(felter, stillasFelter(hentO(o.id) || o));
