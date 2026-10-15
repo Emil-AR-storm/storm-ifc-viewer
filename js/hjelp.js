@@ -183,6 +183,11 @@ export const KORT = [
     tekst: "Terreng (i Planlegging) henter høydedata og kart fra Kartverket for en adresse. Flytt og roter bygget på plass, skriv gulvkoten fra tegningen og trykk Lagre terreng — da kommer terrenget av seg selv neste gang modellen åpnes, også hos kollegaene. Publiser Byggeplass tar terrenget og kartet med ut til byggeplass-lenka. Plasseringen er omtrentlig og skal aldri brukes til utstikking."
   },
   {
+    hvor: "kontor", ikonNavn: "boks",
+    tittel: "Plate med egen form",
+    tekst: "Plata under bygget kan ha fri form. Under Utskjæring rundt bygget velger du Form: Egendefinert og trykker punkt for punkt på bakken. Trykk på det første punktet for å lukke formen — Ferdig virker ikke før den er lukket. Etterpå kommer det gule prikker langs kanten hver 5. meter: dra i dem for å justere, dobbeltklikk på kanten for en ny prikk, og trykk på en prikk og Delete for å fjerne den. Massene regnes innenfor formen."
+  },
+  {
     hvor: "kontor", ikonNavn: "markering",
     tittel: "Fest bygget med landmålerens koordinater",
     tekst: "Under Fest til landmålerens koordinater i Terreng-panelet: trykk Velg i modellen, trykk på et hjørne, og skriv nord (x) og øst (y) fra landmåleren. Velg koordinatsystemet landmåleren bruker (UTM32, UTM33 eller NTM). To hjørner gir også rotasjonen og en kontroll av avstanden. Bygget låses til du trykker Løsne bygget."

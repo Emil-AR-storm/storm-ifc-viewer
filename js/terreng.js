@@ -32,6 +32,7 @@ import {
   tolkKote, vaskAdresseSvar, wcsUrl,
   binTilGrid, gridTilBin, navneforslag, nyTerrengId, vaskPlassering, vaskTerrengListe,
   planumKote, vaskPlanum, terrengForByggeplass,
+  erEgenPad, iPad, polyFeil, padPrikker, padFraPunkter, polyAreal, polyRamme, PAD_PRIKK_M,
   KOORDSYS, SIDER, dzFarger, ferdigGrid, masseRader, sideRetning, festEttPunkt, festSjekk, festToPunkt, masseFelt, vaskFest, vaskSkraning
 } from "./terreng-regn.js";
 import { lastNedXlsx, pick } from "./elements.js";
@@ -48,7 +49,8 @@ import { varsel } from "./varsel.js";
 //   plass    — { pE, pN, rot }: hvor bygget står på terrenget (trinn 5)
 //   gulv     — { kote, grov }: gulvkoten i moh. (trinn 6). grov = beregnet
 //              av «Legg oppå terrenget», ikke oppgitt fra tegningen
-//   pad      — { paa, x0, x1, z0, z1 }: plata under bygget, i byggrammen
+//   pad      — { paa, x0, x1, z0, z1 }: plata under bygget, i byggrammen.
+//              Egendefinert (Emil 15.10): også form: "egen" og punkter
 let terreng = null;
 let skjult = false;
 let opptatt = false;
@@ -74,6 +76,12 @@ let visFerdig = false;
 // 📍 Fest hjørne: hvilket punkt (1 eller 2) neste trykk i modellen velger.
 let festVelger = 0;
 let festNed = null;
+// ✏ Egendefinert plate (Emil 15.10): tegnes punkt for punkt.
+//   padTegner = { punkter: [{x, z}], lukket, mus: {x, z} | null } mens man tegner
+//   valgtPrikk = indeksen til prikken som sist ble trykket på (Delete fjerner den)
+let padTegner = null;
+let padTegnerNed = null;
+let valgtPrikk = null;
 let festMelding = "", festFeil = false;
 function erLaast() { return !!(terreng && terreng.fest && terreng.fest.laast); }
 
@@ -220,7 +228,7 @@ S.terrengRef = () => {
       if (!synlig) return null;
       if (pad && pad.paa && gulv && !visMasser) {
         const b = terrengTilBygg(E, N, E0, N0, plass);
-        if (b.bx >= pad.x0 && b.bx <= pad.x1 && b.bz >= pad.z0 && b.bz <= pad.z1) return mr.gulvY;
+        if (iPad(pad, b.bx, b.bz)) return mr.gulvY;
       }
       const h = hoydeVed(g, E, N);
       return h == null ? null : yFraMoh(h, mr);
@@ -298,9 +306,13 @@ const handtakGeo = new THREE.SphereGeometry(1, 12, 8);
 const handtakMat = {
   klipp: new THREE.MeshBasicMaterial({ color: FARGE_KLIPP, depthTest: false }),
   pad: new THREE.MeshBasicMaterial({ color: FARGE_PAD, depthTest: false }),
+  padValgt: new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false }),
   rot: new THREE.MeshBasicMaterial({ color: FARGE_FOT, depthTest: false }),
   fest: new THREE.MeshBasicMaterial({ color: 0x00c853, depthTest: false })
 };
+
+// ✏ den lukkede formen mens man tegner: lys gul, halvgjennomsiktig
+const tegnFyllMat = new THREE.MeshBasicMaterial({ color: FARGE_PAD, transparent: true, opacity: 0.3, depthTest: false, side: THREE.DoubleSide });
 
 const klippGroup = new THREE.Group();   // i innhold (følger terrenget)
 const padGroup = new THREE.Group();     // i byggGroup (følger bygget)
@@ -353,6 +365,23 @@ function byggPunkt(bx, bz, y) {
   return new THREE.Vector3(bx / s, y, bz / s);
 }
 
+// ✏ En flate fra punktene i byggrammen (meter) → geometri i byggGroup sine
+// koordinater, liggende i xy-planet (kalleren roterer den ned). y = −z, så
+// rotateX(−90°) legger den riktig vei.
+function polyGeo(pts, s) {
+  const f = new THREE.Shape();
+  pts.forEach((q, i) => (i ? f.lineTo(q.x / s, -q.z / s) : f.moveTo(q.x / s, -q.z / s)));
+  f.closePath();
+  return new THREE.ShapeGeometry(f);
+}
+function linje(pts, y, mat, lukket) {
+  const v = pts.map(q => byggPunkt(q.x, q.z, y));
+  const geo = new THREE.BufferGeometry().setFromPoints(v);
+  const l = lukket ? new THREE.LineLoop(geo, mat) : new THREE.Line(geo, mat);
+  l.renderOrder = 997;
+  return l;
+}
+
 function rektangel(x0, x1, z0, z1, y, mat) {
   const pts = [byggPunkt(x0, z0, y), byggPunkt(x1, z0, y), byggPunkt(x1, z1, y), byggPunkt(x0, z1, y)];
   const l = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts), mat);
@@ -381,8 +410,9 @@ function tegnHandtak() {
   const gulvY = mr.gulvY;
   byggGroup.position.set(mr.c.x, 0, mr.c.z);
   const p = terreng.pad;
+  const egen = erEgenPad(p);
   if (p && p.paa && !visMasser) {
-    const geo = new THREE.PlaneGeometry((p.x1 - p.x0) / s, (p.z1 - p.z0) / s);
+    const geo = egen ? polyGeo(p.punkter, s) : new THREE.PlaneGeometry((p.x1 - p.x0) / s, (p.z1 - p.z0) / s);
     geo.rotateX(-Math.PI / 2);
     plateMesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({
       color: FARGE_PLATE, side: THREE.DoubleSide,
@@ -390,13 +420,43 @@ function tegnHandtak() {
       // høyde som plata, og modellen skal vinne — ikke flimre.
       polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1
     }));
-    plateMesh.position.copy(byggPunkt((p.x0 + p.x1) / 2, (p.z0 + p.z1) / 2, gulvY));
+    plateMesh.position.copy(egen ? byggPunkt(0, 0, gulvY) : byggPunkt((p.x0 + p.x1) / 2, (p.z0 + p.z1) / 2, gulvY));
     plateMesh.name = "terrengplate";
     plateMesh.userData.egetMat = true;
     padGroup.add(plateMesh);
     const loft = LOFT_M * 0.25 / s;
-    padGroup.add(rektangel(p.x0, p.x1, p.z0, p.z1, gulvY + loft, padLinjeMat));
-    for (const hd of padHandtak(p)) nyttHandtak(padGroup, "pad", hd.kant, byggPunkt(hd.bx, hd.bz, gulvY + loft));
+    if (egen) {
+      // ✏ omrisset og én prikk per punkt (hver 5. meter fra start). Den
+      // valgte prikken er hvit, så man ser hva Delete fjerner.
+      padGroup.add(linje(p.punkter, gulvY + loft, padLinjeMat, true));
+      if (!padTegner) p.punkter.forEach((q, i) => nyttHandtak(padGroup, i === valgtPrikk ? "padValgt" : "pad", "p" + i, byggPunkt(q.x, q.z, gulvY + loft)));
+    } else {
+      padGroup.add(rektangel(p.x0, p.x1, p.z0, p.z1, gulvY + loft, padLinjeMat));
+      if (!padTegner) for (const hd of padHandtak(p)) nyttHandtak(padGroup, "pad", hd.kant, byggPunkt(hd.bx, hd.bz, gulvY + loft));
+    }
+  }
+  // ✏ Formen som tegnes: punktene, strekene mellom dem og en strek til
+  // pekeren. Lukket form fylles lyst, så man ser at den er ferdig.
+  if (padTegner) {
+    const loft = LOFT_M * 0.5 / s, pts = padTegner.punkter.slice();
+    if (padTegner.lukket && pts.length >= 3) {
+      const fyll = new THREE.Mesh(polyGeo(pts, s).rotateX(-Math.PI / 2), tegnFyllMat);
+      fyll.position.copy(byggPunkt(0, 0, gulvY + loft * 0.5));
+      fyll.renderOrder = 996;
+      fyll.userData.egetMat = false;
+      padGroup.add(fyll);
+      padGroup.add(linje(pts, gulvY + loft, padLinjeMat, true));
+    } else {
+      const med = padTegner.mus ? pts.concat([padTegner.mus]) : pts;
+      if (med.length >= 2) padGroup.add(linje(med, gulvY + loft, padLinjeMat, false));
+    }
+    pts.forEach((q, i) => {
+      const m = new THREE.Mesh(handtakGeo, i === 0 && !padTegner.lukket && pts.length >= 3 ? handtakMat.rot : handtakMat.pad);
+      m.position.copy(byggPunkt(q.x, q.z, gulvY + loft));
+      m.userData.px = i === 0 && !padTegner.lukket && pts.length >= 3 ? HANDTAK_PX * 1.4 : HANDTAK_PX * 0.8;
+      m.renderOrder = 998;
+      padGroup.add(m);
+    });
   }
 
   // ✥ fotavtrykket og rotasjonshåndtaket (bare i flyttemodus)
@@ -710,6 +770,8 @@ function padTekst() {
   if (!terreng || !terreng.pad) return "";
   const m = padMeter(terreng.pad);
   const f = (v) => (Math.round(v * 10) / 10).toLocaleString("no-NO");
+  // ✏ en fri form: arealet sier mer enn rammen rundt den
+  if (erEgenPad(terreng.pad)) return Math.round(polyAreal(terreng.pad.punkter)).toLocaleString("no-NO") + " m²";
   return f(m.bredde) + " × " + f(m.lengde) + " m";
 }
 function plassTekst() {
@@ -861,6 +923,7 @@ function settPad(ny, medAngre) {
   if (!terreng || likePad(ny, terreng.pad)) return;
   const fra = Object.assign({}, terreng.pad), til = Object.assign({}, ny), gjeldende = terreng;
   terreng.pad = til;
+  if (!erEgenPad(til) || valgtPrikk >= til.punkter.length) valgtPrikk = null;
   oppdaterAlt();
   if (medAngre && S.pushAngre) S.pushAngre({
     tekst: "Utskjæring",
@@ -927,6 +990,13 @@ window.addEventListener("pointerdown", (e) => {
     e.stopPropagation();   // kameraet skal ikke rotere mens håndtaket dras
     const planY = h.mesh.getWorldPosition(new THREE.Vector3()).y;
     if (h.type === "klipp") drar = { type: "klipp", kant: h.kant, fra: Object.assign({}, terreng.klipp), planY };
+    else if ((h.type === "pad" || h.type === "padValgt") && erEgenPad(terreng.pad)) {
+      // ✏ en prikk på den egendefinerte plata
+      valgtPrikk = Number(h.kant.slice(1));
+      drar = { type: "padP", i: valgtPrikk, fra: Object.assign({}, terreng.pad), planY };
+      tegnHandtak();
+      if (erApen()) visPrikkKnapp();
+    }
     else if (h.type === "pad") drar = { type: "pad", kant: h.kant, fra: Object.assign({}, terreng.pad), planY };
     else {
       const { mr } = gulvPlanY();
@@ -985,6 +1055,18 @@ window.addEventListener("pointermove", (e) => {
     return;
   }
   const mr = modellRef();
+  if (drar.type === "padP") {
+    // Rundes til 10 cm, som firkanten. Formen sjekkes først når du slipper:
+    // underveis kan en kant godt krysse en annen.
+    const r10 = (v) => Math.round(v * 10) / 10;
+    const pts = terreng.pad.punkter.slice();
+    const q = { x: r10((p.x - mr.c.x) * mr.skala), z: r10((p.z - mr.c.z) * mr.skala) };
+    if (pts[drar.i].x === q.x && pts[drar.i].z === q.z) return;
+    pts[drar.i] = q;
+    terreng.pad = Object.assign({}, terreng.pad, { punkter: pts }, polyRamme(pts));
+    if (!venter) venter = requestAnimationFrame(() => { venter = 0; tegnHandtak(); visTall(); });
+    return;
+  }
   if (drar.type === "pad") {
     const ny = flyttPadKant(terreng.pad, drar.kant, (p.x - mr.c.x) * mr.skala, (p.z - mr.c.z) * mr.skala);
     if (likePad(ny, terreng.pad)) return;
@@ -1035,6 +1117,13 @@ window.addEventListener("pointerup", (e) => {
     terreng.klipp = d.fra;              // settKlipp lager angre-posten fra→til
     if (likeKlipp(d.fra, til)) { brukKlipp(); return; }
     settKlipp(til, true);
+  } else if (d.type === "padP") {
+    const til = terreng.pad;
+    terreng.pad = d.fra;
+    if (likePad(d.fra, til)) { tegnHandtak(); return; }
+    const feil = polyFeil(til.punkter);
+    if (feil) { varsel(t(feil) + " " + t("Prikken er satt tilbake.")); oppdaterAlt(); return; }
+    settPad(padFraPunkter(til.punkter, til.paa), true);
   } else if (d.type === "pad") {
     const til = Object.assign({}, terreng.pad);
     terreng.pad = d.fra;
@@ -1065,6 +1154,18 @@ window.addEventListener("pointerup", (e) => {
 window.addEventListener("pointercancel", () => { drar = null; }, true);
 
 window.addEventListener("keydown", (e) => {
+  const iFelt = e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
+  // ✏ Tegning av plata: Esc avbryter, Backspace tar bort siste punkt, Enter
+  // er «Ferdig» (bare når formen er lukket)
+  if (padTegner && erApen() && !iFelt) {
+    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); avbrytPadTegning(); return; }
+    if (e.key === "Backspace") { e.preventDefault(); e.stopPropagation(); angreSistePunkt(); return; }
+    if (e.key === "Enter" && padTegner.lukket) { e.preventDefault(); e.stopPropagation(); ferdigPadTegning(); return; }
+  }
+  // Delete fjerner den valgte prikken på en egendefinert plate
+  if ((e.key === "Delete" || e.key === "Backspace") && !iFelt && !padTegner && valgtPrikk != null && erApen() && terreng && erEgenPad(terreng.pad)) {
+    e.preventDefault(); e.stopPropagation(); fjernPrikk(valgtPrikk); return;
+  }
   if (e.key === "Escape" && festVelger && erApen()) { festVelger = 0; tegnPanel(); return; }
   if (e.key === "Escape" && flyttModus && erApen()) { flyttModus = false; tegnPanel(); }
 });
@@ -1102,6 +1203,149 @@ window.addEventListener("pointerup", (e) => {
   tegnHandtak();
   planLagring();
   if (erApen()) tegnPanel();
+}, true);
+
+// ═══════════════════════ ✏ EGENDEFINERT PLATE (Emil 15.10) ═══════════════════════
+//
+// Tegnes som pilene i Rigg: trykk punkt for punkt på bakken (gulvhøyde).
+// «Ferdig» virker ikke før formen er LUKKET — trykk på det første punktet
+// (det store hvite). Etterpå får kanten prikker hver 5. meter
+// (padPrikker), og prikkene kan dras, legges til med dobbeltklikk på kanten
+// og fjernes med Delete. Draging med musa roterer kameraet som før: bare et
+// trykk under 8 px bevegelse blir et punkt.
+const LUKK_PX = 14;
+
+function skjermPx(bx, bz) {
+  const mr = modellRef(), r = canvas.getBoundingClientRect();
+  byggGroup.updateMatrixWorld();
+  const v = byggGroup.localToWorld(byggPunkt(bx, bz, mr.gulvY)).project(camera);
+  return { x: r.left + (v.x * 0.5 + 0.5) * r.width, y: r.top + (-v.y * 0.5 + 0.5) * r.height, bak: v.z > 1 };
+}
+function byggVed(x, y) {
+  const mr = modellRef();
+  const p = planPunkt(x, y, mr.gulvY);
+  if (!p) return null;
+  const lok = byggGroup.worldToLocal(p.clone());
+  const r10 = (v) => Math.round(v * 10) / 10;
+  return { x: r10(lok.x * mr.skala), z: r10(lok.z * mr.skala) };
+}
+
+function startPadTegning() {
+  if (!terreng || !S.modelGroup) return;
+  flyttModus = false; festVelger = 0; valgtPrikk = null;
+  padTegner = { punkter: [], lukket: false, mus: null };
+  tegnHandtak();
+  if (erApen()) tegnPanel();
+}
+function avbrytPadTegning() {
+  padTegner = null;
+  canvas.style.cursor = ""; satteMarkor = "";
+  tegnHandtak();
+  if (erApen()) tegnPanel();
+}
+function angreSistePunkt() {
+  if (!padTegner) return;
+  if (padTegner.lukket) padTegner.lukket = false;
+  else padTegner.punkter.pop();
+  tegnHandtak();
+  if (erApen()) tegnPanel();
+}
+function ferdigPadTegning() {
+  if (!padTegner || !padTegner.lukket) return;
+  const ny = padFraPunkter(padPrikker(padTegner.punkter, PAD_PRIKK_M), true);
+  if (!ny) { varsel(t(polyFeil(padTegner.punkter) || "Formen kan ikke brukes.")); return; }
+  padTegner = null;
+  canvas.style.cursor = ""; satteMarkor = "";
+  settPad(ny, true);
+  if (erApen()) tegnPanel();
+}
+// Ny prikk midt i draget (dobbeltklikk på kanten), og fjern prikk (Delete)
+function leggTilPrikk(i, q) {
+  const p = terreng.pad, pts = p.punkter.slice();
+  pts.splice(i + 1, 0, q);
+  const ny = padFraPunkter(pts, p.paa);
+  if (!ny) return;
+  valgtPrikk = i + 1;
+  settPad(ny, true);
+  if (erApen()) tegnPanel();
+}
+function fjernPrikk(i) {
+  const p = terreng && terreng.pad;
+  if (!erEgenPad(p)) return;
+  if (p.punkter.length <= 3) { varsel(t("Formen trenger minst tre punkter.")); return; }
+  const pts = p.punkter.filter((_, k) => k !== i);
+  const feil = polyFeil(pts);
+  if (feil) { varsel(t(feil)); return; }
+  valgtPrikk = null;
+  settPad(padFraPunkter(pts, p.paa), true);
+  if (erApen()) tegnPanel();
+}
+function visPrikkKnapp() {
+  const b = $("trPadFjern");
+  if (b) b.disabled = valgtPrikk == null;
+}
+
+window.addEventListener("pointerdown", (e) => {
+  padTegnerNed = padTegner && e.target === canvas && e.button === 0 && erApen() ? { x: e.clientX, y: e.clientY } : null;
+}, true);
+window.addEventListener("pointermove", (e) => {
+  if (!padTegner || e.target !== canvas || !terreng || !S.modelGroup || padTegner.lukket) return;
+  const q = byggVed(e.clientX, e.clientY);
+  padTegner.mus = q;
+  if (satteMarkor !== "crosshair") { canvas.style.cursor = "crosshair"; satteMarkor = "crosshair"; }
+  if (!venter) venter = requestAnimationFrame(() => { venter = 0; tegnHandtak(); });
+}, true);
+window.addEventListener("pointerup", (e) => {
+  if (!padTegner || !padTegnerNed || e.target !== canvas || !terreng || !S.modelGroup) return;
+  const flyttet = Math.hypot(e.clientX - padTegnerNed.x, e.clientY - padTegnerNed.y);
+  padTegnerNed = null;
+  if (flyttet > 8 || e.button > 0 || padTegner.lukket) return;
+  // Kameraet fikk pointerdown — det MÅ få vite at trykket er over, ellers
+  // tror det at knappen fortsatt er nede og roterer ved neste musetrekk.
+  e.stopPropagation(); slippKamera(e);
+  const pts = padTegner.punkter;
+  // Trykk på det første punktet lukker formen
+  if (pts.length >= 3) {
+    const f = skjermPx(pts[0].x, pts[0].z);
+    if (!f.bak && Math.hypot(f.x - e.clientX, f.y - e.clientY) <= LUKK_PX) {
+      const feil = polyFeil(pts);
+      if (feil) { varsel(t(feil)); return; }
+      padTegner.lukket = true; padTegner.mus = null;
+      tegnHandtak();
+      if (erApen()) tegnPanel();
+      return;
+    }
+  }
+  const q = byggVed(e.clientX, e.clientY);
+  if (!q) return;
+  const sist = pts[pts.length - 1];
+  if (sist && Math.hypot(sist.x - q.x, sist.z - q.z) < 0.2) return;   // samme punkt to ganger
+  const ny = pts.concat([q]);
+  if (polyFeil(ny, false) === "Kantene krysser hverandre.") { varsel(t("Kantene krysser hverandre.")); return; }
+  padTegner.punkter = ny;
+  tegnHandtak();
+  if (erApen()) tegnPanel();
+}, true);
+// Dobbeltklikk på kanten av en egendefinert plate: ny prikk der
+window.addEventListener("dblclick", (e) => {
+  if (e.target !== canvas || padTegner || !terreng || !S.modelGroup || !erApen() || skjult || visMasser) return;
+  const p = terreng.pad;
+  if (!erEgenPad(p) || !p.paa) return;
+  let best = null, bestD = TREFF_PX;
+  const n = p.punkter.length;
+  for (let i = 0; i < n; i++) {
+    const a = skjermPx(p.punkter[i].x, p.punkter[i].z), b = skjermPx(p.punkter[(i + 1) % n].x, p.punkter[(i + 1) % n].z);
+    if (a.bak || b.bak) continue;
+    const ex = b.x - a.x, ey = b.y - a.y, L2 = ex * ex + ey * ey;
+    const tt = L2 > 0 ? Math.max(0, Math.min(1, ((e.clientX - a.x) * ex + (e.clientY - a.y) * ey) / L2)) : 0;
+    const d = Math.hypot(e.clientX - (a.x + ex * tt), e.clientY - (a.y + ey * tt));
+    if (d < bestD && tt > 0.02 && tt < 0.98) { bestD = d; best = i; }
+  }
+  if (best == null) return;
+  const q = byggVed(e.clientX, e.clientY);
+  if (!q) return;
+  e.stopPropagation(); e.preventDefault();
+  leggTilPrikk(best, q);
 }, true);
 
 // ═══════════════════════ HENTING ═══════════════════════
@@ -1241,7 +1485,7 @@ async function hentTerreng(adr) {
 function fjernTerreng() {
   if (!terreng) return;
   const forrige = terreng;
-  terreng = null; skjult = false; flyttModus = false;
+  terreng = null; skjult = false; flyttModus = false; padTegner = null; valgtPrikk = null;
   tegnTerreng();
   tegnPanel();
   if (S.oppdaterVisAlle) S.oppdaterVisAlle();
@@ -1258,7 +1502,7 @@ function fjernTerreng() {
 S.ryddTerreng = () => {
   clearTimeout(lagreTid);
   ryddKart(terreng);
-  terreng = null; skjult = false; treff = []; flyttModus = false;
+  terreng = null; skjult = false; treff = []; flyttModus = false; padTegner = null; valgtPrikk = null;
   ryddScene();
   oppdaterRutenett();
   if (S.riggOmplasser) S.riggOmplasser();   // 🏕 riggen faller tilbake på gulvhøyde
@@ -1844,6 +2088,72 @@ function tegnUtseendeRad(body) {
 }
 
 // ═══════════════════════ PANELET ═══════════════════════
+// ✏ Formen på plata: Firkant (som før) eller Egendefinert (Emil 15.10)
+function padSkjema(pad) {
+  const egen = erEgenPad(pad);
+  let h = '<label>' + t("Form") + '<select id="trPadForm">' +
+    '<option value="firkant"' + (egen ? "" : " selected") + ">" + t("Firkant") + "</option>" +
+    '<option value="egen"' + (egen || padTegner ? " selected" : "") + ">" + t("Egendefinert") + "</option></select></label>";
+  if (padTegner) {
+    const n = padTegner.punkter.length;
+    h += '<p style="font-size:12px;margin:4px 0">' + (padTegner.lukket
+      ? t("Formen er lukket. Trykk «Ferdig» for å bruke den.")
+      : n < 3 ? t("Trykk punkt for punkt på bakken rundt bygget ({0} satt).", n)
+        : t("Trykk på det første punktet (det hvite) for å lukke formen. «Ferdig» virker ikke før formen er lukket.")) + "</p>" +
+      "<p " + LITEN + ">" + t("Backspace tar bort siste punkt. Esc avbryter.") + "</p>" +
+      '<div class="prop-actions"><button id="trPadFerdig" class="primary"' + (padTegner.lukket ? "" : " disabled") + ">" + t("Ferdig") + "</button>" +
+      '<button id="trPadAngre"' + (n ? "" : " disabled") + ">" + t("Ta bort siste punkt") + "</button>" +
+      '<button id="trPadAvbryt">' + t("Avbryt") + "</button></div>";
+    return h;
+  }
+  if (egen) {
+    h += "<p " + LITEN + ">" + t("Dra i de gule prikkene for å forme plata. Dobbeltklikk på kanten for en ny prikk. Trykk på en prikk og Delete for å fjerne den.") + "</p>" +
+      '<div class="prop-actions"><button id="trPadFjern"' + (valgtPrikk == null ? " disabled" : "") + ">" + ikon("slett") + " " + t("Fjern valgt prikk") + "</button>" +
+      '<button id="trPadPrikker" title="' + t("Legger prikkene jevnt langs kanten igjen, hver {0}. meter", PAD_PRIKK_M) + '">' + t("Prikker hver {0}. meter", PAD_PRIKK_M) + "</button>" +
+      '<button id="trPadTegn">' + t("Tegn på nytt") + "</button></div>";
+    return h;
+  }
+  return h + "<p " + LITEN + ">" + t("Dra i de gule håndtakene for å endre størrelsen på plata.") + "</p>" +
+    '<div class="prop-actions"><button id="trPadStd">' + ikon("nullstill") + " " +
+    t("Tilbakestill (2 m rundt bygget)") + "</button></div>";
+}
+
+function koblPadSkjema() {
+  const kobl = (id, fn) => { const el = $(id); if (el) el.onclick = fn; };
+  kobl("trPadFerdig", () => ferdigPadTegning());
+  kobl("trPadAngre", () => angreSistePunkt());
+  kobl("trPadAvbryt", () => avbrytPadTegning());
+  kobl("trPadTegn", () => startPadTegning());
+  kobl("trPadFjern", () => { if (valgtPrikk != null) fjernPrikk(valgtPrikk); });
+  kobl("trPadPrikker", () => {
+    const p = terreng && terreng.pad;
+    if (!erEgenPad(p)) return;
+    // Prikkene mellom hjørnene fjernes ikke — de kan være hjørner brukeren har
+    // laget selv. Bare sider lengre enn 5 m får nye prikker.
+    const ny = padFraPunkter(padPrikker(p.punkter, PAD_PRIKK_M), p.paa);
+    if (ny) { settPad(ny, true); tegnPanel(); }
+  });
+  const form = $("trPadForm");
+  if (form) form.onchange = () => {
+    if (!terreng) return;
+    const p = terreng.pad;
+    if (form.value === "egen") {
+      if (erEgenPad(p)) return;
+      // Tegn en ny form. (Firkanten står til formen er ferdig.)
+      startPadTegning();
+      return;
+    }
+    if (padTegner) { avbrytPadTegning(); return; }
+    if (!erEgenPad(p)) return;
+    if (!confirm(t("Bytte til firkant? Den egendefinerte formen forsvinner (Ctrl+Z tar den tilbake)."))) { tegnPanel(); return; }
+    const fp = modellRef().fp, rm = { x0: p.x0, x1: p.x1, z0: p.z0, z1: p.z1 };
+    // Firkanten rundt formen, men aldri mindre enn bygget + 2 m
+    const st = padStandard(fp);
+    settPad({ paa: p.paa, x0: Math.min(rm.x0, st.x0), x1: Math.max(rm.x1, st.x1), z0: Math.min(rm.z0, st.z0), z1: Math.max(rm.z1, st.z1) }, true);
+    tegnPanel();
+  };
+}
+
 function erApen() {
   const p = $("terrengPanel");
   return !!(p && p.classList.contains("open"));
@@ -1941,10 +2251,7 @@ function tegnPanel() {
       (pad && pad.paa ? ' <span id="trPadTall" style="font-weight:700;margin-left:6px">' + esc(padTekst()) + "</span>" : "") + "</h4>" +
       '<label style="display:flex;gap:6px;align-items:center;font-size:12px"><input type="checkbox" id="trPadPaa"' +
       (pad && pad.paa ? " checked" : "") + "> " + t("Skjær ut terrenget og legg en flat plate i gulvhøyde") + "</label>" +
-      (pad && pad.paa ? "<p " + LITEN + ">" +
-        t("Dra i de gule håndtakene for å endre størrelsen på plata.") + "</p>" +
-        '<div class="prop-actions"><button id="trPadStd">' + ikon("nullstill") + " " +
-        t("Tilbakestill (2 m rundt bygget)") + "</button></div>" : "") +
+      (pad && pad.paa ? padSkjema(pad) : "") +
 
       // 📍 Fest hjørne: landmålerens koordinater
       tegnFest() +
@@ -2009,6 +2316,7 @@ function tegnPanel() {
   kobl("trRotH", () => { if (terreng) settRotasjon(snapVinkel(terreng.plass.rot + 90, 0.05)); });
   kobl("trOppaa", () => leggOppaa(true));
   kobl("trPadStd", () => { if (terreng && S.modelGroup) settPad(padStandard(modellRef().fp), true); });
+  koblPadSkjema();
   const rot = $("trRot");
   if (rot) {
     const bruk = () => {
