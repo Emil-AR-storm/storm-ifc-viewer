@@ -14,9 +14,10 @@
 import * as THREE from "three";
 import { S, registrerEkstraGruppe } from "./state.js";
 import { LETT } from "./lett.js";
+import { byggPlate3D, ryddPlate3D } from "./terreng-plate3d.js";
 import { camera, frameHooks, grid, renderer, scene } from "./scene.js";
 import {
-  gridTilTrekanter, hoydeFarger, hoydeSpenn, hoydeVed, kartUv, mTilScene, padFlagg, erEgenPad, iPad,
+  gridTilTrekanter, hoydeFarger, hoydeSpenn, hoydeVed, kartUv, mTilScene, iPad, padHoyder, gyldigeOmrader, omradeDz,
   terrengFraByggeplass, terrengTilBygg
 } from "./terreng-regn.js";
 
@@ -55,6 +56,7 @@ function rydd() {
   for (const g of [innhold, byggGroup]) {
     while (g.children.length) {
       const c = g.children.pop();
+      if (c.isGroup) { ryddPlate3D(c); continue; }     // ⛰ plata med områdene
       if (c.geometry) c.geometry.dispose();
       if (c.material) c.material.dispose();
     }
@@ -72,9 +74,12 @@ function tegn() {
   const mr = modellRef();
   const g = ter.grid;
   const p = ter.pad;
-  const flat = (p && p.paa && ter.gulv)
-    ? { flagg: padFlagg(g, ter.E0, ter.N0, ter.plass, p), hoyde: ter.gulv.kote - 0.05 }
-    : null;
+  // ⛰ under gropene senkes terrenget til under bunnen (som på kontoret)
+  let flat = null;
+  if (p && p.paa && ter.gulv) {
+    const ph = padHoyder(g, ter.E0, ter.N0, ter.plass, p, ter.gulv.kote);
+    flat = { flagg: ph.flagg, hoyder: ph.hoyder, hoyde: ter.gulv.kote - 0.05 };
+  }
   const tr = gridTilTrekanter(g, ter.E0, ter.N0, ter.h0, mr.skala, flat);
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.BufferAttribute(tr.pos, 3));
@@ -100,22 +105,9 @@ function tegn() {
   // Plata under bygget, som på kontoret
   byggGroup.position.set(mr.c.x, 0, mr.c.z);
   if (p && p.paa && ter.gulv) {
-    const s = mr.skala;
-    // ✏ egendefinert form (Emil 15.10): samme flate som på kontoret
-    const egen = erEgenPad(p);
-    let pg;
-    if (egen) {
-      const f = new THREE.Shape();
-      p.punkter.forEach((q, i) => (i ? f.lineTo(q.x / s, -q.z / s) : f.moveTo(q.x / s, -q.z / s)));
-      f.closePath();
-      pg = new THREE.ShapeGeometry(f);
-    } else pg = new THREE.PlaneGeometry((p.x1 - p.x0) / s, (p.z1 - p.z0) / s);
-    pg.rotateX(-Math.PI / 2);
-    const plate = new THREE.Mesh(pg, new THREE.MeshLambertMaterial({
-      color: FARGE_PLATE, side: THREE.DoubleSide,
-      polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1
-    }));
-    plate.position.set(egen ? 0 : (p.x0 + p.x1) / 2 / s, mr.gulvY, egen ? 0 : (p.z0 + p.z1) / 2 / s);
+    // ✏ egendefinert form og ⛰ heve/senke-områdene: samme plate som på kontoret
+    const plate = byggPlate3D(p, mr.skala, FARGE_PLATE);
+    plate.position.set(0, mr.gulvY, 0);
     byggGroup.add(plate);
   }
   trengerFar = mTilScene(g.w * g.dx * 4, mr.skala);
@@ -188,7 +180,10 @@ if (LETT) S.terrengRef = () => {
     yVed(E, N) {
       if (pad && pad.paa && gulv) {
         const b = terrengTilBygg(E, N, E0, N0, plass);
-        if (iPad(pad, b.bx, b.bz)) return mr.gulvY;
+        if (iPad(pad, b.bx, b.bz)) {
+          const om = gyldigeOmrader(pad);
+          return mr.gulvY + (om.st.some(q => q.gyldig) ? mTilScene(omradeDz(om.liste, om.st, b.bx, b.bz), mr.skala) : 0);
+        }
       }
       const h = hoydeVed(g, E, N);
       return h == null ? null : yFraMoh(h, mr);
