@@ -32,7 +32,7 @@ import {
   tolkKote, vaskAdresseSvar, wcsUrl,
   binTilGrid, gridTilBin, navneforslag, nyTerrengId, vaskPlassering, vaskTerrengListe,
   planumKote, vaskPlanum, terrengForByggeplass,
-  erEgenPad, iPad, polyFeil, padPrikker, padFraPunkter, polyAreal, polyRamme, PAD_PRIKK_M,
+  erEgenPad, iPad, polyFeil, padPolygon, padPrikker, padFraPunkter, polyAreal, polyRamme, PAD_PRIKK_M,
   vaskFarger, fargeRen, fargeStatus, fargeVerdi, fargeType, FARGE_TYPER, FARGE_MAKS, fargeOppsummering, fargeMengdeRader,
   gyldigeOmrader, omradeStatus, omradeDz, OMR_STD, OMR_MAKS, OMR_MAKS_DZ, OMR_MAKS_N, padHoyder, polyMotRekt, vaskOmrader, omrRen,
   KOORDSYS, SIDER, dzFarger, ferdigGrid, masseRader, sideRetning, festEttPunkt, festSjekk, festToPunkt, masseFelt, vaskFest, vaskSkraning
@@ -426,6 +426,7 @@ function rektangel(x0, x1, z0, z1, y, mat) {
 }
 
 function tegnHandtak() {
+  oppdaterTerrengBar();      // ⛰ linja nederst følger tegningen
   handtakene = [];
   tomGruppe(klippGroup); tomGruppe(padGroup); tomGruppe(flyttGroup); tomGruppe(festGroup);
   plateMesh = null;
@@ -988,6 +989,14 @@ function settPad(ny, medAngre) {
   if (ny && ny.omrader === undefined && terreng.pad && terreng.pad.omrader) ny = Object.assign({}, ny, { omrader: terreng.pad.omrader });
   if (ny && ny.farger === undefined && terreng.pad && terreng.pad.farger) ny = Object.assign({}, ny, { farger: terreng.pad.farger });
   if (likePad(ny, terreng.pad)) return;
+  // Emil 19.10: gjøres PLATA så liten (eller formet slik) at et område eller
+  // et fargeområde havner utenfor, avvises endringen med et varsel — før ble
+  // området bare rødt og ugyldig i stillhet
+  const p0 = terreng.pad;
+  if (ny && ny.paa && p0 && JSON.stringify(padPolygon(ny)) !== JSON.stringify(padPolygon(p0))) {
+    const brudd = plateBrudd(p0, ny);
+    if (brudd) { varsel(t("«{0}» havner utenfor plata. Endringen av plata er angret.", brudd)); oppdaterAlt(); if (erApen()) tegnPanel(); return; }
+  }
   const fra = Object.assign({}, terreng.pad), til = Object.assign({}, ny), gjeldende = terreng;
   terreng.pad = til;
   if (!erEgenPad(til) || valgtPrikk >= til.punkter.length) valgtPrikk = null;
@@ -999,6 +1008,30 @@ function settPad(ny, medAngre) {
     angre: () => { if (terreng === gjeldende) { terreng.pad = fra; oppdaterAlt(); if (erApen()) tegnPanel(); } },
     gjenopprett: () => { if (terreng === gjeldende) { terreng.pad = til; oppdaterAlt(); if (erApen()) tegnPanel(); } }
   });
+}
+
+// Emil 19.10: et felt med ugyldig verdi settes tilbake MED et varsel, ikke i stillhet
+function ugyldig(tekst) {
+  varsel(t(tekst) + " " + t("Verdien er satt tilbake."));
+  if (erApen()) tegnPanel();
+}
+
+// Navnet på det første området/fargeområdet som var gyldig på plata `fra` og
+// ville bli ugyldig på plata `til` — eller "" når ingen rammes
+function plateBrudd(fra, til) {
+  const O = fra.omrader || [];
+  if (O.length) {
+    const a = omradeStatus(fra, O), b = omradeStatus(til, O);
+    const i = O.findIndex((_, k) => a[k].gyldig && !b[k].gyldig);
+    if (i >= 0) return O[i].navn || t("Område");
+  }
+  const F = fra.farger || [];
+  if (F.length) {
+    const a = fargeStatus(fra, F), b = fargeStatus(til, F);
+    const i = F.findIndex((_, k) => a[k].gyldig && !b[k].gyldig);
+    if (i >= 0) return F[i].navn || t(fargeType(F[i].type).label);
+  }
+  return "";
 }
 
 // ═══════════════════════ PEKEREN ═══════════════════════
@@ -1392,6 +1425,63 @@ function leggTilFarge(punkter, hint) {
   return true;
 }
 
+// ═══════════════════════ ⛰ LINJA NEDERST (Emil 19.10) ═══════════════════════
+// «Ferdig», «Ta bort siste punkt» og «Avbryt» står i kontrollinja nederst på
+// skjermen mens man tegner plata eller et område — samme sted som i Rigg —
+// i stedet for inne i Terreng-panelet, der nye brukere ikke fant dem.
+// Tegningen er en egen modus («terreng») i modes.js: åpnes et annet verktøy,
+// avbrytes tegningen (S.avsluttTerreng), som en påbegynt rigg-plassering.
+let barSignatur = "";
+function oppdaterTerrengBar() {
+  const paa = !!(padTegner || omrBoksModus);
+  if (paa && S.mode !== "terreng") {
+    if (S.avsluttKlikkModus) { try { S.avsluttKlikkModus("terrengPanel"); } catch (_) {} }
+    S.mode = "terreng";
+    barSignatur = "";
+  } else if (!paa && S.mode === "terreng") {
+    S.mode = null;
+    barSignatur = "";
+    if (S.oppdaterModeBar) S.oppdaterModeBar();
+    return;
+  }
+  if (!paa) return;
+  // Linja tegnes bare på nytt når noe i den har endret seg — ikke for hvert
+  // musetrekk (da ville knappen byttes ut under pekeren midt i et trykk)
+  const sig = padTegner ? [padTegner.mal, padTegner.punkter.length, padTegner.lukket].join("|") : "boks|" + omrBoksModus;
+  if (sig === barSignatur) return;
+  barSignatur = sig;
+  if (S.oppdaterModeBar) S.oppdaterModeBar();
+}
+S.terrengModeBar = (bar) => {
+  const knapp = (id, tekst, av, primar) => '<button id="' + id + '"' + (primar ? ' class="primary"' : "") + (av ? " disabled" : "") + ">" + t(tekst) + "</button>";
+  if (padTegner) {
+    const n = padTegner.punkter.length;
+    const tittel = padTegner.mal === "farge" ? "Nytt fargeområde" : padTegner.mal === "omrade" ? "Nytt heve/senke-område" : "Ny plate";
+    const hint = padTegner.lukket
+      ? t("Formen er lukket. Trykk «Ferdig» for å bruke den.")
+      : n < 3 ? t("Trykk punkt for punkt på bakken rundt bygget ({0} satt).", n)
+        : t("Trykk på det første punktet (det hvite) for å lukke formen. «Ferdig» virker ikke før formen er lukket.");
+    bar.innerHTML = '<span class="lbl"><b>' + esc(t(tittel)) + ":</b> " + esc(hint) + "</span>" +
+      knapp("mbTrFerdig", "Ferdig", !padTegner.lukket, true) + knapp("mbTrAngre", "Ta bort siste punkt", !n) + knapp("mbTrAvbryt", "Avbryt");
+    $("mbTrFerdig").onclick = () => ferdigPadTegning();
+    $("mbTrAngre").onclick = () => angreSistePunkt();
+    $("mbTrAvbryt").onclick = () => avbrytPadTegning();
+  } else if (omrBoksModus) {
+    bar.innerHTML = '<span class="lbl"><b>' + esc(t(omrBoksModus === "farge" ? "Nytt fargeområde" : "Nytt heve/senke-område")) + ":</b> " +
+      esc(t("Dra ut en boks på plata.")) + "</span>" + knapp("mbTrAvbryt", "Avbryt");
+    $("mbTrAvbryt").onclick = () => avbrytOmrBoks();
+  } else { bar.classList.remove("open"); bar.innerHTML = ""; return; }
+  bar.classList.add("open");
+};
+// Et annet verktøy åpnes: tegningen avbrytes (ingenting halvferdig blir lagret)
+S.avsluttTerreng = () => {
+  const var_ = !!(padTegner || omrBoksModus);
+  padTegner = null; omrBoksModus = false; omrBoks = null;
+  if (S.mode === "terreng") S.mode = null;
+  barSignatur = "";
+  if (var_) { canvas.style.cursor = ""; satteMarkor = ""; tegnHandtak(); if (erApen()) tegnPanel(); }
+};
+
 // ⛰ FIRKANT (Emil 15.10): dra ut en boks på plata. Boksen følger byggets
 // akser (byggrammen), som firkant-plata. Draget går ikke til kameraet.
 //   omrBoks = { start, slutt } mens man drar; omrBoksModus = venter på draget
@@ -1436,23 +1526,29 @@ window.addEventListener("pointerup", (e) => {
   omrBoks = null;
   // Et trykk uten drag (eller en smal strek) er ingen boks — prøv igjen
   if (Math.abs(q.x - a.x) < 0.5 || Math.abs(q.z - a.z) < 0.5) { tegnHandtak(); return; }
-  if (leggTilOmrade(boksPunkter(a, q), "Dra ut boksen på nytt.", omrBoksModus)) {
-    omrBoksModus = false;
+  const mal = omrBoksModus;
+  omrBoksModus = false;                 // av før området legges til (prikkene tegnes da med en gang)
+  if (leggTilOmrade(boksPunkter(a, q), "Dra ut boksen på nytt.", mal)) {
     canvas.style.cursor = ""; satteMarkor = "";
-  } else tegnHandtak();
+  } else omrBoksModus = mal;
+  tegnHandtak();
   if (erApen()) tegnPanel();
 }, true);
 
 function ferdigPadTegning() {
   if (!padTegner || !padTegner.lukket) return;
   if (padTegner.mal === "omrade" || padTegner.mal === "farge") {
-    if (!leggTilOmrade(padTegner.punkter, "Tegn området på nytt, eller ta bort punkter med Backspace.", padTegner.mal)) {
-      padTegner.lukket = false;
+    // Tegningen avsluttes FØR området legges til: da tegnes prikkene på det
+    // nye området med en gang (før stod de igjen skjult til neste omtegning)
+    const tg = padTegner;
+    padTegner = null;
+    if (!leggTilOmrade(tg.punkter, "Tegn området på nytt, eller ta bort punkter med Backspace.", tg.mal)) {
+      padTegner = tg; tg.lukket = false;
       tegnHandtak(); if (erApen()) tegnPanel();
       return;
     }
-    padTegner = null;
     canvas.style.cursor = ""; satteMarkor = "";
+    tegnHandtak();
     if (erApen()) tegnPanel();
     return;
   }
@@ -2132,12 +2228,12 @@ function koblMasser() {
   const tall = (el) => Number(String(el.value).replace(/\s/g, "").replace(",", "."));
   const opp = $("trOppbygging");
   if (opp) {
-    opp.onchange = () => { const v = tall(opp); if (Number.isFinite(v) && v >= 0 && v <= 5) settPlanum(Object.assign({}, terreng.planum, { oppbygging: v }), true); else tegnPanel(); };
+    opp.onchange = () => { const v = tall(opp); if (Number.isFinite(v) && v >= 0 && v <= 5) settPlanum(Object.assign({}, terreng.planum, { oppbygging: v }), true); else ugyldig("Oppbyggingen må være et tall mellom 0 og 5 m."); };
     opp.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); opp.blur(); } };
   }
   const kote = $("trPlanumKote");
   if (kote) {
-    kote.onchange = () => { const v = tolkKote(kote.value); if (v != null) settPlanum(Object.assign({}, terreng.planum, { modus: "kote", kote: v }), true); else tegnPanel(); };
+    kote.onchange = () => { const v = tolkKote(kote.value); if (v != null) settPlanum(Object.assign({}, terreng.planum, { modus: "kote", kote: v }), true); else ugyldig("Skriv planumkoten som et tall, f.eks. 74,80."); };
     kote.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); kote.blur(); } };
   }
   const vis = $("trVisMasser");
@@ -2158,7 +2254,7 @@ function koblMasser() {
     el.onchange = () => {
       const [k, felt] = el.dataset.trSkr.split(":");
       const v = tall(el);
-      if (!(Number.isFinite(v) && v >= 0.2 && v <= 10)) { tegnPanel(); return; }
+      if (!(Number.isFinite(v) && v >= 0.2 && v <= 10)) { ugyldig("Helningen må være et tall mellom 0,2 og 10 (1:n)."); return; }
       const sk = terreng.skraning || vaskSkraning(null);
       const sider = Object.assign({}, sk.sider, { [k]: Object.assign({}, sk.sider[k], { [felt]: v }) });
       settSkraning(Object.assign({}, sk, { sider }));
@@ -2173,7 +2269,7 @@ function koblMasser() {
     el.onchange = () => {
       const v = tall(el);
       if (Number.isFinite(v) && v >= 0.2 && v <= 10) settSkraning(Object.assign({}, terreng.skraning, { [felt]: v }));
-      else tegnPanel();
+      else ugyldig("Helningen må være et tall mellom 0,2 og 10 (1:n).");
     };
     el.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); el.blur(); } };
   }
@@ -2381,15 +2477,9 @@ function padSkjema(pad) {
     '<option value="egen"' + (egen || (padTegner && padTegner.mal === "pad") ? " selected" : "") + ">" + t("Egendefinert") + "</option></select></label>";
   if (padTegner && padTegner.mal !== "pad") h = '<p style="font-size:12px;margin:6px 0 2px;font-weight:700">' + t(padTegner.mal === "farge" ? "Nytt fargeområde" : "Nytt heve/senke-område") + "</p>";
   if (padTegner) {
-    const n = padTegner.punkter.length;
-    h += '<p style="font-size:12px;margin:4px 0">' + (padTegner.lukket
-      ? t("Formen er lukket. Trykk «Ferdig» for å bruke den.")
-      : n < 3 ? t("Trykk punkt for punkt på bakken rundt bygget ({0} satt).", n)
-        : t("Trykk på det første punktet (det hvite) for å lukke formen. «Ferdig» virker ikke før formen er lukket.")) + "</p>" +
-      "<p " + LITEN + ">" + t("Backspace tar bort siste punkt. Esc avbryter.") + "</p>" +
-      '<div class="prop-actions"><button id="trPadFerdig" class="primary"' + (padTegner.lukket ? "" : " disabled") + ">" + t("Ferdig") + "</button>" +
-      '<button id="trPadAngre"' + (n ? "" : " disabled") + ">" + t("Ta bort siste punkt") + "</button>" +
-      '<button id="trPadAvbryt">' + t("Avbryt") + "</button></div>";
+    // Knappene (Ferdig, Ta bort siste punkt, Avbryt) står i linja nederst på
+    // skjermen, som i Rigg (Emil 19.10) — her står bare hvor man finner dem
+    h += '<p style="font-size:12px;margin:4px 0">' + t("Tegn på bakken. Ferdig, Ta bort siste punkt og Avbryt står i linja nederst på skjermen.") + "</p>";
     return h;
   }
   if (egen) {
@@ -2431,8 +2521,7 @@ function omraderSkjema(pad) {
   if (omrBoksModus) {
     if (omrBoksModus === "farge") return h;
     h += '<p style="font-size:12px;margin:6px 0 2px;font-weight:700">' + t("Nytt heve/senke-område") + "</p>" +
-      '<p style="font-size:12px;margin:2px 0">' + t("Dra ut en boks på plata. Esc avbryter.") + "</p>" +
-      '<div class="prop-actions"><button id="trOmrBoksAvbryt">' + t("Avbryt") + "</button></div>";
+      '<p style="font-size:12px;margin:2px 0">' + t("Dra ut en boks på plata. Avbryt står i linja nederst på skjermen.") + "</p>";
     return h;
   }
   const full = L.length >= OMR_MAKS ? " disabled" : "";
@@ -2473,8 +2562,7 @@ function fargerSkjema(pad) {
   if (padTegner) return h;
   if (omrBoksModus === "farge") {
     return h + '<p style="font-size:12px;margin:6px 0 2px;font-weight:700">' + t("Nytt fargeområde") + "</p>" +
-      '<p style="font-size:12px;margin:2px 0">' + t("Dra ut en boks på plata. Esc avbryter.") + "</p>" +
-      '<div class="prop-actions"><button id="trOmrBoksAvbryt">' + t("Avbryt") + "</button></div>";
+      '<p style="font-size:12px;margin:2px 0">' + t("Dra ut en boks på plata. Avbryt står i linja nederst på skjermen.") + "</p>";
   }
   const full = F.length >= FARGE_MAKS ? " disabled" : "";
   h += '<p style="font-size:12px;margin:6px 0 2px">' + ikon("pluss") + " " + t("Nytt fargeområde:") + "</p>" +
@@ -2495,9 +2583,6 @@ function fargerSkjema(pad) {
 
 function koblPadSkjema() {
   const kobl = (id, fn) => { const el = $(id); if (el) el.onclick = fn; };
-  kobl("trPadFerdig", () => ferdigPadTegning());
-  kobl("trPadAngre", () => angreSistePunkt());
-  kobl("trPadAvbryt", () => avbrytPadTegning());
   kobl("trPadTegn", () => startPadTegning("pad"));
   // ⛰ områdene
   kobl("trOmrNy", () => { valgtOmrade = null; omrBoksModus = false; startPadTegning("omrade"); });
@@ -2524,7 +2609,6 @@ function koblPadSkjema() {
   fargeFelt("trFargeNavn", el => el.value, (f, v) => { f.navn = String(v).trim().slice(0, 60); });
   fargeFelt("trFargeType", el => el.value, (f, v) => { f.type = v; });
   fargeFelt("trFargeFarge", el => el.value, (f, v) => { f.farge = v; f.type = "egen"; });
-  kobl("trOmrBoksAvbryt", () => avbrytOmrBoks());
   document.querySelectorAll("[data-tr-omr]").forEach(d => d.onclick = () => {
     valgtOmrade = valgtOmrade === d.dataset.trOmr ? null : d.dataset.trOmr; valgtOmrPrikk = null; valgtPrikk = null;
     tegnHandtak(); tegnPanel();
@@ -2536,7 +2620,11 @@ function koblPadSkjema() {
     el.onchange = () => {
       const L = omrRen(terreng.pad.omrader), i = L.findIndex(o => o.id === valgtOmrade);
       if (i < 0) return;
-      if (fn(L[i], el.value) === false) { tegnPanel(); return; }
+      if (fn(L[i], el.value) === false) {
+        // Emil 19.10: varsle i stedet for å sette tallet tilbake i stillhet
+        varsel(t("Ugyldig verdi. Høyden må være et tall mellom −{0} og {0} m, og kanten et tall mellom 0 og {1}.", OMR_MAKS_DZ, OMR_MAKS_N));
+        tegnPanel(); return;
+      }
       settOmrader(L, valgtOmrade);
     };
     el.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); el.blur(); } };
@@ -2588,6 +2676,7 @@ function fmtMoh(v, des) {
 const LITEN = 'style="color:var(--muted);font-size:11px;margin:4px 0 0"';
 
 function tegnPanel() {
+  oppdaterTerrengBar();      // ⛰ linja nederst følger tegningen
   const body = $("terrengBody");
   if (!body) return;
   const valg = UTSNITT.map(s => '<option value="' + s + '"' + (s === utsnitt ? " selected" : "") + ">" +
@@ -2742,7 +2831,8 @@ function tegnPanel() {
   if (rot) {
     const bruk = () => {
       const v = Number(String(rot.value).replace(",", "."));
-      if (!terreng || !Number.isFinite(v)) { visTall(); return; }
+      if (!terreng) return;
+      if (!Number.isFinite(v)) { ugyldig("Skriv rotasjonen som et tall i grader, f.eks. 90."); visTall(); return; }
       settRotasjon(v);
     };
     rot.onchange = bruk;
@@ -2752,7 +2842,7 @@ function tegnPanel() {
   if (gulv) {
     const bruk = () => {
       const v = tolkKote(gulv.value);
-      if (v == null) { if (erApen()) tegnPanel(); return; }
+      if (v == null) { ugyldig("Skriv gulvkoten som et tall, f.eks. 75,30."); return; }
       settGulv(v, false, true);
     };
     gulv.onchange = bruk;
