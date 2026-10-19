@@ -15,8 +15,11 @@ import { LETT } from "./lett.js";
 import { t } from "./i18n.js";
 import { GRAPH, SP, authHeaders, graphGet, spTokenSilent } from "./sharepoint.js";
 
-export const PDFJS_URL = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.2.67/build/pdf.min.mjs";
-export const PDFJS_WORKER = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.2.67/build/pdf.worker.min.mjs";
+// Selvhostet (sikkerhetsrunden 19.10): dynamisk import() kan ikke ha integrity-hash,
+// og pdf.js kjører i hovedtråden der innloggingene ligger. Byte-identisk med
+// npm-pakken pdfjs-dist@4.2.67 (den versjonen som retter CVE-2024-4367).
+export const PDFJS_URL = new URL("../vendor/pdfjs-4.2.67/pdf.min.mjs", import.meta.url).href;
+export const PDFJS_WORKER = new URL("../vendor/pdfjs-4.2.67/pdf.worker.min.mjs", import.meta.url).href;
 
 export const ADVAR_MB = 25;        // over dette spør vi før nedlasting
 export const RENDER_BREDDE = 2400; // piksler på lengste side når en side tegnes
@@ -188,7 +191,7 @@ export async function pdfDokument(vedlegg, spor) {
     const data = new Uint8Array(await r.arrayBuffer());
     if (spor) spor(t("Åpner {0} …", vedlegg.fil));
     const lib = await lastPdfLib();
-    const doc = await lib.getDocument({ data }).promise;
+    const doc = await lib.getDocument({ data, isEvalSupported: false }).promise;
     dokBuffer.set(vedlegg.itemId, doc);
     return doc;
   }
@@ -206,7 +209,7 @@ export async function pdfDokument(vedlegg, spor) {
   const data = new Uint8Array(await r.arrayBuffer());
   if (spor) spor(t("Åpner {0} …", vedlegg.fil));
   const lib = await lastPdfLib();
-  const doc = await lib.getDocument({ data }).promise;
+  const doc = await lib.getDocument({ data, isEvalSupported: false }).promise;
   dokBuffer.set(vedlegg.itemId, doc);
   return doc;
 }
@@ -271,8 +274,38 @@ export function visStatus(tekst) {
 // VIKTIG REKKEFØLGE: fanen åpnes FØR den asynkrone hentingen — en
 // window.open etter en await har mistet klikket sitt, og popup-blokkeren
 // stopper den.
-export async function apneHtmlTegning(item) {
+// 🔒 Sikkerhetsrunden 19.10: HTML-en er laget av noen andre (SharePoint-mappa,
+// eller lastet opp til byggeplassen av en kortholder). Før ble den vist som en
+// blob i appens EGET opphav, med window.opener tilbake til appen — et skript i
+// fila kunne lest innloggingene. Nå:
+//   · fanen mister koblingen tilbake (opener = null)
+//   · innholdet ligger i en <iframe sandbox> uten allow-scripts og uten
+//     allow-same-origin: fremmed opphav, ingen skript, ingen tilgang til appen
+//   · sikkerhetspolicyen (CSP) arves dessuten av blob-siden og stopper skript
+// Emil valgte dette 19.10: tekst, bilder og lenker vises; knapper/søk inne i
+// en interaktiv HTML-tegning virker ikke.
+export function sandkasseSide(htmlTekst, tittel) {
+  const attr = (x) => String(x).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+  return "<!doctype html><html><head><meta charset=\"utf-8\"><title>" + attr(tittel || "Tegning") + "</title>" +
+    "<style>html,body{margin:0;height:100%;background:#fff}iframe{border:0;width:100%;height:100%;display:block}</style></head>" +
+    "<body><iframe sandbox=\"allow-popups allow-popups-to-escape-sandbox\" referrerpolicy=\"no-referrer\" srcdoc=\"" +
+    attr(htmlTekst) + "\"></iframe></body></html>";
+}
+function visISandkasse(fane, bytes, tittel) {
+  const tekst = new TextDecoder("utf-8").decode(bytes);
+  const url = URL.createObjectURL(new Blob([sandkasseSide(tekst, tittel)], { type: "text/html" }));
+  if (fane) fane.location = url;
+  else { const f = window.open(url, "_blank", "noopener"); if (f) f.opener = null; }
+  setTimeout(() => { try { URL.revokeObjectURL(url); } catch (_) {} }, 60000);
+}
+function nyFane() {
   const fane = window.open("", "_blank");
+  if (fane) { try { fane.opener = null; } catch (_) {} }
+  return fane;
+}
+
+export async function apneHtmlTegning(item) {
+  const fane = nyFane();
   try {
     let token;
     try { token = await spTokenSilent(); } catch (_) { token = null; }
@@ -281,12 +314,7 @@ export async function apneHtmlTegning(item) {
     const r = await fetch(GRAPH + "/sites/" + S.spSiteId + "/drive/items/" +
       encodeURIComponent(item.id) + "/content", { headers: authHeaders(token, null, "html-tegning") });
     if (!r.ok) throw new Error("Graph " + r.status);
-    const blob = new Blob([await r.arrayBuffer()], { type: "text/html" });
-    const url = URL.createObjectURL(blob);
-    if (fane) fane.location = url;
-    else window.open(url, "_blank");
-    // ryddes når blobben er lest inn i fanen — 60 sek er rikelig
-    setTimeout(() => { try { URL.revokeObjectURL(url); } catch (_) {} }, 60000);
+    visISandkasse(fane, await r.arrayBuffer(), item.name);
   } catch (err) {
     if (fane) { try { fane.close(); } catch (_) {} }
     throw err;
@@ -297,15 +325,13 @@ export async function apneHtmlTegning(item) {
 // hentes det fra SharePoint (som apneHtmlTegning); på byggeplassen fra
 // Workeren — Byggeplass-knappen la det i R2 sammen med PDF-tegningene.
 export async function apneHtmlVedlegg(v) {
-  if (!LETT) return apneHtmlTegning({ id: v.itemId });
-  const fane = window.open("", "_blank");
+  if (!LETT) return apneHtmlTegning({ id: v.itemId, name: v.fil });
+  const fane = nyFane();
   try {
     const r = await fetch("/tegning/" + (S.lettProsjekt || "00000") + "/" + tegningNavn(v.itemId, true));
     if (!r.ok) throw new Error(t("Tegningen er ikke lastet opp til byggeplass-lenka ennå") +
       " [" + tegningNavn(v.itemId, true) + " · " + r.status + "]");
-    const url = URL.createObjectURL(new Blob([await r.arrayBuffer()], { type: "text/html" }));
-    if (fane) fane.location = url; else window.open(url, "_blank");
-    setTimeout(() => { try { URL.revokeObjectURL(url); } catch (_) {} }, 60000);
+    visISandkasse(fane, await r.arrayBuffer(), v.fil);
   } catch (err) {
     if (fane) { try { fane.close(); } catch (_) {} }
     throw err;

@@ -39,7 +39,12 @@ async function msalInit() {
       authority: "https://login.microsoftonline.com/" + SP.tenantId,
       redirectUri: location.origin + location.pathname
     },
-    cache: { cacheLocation: "localStorage" }
+    // 🛡 sessionStorage, ikke localStorage (sikkerhetsrunden 19.10): da ligger
+    // innloggingen (også refresh-tokenet) bare i DENNE fanen og forsvinner når
+    // den lukkes. Et skript som skulle snike seg inn i en annen fane får ikke
+    // tak i den. Prisen: en ny fane må logge inn på nytt — som regel stille,
+    // uten at brukeren merker noe, fordi Microsoft-økta fortsatt lever.
+    cache: { cacheLocation: "sessionStorage", storeAuthStateInCookie: false }
   });
   await S.msalApp.initialize();
   const res = await S.msalApp.handleRedirectPromise();

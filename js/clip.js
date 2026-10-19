@@ -116,7 +116,7 @@ export function showClipBar() {
   if (faceReady) {
     const lim = Math.max(1, S.modelSize);
     html += '<input type="range" id="crf" min="' + (-lim) + '" max="' + lim + '" step="' + (lim / 500) +
-      '" value="' + S.clipFaceOff + '" title="' + t("Skyv snittet langs flatens normal") + '">' +
+      '" value="' + (Number(S.clipFaceOff) || 0) + '" title="' + t("Skyv snittet langs flatens normal") + '">' +
       '<span class="lbl" id="crfv">' + fmtLen(tilM(S.clipFaceOff)) + '</span>';
   } else {
     html += '<input type="range" id="cr" min="0" max="1000" value="' + Math.round(S.clipT * 1000) + '">';
@@ -326,12 +326,14 @@ export async function applyClipState(c) {
   if (!c) return;
   S.clipMode = c.mode || "axis";
   S.clipAxis = c.axis || "y";
-  S.clipT = typeof c.t === "number" ? c.t : 1;
+  // c kommer fra lagrede snitt eller en delt lenke: tallene tvinges til tall,
+  // siden de havner i value="…" i snittlinja (innerHTML)
+  S.clipT = typeof c.t === "number" && isFinite(c.t) ? c.t : 1;
   S.clipFlip = !!c.flip;
   S.clipBox = Object.assign({}, DEFAULT_CLIPBOX, c.box || {});
   S.clipFaceN = c.faceN ? new THREE.Vector3(c.faceN[0], c.faceN[1], c.faceN[2]) : null;
   S.clipFaceP = c.faceP ? new THREE.Vector3(c.faceP[0], c.faceP[1], c.faceP[2]) : null;
-  S.clipFaceOff = c.faceOff || 0;
+  S.clipFaceOff = Number(c.faceOff) || 0;
   S.clipOn = true;
   $("btnClip").classList.add("active");
   // etasjevalget følger med i snittet

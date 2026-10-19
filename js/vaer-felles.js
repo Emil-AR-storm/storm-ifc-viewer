@@ -67,6 +67,17 @@ function meld() {
 
 // ═══════════════════════ HENTINGEN ═══════════════════════
 const base = () => LETT ? "" : TJENESTER.worker;
+// Sikkerhetsrunden 19.10: Workeren krever innlogging på /vaer (før kunne hvem
+// som helst bruke den til å hente vær for hele kartet). Byggeplassen har
+// montørkaka; kontoret sender kortet eller admin-nøkkelen. tilgang.js lastes
+// bare på kontoret — byggeplass-siden har ikke kort.
+async function vaerHoder() {
+  if (LETT) return {};
+  try {
+    const n = (await import("./tilgang.js")).tilgangsNøkkel();
+    return n ? { "x-token": n } : {};
+  } catch (_) { return {}; }
+}
 const nokkel = (k) => k.lat.toFixed(2) + "_" + k.lon.toFixed(2);
 const varselBuffer = new Map();     // nøkkel → { tid, data: {oppdatert, timer}, lover }
 const histBuffer = new Map();       // nøkkel|dato → { kilde, timer, stasjoner } | null (ingen data)
@@ -81,7 +92,7 @@ export async function hentVarsel(k) {
   if (b && b.lover) return b.lover;
   const lover = (async () => {
     try {
-      const r = await fetch(base() + "/vaer?lat=" + k.lat + "&lon=" + k.lon);
+      const r = await fetch(base() + "/vaer?lat=" + k.lat + "&lon=" + k.lon, { headers: await vaerHoder() });
       if (!r.ok) throw new Error("HTTP " + r.status);
       const data = tolkMet(await r.json());
       varselBuffer.set(n, { tid: Date.now(), data });
@@ -115,7 +126,7 @@ export async function hentHistorikk(k, fra, til) {
     const bit = mangler.slice(i, i + 31);
     const a = bit[0], b = bit[bit.length - 1];
     try {
-      const r = await fetch(base() + "/vaer/historikk?lat=" + k.lat + "&lon=" + k.lon + "&fra=" + a + "&til=" + b);
+      const r = await fetch(base() + "/vaer/historikk?lat=" + k.lat + "&lon=" + k.lon + "&fra=" + a + "&til=" + b, { headers: await vaerHoder() });
       if (!r.ok) throw new Error("HTTP " + r.status);
       const j = await r.json();
       for (const d of bit) {

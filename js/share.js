@@ -142,6 +142,103 @@ S.markerLink = async (c) => {
   return location.origin + location.pathname + "#" + HASH_KEY + await pack(v);
 };
 
+// ---------- Vask av en innkommende delt visning ----------
+// Alt etter #v= kan hvem som helst skrive – en lenke i en e-post er ikke
+// nødvendigvis laget av appen. Feltene havner til slutt i innerHTML
+// (sammenligningspanelet, snittlinja, fargevelgerne), så en lenke med
+// «"m":"<img onerror=…>"» ville kjørt kode hos mottakeren. Derfor bygges
+// objektet på nytt av bare de feltene collectView()/collectCompare() lager,
+// med riktig type. Ukjente felter og feil typer slippes aldri inn.
+const MAKS_TEKST = 500;          // filnavn, typenavn, elementnavn
+const MAKS_LISTE = 50000;        // lenka er maks ~60 000 tegn uansett
+const SNITTMODUS = ["axis", "face", "box", "none"];
+const AKSER = ["x", "y", "z"];
+const METODER = ["GlobalId", "geometri", "nærmeste element"];   // se compare() og compareManuelt()
+const BOKSFELT = ["x0", "x1", "y0", "y1", "z0", "z1"];
+
+const tall = (x) => (typeof x === "number" && isFinite(x)) ? x : undefined;
+const tekst = (x) => String(x == null ? "" : x).slice(0, MAKS_TEKST);
+// Samme regel som vaskFarge() i markers.js, men uten å dra inn hele den
+// modulen her: bare #rrggbb slipper gjennom, alt annet regnes som tomt.
+const farge = (x) => (typeof x === "string" && /^#[0-9a-f]{6}$/i.test(x)) ? x : "";
+function tallListe(x, n) {
+  if (!Array.isArray(x) || x.length !== n) return undefined;
+  const ut = x.map(tall);
+  return ut.every(y => y !== undefined) ? ut : undefined;
+}
+const liste = (x) => Array.isArray(x) ? x.slice(0, MAKS_LISTE) : [];
+// et vanlig objekt kan ikke ta imot nøkkelen «__proto__» uten å bytte prototype
+const farligNokkel = (k) => k === "__proto__" || k === "constructor" || k === "prototype";
+
+function vaskSnitt(c) {
+  if (!c || typeof c !== "object") return undefined;
+  const ut = {};
+  if (SNITTMODUS.includes(c.mode)) ut.mode = c.mode;
+  if (AKSER.includes(c.axis)) ut.axis = c.axis;
+  if (tall(c.t) !== undefined) ut.t = c.t;
+  ut.flip = !!c.flip;
+  if (c.box && typeof c.box === "object") {
+    ut.box = {};
+    BOKSFELT.forEach(k => { if (tall(c.box[k]) !== undefined) ut.box[k] = c.box[k]; });
+  } else ut.box = null;
+  ut.faceN = tallListe(c.faceN, 3) || null;
+  ut.faceP = tallListe(c.faceP, 3) || null;
+  if (tall(c.faceOff) !== undefined) ut.faceOff = c.faceOff;
+  ut.storey = (Number.isInteger(c.storey) && c.storey >= -1) ? c.storey : -1;
+  return ut;
+}
+
+// Radene i sammenligningen: [id, navn, type] for nye, [id, navn, type, 5 tall]
+// for endrede, [navn, type, 6 tall] for slettede. Den slanke utgaven har
+// kortere rader, så lengden beholdes – bare innholdet vaskes.
+function vaskRad(a, tekstPlass, idPlass) {
+  if (!Array.isArray(a)) return null;
+  const ut = a.slice(0, 8).map((x, i) =>
+    i === idPlass ? tall(x) : tekstPlass.includes(i) ? tekst(x) : (tall(x) ?? 0));
+  return (idPlass >= 0 && ut[idPlass] === undefined) ? null : ut;
+}
+
+function vaskSammenligning(c) {
+  if (!c || typeof c !== "object") return undefined;
+  const ut = { b: tekst(c.b || "forrige versjon") };
+  if (METODER.includes(c.m)) ut.m = c.m;
+  ut.ue = (Number.isInteger(c.ue) && c.ue >= 0) ? c.ue : 0;
+  if (c.u) ut.u = 1;
+  ut.n = liste(c.n).map(a => vaskRad(a, [1, 2], 0)).filter(Boolean);
+  ut.e = liste(c.e).map(a => vaskRad(a, [1, 2], 0)).filter(Boolean);
+  ut.d = liste(c.d).map(a => vaskRad(a, [0, 1], -1)).filter(Boolean);
+  if (c.slim) ut.slim = 1;
+  return ut;
+}
+
+export function vaskDeltVisning(v) {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const ut = { v: tall(v.v) ?? VERSION, f: tekst(v.f) };
+  const cam = tallListe(v.cam, 6);
+  if (cam) ut.cam = cam;
+  // biblioteks-ID-en limes rett inn i Graph-adressen (/drive/items/<id>) med
+  // mottakerens token, så bare tegnene en ekte ID har – ingen «/» eller «..»
+  if (typeof v.lib === "string" && /^[A-Za-z0-9!_-]{1,200}$/.test(v.lib)) ut.lib = v.lib;
+  const clip = vaskSnitt(v.clip);
+  if (clip) ut.clip = clip;
+  if (Array.isArray(v.hid)) ut.hid = liste(v.hid).filter(x => typeof x === "string").map(tekst);
+  if (v.col && typeof v.col === "object" && !Array.isArray(v.col)) {
+    const col = {};
+    for (const k of Object.keys(v.col).slice(0, MAKS_LISTE)) {
+      const f = farge(v.col[k]);
+      if (f && !farligNokkel(k)) col[tekst(k)] = f;
+    }
+    if (Object.keys(col).length) ut.col = col;
+  }
+  if (Array.isArray(v.hidId)) ut.hidId = liste(v.hidId).filter(x => tall(x) !== undefined);
+  if (v.tc) ut.tc = 1;
+  if (v.gh) ut.gh = 1;
+  if (v.light) ut.light = 1;
+  const cmp = vaskSammenligning(v.cmp);
+  if (cmp) ut.cmp = cmp;
+  return ut;
+}
+
 // ---------- Legg en delt visning på plass ----------
 // silent overalt: mottakerens eget lagrede utseende røres ikke.
 export async function applyView(v) {
@@ -157,7 +254,8 @@ export async function applyView(v) {
       if (v.col) {
         for (const k in v.col) {
           const g = S.typeInfo.get(k);
-          if (g) { g.color = v.col[k]; g.mat.color.set(v.col[k]); }
+          const f = farge(v.col[k]);   // g.color havner i value="…" i fargepanelet
+          if (g && f) { g.color = f; g.mat.color.set(f); }
         }
       }
       if (v.hid) {
@@ -237,7 +335,10 @@ på("btnShare", "click", async () => {
   if (!h.startsWith(HASH_KEY)) return;
   let v = null;
   try { v = await unpack(h.slice(HASH_KEY.length)); } catch(_) {}
-  if (!v || typeof v !== "object") return;
+  // vaskes her, der lenka kommer inn, så alt videre (banner, snitt,
+  // sammenligning, farger) bare ser kjente felter med riktig type
+  v = vaskDeltVisning(v);
+  if (!v) return;
   S.sharedView = v;
   showIncomingBanner(v);
 })();

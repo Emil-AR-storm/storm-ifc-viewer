@@ -6,10 +6,15 @@
 //
 // Alle svar er vanlige objekter/typede array-er, aldri web-ifc-objekter – de kan
 // ikke krysse trådgrensen.
-import * as WebIFC from "https://cdn.jsdelivr.net/npm/web-ifc@0.0.57/web-ifc-api.js";
+// Selvhostet (sikkerhetsrunden 19.10): en import-URL kan ikke ha integrity-hash,
+// så et kompromittert CDN kunne kjørt hva som helst på samme opphav som appen.
+// Fila er byte-identisk med npm-pakken web-ifc@0.0.57. Den flertrådede .wasm
+// lastes bare når siden er crossOriginIsolated — det er den ikke, så bare
+// web-ifc.wasm ligger i vendor/.
+import * as WebIFC from "../vendor/web-ifc-0.0.57/web-ifc-api.js";
 
 const ifcApi = new WebIFC.IfcAPI();
-ifcApi.SetWasmPath("https://cdn.jsdelivr.net/npm/web-ifc@0.0.57/", true);
+ifcApi.SetWasmPath(new URL("../vendor/web-ifc-0.0.57/", import.meta.url).href, true);
 
 let klar = null;
 let modelID = null;

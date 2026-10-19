@@ -2,7 +2,7 @@
 //
 // Temaet ligger på <html data-tema="lys|mork">, og alle fargene i css/storm.css
 // er variabler under de to velgerne. Selve valget settes allerede av et lite
-// inline-skript i <head> – ellers rekker siden å male mørk flate før denne
+// skript i <head> (js/tema-tidlig.js, synkront) – ellers rekker siden å male mørk flate før denne
 // modulen er lastet, og det blinker. Her ligger bare knappen og lagringen.
 //
 // Egen lagringsnøkkel med vilje: prefs-strukturen i state.js synkes til

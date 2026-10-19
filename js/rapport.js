@@ -20,7 +20,8 @@ import { t } from "./i18n.js";
 import { HASTEGRAD, HASTEGRAD_REKKE, dagerTil, hastegrad, iDagISO } from "./frist.js";
 import { varsel } from "./varsel.js";
 
-export const JSPDF_URL = "vendor/jspdf-2.5.2.umd.min.js";
+// 4.2.1 (sikkerhetsrunden 19.10): 2.5.2 hadde kjente feil (ReDoS i addImage m.fl.)
+export const JSPDF_URL = "vendor/jspdf-4.2.1.umd.min.js";
 
 // ── SPEILET FRA markers.js ─────────────────────────────────────────────────
 // STATUS i js/markers.js:394 har de samme tre fargene. De kan ikke importeres

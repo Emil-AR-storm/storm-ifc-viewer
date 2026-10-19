@@ -6,7 +6,9 @@
 // verifiseres. cdnjs har ingen slik kilde vi kan sjekke mot.
 //   npm pack qrcodejs@1.0.0 && tar xf *.tgz
 //   openssl dgst -sha384 -binary package/qrcode.min.js | openssl base64 -A
-export const QR_URL = "https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js";
+// Sikkerhetsrunden 19.10: selvhostet (samme bytes, samme hash) — da kan
+// sikkerhetspolicyen (CSP) nøye seg med script-src 'self'.
+export const QR_URL = new URL("../vendor/qrcodejs-1.0.0/qrcode.min.js", import.meta.url).href;
 export const QR_SRI = "sha384-3zSEDfvllQohrq0PHL1fOXJuC/jSOO34H46t6UQfobFOmxE5BpjjaIJY5F2/bMnU";
 
 let laster = null;

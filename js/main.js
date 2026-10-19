@@ -1,4 +1,6 @@
 // Oppstart: kobler sammen modulene og håndterer klikk i modellen.
+// 🛡 FØRST: klikk-lytterne som før var onclick="…" i HTML-en (se fila).
+import "./html-lyttere.js";
 import * as THREE from "three";
 import { $, S, fmtLen, loadingEl, loadingText, tilM } from "./state.js";
 import { lastSprak, oversettDom, setLang, t } from "./i18n.js";

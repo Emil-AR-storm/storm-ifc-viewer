@@ -3,6 +3,9 @@
 // Innlogging startes aldri – se LETT-flagget i lett.js og gaten i sharepoint.js.
 // 🩺 Feilinfo FØRST: feilfangeren må stå før resten av modulene kjører.
 import { diagFerdig, diagNullstill, diagSteg, feilTekst, sjekkForrigeForsok, visDiagnose } from "./diagnose.js";
+// 🛡 Klikk-lytterne som før var onclick="…" i HTML-en (se fila) — like tidlig
+// som attributtene ble lest før.
+import "./html-lyttere.js";
 import * as THREE from "three";
 import { $, S, esc, fmtLen, loadingEl, loadingText, tilM } from "./state.js";
 import { lastSprak, oversettDom, setLang, t } from "./i18n.js";

@@ -523,7 +523,8 @@ export function renderColorPanelLett() {
       ' <span style="color:var(--muted);font-size:11px">(' + g.ids.length + ')</span></div>' +
       '<div class="c" style="display:flex; align-items:center; gap:8px">' +
       '<button data-lett-hide="' + i + '" title="' + t("Skjul/vis") + '" style="padding:3px 8px">' + ikon(g.hidden ? "skjul" : "vis") + '</button>' +
-      '<input type="color" data-lett-type="' + i + '" value="' + g.color + '"></div></div>';
+      // esc(): fargen kan komme fra en delt lenke (#v=) og står i et attributt
+      '<input type="color" data-lett-type="' + i + '" value="' + esc(g.color) + '"></div></div>';
   });
   html += '<p style="color:var(--muted);font-size:11px;margin-top:10px">' + t("Kantlinjer per type finnes bare i full kvalitet.") + '</p>';
   $("colorBody").innerHTML = html;
@@ -595,7 +596,8 @@ export function renderColorPanel() {
       '<button data-outline="' + i + '"' + (påType ? ' class="active"' : '') + (globalOutline ? ' disabled' : '') +
       ' title="' + esc(outlineTittel) + '" style="padding:3px 8px">' + ikon("boks") + '</button>' +
       '<button data-hide="' + i + '" title="' + t("Skjul/vis") + '" style="padding:3px 8px">' + ikon(g.hidden ? "skjul" : "vis") + '</button>' +
-      '<input type="color" data-type="' + i + '" value="' + g.color + '"></div></div>';
+      // esc(): fargen kan komme fra en delt lenke (#v=) og står i et attributt
+      '<input type="color" data-type="' + i + '" value="' + esc(g.color) + '"></div></div>';
   });
   $("colorBody").innerHTML = html;
   // Fargevelgere fyrer oninput per piksel man drar. Ett avtrykk tas ved

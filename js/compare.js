@@ -363,7 +363,8 @@ function renderPanel() {
     '<button id="cmpStopp">' + ikon("lukk") + ' ' + t("Avslutt") + '</button></div>' +
     '<p style="font-size:12px; color:var(--muted); margin-bottom:8px">' +
     esc(S.compareBase.file) + ' → ' + esc(S.fileName) +
-    t(" · gjenkjent på ") + t(r.metode) + '</p>' +
+    // metode kan komme fra en delt lenke – escapes selv om share.js har vasket den
+    t(" · gjenkjent på ") + esc(t(r.metode)) + '</p>' +
     (S.compareBase.manuell ? '<p style="font-size:12px; color:var(--muted); margin-bottom:8px">' + ikon("hjelp") + ' ' +
       esc(manuellTekst(S.compareBase.manuell, r.flytt)) + '</p>' : '') +
     (r.usikker ? '<p style="font-size:12px; color:var(--accent2); margin-bottom:8px">' + ikon("advarsel") + ' ' + t("Under halvparten av elementene lot seg parre. Er dette to versjoner av samme modell? Ellers har eksporten byttet både GlobalId og geometri.") + '</p>' : '') +
@@ -374,7 +375,7 @@ function renderPanel() {
     '<div class="qty-row cmp-filter" data-filter="ny" style="cursor:pointer"><div class="n"><span style="color:var(--ok)">●</span> ' + t("Nye") + '</div><div class="c">' + r.ny.length + '</div></div>' +
     '<div class="qty-row cmp-filter" data-filter="slettet" style="cursor:pointer"><div class="n"><span style="color:var(--danger)">●</span> ' + t("Slettet") + '</div><div class="c">' + r.slettet.length + '</div></div>' +
     '<div class="qty-row cmp-filter" data-filter="endret" style="cursor:pointer"><div class="n"><span style="color:#fbbf24">●</span> ' + t("Endret") + '</div><div class="c">' + r.endret.length + '</div></div>' +
-    '<div class="qty-row"><div class="n">' + t("Uendret") + '</div><div class="c">' + r.uendret.size + '</div></div>';
+    '<div class="qty-row"><div class="n">' + t("Uendret") + '</div><div class="c">' + (Number(r.uendret.size) || 0) + '</div></div>';
 
   if (!r.ny.length && !r.slettet.length && !r.endret.length)
     html += '<p style="margin-top:12px; font-size:13px">' + ikon("hake") + ' ' + t("Ingen forskjeller funnet.") + '</p>';
@@ -483,7 +484,9 @@ export function applySharedCompare(c) {
   result = {
     metode: c.m || "GlobalId",
     usikker: !!c.u,
-    uendret: { size: c.ue || 0 },   // bare antallet trengs (renderPanel leser .size)
+    // bare antallet trengs (renderPanel leser .size). Number(): feltet kommer
+    // fra en lenke hvem som helst kan skrive, og havner i innerHTML
+    uendret: { size: Number(c.ue) || 0 },
     ny: (c.n || []).map(a => ({ id: a[0], name: a[1] || "", type: a[2] || "" })),
     endret: (c.e || []).map(a => ({
       id: a[0], name: a[1] || "", type: a[2] || "",

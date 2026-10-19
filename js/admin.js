@@ -428,6 +428,7 @@ function detaljTekst(r) {
   if (r.seksjon) d.push(r.seksjon);
   if (r.for) d.push(norsk("for {0}", r.for));
   if (r.antall !== undefined) d.push(r.antall + " " + norsk("filer"));
+  if (r.forsøk) d.push(norsk("{0}. forsøk fra samme adresse", r.forsøk));
   return d.join(" · ") || "–";
 }
 const adresseFor = (nr) => W() + "/" + nr;
