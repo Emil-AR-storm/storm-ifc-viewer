@@ -12,7 +12,7 @@
 //     fra omrisset til bunnen (loddrett vegg eller skrå kant)
 //   · for smale groper med skrå kant: et lite høydefelt
 import * as THREE from "three";
-import { erEgenPad, padPolygon, plateDeler } from "./terreng-regn.js";
+import { erEgenPad, padPolygon, plateDeler, fargeFlate, fargeStatus, fargeVerdi } from "./terreng-regn.js";
 
 // Formen i xy-planet med y = −z; rotateX(−90°) legger den riktig vei.
 function form(pts, s) {
@@ -83,6 +83,35 @@ export function byggPlate3D(pad, s, farge) {
       g.add(m);
     }
   }
+  // 🎨 Fargeområdene (runde 4): ligger oppå det som er under, løftet 1 cm og
+  // med polygonOffset, så de vinner over plata uten å flimre. Det siste i
+  // lista ligger øverst (større forskyvning).
+  const F = Array.isArray(pad.farger) ? pad.farger : [];
+  const fst = F.length ? fargeStatus(pad, F) : [];
+  F.forEach((f, i) => {
+    if (!fst[i].gyldig) return;
+    const lag = 2 + Math.min(i, 40);
+    const fm = new THREE.MeshLambertMaterial({ color: fargeVerdi(f), side: THREE.DoubleSide,
+      polygonOffset: true, polygonOffsetFactor: -lag, polygonOffsetUnits: -lag });
+    const d = fargeFlate(pad, f);
+    let geo;
+    if (d.flat) {
+      geo = new THREE.ShapeGeometry(form(d.flat.ytre, s));
+      geo.rotateX(-Math.PI / 2);
+      geo.translate(0, (d.flat.y + 0.01) / s, 0);
+    } else {
+      const pos = Float32Array.from(d.felt.pos, (v, k) => (k % 3 === 1 ? v + 0.01 : v) / s);
+      geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+      geo.setIndex(new THREE.BufferAttribute(d.felt.idx, 1));
+      geo.computeVertexNormals();
+    }
+    const m = new THREE.Mesh(geo, fm);
+    m.name = "terrengfarge";
+    m.renderOrder = 1 + i;
+    m.userData.egetMat = true;
+    g.add(m);
+  });
   g.userData.egen = erEgenPad(pad);
   return g;
 }

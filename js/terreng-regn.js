@@ -953,6 +953,138 @@ function hoydeFelt(o, y0) {
   return { pos, idx: Uint32Array.from(idx) };
 }
 
+// ═══════════════════════ 🎨 FARGEOMRÅDER (Emil 15.10, runde 4) ═══════════════════════
+//
+// Områder på plata som får en farge (grus, asfalt, gress …), som en malt flate.
+// De ligger oppå det som er under — plata, bunnen av en grop, toppen av en
+// haug — og påvirker IKKE massene. Kan overlappe: det siste i lista ligger øverst.
+//   pad.farger = [{ id, navn, type, farge, punkter }]  (byggrammen, meter)
+// Fargene er VÅRE EGNE valg for å skille flatene, ikke en standard {Source not found}.
+// `id` lagres — endre aldri en id, bare etiketten.
+export const FARGE_TYPER = [
+  { id: "grus", label: "Grus", farge: "#b8a98a" },
+  { id: "asfalt", label: "Asfalt", farge: "#4a4d52" },
+  { id: "pukk", label: "Pukk", farge: "#9a9ca0" },
+  { id: "gress", label: "Gress", farge: "#6aa84f" },
+  { id: "vann", label: "Vann/søle", farge: "#4f8fc0" },
+  { id: "egen", label: "Egen farge", farge: "#d08a2e" }
+];
+export const FARGE_MAKS = 50;
+export function fargeType(id) { return FARGE_TYPER.find(f => f.id === id) || FARGE_TYPER[0]; }
+// Fargen flata faktisk har: typens farge, eller brukerens egen
+export function fargeVerdi(f) { return f && f.type === "egen" ? f.farge : fargeType(f && f.type).farge; }
+
+export function vaskFarger(liste) {
+  if (!Array.isArray(liste)) return [];
+  const ut = [], sett = new Set();
+  for (const q of liste.slice(0, FARGE_MAKS)) {
+    if (!q || typeof q !== "object") continue;
+    const id = String(q.id == null ? "" : q.id).slice(0, 40).trim();
+    if (!id || sett.has(id)) continue;
+    const punkter = vaskPadPunkter(q.punkter);
+    if (!punkter) continue;
+    const type = FARGE_TYPER.some(f => f.id === q.type) ? q.type : "grus";
+    const hx = String(q.farge || "").trim();
+    sett.add(id);
+    ut.push({ id, navn: String(q.navn == null ? "" : q.navn).slice(0, 60).trim(), type,
+      farge: /^#[0-9a-fA-F]{6}$/.test(hx) ? hx.toLowerCase() : fargeType("egen").farge, punkter });
+  }
+  return ut;
+}
+export function fargeRen(l) {
+  return (Array.isArray(l) ? l : []).map(f => ({ id: f.id, navn: f.navn, type: f.type, farge: f.farge, punkter: f.punkter }));
+}
+
+// Et fargeområde må ligge på plata (det kan godt gå over kanten av en grop)
+export function fargeStatus(pad, liste) {
+  const plate = padPolygon(pad);
+  return (Array.isArray(liste) ? liste : []).map(f => polyInni(f.punkter, plate)
+    ? { gyldig: true, grunn: "" } : { gyldig: false, grunn: "Området ligger utenfor plata." });
+}
+
+// 3D for ett fargeområde, i byggrammen (y = meter over plata):
+//   { flat: { ytre, y } }  når alt under er flatt (plata, eller bunnen/toppen
+//                          av ett område) — tegnes eksakt
+//   { felt: { pos, idx } } når det går over kanten av en grop/haug — da
+//                          draperes det som et fint høydefelt
+export function fargeFlate(pad, f) {
+  const { liste, st } = gyldigeOmrader(pad);
+  const gyl = liste.filter((_, i) => st[i].gyldig);
+  const dz = (x, z) => gyl.length ? omradeDz(liste, st, x, z) : 0;
+  // Krysser kanten et område (omrisset eller kanten av bunnen)? Da er det ikke flatt.
+  let flat = true;
+  liste.forEach((o, i) => {
+    if (!flat || !st[i].gyldig) return;
+    if (polyKrysser(f.punkter, o.punkter) || (st[i].bunn && polyKrysser(f.punkter, st[i].bunn))) flat = false;
+  });
+  const r = polyRamme(f.punkter), A = Math.max(1e-6, (r.x1 - r.x0) * (r.z1 - r.z0));
+  const steg = Math.max(0.25, Math.sqrt(A) / 60);
+  if (flat) {
+    const y0 = dz(f.punkter[0].x, f.punkter[0].z);
+    for (const q of f.punkter) if (Math.abs(dz(q.x, q.z) - y0) > 1e-6) { flat = false; break; }
+    if (flat) {
+      // midt inni også (en hel grop kan ligge inni fargeområdet)
+      for (let x = r.x0 + steg / 2; flat && x < r.x1; x += steg)
+        for (let z = r.z0 + steg / 2; z < r.z1; z += steg)
+          if (iPolygon(f.punkter, x, z) && Math.abs(dz(x, z) - y0) > 1e-6) { flat = false; break; }
+    }
+    if (flat) return { flat: { ytre: f.punkter, y: y0 }, felt: null };
+  }
+  const nx = Math.max(2, Math.ceil((r.x1 - r.x0) / steg) + 1), nz = Math.max(2, Math.ceil((r.z1 - r.z0) / steg) + 1);
+  const pos = new Float32Array(nx * nz * 3);
+  for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
+    const x = Math.min(r.x1, r.x0 + i * steg), z = Math.min(r.z1, r.z0 + j * steg), k = j * nx + i;
+    pos[k * 3] = x; pos[k * 3 + 1] = dz(x, z); pos[k * 3 + 2] = z;
+  }
+  const idx = [];
+  for (let j = 0; j < nz - 1; j++) for (let i = 0; i < nx - 1; i++) {
+    const cx = r.x0 + (i + 0.5) * steg, cz = r.z0 + (j + 0.5) * steg;
+    if (!iPolygon(f.punkter, Math.min(cx, r.x1), Math.min(cz, r.z1))) continue;
+    const a = j * nx + i, b = a + 1, c = a + nx, d = c + 1;
+    idx.push(a, c, b, b, c, d);
+  }
+  return { flat: null, felt: { pos, idx: Uint32Array.from(idx) } };
+}
+
+// Areal per type (og navn) til Mengder og tegnforklaringen på riggplanen.
+// `tr` oversetter. Bare gyldige områder, i den rekkefølgen de første står.
+export function fargeOppsummering(pad, tr) {
+  const lab = tr || ((x) => x);
+  const L = pad && Array.isArray(pad.farger) ? pad.farger : [];
+  const st = fargeStatus(pad, L), m = new Map();
+  L.forEach((f, i) => {
+    if (!st[i].gyldig) return;
+    const farge = fargeVerdi(f), typeNavn = lab(fargeType(f.type).label);
+    const navn = f.navn || typeNavn;
+    const nokkel = navn + "|" + farge;
+    if (!m.has(nokkel)) m.set(nokkel, { navn, typeNavn, farge, antall: 0, areal: 0 });
+    const g = m.get(nokkel); g.antall++; g.areal += polyAreal(f.punkter);
+  });
+  return [...m.values()];
+}
+
+// 📊 Mengder: én rad per fargeområde, med arealet — under «Rigg», som
+// lagrings- og parkeringsområdene. Syntetiske id-er som aldri kolliderer.
+export function fargeMengdeRader(pad, tr) {
+  const lab = tr || ((x) => x);
+  const L = pad && pad.paa && Array.isArray(pad.farger) ? pad.farger : [];
+  const st = fargeStatus(pad, L), ut = [];
+  L.forEach((f, i) => {
+    if (!st[i].gyldig) return;
+    const typeNavn = lab(fargeType(f.type).label), navn = f.navn || typeNavn, A = polyAreal(f.punkter), r = polyRamme(f.punkter);
+    const del = lab("Fargeområde") + ": " + typeNavn;
+    ut.push({
+      id: -(3000000 + i + 1), key: navn + " · " + del, name: navn, objType: del,
+      type: "Rigg", material: del,
+      L: r.x1 - r.x0, B: r.z1 - r.z0, H: 0, len: Math.max(r.x1 - r.x0, r.z1 - r.z0),
+      vol: 0, area: A, flate: A, forskaling: 0,
+      kg: 0, kgGeo: 0, kjentVekt: false, umuligVolum: false,
+      vektKilde: "", profil: "", nomKgPerM: 0, avvik: null
+    });
+  });
+  return ut;
+}
+
 // Normalen → siden av byggrammen den vender mest mot (skråning per side).
 export function sideFraNormal(nx, nz) {
   return Math.abs(nx) >= Math.abs(nz) ? (nx < 0 ? "x0" : "x1") : (nz < 0 ? "z0" : "z1");
@@ -981,6 +1113,7 @@ export function padHandtak(p) {
 export function likePad(a, b) {
   if (!a || !b || a.paa !== b.paa || erEgenPad(a) !== erEgenPad(b)) return false;
   if (JSON.stringify(omrRen(a.omrader)) !== JSON.stringify(omrRen(b.omrader))) return false;
+  if (JSON.stringify(fargeRen(a.farger)) !== JSON.stringify(fargeRen(b.farger))) return false;
   if (erEgenPad(a)) return a.punkter.length === b.punkter.length && a.punkter.every((q, i) => q.x === b.punkter[i].x && q.z === b.punkter[i].z);
   return a.x0 === b.x0 && a.x1 === b.x1 && a.z0 === b.z0 && a.z1 === b.z1;
 }
@@ -1143,6 +1276,8 @@ export function vaskPlassering(p) {
     }
     // ⛰ heve/senke-områdene følger plata
     if (pad && Array.isArray(q.omrader) && q.omrader.length) pad.omrader = vaskOmrader(q.omrader);
+    // 🎨 fargeområdene også
+    if (pad && Array.isArray(q.farger) && q.farger.length) pad.farger = vaskFarger(q.farger);
   }
   let klipp = null;
   if (p.klipp && typeof p.klipp === "object") {
@@ -1697,7 +1832,8 @@ export function terrengForByggeplass(t, steg) {
       gulv: t.gulv ? { kote: t.gulv.kote } : null,
       pad: t.pad && t.pad.paa ? Object.assign({ paa: true, x0: t.pad.x0, x1: t.pad.x1, z0: t.pad.z0, z1: t.pad.z1 },
         erEgenPad(t.pad) ? { form: "egen", punkter: t.pad.punkter.map(q => ({ x: q.x, z: q.z })) } : {},
-        t.pad.omrader && t.pad.omrader.length ? { omrader: omrRen(t.pad.omrader) } : {}) : null,
+        t.pad.omrader && t.pad.omrader.length ? { omrader: omrRen(t.pad.omrader) } : {},
+        t.pad.farger && t.pad.farger.length ? { farger: fargeRen(t.pad.farger) } : {}) : null,
       grid: { w, h, x0, y0, dx, dy, hMin, data: tilBase64(new Uint8Array(u16.buffer)) },
       kart: ""   // fylles av byggeplass.js med navnet på JPEG-en
     }

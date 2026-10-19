@@ -193,6 +193,11 @@ export const KORT = [
     tekst: "Under Utskjæring rundt bygget: velg Firkant og dra ut en boks på plata, eller Egendefinert og tegn formen punkt for punkt som du tegner plata (trykk på første punkt for å lukke, så Ferdig). Skriv høyden — minus senker (byggegrop), pluss hever — og kanten 1:n (0 er loddrett vegg). Kanten regnes innover fra omrisset. Et område kan ligge helt inni et annet, for eksempel en heissjakt i byggegropa; da regnes høyden fra bunnen av det ytre. Områder kan ikke delvis overlappe og må ligge på plata. Gropene og haugene er med i massene og vises på byggeplass-siden."
   },
   {
+    hvor: "kontor", ikonNavn: "utseende",
+    tittel: "Fargeområder på plata",
+    tekst: "Under Utskjæring rundt bygget → Fargeområder: velg Firkant og dra ut en boks, eller Egendefinert og tegn formen punkt for punkt. Velg type — grus, asfalt, pukk, gress, vann/søle eller egen farge — og gi det gjerne et navn. Fargeområdet legger seg oppå plata og gropene og påvirker ikke massene. Arealet står i Mengder, og fargene kommer med i tegnforklaringen på riggplanen og ut til byggeplass-siden."
+  },
+  {
     hvor: "kontor", ikonNavn: "markering",
     tittel: "Fest bygget med landmålerens koordinater",
     tekst: "Under Fest til landmålerens koordinater i Terreng-panelet: trykk Velg i modellen, trykk på et hjørne, og skriv nord (x) og øst (y) fra landmåleren. Velg koordinatsystemet landmåleren bruker (UTM32, UTM33 eller NTM). To hjørner gir også rotasjonen og en kontroll av avstanden. Bygget låses til du trykker Løsne bygget."

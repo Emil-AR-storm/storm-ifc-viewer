@@ -700,6 +700,13 @@ export async function lastNedRiggplan(valg) {
     // 📍 Nålene: ett punkt per objekt, projisert inn på arket, med objektets
     // fotavtrykk (rekt) så plasserMerker vet hva et merke ikke må dekke.
     const forklaring = riggplanTegnforklaring(S.rigg || [], t);
+    // 🎨 Fargeområdene på plata (Terreng, runde 4): uten nummer — de har ingen
+    // nål på planen, fargen selv er merket
+    for (const f of (S.terrengFarger ? S.terrengFarger() : [])) {
+      forklaring.push({ nr: null, type: "farge", label: f.navn, farge: f.farge, stiplet: false, pil: false, kant: true,
+        antall: Math.round(f.areal).toLocaleString("no-NO") + " m²",
+        forklaring: f.navn !== f.typeNavn ? f.typeNavn : t("Fargeområde på plata") });
+    }
     const portNr = (forklaring.find(r => r.type === "gjerdePort") || {}).nr;
     const tilArk = (v) => {
       v.project(bilde.kamera);
@@ -998,9 +1005,11 @@ function tegnArk(jsPDF, m) {
     }
     // nummeret i objektets farge — samme farge som hodet på nålen
     const f = r.type === "gjerdePort" ? PORT_FARGE : r.farge;
-    hex(d, f, "fyll"); d.circle(fx + 13.8, y + 3.6, 2.1, "F");
-    d.setFontSize(6.5); d.setFont(undefined, "bold"); hex(d, lyshet(f) > 0.62 ? SORT : "#ffffff");
-    d.text(String(r.nr), fx + 13.8, y + 3.7, { align: "center", baseline: "middle" });
+    if (r.nr != null) {         // 🎨 fargeområdene har ikke nummer
+      hex(d, f, "fyll"); d.circle(fx + 13.8, y + 3.6, 2.1, "F");
+      d.setFontSize(6.5); d.setFont(undefined, "bold"); hex(d, lyshet(f) > 0.62 ? SORT : "#ffffff");
+      d.text(String(r.nr), fx + 13.8, y + 3.7, { align: "center", baseline: "middle" });
+    } else d.setFont(undefined, "bold");
     hex(d, SORT); d.setFontSize(8);
     d.text(d.splitTextToSize(r.label, fb - 46)[0], fx + 17.5, y + 4.4);
     d.setFont(undefined, "normal");
