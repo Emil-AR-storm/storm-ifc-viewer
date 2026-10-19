@@ -28,6 +28,93 @@ function hullForm(pts, s) {
   return h;
 }
 
+// ─── 🎨 Drapering av fargeområder (Emil 19.10: «hjørnene er ikke fylt ut riktig») ───
+//
+// Første utgave la fargen over kanten av en haug/grop som et rutenett, og
+// tok med de rutene som hadde midten inni formen — da ble kanten en trapp,
+// og hjørnene ble hakkete. Nå lages fargen EKSAKT: flata under (plata,
+// bunnene og kantflatene) deles i trekanter, fargeformen deles i trekanter,
+// og hver fargetrekant klippes mot hver flatetrekant (Sutherland–Hodgman).
+// Hvert klippet stykke løftes opp i planet til flatetrekanten det ligger i.
+// Alt i byggrammen (meter, x/z), y = høyde over plata.
+
+// Trekantene (3D) i flata under plata-gruppa, fra plateDeler
+export function flateTrekanter(pad, deler) {
+  const ut = [];
+  const tri2 = (ytre, hull, y) => {
+    const kontur = ytre.map(q => new THREE.Vector2(q.x, q.z));
+    const hv = (hull || []).map(h => h.map(q => new THREE.Vector2(q.x, q.z)));
+    const alle = kontur.concat(...hv);
+    for (const [a, b, c] of THREE.ShapeUtils.triangulateShape(kontur, hv))
+      ut.push([[alle[a].x, y, alle[a].y], [alle[b].x, y, alle[b].y], [alle[c].x, y, alle[c].y]]);
+  };
+  tri2(padPolygon(pad), deler.hull, 0);
+  for (const d of deler.deler) {
+    if (d.topp) tri2(d.topp.ytre, d.topp.hull, d.topp.y);
+    for (const [a, b, c, e] of d.sider) { ut.push([a, b, c]); ut.push([a, c, e]); }
+    if (d.felt) {
+      const P = d.felt.pos, I = d.felt.idx, pk = (k) => [P[k * 3], P[k * 3 + 1], P[k * 3 + 2]];
+      for (let k = 0; k < I.length; k += 3) ut.push([pk(I[k]), pk(I[k + 1]), pk(I[k + 2])]);
+    }
+  }
+  return ut;
+}
+
+// Klipp et konvekst eller konkavt polygon (punkter {x, z}) mot en trekant (konveks)
+function klippMotTrekant(poly, t) {
+  // trekanten mot klokka i (x, z), så «inni» er venstre side av hver kant
+  let [A, B, C] = t;
+  const kr = (B[0] - A[0]) * (C[2] - A[2]) - (B[2] - A[2]) * (C[0] - A[0]);
+  if (Math.abs(kr) < 1e-12) return [];                 // loddrett vegg: ingen flate ovenfra
+  if (kr < 0) [B, C] = [C, B];
+  let ut = poly;
+  for (const [P, Q] of [[A, B], [B, C], [C, A]]) {
+    if (!ut.length) break;
+    const inne = (p) => (Q[0] - P[0]) * (p.z - P[2]) - (Q[2] - P[2]) * (p.x - P[0]) >= -1e-12;
+    const kutt = (p, q) => {
+      const dx = q.x - p.x, dz = q.z - p.z;
+      const den = (Q[0] - P[0]) * dz - (Q[2] - P[2]) * dx;
+      const tt = den === 0 ? 0 : -((Q[0] - P[0]) * (p.z - P[2]) - (Q[2] - P[2]) * (p.x - P[0])) / den;
+      return { x: p.x + dx * tt, z: p.z + dz * tt };
+    };
+    const inn = ut; ut = [];
+    for (let i = 0; i < inn.length; i++) {
+      const p = inn[i], q = inn[(i + 1) % inn.length], pi = inne(p), qi = inne(q);
+      if (pi) ut.push(p);
+      if (pi !== qi) ut.push(kutt(p, q));
+    }
+  }
+  return ut;
+}
+// Høyden i punktet (x, z) i planet gjennom trekanten
+function hoydeITrekant(t, x, z) {
+  const [A, B, C] = t;
+  const d = (B[2] - C[2]) * (A[0] - C[0]) + (C[0] - B[0]) * (A[2] - C[2]);
+  const l1 = ((B[2] - C[2]) * (x - C[0]) + (C[0] - B[0]) * (z - C[2])) / d;
+  const l2 = ((C[2] - A[2]) * (x - C[0]) + (A[0] - C[0]) * (z - C[2])) / d;
+  return l1 * A[1] + l2 * B[1] + (1 - l1 - l2) * C[1];
+}
+
+// Fargeformen draperet over flata: trekanter som Float32Array (byggrammen, meter)
+export function draperFarge(punkter, flate) {
+  const kontur = punkter.map(q => new THREE.Vector2(q.x, q.z));
+  const ft = THREE.ShapeUtils.triangulateShape(kontur, []).map(([a, b, c]) => [punkter[a], punkter[b], punkter[c]]);
+  const ut = [];
+  for (const tri of ft) {
+    const x0 = Math.min(tri[0].x, tri[1].x, tri[2].x), x1 = Math.max(tri[0].x, tri[1].x, tri[2].x);
+    const z0 = Math.min(tri[0].z, tri[1].z, tri[2].z), z1 = Math.max(tri[0].z, tri[1].z, tri[2].z);
+    for (const t of flate) {
+      if (Math.max(t[0][0], t[1][0], t[2][0]) < x0 || Math.min(t[0][0], t[1][0], t[2][0]) > x1 ||
+          Math.max(t[0][2], t[1][2], t[2][2]) < z0 || Math.min(t[0][2], t[1][2], t[2][2]) > z1) continue;
+      const bit = klippMotTrekant(tri, t);
+      if (bit.length < 3) continue;
+      const v = bit.map(p => [p.x, hoydeITrekant(t, p.x, p.z), p.z]);
+      for (let k = 1; k < v.length - 1; k++) ut.push(...v[0], ...v[k], ...v[k + 1]);
+    }
+  }
+  return new Float32Array(ut);
+}
+
 export function byggPlate3D(pad, s, farge) {
   const g = new THREE.Group();
   g.name = "terrengplate";
@@ -88,6 +175,7 @@ export function byggPlate3D(pad, s, farge) {
   // lista ligger øverst (større forskyvning).
   const F = Array.isArray(pad.farger) ? pad.farger : [];
   const fst = F.length ? fargeStatus(pad, F) : [];
+  let flate = null;                       // flatetrekantene lages bare når de trengs
   F.forEach((f, i) => {
     if (!fst[i].gyldig) return;
     const lag = 2 + Math.min(i, 40);
@@ -100,10 +188,11 @@ export function byggPlate3D(pad, s, farge) {
       geo.rotateX(-Math.PI / 2);
       geo.translate(0, (d.flat.y + 0.01) / s, 0);
     } else {
-      const pos = Float32Array.from(d.felt.pos, (v, k) => (k % 3 === 1 ? v + 0.01 : v) / s);
+      // over kanten av en grop/haug: eksakt drapering (se draperFarge)
+      if (!flate) flate = flateTrekanter(pad, deler);
+      const pos = draperFarge(f.punkter, flate).map((v, k) => (k % 3 === 1 ? v + 0.01 : v) / s);
       geo = new THREE.BufferGeometry();
       geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-      geo.setIndex(new THREE.BufferAttribute(d.felt.idx, 1));
       geo.computeVertexNormals();
     }
     const m = new THREE.Mesh(geo, fm);
