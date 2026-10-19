@@ -109,6 +109,15 @@ for (const f of css) if (!finnes(f)) throw new Error("CSS-fila finnes ikke: " + 
 const ikoner = [...html.matchAll(/<link[^>]+rel=["'](?:icon|apple-touch-icon)["'][^>]+href=["']([^"']+)["']/g)].map(m => m[1]);
 for (const f of ikoner) if (!finnes(f)) throw new Error("Ikonfila finnes ikke: " + f);
 
+// 🛡 Vanlige <script src> i bygg.html (ikke modulene — de følger grafen over).
+// Sikkerhetspolicyen (CSP, 19.10) tillater ikke inline-skript, så tema- og
+// feilfanger-skriptet ligger nå som egne filer i js/. De står ikke i noen
+// import-graf, og uten denne linja ville de manglet i cachen: uten dekning
+// hadde siden blinket mørk i lyst tema og mistet feilmeldingene på skjermen.
+const vanligeSkript = [...html.matchAll(/<script(?![^>]*type=["']module["'])[^>]*\bsrc=["']([^"']+)["']/g)]
+  .map(m => m[1]).filter(f => !/^[a-z]+:|^\/\//i.test(f));
+for (const f of vanligeSkript) if (!finnes(f)) throw new Error("Skriptfila finnes ikke: " + f);
+
 // Importmap-en er den ENESTE stedet three-adressen står. Leser vi den herfra,
 // kan ingen oppgradere three uten at lista følger med av seg selv.
 const imKilde = (html.match(/<script type="importmap">([\s\S]*?)<\/script>/) || [])[1];
@@ -135,16 +144,38 @@ for (const f of ["lines/LineSegmentsGeometry.js", "lines/LineMaterial.js", "line
   if (finnes(sti)) vendor.push(sti);
 }
 
-// ---------- 3. Sett sammen ----------
-const skall = ["bygg.html", ...css, ...ikoner, ...moduler, ...vendor].map(f => "/" + f);
+// ---------- 3. Språkfilene ----------
+//
+// js/sprak/en.js, pl.js og lt.js er ~105 kB hver og hentes med import() først
+// når noen velger språket. De skal derfor IKKE i skallet — da hadde alle lastet
+// ned alle tre igjen, som er nettopp det splittingen skulle bli kvitt.
+//
+// Men de skal i VERSJONEN. Ligger de utenfor hashen, gir en rettet oversettelse
+// ingen ny versjon, cachen får stå, og telefonen serverer den gamle teksten fra
+// forrige versjons cache helt til noe annet endrer seg. Derfor står de i en
+// egen liste som service workeren bruker til to ting: å forhåndslagre DET ENE
+// språket telefonen står i, og å kjenne igjen adressene i fetch.
+const sprakfiler = {};
+const sprakMappe = path.join(ROT, "js/sprak");
+if (fs.existsSync(sprakMappe)) {
+  for (const f of fs.readdirSync(sprakMappe).sort()) {
+    if (!f.endsWith(".js")) continue;
+    sprakfiler[f.slice(0, -3)] = "/js/sprak/" + f;
+  }
+}
 
-// Versjonen: hash av innholdet i ALLE filene i skallet, i fast rekkefølge.
-// Filnavnene er med i hashen, så en fil som fjernes gir også ny versjon.
+// ---------- 4. Sett sammen ----------
+const skall = [...new Set(["bygg.html", ...css, ...ikoner, ...vanligeSkript, ...moduler, ...vendor])].map(f => "/" + f);
+const sprakStier = Object.keys(sprakfiler).sort().map(k => sprakfiler[k]);
+
+// Versjonen: hash av innholdet i ALLE filene i skallet OG språkfilene, i fast
+// rekkefølge. Filnavnene er med i hashen, så en fil som fjernes gir også ny
+// versjon.
 const h = crypto.createHash("sha256");
-for (const f of skall) { h.update(f); h.update(fs.readFileSync(path.join(ROT, f.slice(1)))); }
+for (const f of [...skall, ...sprakStier]) { h.update(f); h.update(fs.readFileSync(path.join(ROT, f.slice(1)))); }
 const versjon = h.digest("hex").slice(0, 12);
 
-// ---------- 4. Skriv blokken inn i sw.js ----------
+// ---------- 5. Skriv blokken inn i sw.js ----------
 const START = "// ---- GENERERT BLOKK START (verktoy/lag-sw-liste.mjs) ----";
 const SLUTT = "// ---- GENERERT BLOKK SLUTT ----";
 
@@ -154,6 +185,9 @@ export function byggBlokk() {
     "const SW_VERSJON = \"" + versjon + "\";\n" +
     "const SKALL = [\n" +
     skall.map(f => "  \"" + f + "\"").join(",\n") + "\n];\n" +
+    "// Språkfilene: hentes med import() ved behov, IKKE en del av SKALL.\n" +
+    "const SPRAKFILER = {\n" +
+    Object.keys(sprakfiler).sort().map(k => "  " + k + ": \"" + sprakfiler[k] + "\"").join(",\n") + "\n};\n" +
     SLUTT;
 }
 
@@ -172,10 +206,17 @@ if (kjørtDirekte) {
 
   let bytes = 0;
   for (const f of skall) bytes += fs.statSync(path.join(ROT, f.slice(1))).size;
+  let sprakBytes = 0;
+  for (const f of sprakStier) sprakBytes += fs.statSync(path.join(ROT, f.slice(1))).size;
 
   console.log((endret ? "sw.js OPPDATERT" : "sw.js var allerede i takt") + " — versjon " + versjon);
   console.log("  " + skall.length + " filer, " + Math.round(bytes / 1024) + " kB");
   console.log("    " + moduler.length + " moduler · " + css.length + " css · " + vendor.length + " vendor · 1 html");
+  if (sprakStier.length) {
+    console.log("  + " + sprakStier.length + " språkfiler, " + Math.round(sprakBytes / 1024) + " kB til sammen");
+    console.log("    (" + Object.keys(sprakfiler).sort().join(", ") + " — BARE den telefonen står i forhåndslagres,");
+    console.log("     men alle er med i versjonshashen så en rettet oversettelse gir ny cache)");
+  }
   console.log("\nUTELATT MED VILJE (dette er IKKE forhåndslagret):");
   console.log("  · three-addons utenom GLTFLoader og lines/ — krymping og eksport er skjult i lettmodus");
   console.log("  · vendor/jspdf — rapporten er skjult i lettmodus");
@@ -188,4 +229,4 @@ if (kjørtDirekte) {
   console.log("  · modell, markeringer, bilder og tegninger — de caches ved bruk, ikke ved installasjon");
 }
 
-export { skall, versjon, moduler, css, vendor, START, SLUTT };
+export { skall, sprakfiler, sprakStier, versjon, moduler, css, vendor, START, SLUTT };
