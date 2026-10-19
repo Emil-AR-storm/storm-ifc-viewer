@@ -458,7 +458,8 @@ function tegnHandtak() {
     const L = p.omrader || [], st = L.length ? omradeStatus(p, L) : [];
     L.forEach((o, i) => {
       const y = gulvY + (st[i].gyldig ? st[i].base / s : 0) + loft;
-      padGroup.add(linje(o.punkter, y, st[i].gyldig ? (o.id === valgtOmrade ? omrValgtMat : padLinjeMat) : omrFeilMat, true));
+      // rødt også mens en prikk dras slik at kantene krysser (Emil 19.10)
+      padGroup.add(linje(o.punkter, y, st[i].gyldig && !polyFeil(o.punkter) ? (o.id === valgtOmrade ? omrValgtMat : padLinjeMat) : omrFeilMat, true));
       if (o.id === valgtOmrade && !padTegner && !omrBoksModus)
         o.punkter.forEach((q, k) => nyttHandtak(padGroup, k === valgtOmrPrikk ? "padValgt" : "omr", "o" + k, byggPunkt(q.x, q.z, y)));
     });
@@ -469,7 +470,7 @@ function tegnHandtak() {
       const valgt = f.id === valgtOmrade;
       if (fst[i].gyldig && !valgt) return;
       const y = gulvY + loft + (fst[i].gyldig && harOmr ? omradeDz(om.liste, om.st, f.punkter[0].x, f.punkter[0].z) / s : 0);
-      padGroup.add(linje(f.punkter, y, fst[i].gyldig ? omrValgtMat : omrFeilMat, true));
+      padGroup.add(linje(f.punkter, y, fst[i].gyldig && !polyFeil(f.punkter) ? omrValgtMat : omrFeilMat, true));
       if (valgt && !padTegner && !omrBoksModus)
         f.punkter.forEach((q, k) => nyttHandtak(padGroup, k === valgtOmrPrikk ? "padValgt" : "omr", "o" + k, byggPunkt(q.x, q.z, y)));
     });
@@ -1209,6 +1210,11 @@ window.addEventListener("pointerup", (e) => {
     const til = terreng.pad;
     terreng.pad = d.fra;
     if (likePad(d.fra, til)) { tegnHandtak(); return; }
+    // Emil 19.10: en prikk dratt så kantene krysser hverandre skal IKKE slette
+    // området — prikken går tilbake dit den ble dratt fra, med et varsel
+    const nyO = (til[listeNokkel(d.id)] || []).find(o => o.id === d.id);
+    const feilF = nyO ? polyFeil(nyO.punkter) : "";
+    if (feilF) { varsel(t(feilF) + " " + t("Prikken er satt tilbake.")); oppdaterAlt(); if (erApen()) tegnPanel(); return; }
     settListe(listeNokkel(d.id), til[listeNokkel(d.id)], d.id, "Prikken er satt tilbake.");
   } else if (d.type === "padP") {
     const til = terreng.pad;
@@ -1481,17 +1487,30 @@ function fjernPrikk(i) {
 // ⛰ Ny liste med områder: sjekkes før den tas i bruk. Gjør endringen et
 // område ugyldig (delvis overlapp, utenfor plata, i kanten av et annet),
 // står det som det var, med grunnen i et varsel.
+// Et område som forsvinner i vaskingen (formen ble ugyldig, f.eks. kanter
+// som krysser) skal aldri slettes i stillhet — endringen avvises i stedet.
+function forsvant(liste, v) {
+  const ider = new Set(v.map(o => o.id));
+  const borte = (liste || []).find(o => o && !ider.has(o.id));
+  return borte ? (polyFeil(borte.punkter) || "Formen kan ikke brukes.") : "";
+}
 function settListe(k, liste, id, tilbake) {
   if (k !== "farger") return settOmrader(liste, id, tilbake);
   // 🎨 et fargeområde må bare ligge på plata
-  const p = terreng.pad, v = vaskFarger(liste), st = fargeStatus(p, v), i = v.findIndex(f => f.id === id);
+  const p = terreng.pad, v = vaskFarger(liste);
+  const borte = forsvant(liste, v);
+  if (borte) { varsel(t(borte) + (tilbake ? " " + t(tilbake) : "")); oppdaterAlt(); if (erApen()) tegnPanel(); return false; }
+  const st = fargeStatus(p, v), i = v.findIndex(f => f.id === id);
   if (i >= 0 && !st[i].gyldig) { varsel(t(st[i].grunn) + (tilbake ? " " + t(tilbake) : "")); oppdaterAlt(); if (erApen()) tegnPanel(); return false; }
   settPad(Object.assign({}, p, { farger: v }), true);
   if (erApen()) tegnPanel();
   return true;
 }
 function settOmrader(liste, id, tilbake) {
-  const p = terreng.pad, v = vaskOmrader(liste), st = omradeStatus(p, v);
+  const p = terreng.pad, v = vaskOmrader(liste);
+  const borte = forsvant(liste, v);
+  if (borte) { varsel(t(borte) + (tilbake ? " " + t(tilbake) : "")); oppdaterAlt(); if (erApen()) tegnPanel(); return false; }
+  const st = omradeStatus(p, v);
   const forSt = omradeStatus(p, p.omrader || []);
   // Bare områder som var gyldige før og nå er ugyldige er en feil av DENNE
   // endringen (et område utenfor en plate som er gjort mindre, står som før)
