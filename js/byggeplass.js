@@ -43,7 +43,7 @@ async function nektetTekst(r) {
   const tekst = await r.text().catch(() => "");
   if (r.status === 429) return norsk("For mange forsøk. Prøv igjen om en time.");
   if (/annen bruker/i.test(tekst)) return norsk("Prosjektet tilhører en annen bruker.") +
-    (erAdmin() ? "" : " " + norsk("Er det ditt prosjekt fra før, må administrator gi deg tilgang."));
+    (erAdmin() ? "" : " " + norsk("Er det ditt prosjekt, be administrator legge deg til som eier (Admin → Byggeplass-prosjekter → «+ Eier»)."));
   if (/ikke godkjent/i.test(tekst)) return norsk("Prosjektet ble ikke godkjent av administrator.");
   if (/sperret/i.test(tekst)) return norsk("Kortet ditt er sperret. Ta kontakt for en ny kode.");
   if (erAdmin()) { glemAdminNøkkel(); return norsk("Admin-nøkkelen ble ikke godtatt. Lim den inn på nytt under Innstillinger → Tilgang."); }

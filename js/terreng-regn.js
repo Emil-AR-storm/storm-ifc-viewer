@@ -886,13 +886,33 @@ export function padHoyder(grid, E0, N0, plass, pad, gulvKote) {
   if (!liste.length || !st.some(q => q.gyldig)) return { flagg, hoyder: null };
   const w = grid.w, h = grid.h, dz = new Float32Array(w * h);
   const t = (plass.rot || 0) * RAD, c = Math.cos(t), s = Math.sin(t);
+  // Emil 19.10 (bilde): en smal grop med skrå kant viste kartet midt i
+  // bunnen. Terrenget ble bare senket så dypt som gropa er I PRØVEPUNKTENE
+  // (1 m mellom), og i en smal arm kan gropa være dypere mellom punktene enn
+  // i dem — da stakk terrenget opp gjennom. Nå senkes alt terreng som ligger
+  // inni eller nær en grop til gropas DYPESTE punkt.
+  const R = 1.5 * Math.max(grid.dx, grid.dy);
+  const groper = [];
+  liste.forEach((o, i) => {
+    if (!st[i].gyldig) return;
+    const dyp = Math.min(0, st[i].base, st[i].base + o.dz);
+    if (dyp >= 0) return;
+    const r = polyRamme(o.punkter);
+    groper.push({ p: o.punkter, dyp, x0: r.x0 - R, x1: r.x1 + R, z0: r.z0 - R, z1: r.z1 + R });
+  });
   for (let j = 0; j < h; j++) {
     const N = grid.y0 - (j + 0.5) * grid.dy, lz = -(N - N0 - (plass.pN || 0));
     for (let i = 0; i < w; i++) {
       const k = j * w + i;
       if (!flagg[k]) continue;
       const lx = grid.x0 + (i + 0.5) * grid.dx - E0 - (plass.pE || 0);
-      dz[k] = Math.min(0, omradeDz(liste, st, lx * c + lz * s, -lx * s + lz * c));
+      const bx = lx * c + lz * s, bz = -lx * s + lz * c;
+      let v = Math.min(0, omradeDz(liste, st, bx, bz));
+      for (const g of groper) {
+        if (g.dyp >= v || bx < g.x0 || bx > g.x1 || bz < g.z0 || bz > g.z1) continue;
+        if (iPolygon(g.p, bx, bz) || avstandTilPoly(g.p, bx, bz).d < R) v = g.dyp;
+      }
+      dz[k] = v;
     }
   }
   const hoyder = new Float32Array(w * h);
@@ -942,7 +962,9 @@ function hoydeFelt(o, y0) {
   const pos = new Float32Array(nx * nz * 3), inne = new Uint8Array(nx * nz);
   for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
     const x = Math.min(r.x1, r.x0 + i * st), z = Math.min(r.z1, r.z0 + j * st), k = j * nx + i;
-    inne[k] = iPolygon(o.punkter, x, z) ? 1 : 0;
+    // med også ruter der kanten går gjennom uten at et hjørne er inni (smale
+    // spisser) — ellers ble det hull i plata der (Emil 19.10)
+    inne[k] = iPolygon(o.punkter, x, z) || avstandTilPoly(o.punkter, x, z).d < st * 1.5 ? 1 : 0;
     pos[k * 3] = x; pos[k * 3 + 1] = y0 + omradeProfil(o, x, z); pos[k * 3 + 2] = z;
   }
   const idx = [];

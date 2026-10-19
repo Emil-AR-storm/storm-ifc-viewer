@@ -132,6 +132,7 @@ async function oppdaterAlt() {
 }
 
 let prosjektListe = [];
+let brukerListe = [];        // kortene fra /kort/liste — til «+ Eier»
 async function hentProsjekter() {
   const kropp = $("apProsjekter");
   if (!kropp) return;
@@ -160,12 +161,13 @@ function tegnProsjekter() {
       '<td><b>' + esc(p.prosjekt) + '</b></td><td>' +
         (p.navn ? esc(p.navn) + ' <button type="button" class="ap-navn" data-navn="' + esc(p.prosjekt) + '" title="' + esc(norsk("Bytt navn")) + '">✎</button>'
                 : '<button type="button" class="ap-navn ap-mangler" data-navn="' + esc(p.prosjekt) + '">✎ ' + esc(norsk("Gi navn")) + '</button>') + '</td>' +
-      '<td>' + esc(p.eier) + (p.firma ? ' <span class="ap-dempet">· ' + esc(p.firma) + '</span>' : "") + '</td>' +
+      '<td>' + eierCelle(p) + '</td>' +
       '<td>' + (p.harKode ? esc(norsk("Ja")) : '<span class="ap-dempet">' + esc(norsk("Ikke laget")) + '</span>') + '</td>' +
       '<td>' + merke[p.status] + (p.status === "avsluttet" ? ' <span class="ap-dempet">' + esc(når(p.avsluttetTid)) + '</span>' : "") + '</td>' +
       '<td class="ap-handling"><button type="button" data-nr="' + esc(p.prosjekt) + '" data-aktiv="' + (p.status === "avsluttet" ? "1" : "0") + '"' +
         (p.status === "avsluttet" ? ' class="ap-ok"' : "") + '>' +
         esc(p.status === "avsluttet" ? norsk("▶ Aktiver") : norsk("⏹ Avslutt")) + '</button></td></tr>').join("");
+  kobleEiere(kropp);
   kropp.querySelectorAll("button[data-navn]").forEach(b => {
     b.onclick = async () => {
       const nr = b.dataset.navn, p = prosjektListe.find(x => x.prosjekt === nr) || {};
@@ -186,6 +188,61 @@ function tegnProsjekter() {
         await kall("/admin/prosjekt-aktiv", { json: { prosjekt: nr, aktiv } });
         await hentProsjekter();
       } catch (err) { b.disabled = false; if (err.message !== "403") varsel(norsk("Klarte ikke: ") + err.message); }
+    };
+  });
+}
+
+// 👥 Eiere per prosjekt (Emil 19.10): «Prosjektet tilhører en annen bruker»
+// hadde ingen vei ut. Nå står eierne som små merker med ×, og «+ Eier» gir en
+// liste over brukerne som kan legges til. Alle eierne har samme tilgang.
+// Administrator har alltid tilgang uansett.
+function eierCelle(p) {
+  if (p.status === "venter") return esc(p.eier) + (p.firma ? ' <span class="ap-dempet">· ' + esc(p.firma) + '</span>' : "") +
+    ' <span class="ap-dempet">(' + esc(norsk("godkjenn først")) + ')</span>';
+  const eiere = Array.isArray(p.eiere) && p.eiere.length ? p.eiere : [{ kortId: "admin", navn: p.eier, firma: p.firma }];
+  const enAdmin = eiere.length === 1 && eiere[0].kortId === "admin";
+  return '<div class="ap-eiere">' + eiere.map(e =>
+    '<span class="ap-eier">' + esc(e.navn) + (e.firma ? ' <span class="ap-dempet">· ' + esc(e.firma) + '</span>' : "") +
+    (enAdmin ? "" : ' <button type="button" class="ap-eier-x" data-fjern="' + esc(e.kortId) + '" data-p="' + esc(p.prosjekt) + '" title="' +
+      esc(norsk("Fjern {0} som eier", e.navn)) + '" aria-label="' + esc(norsk("Fjern {0} som eier", e.navn)) + '">×</button>') + '</span>').join("") +
+    ' <button type="button" class="ap-navn ap-eier-pluss" data-leggtil="' + esc(p.prosjekt) + '">+ ' + esc(norsk("Eier")) + '</button></div>';
+}
+
+function kobleEiere(kropp) {
+  kropp.querySelectorAll("button[data-fjern]").forEach(b => {
+    b.onclick = async () => {
+      const nr = b.dataset.p, p = prosjektListe.find(x => x.prosjekt === nr) || {};
+      const e = (p.eiere || []).find(x => x.kortId === b.dataset.fjern) || {};
+      const sist = (p.eiere || []).length === 1;
+      if (!confirm(norsk("Fjerne {0} som eier av {1}?", e.navn || "", nr) + (sist ? " " + norsk("Da blir Admin (Emil) eier.") : ""))) return;
+      b.disabled = true;
+      try { await kall("/admin/prosjekt-eier", { json: { prosjekt: nr, kortId: b.dataset.fjern, fjern: true } }); await hentProsjekter(); }
+      catch (err) { b.disabled = false; if (err.message !== "403") varsel(norsk("Klarte ikke: ") + err.message); }
+    };
+  });
+  kropp.querySelectorAll("button[data-leggtil]").forEach(b => {
+    b.onclick = () => {
+      const nr = b.dataset.leggtil, p = prosjektListe.find(x => x.prosjekt === nr) || {};
+      const har = new Set((p.eiere || []).map(e => e.kortId));
+      const kan = brukerListe.filter(k => !k.sperret && !har.has(k.id));
+      const celle = b.parentElement;
+      if (celle.querySelector(".ap-eier-velg")) return;
+      if (!kan.length) { varsel(norsk("Alle brukerne er allerede eiere. Lag en ny kode under «Lag ny kode» for å gi en ny person tilgang.")); return; }
+      const boks = document.createElement("span");
+      boks.className = "ap-eier-velg";
+      boks.innerHTML = '<select aria-label="' + esc(norsk("Velg bruker")) + '"><option value="">' + esc(norsk("Velg bruker …")) + '</option>' +
+        kan.map(k => '<option value="' + esc(k.id) + '">' + esc(k.navn) + (k.firma ? " · " + esc(k.firma) : "") + '</option>').join("") +
+        '</select> <button type="button" class="ap-ok">' + esc(norsk("Legg til")) + '</button> <button type="button">' + esc(norsk("Avbryt")) + '</button>';
+      celle.appendChild(boks);
+      const [velg, ok, avbryt] = [boks.querySelector("select"), ...boks.querySelectorAll("button")];
+      velg.focus();
+      avbryt.onclick = () => boks.remove();
+      ok.onclick = async () => {
+        if (!velg.value) { velg.focus(); return; }
+        ok.disabled = true;
+        try { await kall("/admin/prosjekt-eier", { json: { prosjekt: nr, kortId: velg.value } }); await hentProsjekter(); }
+        catch (err) { ok.disabled = false; if (err.message !== "403") varsel(norsk("Klarte ikke: ") + err.message); }
+      };
     };
   });
 }
@@ -241,6 +298,7 @@ async function hentBrukere() {
   if (!kropp) return;
   try {
     const j = await (await kall("/kort/liste")).json();
+    brukerListe = j.kort || [];
     const rad = (k) => {
       const type = k.sperret
         ? '<span class="ap-type">' + esc(k.storm ? "Storm" : norsk("Ekstern")) + '</span> <span class="ap-type ap-sperret">' + esc(norsk("Sperret")) + '</span>'
