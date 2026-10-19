@@ -2,6 +2,26 @@
 <html lang="no" data-lett="1">
 <head>
 <meta charset="UTF-8">
+<!-- 🛡 SIKKERHETSPOLICY (CSP, sikkerhetsrunden 19.10). Står så tidlig som mulig:
+     den gjelder bare for det som kommer ETTER den i fila.
+     Poenget: HTML som sniker seg inn (modellnavn, markeringstekst, en fil —
+     f.eks. <img src=x onerror=…>) skal IKKE kunne kjøre kode. Derfor:
+       · ingen onclick="…" eller andre on…-attributter i HTML-en — bruk
+         data-lukk / data-kall (js/html-lyttere.js) eller addEventListener
+       · ingen inline-<script> — legg koden i js/ og last den med src
+       · det ENESTE inline-skriptet er importmap-en nederst. Den er sluppet
+         gjennom med en sha256-hash i script-src.
+     ENDRER DU IMPORTMAP-EN (ett tegn, også mellomrom/linjeskift), MÅ HASHEN
+     I script-src OPPDATERES — ellers nekter nettleseren den og hele appen
+     dør («three» finnes ikke). _test/test-csp.mjs regner hashene ut på nytt,
+     sammenligner med denne linja og skriver riktig verdi hvis den har drevet.
+     Ny vert siden henter data fra (fetch)? Legg den i connect-src.
+     frame-ancestors virker ikke i <meta> — bygg.html får X-Frame-Options fra
+     Workeren.
+     Byggeplassen logger aldri inn (ingen MSAL/Graph): alt går til egen
+     Worker ('self'); geonorge for adressesøket i Prosjektinfo. Endres den,
+     må verktoy/lag-sw-liste.mjs kjøres (bygg.html er i service workeren). -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-F14x9yxveexCNTa0iCPH6z0xZ6i2BdPQ7H+6J/hypHU='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' data: blob: https://storm-byggeplass.emil-46a.workers.dev https://ws.geonorge.no; worker-src 'self'; frame-src 'self'; child-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Storm IFC-Viewer – byggeplass</title>
 <!-- Storm-merket i nettleserfanen og som app-ikon (Emil 11.09: samme som på
@@ -12,12 +32,9 @@
 <link rel="apple-touch-icon" sizes="180x180" href="img/apple-touch-icon.png">
 <meta name="theme-color" content="#11161d">
 <link rel="stylesheet" href="css/storm.css">
-<script>
-// Temaet settes FØR stilarket rekker å male, ellers blinker mørk flate i lyst
-// tema. js/tema.js gjør resten (knappen og lagringen).
-(function(){var v="mork";try{var g=localStorage.getItem("storm.tema");
-if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;})();
-</script>
+<!-- Temaet settes FØR stilarket rekker å male (se fila). Vanlig skript, ikke
+     modul/async/defer — ellers blinker det. -->
+<script src="js/tema-tidlig.js"></script>
 <style>
 /* LETTMODUS: knapper som ikke skal brukes på byggeplassen SKJULES her.
    De skal ALDRI fjernes fra HTML-en – åtte moduler fester lyttere på dem
@@ -294,83 +311,83 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
 
 <div class="panel" id="propPanel">
   <!-- 📋 Byggeplass: stripa viser type + navn, pila åpner resten (js/prop-kompakt.js) -->
-  <header><span class="prop-hode"><span id="propTitle">Egenskaper</span><span id="propNavn"></span></span><button id="propUtvid" class="prop-utvid" aria-expanded="false" title="Vis alle egenskaper"><svg class="ikon"><use href="#i-neste"/></svg></button><button onclick="document.getElementById('propPanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <header><span class="prop-hode"><span id="propTitle">Egenskaper</span><span id="propNavn"></span></span><button id="propUtvid" class="prop-utvid" aria-expanded="false" title="Vis alle egenskaper"><svg class="ikon"><use href="#i-neste"/></svg></button><button data-lukk="propPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="propBody"></div>
 </div>
 
 <div class="panel" id="commentPanel">
-  <header><span data-i18n>Markeringer</span><button onclick="document.getElementById('commentPanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <header><span data-i18n>Markeringer</span><button data-lukk="commentPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="commentBody"></div>
 </div>
 
 <div class="panel" id="framdriftPanel">
-  <header><span data-i18n>Framdriftsplan</span><button onclick="document.getElementById('framdriftPanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <header><span data-i18n>Framdriftsplan</span><button data-lukk="framdriftPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="framdriftBody"></div>
 </div>
 
 <div class="panel" id="stopePanel">
-  <header><span data-i18n>Støpeplan</span><button onclick="document.getElementById('stopePanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <header><span data-i18n>Støpeplan</span><button data-lukk="stopePanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="stopeBody"></div>
 </div>
 <div class="panel" id="grupperPanel">
-  <header><span data-i18n>Grupper</span><button onclick="document.getElementById('grupperPanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <header><span data-i18n>Grupper</span><button data-lukk="grupperPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="grupperBody"></div>
 </div>
 
 <div class="panel" id="materiellPanel">
-  <header><span data-i18n>Materiell</span><button onclick="document.getElementById('materiellPanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <header><span data-i18n>Materiell</span><button data-lukk="materiellPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="materiellBody"></div>
 </div>
 
 <div class="panel" id="qtyPanel">
-  <header><span data-i18n>Mengder</span><button onclick="document.getElementById('qtyPanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <header><span data-i18n>Mengder</span><button data-lukk="qtyPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="qtyBody"></div>
 </div>
 
 <div class="panel" id="libPanel">
-  <header><span data-i18n>Modellbibliotek</span><button onclick="document.getElementById('libPanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <header><span data-i18n>Modellbibliotek</span><button data-lukk="libPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="libBody"></div>
 </div>
 
 <div class="panel" id="colorPanel">
-  <header><span data-i18n>Utseende</span><button onclick="document.getElementById('colorPanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <header><span data-i18n>Utseende</span><button data-lukk="colorPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="colorBody"></div>
 </div>
 
 <div class="panel" id="axesPanel">
-  <header><span data-i18n>Aksesystem</span><button onclick="document.getElementById('axesPanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <header><span data-i18n>Aksesystem</span><button data-lukk="axesPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="axesBody"></div>
 </div>
 
 <div class="panel" id="comparePanel">
-  <header><span data-i18n>Sammenlign versjoner</span><button onclick="document.getElementById('comparePanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <header><span data-i18n>Sammenlign versjoner</span><button data-lukk="comparePanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="compareBody"></div>
 </div>
 
 <div class="panel" id="sharePanel">
-  <header><span data-i18n>Del visning</span><button onclick="document.getElementById('sharePanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <header><span data-i18n>Del visning</span><button data-lukk="sharePanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="shareBody"></div>
 </div>
 
 <div class="panel" id="clipPanel">
-  <header><span data-i18n>Snitt-boks</span><button onclick="document.getElementById('clipPanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <header><span data-i18n>Snitt-boks</span><button data-lukk="clipPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="clipBody"></div>
 </div>
 
 <div class="panel" id="searchPanel">
-  <header><span data-i18n>Elementsøk</span><button onclick="document.getElementById('searchPanel').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <header><span data-i18n>Elementsøk</span><button data-lukk="searchPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="searchBody"></div>
 </div>
 
 <div id="setMenu">
-  <header><span data-i18n>Innstillinger</span><button onclick="document.getElementById('setMenu').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <header><span data-i18n>Innstillinger</span><button data-lukk="setMenu" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="setBody"></div>
 </div>
 
 <!-- Nedlastingsmenyen for statusrapporten. Ligger i BEGGE HTML-filene og
      skjules med CSS i bygg.html — rapporten er et kontorverktøy. -->
 <div id="rapMeny">
-  <header><span data-i18n>Last ned PDF</span><button onclick="document.getElementById('rapMeny').classList.remove('open')" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <header><span data-i18n>Last ned PDF</span><button data-lukk="rapMeny" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body">
     <button class="rap-valg" data-utgave="full">
       <b data-i18n>Fullstendig</b><span data-i18n>hele kommentartråden – til arkiv og analyse</span>
@@ -407,8 +424,8 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
     <label class="cd-ingenfrist"><input type="checkbox" id="commentNoDue"> <span data-i18n>ingen frist</span></label>
   </div>
   <div class="actions">
-    <button onclick="cancelComment()" data-i18n>Avbryt</button>
-    <button class="primary" onclick="saveComment()" data-i18n>Lagre</button>
+    <button data-kall="cancelComment" data-i18n>Avbryt</button>
+    <button class="primary" data-kall="saveComment" data-i18n>Lagre</button>
   </div>
 </div>
 
@@ -450,20 +467,8 @@ if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;
      Finnes IKKE i index.html: der sitter prosjektlederen på kabel. -->
 <div id="nettBanner" style="display:none"></div>
 
-<script>
-// Fanger feil og viser dem på skjermen (nyttig på mobil uten konsoll)
-window.addEventListener("error", function(e) {
-  var s = document.getElementById("status");
-  var hvor = e.filename ? " [" + e.filename.split("/").pop() + ":" + e.lineno + "]" : "";
-  if (s) s.textContent = "Feil: " + (e.message || "ukjent") + hvor;
-});
-window.addEventListener("unhandledrejection", function(e) {
-  var s = document.getElementById("status");
-  var m = e.reason && e.reason.stack && /([A-Za-z0-9_.-]+\.m?js:\d+)/.exec(e.reason.stack);
-  if (s) s.textContent = "Feil: " + (e.reason && e.reason.message ? e.reason.message : e.reason) +
-    (m ? " [" + m[1] + "]" : "");
-});
-</script>
+<!-- Fanger feil og viser dem på skjermen (nyttig på mobil uten konsoll). -->
+<script src="js/feilfanger.js"></script>
 <!-- 3D-motoren ligger i vårt eget repo, ikke på et CDN.
      Grunnen: import maps kan ikke ha integrity-hash, så en fil hentet fra
      jsDelivr her ville vært den ENESTE avhengigheten uten noen sperre — MSAL
@@ -483,6 +488,8 @@ window.addEventListener("unhandledrejection", function(e) {
 
      Minifisert build med vilje: 655 kB mot 1243 kB. Ingen feilsøker inne i
      three, og montøren betaler forskjellen på dårlig dekning. -->
+<!-- 🛡 Hashen av innholdet under står i Content-Security-Policy øverst i
+     <head>. Endrer du ett tegn her, må den regnes ut på nytt (_test/test-csp.mjs). -->
 <script type="importmap">
 {"imports":{
   "three": "./vendor/three-0.160.0/three.module.min.js",

@@ -2,15 +2,15 @@
 <html lang="no">
 <head>
 <meta charset="UTF-8">
+<!-- 🛡 SIKKERHETSPOLICY (CSP, 19.10): ingen inline-skript eller on…-attributter her. Se index.html for forklaringen. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Vilkår for bruk – Storm IFC</title>
 <link rel="icon" type="image/svg+xml" href="img/favicon.svg">
 <link rel="stylesheet" href="css/storm.css">
-<script>
-// Samme tema som kontorsiden (js/tema.js lagrer valget)
-(function(){var v="mork";try{var g=localStorage.getItem("storm.tema");
-if(g==="lys"||g==="mork")v=g;}catch(e){}document.documentElement.dataset.tema=v;})();
-</script>
+<!-- Temaet settes FØR stilarket rekker å male (se fila). Vanlig skript, ikke
+     modul/async/defer — ellers blinker det. -->
+<script src="js/tema-tidlig.js"></script>
 <style>
   /* 📜 Vilkår for bruk (post 11, steg 2). Teksten er utkastet fra 14.10.2026,
      «Storm IFC-Viewer vilkaar for bruk UTKAST 2026-10-14.md», uten merknadene

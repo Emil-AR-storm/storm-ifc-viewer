@@ -36,13 +36,15 @@
 
 // ---- GENERERT BLOKK START (verktoy/lag-sw-liste.mjs) ----
 // IKKE REDIGER FOR HÅND. Kjør: node "verktoy/lag-sw-liste.mjs"
-const SW_VERSJON = "af2bb248dfcb";
+const SW_VERSJON = "ae80922e2de5";
 const SKALL = [
   "/bygg.html",
   "/css/storm.css",
   "/img/favicon.svg",
   "/img/favicon-32.png",
   "/img/apple-touch-icon.png",
+  "/js/tema-tidlig.js",
+  "/js/feilfanger.js",
   "/js/angre.js",
   "/js/apning.js",
   "/js/axes.js",
@@ -61,6 +63,7 @@ const SKALL = [
   "/js/grupper.js",
   "/js/hjelp.js",
   "/js/hjul.js",
+  "/js/html-lyttere.js",
   "/js/i18n.js",
   "/js/ifc.js",
   "/js/ifcrpc.js",
