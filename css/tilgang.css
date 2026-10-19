@@ -236,4 +236,10 @@ button.ap-ok { background: var(--ok); border-color: var(--ok); color: #fff; font
 .ap-type.ap-venter-merke { border-color: var(--warn); color: var(--warn); }
 .ap-prosjekter .ap-rad-sperret td:nth-child(5) { text-decoration: none; }
 .ap-navn { font-size: 11px; padding: 1px 6px; margin-left: 4px; background: transparent; color: var(--muted); }
+.ap-eiere { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.ap-eier { display: inline-flex; align-items: center; gap: 2px; padding: 1px 2px 1px 8px; border: 1px solid var(--line, #3a3f46); border-radius: 12px; white-space: nowrap; }
+.ap-eier-x { background: transparent; border: none; color: var(--muted); font-size: 15px; line-height: 1; padding: 0 6px; cursor: pointer; }
+.ap-eier-x:hover { color: var(--warn); }
+.ap-eier-pluss { margin-left: 0; }
+.ap-eier-velg { display: inline-flex; gap: 4px; align-items: center; flex-wrap: wrap; }
 .ap-navn.ap-mangler { color: var(--warn); border-color: var(--warn); margin-left: 0; }
