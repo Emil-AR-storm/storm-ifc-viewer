@@ -15,7 +15,7 @@ import * as THREE from "three";
 import { beslagBunker, blikkListe, hjorneYtre, justerListe, slaSammenTotaler, utsparingSider, BLIKK_RADER } from "../sw-blikk.js";
 import { avsluttBlikkJuster, blikkJust, blikkLagringsTekst, blikkPa, blikkTilstand, fjernBlikk,
          genererBlikk, husBlikkMesh, lagreBlikkResultat, lastInnBlikkResultat, lesBlikkLagrede,
-         nullstillBlikkMesh, slettBlikkResultat, startBlikkJuster } from "./blikk-just.js";
+         nullstillBlikkMesh, slettBlikkResultat, startBlikkJuster, blikkBunkeIderAlle } from "./blikk-just.js";
 import { tilMm, tilScene } from "./regler.js";
 import { lagret, oppsett, swGroup, skrivLagret } from "./tilstand.js";
 import { foldSeksjoner, innerData, tegnPanel } from "./panel.js";
@@ -336,8 +336,14 @@ function benFor(id, standard) {
 // tegnPanel i panel.js). Funksjonen står igjen fordi andre deler kaller den.
 export function oppdaterBlikkKnapp() {}
 
+// 📊 Blikkets egne bunker (rundt bygget) er det samme blikket som står på
+// veggene. Når blikket på bygget telles i Mengder, holdes bunkene utenfor
+// (materiell-vis.js) — samme regel som TRP- og stålbunkene (12.10).
+S.blikkBunkeIder = () => blikkBunkeIderAlle(S.materiell);   // også bunker som har mistet koblingen (19.10)
+
 // Alt blikket tegnet opp i swGroup. Kalles fra tegnDelA() etter veggene.
 export function tegnBlikk() {
+  S.qtyCache = null;              // 📊 blikket i Mengder følger det som er tegnet (12.10)
   oppdaterBlikkKnapp();
   nullstillBlikkMesh();
   const sk = skjulNaa();
@@ -520,7 +526,7 @@ export function beslagBunkeMal(form, b, veggTykkMm) {
 export function byggBlikkStabler() {
   if (!lagret) return;
   const bt = blikkTilstand();
-  const forrige = lesStabelPosisjonerAlle(S.materiell, new Set(bt.materiellIder || []));
+  const forrige = lesStabelPosisjonerAlle(S.materiell, blikkBunkeIderAlle(S.materiell));
   fjernBlikkMateriell();
   if (!blikkPa()) return;
   const data = blikkDeler();
@@ -562,7 +568,9 @@ export function byggBlikkStabler() {
 // Rydder BARE blikkets egne bunker, på ID — et beslag Emil selv har lagt inn
 // i Materiell skal aldri forsvinne fordi blikket ble generert på nytt.
 export function fjernBlikkMateriell() {
-  const ider = new Set((lagret && lagret.blikk && lagret.blikk.materiellIder) || []);
+  // 19.10: også blikkbunker som har mistet koblingen (BLK-…). Før ble de
+  // liggende igjen ved en ny generering, og det kom en ny bunke ved siden av.
+  const ider = blikkBunkeIderAlle(S.materiell);
   if (!ider.size) return;
   const foer = (S.materiell || []).length;
   S.materiell = (S.materiell || []).filter(p => !ider.has(p.id));
@@ -726,7 +734,7 @@ export function koblBlikkHandlinger(body) {
   if ($("blikkListe")) $("blikkListe").onclick = lastNedBlikkListe;
   if ($("blikkFjern")) $("blikkFjern").onclick = () => {
     // Bunkene ryddes FØR tilstanden nullstilles: id-ene bor der.
-    const ider = ((lagret && lagret.blikk && lagret.blikk.materiellIder) || []).slice();
+    const ider = [...blikkBunkeIderAlle(S.materiell)];
     if (!fjernBlikk()) return;
     if (ider.length) {
       S.materiell = (S.materiell || []).filter(p => ider.indexOf(p.id) === -1);

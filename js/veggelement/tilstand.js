@@ -987,8 +987,15 @@ export function lastInnResultat(navn) {
   const post = lesLagrede().find(p => p.navn === navn);
   if (!post || !post.data) return;
   fjernGenerertMateriell();
+  // 🩹 19.10: taket og blikkets bunker hører ikke til SW-resultatet. Før
+  // forsvant `tak` helt og blikkets kobling til bunkene ble byttet med den
+  // gamle fra resultatet — bunkene ble stående uten kobling, og
+  // Framdriftsplanen brukte dem aldri opp.
+  const foerTak = lagret && lagret.tak, foerBlikkIder = (lagret && lagret.blikk && lagret.blikk.materiellIder) || [];
   lagret = JSON.parse(JSON.stringify(post.data));
   lagret.materiellIder = [];
+  if (foerTak && !lagret.tak) lagret.tak = foerTak;
+  if (lagret.blikk) lagret.blikk.materiellIder = foerBlikkIder.slice();
   oppsett();                 // migrerer et oppsett lagret av en eldre versjon
   loesAlleJusteringer();
   byggAlleStabler();

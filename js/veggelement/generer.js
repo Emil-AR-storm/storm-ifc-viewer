@@ -16,6 +16,7 @@ import { t } from "../i18n.js";
 import { lastNedXlsxFlere } from "../elements.js";
 import { materiellListe, materiellRader } from "../sw-materiell.js";
 import { blikkArk } from "./blikk.js";
+import { erGenerertBlikkBunke } from "./blikk-just.js";
 import { takArk } from "./tak.js";
 import { lagreMateriellLokalt, tegnMateriell, vaskMateriell } from "../materiell-vis.js";
 import { stabelNokkel as stabelNokkel_ } from "./bunker.js";
@@ -845,6 +846,13 @@ function beholdTakOgOppsett() {
 
 export function fjernAltGenerert() {
   fjernGenerertMateriell();
+  // 19.10: blikket nullstilles under — da må blikkets bunker (BLK-…) også bort,
+  // ellers ble de stående uten kobling.
+  {
+    const foer = (S.materiell || []).length;
+    S.materiell = (S.materiell || []).filter(p => !erGenerertBlikkBunke(p) && !((lagret && lagret.blikk && lagret.blikk.materiellIder) || []).includes(p.id));
+    if (S.materiell.length !== foer) { tegnMateriell(); lagreMateriellLokalt(); S.qtyCache = null; }
+  }
   const o = oppsett();
   settLagret({ oppsett: o, vegger: [], gulv: null, ringmur: null, materiellIder: [],
                blikk: { pa: false, just: {}, ekstra: [], nesteNr: 1 }, ...beholdTakOgOppsett() });

@@ -40,6 +40,21 @@ export const BLIKK_STD_TILSTAND = { pa: false, just: {}, ekstra: [], nesteNr: 1,
 // det i det hele tatt — der var blikket alltid på, så `pa` settes til true når
 // det finnes veggelement, ellers hadde blikket forsvunnet for alle som
 // allerede bruker det.
+// 🩹 Emil 19.10: «blikk materielle bunker forsvinner ikke ettersom de blir
+// lastet inn montert versjon i framdriftsplan». Årsaken: koblingen
+// bunke → blikk (`lagret.blikk.materiellIder`) var tom, selv om bunkene sto der.
+// Flere veier nullstilte den uten å ta bunkene med (et lagret blikk- eller
+// SW-resultat lastet inn, «Fjern alt» i SW-generatoren). Bunkene som
+// «Generer blikk» lager, har ALLTID id «BLK-…» og maltype beslag — ingen
+// andre lager slike id-er, så de kjennes igjen også når lista er borte.
+// Et beslag Emil har lagt inn selv i Materiell har en annen id og røres ikke.
+export const erGenerertBlikkBunke = (p) => !!(p && p.maltype === "beslag" && /^BLK-/.test(String(p.id || "")));
+export function blikkBunkeIderAlle(materiell) {
+  const ut = new Set((lagret && lagret.blikk && lagret.blikk.materiellIder) || []);
+  for (const p of materiell || []) if (erGenerertBlikkBunke(p)) ut.add(p.id);
+  return ut;
+}
+
 export function blikkTilstand() {
   if (!lagret) return { ...BLIKK_STD_TILSTAND };
   if (!lagret.blikk || typeof lagret.blikk !== "object")
@@ -189,7 +204,11 @@ export function lastInnBlikkResultat(navn, settOppsett, etterpa) {
   if (!post || !post.data || !lagret) return;
   const d = JSON.parse(JSON.stringify(post.data));
   if (d.oppsett && settOppsett) settOppsett(d.oppsett);
-  lagret.blikk = { ...BLIKK_STD_TILSTAND, ...(d.blikk || {}), pa: true };
+  // Koblingen til bunkene som står ute NÅ beholdes — ikke den som lå i det
+  // lagrede resultatet (den pekte på bunker som er borte). Bunkene lages på
+  // nytt av `etterpa` (byggBlikkStabler), som rydder de gamle.
+  const naaIder = (lagret.blikk && lagret.blikk.materiellIder) || [];
+  lagret.blikk = { ...BLIKK_STD_TILSTAND, ...(d.blikk || {}), pa: true, materiellIder: naaIder.slice() };
   skrivLagret();
   tegnAlt();
   if (etterpa) etterpa();

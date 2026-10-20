@@ -597,6 +597,7 @@ function merkPlate(data, flate, naa, kode, legg) {
 }
 
 export function tegnTak() {
+  S.qtyCache = null;              // 📊 platene i Mengder følger det som er tegnet
   const sk = skjulNaa();
   if (sk.tak) return;
   if (!takPa()) return;
@@ -720,24 +721,32 @@ export function takMengdeRader() {
   try { data = takData(); } catch (_) { data = null; }
   if (!data || !data.liste || !(data.liste.plater || []).length) return [];
   const mat = t(TAK_MATERIALE);
+  const koder = new Map();
+  for (const pl of data.liste.plater) koder.set(pl.navn, pl.kode);
   const ut = [];
-  for (const pl of data.liste.plater) {
-    const L = (Number(pl.lengdeMm) || 0) / 1000, B = (Number(pl.breddeMm) || 0) / 1000;
-    for (let i = 0; i < (pl.antall || 0); i++) {
+  // Platene gås gjennom SLIK tegnTak gjør, så id-en blir den samme som
+  // platas mesh har (userData.trpId). Da kan «Vis i modellen» og
+  // velgemodusen i 💰 Priskalkulasjon peke på nøyaktig denne plata.
+  (data.medPlater || []).forEach((f, fi) => {
+    if (!f) return;
+    for (const rad of (f.rader || [])) for (const p of (rad.plater || [])) {
+      const navn = plateNokkel(p.lengdeMm, rad.breddeMm, p);
+      const kode = koder.get(navn) || "";
+      const L = (Number(p.lengdeMm) || 0) / 1000, B = (Number(rad.breddeMm) || 0) / 1000;
       ut.push({
-        id: "tak:" + pl.kode + ":" + (i + 1),
-        key: pl.navn + " · " + mat, name: pl.kode + " · " + pl.navn, objType: pl.navn,
+        id: "tak:" + (p.id || plateId(fi, rad, p)),
+        key: navn + " · " + mat, name: (kode ? kode + " · " : "") + navn, objType: navn,
         type: "Takplate", material: mat,
         L, B, H: 0, len: L, vol: 0, area: L * B, flate: L * B, forskaling: 0,
         kg: 0, kgGeo: 0, kjentVekt: false, umuligVolum: false,
         vektKilde: "", profil: "", nomKgPerM: 0, avvik: null
       });
     }
-  }
+  });
   return ut;
 }
 S.takMengdeRader = takMengdeRader;
-S.takBunkeIder = () => new Set((lagret && lagret.tak && lagret.tak.materiellIder) || []);
+S.takBunkeIder = () => takBunkeIderAlle();
 
 // ───────────────── 📦 TRP-BUNKENE RUNDT BYGGET ─────────────────
 //
@@ -751,7 +760,7 @@ S.takBunkeIder = () => new Set((lagret && lagret.tak && lagret.tak.materiellIder
 export function byggTakStabler() {
   if (!lagret) return;
   const tt = takTilstand();
-  const forrige = lesStabelPosisjonerAlle(S.materiell, new Set(tt.materiellIder || []));
+  const forrige = lesStabelPosisjonerAlle(S.materiell, takBunkeIderAlle());
   fjernTakMateriell();
   if (!takPa()) return;
   const data = takData();
@@ -793,8 +802,17 @@ function fasadeForBunker() {
 // Rydder BARE takets egne bunker, og gjør det på ID — aldri på navnet. En
 // TRP-bunke Emil har lagt inn selv i Materiell heter gjerne «TRP 6000» den
 // også, og den skal ikke forsvinne fordi taket ble generert på nytt.
+// 19.10: «Generer tak» lager alltid id «TRP-…» (Materiell lager «M-…»), så
+// takbunker som har mistet koblingen kjennes igjen og ryddes også.
+export const erGenerertTakBunke = (p) => !!(p && p.maltype === "trp" && /^TRP-/.test(String(p.id || "")));
+function takBunkeIderAlle() {
+  const ut = new Set((lagret && lagret.tak && lagret.tak.materiellIder) || []);
+  for (const p of S.materiell || []) if (erGenerertTakBunke(p)) ut.add(p.id);
+  return ut;
+}
+
 export function fjernTakMateriell() {
-  const ider = new Set((lagret && lagret.tak && lagret.tak.materiellIder) || []);
+  const ider = takBunkeIderAlle();
   if (!ider.size) return;
   const foer = (S.materiell || []).length;
   S.materiell = (S.materiell || []).filter(p => !ider.has(p.id));
