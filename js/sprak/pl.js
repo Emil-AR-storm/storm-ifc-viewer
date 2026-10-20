@@ -2661,4 +2661,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Aksekilde endret": "Zmieniono źródło osi",
   "Akser på": "Osie włączone",
   "Akser av": "Osie wyłączone",
+  // ↩ Angre for markeringer
+  "Markering plassert": "Znacznik umieszczony",
+  "Markering slettet": "Znacznik usunięty",
 };

@@ -2661,4 +2661,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Aksekilde endret": "Ašių šaltinis pakeistas",
   "Akser på": "Ašys įjungtos",
   "Akser av": "Ašys išjungtos",
+  // ↩ Angre for markeringer
+  "Markering plassert": "Žymė padėta",
+  "Markering slettet": "Žymė ištrinta",
 };

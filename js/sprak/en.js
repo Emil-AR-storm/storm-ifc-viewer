@@ -2661,4 +2661,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Aksekilde endret": "Grid source changed",
   "Akser på": "Grid lines on",
   "Akser av": "Grid lines off",
+  // ↩ Angre for markeringer
+  "Markering plassert": "Marker placed",
+  "Markering slettet": "Marker deleted",
 };
