@@ -72,6 +72,31 @@ export function fristTilISO(dato) {
 export const planUrl = () =>
   "https://planner.cloud.microsoft/webui/plan/" + PLANNER.planId + "/view/board";
 
+// 🔒 Oppgavelenka (c.taskUrl) ligger i den DELTE markeringsfila i SharePoint,
+// og den åpnes når noen trykker «Åpne i Planner». Alle som kan skrive i fila
+// kan altså bestemme hvor knappen sender kollegaen. https alene holder ikke —
+// da kunne lenka gått til en falsk Microsoft-innlogging. Derfor bare Planners
+// egne verter: planner.cloud.microsoft er det planUrl() over lager i dag, og
+// tasks.office.com er Planners eldre adresse som eldre markeringer kan ha.
+// Ingen jokertegn: et *.office.com ville sluppet inn mye mer enn Planner.
+const PLANNER_VERTER = new Set(["planner.cloud.microsoft", "tasks.office.com"]);
+export function erPlannerUrl(u) {
+  try {
+    const x = new URL(String(u || ""));
+    return x.protocol === "https:" && !x.username && !x.password && PLANNER_VERTER.has(x.hostname.toLowerCase());
+  } catch (_) { return false; }
+}
+
+// Åpner Planner i ny fane UTEN window.opener: ellers kunne siden i den nye
+// fanen styrt appens fane (window.opener.location = falsk innlogging —
+// «reverse tabnabbing»), og noreferrer holder prosjektadressen ute av
+// Referer-hodet. Lenker som ikke er Planner, faller tilbake til tavla vår.
+export function aapnePlanner(u) {
+  const url = erPlannerUrl(u) ? String(u) : planUrl();
+  const f = window.open(url, "_blank", "noopener,noreferrer");
+  if (f) try { f.opener = null; } catch (_) {}
+}
+
 // Oppretter oppgaven. assignees = liste med Entra objekt-ID-er (GUID), ikke e-post.
 export async function opprettOppgave(token, { title, dueISO, description, assignees }) {
   const body = {

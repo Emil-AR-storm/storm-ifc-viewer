@@ -18,6 +18,7 @@
 import { $, esc } from "./state.js";
 import { TJENESTER } from "./config.js";
 import { varsel } from "./varsel.js";
+import { csvTrygg } from "./csv.js";
 import { adminNøkkel, loggUtAdmin, oppdaterAdminKnapp, VILKAR_VERSJON } from "./tilgang.js";
 import { qrDataUrl } from "./qr.js";
 
@@ -1154,8 +1155,7 @@ function loggTilExcel(nr) {
   const m = loggMinne.get(nr);
   if (!m || !m.rader.length) return varsel(norsk("Loggen er tom."));
   const celle = (v) => {
-    let t = String(v === undefined || v === null ? "" : v);
-    if (/^[=+\-@]/.test(t)) t = "'" + t;          // ingen formler fra loggen inn i Excel
+    const t = csvTrygg(v);                        // ingen formler fra loggen inn i Excel (csv.js)
     return '"' + t.replace(/"/g, '""') + '"';
   };
   const linjer = [["Tid", "OK", "Hva", "Hvem", "Gruppe", "Detalj"].map(celle).join(";")];

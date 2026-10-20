@@ -13,6 +13,7 @@ import { axesGroup, camera, canvas, controls, flyTil, grid, koteGroup, markerGro
 import { materiellGroup, materiellTypeLabel, oppdaterMateriellValgEffekt } from "./materiell-vis.js";
 import { skjulMaal, vekselMaal } from "./maal.js";
 import { varsel } from "./varsel.js";
+import { csvCelle, tsvCelle } from "./csv.js";
 
 const selMat = new THREE.MeshLambertMaterial({ color: 0x3b82f6, emissive: 0x1d4ed8, side: THREE.DoubleSide });
 
@@ -1629,13 +1630,10 @@ export function qtyForType(cache, type, mat) {
 // blir riktig. Da åpner fila rett i Excel uten importveiviser.
 const nb = (n, d) => (Number(n) || 0).toFixed(d === undefined ? 3 : d).replace(".", ",");
 
-function csvCell(v) {
-  const s = String(v == null ? "" : v);
-  return /[;"\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-}
-
+// Cellene vaskes i csv.js: IFC-navn kommer fra modellen, og et navn som
+// begynner med «=» skal ikke bli en formel i Excel. Tall slipper urørt.
 export function toCsv(rows) {
-  return rows.map(r => r.map(csvCell).join(";")).join("\r\n");
+  return rows.map(r => r.map(csvCelle).join(";")).join("\r\n");
 }
 
 function download(name, text, mime) {
@@ -1963,7 +1961,8 @@ function renderQuantities(full) {
     t("Mengder per element"), qtyElementRows(cache)).catch(arkFeil);
   $("qtyCopy").onclick = async () => {
     // tabulator lar deg lime rett inn i celler i et åpent ark
-    const tsv = qtyGroupRows(cache).map(r => r.join("\t")).join("\r\n");
+    // Innliming tolker også «=…» som formel, så cellene vaskes som i CSV-en.
+    const tsv = qtyGroupRows(cache).map(r => r.map(tsvCelle).join("\t")).join("\r\n");
     try {
       await navigator.clipboard.writeText(tsv);
       $("qtyCopy").textContent = t("Kopiert");

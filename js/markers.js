@@ -14,7 +14,7 @@ import { tegnMarkering } from "./markerbilde.js";
 // som viser seg som «svart minikart bare på mobil».
 import { finnNevnte, koblNevning, nevnKandidater, nevningHtml } from "./nevning.js";
 import { fmtTid, lydStottes, startOpptak } from "./lyd.js";
-import { fristTilISO, fullforOppgave, opprettOppgave, planUrl, plannerToken } from "./planner.js";
+import { aapnePlanner, erPlannerUrl, fristTilISO, fullforOppgave, opprettOppgave, plannerToken } from "./planner.js";
 import { setMode } from "./modes.js";
 import { camera, controls, frameHooks, markerGroup, meldLapp, omradeGroup, raycaster, renderer } from "./scene.js";
 import { GRAPH, SP, authHeaders, graphGet, spTokenSilent } from "./sharepoint.js";
@@ -453,8 +453,9 @@ export function vaskMarkering(r) {
   if (c.due && !/^\d{4}-\d{2}-\d{2}$/.test(c.due)) c.due = "";
   // 🎨 egen farge: bare en gyldig #rrggbb slipper gjennom (se vaskFarge)
   { const f = vaskFarge(r.farge); if (f) c.farge = f; }
-  // oppgavelenka åpnes med window.open – slipp bare gjennom https
-  if (c.taskUrl && !/^https:\/\//i.test(c.taskUrl)) delete c.taskUrl;
+  // oppgavelenka åpnes med window.open – slipp bare gjennom https-lenker til
+  // Planner selv (erPlannerUrl i planner.js), ikke en hvilken som helst side
+  if (c.taskUrl && !erPlannerUrl(c.taskUrl)) delete c.taskUrl;
   if (Array.isArray(r.bilder)) c.bilder = r.bilder.filter(b => typeof b === "string");
   if (Array.isArray(r.bilderEtter)) c.bilderEtter = r.bilderEtter.filter(b => typeof b === "string");
   // Talemeldinger (N5). Navnet vaskes hardt: bare filnavnet, aldri en sti.
@@ -1884,7 +1885,7 @@ export function openMarkerPopup(c) {
   // hver gang skrives markeringene til SharePoint.
   if (fargeFelt) fargeFelt.onchange = (e) => updateComment(c, { farge: vaskFarge(e.target.value) });
   if (el.querySelector(".mp-task")) el.querySelector(".mp-task").onclick = () => sendTilPlanner([c]);
-  if (el.querySelector(".mp-open")) el.querySelector(".mp-open").onclick = () => window.open(c.taskUrl || planUrl(), "_blank");
+  if (el.querySelector(".mp-open")) el.querySelector(".mp-open").onclick = () => aapnePlanner(c.taskUrl);
   el.querySelector(".mp-del").onclick = () => { deleteComment(c.id); closeMarkerPopup(); };
   el.querySelectorAll(".mp-bilder input[type=file]").forEach(inp => {
     inp.onchange = () => {
@@ -2574,7 +2575,7 @@ async function sendTilPlanner(list) {
     if (popFor) openMarkerPopup(popFor);
     loadingEl.classList.remove("open");
     if (confirm(t("{0} opprettet i Planner.\n\nÅpne Planner-tavla nå?",
-        laget + " " + (laget === 1 ? t("oppgave") : t("oppgaver"))))) window.open(planUrl(), "_blank");
+        laget + " " + (laget === 1 ? t("oppgave") : t("oppgaver"))))) aapnePlanner();
   } catch (err) {
     loadingEl.classList.remove("open");
     const m = /403|Forbidden/.test(err.message)

@@ -19,6 +19,7 @@ import { S, loadingEl, loadingText } from "./state.js";
 import { t } from "./i18n.js";
 import { HASTEGRAD, HASTEGRAD_REKKE, dagerTil, hastegrad, iDagISO } from "./frist.js";
 import { varsel } from "./varsel.js";
+import { csvCelle } from "./csv.js";
 
 // 4.2.1 (sikkerhetsrunden 19.10): 2.5.2 hadde kjente feil (ReDoS i addImage m.fl.)
 export const JSPDF_URL = "vendor/jspdf-4.2.1.umd.min.js";
@@ -268,10 +269,10 @@ export const CSV_KOLONNER = ["Nr", "ID", "Sak", "Status", "Hastegrad", "Ansvarli
   "Dager til frist", "Opprettet", "Opprettet av", "Antall svar", "Antall bilder",
   "Antall talemeldinger", "Siste svar", "Siste svar av", "Planner"];
 
-function csvFelt(v) {
-  const s = String(v == null ? "" : v);
-  return /[";\n\r]/.test(s) ? '"' + s.split('"').join('""') + '"' : s;
-}
+// Markeringstekst og forfatternavn skrives fritt på byggeplassen — csvCelle
+// (csv.js) setter apostrof foran «=», «+», «-», «@» så Excel ikke kjører det
+// som formel. Ekte tall (Nr, dager til frist) slipper urørt.
+const csvFelt = csvCelle;
 
 export function tilCsv(modell) {
   const linjer = [CSV_KOLONNER.join(";")];

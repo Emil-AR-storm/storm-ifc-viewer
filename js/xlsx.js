@@ -27,6 +27,9 @@ export { celleRef, kolBokstav, sumFormel };
 // Ledende null beskyttes: «0123» er en kode, ikke tallet 123. «0» og «0,5» er
 // tall. Uten dette unntaket ville et elementnummer med null foran mistet den.
 const NORSK_TALL = /^-?(0|[1-9]\d*)(,\d+)?$/;
+// Samme grammatikk som regnFormel nedenfor forstår — ingen funksjonsnavn
+// utenom SUM, ingen anførselstegn, ingen «|» eller «!» (DDE / andre ark).
+const ENKEL_FORMEL = /^(?:SUM\(|\$?[A-Z]{1,3}\$?\d+|\d+(?:\.\d+)?|[-+*\/():])+$/;
 
 export function celleVerdi(v) {
   if (v == null || v === "") return null;
@@ -41,7 +44,12 @@ export function celleVerdi(v) {
   }
   if (typeof v === "number") return isFinite(v) ? { tall: v } : null;
   const s = String(v);
-  if (s[0] === "=") return { formel: s.slice(1) };
+  // 🔒 En TEKST som begynner med «=» blir formel bare når den er av den enkle
+  // sorten vi selv lager (sumFormel, «=D5-E5»): cellereferanser, tall,
+  // + − * / ( ) og SUM(. Radene bærer også navn fra IFC-modellen og tekst fra
+  // byggeplassen — et elementnavn «=HYPERLINK("https://…";"Klikk")» eller en
+  // DDE-formel skal bli TEKST i arket, ikke en formel Excel kjører (20.10).
+  if (s[0] === "=") return ENKEL_FORMEL.test(s.slice(1).replace(/\s+/g, "")) ? { formel: s.slice(1) } : { tekst: s };
   if (NORSK_TALL.test(s)) {
     const n = Number(s.replace(",", "."));
     if (isFinite(n)) return { tall: n };
