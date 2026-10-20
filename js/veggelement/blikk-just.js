@@ -28,7 +28,7 @@ import * as THREE from "three";
 import { blikkStykkeId } from "../sw-blikk.js";
 import { flettPaaNavn, spLes, spPaalogget, spSkriv } from "../sp-lager.js";
 import { tilMm, tilScene } from "./regler.js";
-import { lagret, skrivLagret, swGroup } from "./tilstand.js";
+import { lagret, skrivLagret, swBilde, swGroup, swPost } from "./tilstand.js";
 import { tegnAlt } from "./tegning.js";
 import { varsel } from "../varsel.js";
 
@@ -295,22 +295,24 @@ export function tegnBlikkJustBar(tegnPanelFn) {
     '<button id="bjNull" style="padding:3px 10px">' + t("Nullstill") + '</button>' +
     '<button id="bjFerdig" class="primary" style="padding:3px 10px">' + t("Ferdig") + '</button>';
   $("bjAv").onclick = () => {
+    const foer = swBilde();
     const pa = avSlatt === n && n;
     for (const id of blikkJust.valgt) {
       const j = b.just[id] || (b.just[id] = {});
       if (pa) delete j.av; else j.av = true;
       if (!Object.keys(j).length) delete b.just[id];
     }
-    lagreOgTegn(tegnPanelFn);
+    lagreOgTegn(tegnPanelFn, pa ? "Blikkstykke slått på" : "Blikkstykke slått av", foer);
   };
   $("bjBen").onchange = () => {
+    const foer = swBilde();
     const v = Number($("bjBen").value);
     for (const id of blikkJust.valgt) {
       const j = b.just[id] || (b.just[id] = {});
       if (Number.isFinite(v) && v > 0) j.benMm = v; else delete j.benMm;
       if (!Object.keys(j).length) delete b.just[id];
     }
-    lagreOgTegn(tegnPanelFn);
+    lagreOgTegn(tegnPanelFn, "Blikkben endret", foer);
   };
   $("bjLegg").onclick = () => {
     blikkJust.legger = blikkJust.legger ? null : { punkter: [] };
@@ -318,9 +320,10 @@ export function tegnBlikkJustBar(tegnPanelFn) {
   };
   $("bjNull").onclick = () => {
     if (!confirm(t("Nullstille alle håndjusteringene av blikket?"))) return;
+    const foer = swBilde();
     b.just = {}; b.ekstra = [];
     blikkJust.valgt.clear();
-    lagreOgTegn(tegnPanelFn);
+    lagreOgTegn(tegnPanelFn, "Blikkjusteringer nullstilt", foer);
   };
   $("bjFerdig").onclick = () => avsluttBlikkJuster(tegnPanelFn);
 }
@@ -331,12 +334,15 @@ function benNaa(id) {
   return Number.isFinite(Number(j.benMm)) ? Number(j.benMm) : "";
 }
 
-export function lagreOgTegn(tegnPanelFn) {
+// ↩ `tekst` og `foer` gir én angrepost. Den legges inn ETTER tegnPanelFn,
+// som bygger blikkbunkene (BLK-…) på nytt — de skal med i bildet.
+export function lagreOgTegn(tegnPanelFn, tekst, foer) {
   skrivLagret();
   tegnAlt();
   merkBlikkValgte();
   tegnBlikkJustBar(tegnPanelFn);
   if (tegnPanelFn) tegnPanelFn();
+  if (foer) swPost(tekst, foer);
 }
 
 // Blå markering rundt de valgte stykkene — samme språk som veggjusteringen.
@@ -371,7 +377,9 @@ export function startBlikkJuster(tegnPanelFn) {
   tegnAlt();                       // meshene må bære id-ene før vi plukker
   const markorer = new THREE.Group();
   swGroup.add(markorer);
-  settBlikkJust({ valgt: new Set(), drar: null, markorer, legger: null });
+  // tegnPanel huskes som i «Juster tak»: drag og «Legg til» leser den, og uten
+  // den ble blikkbunkene ikke bygget på nytt etter et drag.
+  settBlikkJust({ valgt: new Set(), drar: null, markorer, legger: null, tegnPanel: tegnPanelFn });
   $("swPanel")?.classList.remove("open");
   tegnBlikkJustBar(tegnPanelFn);
 }
@@ -433,8 +441,9 @@ window.addEventListener("pointerdown", (e) => {
     const j = b.just[id] || {};
     base.set(id, { dFra: Number(j.dFra) || 0, dTil: Number(j.dTil) || 0 });
   }
+  // ↩ ett drag = én angrepost: bildet her, posten ved pointerup
   blikkJust.drar = { id: treff.id, ende: startMm < midt ? "fra" : "til", startMm, base,
-    foer: JSON.parse(JSON.stringify({ just: b.just, ekstra: b.ekstra })) };
+    foer: swBilde() };
   e.stopPropagation();
   merkBlikkValgte(); tegnBlikkJustBar(blikkJust.tegnPanel);
 }, true);
@@ -462,11 +471,12 @@ window.addEventListener("pointermove", (e) => {
 
 window.addEventListener("pointerup", (e) => {
   if (!blikkJust || e.button !== 0 || !blikkJust.drar) return;
+  const foer = blikkJust.drar.foer;
   blikkJust.drar = null;
   e.stopPropagation();
   try { canvas.dispatchEvent(new PointerEvent("pointercancel", { pointerId: e.pointerId })); }
   catch (_) { try { canvas.dispatchEvent(new Event("pointercancel")); } catch (__) {} }
-  lagreOgTegn(blikkJust.tegnPanel);
+  lagreOgTegn(blikkJust.tegnPanel, "Blikk justert", foer);
 }, true);
 
 window.addEventListener("keydown", (e) => {
@@ -512,6 +522,7 @@ export function leggTilTrykk(e) {
     L.punkter = [];
     return;
   }
+  const foer = swBilde();
   const b = blikkTilstand();
   const nr = b.nesteNr++;
   const type = a.type === "skjot" || a.type === "hjorne" || a.type === "ende" ? "ende" : a.type;
@@ -524,5 +535,5 @@ export function leggTilTrykk(e) {
   blikkJust.legger = null;
   blikkJust.valgt.clear();
   blikkJust.valgt.add(id);
-  lagreOgTegn(blikkJust.tegnPanel);
+  lagreOgTegn(blikkJust.tegnPanel, "Blikkstrekning lagt til", foer);
 }

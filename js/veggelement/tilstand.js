@@ -20,12 +20,14 @@ import { settValgEffekt } from "../materiell-vis.js";
 import { flettPaaNavn, spLes, spPaalogget, spSkriv } from "../sp-lager.js";
 import { hullNaa, tilMm, SW_KLARING_MM, SW_MIN_FELT_MM, SW_MIN_SKRA_MM, rektMinusHull, sikreUtspTyper, skraVinkel, soyleTypeNavn, tilScene, vinkelTekst } from "./regler.js";
 import { baseYNaa, tegnAlt, utspPaFasader } from "./tegning.js";
-import { byggAlleStabler, fjernGenerertMateriell, loesAlleJusteringer } from "./generer.js";
-import { pekGulv, pekVegg, veggMedId } from "./juster.js";
-import { INNER_STD, lagretInner, skrivInner, tegnPanel } from "./panel.js";
+import { GENERERT_SW_NAVN, byggAlleStabler, fjernGenerertMateriell, loesAlleJusteringer } from "./generer.js";
+import { merkValgte, pekGulv, pekVegg, rensValgte, tegnJustBar, veggMedId } from "./juster.js";
+import { INNER_STD, lagretInner, settLagretInner, skrivInner, tegnPanel } from "./panel.js";
 import { innerBaseY, innerMark } from "./innervegg.js";
-import { blikkJust } from "./blikk-just.js";
-import { takJust } from "./tak-just.js";
+import { blikkJust, erGenerertBlikkBunke, merkBlikkValgte, tegnBlikkJustBar } from "./blikk-just.js";
+import { merkTakValgte, takJust, tegnTakJustBar } from "./tak-just.js";
+import { erGenerertTakBunke, tegnTakPanel } from "./tak.js";
+import { lagreMateriellLokalt, tegnMateriell } from "../materiell-vis.js";
 import { BESLAG_FORM, BESLAG_FORM_NAVN } from "../sw-blikk.js";
 import { gruppeFlate, registrerMaaleflate } from "../pek-eier.js";
 import { varsel } from "../varsel.js";
@@ -107,7 +109,10 @@ registrerEkstraGruppe(swGroup, {
     oppdaterSwValgEffekt();
   },
   valgte: () => [...swValgt],
+  // ↩ Angre her og ikke på knappene: «Skjul dette elementet» og «Skjul valgte»
+  // i flervalget (elements.js) går begge hit, og ingen av dem la inn en post.
   skjul(ider) {
+    const foer = swBilde();
     let nye = 0;
     for (const id of (ider || [])) if (!swSkjultId.has(id)) { swSkjultId.add(id); nye++; }
     if (!nye) return;
@@ -116,6 +121,7 @@ registrerEkstraGruppe(swGroup, {
     tegnAlt();
     $("propPanel").classList.remove("open");
     if (S.oppdaterVisAlle) S.oppdaterVisAlle();
+    swPost(nye === 1 ? "SW-element skjult" : "SW-elementer skjult", foer);
   },
 
   // Egenskapspanelet for ett SW-element. Bor her og ikke i elements.js fordi
@@ -718,6 +724,97 @@ export function settLagret(v) { lagret = v; }
 export function settJust(v) { just = v; }
 export function settFinnMark(v) { finnMark = v; }
 
+// ---------- ↩ ANGRE OG GJENOPPRETT FOR HELE SW-GENERATOREN ----------
+// ÉTT øyeblikksbilde for alt generatoren eier. Før hadde bare «Juster
+// elementer» angre, og bildet der tok bare veggene og ringmuren. Trykket Emil
+// «Fjern genererte» og så Ctrl+Z, ble et gammelt veggbilde lagt over et bygg
+// det ikke hørte til — uten gulv, uten fasader, med bunker som ikke fantes.
+// Når alle handlinger bruker samme bilde, kan ingen angring treffe en tilstand
+// den ikke ble tatt fra.
+//
+// Bildet er HELE «lagret» (vegger, gulv, ringmur, fasader, oppsett, blikk og
+// tak), HELE innerveggslagringen, ett-og-ett-skjulingen, og de bunkene i
+// Materiell som generatoren har laget. Bare DE bunkene: en plate Emil har lagt
+// inn selv i Materiell skal ikke forsvinne fordi han angret en generering.
+//
+// Hvilke bunker som er generatorens, avgjøres av id-listene OG id-prefiksene.
+// Prefiksene (BLK-/TRP-) må med: koblingen fra listene har vært tapt før
+// (19.10), og en bunke uten kobling ville ellers blitt liggende dobbelt etter
+// en angring.
+export function swEierBunke(p, a, i) {
+  if (!p) return false;
+  const har = (l) => Array.isArray(l) && l.indexOf(p.id) >= 0;
+  if (a && (har(a.materiellIder) || har(a.blikk && a.blikk.materiellIder) || har(a.tak && a.tak.materiellIder))) return true;
+  if (i && har(i.materiellIder)) return true;
+  if (erGenerertBlikkBunke(p) || erGenerertTakBunke(p)) return true;
+  // samme navneregel som fjernGenerertMateriell: gamle stabler uten id-sporing
+  return p.maltype === "sandwich" && GENERERT_SW_NAVN.test(p.navn || "");
+}
+
+export function swBilde() {
+  const a = lagret, i = lagretInner;
+  return JSON.parse(JSON.stringify({
+    a: a || null, i: i || null,
+    m: (S.materiell || []).filter(p => swEierBunke(p, a, i)),
+    s: [...swSkjultId]
+  }));
+}
+
+// Bildet legges tilbake SOM DET ER — ingen ny utregning. Bunkene beholder
+// id-ene de hadde, så Framdriftsplanen og lista over materiellIder fortsatt
+// peker på de samme bunkene etter en angring og en gjenoppretting.
+export function settSwBilde(b) {
+  if (!b) return;
+  const ny = JSON.parse(JSON.stringify(b));
+  const naaA = lagret, naaI = lagretInner;
+  // Generatorens bunker NÅ ut (regnet mot tilstanden som står nå), bildets inn
+  S.materiell = (S.materiell || []).filter(p => !swEierBunke(p, naaA, naaI)).concat(ny.m || []);
+  lagret = ny.a || null;
+  settLagretInner(ny.i || null);
+  swSkjultId.clear();
+  for (const id of (ny.s || [])) swSkjultId.add(id);
+  // et valgt element kan være borte etter angringen (en generering angret)
+  swValgt.clear();
+  skrivLagret();
+  skrivInner();
+  tegnMateriell();
+  lagreMateriellLokalt();
+  S.qtyCache = null;
+  if (just) rensValgte();
+  tegnAlt();
+  // Står et justeringsverktøy åpent, må markeringen og linja følge med —
+  // ellers peker den blå rammen på et element som ikke står der lenger.
+  if (just) { merkValgte(); tegnJustBar(); }
+  if (takJust) { merkTakValgte(); tegnTakJustBar(takJust.tegnPanel); }
+  if (blikkJust) { merkBlikkValgte(); tegnBlikkJustBar(blikkJust.tegnPanel); }
+  tegnPanel();
+  tegnTakPanel();
+  if (S.tegnUtseendePanel) S.tegnUtseendePanel();
+  if (S.oppdaterVisAlle) S.oppdaterVisAlle();
+}
+
+// Er det to bildene LIKE? Bunke-id-ene telles ikke med: byggAlleStabler gir
+// nye id-er hver gang (et klikk uten drag i «Juster elementer» bygger
+// stablene på nytt), og da ville hvert klikk blitt en angrepost som ikke
+// angrer noe synlig.
+function swSammenlignbar(b) {
+  return JSON.stringify(b, (k, v) => k === "materiellIder" ? undefined : v)
+    .replace(/"id":"(SWI?|BLK|TRP)-[^"]*"/g, '"id":""');
+}
+
+// `foer` er swBilde() tatt FØR handlingen. Posten legges bare inn hvis noe
+// faktisk endret seg.
+export function swPost(tekst, foer) {
+  if (!foer) return;
+  const etter = swBilde();
+  if (swSammenlignbar(foer) === swSammenlignbar(etter)) return;
+  if (S.pushAngre) S.pushAngre({
+    tekst,
+    angre: () => settSwBilde(foer),
+    gjenopprett: () => settSwBilde(etter)
+  });
+}
+
 
 export function lesLagret() {
   try { return JSON.parse(localStorage.getItem(lagringsNokkel()) || "null"); }
@@ -986,6 +1083,7 @@ export function swMittNavn() {
 export function lastInnResultat(navn) {
   const post = lesLagrede().find(p => p.navn === navn);
   if (!post || !post.data) return;
+  const foer = swBilde();
   fjernGenerertMateriell();
   // 🩹 19.10: taket og blikkets bunker hører ikke til SW-resultatet. Før
   // forsvant `tak` helt og blikkets kobling til bunkene ble byttet med den
@@ -1003,6 +1101,7 @@ export function lastInnResultat(navn) {
   tegnAlt();
   tegnPanel();
   if (S.tegnUtseendePanel) S.tegnUtseendePanel();
+  swPost("SW-resultat lastet inn", foer);
 }
 
 // Sletting setter en GRAVSTEIN (se js/sp-lager.js). Fjernet vi posten helt,
@@ -1016,8 +1115,26 @@ export function swLagringsTekst() {
 
 export function slettResultat(navn) {
   if (!confirm(t("Slette «{0}»?", navn))) return;
-  const liste = lesLagredeRaa().map(p => p.navn === navn
-    ? { navn: p.navn, slettet: true, endret: new Date().toISOString() } : p);
+  const forrige = lesLagredeRaa().find(p => p.navn === navn && !p.slettet);
+  settLagretPost(navn, null);
+  // ↩ Den lagrede lista er ikke en del av swBilde() — den er delt i
+  // SharePoint, ikke bygget på skjermen. Angre legger posten tilbake med NY
+  // endret-tid; ellers ville gravsteinen (som er nyere) vunnet ved neste
+  // fletting, og resultatet forsvunnet igjen av seg selv.
+  if (forrige && S.pushAngre) S.pushAngre({
+    tekst: "SW-resultat slettet",
+    angre: () => settLagretPost(navn, forrige),
+    gjenopprett: () => settLagretPost(navn, null)
+  });
+}
+
+// Én lagret post settes (eller slettes med gravstein når `post` er null).
+function settLagretPost(navn, post) {
+  const naa = new Date().toISOString();
+  const ny = post ? { ...post, endret: naa } : { navn, slettet: true, endret: naa };
+  const liste = lesLagredeRaa();
+  const i = liste.findIndex(p => p.navn === navn);
+  if (i >= 0) liste[i] = ny; else liste.push(ny);
   lagreBeggeSteder(liste);
   tegnPanel();
 }

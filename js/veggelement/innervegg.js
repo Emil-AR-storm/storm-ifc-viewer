@@ -17,7 +17,7 @@ import { canvas } from "../scene.js";
 import { allElementBoxes, hitID, lastNedXlsxFlere, pick } from "../elements.js";
 import { hentLogo } from "../tegninger.js";
 import { APN_REGEL, APN_SLARK, SW_MIN_BIT_MM, apningPaVegg, delOppMedUtsparinger, eierUtsparing, hentSoyler, innerveggBein, innerveggBiter, innerveggOffset, kappNavn, nesteUtspType, radStabel, samleTetteSoyler, sikreUtspTyper, swListeRader, swNummerering, takLinje, tilMm, tilScene, utspFyllBiter, utsparingerPaFasade } from "./regler.js";
-import { STD_OPPSETT, just, lagret, oppsett, skrivLagret, swGroup } from "./tilstand.js";
+import { STD_OPPSETT, just, lagret, oppsett, skrivLagret, swBilde, swGroup, swPost } from "./tilstand.js";
 import { tegnAlt, tegnRingmurBiter, tegnUtspMerkingFor, tegnVeggElementer } from "./tegning.js";
 import { byggInnerStabler, felt, generer, lesOppsettFraPanel, materiellArk, swProsjektFelt } from "./generer.js";
 import { akseNavnFor, pdfFelt, stalPaFasader } from "./stal.js";
@@ -480,6 +480,7 @@ export function innerForhandsvis() {
 
 export async function innerGodkjenn() {
   if (!innerMark) return;
+  const foer = swBilde();
   const d = innerData();
   const serie = JSON.parse(JSON.stringify(innerMark.serie));
   if (innerMark.idx !== null && innerMark.idx !== undefined) d.serier[innerMark.idx] = serie;
@@ -493,6 +494,7 @@ export async function innerGodkjenn() {
   skrivInner();
   tegnAlt();
   tegnPanel();
+  swPost("Innervegg godkjent", foer);
 }
 
 // 🧭 Godkjenn en manuell fasade: settet lagres i del A-oppsettet, og veggene
@@ -503,19 +505,27 @@ export async function fasadeGodkjenn() {
   const sett = { ider: innerMark.serie.ider.slice(), side: innerMark.serie.side < 0 ? -1 : 1,
                  lukk: !!(innerMark.serie.o && innerMark.serie.o.lukk) };
   if (sett.ider.length < 2) { varsel(t("Marker minst to søyler — de to ytterste bestemmer veggens retning og lengde.")); return; }
+  const foer = swBilde();
   o.manuelleFasader = (o.manuelleFasader || []).concat([sett]);
   skrivLagret();
   avsluttInnerMark();
   await generer();
   tegnPanel();
+  swPost("Fasade godkjent", foer);
 }
 // Slett ett sett, eller alle: er lista tom, er automatikken på igjen.
 export async function slettManuellFasade(idx) {
   const o = oppsett();
   const liste = o.manuelleFasader || [];
-  if (idx === null || idx === undefined) {
+  const alle = idx === null || idx === undefined;
+  if (alle) {
     if (!liste.length) return;
     if (!confirm(t("Slette alle manuelle fasader og la automatikken finne fasadene igjen?"))) return;
+  }
+  // ↩ Bildet tas etter spørsmålet (et «nei» skal ikke bli en tom post) og før
+  // lista endres. Bygget genereres på nytt under, så hele bildet trengs.
+  const foer = swBilde();
+  if (alle) {
     o.manuelleFasader = [];
   } else {
     liste.splice(idx, 1);
@@ -524,13 +534,16 @@ export async function slettManuellFasade(idx) {
   skrivLagret();
   if (lagret && (lagret.vegger || []).length) await generer();
   tegnPanel();
+  swPost(alle ? "Alle manuelle fasader slettet" : "Fasade slettet", foer);
 }
 
 // Bygger innerveggene på nytt fordi den GLOBALE utsparingslista er endret.
 // Gjør ingenting når det ikke finnes innervegger — da er dette del A alene.
+// Gir løftet tilbake, så den som vil legge inn ÉN angrepost kan vente på at
+// innerveggene er ferdig bygget.
 export function oppdaterInnerveggerEtterUtsp() {
-  if (!lagretInner || !(lagretInner.serier || []).length) return;
-  byggAlleInnervegger()
+  if (!lagretInner || !(lagretInner.serier || []).length) return Promise.resolve();
+  return byggAlleInnervegger()
     .then(() => {
       byggInnerStabler();
       skrivInner();
@@ -545,12 +558,14 @@ export async function slettInnervegg(idx) {
   const s = d.serier[idx];
   if (!s) return;
   if (!confirm(t("Slette «{0}»?", s.navn || "?"))) return;
+  const foer = swBilde();
   d.serier.splice(idx, 1);
   await byggAlleInnervegger();
   byggInnerStabler();
   skrivInner();
   tegnAlt();
   tegnPanel();
+  swPost("Innervegg slettet", foer);
 }
 
 // Klikkene: samme oppskrift som utsparingsmarkeringen — bare et trykk under

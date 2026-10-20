@@ -17,7 +17,7 @@ import { t } from "../i18n.js";
 import { allElementBoxes, forHverTrekant } from "../elements.js";
 import { MALTYPER, mmTilScene, ribbonPosisjoner, trpProfil } from "../materiell-vis.js";
 import { hullNaa, APN_REGEL, APN_SLARK, SW_MAKS_LAPPER, eierUtsparing, profilUtsnitt, rektMinusHull, skraBiter, ribbonSkraPos, skraVinkel, soyleTypeNavn, tilMm, tilScene, vinkelTekst } from "./regler.js";
-import { STD_OPPSETT, hentLagredeFraSp, just, lagret, lesLagret, lesSkjulteIder, oppdaterSwValgEffekt, ryddTegning, settLagret, skrivLagret, swGroup, swSkjultId, GULV_ID } from "./tilstand.js";
+import { STD_OPPSETT, hentLagredeFraSp, just, lagret, lesLagret, lesSkjulteIder, oppdaterSwValgEffekt, ryddTegning, settLagret, skrivLagret, swBilde, swGroup, swPost, swSkjultId, GULV_ID } from "./tilstand.js";
 import { loesAlleJusteringer } from "./generer.js";
 import { STAL_TYPER } from "./stal.js";
 import { avsluttJuster } from "./juster.js";
@@ -115,10 +115,17 @@ S.swUtseendeRader = (body) => {
   }
   boks.innerHTML = html;
   body.appendChild(boks);
+  // ↩ Hver rad er én angrepost. Postene legges her og ikke i settSkjul, så
+  // setterne kan kalles fra andre steder uten å fylle angrestabelen.
+  const medAngre = (sett, navn, verdi) => {
+    const foer = swBilde();
+    sett(navn, verdi);
+    swPost(verdi ? "SW-del skjult" : "SW-del vist", foer);
+  };
   boks.querySelectorAll("button[data-sw-skjul]").forEach(b =>
-    b.onclick = () => settSkjul(b.dataset.swSkjul, !skjulNaa()[b.dataset.swSkjul]));
+    b.onclick = () => medAngre(settSkjul, b.dataset.swSkjul, !skjulNaa()[b.dataset.swSkjul]));
   boks.querySelectorAll("button[data-sw-iskjul]").forEach(b =>
-    b.onclick = () => settInnerSkjul(b.dataset.swIskjul, !innerSkjulNaa()[b.dataset.swIskjul]));
+    b.onclick = () => medAngre(settInnerSkjul, b.dataset.swIskjul, !innerSkjulNaa()[b.dataset.swIskjul]));
 };
 
 export function boks(farge, opacity) {

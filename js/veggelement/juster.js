@@ -17,7 +17,7 @@ import { t } from "../i18n.js";
 import { camera, canvas, raycaster } from "../scene.js";
 import { allElementBoxes, hitID, pick } from "../elements.js";
 import { SW_KLARING_MM, SW_MIN_BIT_MM, grupperFlater, sikreUtspTyper, snappKant, tilMm, tilScene, utspTypeNavn, utsparingFraFlater } from "./regler.js";
-import { STD_OPPSETT, finnMark, just, lagret, okBetongNaa, oppsett, settFinnMark, settJust, skrivLagret, swGroup, GULV_ID } from "./tilstand.js";
+import { STD_OPPSETT, finnMark, just, lagret, okBetongNaa, oppsett, settFinnMark, settJust, skrivLagret, swBilde, swGroup, swPost, GULV_ID } from "./tilstand.js";
 import { baseYNaa, boks, tegnAlt, tekstDekal, utspPaFasader } from "./tegning.js";
 import { byggAlleStabler, byggInnerStabler, generer, loesAlleJusteringer, snappPunkter } from "./generer.js";
 import { finnUtsparingKandidater, kandidatTilUtsparing, stalPaFasader } from "./stal.js";
@@ -218,51 +218,14 @@ export function merkValgte() {
 }
 
 // ---------- Angre/gjenopprett for justeringene ----------
-// Elementene er rene tall, så et øyeblikksbilde av hele lista er nok — og da
-// virker angre også på SPLITTER, som legger til et element.
-// Angre-bildet må ta med BEGGE listene. Uten ringmuren ville et drag i den
-// vært usynlig for angre — og et angre av et veggdrag ville dratt ringmuren
-// tilbake til der den var før veggen ble rørt.
-export function justBilde() {
-  return JSON.parse(JSON.stringify({
-    vegger: (lagret && lagret.vegger) || [],
-    ringmur: (lagret && lagret.ringmur) || [],
-    // Innerveggene MÅ med. Uten dem ville et angre av et drag i en innervegg
-    // ikke gjort noe — og et angre av et ytterveggdrag ville dratt
-    // innerveggene tilbake til der de sto før.
-    iVegger: (lagretInner && lagretInner.vegger) || [],
-    iRingmur: (lagretInner && lagretInner.ringmur) || []
-  }));
-}
-
-export function settJustBilde(bilde) {
-  if (!lagret) return;
-  // Bakoverkompatibelt: et bilde tatt før ringmuren ble justerbar er en naken
-  // array av vegger.
-  const b = Array.isArray(bilde) ? { vegger: bilde, ringmur: lagret.ringmur } : bilde;
-  lagret.vegger = JSON.parse(JSON.stringify(b.vegger || []));
-  if (b.ringmur) lagret.ringmur = JSON.parse(JSON.stringify(b.ringmur));
-  if (lagretInner && b.iVegger) {
-    lagretInner.vegger = JSON.parse(JSON.stringify(b.iVegger));
-    lagretInner.ringmur = JSON.parse(JSON.stringify(b.iRingmur || []));
-  }
-  loesAlleJusteringer();
-  byggAlleStabler();
-  skrivBegge();
-  tegnAlt();
-  if (just) { rensValgte(); merkValgte(); tegnJustBar(); }
-  tegnPanel();
-}
-
-export function postJust(tekst, foer) {
-  const etter = justBilde();
-  if (JSON.stringify(foer) === JSON.stringify(etter)) return;   // ingenting skjedde
-  if (S.pushAngre) S.pushAngre({
-    tekst,
-    angre: () => settJustBilde(foer),
-    gjenopprett: () => settJustBilde(etter)
-  });
-}
+// Justeringene bruker det SAMME bildet som resten av SW-generatoren
+// (swBilde i tilstand.js). Før hadde de sitt eget, med bare veggene og
+// ringmuren, og et Ctrl+Z etter «Fjern genererte» la det gamle veggbildet
+// over et bygg det ikke hørte til. Med ett felles bilde kommer også
+// gulvet, fasadene, blikket, taket, innerveggene og bunkene tilbake sammen.
+// Navnene står igjen fordi dra- og splitt-koden under leser best med dem.
+export function justBilde() { return swBilde(); }
+export function postJust(tekst, foer) { swPost(tekst, foer); }
 
 // Etter angre kan et markert element være borte (en splitt ble angret)
 export function rensValgte() {
@@ -493,6 +456,9 @@ export function fullforUtspMark() {
   // 🚪 Innerveggens åpninger bor på SERIEN som redigeres; ytterveggenes i
   // del A-oppsettet. Samme markering, to mottakere.
   const tilInner = utspMark.inner && innerMark && innerMark.steg === "side" && !innerMark.fasade;
+  // ↩ Til innerveggen havner åpningen på en serie som ennå ikke er godkjent —
+  // den angres med resten av innerveggen. Til del A er den lagret med én gang.
+  const foer = tilInner ? null : swBilde();
   const o = oppsett();
   const maal = tilInner
     ? (innerMark.serie.utsparinger = (innerMark.serie.utsparinger || []).filter(x => x && x.min))
@@ -519,7 +485,7 @@ export function fullforUtspMark() {
   // «Marker utsparing», den ble lagret som «Utsparing 14» — og ingenting
   // skjedde med veggen. Åpningen lå i den globale lista, og innerveggene ble
   // aldri bygget på nytt. Nå gjør de det, og døra kapper veggen den står i.
-  else oppdaterInnerveggerEtterUtsp();
+  else oppdaterInnerveggerEtterUtsp().then(() => swPost("Utsparing lagt til", foer));
   if (feilet) varsel(t("{0} utsparinger lagt til — {1} område manglet to motstående sider og ble hoppet over.", lagt, feilet));
 }
 
@@ -771,6 +737,7 @@ export async function finnGodkjenn() {
   if (!finnMark) return;
   const valgte = finnMark.kandidater.filter(c => c.paa);
   if (!valgte.length) { avsluttFinn(); return; }
+  const foer = swBilde();
   const o = oppsett();
   const d = innerData();
   o.utsparinger = (o.utsparinger || []).filter(x => x && x.min);
@@ -796,7 +763,7 @@ export async function finnGodkjenn() {
   avsluttFinn();
   if (ytre) {
     await generer();                 // ytterveggene kappes rundt de nye åpningene
-    oppdaterInnerveggerEtterUtsp();  // en åpning kan også stå i en innervegg
+    await oppdaterInnerveggerEtterUtsp();  // en åpning kan også stå i en innervegg
   }
   if (indre) {
     await byggAlleInnervegger();     // innerveggene kappes rundt sine
@@ -805,6 +772,7 @@ export async function finnGodkjenn() {
     tegnAlt();
   }
   tegnPanel();
+  swPost("Utsparinger lagt til", foer);
 }
 
 // Trykk på en kandidat slår den av/på — samme fangst som de andre modusene.

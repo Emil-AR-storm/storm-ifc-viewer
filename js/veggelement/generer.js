@@ -21,7 +21,7 @@ import { takArk } from "./tak.js";
 import { lagreMateriellLokalt, tegnMateriell, vaskMateriell } from "../materiell-vis.js";
 import { stabelNokkel as stabelNokkel_ } from "./bunker.js";
 import { APN_SLARK, SW_MIN_BIT_MM, SW_SPENNANDEL, SW_TOL_MM, SW_VEGGANDEL, delOppMedUtsparinger, delRadApninger, eierUtsparing, fasadeSoyler, fasaderFra, fasaderLangsRand, finnHjorneNabo, flatTak, hentSoyler, hjorneForlengelse, kappNavn, konveksHull, loesRad, manuelleFasaderFra, radStabel, samleTetteSoyler, soylerIFasader, spennSoyler, swListeRader, swNummerering, takLinje, takSpenn, takTopp, tilMm, tilScene, toppErSkra, toppVinkel, utspFyllBiter, utsparingerPaFasade, veggSoyler, vinkelTekst } from "./regler.js";
-import { STD_OPPSETT, lagret, oppsett, settLagret, skrivLagret } from "./tilstand.js";
+import { STD_OPPSETT, lagret, oppsett, settLagret, skrivLagret, swBilde, swPost } from "./tilstand.js";
 import { TAK_TOL_MM, baseYNaa, taklinjerFraModell, tegnAlt, utspPaFasader } from "./tegning.js";
 import { butikkFor } from "./juster.js";
 import { INNER_STD, innerData, lagretInner, tegnPanel } from "./panel.js";
@@ -845,6 +845,13 @@ function beholdTakOgOppsett() {
 }
 
 export function fjernAltGenerert() {
+  // 🗑 Spør først (19.10): ett feiltrykk tok alle veggene, gulvet, ringmuren
+  // og blikket med bunkene — uten et ord. Det kan angres nå, men den som ikke
+  // vet om Ctrl+Z skal ikke måtte oppdage det for å få bygget sitt tilbake.
+  const noe = lagret && ((lagret.vegger || []).length || lagret.gulv || (lagret.ringmur || []).length ||
+    (lagret.blikk && lagret.blikk.pa));
+  if (noe && !confirm(t("Fjerne alle genererte veggelementer, gulv, ringmur og blikk? Taket blir stående. Du kan angre med Ctrl+Z."))) return;
+  const foer = swBilde();
   fjernGenerertMateriell();
   // 19.10: blikket nullstilles under — da må blikkets bunker (BLK-…) også bort,
   // ellers ble de stående uten kobling.
@@ -859,6 +866,7 @@ export function fjernAltGenerert() {
   skrivLagret();
   tegnAlt();
   tegnPanel();
+  swPost("Genererte SW-elementer fjernet", foer);
 }
 
 // ---------- CSV ----------

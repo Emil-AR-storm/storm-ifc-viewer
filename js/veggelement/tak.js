@@ -31,7 +31,7 @@ import { husTakMesh, nullstillTakMesh, startTakJuster, takJust,
          takLagringsTekst } from "./tak-just.js";
 import { soyleTypeNavn, takLinje, tilMm, tilScene } from "./regler.js";
 import { allElementBoxes, forHverTrekant } from "../elements.js";
-import { lagret, oppsett as oppsettSW, skrivLagret, swGroup } from "./tilstand.js";
+import { lagret, oppsett as oppsettSW, skrivLagret, swBilde, swGroup, swPost } from "./tilstand.js";
 import { TAK_BOTTE_MM, TAK_TOL_MM, baseYNaa, skjulNaa, tegnAlt, tekstDekal } from "./tegning.js";
 import { STAL_TYPER } from "./stal.js";
 import { bunkePlass, lesStabelPosisjonerAlle, settStabelTilbakeAlle } from "./bunker.js";
@@ -1046,8 +1046,12 @@ på("btnTak", "click", () => {
   tegnTakPanel();
   apnePanel("takPanel");
 });
+// ↩ Hver knapp og hvert felt i takpanelet er én angrepost (swPost i
+// tilstand.js). Bildet tas før handlingen og posten legges inn ETTER
+// `paaNytt`: det er den som bygger TRP-bunkene, og de skal med i bildet.
 export function koblTakPanel(paaNytt) {
   const les = () => {
+    const foer = swBilde();
     const ny = {};
     for (const [id] of TAK_FELT) {
       const e = $("tf_" + id);
@@ -1066,18 +1070,22 @@ export function koblTakPanel(paaNytt) {
     settTakOppsett(ny);
     tegnAlt();
     if (paaNytt) paaNytt();
+    swPost("Takoppsett endret", foer);
   };
   for (const id of ["takFarge", "takPlatelengder", "takFallFasade"])
     if ($(id)) $(id).onchange = les;
   if ($("takRoter")) $("takRoter").onclick = () => {
+    const foer = swBilde();
     settTakOppsett({ rotert: !takOppsett().rotert });
     tegnAlt();
     byggTakStabler();
     if (paaNytt) paaNytt();
+    swPost("Takflata rotert", foer);
   };
   for (const [id] of TAK_FELT) if ($("tf_" + id)) $("tf_" + id).onchange = les;
   if ($("takGenerer")) $("takGenerer").onclick = async () => {
     oppsettSW();                  // taket trenger ikke veggelementene (Emil 08.10)
+    const foer = swBilde();
     const b = $("takGenerer");
     if (b) b.disabled = true;
     try {
@@ -1101,6 +1109,7 @@ export function koblTakPanel(paaNytt) {
       if (b2) b2.disabled = false;
       if (paaNytt) paaNytt();
     }
+    swPost("Tak generert", foer);
   };
   if ($("takFjern")) $("takFjern").onclick = () => {
     const tt = takTilstand();
@@ -1108,12 +1117,14 @@ export function koblTakPanel(paaNytt) {
     if (antJust && !confirm(t("Fjerne taket? De {0} håndjusteringene forsvinner også.", antJust)))
       return;
     if (takJust) { /* juster-modus står åpen */ }
+    const foer = swBilde();
     fjernTakMateriell();
     lagret.tak = { pa: false, just: {}, ekstra: [], nesteNr: 1, snap: null, materiellIder: [] };
     skrivLagret();
     tegnAlt();
     S.qtyCache = null;            // 📊 …og forsvinner fra Mengder
     if (paaNytt) paaNytt();
+    swPost("Tak fjernet", foer);
   };
   if ($("takJusterBtn")) $("takJusterBtn").onclick = () => startTakJuster(paaNytt);
   // Justeringene alene — taket blir stående. Å måtte fjerne hele taket for å
@@ -1123,6 +1134,7 @@ export function koblTakPanel(paaNytt) {
     const ant = Object.keys(tt.just || {}).length + (tt.ekstra || []).length;
     if (!ant) return;
     if (!confirm(t("Nullstille de {0} håndjusteringene? Taket blir stående.", ant))) return;
+    const foer = swBilde();
     tt.just = {};
     tt.ekstra = [];
     tt.nesteNr = 1;
@@ -1130,12 +1142,17 @@ export function koblTakPanel(paaNytt) {
     tegnAlt();
     byggTakStabler();
     if (paaNytt) paaNytt();
+    swPost("Takjusteringer nullstilt", foer);
   };
   if ($("takListe")) $("takListe").onclick = lastNedTakListe;
   if ($("takLagreBtn")) $("takLagreBtn").onclick = () =>
     lagreTakResultat(($("takLagreNavn") || {}).value, paaNytt);
   (document).querySelectorAll("button[data-tak-last]").forEach(b2 =>
-    b2.onclick = () => lastInnTakResultat(b2.dataset.takLast, paaNytt));
+    b2.onclick = () => {
+      const foer = swBilde();
+      lastInnTakResultat(b2.dataset.takLast, paaNytt);
+      swPost("Takresultat lastet inn", foer);
+    });
   (document).querySelectorAll("button[data-tak-slett]").forEach(b2 =>
     b2.onclick = () => slettTakResultat(b2.dataset.takSlett, paaNytt));
 }

@@ -17,7 +17,7 @@ import { t } from "../i18n.js";
 import * as THREE from "three";
 import { camera, canvas, raycaster } from "../scene.js";
 import { tilMm, tilScene } from "./regler.js";
-import { lagret, skrivLagret, swGroup } from "./tilstand.js";
+import { lagret, skrivLagret, swBilde, swGroup, swPost } from "./tilstand.js";
 import { tegnAlt } from "./tegning.js";
 import { snapKandidater, snapVerdi } from "../sw-tak.js";
 import { flettPaaNavn, spLes, spPaalogget, spSkriv } from "../sp-lager.js";
@@ -97,6 +97,7 @@ export function tegnTakJustBar(paaNytt) {
   // tegning som de regnede. Originalen slås av. «Slå av» er borte som KNAPP,
   // men flagget lever videre her — det er det som gjør klippet mulig.
   if ($("tjDel")) $("tjDel").onclick = () => {
+    const foer = swBilde();
     const ov = Math.max(0, n2(takOppsettNaa().endeOverlappMm));
     const nye = [];
     for (const id of [...takJust.valgt]) {
@@ -118,22 +119,24 @@ export function tegnTakJustBar(paaNytt) {
     if (!nye.length) return;
     takJust.valgt.clear();
     for (const id of nye) takJust.valgt.add(id);
-    lagreOgTegn(paaNytt);
+    lagreOgTegn(paaNytt, "Takplate delt", foer);
   };
   $("tjBredde").onchange = () => {
+    const foer = swBilde();
     const v = Number($("tjBredde").value);
     for (const id of takJust.valgt) {
       const j = b.just[id] || (b.just[id] = {});
       if (Number.isFinite(v) && v > 0) j.breddeMm = v; else delete j.breddeMm;
       if (!Object.keys(j).length) delete b.just[id];
     }
-    lagreOgTegn(paaNytt);
+    lagreOgTegn(paaNytt, "Takplatebredde endret", foer);
   };
   $("tjNull").onclick = () => {
     if (!confirm(t("Nullstille alle håndjusteringene av takplatene?"))) return;
+    const foer = swBilde();
     b.just = {}; b.ekstra = [];
     takJust.valgt.clear();
-    lagreOgTegn(paaNytt);
+    lagreOgTegn(paaNytt, "Takjusteringer nullstilt", foer);
   };
   $("tjFerdig").onclick = () => avsluttTakJuster(paaNytt);
 }
@@ -146,12 +149,16 @@ function breddeNaa(id) {
   return d && d.info ? Math.round(d.info.breddeMm || 0) : "";
 }
 
-export function lagreOgTegn(paaNytt) {
+// ↩ `tekst` og `foer` gir én angrepost for endringen. Posten legges inn ETTER
+// `paaNytt`, som bygger TRP-bunkene på nytt — de skal med i bildet, ellers
+// ville en gjenoppretting lagt tilbake platene uten bunkene sine.
+export function lagreOgTegn(paaNytt, tekst, foer) {
   skrivLagret();
   tegnAlt();
   merkTakValgte();
   tegnTakJustBar(paaNytt);
   if (paaNytt) paaNytt();
+  if (foer) swPost(tekst, foer);
 }
 
 // Blå markering rundt de valgte platene — samme språk som veggjusteringen.
@@ -465,7 +472,8 @@ window.addEventListener("pointerdown", (e) => {
         : takLopMm(pil.id, pekPlan(e.clientX, e.clientY, pil.id));
       const ende = pil.ende === "fra" ? "fra" : "til";
       if (startMm !== null) {
-        takJust.drar = { id: pil.id, akse: pil.akse, ende, startMm, base,
+        // ↩ ett drag = én angrepost: bildet her, posten ved pointerup
+        takJust.drar = { id: pil.id, akse: pil.akse, ende, startMm, base, foer: swBilde(),
           kantStart: pil.akse === "bredde"
             ? Number(d0.info.vFra) + (ende === "fra" ? 0 : Number(d0.info.breddeMm))
             : Number(ende === "fra" ? d0.info.uFra : d0.info.uTil) };
@@ -497,7 +505,7 @@ window.addEventListener("pointerdown", (e) => {
     base.set(id, { dFra: Number(j.dFra) || 0, dTil: Number(j.dTil) || 0 });
   }
   const ende = startMm < midt ? "fra" : "til";
-  takJust.drar = { id: treff.id, ende, startMm, base,
+  takJust.drar = { id: treff.id, ende, startMm, base, foer: swBilde(),
     // 🧲 kanten slik den står NÅ — snappingen regnes mot denne, ikke mot
     // museposisjonen, så et snap ikke flytter seg videre for hvert musepiksel
     kantStart: ende === "fra" ? d.info.uFra : d.info.uTil };
@@ -587,11 +595,12 @@ window.addEventListener("pointermove", (e) => {
 
 window.addEventListener("pointerup", (e) => {
   if (!takJust || e.button !== 0 || !takJust.drar) return;
+  const foer = takJust.drar.foer;
   takJust.drar = null;
   e.stopPropagation();
   try { canvas.dispatchEvent(new PointerEvent("pointercancel", { pointerId: e.pointerId })); }
   catch (_) { try { canvas.dispatchEvent(new Event("pointercancel")); } catch (__) {} }
-  lagreOgTegn(takJust.tegnPanel);
+  lagreOgTegn(takJust.tegnPanel, "Takplate justert", foer);
 }, true);
 
 window.addEventListener("keydown", (e) => {

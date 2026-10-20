@@ -15,7 +15,7 @@ import { t } from "../i18n.js";
 import { hentLogoer } from "../tegninger.js";
 import { ryddLogonavn } from "../rapport.js";
 import { SW_KLARING_MM, SW_MIN_FELT_MM, nesteUtspType, parseRadHoyder, sikreUtspTyper } from "./regler.js";
-import { lagreResultat, lagret, lastInnResultat, lesLagrede, okBetongNaa, oppsett, skrivLagret, slettResultat, swLagringsTekst } from "./tilstand.js";
+import { lagreResultat, lagret, lastInnResultat, lesLagrede, okBetongNaa, oppsett, skrivLagret, slettResultat, swBilde, swLagringsTekst, swPost } from "./tilstand.js";
 import { boks, tegnAlt, utspPaFasader } from "./tegning.js";
 import { felt, fjernAltGenerert, generer, lastNedListe, lesOppsettFraPanel } from "./generer.js";
 import { lastNedTegning } from "./stal.js";
@@ -168,9 +168,13 @@ export function tegnPanel() {
   $("swGenerer").onclick = async () => {
     lesOppsettFraPanel();
     $("swGenerer").disabled = true;
+    // ↩ Bildet tas ETTER at feltene er lest: angre tar bort genereringen, ikke
+    // tallene Emil nettopp skrev inn (de står jo fortsatt i panelet).
+    const foer = swBilde();
     try { await generer(); }
     catch (err) { console.warn("SW-generator:", err); varsel(t("Genereringen feilet: ") + (err && err.message || err)); }
     finally { const b = $("swGenerer"); if (b) b.disabled = false; }
+    swPost("SW-elementer generert", foer);
   };
   $("swListe").onclick = () => { lesOppsettFraPanel(); lastNedListe(); };
   if ($("swLagreBtn")) $("swLagreBtn").onclick = () => {
@@ -192,12 +196,15 @@ export function tegnPanel() {
   body.querySelectorAll("button[data-sw-slett-utsp]").forEach(b =>
     b.onclick = () => {
       lesOppsettFraPanel();
+      const foer = swBilde();
       const o2 = oppsett();
       o2.utsparinger.splice(Number(b.dataset.swSlettUtsp), 1);
       sikreUtspTyper(o2.utsparinger, okBetongNaa());   // numrene rykker opp
       skrivLagret();
       tegnPanel();
-      oppdaterInnerveggerEtterUtsp();   // åpningen forsvinner også fra innerveggen
+      // åpningen forsvinner også fra innerveggen — posten venter på den, så
+      // ett angre tar med begge
+      Promise.resolve(oppdaterInnerveggerEtterUtsp()).then(() => swPost("Utsparing slettet", foer));
     });
   if ($("swFasadeNy")) $("swFasadeNy").onclick = () => { lesOppsettFraPanel(); startInnerMark(null, true); };
   if ($("swFasadeSlettAlle")) $("swFasadeSlettAlle").onclick = () => { lesOppsettFraPanel(); slettManuellFasade(null); };
@@ -214,11 +221,13 @@ export function tegnPanel() {
       const o2 = oppsett();
       const u = (o2.utsparinger || [])[Number(b.dataset.swTypeUtsp)];
       if (!u) return;
+      const foer = swBilde();
       u.type = nesteUtspType(u.type);
       sikreUtspTyper(o2.utsparinger, okBetongNaa());
       skrivLagret();
       if (lagret && (lagret.fasader || []).length) { lagret.utspVis = utspPaFasader(); tegnAlt(); }
       tegnPanel();
+      swPost("Utsparingstype endret", foer);
     });
 }
 

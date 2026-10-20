@@ -17,7 +17,7 @@ import { avsluttBlikkJuster, blikkJust, blikkLagringsTekst, blikkPa, blikkTilsta
          genererBlikk, husBlikkMesh, lagreBlikkResultat, lastInnBlikkResultat, lesBlikkLagrede,
          nullstillBlikkMesh, slettBlikkResultat, startBlikkJuster, blikkBunkeIderAlle } from "./blikk-just.js";
 import { tilMm, tilScene } from "./regler.js";
-import { lagret, oppsett, swGroup, skrivLagret } from "./tilstand.js";
+import { lagret, oppsett, swBilde, swGroup, swPost, skrivLagret } from "./tilstand.js";
 import { foldSeksjoner, innerData, tegnPanel } from "./panel.js";
 import { byggTakStabler, koblTakPanel, takPanelHtml } from "./tak.js";
 import { baseYNaa, skjulNaa, tegnAlt, utspPaFasader } from "./tegning.js";
@@ -699,6 +699,7 @@ export function tegnBlikkPanel() {
 export function koblBlikkSeksjon(body) {
   koblBlikkHandlinger(body);
   const les = (sett) => () => {
+    const foer = swBilde();
     const f = $("blikkFarge_" + sett);
     const ny = { blikkFarge: (f && f.value) || STD_BLIKK.blikkFarge };
     for (const [id] of BLIKK_FELT) {
@@ -708,6 +709,7 @@ export function koblBlikkSeksjon(body) {
     }
     settBlikkOppsett(sett, ny);
     tegnAlt();
+    swPost("Blikkoppsett endret", foer);
   };
   for (const sett of BLIKK_SETT) {
     const h = les(sett);
@@ -725,30 +727,40 @@ export function koblBlikkSeksjon(body) {
 // hvem som tegnet det.
 export function koblBlikkHandlinger(body) {
   const paa_nytt = () => { byggBlikkStabler(); tegnBlikkPanel(); };
+  // ↩ Én angrepost per knapp. Posten legges inn etter byggBlikkStabler, så
+  // BLK-bunkene og koblingen til dem (lagret.blikk.materiellIder) er med.
   if ($("blikkGenerer")) $("blikkGenerer").onclick = () => {
+    const foer = swBilde();
     if (!genererBlikk()) return;
     byggBlikkStabler();
     tegnBlikkPanel();
+    swPost("Blikk generert", foer);
   };
   if ($("blikkJusterBtn")) $("blikkJusterBtn").onclick = () => startBlikkJuster(paa_nytt);
   if ($("blikkListe")) $("blikkListe").onclick = lastNedBlikkListe;
   if ($("blikkFjern")) $("blikkFjern").onclick = () => {
     // Bunkene ryddes FØR tilstanden nullstilles: id-ene bor der.
     const ider = [...blikkBunkeIderAlle(S.materiell)];
+    const foer = swBilde();
     if (!fjernBlikk()) return;
     if (ider.length) {
       S.materiell = (S.materiell || []).filter(p => ider.indexOf(p.id) === -1);
       tegnMateriell(); lagreMateriellLokalt(); S.qtyCache = null;
     }
     tegnBlikkPanel();
+    swPost("Blikk fjernet", foer);
   };
   if ($("blikkLagreBtn")) $("blikkLagreBtn").onclick = () =>
     lagreBlikkResultat(($("blikkLagreNavn") || {}).value,
       { ytter: blikkOppsett("ytter"), inner: blikkOppsett("inner") }, paa_nytt);
   (body || document).querySelectorAll("button[data-blikk-last]").forEach(b =>
-    b.onclick = () => lastInnBlikkResultat(b.dataset.blikkLast, (o) => {
-      for (const sett of BLIKK_SETT) if (o && o[sett]) settBlikkOppsett(sett, o[sett]);
-    }, paa_nytt));
+    b.onclick = () => {
+      const foer = swBilde();
+      lastInnBlikkResultat(b.dataset.blikkLast, (o) => {
+        for (const sett of BLIKK_SETT) if (o && o[sett]) settBlikkOppsett(sett, o[sett]);
+      }, paa_nytt);
+      swPost("Blikkresultat lastet inn", foer);
+    });
   (body || document).querySelectorAll("button[data-blikk-slett]").forEach(b =>
     b.onclick = () => slettBlikkResultat(b.dataset.blikkSlett, paa_nytt));
 }
