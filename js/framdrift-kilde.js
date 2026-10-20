@@ -35,6 +35,7 @@ import { LETT } from "./lett.js";
 let stal = null, stalFor = null;          // stålkildene (krever modellen, hentes asynkront)
 // Kontor-modulene (SW-generatoren) — hentes første gang, aldri i lettmodus
 let lagret = null, lagretInner = null, takMeshPerId = new Map(), blikkMeshPerId = new Map(), BESLAG_FORM = {};
+let erBlikkBunke = () => false;
 let swHentet = null;
 function hentSw() {
   if (!swHentet) swHentet = Promise.all([
@@ -43,6 +44,7 @@ function hentSw() {
   ]).then(([a, b, c, d, e]) => {
     VE = { a, b };
     takMeshPerId = c.takMeshPerId; blikkMeshPerId = d.blikkMeshPerId; BESLAG_FORM = e.BESLAG_FORM;
+    if (d.erGenerertBlikkBunke) erBlikkBunke = d.erGenerertBlikkBunke;
   }).catch(err => { console.warn("Framdrift: SW-modulene:", err && err.message); });
   return swHentet;
 }
@@ -95,7 +97,9 @@ export function kilder(p) {
     return null;
   }
   if (p.maltype === "trp") {
-    if (!(lagret && lagret.tak && har(lagret.tak.materiellIder, p.id))) return null;
+    // 19.10: også TRP-bunker som har mistet koblingen i `lagret.tak` (id «TRP-…»
+    // lages bare av «Generer tak») — samme feil som blikket under.
+    if (!(lagret && ((lagret.tak && har(lagret.tak.materiellIder, p.id)) || /^TRP-/.test(String(p.id || ""))))) return null;
     const ut = [];
     for (const [id, v] of takMeshPerId) {
       const info = v && v.info;
@@ -104,7 +108,11 @@ export function kilder(p) {
     return ut.length ? ut : null;
   }
   if (p.maltype === "beslag") {
-    if (!(lagret && lagret.blikk && har(lagret.blikk.materiellIder, p.id))) return null;
+    // 🩹 Emil 19.10: bunkene ble aldri brukt opp fordi koblingen
+    // `lagret.blikk.materiellIder` var tom (se erGenerertBlikkBunke i
+    // veggelement/blikk-just.js). Generert blikk (id «BLK-…») kjennes nå igjen
+    // uten lista.
+    if (!(lagret && ((lagret.blikk && har(lagret.blikk.materiellIder, p.id)) || erBlikkBunke(p)))) return null;
     const ut = [];
     for (const [id, v] of blikkMeshPerId) {
       const info = v && v.info;
