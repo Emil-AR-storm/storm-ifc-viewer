@@ -158,7 +158,7 @@ button.laast:hover { border-color: var(--accent); color: var(--text); }
 }
 .ap-hode { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
 .ap-hode h2 { margin: 0; font-size: 19px; }
-.ap-tall { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 14px; }
+.ap-tall { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; margin-bottom: 14px; }
 .ap-tall > div {
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius, 8px);
   padding: 12px; text-align: center; display: flex; flex-direction: column; gap: 2px;
@@ -166,7 +166,6 @@ button.laast:hover { border-color: var(--accent); color: var(--text); }
 .ap-tall b { font-size: 26px; line-height: 1.1; }
 .ap-tall span { font-size: 12px; color: var(--muted); }
 .ap-oransje { color: var(--warn); }
-.ap-kolonner { display: grid; grid-template-columns: 1fr 1.1fr 2fr; gap: 14px; align-items: stretch; }
 .ap-kol {
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius, 8px);
   padding: 12px; display: flex; flex-direction: column; gap: 8px; min-height: 380px; min-width: 0;
@@ -209,13 +208,11 @@ button.ap-ok { background: var(--ok); border-color: var(--ok); color: #fff; font
 .ap-rad-ventende td { color: var(--muted); font-style: italic; }
 
 @media (max-width: 1100px) {
-  .ap-kolonner { grid-template-columns: 1fr 1fr; }
-  .ap-brukere { grid-column: 1 / -1; }
+  .ap-tall { grid-template-columns: repeat(3, 1fr); }
 }
 @media (max-width: 700px) {
   .admin-panel { padding: 12px; }
-  .ap-tall { grid-template-columns: 1fr 1fr; }
-  .ap-kolonner { grid-template-columns: 1fr; }
+  .ap-tall { grid-template-columns: 1fr 1fr; gap: 10px; }
   .ap-kol { min-height: 0; }
 }
 
@@ -250,6 +247,8 @@ button.ap-ok { background: var(--ok); border-color: var(--ok); color: #fff; font
 .ap-rad-apen td, .ap-detalj > td { background: var(--panel2); }
 .ap-detalj > td { padding: 12px 14px 16px; }
 .ap-detalj-grid { display: grid; grid-template-columns: minmax(320px, 470px) 1fr; gap: 16px; align-items: start; }
+/* Filer (runde 2) får hele bredden under QR og Logg … */
+.ap-detalj-grid .ap-filkol { grid-column: 1 / -1; }
 .ap-detalj .ap-kol { background: var(--panel); min-height: 0; }
 .ap-qr-rad { display: flex; gap: 14px; align-items: flex-start; }
 /* QR-en står alltid på hvitt — mørk bakgrunn rundt gjør den vanskelig å skanne */
@@ -276,6 +275,12 @@ button.ap-ok { background: var(--ok); border-color: var(--ok); color: #fff; font
 @media (max-width: 1000px) {
   .ap-detalj-grid { grid-template-columns: 1fr; }
 }
+/* … og på brede skjermer tre kolonner ved siden av hverandre: QR · Logg · Filer (prøvebilde A2) */
+@media (min-width: 1200px) {
+  .ap-detalj-grid { grid-template-columns: minmax(250px, 300px) minmax(0, 1fr) minmax(0, 1.15fr); }
+  .ap-detalj-grid .ap-filkol { grid-column: auto; }
+  .ap-detalj-grid .ap-qr-rad { flex-direction: column; }
+}
 @media (max-width: 700px) {
   /* Tabellen ruller sidelengs på telefon; den utfoldede delen skal likevel
      passe skjermen, ikke bli like bred som tabellen */
@@ -285,3 +290,112 @@ button.ap-ok { background: var(--ok); border-color: var(--ok); color: #fff; font
 @media (max-width: 520px) {
   .ap-qr-rad { flex-direction: column; }
 }
+
+/* ---------- Adminpanelet runde 2 (20.10): faner, Oversikt, Brukere, Filer, System ----------
+   Prøvebilde X. Farger bare fra variablene i storm.css; rødt (primary) bare
+   på hovedhandlingen på hver side. */
+.ap-faner {
+  display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin: 0 0 14px;
+  /* Mobil: fanene ruller sidelengs i stedet for å brekke over to linjer */
+  overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; -webkit-overflow-scrolling: touch;
+}
+.ap-faner [role=tab] {
+  background: transparent; border: 0; border-bottom: 2px solid transparent; border-radius: 0;
+  color: var(--muted); padding: 9px 14px 8px; font-size: 13px; font-weight: 600; white-space: nowrap; flex: none;
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+}
+.ap-faner [role=tab]:hover { color: var(--text); transform: none; }
+.ap-faner [role=tab][aria-selected=true] { color: var(--text); border-bottom-color: var(--text); }
+.ap-faner [role=tab]:focus-visible { outline: 2px solid var(--valgt-bla); outline-offset: -2px; }
+.ap-fane-tall {
+  display: inline-block; min-width: 20px; box-sizing: border-box; text-align: center;
+  border: 1px solid var(--border); border-radius: 10px; padding: 0 6px; font-size: 11px; line-height: 18px;
+  color: var(--muted); font-weight: 600; letter-spacing: 0; text-transform: none;
+}
+.ap-fane-tall.ap-varsel { border-color: var(--warn); color: var(--warn); }
+.ap-side:focus { outline: none; }
+.ap-side[hidden] { display: none; }
+
+/* Sider der seksjonene ikke skal ha runde-1-høyden på 380 px */
+.ap-kol.ap-lav { min-height: 0; }
+
+/* Oversikt: helseflisa grønn eller rød kant */
+.ap-tall > .ap-flis-ok { border-color: var(--ok); }
+.ap-tall > .ap-flis-ok b { color: var(--ok); }
+.ap-tall > .ap-flis-feil { border-color: var(--danger); }
+.ap-tall > .ap-flis-feil b { color: var(--danger); }
+.ap-oversikt { display: grid; grid-template-columns: 1.15fr 1fr; gap: 14px; align-items: start; }
+.ap-oversikt-venstre { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.ap-trenger { list-style: none; margin: 0; padding: 0; }
+.ap-trenger li { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.ap-trenger li:last-child { border-bottom: 0; }
+.ap-trenger li > span:nth-child(2) { flex: 1; min-width: 0; }
+.ap-trenger button { font-size: 12px; padding: 4px 10px; white-space: nowrap; }
+.ap-prikk { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+.ap-prikk.ap-prikk-varsel { background: var(--warn); }
+
+/* Brukere */
+.ap-kolhode .ap-knapper { margin-top: 0; }
+.ap-nykode {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: end;
+  background: var(--panel2); border: 1px solid var(--border); border-radius: var(--radius, 8px); padding: 12px;
+}
+.ap-nykode[hidden] { display: none; }
+.ap-nykode > .ap-sjekk, .ap-nykode > .ap-kodeut { grid-column: 1 / -1; }
+.ap-nykode > div:not(.ap-kodeut) { grid-column: 1 / -1; }
+.ap-kodeut:empty { display: none; }
+.ap-kodeut .ap-kode { max-width: 340px; }
+.ap-radknapper { display: inline-flex; gap: 6px; justify-content: flex-end; flex-wrap: nowrap; }
+.ap-radknapper button { white-space: nowrap; }
+.ap-chip-nr { color: var(--text); padding: 1px 9px; }
+.ap-chip-nr:hover { border-color: var(--muted); transform: none; }
+button.ap-fare { background: transparent; border-color: var(--danger); color: var(--danger); }
+button.ap-fare:hover:not(:disabled) { background: var(--sone); }
+button.ap-fare:disabled { border-color: var(--border); color: var(--muted); cursor: not-allowed; }
+.ap-bruker-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.ap-bruker-grid .ap-kol { background: var(--panel); min-height: 0; }
+.ap-bruker-grid .ap-kol p { margin: 0; }
+
+/* Filer i den utfoldede prosjektraden */
+.ap-filer td:first-child, .ap-filer th:first-child { width: 22px; padding-right: 0; }
+.ap-filer input[type=checkbox] { margin: 0; vertical-align: middle; accent-color: var(--storm-rod); }
+.ap-filnavn { overflow-wrap: anywhere; min-width: 110px; }
+.ap-fil-valgt td { background: var(--sone); }
+.ap-slettboks {
+  border: 1px solid var(--danger); border-radius: var(--radius, 8px); padding: 10px; background: var(--sone);
+  display: flex; flex-direction: column; gap: 6px; max-width: 360px;
+}
+.ap-slettboks[hidden] { display: none; }
+.ap-gronn { color: var(--ok) !important; }
+
+/* System: de tre kortene fra prøvebilde B */
+.ap-system { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; align-items: start; }
+.ap-system .ap-kol p { margin: 0; }
+#apHelse, #apVilkar { display: flex; flex-direction: column; gap: 5px; }
+#apHelse .ap-strek { margin: 4px 0 2px; }
+.ap-helse { font-size: 15px; font-weight: 600; }
+.ap-helse-ok { color: var(--ok); }
+.ap-helse-feil { color: var(--danger); }
+.ap-strek { height: 6px; border-radius: 3px; background: var(--panel2); border: 1px solid var(--border); overflow: hidden; }
+.ap-strek span { display: block; height: 100%; width: 0; background: var(--muted); }
+.ap-strek span.ap-strek-varsel { background: var(--warn); }
+.ap-mono { font: 12px ui-monospace, Consolas, monospace; }
+
+@media (max-width: 1100px) {
+  .ap-oversikt { grid-template-columns: 1fr; }
+  .ap-system { grid-template-columns: 1fr 1fr; }
+  .ap-bruker-grid { grid-template-columns: 1fr 1fr; }
+  .ap-bruker-grid > :first-child { grid-row: span 2; }
+}
+@media (max-width: 700px) {
+  .ap-faner { margin-left: -12px; margin-right: -12px; padding: 0 12px; }
+  .ap-faner [role=tab] { padding: 9px 10px 8px; }
+  .ap-system, .ap-bruker-grid, .ap-nykode { grid-template-columns: 1fr; }
+  .ap-bruker-grid > :first-child { grid-row: auto; }
+  .ap-bruker-grid { position: sticky; left: 0; width: calc(100vw - 54px); }
+  .ap-kolhode { flex-wrap: wrap; gap: 6px; }
+  /* Filtypen står i navnet (rev, mappe/) — kolonnen gir plass til filnavnet på telefon */
+  .ap-filer th:nth-child(3), .ap-filer td:nth-child(3) { display: none; }
+}
+#apAktivitet td { white-space: nowrap; }
+.ap-fane-tall[hidden] { display: none; }
