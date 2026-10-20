@@ -173,7 +173,7 @@ button.active { background: var(--aktiv-bg); border-color: var(--aktiv-bg); colo
 [data-tilstand="utlopt"] > .innlogging-prikk, .innlogging-prikk[data-tilstand="utlopt"],
 [data-tilstand="feil"] > .innlogging-prikk, .innlogging-prikk[data-tilstand="feil"] { background: var(--danger); }
 #innloggingInfo {
-  display: none; position: fixed; top: 52px; right: 10px; z-index: 30;
+  display: none; position: fixed; top: calc(var(--toppbar-h, 50px) + 2px); right: 10px; z-index: 30;
   max-width: min(340px, calc(100vw - 20px));
   padding: 10px 12px; gap: 10px; align-items: flex-start;
   background: var(--panel); color: var(--text); border: 1px solid var(--border);
@@ -212,7 +212,10 @@ button.active { background: var(--aktiv-bg); border-color: var(--aktiv-bg); colo
 /* ---------- Verktøylinje (etter innlasting) ---------- */
 #toolbar {
   position: fixed;
-  top: 52px; left: 0; right: 0;
+  /* Under toppbarens FAKTISKE bunn (js/verktoygrupper.js skriver
+     --toppbar-h). Fast 52 px lot en toppbar som brakk legge seg bak
+     verktøylinja (Emil 20.10). Telefon har sin egen faste verdi lenger ned. */
+  top: calc(var(--toppbar-h, 50px) + 2px); left: 0; right: 0;
   display: none;
   align-items: center; gap: 6px;
   padding: 4px 10px;
@@ -1531,6 +1534,46 @@ body[data-vgruppe="dok"]      #moreMenu button[data-gruppe="dok"] { display: inl
 [data-lett="1"] #btnSaveLite[data-gruppe],
 [data-lett="1"] #btnRapport[data-gruppe] { display: none !important; }
 
+/* ---------- «Mer» for gruppene som ikke får plass (Emil 20.10) ----------
+   js/verktoygrupper.js måler toppbaren. Gruppene som ville brukket linja får
+   .vg-ute og skjules (fjernes ALDRI), og «Mer» åpner en meny med dem. Knappen
+   ser ut som «Mer» på byggeplassen/telefonen (#btnMore): vanlig knapp, ⋯-ikon.
+   Menyen har panelfargene fra #moreMenu. Ingen egne farger: alt er variabler,
+   så lyst og mørkt tema følger av seg selv. */
+#verktoygrupper > button { flex: 0 0 auto; white-space: nowrap; }
+#verktoygrupper > button.vg-ute { display: none !important; }
+#verktoygrupper > .vg-mer[hidden] { display: none; }
+#verktoygrupper > .vg-mer.apen:not(.active) { border-color: var(--text); }
+.vg-mer-meny {
+  position: fixed; top: 52px; left: 6px; z-index: 31;
+  display: flex; flex-direction: column; gap: 4px;
+  min-width: 190px; max-width: calc(100vw - 12px);
+  max-height: calc(100vh - 70px); overflow-y: auto;
+  padding: 6px;
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius-stor);
+  box-shadow: var(--skygge);
+}
+.vg-mer-meny[hidden] { display: none; }
+.vg-mer-meny button { justify-content: flex-start; width: 100%; white-space: nowrap; }
+.vg-mer-meny .laas-ikon { margin-left: auto; font-size: 11px; }
+/* Statusteksten («0 elementer · lett kopi») krymper med ellipse i stedet for
+   å skyve resten av toppbaren ned på en ny linje. Bare på PC — på telefon er
+   den skjult. */
+@media (min-width: 641px) {
+  #status {
+    flex: 1 1 0; min-width: 0; text-align: right;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  #topbar > button, #topbar > label.btn { flex: 0 0 auto; white-space: nowrap; }
+  /* Siste utvei når ikke engang «Mer» får plass: bare ikoner */
+  #topbar.topp-trang #btnOpen .btn-t,
+  #topbar.topp-trang #btnLib .btn-t,
+  #topbar.topp-trang #btnLight .btn-t,
+  #topbar.topp-trang #btnHjelp .btn-t,
+  #topbar.topp-trang #btnAdmin .btn-t { display: none; }
+}
+
 @media (max-width: 720px) {
   #verktoygrupper { padding-left: 6px; gap: 4px; }
   #verktoygrupper .btn-t { display: none; }   /* bare ikoner på liten skjerm */
@@ -2158,7 +2201,7 @@ body.st-tid-paa .st-velgbar { bottom: 112px; }
 }
 
 /* 🌦 «Skjul været i 3D» — ett trykk når du skal vise modellen til noen */
-.vaer3d-av { position: fixed; left: 12px; top: 104px; z-index: 30; display: inline-flex; align-items: center; gap: 6px;
+.vaer3d-av { position: fixed; left: 12px; top: calc(var(--verktoylinje-bunn, 96px) + 8px); z-index: 30; display: inline-flex; align-items: center; gap: 6px;
   padding: 5px 10px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--flate-88); color: var(--text); font-size: 12px; cursor: pointer; }
 .vaer3d-av:hover { border-color: var(--text); }
 @media (max-width: 899px) { .vaer3d-av { top: auto; bottom: calc(55vh + 120px); } }
