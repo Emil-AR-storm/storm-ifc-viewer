@@ -538,6 +538,11 @@ if (LETT) Object.assign(materiellLag() || {}, {
     const sett = new Set((ider || []).map(String));
     for (const p of (S.materiell || [])) if (p && sett.has(String(p.id))) p.skjult = true;
     tegnMateriell();
+    // Samme lagring som visAlt/settSkjulTilstand, så skjulingen og ↩ Angre av
+    // den står likt (lagreMateriellLokalt gjør ingenting på byggeplassen,
+    // der Workeren eier dataene — dette laget kjører bare der i dag).
+    lagreMateriellLokalt();
+    S.qtyCache = null;
     if ($("propPanel")) $("propPanel").classList.remove("open");
   },
   visEgenskaper(id) {

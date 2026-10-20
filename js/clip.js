@@ -42,13 +42,31 @@ på("btnClip", "click", () => {
 // ---------- ↩ Angre for snitt ----------
 // applyClipState alene holder ikke: den slår ALLTID snittet på, så den kan
 // ikke gjenopprette «snitt av». Avtrykket bærer derfor med seg av/på.
+// Etasjefilteret er med som egne felt (storeyOn/storeyIdx): «storey» i
+// currentClipState skiller ikke «filter av» fra «filter på, Alle», og å slå
+// snittet på slår etasjefilteret AV. Uten dem tok angre av «Snitt på» bare
+// bort snittet — etasjen du sto i, kom aldri tilbake.
 export function snittAvtrykk() {
-  return Object.assign({ on: S.clipOn }, currentClipState());
+  return Object.assign({ on: S.clipOn, storeyOn: !!S.storeyOn, storeyIdx: S.storeyIdx }, currentClipState());
+}
+
+async function settEtasjeTilstand(on, idx) {
+  if (on) {
+    if (!S.storeyList) await buildStoreyList();
+    S.storeyOn = true; S.storeyIdx = typeof idx === "number" ? idx : -1;
+  } else { S.storeyOn = false; S.storeyIdx = -1; }
+  $("btnStorey").classList.toggle("active", S.storeyOn);
 }
 
 export async function settSnitt(a) {
   if (!a) return;
-  if (a.on) { await applyClipState(a); return; }
+  if (a.on) {
+    await applyClipState(a);
+    // applyClipState kjenner bare «storey» fra lagrede snitt; avtrykket fra
+    // angre vet nøyaktig hvordan etasjefilteret sto.
+    if (a.storeyOn !== undefined) { await settEtasjeTilstand(a.storeyOn, a.storeyIdx); applyClip(); }
+    return;
+  }
   // Av: samme opprydding som knappen gjør
   S.clipOn = false;
   $("btnClip").classList.remove("active");
@@ -56,14 +74,38 @@ export async function settSnitt(a) {
   $("clipPanel").classList.remove("open");
   modeBar.classList.remove("open");
   modeBar.innerHTML = "";
+  if (a.storeyOn !== undefined) await settEtasjeTilstand(a.storeyOn, a.storeyIdx);
   applyClip();
   if (S.storeyOn) showStoreyBar();
 }
 
+// settSnitt er asynkron (etasjelista kan måtte leses). Løftet RETURNERES, så
+// angre.js fanger en feil, legger posten tilbake og sier fra — i stedet for
+// et ubehandlet løfte som ingen ser.
 function meldSnittAngre(før, tekst) {
   if (!S.pushAngre) return;
   const etter = snittAvtrykk();
+  // Uendret (f.eks. trykk på aksen som alt er valgt): ingen post
+  if (JSON.stringify(før) === JSON.stringify(etter)) return;
   S.pushAngre({ tekst, angre: () => settSnitt(før), gjenopprett: () => settSnitt(etter) });
+}
+
+// Kjører en synkron snitthandling og melder den til angre-stabelen.
+function medSnittAngre(tekst, fn) {
+  const før = snittAvtrykk();
+  fn();
+  meldSnittAngre(før, tekst);
+}
+
+// Glidere fyrer input per piksel: ETT avtrykk ved pointerdown/focus, meldt inn
+// på change (samme mønster som fargevelgerne i display.js).
+function gliderAngre(el, tekst) {
+  let før = null;
+  const start = () => { if (!før) før = snittAvtrykk(); };
+  el.onpointerdown = start;
+  el.onfocus = start;
+  el.onkeydown = start;
+  el.onchange = () => { if (før) { meldSnittAngre(før, tekst); før = null; } };
 }
 
 export function stopFacePick() {
@@ -99,10 +141,10 @@ export function showClipBar() {
     modeBar.innerHTML = html;
     modeBar.classList.add("open");
     $("cbox").classList.add("active");
-    $("cx").onclick = () => setAxis("x");
-    $("cy").onclick = () => setAxis("y");
-    $("cz").onclick = () => setAxis("z");
-    $("cfa").onclick = startFacePick;
+    $("cx").onclick = () => medSnittAngre("Snittakse", () => setAxis("x"));
+    $("cy").onclick = () => medSnittAngre("Snittakse", () => setAxis("y"));
+    $("cz").onclick = () => medSnittAngre("Snittakse", () => setAxis("z"));
+    $("cfa").onclick = () => medSnittAngre("Fra flate", startFacePick);
     $("cbox").onclick = () => {
       const p = $("clipPanel");
       if (p.classList.contains("open")) p.classList.remove("open");
@@ -130,19 +172,25 @@ export function showClipBar() {
     $("cfa").classList.toggle("active", S.clipPickFace || S.clipMode === "face");
     $("cf").classList.toggle("active", S.clipFlip);
   };
-  $("cx").onclick = () => setAxis("x");
-  $("cy").onclick = () => setAxis("y");
-  $("cz").onclick = () => setAxis("z");
-  $("cfa").onclick = startFacePick;
-  $("cbox").onclick = startBoxClip;
+  $("cx").onclick = () => medSnittAngre("Snittakse", () => setAxis("x"));
+  $("cy").onclick = () => medSnittAngre("Snittakse", () => setAxis("y"));
+  $("cz").onclick = () => medSnittAngre("Snittakse", () => setAxis("z"));
+  $("cfa").onclick = () => medSnittAngre("Fra flate", startFacePick);
+  $("cbox").onclick = () => medSnittAngre("Snittboks", startBoxClip);
   $("csave").onclick = openSavedClips;
-  $("cf").onclick = () => { S.clipFlip = !S.clipFlip; upd(); applyClip(); };
-  if ($("cr")) $("cr").oninput = (e) => { S.clipT = e.target.value / 1000; applyClip(); };
-  if ($("crf")) $("crf").oninput = (e) => {
-    S.clipFaceOff = Number(e.target.value);
-    $("crfv").textContent = fmtLen(tilM(S.clipFaceOff));   // offset er i modellens enheter
-    applyClip();
-  };
+  $("cf").onclick = () => medSnittAngre("Snu snitt", () => { S.clipFlip = !S.clipFlip; upd(); applyClip(); });
+  if ($("cr")) {
+    $("cr").oninput = (e) => { S.clipT = e.target.value / 1000; applyClip(); };
+    gliderAngre($("cr"), "Snitt flyttet");
+  }
+  if ($("crf")) {
+    $("crf").oninput = (e) => {
+      S.clipFaceOff = Number(e.target.value);
+      $("crfv").textContent = fmtLen(tilM(S.clipFaceOff));   // offset er i modellens enheter
+      applyClip();
+    };
+    gliderAngre($("crf"), "Snitt flyttet");
+  }
   upd();
 }
 
@@ -155,6 +203,7 @@ export function setClipFromFace(hit) {
     .applyNormalMatrix(new THREE.Matrix3().getNormalMatrix(hit.object.matrixWorld))
     .normalize();
   if (!isFinite(n.x) || n.lengthSq() < 1e-9) return false;
+  const før = snittAvtrykk();
   S.clipFaceN = n;
   S.clipFaceP = hit.point.clone();
   S.clipFaceOff = 0;
@@ -163,6 +212,7 @@ export function setClipFromFace(hit) {
   stopFacePick();
   showClipBar();
   applyClip();
+  meldSnittAngre(før, "Snitt fra flate");
   return true;
 }
 
@@ -267,12 +317,13 @@ export function renderClipPanel() {
       $("cv_" + k).textContent = Math.round(v * 100) + " %";
       applyClip();
     };
+    gliderAngre(sl, "Snittboks endret");
   });
-  $("cbReset").onclick = () => { S.clipBox = Object.assign({}, DEFAULT_CLIPBOX); renderClipPanel(); applyClip(); };
-  $("cbHalf").onclick = () => {
+  $("cbReset").onclick = () => medSnittAngre("Snittboks: hele modellen", () => { S.clipBox = Object.assign({}, DEFAULT_CLIPBOX); renderClipPanel(); applyClip(); });
+  $("cbHalf").onclick = () => medSnittAngre("Snittboks: midten", () => {
     S.clipBox = { x0: 0.25, x1: 0.75, y0: 0.25, y1: 0.75, z0: 0.25, z1: 0.75 };
     renderClipPanel(); applyClip();
-  };
+  });
   $("cbSave").onclick = saveCurrentClip;
 }
 
@@ -370,7 +421,7 @@ export function openSavedClips() {
     : '<p style="color:var(--muted)">' + t("Ingen lagrede snitt for <b>{0}</b> ennå.", esc(S.fileName || "modellen")) + '</p>';
   body.innerHTML = html;
   $("clNew").onclick = saveCurrentClip;
-  $("clBack").onclick = () => { S.clipMode = "box"; showClipBar(); renderClipPanel(); applyClip(); };
+  $("clBack").onclick = () => medSnittAngre("Snittboks", () => { S.clipMode = "box"; showClipBar(); renderClipPanel(); applyClip(); });
   body.querySelectorAll(".comment").forEach(el => {
     el.onclick = (e) => {
       const del = e.target.getAttribute("data-del");
@@ -381,7 +432,11 @@ export function openSavedClips() {
         openSavedClips();
         return;
       }
-      applyClipState(clipList()[Number(el.dataset.i)]);   // asynkron, men ingenting venter på den
+      // asynkron: angre-posten meldes når snittet faktisk står
+      const før = snittAvtrykk();
+      applyClipState(clipList()[Number(el.dataset.i)])
+        .then(() => meldSnittAngre(før, "Snitt hentet"))
+        .catch(err => console.warn("Kunne ikke hente snittet:", err));
     };
   });
 }
@@ -454,6 +509,7 @@ function applyStorey(i) {
 
 på("btnStorey", "click", async () => {
   if (!S.modelGroup) return;
+  const før = snittAvtrykk();
   S.storeyOn = !S.storeyOn;
   $("btnStorey").classList.toggle("active", S.storeyOn);
   if (S.storeyOn) {
@@ -473,6 +529,7 @@ på("btnStorey", "click", async () => {
     modeBar.innerHTML = "";
     if (S.clipOn) showClipBar(); else updateModeBar();
   }
+  meldSnittAngre(før, S.storeyOn ? "Etasjefilter på" : "Etasjefilter av");
 });
 
 function showStoreyBar() {
@@ -491,6 +548,6 @@ function showStoreyBar() {
   const upd = () => modeBar.querySelectorAll("button[data-st]").forEach(b =>
     b.classList.toggle("active", Number(b.dataset.st) === S.storeyIdx));
   modeBar.querySelectorAll("button[data-st]").forEach(b =>
-    b.onclick = () => { applyStorey(Number(b.dataset.st)); upd(); });
+    b.onclick = () => { const før = snittAvtrykk(); applyStorey(Number(b.dataset.st)); upd(); meldSnittAngre(før, "Etasje valgt"); });
   upd();
 }

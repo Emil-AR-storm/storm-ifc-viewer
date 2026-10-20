@@ -6,7 +6,7 @@ import { t } from "./i18n.js";
 import { TETTHET } from "./config.js";
 import { kolBokstav, sumFormel } from "./regneark.js";
 import { profilKgPerM } from "./profiler.js";
-import { hiddenIDs, hideElement, hideElements, typeSkjultLett } from "./display.js";
+import { hiddenIDs, hideElement, hideElements, settVisning, typeSkjultLett, visningsAvtrykk } from "./display.js";
 import { alleElementIder, lightElementBoxes } from "./ifc.js";
 import { kall, metaFor, sikreMeta } from "./ifcrpc.js";
 import { axesGroup, camera, canvas, controls, flyTil, grid, koteGroup, markerGroup, measureGroup, omradeGroup, pointer, raycaster, renderer, scene, selGroup } from "./scene.js";
@@ -62,8 +62,11 @@ export function clearSelection() {
 export function hitID(hit) {
   const u = hit.object.userData;
   if (!u.merged) return u.expressID;
-  const fi = hit.faceIndex * 3;
   const r = u.ranges;
+  // Sammenslått mesh uten område-liste (f.eks. en lett kopi) — ingen ID å finne,
+  // men et trykk skal aldri kaste (funnet 20.10: «reading 'length'»)
+  if (!Array.isArray(r) || hit.faceIndex == null) return u.expressID ?? null;
+  const fi = hit.faceIndex * 3;
   let lo = 0, hi = r.length - 1;
   while (lo <= hi) {
     const mid = (lo + hi) >> 1;
@@ -1046,9 +1049,23 @@ async function showMultiSummary() {
     (items.length > vist.length ? '<p style="color:var(--muted); font-size:11px; margin-top:6px">' + t("… og {0} til (summene øverst gjelder alle). Endre grensen i ⚙ Innstillinger → Visning.", items.length - vist.length) + '</p>' : "") +
     '<p style="color:var(--muted); font-size:11px; margin-top:8px">' + t("Shift-klikk legger til/fjerner. Shift + dra lager markeringsboks: mot høyre = kun synlige, mot venstre = alt i boksen. Vanlig klikk nullstiller.") + '</p>';
   if (antElemAlle) $("paHideSel").onclick = () => {
-    if (antElem) hideElements(new Set(S.multiSel.keys()));   // virker nå også i 🪶
-    for (const l of flervalgLag()) { const v = l.valgte(); if (v.length && l.skjul) l.skjul(v); }
+    // ↩ ÉN angre-post for hele trykket. Før fikk bare IFC-delen en post, og
+    // Ctrl+Z hentet fram elementene mens SW-elementer, bunker og rigg ble
+    // stående skjult. Avtrykket av hele visningen tar med lagene.
+    const før = visningsAvtrykk();
+    // Lagenes utvalg leses FØR hideElements: den tømmer valget (clearSelection
+    // kaller velg([]) på lagene), og da ble lagene aldri skjult når utvalget
+    // også hadde IFC-elementer.
+    const lagValg = flervalgLag().map(l => [l, l.valgte()]).filter(([l, v]) => v.length && l.skjul);
+    if (antElem) hideElements(new Set(S.multiSel.keys()), { utenAngre: true });   // virker nå også i 🪶
+    for (const [l, v] of lagValg) l.skjul(v);
     if (!antElem) $("propPanel").classList.remove("open");
+    const etter = visningsAvtrykk();
+    if (S.pushAngre && JSON.stringify(før) !== JSON.stringify(etter)) S.pushAngre({
+      tekst: "Skjul flere element",
+      angre: () => settVisning(før),
+      gjenopprett: () => settVisning(etter)
+    });
   };
   apnePanel("propPanel");
 }

@@ -1848,10 +1848,13 @@ async function hentTerreng(adr) {
     flyTilTerreng();
     opptatt = false;
     settMelding("");
+    // planLagring: plasseringen i SharePoint skal følge det som står på
+    // skjermen etter angre — ellers kom det angrede terrenget tilbake neste
+    // gang modellen ble åpnet.
     if (S.pushAngre) S.pushAngre({
       tekst: "Terreng hentet",
-      angre: () => { terreng = forrige; skjult = false; tegnTerreng(); if (erApen()) tegnPanel(); },
-      gjenopprett: () => { terreng = nytt; skjult = false; tegnTerreng(); if (erApen()) tegnPanel(); }
+      angre: () => { terreng = forrige; skjult = false; tegnTerreng(); planLagring(); if (erApen()) tegnPanel(); },
+      gjenopprett: () => { terreng = nytt; skjult = false; tegnTerreng(); planLagring(); if (erApen()) tegnPanel(); }
     });
   } catch (err) {
     opptatt = false;
@@ -1869,8 +1872,8 @@ function fjernTerreng() {
   if (S.oppdaterVisAlle) S.oppdaterVisAlle();
   if (S.pushAngre) S.pushAngre({
     tekst: "Terreng fjernet",
-    angre: () => { terreng = forrige; tegnTerreng(); if (erApen()) tegnPanel(); },
-    gjenopprett: () => { terreng = null; tegnTerreng(); if (erApen()) tegnPanel(); }
+    angre: () => { terreng = forrige; tegnTerreng(); planLagring(); if (erApen()) tegnPanel(); },
+    gjenopprett: () => { terreng = null; tegnTerreng(); planLagring(); if (erApen()) tegnPanel(); }
   });
 }
 
@@ -1950,7 +1953,10 @@ async function skrivKatalog(poster) {
   if (!spPaalogget()) { spStatus = "av"; return; }
   const res = await spSkriv(SP_MAPPE, KATALOG_FIL, poster, (p) => String(p && p.id || ""));
   spStatus = res.ok ? "ok" : "feil";
-  if (res.ok && res.liste) { katalog = vaskTerrengListe(res.liste); lsSkriv(LS_KATALOG, katalog); }
+  // Flettes inn i katalogen slik den er NÅ, ikke byttes ut: svaret bygger på
+  // det vi sendte, og en sletting eller et nytt terreng som kom til mens svaret
+  // var på vei, ville ellers forsvunnet (samme feil som i Rigg, 19.10).
+  if (res.ok && res.liste) { katalog = vaskTerrengListe(flettPaaId(katalog, vaskTerrengListe(res.liste))); lsSkriv(LS_KATALOG, katalog); }
 }
 
 // Plasseringen skrives ETTER at brukeren har sluppet musa, og samlet: et drag
@@ -2015,7 +2021,10 @@ async function gridFor(post) {
 }
 
 // Bygger terreng-objektet fra en katalogpost (+ plassering hvis den finnes).
-async function lastTerrengPost(post, pl, medKamera) {
+// medAngre: brukeren valgte terrenget selv (lista) — da skal Ctrl+Z kunne
+// legge tilbake det som sto der før. Når modellen åpnes, hentes terrenget av
+// seg selv, og det er ikke en handling å angre.
+async function lastTerrengPost(post, pl, medKamera, medAngre) {
   if (!S.modelGroup) return;
   const forFil = S.fileName;
   opptatt = true; settMelding(t("Henter lagret terreng …"));
@@ -2036,6 +2045,7 @@ async function lastTerrengPost(post, pl, medKamera) {
     const fullt = fulltKlipp(g);
     const klipp = pl && pl.klipp && pl.klipp.i1 <= fullt.i1 && pl.klipp.j1 <= fullt.j1 ? pl.klipp : fullt;
     if (pl && pl.kart) kartValg = pl.kart;
+    const forrige = terreng;
     ryddKart(terreng);
     terreng = {
       grid: g, bb: post.bbox, E0, N0, h0, hPunkt, spenn, adresse: post.adresse, klipp, plass, gulv,
@@ -2051,6 +2061,12 @@ async function lastTerrengPost(post, pl, medKamera) {
     opptatt = false;
     settMelding("");
     if (!pl) planLagring();       // ny kobling modell ↔ terreng
+    const nytt = terreng;
+    if (medAngre && forrige !== nytt && S.pushAngre) S.pushAngre({
+      tekst: "Terreng hentet",
+      angre: () => { terreng = forrige; skjult = false; tegnTerreng(); planLagring(); if (erApen()) tegnPanel(); },
+      gjenopprett: () => { terreng = nytt; skjult = false; tegnTerreng(); planLagring(); if (erApen()) tegnPanel(); }
+    });
   } catch (err) {
     opptatt = false;
     console.warn("Kunne ikke laste lagret terreng:", err);
@@ -2064,7 +2080,7 @@ async function velgLagret(id) {
   const post = synligKatalog().find(p => p.id === id);
   if (!post) return;
   const lok = vaskPlassering(lsLes(lsPlassNokkel(), null));
-  await lastTerrengPost(post, lok && lok.terreng === id ? lok : null, true);
+  await lastTerrengPost(post, lok && lok.terreng === id ? lok : null, true, true);
 }
 
 async function slettLagret(id) {
@@ -2432,7 +2448,9 @@ function koblFest(body) {
   if (!terreng) return;
   const f = () => terreng.fest || vaskFest({});
   const sys = $("trFestSys");
-  if (sys) sys.onchange = () => settFest(Object.assign({}, f(), { sys: sys.value }), null);
+  // ↩ Koordinatsystemet og tallene får egne angre-poster: et feiltastet
+  // koordinat er nettopp det man vil kunne Ctrl+Z-e (før: null = ingen post).
+  if (sys) sys.onchange = () => settFest(Object.assign({}, f(), { sys: sys.value }), "Koordinatsystem endret");
   body.querySelectorAll("[data-tr-festvelg]").forEach(b => b.onclick = () => {
     const n = Number(b.dataset.trFestvelg);
     festVelger = festVelger === n ? 0 : n;
@@ -2446,7 +2464,7 @@ function koblFest(body) {
       const punkter = f().punkter.slice();
       punkter[Number(i)] = Object.assign({ bx: null, bz: null, hy: 0, E: null, N: null, Z: null }, punkter[Number(i)] || {}, { [felt]: v });
       festMelding = "";
-      settFest(vaskFest(Object.assign({}, f(), { punkter })), null);
+      settFest(vaskFest(Object.assign({}, f(), { punkter })), "Festepunkt endret");
     };
     el.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); el.blur(); } };
   });

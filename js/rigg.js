@@ -128,17 +128,29 @@ function planLagring() {
   lagreTid = setTimeout(async () => {
     if (S.fileName !== fil) return;
     if (!spPaalogget()) { spStatus = "av"; visLagring(); return; }
+    // Det som SENDES huskes, så vi ser om brukeren rakk å endre noe mens
+    // svaret var på vei (se under).
+    const sendt = JSON.stringify(S.rigg || []);
     const res = await spSkriv(SP_MAPPE, spFil(), S.rigg || [], (p) => String(p && p.id || ""));
     if (S.fileName !== fil) return;
     spStatus = res.ok ? "ok" : "feil";
     // Svaret er lista flettet med kollegaenes poster. Tegnes bare på nytt når
     // ingen holder på med et objekt — ellers ville det hoppet under pekeren.
+    //
+    // 🐞 Svaret er regnet ut fra lista slik den var da vi SENDTE. Emil slettet
+    // et objekt, lagringen startet, og han trykket Ctrl+Z — et halvt sekund
+    // senere byttet svaret ut hele lista, og objektet var borte for godt.
+    // Derfor flettes svaret inn i lista slik den er NÅ, på id med nyeste
+    // `endret` (settPost stempler hver endring, også angre). Er noe endret
+    // siden vi sendte, lagres det på nytt, så endringen kommer fram også.
     if (res.ok && res.liste) {
-      const ny = vaskRiggListe(res.liste);
+      const lokaltEndret = JSON.stringify(S.rigg || []) !== sendt;
+      const ny = vaskRiggListe(flettPaaId(S.rigg || [], vaskRiggListe(res.liste)));
       const forskjell = JSON.stringify(ny) !== JSON.stringify(S.rigg || []);
       S.rigg = ny;
       lsSkriv();
       if (forskjell && !plasserer && !drar && !flytter) { tegnRigg(); if (erApen()) tegnPanel(); }
+      if (lokaltEndret) planLagring();
     }
     visLagring();
   }, 1200);
@@ -297,7 +309,9 @@ function lagrePlanerBeggeSteder(liste) {
   const fil = S.fileName;
   spSkriv(PLAN_SP_MAPPE, planSpFil(), liste).then(res => {
     if (S.fileName !== fil) return;
-    if (res.ok && res.liste) skrivPlaner(res.liste);
+    // Flettes med lista slik den er NÅ — en plan lagret eller slettet mens
+    // svaret var på vei skal ikke byttes ut med det vi sendte.
+    if (res.ok && res.liste) skrivPlaner(flettPaaNavn(lesPlanerRaa(), res.liste));
     if (erApen()) tegnPanel();
   });
   return true;
@@ -1845,17 +1859,25 @@ function koblSkjema(o) {
   // tegnPanel setter den tilbake dit.
   // Feltene leses MED EN GANG (de kan være borte om et øyeblikk — «Ferdig»
   // velger bort objektet), og lagres like etter.
-  const lagreSnart = () => { const f = lesFelter(); setTimeout(() => lagre(f), 0); };
+  // ↩ Etter en FERDIG endring slippes fokuset (som i Terreng): ble det stående
+  // i feltet, gikk Ctrl+Z til nettleserens egen angre i feltet i stedet for
+  // til riggen. Nedtrekk, avkrysning og farge er ferdige på change; tekst- og
+  // tallfelt først på Enter — på Tab skal markøren få gå videre til neste felt.
+  const slippFokus = (el) => {
+    if (!el || el !== document.activeElement) return;
+    if (el.tagName === "SELECT" || el.type === "checkbox" || el.type === "color") el.blur();
+  };
+  const lagreSnart = (e) => { const f = lesFelter(); slippFokus(e && e.target); setTimeout(() => lagre(f), 0); };
   $("riggSkjema").querySelectorAll("input, select").forEach(f => { f.onchange = lagreSnart; });
   // Enter i et felt: lagre (change fyrer ikke alltid på Enter i tallfelt)
   $("riggSkjema").querySelectorAll("input").forEach(f => {
-    f.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); lagre(lesFelter()); } };
+    f.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); lagre(lesFelter()); f.blur(); } };
   });
   if (M.stillas) {
     if ($("riggStTrapp")) $("riggStTrapp").onclick = () => settStillasModus(stillasModus === "trapp" ? null : "trapp");
     if ($("riggStStige")) $("riggStStige").onclick = () => settStillasModus(stillasModus === "stige" ? null : "stige");
     $("riggSkjema").querySelectorAll("select[data-st-trapp]").forEach(x => {
-      x.onchange = () => { const q = hentO(o.id); if (!q) return; const tr = q.trapper.map((r, i) => i === Number(x.dataset.stTrapp) ? Object.assign({}, r, { til: Number(x.value) }) : r);
+      x.onchange = () => { x.blur(); const q = hentO(o.id); if (!q) return; const tr = q.trapper.map((r, i) => i === Number(x.dataset.stTrapp) ? Object.assign({}, r, { til: Number(x.value) }) : r);
         oppdater(o.id, { trapper: tr }, "Trapp endret"); tegnPanel(); };
     });
     $("riggSkjema").querySelectorAll("button[data-st-trapp-fjern]").forEach(x => {

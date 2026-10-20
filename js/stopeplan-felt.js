@@ -31,7 +31,7 @@ import {
   feltKanter, fjernVann, leggTilVann, leggTilHjorne, nyttFelt, rektangel, settKantLengde as _settKant, snappFelt, synlige, vaskEtappeListe
 } from "./stopeplan-regn.js";
 import { feltBase, feltMeshListe, stopeGroup, tegnStopeplan, tilBygg, tilScene } from "./stopeplan-vis.js";
-import { lagre, tegnPanel } from "./stopeplan.js";
+import { angreStopeplan, lagre, tegnPanel } from "./stopeplan.js";
 
 // ═══════════════════════ TILSTAND ═══════════════════════
 let tegner = null;     // { etappeId, form: "rekt"|"poly", by, tykkelseM, punkter: [[bx,bz]], peker }
@@ -198,12 +198,10 @@ function endre(ny, tekst, for_) {
   tegnStopeplan();
   tegnHandtak();
   tegnPanel();
-  const etter = vaskEtappeListe(S.stopeplan);
-  if (S.pushAngre) S.pushAngre({
-    tekst,
-    angre: () => { S.stopeplan = forrige; lagre(); tegnStopeplan(); sjekkValgt(); tegnHandtak(); tegnPanel(); },
-    gjenopprett: () => { S.stopeplan = etter; lagre(); tegnStopeplan(); sjekkValgt(); tegnHandtak(); tegnPanel(); }
-  });
+  // Angre/gjenopprett stempler det som settes tilbake (angreStopeplan i
+  // stopeplan.js). Før ble det gamle øyeblikksbildet lagt rett inn, med de
+  // gamle `endret` — og SharePoint-flettingen la endringen tilbake igjen.
+  angreStopeplan(tekst, forrige, () => { sjekkValgt(); tegnHandtak(); });
 }
 function sjekkValgt() { if (valgtFelt && !finnFelt(S.stopeplan, valgtFelt)) { valgtFelt = null; aktivHjorne = null; } }
 

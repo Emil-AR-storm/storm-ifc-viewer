@@ -443,3 +443,22 @@ export function filnavn(info, modellNavn, dato) {
     String(modellNavn || "modell").replace(/\.(ifc|glb)$/i, "");
   return ("Priskalkulasjon " + del + " " + (dato || "")).replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, " ").trim() + ".xlsx";
 }
+
+// ═══════════════════════ LASTET LISTE + ULAGREDE ENDRINGER ═══════════════════════
+// Prislista hentes på nytt fra SharePoint når panelet åpnes (en kollega kan ha
+// endret den). Rakk brukeren å endre noe som ikke er skrevet ennå — mens
+// hentingen var ute, eller fordi skrivingen feilet — skal det IKKE forsvinne:
+// ulagrede poster (skitne) står over det som kom, og poster som er slettet her
+// men ikke skrevet (gravsteiner), kommer ikke tilbake. De skitne skrives med
+// ferskt `endret` ved neste lagring, så de vinner flettingen også i SharePoint.
+export function flettLastet(liste, lokalePoster, lokaltOppsett, skitne, gravsteiner) {
+  const d = fraLagret(liste);
+  const sk = skitne instanceof Set ? skitne : new Set(skitne || []);
+  const grav = new Set(gravsteiner || []);
+  const lokale = new Map((lokalePoster || []).map(p => [p.id, p]));
+  const ut = d.poster.filter(p => !grav.has(p.id)).map(p => (sk.has(p.id) && lokale.has(p.id)) ? lokale.get(p.id) : p);
+  const finnes = new Set(ut.map(p => p.id));
+  for (const p of (lokalePoster || [])) if (sk.has(p.id) && !finnes.has(p.id)) ut.push(p);
+  ut.sort((a, b) => a.rekke - b.rekke || a.id.localeCompare(b.id));
+  return { poster: ut, oppsett: sk.has(OPPSETT_ID) && lokaltOppsett ? lokaltOppsett : d.oppsett };
+}

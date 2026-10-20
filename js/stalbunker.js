@@ -143,7 +143,7 @@ export async function lagStalbunker() {
   const { c, gulv, ramme } = byggRamme();
   const plass = new Map(plasserBunker(grupper, ramme).map(p => [p.nokkel, p]));
   const gamle = new Map(stalliste().map(p => [bunkeNokkel(p), p]));
-  const for_ = (S.materiell || []).slice();
+  const for_ = bareStal(S.materiell);
   const nye = [];
   for (const g of grupper) {
     const gml = gamle.get(g.nokkel), pl = plass.get(g.nokkel);
@@ -172,8 +172,8 @@ export async function lagStalbunker() {
     if (p) nye.push(p);
   }
   settStal(nye);
-  const etter = S.materiell.slice();
-  if (S.pushAngre) S.pushAngre({ tekst: "Stålbunker laget", angre: () => settAlt(for_), gjenopprett: () => settAlt(etter) });
+  const etter = bareStal(S.materiell);
+  if (S.pushAngre) S.pushAngre({ tekst: "Stålbunker laget", angre: () => settStal(for_), gjenopprett: () => settStal(etter) });
   return { bunker: nye.length, profiler: elementer.length, fagverk: fagverk.length };
 }
 
@@ -201,17 +201,24 @@ function settAlt(liste) {
   S.materiell = liste;
   tegnMateriell(); S.qtyCache = null; lagreMateriellLokalt();
   if (S.tegnMateriellPanel) S.tegnMateriellPanel();
+  if (S.oppdaterVisAlle) S.oppdaterVisAlle();
 }
+// ↩ Angre-avtrykket er BARE stålbunkene. Før var det hele S.materiell, så
+// angre på «Stålbunker laget» tok også med seg SW-, blikk- og takbunker som
+// var laget ETTERPÅ — de forsvant uten at de hadde noe med stålet å gjøre.
+function bareStal(liste) {
+  return (liste || []).filter(p => p && (p.maltype === "stal" || p.maltype === "fagverk"));
+}
+// Bytter ut stålbunkene og lar resten av materiellet stå slik det er NÅ.
 function settStal(nye) {
   settAlt((S.materiell || []).filter(p => !p || (p.maltype !== "stal" && p.maltype !== "fagverk")).concat(nye));
 }
 
 export function fjernStalbunker() {
   if (!stalliste().length) return;
-  const for_ = (S.materiell || []).slice();
+  const for_ = bareStal(S.materiell);
   settStal([]);
-  const etter = S.materiell.slice();
-  if (S.pushAngre) S.pushAngre({ tekst: "Stålbunker fjernet", angre: () => settAlt(for_), gjenopprett: () => settAlt(etter) });
+  if (S.pushAngre) S.pushAngre({ tekst: "Stålbunker fjernet", angre: () => settStal(for_), gjenopprett: () => settStal([]) });
 }
 
 // Mengdelista: fra bunkene som står (de kan være laget i en tidligere økt).

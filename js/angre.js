@@ -70,14 +70,41 @@ export function leggTilAngre(post) {
   oppdaterKnapper();
 }
 
+// Kaster en angre-funksjon, skal posten IKKE forsvinne: før ble den tatt av
+// stabelen og var borte uten et ord, så brukeren trodde Ctrl+Z hadde virket.
+// Nå legges den tilbake der den lå, og boblen sier fra. Noen poster er
+// asynkrone (snittet venter på geometri) — de gir et løfte, og et løfte som
+// feiler håndteres likt: posten flyttes tilbake og brukeren får beskjed.
+function spill(post, fn, fra, til, feilMal, logg) {
+  spillerAv = true;
+  let ret;
+  try { ret = fn(); }
+  catch (err) {
+    console.warn(logg + " «" + post.tekst + "»:", err);
+    fra.push(post);
+    oppdaterKnapper();
+    visMelding(t(feilMal, t(post.tekst)));
+    return false;
+  }
+  finally { spillerAv = false; }
+  if (ret && typeof ret.then === "function") {
+    ret.then(null, (err) => {
+      console.warn(logg + " «" + post.tekst + "»:", err);
+      // Bare hvis posten fortsatt ligger øverst — har brukeren gjort noe annet
+      // i mellomtiden, er stabelen en annen, og da rører vi den ikke.
+      if (til[til.length - 1] === post) { til.pop(); fra.push(post); }
+      oppdaterKnapper();
+      visMelding(t(feilMal, t(post.tekst)));
+    });
+  }
+  return true;
+}
+
 export function angre() {
   const post = angreStabel.pop();
   if (!post) return;
   const etterpå = kameraNå();
-  spillerAv = true;
-  try { post.angre(); }
-  catch (err) { console.warn("Kunne ikke angre «" + post.tekst + "»:", err); oppdaterKnapper(); return; }
-  finally { spillerAv = false; }
+  if (!spill(post, () => post.angre(), angreStabel, gjenStabel, "Kunne ikke angre: {0}", "Kunne ikke angre")) return;
   post.kameraEtter = etterpå;
   tilKamera(post.kamera);
   gjenStabel.push(post);
@@ -88,10 +115,7 @@ export function angre() {
 export function gjenopprett() {
   const post = gjenStabel.pop();
   if (!post) return;
-  spillerAv = true;
-  try { post.gjenopprett(); }
-  catch (err) { console.warn("Kunne ikke gjenopprette «" + post.tekst + "»:", err); oppdaterKnapper(); return; }
-  finally { spillerAv = false; }
+  if (!spill(post, () => post.gjenopprett(), gjenStabel, angreStabel, "Kunne ikke gjenopprette: {0}", "Kunne ikke gjenopprette")) return;
   tilKamera(post.kameraEtter);
   angreStabel.push(post);
   oppdaterKnapper();

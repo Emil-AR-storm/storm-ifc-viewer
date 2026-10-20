@@ -291,10 +291,30 @@ function renderAxesPanel() {
   $("axesBody").querySelectorAll("input[data-axsrc]").forEach(inp => {
     inp.onchange = (e) => {
       const k = e.target.dataset.axsrc;
+      const før = [...S.axisSelection];
       if (e.target.checked) S.axisSelection.add(k); else S.axisSelection.delete(k);
       rebuildAxes();
+      const etter = [...S.axisSelection];
+      if (S.pushAngre) S.pushAngre({ tekst: "Aksekilde endret", angre: () => settAkseKilder(før), gjenopprett: () => settAkseKilder(etter) });
     };
   });
+}
+
+// ↩ Angre: kildene settes tilbake og aksene bygges på nytt — samme vei som
+// avkrysningen. Mengden byttes innholdet i, ikke objektet: andre deler av
+// appen kan holde på S.axisSelection.
+function settAkseKilder(liste) {
+  S.axisSelection.clear();
+  for (const k of liste) S.axisSelection.add(k);
+  rebuildAxes();
+  if ($("axesPanel") && $("axesPanel").classList.contains("open")) renderAxesPanel();
+}
+function settAkserPaa(on) {
+  if (on && !S.axesBuilt) rebuildAxes();
+  S.axesOn = on;
+  axesGroup.visible = on;
+  $("btnAxes").classList.toggle("active", on);
+  if (!on) $("axesPanel").classList.remove("open");
 }
 
 export function applyAxisFont() {
@@ -311,6 +331,7 @@ på("btnAxes", "click", async () => {
     axesGroup.visible = false;
     $("btnAxes").classList.remove("active");
     panel.classList.remove("open");
+    if (S.pushAngre) S.pushAngre({ tekst: "Akser av", angre: () => settAkserPaa(true), gjenopprett: () => settAkserPaa(false) });
     return;
   }
   await sikreAxisRaw();          // kildelista hentes ved første bruk
@@ -321,6 +342,7 @@ på("btnAxes", "click", async () => {
   S.axesOn = true;
   axesGroup.visible = true;
   $("btnAxes").classList.add("active");
+  if (S.pushAngre) S.pushAngre({ tekst: "Akser på", angre: () => settAkserPaa(false), gjenopprett: () => settAkserPaa(true) });
 });
 
 // oppdater aksenes detaljnivå hver frame

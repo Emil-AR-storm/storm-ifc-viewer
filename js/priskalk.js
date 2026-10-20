@@ -19,8 +19,9 @@ import { clearSelection, lastNedXlsxFlere, markerRader, materialGruppe, veksleMa
 import { spLes, spPaalogget, spSkriv } from "./sp-lager.js";
 import {
   ENHETER, OPPSETT_ID, avvikKlasse, beregnPost, enhetForMateriale, excelArk, filnavn, fraLagret, materialerIUtvalg,
-  elementArk, kontrollArk, lesTall, linjesum, mengdeDesimaler, nyId, postNr, prislisteNokkel, raderForPost, vaskOppsett, vaskPost
+  elementArk, flettLastet, kontrollArk, lesTall, linjesum, mengdeDesimaler, nyId, postNr, prislisteNokkel, raderForPost, vaskOppsett, vaskPost
 } from "./priskalk-regn.js";
+import { likUtenStempel } from "./stopeplan-regn.js";
 
 const SP_MAPPE = "Priskalkulasjon";
 let poster = [];                  // vaskede poster, i rekkefølge
@@ -30,6 +31,12 @@ let spStatus = "av";              // av | henter | ok | lagrer | feil
 let skitne = new Set();           // id-er som er endret siden sist lagret (+ OPPSETT_ID)
 let gravsteiner = [];             // slettede poster som ikke er skrevet ennå
 let lagreTid = 0;
+// Hvor mange ganger hver id er endret. Skrivingen husker tallet den sendte, og
+// stryker bare de id-ene som IKKE er endret igjen mens forespørselen var ute —
+// ellers ble en endring gjort i det halve sekundet borte (den sto som lagret).
+const versjon = new Map();
+let skriver = null;               // skrivingen som er ute akkurat nå (Promise)
+let skrivIgjen = false;
 let nyForm = "";                  // "" | "modell" — skjemaet «Fra modellen» er åpent
 let forModell = null;             // modellen panelet ble fylt for
 
@@ -70,25 +77,44 @@ async function hentPriser() {
   // Uten innlogging finnes prisene bare her, i minnet. Lukker du panelet og
   // åpner det igjen på samme prosjekt, skal de fortsatt stå der.
   if (!spPaalogget() && nokkel && ny.fil === nokkel.fil && forModell === S.modelGroup) { spStatus = "av"; return; }
+  // Samme prisliste, innlogget: det som står her beholdes til svaret kommer,
+  // og ulagrede endringer flettes inn i svaret (flettLastet). Før ble alt
+  // tømt først — en endring gjort mens hentingen var ute, forsvant.
+  const sammeListe = spPaalogget() && nokkel && ny.fil === nokkel.fil;
   nokkel = ny;
-  poster = []; oppsett = vaskOppsett({}); skitne = new Set(); gravsteiner = [];
+  if (!sammeListe) { poster = []; oppsett = vaskOppsett({}); skitne = new Set(); gravsteiner = []; versjon.clear(); }
   if (!spPaalogget()) { spStatus = "av"; return; }
   spStatus = "henter"; visStatus();
   const forFil = nokkel.fil;
   const res = await spLes(SP_MAPPE, nokkel.fil);
   if (!nokkel || nokkel.fil !== forFil) return;
   if (res.status === "ok" || res.status === "tom") {
-    const d = fraLagret(res.liste);
+    const d = flettLastet(res.liste, poster, oppsett, skitne, gravsteiner);
     poster = d.poster; oppsett = d.oppsett; spStatus = "ok";
   } else spStatus = "feil";
 }
 
 function merk(id) {
   skitne.add(id);
+  versjon.set(id, (versjon.get(id) || 0) + 1);
+  planleggSkriving();
+}
+function planleggSkriving() {
   clearTimeout(lagreTid);
   lagreTid = setTimeout(skriv, 800);
 }
-async function skriv() {
+// Bare én skriving ute om gangen. Kommer en ny mens den første er ute, venter
+// den — og det som ble endret i mellomtiden skrives når den første er ferdig.
+function skriv() {
+  if (skriver) { skrivIgjen = true; return skriver; }
+  skriver = skrivNaa().finally(() => {
+    skriver = null;
+    const igjen = skrivIgjen; skrivIgjen = false;
+    if (spStatus === "ok" && (igjen || skitne.size || gravsteiner.length)) planleggSkriving();
+  });
+  return skriver;
+}
+async function skrivNaa() {
   if (!spPaalogget() || !nokkel) { spStatus = "av"; visStatus(); return; }
   const tid = naa();
   const ut = [];
@@ -99,13 +125,14 @@ async function skriv() {
   }
   for (const g of gravsteiner) ut.push({ id: g, slettet: true, endret: tid });
   if (!ut.length) return;
-  const sendt = new Set(skitne), sendtGrav = gravsteiner.slice();
+  const sendt = new Map([...skitne].map(id => [id, versjon.get(id)])), sendtGrav = gravsteiner.slice();
   spStatus = "lagrer"; visStatus();
   const fil = nokkel.fil;
   const res = await spSkriv(SP_MAPPE, fil, ut, (p) => String(p && p.id || ""));
   if (!nokkel || nokkel.fil !== fil) return;
   if (res.ok) {
-    for (const id of sendt) skitne.delete(id);
+    // Bare det som ikke er endret igjen mens vi ventet, er lagret
+    for (const [id, v] of sendt) if (versjon.get(id) === v) skitne.delete(id);
     gravsteiner = gravsteiner.filter(g => !sendtGrav.includes(g));
     spStatus = "ok";
   } else spStatus = "feil";
@@ -295,12 +322,58 @@ function tegn() {
   kobl(body);
 }
 
+// ═══════════════════════ ↩ ANGRE (Ctrl+Z / Ctrl+Y) ═══════════════════════
+// Øyeblikksbildet er postene og oppsettet (dyp kopi). Når det settes tilbake,
+// merkes hver post som er ulik som skitten, så skriv() gir den ferskt `endret`
+// og den vinner flettingen i SharePoint. Poster som kommer tilbake mister
+// gravsteinen sin; poster som forsvinner får en. Uten dette ville et angret
+// slett bare vært en lokal illusjon: gravsteinen lå alt i SharePoint.
+function bilde() { return JSON.parse(JSON.stringify({ poster, oppsett })); }
+function settBilde(maal, fil) {
+  // Prislista kan byttes uten at modellen byttes (nytt prosjektnummer). Da
+  // hører angre-posten til en annen liste og skal ikke legges inn i denne.
+  if ((nokkel ? nokkel.fil : null) !== fil) throw new Error("annen prisliste");
+  const gamle = new Map(poster.map(p => [p.id, p]));
+  const nye = maal.poster.map(p => vaskPost(p));
+  const nyeIder = new Set(nye.map(p => p.id));
+  let nyGrav = false;
+  for (const p of nye) {
+    if (gravsteiner.includes(p.id)) gravsteiner = gravsteiner.filter(g => g !== p.id);
+    const g = gamle.get(p.id);
+    if (!g || !likUtenStempel(g, p)) merk(p.id);
+  }
+  for (const id of gamle.keys()) {
+    if (nyeIder.has(id)) continue;
+    skitne.delete(id);
+    if (!gravsteiner.includes(id)) gravsteiner.push(id);
+    nyGrav = true;
+  }
+  if (!likUtenStempel(oppsett, maal.oppsett)) { oppsett = vaskOppsett(maal.oppsett); merk(OPPSETT_ID); }
+  poster = nye.sort((a, b) => a.rekke - b.rekke || a.id.localeCompare(b.id));
+  if (nyGrav) planleggSkriving();
+  tegn();
+}
+function postAngre(tekst, foer) {
+  if (!S.pushAngre) return;
+  const etter = bilde();
+  // En endring som ikke endret noe (samme tall skrevet på nytt) skal ikke
+  // fylle angre-stabelen
+  if (JSON.stringify(etter) === JSON.stringify(foer)) return;
+  const fil = nokkel ? nokkel.fil : null;
+  S.pushAngre({ tekst, angre: () => settBilde(foer, fil), gjenopprett: () => settBilde(etter, fil) });
+}
+
 // ═══════════════════════ HANDLINGER ═══════════════════════
-function leggTil(p) {
+function leggTilUtenAngre(p) {
   const post = vaskPost(Object.assign({ id: nyId(), rekke: (poster.length ? Math.max(...poster.map(x => x.rekke)) : 0) + 1 }, p));
   poster.push(post);
   merk(post.id);
+}
+function leggTil(p) {
+  const foer = bilde();
+  leggTilUtenAngre(p);
   tegn();
+  postAngre("Post lagt til", foer);
 }
 
 // ═══════════════════════ «MARKER I MODELLEN»: VELGEMODUSEN ═══════════════════════
@@ -398,20 +471,24 @@ export function avsluttVelg(medTil) {
   tegnVelgBar();
   apnePanel("prisPanel");
   if (medTil && n) {
+    const foer = bilde();
     const p = postId ? poster.find(x => x.id === postId) : null;
-    if (p) { p.gids = v.gids; p.nokler = v.nokler; Object.assign(p, vaskPost(p)); merk(p.id); tegn(); }
+    if (p) { p.gids = v.gids; p.nokler = v.nokler; Object.assign(p, vaskPost(p)); merk(p.id); tegn(); postAngre("Post endret", foer); }
     else {
       // 🧅 Flere materialer i utvalget (gulvet: betong + isolasjon, en vegg med
       // lag) → én post PER MATERIALE, så hver får sin egen pris (Emil 12.10).
       const rader = raderForPost({ modus: "manuell", gids: v.gids, nokler: v.nokler }, (S.qtyCache || { rows: [] }).rows, materialGruppe, guidTilId);
       const deler = materialerIUtvalg(rader);
-      if (!deler.length) leggTil({ modus: "manuell", gids: v.gids, nokler: v.nokler, enhet: enhetForUtvalg(v), tekst: t("Markerte objekter ({0} stk)", n) });
+      // Én angre-post for hele utvalget, også når det ble flere poster
+      if (!deler.length) leggTilUtenAngre({ modus: "manuell", gids: v.gids, nokler: v.nokler, enhet: enhetForUtvalg(v), tekst: t("Markerte objekter ({0} stk)", n) });
       else for (const d of deler) {
         const r0 = rader.find(r => (r.material || "") === d.material) || {};
-        leggTil({ modus: "manuell", gids: v.gids, nokler: v.nokler, mat: d.mat,
+        leggTilUtenAngre({ modus: "manuell", gids: v.gids, nokler: v.nokler, mat: d.mat,
           enhet: enhetForMateriale(materialGruppe(d.material), r0.type) || enhetForUtvalg(v),
           tekst: t("Markerte objekter · {0}", materialVisning(d.material)) });
       }
+      tegn();
+      postAngre("Post lagt til", foer);
     }
   } else tegn();
   return medTil ? n : 0;
@@ -427,7 +504,7 @@ if (typeof window !== "undefined") {
 
 function kobl(body) {
   const f = $("pkFelles");
-  if (f) f.addEventListener("change", () => { oppsett.felles = lesTall(f.value) || 0; merk(OPPSETT_ID); tegn(); });
+  if (f) f.addEventListener("change", () => { const foer = bilde(); oppsett.felles = lesTall(f.value) || 0; merk(OPPSETT_ID); tegn(); postAngre("Felles påslag endret", foer); });
 
   $("pkFraModell").addEventListener("click", () => { nyForm = nyForm === "modell" ? "" : "modell"; tegn(); });
   $("pkEgen").addEventListener("click", () => leggTil({ modus: "egen", tekst: t("Egen linje"), enhet: "stk", mengdeEgen: 1 }));
@@ -438,7 +515,8 @@ function kobl(body) {
     // Hvert valg tegner skjemaet på nytt, så den andre lista følger med
     $("pkNyType").addEventListener("change", () => { nyType = $("pkNyType").value; nyEnhet = ""; tegn(); });
     $("pkNyMat").addEventListener("change", () => { nyMat = $("pkNyMat").value; nyEnhet = ""; tegn(); });
-    $("pkNyEnhet").addEventListener("change", () => { nyEnhet = $("pkNyEnhet").value; });
+    // Fokuset ut av lista etter valget, så Ctrl+Z går til angre-stabelen
+    $("pkNyEnhet").addEventListener("change", () => { nyEnhet = $("pkNyEnhet").value; $("pkNyEnhet").blur(); });
     $("pkNyAvbryt").addEventListener("click", () => { nyForm = ""; tegn(); });
     $("pkNyLegg").addEventListener("click", () => {
       const type = nyType, mat = nyMat;
@@ -454,8 +532,11 @@ function kobl(body) {
     const id = tr.dataset.id;
     const post = () => poster.find(p => p.id === id);
     tr.querySelectorAll("[data-pk]").forEach(el => {
+      // «change», ikke «input»: én angre-post per ferdig endring, ikke per tast.
+      // tegn() bygger tabellen på nytt, så fokuset blir ikke stående i feltet.
       el.addEventListener("change", () => {
         const p = post(); if (!p) return;
+        const foer = bilde();
         const felt = el.dataset.pk;
         if (felt === "pris") p.pris = lesTall(el.value);
         else if (felt === "paaslag") p.paaslag = lesTall(el.value) || 0;
@@ -466,24 +547,31 @@ function kobl(body) {
         Object.assign(p, vaskPost(p));
         merk(id);
         tegn();
+        postAngre("Post endret", foer);
       });
     });
     tr.querySelectorAll("[data-pk-gjor]").forEach(b => b.addEventListener("click", () => {
       const p = post(); if (!p) return;
       const gjor = b.dataset.pkGjor;
       if (gjor === "slett") {
+        // Spør først, som de andre verktøyene — og Ctrl+Z angrer likevel
+        if (!confirm(t("Slette posten «{0}»?", p.tekst || postNr(p, poster.indexOf(p))))) return;
+        const foer = bilde();
         poster = poster.filter(x => x.id !== id);
         skitne.delete(id); gravsteiner.push(id);
-        merk(OPPSETT_ID);         // sørger for at skrivingen går (gravsteinen sendes med)
+        planleggSkriving();       // gravsteinen sendes med neste skriving
         tegn();
+        postAngre("Post slettet", foer);
       } else if (gjor === "opp") {
         const i = poster.findIndex(x => x.id === id);
         if (i > 0) {
+          const foer = bilde();
           const a = poster[i - 1];
           [a.rekke, p.rekke] = [p.rekke, a.rekke];
           if (a.rekke === p.rekke) p.rekke = a.rekke - 1;
           poster.sort((x, y) => x.rekke - y.rekke);
           merk(a.id); merk(p.id); tegn();
+          postAngre("Post flyttet", foer);
         }
       } else if (gjor === "vis") {
         const rader = raderForPost(p, (S.qtyCache || { rows: [] }).rows, materialGruppe, guidTilId);
@@ -546,4 +634,5 @@ if (!LETT) {
 }
 
 // Til testene
-export const _test = { tegn, beregnAlle, apne, poster: () => poster, settPoster: (p) => { poster = p.map(vaskPost); }, oppsett: () => oppsett };
+export const _test = { tegn, beregnAlle, apne, poster: () => poster, settPoster: (p) => { poster = p.map(vaskPost); }, oppsett: () => oppsett,
+  skitne: () => skitne, gravsteiner: () => gravsteiner, skriv };

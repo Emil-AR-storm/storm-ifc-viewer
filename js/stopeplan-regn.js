@@ -568,3 +568,56 @@ export function stopeplanExcelRader(tab, statusTekst) {
   rader.push(sumRad);
   return rader;
 }
+
+// ═══════════ ↩ ANGRE SOM OVERLEVER SHAREPOINT-FLETTINGEN ═══════════
+// Brukes av angre/gjenopprett i Støpeplan og Framdriftsplan (og feltene).
+//
+// HVORFOR IKKE BARE `S.stopeplan = forrige`: flettingen (sp-flett.js) lar
+// nyeste `endret` vinne per post. Et øyeblikksbilde fra FØR endringen har de
+// gamle tidsstemplene, så SharePoint (som alt har fått endringen, med et
+// nyere stempel) vant tilbake ved neste lagring — angringen «virket» et halvt
+// sekund og forsvant. Og en etappe som bare ble utelatt, kom tilbake fra
+// SharePoint, for flettingen kan ikke se forskjell på «borte» og «ikke lastet».
+//
+// Derfor sammenlignes målet med det som ligger her NÅ, post for post:
+//   · ulik (uten å se på `endret`)      → målets utgave, med ferskt stempel
+//   · lik                                → står urørt (ingen grunn til å vinne)
+//   · finnes nå, men ikke i målet        → gravstein med ferskt stempel
+//   · gravstein nå, levende i målet      → kommer tilbake, ferskt stempel
+// Stempelet gjøres alltid STRENGT nyere enn det som står nå: ved likt stempel
+// vinner SharePoint (sp-flett.js), og angre rett etter en handling kan skje i
+// samme millisekund.
+function stabil(x) {
+  if (Array.isArray(x)) return "[" + x.map(stabil).join(",") + "]";
+  if (x && typeof x === "object") return "{" + Object.keys(x).sort().map(k => JSON.stringify(k) + ":" + stabil(x[k])).join(",") + "}";
+  return JSON.stringify(x === undefined ? null : x);
+}
+export function likUtenStempel(a, b) {
+  const ut = (p) => { const o = Object.assign({}, p || {}); delete o.endret; return stabil(o); };
+  return ut(a) === ut(b);
+}
+export function nyereStempel(naa, gammel) {
+  const n = String(naa || ""), g = String(gammel || "");
+  if (n > g) return n;
+  const ms = Date.parse(g);
+  return Number.isFinite(ms) ? new Date(ms + 1).toISOString() : n;
+}
+export function settListeStemplet(maal, naa, liste) {
+  const her = new Map();
+  for (const p of (liste || [])) if (p && p.id != null) her.set(String(p.id), p);
+  const ut = [], sett = new Set();
+  for (const m of (maal || [])) {
+    if (!m || m.id == null) continue;
+    const id = String(m.id);
+    if (sett.has(id)) continue;
+    sett.add(id);
+    const n = her.get(id);
+    if (n && likUtenStempel(n, m)) ut.push(n);
+    else ut.push(Object.assign({}, m, { endret: nyereStempel(naa, n && n.endret) }));
+  }
+  for (const [id, n] of her) {
+    if (sett.has(id)) continue;
+    ut.push(n.slettet ? n : { id: n.id, slettet: true, endret: nyereStempel(naa, n.endret) });
+  }
+  return ut;
+}

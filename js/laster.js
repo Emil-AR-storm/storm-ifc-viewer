@@ -964,6 +964,24 @@ function retningKnapper() {
   if (!rr.length) rr = [0, 1, 2, 3].map(i => ({ navn: String(i + 1) }));
   return rr.map((r, i) => '<button data-retning="' + i + '"' + (String(data.retning || 0) === String(i) ? ' class="active"' : "") + ">" + esc(r.navn) + "</button>").join("");
 }
+// ↩ Angre for lastdataene: hele `data` er lite (en håndfull tall), så
+// avtrykket er en kopi av det, og angre skriver det tilbake med samme vei som
+// feltene bruker (skriv + panel + 3D). Før hadde feltene ingen angre i det
+// hele tatt — Ctrl+Z etter en feiltastet sk,0 gjorde ingenting.
+const lastAvtrykk = () => JSON.parse(JSON.stringify(data));
+function settLastdata(d) {
+  data = vaskLastdata(JSON.parse(JSON.stringify(d)));
+  skriv();
+  if ($("lasterPanel") && $("lasterPanel").classList.contains("open")) tegnPanel();
+  if (visSno || visVind) tegn();
+}
+function meldLastAngre(før, tekst) {
+  if (!S.pushAngre) return;
+  const etter = lastAvtrykk();
+  if (JSON.stringify(før) === JSON.stringify(etter)) return;
+  S.pushAngre({ tekst, angre: () => settLastdata(før), gjenopprett: () => settLastdata(etter) });
+}
+
 function tegnPanel() {
   const body = $("lasterBody");
   if (!body) return;
@@ -996,20 +1014,29 @@ function tegnPanel() {
     '<div id="laVindRes"></div>';
   foldSeksjoner(body, { nokkel: "storm-laster-seksjoner-apne", standard: ["la-sted", "la-sno", "la-vind"] });
   body.querySelectorAll("[data-felt]").forEach(el => {
+    // Feltet skrives for hvert tastetrykk (input). Avtrykket tas når feltet
+    // får fokus, og meldes inn på change — ÉN post per feltendring.
+    let før = null;
+    const start = () => { if (!før) før = lastAvtrykk(); };
     const lagre = () => {
+      start();
       data[el.dataset.felt] = el.value;
       if (el.dataset.felt in fraTerreng) fraTerreng[el.dataset.felt] = false;   // skrevet om for hånd
       skriv(); visResultat(); if (visSno || visVind) tegn();
       if (el.dataset.felt === "takform") tegnPanel();
     };
-    el.addEventListener("input", lagre); el.addEventListener("change", lagre);
+    el.addEventListener("focus", start); el.addEventListener("pointerdown", start);
+    el.addEventListener("input", lagre);
+    el.addEventListener("change", () => { const f = før; lagre(); før = null; if (f) meldLastAngre(f, "Lastdata endret"); });
   });
   body.querySelectorAll("[data-retning]").forEach(el => el.onclick = () => {
+    const før = lastAvtrykk();
     data.retning = el.dataset.retning; skriv();
     body.querySelectorAll("[data-retning]").forEach(x => x.classList.toggle("active", x === el));
     visResultat(); if (visVind) tegn();
+    meldLastAngre(før, "Vindretning endret");
   });
-  if ($("laHentH")) $("laHentH").onclick = () => { data.H = String(terrengH); skriv(); tegnPanel(); if (visSno) tegn(); };
+  if ($("laHentH")) $("laHentH").onclick = () => { const før = lastAvtrykk(); data.H = String(terrengH); skriv(); tegnPanel(); if (visSno) tegn(); meldLastAngre(før, "Lastdata endret"); };
   $("laSno").classList.toggle("active", visSno);
   $("laVind").classList.toggle("active", visVind);
   $("laSno").onclick = () => { visSno = !visSno; $("laSno").classList.toggle("active", visSno); tegn(); };

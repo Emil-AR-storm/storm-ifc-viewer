@@ -92,9 +92,20 @@ function lagreBeggeSteder() {
   lagreLokalt();
   if (LETT) return;
   if (!spPaalogget()) { grSpStatus = "av"; return; }
+  const sendt = JSON.stringify(grupperForLagring());
   spSkriv(GR_SP_MAPPE, grSpFil(), grupperForLagring(), (g) => String(g && g.id || "")).then(res => {
     grSpStatus = res.ok ? "ok" : "feil";
-    if (res.ok && res.liste) { S.grupper = vaskGruppeListe(res.liste); lagreLokalt(); }
+    // Svaret er flettet fra lista slik den var da vi SENDTE. Rakk brukeren å
+    // slette, lagre eller trykke Ctrl+Z mens svaret var på vei, ville en ren
+    // utskifting spist den endringen (samme feil som Emil så i Rigg). Derfor
+    // flettes svaret inn i lista slik den er NÅ (nyeste `endret` vinner), og
+    // er den endret siden vi sendte, lagres den på nytt.
+    if (res.ok && res.liste) {
+      const lokaltEndret = JSON.stringify(grupperForLagring()) !== sendt;
+      S.grupper = vaskGruppeListe(flettPaaId(grupperForLagring(), vaskGruppeListe(res.liste)));
+      lagreLokalt();
+      if (lokaltEndret) lagreBeggeSteder();
+    }
     if (erApen()) tegnPanel();
   });
 }
@@ -214,16 +225,25 @@ function nyId() {
   return "G-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 7);
 }
 
+// Samme gruppe med `endret` = nå. Brukes når angre/gjenopprett legger en
+// gammel utgave tilbake — den skal vinne over gravsteinen den erstatter.
+export function nyttStempel(g) {
+  return Object.assign({}, g, { endret: new Date().toISOString() });
+}
+
 function leggTil(g, medAngre) {
   // Samme id på nytt er en OPPDATERING, ikke en kopi: angre-av-en-sletting
   // legger gruppa tilbake, og da skal gravsteinen byttes ut, ikke få selskap.
   S.grupper = (S.grupper || []).filter(x => x.id !== g.id).concat([g]);
   lagreBeggeSteder();
   tegnPanel();
+  // Gjenopprett legger gruppa tilbake med FERSKT stempel: med den gamle
+  // `endret` ville gravsteinen fra angre vunnet flettingen mot SharePoint
+  // (nyeste vinner), og gruppa forsvunnet igjen ved neste lagring.
   if (medAngre && S.pushAngre) S.pushAngre({
     tekst: "Gruppe lagret",
     angre: () => fjern(g.id, false),
-    gjenopprett: () => leggTil(g, false)
+    gjenopprett: () => leggTil(nyttStempel(g), false)
   });
 }
 
@@ -238,7 +258,8 @@ function fjern(id, medAngre) {
   tegnPanel();
   if (medAngre && S.pushAngre) S.pushAngre({
     tekst: "Gruppe slettet",
-    angre: () => leggTil(g, false),
+    // Ferskt stempel, ellers vinner gravsteinen (nyere `endret`) ved flettingen
+    angre: () => leggTil(nyttStempel(g), false),
     gjenopprett: () => fjern(id, false)
   });
 }
@@ -309,3 +330,6 @@ på("btnGrupper", "click", () => {
   tegnPanel();
   apnePanel("grupperPanel");
 });
+
+// Til testene: ingen logikk her.
+export const __grupper = { leggTil, fjern };

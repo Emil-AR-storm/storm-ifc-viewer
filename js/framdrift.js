@@ -31,9 +31,14 @@ import { begrensListe, forberedMobilPanel, ryddFramdriftVis, settSkjulTildelte, 
 import { LAG_ID as TRP_BLIKK_LAG } from "./framdrift-plukk.js";
 import { forberedKilder, nullstillKilder } from "./framdrift-kilde.js";
 import { varsel } from "./varsel.js";
+// Stempel-hjelperen for angre bor hos støpeplanen (samme listeform, samme fletting)
+import { settListeStemplet } from "./stopeplan-regn.js";
 
 const SP_MAPPE = "Framdriftsplan";
 let spStatus = "av", lagreTid = 0;
+// Teller hver lokale endring, så svaret fra en lagring vet om brukeren rakk å
+// endre noe mens forespørselen var ute (da må det lagres én gang til).
+let endringNr = 0;
 S.framdrift = S.framdrift || [];
 
 function lsNokkel() { return "storm-ifc-framdrift::" + S.fileName; }
@@ -50,6 +55,7 @@ function lagreLokalt() {
 }
 // Skriving samles (navnet skrives tegn for tegn); lokalt lagres det med en gang.
 export function lagre() {
+  endringNr++;
   lagreLokalt();
   clearTimeout(lagreTid);
   lagreTid = setTimeout(skrivSp, 600);
@@ -57,10 +63,21 @@ export function lagre() {
 async function skrivSp() {
   if (!spPaalogget()) { spStatus = "av"; visLagring(); return; }
   const forFil = S.fileName;
+  const sendtNr = endringNr;
   const res = await spSkriv(SP_MAPPE, spFil(), vaskEtappeListe(S.framdrift), (e) => String(e && e.id || ""));
   if (S.fileName !== forFil) return;
   spStatus = res.ok ? "ok" : "feil";
-  if (res.ok && res.liste) { S.framdrift = vaskEtappeListe(res.liste); lagreLokalt(); if (erApen()) tegnPanel(); }
+  if (res.ok && res.liste) {
+    // Svaret ERSTATTER IKKE lista. Slettet brukeren et trinn (eller trykket
+    // Ctrl+Z) mens forespørselen var ute, skrev svaret over det et halvt
+    // sekund senere — samme feil som ble sett live i Rigg. Nå flettes svaret
+    // med det som ligger her med nyeste `endret`, og ble noe endret etter
+    // sendingen, lagres det én gang til.
+    S.framdrift = vaskEtappeListe(flettPaaId(vaskEtappeListe(S.framdrift), vaskEtappeListe(res.liste)));
+    lagreLokalt();
+    if (endringNr !== sendtNr) { clearTimeout(lagreTid); lagreTid = setTimeout(skrivSp, 600); }
+    if (erApen()) tegnPanel();
+  }
   else visLagring();
 }
 async function hentFraSp() {
@@ -82,28 +99,55 @@ function lagringsTekst() {
 }
 function visLagring() { const el = $("fpLagring"); if (el) el.textContent = lagringsTekst(); }
 
+// ═══════════ ↩ ANGRE (Ctrl+Z / Ctrl+Y) ═══════════
+// Øyeblikksbildet er hele lista før og etter. Det settes tilbake gjennom
+// settListeStemplet: det som endres får ferskt `endret`, og et trinn som
+// skal bort blir en gravstein. Uten stempelet vant SharePoint-flettingen
+// tilbake med den nyere utgaven, og angringen forsvant ved neste lagring.
+function settTilbake(maal) {
+  S.framdrift = vaskEtappeListe(settListeStemplet(vaskEtappeListe(maal), new Date().toISOString(), vaskEtappeListe(S.framdrift)));
+  // Velgemodus for et trinn som ikke finnes lenger, gir ingen mening
+  if (velger && !synlige(S.framdrift).some(e => e.id === velger.etappeId)) avsluttVelg(false);
+  sisteMelding = "";
+  lagre();
+  tegnPanel();   // tegner også glideren og modellen (oppdaterVis)
+}
+function medAngre(tekst, foer) {
+  if (!S.pushAngre) return;
+  const etter = vaskEtappeListe(S.framdrift);
+  S.pushAngre({ tekst, angre: () => settTilbake(foer), gjenopprett: () => settTilbake(etter) });
+}
+
 // ═══════════════════════ ETAPPENE ═══════════════════════
 export function endreEtappe(id, endring) {
+  const foer = vaskEtappeListe(S.framdrift);
   const naa = new Date().toISOString();
   S.framdrift = vaskEtappeListe(S.framdrift).map(e =>
     e.id === id ? vaskEtappe(Object.assign({}, e, endring, { endret: naa, av: mittNavn() })) : e);
   lagre();
+  medAngre("Trinn endret", foer);
 }
 export function leggTilEtappe() {
+  const foer = vaskEtappeListe(S.framdrift);
   const e = nyEtappe(S.framdrift);
   e.av = mittNavn();
   S.framdrift = vaskEtappeListe(S.framdrift).concat([e]);
   lagre(); tegnPanel();
+  medAngre("Nytt trinn", foer);
   return e;
 }
 export function slettEtappe(id) {
+  const foer = vaskEtappeListe(S.framdrift);
   const naa = new Date().toISOString();
   S.framdrift = vaskEtappeListe(S.framdrift).map(e => e.id === id ? { id, slettet: true, endret: naa } : e);
   lagre(); tegnPanel();
+  medAngre("Trinn slettet", foer);
 }
 export function tomEtappe(id) {
+  const foer = vaskEtappeListe(S.framdrift);
   S.framdrift = fjern(S.framdrift, id, null, new Date().toISOString());
   sisteMelding = ""; lagre(); tegnPanel();
+  medAngre("Trinn tømt", foer);
 }
 
 // ═══════════════════════ UTVALGET ═══════════════════════
@@ -168,16 +212,19 @@ let sisteMelding = "";
 export function fjernValgteFra(id) {
   const ut = valgteObjekter().map(o => o.k);
   if (!ut.length) return 0;
+  const foer = vaskEtappeListe(S.framdrift);
   S.framdrift = fjern(S.framdrift, id, ut, new Date().toISOString())
     .map(e => e.id === id ? Object.assign(e, { av: mittNavn() }) : e);
   const e = synlige(S.framdrift).find(x => x.id === id);
   sisteMelding = tn(ut.length, "{0} objekt tatt ut av {1}.", "{0} objekter tatt ut av {1}.", e ? e.navn : "");
   lagre();
+  medAngre("Tatt ut av trinn", foer);
   return ut.length;
 }
 export function leggValgteTil(id) {
   const nye = valgteObjekter();
   if (!nye.length) return 0;
+  const foer = vaskEtappeListe(S.framdrift);
   const r = leggTil(S.framdrift, id, nye, new Date().toISOString());
   S.framdrift = r.liste.map(e => e.id === id ? Object.assign(e, { av: mittNavn() }) : e);
   const e = synlige(S.framdrift).find(x => x.id === id);
@@ -185,6 +232,7 @@ export function leggValgteTil(id) {
     ? tn(r.lagtTil, "{0} objekt lagt i {1}. Det er flyttet fra et annet trinn.", "{0} objekter lagt i {1}. {2} av dem er flyttet fra et annet trinn.", e ? e.navn : "", r.flyttet)
     : tn(r.lagtTil, "{0} objekt lagt i {1}.", "{0} objekter lagt i {1}.", e ? e.navn : "");
   lagre();
+  if (r.lagtTil) medAngre("Lagt til i trinn", foer);
   return r.lagtTil;
 }
 
@@ -325,6 +373,14 @@ export function innholdTekst(e) {
   return deler.length ? deler.join(" · ") : t("Ingenting lagt til ennå");
 }
 
+// Etter en endring skal fokuset ut av feltet: ble det stående i en avkrysning,
+// en liste eller navnefeltet (Enter), gikk Ctrl+Z til nettleserens eget felt
+// og ikke til angre-stabelen.
+function slippFokus(ev) {
+  const el = ev && ev.target;
+  if (el && typeof document !== "undefined" && document.activeElement === el && el.blur) el.blur();
+}
+
 export function tegnPanel() {
   const body = $("framdriftBody");
   if (!body) return;
@@ -379,7 +435,7 @@ export function tegnPanel() {
   $("fpNy").onclick = () => leggTilEtappe();
   $("fpPdf").onclick = () => lastNedPdf();
   $("fpVideo").onclick = () => lagVideo();
-  if ($("fpVis")) $("fpVis").onchange = (ev) => { S.framdriftVis = ev.target.checked; oppdaterVis(); };
+  if ($("fpVis")) $("fpVis").onchange = (ev) => { S.framdriftVis = ev.target.checked; oppdaterVis(); slippFokus(ev); };
   if ($("fpVaer")) $("fpVaer").onchange = (ev) => {
     S.settings.vaerPaa = !!ev.target.checked; writePrefs();
     try { document.dispatchEvent(new CustomEvent("storm-vaer")); } catch (_) {}
@@ -388,12 +444,13 @@ export function tegnPanel() {
   if ($("fpVaer3D")) $("fpVaer3D").onchange = (ev) => {
     S.settings.vaer3D = !!ev.target.checked; writePrefs();
     try { document.dispatchEvent(new CustomEvent("storm-vaer")); } catch (_) {}
+    slippFokus(ev);
   };
   fyllLogo($("fpLogo"));
-  $("fpLogo").onchange = (ev) => { S.settings.framdriftLogo = fraLogoValg(ev.target.value); writePrefs(); };
+  $("fpLogo").onchange = (ev) => { S.settings.framdriftLogo = fraLogoValg(ev.target.value); writePrefs(); slippFokus(ev); };
   body.querySelectorAll(".fp-etappe").forEach(rad => {
     const id = rad.dataset.id;
-    rad.querySelector(".st-navn").onchange = (ev) => endreEtappe(id, { navn: ev.target.value });
+    rad.querySelector(".st-navn").onchange = (ev) => { endreEtappe(id, { navn: ev.target.value }); slippFokus(ev); };
     rad.querySelector(".fp-fra").onchange = (ev) => { endreEtappe(id, { dato: ev.target.value }); tegnPanel(); };
     rad.querySelector(".fp-til").onchange = (ev) => { endreEtappe(id, { slutt: ev.target.value }); tegnPanel(); };
     rad.querySelector(".st-farge").onchange = (ev) => { endreEtappe(id, { farge: ev.target.value }); tegnPanel(); };

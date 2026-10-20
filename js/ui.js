@@ -417,6 +417,21 @@ function byttEnhet() {
 // Husk bakgrunnsfargen mellom økter
 try { if (S.bg) scene.background.set(S.bg); } catch(_) {}
 
+// Felt der man SKRIVER tekst, og der nettleserens egen angre (skrivingen)
+// derfor skal få Ctrl+Z. Alt annet (avkrysning, glider, farge, nedtrekk,
+// knapper) har ingen tekst å angre, og der går Ctrl+Z til visningen.
+const TEKST_TYPER = new Set(["text", "number", "search", "email", "url", "tel", "password",
+  "date", "time", "datetime-local", "month", "week"]);
+export function erTekstfelt(el) {
+  if (!el) return false;
+  if (el.isContentEditable) return true;
+  if (el.tagName === "TEXTAREA") return true;
+  if (el.tagName !== "INPUT") return false;
+  // .type, ikke attributtet: en ukjent eller manglende type ER et tekstfelt
+  // for nettleseren, og .type gir da "text".
+  return TEKST_TYPER.has(String(el.type || "text").toLowerCase());
+}
+
 window.addEventListener("keydown", (e) => {
   // venter vi på ny hurtigtast?
   if (S.keyWaitFor) {
@@ -432,7 +447,13 @@ window.addEventListener("keydown", (e) => {
     return;
   }
   const t = e.target;
-  if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+  // ↩ Ctrl+Z/Ctrl+Y overlates til nettleseren BARE i ekte tekstfelt — der
+  // betyr de «angre skrivingen». Før ble de sperret i ALLE skjemafelt, også
+  // avkrysningsbokser, glidere, fargevelgere og nedtrekkslister. Da var
+  // fokuset fortsatt på feltet du nettopp brukte, og Ctrl+Z gjorde ingenting
+  // — det så ut som angre var ødelagt.
+  const angreTast = (e.ctrlKey || e.metaKey) && !e.altKey && /^[zy]$/i.test(e.key || "");
+  if (angreTast ? erTekstfelt(t) : (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable))) return;
 
   // ↩ Angre og gjenopprett. MÅ ligge foran ctrl-sperren under – uten dette
   // slippes ingen Ctrl-kombinasjon gjennom i det hele tatt. Ctrl+Shift+Z er

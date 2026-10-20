@@ -133,7 +133,9 @@ export const framdriftSkjult = new Set();
 // Skjuler et helt sett i ÉN gjennomgang av meshene. Å kalle hideElement per
 // element ville gått gjennom hele modellen én gang per id – med noen hundre
 // markerte elementer i en modell på tusenvis blir det merkbart tregt.
-export function hideElements(ider) {
+// opts.utenAngre: kallstedet melder selv ÉN samlet angre-post (flervalgets
+// «Skjul N valgte» skjuler også materiell, SW og rigg i samme trykk).
+export function hideElements(ider, opts) {
   const sett = ider instanceof Set ? ider : new Set(ider);
   if (!sett.size || !S.modelGroup) return;
   // Bare de som faktisk BLIR skjult av dette kallet skal vises igjen ved angre.
@@ -145,7 +147,7 @@ export function hideElements(ider) {
   clearSelection();   // tømmer også S.multiSel – de skjulte skal ikke bli liggende i utvalget
   $("propPanel").classList.remove("open");
   $("btnShowAll").style.display = "";
-  if (nye.length && S.pushAngre) S.pushAngre({
+  if (nye.length && S.pushAngre && !(opts && opts.utenAngre)) S.pushAngre({
     tekst: nye.length === 1 ? "Skjul element" : "Skjul flere element",
     angre: () => showElements(nye),
     gjenopprett: () => hideElements(nye)
@@ -254,6 +256,11 @@ export function visningsAvtrykk() {
     farger: S.typeInfo ? Object.fromEntries([...S.typeInfo].map(([k, g]) => [k, g.color])) : {},
     typeColorsOn: S.typeColorsOn,
     ghostOn: S.ghostOn,
+    // 🎨 Lav kvalitet har egne typefarger (fargeattributtet i den sammenslåtte
+    // geometrien) og en egen av/på. Uten dem i avtrykket satte angre av
+    // «Gjennomsiktig» originalmaterialet tilbake, og typefargene forsvant.
+    lettFargerPå: !!S.lettFargerPå,
+    lettFarger: S.typeInfoLett ? Object.fromEntries([...S.typeInfoLett].map(([k, g]) => [k, g.color])) : {},
     bg: "#" + scene.background.getHexString(),
     // Skjulingen i materiell og SW er med i avtrykket, ellers kunne ↩ Angre
     // ikke gjøre om «Vis alle»: knappen henter fram alt, og uten dette fantes
@@ -279,24 +286,36 @@ export function settVisning(a) {
   typeSkjultLett.clear();
   if (S.typeInfoLett) {
     const sk = new Set(a.lettTyperSkjult || []);
+    const lf = a.lettFarger || {};
     for (const [k, g] of S.typeInfoLett) {
       g.hidden = sk.has(k);
       if (g.hidden) g.ids.forEach(id => typeSkjultLett.add(id));
+      if (lf[k]) { g.color = lf[k]; S.appear.colors[k] = lf[k]; }
     }
   }
   synkMergedSkjuling();
+  // Et avtrykk fra før denne regelen fantes har ikke feltet — da står
+  // lavkvalitetsfargene som de er.
+  if (a.lettFargerPå !== undefined) S.lettFargerPå = !!a.lettFargerPå;
 
   // Materialene settes i én gjennomgang: ghost > typefarger > original.
   // Rekkefølgen er den samme som setGhost/applyTypeColors bruker hver for seg.
+  // I lav kvalitet er «typefarger» fargeMat på de sammenslåtte meshene — samme
+  // valg som setGhost gjør når gjennomsiktig slås av.
   S.typeColorsOn = a.typeColorsOn && !a.ghostOn;
   S.ghostOn = a.ghostOn;
   $("btnGhost").classList.toggle("active", S.ghostOn);
   if (S.modelGroup) {
     const typeAv = new Map();
     if (S.typeInfo) for (const [, g] of S.typeInfo) g.meshes.forEach(m => typeAv.set(m, g));
+    const lettFarge = S.lettFargerPå && S.typeInfoLett;
+    if (lettFarge) malLettFarger();
     S.modelGroup.children.forEach(m => {
       const g = typeAv.get(m);
-      m.material = S.ghostOn ? ghostMat(m) : (S.typeColorsOn && g ? g.mat : m.userData.origMat);
+      if (m.userData.merged && !m.userData.origMat) m.userData.origMat = m.material;
+      m.material = S.ghostOn ? ghostMat(m)
+        : (S.typeColorsOn && g ? g.mat
+        : (lettFarge && m.userData.merged ? lettFargeMat(m) : m.userData.origMat));
       m.visible = !hiddenIDs.has(m.userData.expressID) && !(g && g.hidden);
     });
   }
@@ -312,7 +331,10 @@ export function settVisning(a) {
   syncHiddenTypes();
   saveAppear();
   oppdaterVisAlle();
-  if ($("colorPanel").classList.contains("open") && S.typeInfo) renderColorPanel();
+  if ($("colorPanel").classList.contains("open")) {
+    if (S.typeInfo) renderColorPanel();
+    else if (S.typeInfoLett && S.lightLoaded) renderColorPanelLett();
+  }
 }
 
 // Melder en visningsendring til angre-stabelen. Avtrykket ETTER tas her, så
@@ -528,7 +550,15 @@ export function renderColorPanelLett() {
   });
   html += '<p style="color:var(--muted);font-size:11px;margin-top:10px">' + t("Kantlinjer per type finnes bare i full kvalitet.") + '</p>';
   $("colorBody").innerHTML = html;
+  // ↩ Samme mønster som i full kvalitet: ett avtrykk ved pointerdown/focus,
+  // meldt inn på change. Før hadde bakgrunnen og typefargene her ingen
+  // angre-post i det hele tatt.
+  let dragFør = null;
+  const startDrag = () => { if (!dragFør) dragFør = visningsAvtrykk(); };
   $("colBg").oninput = (e) => { scene.background.set(e.target.value); saveBg(e.target.value); };
+  $("colBg").onpointerdown = startDrag;
+  $("colBg").onfocus = startDrag;
+  $("colBg").onchange = () => { if (dragFør) { meldAngre(dragFør, "Bakgrunnsfarge"); dragFør = null; } };
   $("colApplyLett").onclick = () => settLettFarger(true, true);
   $("colResetLett").onclick = () => settLettFarger(false, true);
   $("colorBody").querySelectorAll("button[data-lett-hide]").forEach(b =>
@@ -536,7 +566,9 @@ export function renderColorPanelLett() {
       const g = S.typeInfoLett.get(keys[Number(b.dataset.lettHide)]);
       settLettTypeSkjult(g, !g.hidden, true);
     });
-  $("colorBody").querySelectorAll("input[data-lett-type]").forEach(inp =>
+  $("colorBody").querySelectorAll("input[data-lett-type]").forEach(inp => {
+    inp.onpointerdown = startDrag;
+    inp.onfocus = startDrag;
     inp.oninput = () => {
       const key = keys[Number(inp.dataset.lettType)];
       const g = S.typeInfoLett.get(key);
@@ -544,7 +576,9 @@ export function renderColorPanelLett() {
       S.appear.colors[key] = inp.value;
       saveAppear();
       if (S.lettFargerPå) malLettFarger();
-    });
+    };
+    inp.onchange = () => { if (dragFør) { meldAngre(dragFør, "Farge på elementtype"); dragFør = null; } };
+  });
   // 👁 Markeringene finnes også på byggeplassen — der brukes de mest.
   // 📦 / 🧱 Radene fra lagene ved siden av modellen (materiell, SW-elementer).
   // Sto som to navngitte kroker i fullversjonen og INGEN her — derfor hadde
@@ -608,6 +642,7 @@ export function renderColorPanel() {
 
   $("colBg").oninput = (e) => { scene.background.set(e.target.value); saveBg(e.target.value); };
   $("colBg").onpointerdown = startDrag;
+  $("colBg").onfocus = startDrag;   // tastaturbruk åpner velgeren uten pointerdown
   $("colBg").onchange = () => { if (dragFør) { meldAngre(dragFør, "Bakgrunnsfarge"); dragFør = null; } };
   $("colApply").onclick = () => {
     const før = visningsAvtrykk();

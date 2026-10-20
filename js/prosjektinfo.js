@@ -178,8 +178,38 @@ async function startSok() {
 function velgAdresse(a) {
   const v = vaskAdresseInfo(a);
   if (!v) return;
+  const før = info.adresse || null;
   info.adresse = v;
   sokTreff = []; sokMelding = "";
+  lagre();
+  gjenTegn();
+  meldPiAngre("Adresse valgt", () => settAdresse(før), () => settAdresse(v));
+}
+
+// ═══════════════════════ ↩ ANGRE ═══════════════════════
+// Adressen og logoen er valg man gjør med ett trykk — og angrer på med ett
+// trykk. Tekstfeltene har nettleserens egen angre mens man skriver.
+function meldPiAngre(tekst, angre, gjenopprett) {
+  if (S.pushAngre) S.pushAngre({ tekst, angre, gjenopprett });
+}
+function settAdresse(a) {
+  info.adresse = a ? Object.assign({}, a) : null;
+  sokTreff = []; sokMelding = "";
+  lagre();
+  gjenTegn();
+}
+// Logovalget nullstiller verktøyenes egne valg (brukLogoOveralt). Angre skal
+// legge tilbake det som sto der, ikke bare prosjektets logo — ellers hadde
+// riggplanen mistet logoen sin for godt etter et feiltrykk.
+const LOGO_VALG = ["stopeLogo", "riggLogo", "framdriftLogo", "rapLogo"];
+function logoTilstand() {
+  const s = S.settings || {};
+  return { logo: info.logo || "", valg: Object.fromEntries(LOGO_VALG.map(k => [k, s[k] === undefined ? null : s[k]])) };
+}
+function settLogoTilstand(x) {
+  info.logo = x.logo || "";
+  if (S.settings) { for (const k of LOGO_VALG) S.settings[k] = x.valg[k]; writePrefs(); }
+  if (S.nullstillSwLogo) S.nullstillSwLogo();
   lagre();
   gjenTegn();
 }
@@ -244,12 +274,21 @@ export function koblProsjektinfo() {
   }
   if ($("piSok")) $("piSok").onclick = startSok;
   if ($("piAdresseSok")) $("piAdresseSok").onkeydown = (e) => { if (e.key === "Enter") startSok(); };
-  if ($("piAdresseFjern")) $("piAdresseFjern").onclick = () => { info.adresse = null; lagre(); gjenTegn(); };
+  if ($("piAdresseFjern")) $("piAdresseFjern").onclick = () => {
+    const før = info.adresse || null;
+    info.adresse = null; lagre(); gjenTegn();
+    meldPiAngre("Adresse fjernet", () => settAdresse(før), () => settAdresse(null));
+  };
   sek.querySelectorAll(".pi-treff").forEach(b => b.onclick = () => velgAdresse(sokTreff[Number(b.dataset.i)]));
   const lv = $("piLogo");
   if (lv) {
     fyllLogo(lv);
-    lv.onchange = () => { info.logo = lv.value || ""; brukLogoOveralt(info.logo); lagre(); };
+    lv.onchange = () => {
+      const før = logoTilstand();
+      info.logo = lv.value || ""; brukLogoOveralt(info.logo); lagre();
+      const etter = logoTilstand();
+      meldPiAngre("Logo valgt", () => settLogoTilstand(før), () => settLogoTilstand(etter));
+    };
   }
 }
 S.koblProsjektinfo = koblProsjektinfo;

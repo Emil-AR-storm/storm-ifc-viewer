@@ -19,7 +19,7 @@ import { t, tn } from "./i18n.js";
 import { iDagISO } from "./frist.js";
 import { flettPaaId, spLes, spPaalogget, spSkriv } from "./sp-lager.js";
 import {
-  STATUS_TEKST, CEMFLEX_OMLEGG_M, cemflexPlan, vannLengde, vannSummer, dagerMellom, mandag, erGenerert, plussDager, statusPer, tidslinjeSpenn, feltAreal, feltSummer, feltVolum, fjernElementer, kantLengder, leggTilElementer, nyEtappe, sortert, statusFor, synlige, vaskEtappe, vaskEtappeListe
+  STATUS_TEKST, CEMFLEX_OMLEGG_M, cemflexPlan, settListeStemplet, vannLengde, vannSummer, dagerMellom, mandag, erGenerert, plussDager, statusPer, tidslinjeSpenn, feltAreal, feltSummer, feltVolum, fjernElementer, kantLengder, leggTilElementer, nyEtappe, sortert, statusFor, synlige, vaskEtappe, vaskEtappeListe
 } from "./stopeplan-regn.js";
 import { settVisEtappeplan, settVisVanntetting, tegnStopeplan, visEtappeplan, visVanntetting } from "./stopeplan-vis.js";
 import { antallElementer, antallFelt, settVistPer as settVist, tegnTidslinje as tegnTid } from "./stopeplan-tid.js";
@@ -30,6 +30,9 @@ import { varsel } from "./varsel.js";
 const SP_MAPPE = "Stopeplan";
 let spStatus = "av";          // "av" | "ok" | "feil" — vises nederst i panelet
 let lagreTid = 0;
+// Teller hver lokale endring. Svaret fra en lagring sammenlignes med den, så
+// vi vet om brukeren rakk å endre noe mens forespørselen var ute.
+let endringNr = 0;
 
 function nokkel() { return "storm-ifc-stopeplan::" + S.fileName; }
 function spFil() { return S.fileName + ".stopeplan.json"; }
@@ -52,6 +55,7 @@ function lagreLokalt() {
 // Skriving samles: å skrive dato-feltet tegn for tegn skal ikke gi ti
 // skrivinger til SharePoint. Lokalt lagres det med en gang.
 export function lagre() {
+  endringNr++;
   lagreLokalt();
   clearTimeout(lagreTid);
   lagreTid = setTimeout(skrivSp, 600);
@@ -60,10 +64,21 @@ export function lagre() {
 async function skrivSp() {
   if (!spPaalogget()) { spStatus = "av"; visLagring(); return; }
   const forFil = S.fileName;
+  const sendtNr = endringNr;
   const res = await spSkriv(SP_MAPPE, spFil(), vaskEtappeListe(S.stopeplan), (e) => String(e && e.id || ""));
   if (S.fileName !== forFil) return;
   spStatus = res.ok ? "ok" : "feil";
-  if (res.ok && res.liste) { S.stopeplan = vaskEtappeListe(res.liste); lagreLokalt(); if (erApen()) tegnPanel(); }
+  if (res.ok && res.liste) {
+    // Svaret ERSTATTER IKKE lista: sletter (eller angrer) brukeren noe mens
+    // forespørselen er ute, ville svaret ellers skrevet over det et halvt
+    // sekund senere (sett live i Rigg). Flettes med nyeste `endret`, så det
+    // som er endret her etter sendingen vinner — og så lagres det på nytt.
+    S.stopeplan = vaskEtappeListe(flettPaaId(vaskEtappeListe(S.stopeplan), vaskEtappeListe(res.liste)));
+    lagreLokalt();
+    if (endringNr !== sendtNr) { clearTimeout(lagreTid); lagreTid = setTimeout(skrivSp, 600); }
+    if (erApen()) tegnPanel();
+    tegnStopeplan();
+  }
   else visLagring();
 }
 
@@ -91,30 +106,63 @@ function visLagring() {
   if (el) el.textContent = lagringsTekst();
 }
 
+// ═══════════ ↩ ANGRE (Ctrl+Z / Ctrl+Y) ═══════════
+// Hele lista før og etter handlingen er øyeblikksbildene. De settes tilbake
+// gjennom settListeStemplet (stopeplan-regn.js), som gir det som endres et
+// ferskt `endret` — ellers vant SharePoint tilbake ved neste fletting og
+// angringen forsvant igjen. Brukes også av feltene (stopeplan-felt.js).
+export function settStopeplanTilbake(maal) {
+  S.stopeplan = vaskEtappeListe(settListeStemplet(vaskEtappeListe(maal), new Date().toISOString(), vaskEtappeListe(S.stopeplan)));
+  // Velgemodus for en etappe som ikke finnes lenger, gir ingen mening
+  if (velger && !synlige(S.stopeplan).some(e => e.id === velger.etappeId)) avsluttVelg(false);
+  sisteMelding = "";
+  lagre();
+}
+export function angreStopeplan(tekst, foer, etterpaa) {
+  if (!S.pushAngre) return;
+  const etter = vaskEtappeListe(S.stopeplan);
+  const tilbake = (maal) => {
+    settStopeplanTilbake(maal);
+    tegnStopeplan();
+    if (etterpaa) etterpaa();
+    tegnPanel();
+  };
+  S.pushAngre({ tekst, angre: () => tilbake(foer), gjenopprett: () => tilbake(etter) });
+}
+
 // Endrer én etappe og stempler den, så den vinner flettingen.
-export function endreEtappe(id, endring) {
+function endreEtappeUtenAngre(id, endring) {
   const naa = new Date().toISOString();
   S.stopeplan = vaskEtappeListe(S.stopeplan).map(e =>
     e.id === id ? vaskEtappe(Object.assign({}, e, endring, { endret: naa, av: mittNavn() })) : e);
   lagre();
   tegnStopeplan();
 }
+export function endreEtappe(id, endring) {
+  const foer = vaskEtappeListe(S.stopeplan);
+  endreEtappeUtenAngre(id, endring);
+  angreStopeplan("Etappe endret", foer);
+}
 
 export function leggTilEtappe() {
+  const foer = vaskEtappeListe(S.stopeplan);
   const e = nyEtappe(S.stopeplan);
   e.av = mittNavn();
   S.stopeplan = vaskEtappeListe(S.stopeplan).concat([e]);
   lagre();
   tegnPanel();
+  angreStopeplan("Ny etappe", foer);
   return e;
 }
 
 export function slettEtappe(id) {
+  const foer = vaskEtappeListe(S.stopeplan);
   const naa = new Date().toISOString();
   S.stopeplan = vaskEtappeListe(S.stopeplan).map(e => e.id === id ? { id, slettet: true, endret: naa } : e);
   lagre();
   tegnPanel();
   tegnStopeplan();
+  angreStopeplan("Etappe slettet", foer);
 }
 
 // ═══════════════════ TRINN 2: ELEMENTER ═══════════════════
@@ -141,6 +189,7 @@ export function leggValgteTil(id) {
   const ider = valgteIder();
   const gen = valgteGenererte();
   if (!ider.length && !gen.length) return 0;
+  const foer = vaskEtappeListe(S.stopeplan);
   const naa = new Date().toISOString();
   const nye = ider.map(n => { const m = metaFor(n); return { id: n, gid: (m && m.globalId) || "" }; })
     .concat(gen.map(sw => ({ sw })));
@@ -153,6 +202,7 @@ export function leggValgteTil(id) {
   lagre();
   tegnStopeplan();
   tegnPanel();
+  if (r.lagtTil) angreStopeplan("Lagt til i etappe", foer);
   return r.lagtTil;
 }
 
@@ -224,11 +274,13 @@ window.addEventListener("keydown", (ev) => {
 }, true);
 
 export function tomElementer(id) {
+  const foer = vaskEtappeListe(S.stopeplan);
   S.stopeplan = fjernElementer(S.stopeplan, id, null, new Date().toISOString());
   sisteMelding = "";
   lagre();
   tegnStopeplan();
   tegnPanel();
+  angreStopeplan("Etappe tømt", foer);
 }
 
 // Volumet (ca) regnes av mengdeuttaket — samme tall som i Mengder.
@@ -273,13 +325,10 @@ export function merkStopt(id, stopt) {
   const e = synlige(S.stopeplan).find(x => x.id === id);
   if (!e) return;
   const forrige = vaskEtappeListe(S.stopeplan);
-  endreEtappe(id, stopt ? { status: "stopt", stoptDato: e.stoptDato || iDagISO() } : { status: "planlagt", stoptDato: "" });
-  const etter = vaskEtappeListe(S.stopeplan);
-  if (S.pushAngre) S.pushAngre({
-    tekst: stopt ? "Merket som støpt" : "Ikke støpt",
-    angre: () => { S.stopeplan = forrige; lagre(); tegnStopeplan(); tegnPanel(); },
-    gjenopprett: () => { S.stopeplan = etter; lagre(); tegnStopeplan(); tegnPanel(); }
-  });
+  endreEtappeUtenAngre(id, stopt ? { status: "stopt", stoptDato: e.stoptDato || iDagISO() } : { status: "planlagt", stoptDato: "" });
+  // Før: `S.stopeplan = forrige` ved angre — de gamle tidsstemplene tapte mot
+  // SharePoint, og «støpt» kom tilbake. Nå stemples det som settes tilbake.
+  angreStopeplan(stopt ? "Merket som støpt" : "Ikke støpt", forrige);
   tegnPanel();
 }
 
@@ -329,6 +378,13 @@ function vannHtml(e) {
 }
 
 // ═══════════════════════ PANELET ═══════════════════════
+// Etter en endring skal fokuset ut av feltet: ble det stående i en avkrysning,
+// en liste eller navnefeltet (Enter), gikk Ctrl+Z til nettleserens eget felt
+// og ikke til angre-stabelen.
+function slippFokus(ev) {
+  const el = ev && ev.target;
+  if (el && typeof document !== "undefined" && document.activeElement === el && el.blur) el.blur();
+}
 function erApen() { const p = $("stopePanel"); return !!(p && p.classList.contains("open")); }
 
 const STATUS_FARGE = { stopt: "var(--ok)", uke: "var(--warn)", forsinket: "var(--danger)", planlagt: "var(--muted)" };
@@ -446,16 +502,16 @@ export function tegnPanel() {
   $("stNy").onclick = () => leggTilEtappe();
   $("stPdf").onclick = async () => { const P = await import("./stopeplan-pdf.js"); return P.lagStopeplanPdf(volumFor); };
   $("stXlsx").onclick = async () => { const P = await import("./stopeplan-pdf.js"); return P.lagStopeplanXlsx(volumFor); };
-  $("stVis").onchange = (ev) => { settVisEtappeplan(ev.target.checked); tegnTidslinje(); };
-  $("stVisVann").onchange = (ev) => settVisVanntetting(ev.target.checked);
+  $("stVis").onchange = (ev) => { settVisEtappeplan(ev.target.checked); tegnTidslinje(); slippFokus(ev); };
+  $("stVisVann").onchange = (ev) => { settVisVanntetting(ev.target.checked); slippFokus(ev); };
   fyllStopeLogo($("stLogo"));
-  $("stLogo").onchange = (ev) => { S.settings.stopeLogo = fraLogoValg(ev.target.value); writePrefs(); };
+  $("stLogo").onchange = (ev) => { S.settings.stopeLogo = fraLogoValg(ev.target.value); writePrefs(); slippFokus(ev); };
   const pl = $("stPlateM");
   if (pl) pl.onchange = () => { settPlateM(pl.value); tegnPanel(); };
   tegnTidslinje();
   body.querySelectorAll(".st-etappe").forEach(rad => {
     const id = rad.dataset.id;
-    rad.querySelector(".st-navn").onchange = (ev) => endreEtappe(id, { navn: ev.target.value });
+    rad.querySelector(".st-navn").onchange = (ev) => { endreEtappe(id, { navn: ev.target.value }); slippFokus(ev); };
     rad.querySelector(".st-dato").onchange = (ev) => { endreEtappe(id, { dato: ev.target.value }); tegnPanel(); };
     const stB = rad.querySelector(".st-stopt"), ikB = rad.querySelector(".st-ikke-stopt");
     if (stB) stB.onclick = () => merkStopt(id, true);
