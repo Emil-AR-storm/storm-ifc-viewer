@@ -36,7 +36,7 @@
 
 // ---- GENERERT BLOKK START (verktoy/lag-sw-liste.mjs) ----
 // IKKE REDIGER FOR HÅND. Kjør: node "verktoy/lag-sw-liste.mjs"
-const SW_VERSJON = "aac6b578ea17";
+const SW_VERSJON = "0ecb426ba493";
 const SKALL = [
   "/bygg.html",
   "/css/storm.css",
@@ -52,6 +52,7 @@ const SKALL = [
   "/js/clip.js",
   "/js/compare.js",
   "/js/config.js",
+  "/js/csv.js",
   "/js/diagnose.js",
   "/js/display.js",
   "/js/elements.js",
@@ -320,6 +321,9 @@ async function modell(req) {
   const cachet = await c.match(req);
   if (cachet) return cachet;
   const svar = await fetch(req);
+  // 🔒 Tilgangen er borte (prosjektet avsluttet, koden byttet): ikke la noe
+  // av prosjektet bli liggende på telefonen. Se tilgangBorte() nedenfor.
+  if (svar && tilgangBorte(svar)) { await glemProsjekt(c, new URL(req.url).pathname); return svar; }
   if (svar && svar.ok) {
     // Gamle ?v= for SAMME fil ryddes bort. Uten dette samler telefonen opp en
     // kopi per opplasting, og på et prosjekt med ukentlige revisjoner er det
@@ -354,12 +358,39 @@ async function markeringer(req) {
       await c.put(req, await medStempel(svar.clone(), Date.now()));
       return svar;   // det ferske svaret har INGEN stempel — det er signalet
     }
+    // 🔒 Serveren SVARTE, og svaret er «du har ikke tilgang». Da er det ikke
+    // dårlig dekning, og den lagrede kopien skal IKKE reddes frem — ellers ville
+    // en telefon med gammel kode fortsatt vist markeringene (og via
+    // modell-cachen hele modellen) etter at prosjektet er avsluttet. Kopien
+    // slettes, og 401/403 går videre til siden, som da ber om koden.
+    if (svar && tilgangBorte(svar)) { await glemProsjekt(c, new URL(req.url).pathname); return svar; }
   } catch (_) {}
+  // Hit kommer vi bare når fetch KASTET (ingen nett, tidsavbrudd) eller
+  // serveren svarte noe annet enn ok/401/403 (f.eks. 5xx). Da er den lagrede
+  // kopien riktig svar — det er hele poenget med denne fila.
   const cachet = await c.match(req);
   if (cachet) return cachet;
   // Ingen kopi. Et ærlig 504 er bedre enn en tom liste: js/markers.js viser
   // «Fikk ikke hentet markeringene» på alt som ikke er 404.
   return new Response("Ingen nett og ingen lagret kopi av markeringene.", { status: 504 });
+}
+
+// 401 = ingen/ugyldig kode, 403 = koden gjelder ikke (lenger) for prosjektet.
+function tilgangBorte(svar) { return svar.status === 401 || svar.status === 403; }
+
+// Sletter ALT dette prosjektet har i datacachen: modellen (alle ?v=) og
+// markeringene. Prosjektnummeret hentes fra stien (/modell/20653/…,
+// /markeringer/20653/…). Kommer avslaget på markeringene, går modellen også —
+// den er cache-først og ville ellers aldri spurt serveren igjen. Andre
+// prosjekter på samme telefon røres ikke.
+async function glemProsjekt(c, sti) {
+  const m = /^\/(?:modell|markeringer)\/(\d{5})\//.exec(sti);
+  if (!m) return;
+  const prefikser = ["/modell/" + m[1] + "/", "/markeringer/" + m[1] + "/"];
+  for (const n of await c.keys()) {
+    const p = new URL(n.url).pathname;
+    if (prefikser.some(x => p.startsWith(x))) await c.delete(n);
+  }
 }
 
 async function medStempel(svar, tid) {
