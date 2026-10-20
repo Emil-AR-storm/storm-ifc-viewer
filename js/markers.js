@@ -151,6 +151,7 @@ export function loadComments() {
   lastSkjulteMark();          // skjulingen er per fil, som markeringene selv
   S.comments.forEach(addMarkerSprite);
   renderCommentList();
+  ryddVedNesteSynk = true;    // ventelista for filsletting gjennomgås etter synken
   syncSharedComments(); // hent delte markeringer fra SharePoint i bakgrunnen
 }
 
@@ -522,6 +523,9 @@ async function syncSharedComments(stille) {
     persist();
     S.sharedOK = true;
     renderCommentList();
+    // ↩ Filer til markeringer som ble slettet i en tidligere økt, der siden ble
+    // lukket før angre-posten rakk å forkastes. Først NÅ vet vi hva som finnes.
+    if (ryddVedNesteSynk) { ryddVedNesteSynk = false; ryddVentendeSlettinger(); }
     // stille = vi er midt i en 412-runde og skal skrive selv straks etterpå.
     // Uten den ville vi startet en ny push inni den som allerede pågår.
     if (localOnly.length && !stille) pushSharedComments(); // last opp det som bare fantes lokalt
@@ -1956,15 +1960,168 @@ export function goToComment(c) {
 
 export function deleteComment(id) {
   const c = S.comments.find(c => c.id == id);
-  // bildefilene i SharePoint ryddes med, så vi ikke samler opp foreldreløse filer
-  if (c && (alleBilder(c).length || lydI(c).length)) slettBilder(alleBilder(c).concat(lydFiler(c)));
+  // LETTMODUS: montøren kan ikke slette markeringer (knappene er skjult), og
+  // byggeplassen har ingen angre for dem. Skulle det likevel skje, gjøres det
+  // som før: filene ryddes med en gang.
+  if (LETT || !c) {
+    if (c && (alleBilder(c).length || lydI(c).length)) slettBilder(alleBilder(c).concat(lydFiler(c)));
+    fjernMarkering(id);
+    return;
+  }
+  // ↩ KONTORET: bildene og talemeldingene i SharePoint slettes IKKE her lenger.
+  // Da ville Ctrl+Z bare gitt tilbake en markering med døde bildelenker.
+  // Filene slettes når angre-posten forkastes (se markeringPost), og bare hvis
+  // markeringen fortsatt ikke finnes.
+  const plass = fjernMarkering(id);
+  meldAngre(markeringPost(c, "Markering slettet", plass, true));
+}
+
+// Tar markeringen ut av lista, modellen og skjul-lista, og lagrer + deler.
+// Svarer { indeks, skjult } så angre kan sette den tilbake der den sto.
+function fjernMarkering(id) {
+  const indeks = S.comments.findIndex(c => c.id == id);
   S.comments = S.comments.filter(c => c.id != id);
   markerGroup.children.filter(s => s.userData.commentId == id).forEach(s => markerGroup.remove(s));
   fjernOmrader(id);
+  if (popFor && popFor.id == id) closeMarkerPopup();
   // Uten dette samler nøkkelen opp id-er til markeringer som ikke finnes, og
   // en ny markering som tilfeldigvis får samme id ville startet skjult.
-  if (skjulteMark.delete(String(id))) lagreSkjulteMark();
+  const skjult = skjulteMark.delete(String(id));
+  if (skjult) lagreSkjulteMark();
   persist(); pushSharedComments(); renderCommentList();
+  return { indeks, skjult };
+}
+
+// Setter SAMME objekt tilbake (samme id, tekst, bilder, svar, status, frist,
+// ansvarlig) på samme plass i lista, med samme skjult-tilstand.
+function settTilbakeMarkering(c, plass) {
+  if (!S.comments.some(x => x.id == c.id)) {
+    const i = plass && plass.indeks >= 0 ? Math.min(plass.indeks, S.comments.length) : S.comments.length;
+    S.comments.splice(i, 0, c);
+  }
+  if (plass && plass.skjult) { skjulteMark.add(String(c.id)); lagreSkjulteMark(); }
+  // tegn på nytt uansett – finnes den alt (en synk rakk å hente den), skal den
+  // ikke stå dobbelt
+  markerGroup.children.filter(s => s.userData.commentId == c.id).forEach(s => markerGroup.remove(s));
+  fjernOmrader(c.id);
+  addMarkerSprite(c);
+  persist(); pushSharedComments(); renderCommentList();
+}
+
+// ---------- ↩ Angre for markeringer, og utsatt sletting av filene ----------
+// En markering som slettes (eller plasseringen angres) mister IKKE bildene og
+// talemeldingene sine i SharePoint med en gang. De slettes først når angre-
+// posten er borte for godt – dyttet ut av stabelen (40 poster), ugyldig fordi
+// brukeren gjorde noe nytt etter en angring, eller ved modellbytte – og BARE
+// hvis markeringen da fortsatt ikke finnes.
+//
+// Lukkes siden før det skjer, ligger markeringen i en liten venteliste i
+// localStorage. Den gjennomgås ved neste oppstart av samme modell, ETTER at
+// den delte fila er synket, og bare for markeringer som ikke finnes.
+//
+// Grunnregel: filer som tilhører en markering som finnes, slettes ALDRI.
+//
+// Merk: ble det laget en Planner-oppgave eller sendt @-varsel da markeringen
+// ble plassert, trekkes de ikke tilbake når plasseringen angres. Oppgaven og
+// varselet lever i Microsoft 365 og må ryddes der om det trengs.
+const SLETTES_NOKKEL = "storm-ifc-markering-slettes";
+const MAKS_VENTENDE = 200;
+// «fil::id» for markeringer som har en angre-post i live i denne økta. De skal
+// ventelista ikke røre – angre kan fortsatt trenge filene.
+const levendePoster = new Set();
+let ryddVedNesteSynk = false;
+
+function slettesLes() {
+  try { const a = JSON.parse(localStorage.getItem(SLETTES_NOKKEL)); return Array.isArray(a) ? a.filter(e => e && e.fil && e.id != null) : []; }
+  catch (_) { return []; }
+}
+function slettesSkriv(a) {
+  try {
+    if (a.length) localStorage.setItem(SLETTES_NOKKEL, JSON.stringify(a.slice(-MAKS_VENTENDE)));
+    else localStorage.removeItem(SLETTES_NOKKEL);
+  } catch (_) {}
+}
+const filerTil = (c) => alleBilder(c).concat(lydFiler(c));
+const sammeMark = (e, fil, id) => e.fil === fil && String(e.id) === String(id);
+
+function huskSletting(fil, c) {
+  const a = slettesLes().filter(e => !sammeMark(e, fil, c.id));
+  a.push({ fil, id: String(c.id), filer: filerTil(c), tid: Date.now() });
+  slettesSkriv(a);
+}
+function glemSletting(fil, id) {
+  const a = slettesLes();
+  const b = a.filter(e => !sammeMark(e, fil, id));
+  if (b.length !== a.length) slettesSkriv(b);
+}
+
+// Filnavnene som brukes av en markering som FINNES. Disse slettes aldri, selv
+// om en forkastet markering skulle peke på samme fil.
+function filerIBruk() {
+  const i = new Set();
+  S.comments.forEach(c => filerTil(c).forEach(f => i.add(f)));
+  return i;
+}
+
+// Sletter filene til en markering som er borte for godt. Ikke på riktig modell,
+// eller vet vi ikke om slettingen nådde den delte fila (sharedOK), blir den
+// liggende i ventelista til neste oppstart i stedet.
+function slettFilerHvisBorte(fil, c, grunn) {
+  const id = c.id;
+  if (fil === S.fileName && S.comments.some(x => x.id == id)) { glemSletting(fil, id); return; }
+  if (grunn === "modellbytte" || fil !== S.fileName || !S.sharedOK) return;
+  glemSletting(fil, id);
+  const iBruk = filerIBruk();
+  const filer = filerTil(c).filter(f => !iBruk.has(f));
+  if (filer.length) slettBilder(filer);
+}
+
+// Én post for begge retninger. slettet = true: angre setter tilbake,
+// gjenopprett sletter igjen. slettet = false (plassert): omvendt.
+function markeringPost(c, tekst, plass, slettet) {
+  const fil = S.fileName;
+  const nokkel = fil + "::" + c.id;
+  let obj = c;
+  // En synk kan ha byttet ut objektet i lista med fila sin kopi – ta alltid
+  // det som ligger der nå, så ingenting som kom inn i mellomtiden går tapt.
+  const nå = () => (obj = S.comments.find(x => x.id == obj.id) || obj);
+  const fjern = () => { nå(); plass = fjernMarkering(obj.id); huskSletting(fil, obj); };
+  const tilbake = () => { glemSletting(fil, obj.id); settTilbakeMarkering(obj, plass); };
+  levendePoster.add(nokkel);
+  if (slettet) huskSletting(fil, c);
+  return {
+    tekst,
+    angre: slettet ? tilbake : fjern,
+    gjenopprett: slettet ? fjern : tilbake,
+    forkast: (grunn) => { levendePoster.delete(nokkel); slettFilerHvisBorte(fil, obj, grunn); }
+  };
+}
+
+// Legger posten i angre-stabelen. Ble den ikke tatt imot (angre.js mangler,
+// eller vi er midt i en avspilling), forkastes den med en gang – ellers ville
+// filene aldri blitt ryddet.
+function meldAngre(post) {
+  const tatt = S.pushAngre ? S.pushAngre(post) : false;
+  if (!tatt) post.forkast("ikke-lagt-inn");
+}
+
+// Ventelista fra forrige økt. Kjøres etter første vellykte synk etter at en
+// modell er lastet, så S.comments er fasit og ikke bare det lokale.
+function ryddVentendeSlettinger() {
+  const fil = S.fileName;
+  const a = slettesLes();
+  if (!a.some(e => e.fil === fil)) return;
+  const iBruk = filerIBruk();
+  const igjen = [], slett = [];
+  for (const e of a) {
+    if (e.fil !== fil || levendePoster.has(fil + "::" + e.id)) { igjen.push(e); continue; }
+    if (S.comments.some(x => String(x.id) === String(e.id))) continue;   // finnes: bare glem
+    (Array.isArray(e.filer) ? e.filer : []).forEach(f => {
+      if (typeof f === "string" && !iBruk.has(f) && !slett.includes(f)) slett.push(f);
+    });
+  }
+  slettesSkriv(igjen);
+  if (slett.length) slettBilder(slett);
 }
 
 // Esc lukker bildet i full skjerm først, deretter bobla
@@ -2294,6 +2451,11 @@ window.saveComment = function() {
   persist();
   pushSharedComments();
   renderCommentList();
+  // ↩ Kontoret kan angre plasseringen (Ctrl+Z) og få den tilbake (Ctrl+Y).
+  // Byggeplassen kan ikke: der er hendelsen alt sendt til Workerens innboks.
+  // Planner-oppgave og @-varsel som blir sendt for markeringen trekkes ikke
+  // tilbake av angre – se kommentaren ved markeringPost.
+  if (!LETT) meldAngre(markeringPost(c, "Markering plassert", null, false));
   if (LETT) {
     sendHendelse({ type: "ny-markering", markering: {
       id: c.id, text: c.text, author: c.author, date: c.date,

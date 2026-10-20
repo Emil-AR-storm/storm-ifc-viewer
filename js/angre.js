@@ -4,11 +4,16 @@
 // Alt dette lever bare i denne nettleseren – ingenting av det er sendt til
 // SharePoint, Workeren eller andre brukere.
 //
+// Markeringer dekkes (kontorsiden): «Markering plassert» og «Markering
+// slettet». Bildene og talemeldingene i SharePoint slettes IKKE med en gang
+// markeringen forsvinner – da kunne angre bare gitt tilbake et tomt skall.
+// Filene slettes først når angre-posten ikke kan brukes lenger, via posten sin
+// forkast()-krok (se under), og bare hvis markeringen fortsatt ikke finnes.
+// Byggeplass-siden (lettmodus) har ingen angre for markeringer: montøren kan
+// verken plassere eller slette dem der, og en hendelse som er sendt til
+// Workerens innboks kan ikke hentes tilbake.
+//
 // Hva som IKKE dekkes, og hvorfor:
-//   • Markeringer  – de er delt. En slettet markering har alt fjernet bildene
-//                    sine i SharePoint, og i lettmodus er hendelsen alt sendt
-//                    til Workerens innboks. Angre ville sett ut som om det
-//                    virket, men prosjektlederen fikk markeringen likevel.
 //   • Kamera       – bevegelse er sammenhengende, ikke en handling. Ctrl+Z
 //                    ville nesten alltid angret en kamerabevegelse i stedet
 //                    for det brukeren mente. Kameraet lagres i STEDET som
@@ -50,7 +55,13 @@ function tilKamera(k) {
 
 // ---------- Stabelen ----------
 
-// post = { tekst, angre(), gjenopprett() }
+// post = { tekst, angre(), gjenopprett(), forkast?(grunn) }
+//
+// forkast(grunn) er valgfri og kalles NÅR POSTEN ER BORTE FOR GODT, så den
+// kan rydde opp det angre holdt i live (f.eks. bildefilene til en slettet
+// markering). grunn er «full» (dyttet ut over MAKS), «ny-handling»
+// (gjenopprett-stabelen ble ugyldig) eller «modellbytte» (nullstillAngre).
+// Den kalles aldri for en post som fortsatt ligger i en av stablene.
 // Kalles via S.pushAngre fra de andre modulene, så ingen av dem trenger å
 // importere denne fila (samme mønster som S.onModelLoaded og S.syncPrefs).
 // Sant mens vi selv spiller av en post. Uten dette ville en angre-funksjon som
@@ -58,16 +69,29 @@ function tilKamera(k) {
 // stabelen ville aldri tømt seg.
 let spillerAv = false;
 
+// Kaller postens forkast-krok. En krok som kaster skal aldri ta med seg
+// stabelen – den er opprydding, ikke selve handlingen.
+function kast(post, grunn) {
+  if (!post || typeof post.forkast !== "function") return;
+  try { post.forkast(grunn); }
+  catch (err) { console.warn("Opprydding etter angre-post feilet «" + post.tekst + "»:", err); }
+}
+
+// Svarer true når posten ble lagt inn. false = ignorert (under avspilling
+// eller ugyldig post) – da vet den som kalte at forkast aldri vil bli kalt,
+// og må rydde selv.
 export function leggTilAngre(post) {
-  if (spillerAv) return;
-  if (!post || typeof post.angre !== "function" || typeof post.gjenopprett !== "function") return;
+  if (spillerAv) return false;
+  if (!post || typeof post.angre !== "function" || typeof post.gjenopprett !== "function") return false;
   post.kamera = kameraNå();
   angreStabel.push(post);
-  if (angreStabel.length > MAKS) angreStabel.shift();
+  if (angreStabel.length > MAKS) kast(angreStabel.shift(), "full");
   // Ny handling gjør gjenopprett-stabelen ugyldig – den bygde på en historikk
   // som ikke lenger finnes.
-  gjenStabel.length = 0;
+  const ugyldige = gjenStabel.splice(0);
+  ugyldige.forEach(p => kast(p, "ny-handling"));
   oppdaterKnapper();
+  return true;
 }
 
 // Kaster en angre-funksjon, skal posten IKKE forsvinne: før ble den tatt av
@@ -125,8 +149,8 @@ export function gjenopprett() {
 // Tømmes ved modellbytte. Kalles fra nullstillModellState() i state.js, så den
 // kan ikke glemmes – postene peker på mesh og element-ID-er fra forrige modell.
 export function nullstillAngre() {
-  angreStabel.length = 0;
-  gjenStabel.length = 0;
+  const alle = angreStabel.splice(0).concat(gjenStabel.splice(0));
+  alle.forEach(p => kast(p, "modellbytte"));
   oppdaterKnapper();
 }
 
