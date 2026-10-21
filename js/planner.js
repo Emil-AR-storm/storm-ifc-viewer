@@ -140,3 +140,36 @@ export async function fullforOppgave(token, taskId) {
     body: JSON.stringify({ percentComplete: 100 })
   });
 }
+
+// 📋 Planner-status tilbake (runde 1, 21.10.2026): henter status for mange
+// oppgaver på én gang med Graph $batch (maks 20 per kall — Graphs grense).
+// Ut: [{ id, finnes:false }] for slettede (404), ellers
+//     [{ id, percentComplete, completedDateTime, completedBy }].
+// Oppgaver som svarer noe annet (403 = ikke medlem av planen, 429 = strupet
+// inne i batchen) utelates med vilje: da vet vi ingenting nytt, og
+// planner-regn.js lar markeringen være i fred.
+export async function hentStatus(token, taskIder) {
+  const ider = [...new Set((taskIder || []).filter(Boolean).map(String))];
+  const ut = [];
+  for (let i = 0; i < ider.length; i += 20) {
+    const bit = ider.slice(i, i + 20);
+    const r = await gFetch(token, "/$batch", {
+      method: "POST",
+      body: JSON.stringify({ requests: bit.map((id, n) => ({
+        id: String(n), method: "GET", url: "/planner/tasks/" + encodeURIComponent(id) })) })
+    });
+    const d = await r.json();
+    for (const sv of (d && d.responses) || []) {
+      const id = bit[Number(sv && sv.id)];
+      if (id == null) continue;
+      if (sv.status === 404) { ut.push({ id, finnes: false }); continue; }
+      if (sv.status >= 200 && sv.status < 300 && sv.body) {
+        const b = sv.body;
+        ut.push({ id, percentComplete: Number(b.percentComplete) || 0,
+                  completedDateTime: String(b.completedDateTime || ""),
+                  completedBy: String((b.completedBy && b.completedBy.user && b.completedBy.user.id) || "") });
+      }
+    }
+  }
+  return ut;
+}

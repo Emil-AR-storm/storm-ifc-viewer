@@ -14,7 +14,8 @@ import { tegnMarkering } from "./markerbilde.js";
 // som viser seg som «svart minikart bare på mobil».
 import { finnNevnte, koblNevning, nevnKandidater, nevningHtml } from "./nevning.js";
 import { fmtTid, lydStottes, startOpptak } from "./lyd.js";
-import { aapnePlanner, erPlannerUrl, fristTilISO, fullforOppgave, opprettOppgave, plannerToken } from "./planner.js";
+import { aapnePlanner, erPlannerUrl, fristTilISO, fullforOppgave, hentStatus, opprettOppgave, plannerToken } from "./planner.js";
+import { MIN_MELLOM_SYNK_MS, PLANNER_MERKER, patchFor, plannerDatoTekst, plannerSvarId, statusEndringer, visMerke } from "./planner-regn.js";
 import { setMode } from "./modes.js";
 import { camera, controls, frameHooks, markerGroup, meldLapp, omradeGroup, raycaster, renderer } from "./scene.js";
 import { GRAPH, SP, authHeaders, graphGet, spTokenSilent } from "./sharepoint.js";
@@ -31,6 +32,8 @@ import { varsel } from "./varsel.js";
 på("btnComments", "click", () => {
   lukkPaneler("commentPanel");
   $("commentPanel").classList.toggle("open");
+  // 📋 Åpner man lista, vil man se dagens status — høyst hvert 5. minutt.
+  if ($("commentPanel").classList.contains("open")) synkPlannerStatus();
 });
 
 function storageKey(){ return "storm-ifc-comments::" + S.fileName; }
@@ -388,7 +391,11 @@ async function sharedSiteId(token) {
 // byggfaglig skjema. Settes ved oppretting; eldre markeringer får dem aldri, og
 // de skal ikke gjettes i ettertid.
 const MARKERING_TEKSTFELT = ["text", "author", "status", "owner", "due", "date", "taskId", "taskUrl",
-  "endret", "endretAv", "elementId", "globalId"];
+  "endret", "endretAv", "elementId", "globalId",
+  // 📋 Planner-status tilbake (21.10.2026) — se js/planner-regn.js. Står de
+  // ikke her, vasker vaskMarkering dem bort ved neste synk, og merket i bobla
+  // forsvinner uten et ord.
+  "plannerMerke", "plannerDato", "plannerLukket", "plannerSist", "plannerFra", "plannerAv"];
 
 // ID som ikke kolliderer selv om to på hver sin maskin skriver i samme
 // millisekund – samme oppskrift som markeringene selv bruker.
@@ -439,7 +446,8 @@ export function vaskSvar(r) {
     // Hvor innlegget kom fra. Brukes av PDF-rapporten til å merke innlegg fra
     // byggeplassen, der navnet er selvrapportert og ikke kontrollert mot noen
     // konto. Ukjent verdi kastes: heller ingen merkelapp enn en gjetning.
-    kilde: r.kilde === "bygg" || r.kilde === "kontor" ? r.kilde : ""
+    // «planner» = linja synken skriver når oppgaven lukkes i Planner (21.10).
+    kilde: r.kilde === "bygg" || r.kilde === "kontor" || r.kilde === "planner" ? r.kilde : ""
   };
 }
 
@@ -456,6 +464,12 @@ export function vaskMarkering(r) {
   // oppgavelenka åpnes med window.open – slipp bare gjennom https-lenker til
   // Planner selv (erPlannerUrl i planner.js), ikke en hvilken som helst side
   if (c.taskUrl && !erPlannerUrl(c.taskUrl)) delete c.taskUrl;
+  // 📋 Planner-merkene: bare kjente verdier. En ukjent verdi gir ingen stripe
+  // i stedet for en stripe med tull i.
+  if (c.plannerMerke && !PLANNER_MERKER.includes(c.plannerMerke)) delete c.plannerMerke;
+  if (c.plannerSist && c.plannerSist !== "ferdig" && c.plannerSist !== "apen") delete c.plannerSist;
+  if (c.plannerFra && !STATUS[c.plannerFra]) delete c.plannerFra;
+  if (c.plannerDato && !/^\d{4}-\d{2}-\d{2}$/.test(c.plannerDato)) delete c.plannerDato;
   if (Array.isArray(r.bilder)) c.bilder = r.bilder.filter(b => typeof b === "string");
   if (Array.isArray(r.bilderEtter)) c.bilderEtter = r.bilderEtter.filter(b => typeof b === "string");
   // Talemeldinger (N5). Navnet vaskes hardt: bare filnavnet, aldri en sti.
@@ -524,6 +538,9 @@ async function syncSharedComments(stille) {
     persist();
     S.sharedOK = true;
     renderCommentList();
+    // 📋 Planner-status tilbake: først NÅ er S.comments fasit (den delte fila).
+    // Ikke i en 412-runde (stille) — da skriver vi selv straks etterpå.
+    if (!stille) synkPlannerStatus();
     // ↩ Filer til markeringer som ble slettet i en tidligere økt, der siden ble
     // lukket før angre-posten rakk å forkastes. Først NÅ vet vi hva som finnes.
     if (ryddVedNesteSynk) { ryddVedNesteSynk = false; ryddVentendeSlettinger(); }
@@ -896,23 +913,27 @@ export function ryddOmrader() { fjernOmrader(null); }
 // Legges det til noe nytt som påvirker teksturen, MÅ det inn i denne lista.
 const TEGNEFELT = ["status", "due", "farge"];
 
+// Bobla (og området) i 3D tegnes på nytt — etter status-, frist- eller
+// fargebytte. Brukes av updateComment og av Planner-synken.
+function tegnBoblePaNytt(c) {
+  fjernOmrader(c.id);   // området farges av samme frist/status — tegnes på nytt under
+  markerGroup.children.filter(s => s.userData.commentId == c.id).forEach(s => {
+    markerGroup.remove(s);
+    // Materialet lages nytt for hver sprite i addMarkerSprite og ble tidligere
+    // liggende igjen på GPU-en ved hvert statusbytte. IKKE dispose() på
+    // s.material.map — teksturen er delt fra markerTextures, og frigjøres den,
+    // blir alle markeringer med samme status/hastegrad svarte.
+    if (s.material) s.material.dispose();
+  });
+  addMarkerSprite(c);
+  S.miniSkitten = true;   // prikken i minikartet skal skifte farge med
+}
+
 // Endrer et felt på en markering og oppdaterer alt som viser den
 function updateComment(c, patch) {
   Object.assign(c, patch);
 
-  if (TEGNEFELT.some(f => patch[f] !== undefined)) {
-    fjernOmrader(c.id);   // området farges av samme frist/status — tegnes på nytt under
-    markerGroup.children.filter(s => s.userData.commentId == c.id).forEach(s => {
-      markerGroup.remove(s);
-      // Materialet lages nytt for hver sprite i addMarkerSprite og ble tidligere
-      // liggende igjen på GPU-en ved hvert statusbytte. IKKE dispose() på
-      // s.material.map — teksturen er delt fra markerTextures, og frigjøres den,
-      // blir alle markeringer med samme status/hastegrad svarte.
-      if (s.material) s.material.dispose();
-    });
-    addMarkerSprite(c);
-    S.miniSkitten = true;   // prikken i minikartet skal skifte farge med
-  }
+  if (TEGNEFELT.some(f => patch[f] !== undefined)) tegnBoblePaNytt(c);
 
   // Løst markering → kryss av oppgaven i Planner også. Stille: har vi ikke
   // tilgang der og da, lar vi det ligge i stedet for å avbryte brukeren.
@@ -929,6 +950,161 @@ function updateComment(c, patch) {
   pushSharedComments();
   renderCommentList();
   if (popFor && popFor.id === c.id) openMarkerPopup(c);
+}
+
+
+// ---------- 📋 Planner-status tilbake (verktøy 8, runde 1 — 21.10.2026) ----------
+// Før gikk synken bare én vei: Løst her → 100 % i Planner (fullforOppgave over).
+// Nå leses statusen også tilbake. Reglene ligger i js/planner-regn.js (ren og
+// testet); her hentes statusene, endringene legges på, og stripa i bobla og
+// pillen i lista tegnes (Emils valg B, 21.10).
+//
+// Bare på kontoret, bare innlogget, stille token (ingen innloggingsvindu fra
+// en bakgrunnsjobb), og høyst hvert 5. minutt — Graph struper Planner hardt.
+const PLANNER_FELT = ["status", "taskId", "taskUrl", "plannerMerke", "plannerDato", "plannerLukket",
+  "plannerSist", "plannerFra", "plannerAv", "endret", "endretAv"];
+let plannerSistSynk = 0;
+let plannerSynkPagar = false;
+
+// undefined i en patch betyr «fjern feltet» (taskId når oppgaven er slettet)
+function settPlannerFelt(c, patch) {
+  for (const [k, v] of Object.entries(patch)) { if (v === undefined) delete c[k]; else c[k] = v; }
+}
+function plannerBilde(c) {
+  const b = {};
+  PLANNER_FELT.forEach(k => { b[k] = c[k]; });
+  b.svar = svarI(c).slice();
+  return b;
+}
+function plannerTilbake(c, b) {
+  settPlannerFelt(c, Object.fromEntries(PLANNER_FELT.map(k => [k, b[k]])));
+  c.svar = b.svar.slice();
+}
+// Alt som viser markeringen, etter en endring som IKKE gikk via updateComment
+function plannerVisNytt(c) {
+  tegnBoblePaNytt(c);
+  persist();
+  pushSharedComments();
+  renderCommentList();
+  if (popFor && popFor.id == c.id) openMarkerPopup(c);
+}
+
+// Ctrl+Z på en automatisk lukking. Angre beholder plannerLukket, ellers ville
+// neste synk lukket markeringen igjen — oppgaven er jo fortsatt 100 %.
+function meldPlannerAngre(id, for_, etter) {
+  if (!S.pushAngre) return;
+  const finn = () => S.comments.find(x => x.id == id);
+  S.pushAngre({
+    tekst: "Lukket i Planner",
+    angre: () => {
+      const x = finn(); if (!x) return;
+      plannerTilbake(x, for_);
+      x.plannerLukket = etter.plannerLukket; x.plannerSist = "ferdig";
+      plannerVisNytt(x);
+    },
+    gjenopprett: () => { const x = finn(); if (!x) return; plannerTilbake(x, etter); plannerVisNytt(x); }
+  });
+}
+
+export async function synkPlannerStatus(tving) {
+  if (LETT || plannerSynkPagar || !PLANNER.planId) return [];
+  const medOppgave = S.comments.filter(c => c && c.taskId);
+  if (!medOppgave.length) return [];
+  if (!tving && Date.now() - plannerSistSynk < MIN_MELLOM_SYNK_MS) return [];
+  plannerSynkPagar = true;
+  const forFil = S.fileName;
+  try {
+    const token = await plannerToken(true);
+    if (!token) return [];
+    plannerSistSynk = Date.now();
+    const statuser = await hentStatus(token, medOppgave.map(c => c.taskId));
+    if (S.fileName !== forFil) return [];          // brukeren byttet modell underveis
+    const endringer = statusEndringer(S.comments, statuser);
+    if (!endringer.length) return [];
+    const naa = naaTekst();
+    for (const e of endringer) {
+      const c = S.comments.find(x => x.id == e.id);
+      if (!c) continue;
+      const navn = e.avId ? ((ANSATTE.find(a => a.id === e.avId) || {}).navn || "") : "";
+      const p = patchFor(c, e, { iDag: dagensDato(), naa, navn });
+      if (!p) continue;
+      const for_ = plannerBilde(c);
+      settPlannerFelt(c, p.patch);
+      if (p.svar && !svarI(c).some(s => s.id === p.svar.id)) {
+        const s = vaskSvar(p.svar);
+        if (s) c.svar = svarI(c).concat([s]);
+      }
+      if (e.art === "lukket") {
+        tegnBoblePaNytt(c);                          // grønn hake i 3D med en gang
+        meldPlannerAngre(c.id, for_, plannerBilde(c));
+      }
+    }
+    persist();
+    pushSharedComments();
+    renderCommentList();
+    if (popFor) { const c = S.comments.find(x => x.id == popFor.id); if (c) openMarkerPopup(c); }
+    return endringer;
+  } catch (err) {
+    console.warn("Kunne ikke hente status fra Planner:", err.message);
+    return [];
+  } finally { plannerSynkPagar = false; }
+}
+
+// Stripa i bobla (variant B). Tom når det ikke er noe å si.
+function plannerStripeHtml(c) {
+  if (LETT) return "";
+  const m = visMerke(c, dagensDato());
+  if (m === "lukket") {
+    return '<div class="mp-planner ok">' + ikon("hake") + '<div>' +
+      esc(t("Lukket i Planner {0}", plannerDatoTekst(c.plannerLukket || c.plannerDato))) +
+      '<small>' + esc(c.plannerAv ? t("av {0} · markeringen ble satt til Løst", c.plannerAv)
+                                  : t("Markeringen ble satt til Løst")) + '</small>' +
+      '<div class="mp-planner-kn"><button class="mp-pl-angre">' + ikon("angre") + ' ' + t("Angre") + '</button></div>' +
+      '</div></div>';
+  }
+  if (m === "apnet") {
+    return '<div class="mp-planner varsel">' + ikon("advarsel") + '<div>' +
+      esc(t("Åpnet igjen i Planner {0}", plannerDatoTekst(c.plannerDato))) +
+      '<small>' + esc(statusOf(c) === "Løst" ? t("Markeringen står fortsatt som Løst.") : "") + '</small>' +
+      '<div class="mp-planner-kn"><button class="mp-pl-pagar">' + t("Sett til Pågår") + '</button>' +
+      '<button class="mp-pl-behold">' + t("Behold Løst") + '</button></div>' +
+      '</div></div>';
+  }
+  if (m === "borte") {
+    return '<div class="mp-planner gra">' + ikon("planner") + '<div>' +
+      esc(t("Oppgaven finnes ikke lenger i Planner")) +
+      '<small>' + esc(t("Markeringen er beholdt. Trykk Planner for å lage en ny oppgave.")) + '</small>' +
+      '<div class="mp-planner-kn"><button class="mp-pl-fjern">' + t("Fjern merket") + '</button></div>' +
+      '</div></div>';
+  }
+  return "";
+}
+
+// Pillen i markeringslista. Uten merke: Planner-ikonet som før.
+function plannerPillHtml(c) {
+  const m = LETT ? "" : visMerke(c, dagensDato());
+  if (m === "lukket") return ' · <span class="pl-pill ok" title="' + esc(t("Lukket i Planner")) + '">' + ikon("hake") + ' Planner</span>';
+  if (m === "apnet") return ' · <span class="pl-pill varsel" title="' + esc(t("Åpnet igjen i Planner")) + '">' + ikon("advarsel") + ' ' + t("Åpnet igjen") + '</span>';
+  if (m === "borte") return ' · <span class="pl-pill gra" title="' + esc(t("Oppgaven finnes ikke lenger i Planner")) + '">' + ikon("planner") + ' ' + t("Oppgaven finnes ikke") + '</span>';
+  return c.taskId ? ' · <span title="Har en Planner-oppgave">' + ikon("planner") + '</span>' : "";
+}
+
+// Knappen «Angre» i stripa: status tilbake, Planner-linja ut av tråden.
+// plannerLukket blir stående — ellers lukker neste synk den igjen.
+export function plannerAngre(c) {
+  const fra = STATUS[c.plannerFra] ? c.plannerFra : "Åpen";
+  const sid = plannerSvarId(c.taskId, c.plannerLukket);
+  c.svar = svarI(c).filter(s => s.id !== sid);
+  delete c.plannerFra;
+  updateComment(c, { status: fra, plannerMerke: "", endret: naaTekst(), endretAv: innloggetNavn() });
+}
+
+function koblPlannerStripe(el, c) {
+  const k = (sel, fn) => { const b = el.querySelector(sel); if (b) b.onclick = fn; };
+  k(".mp-pl-angre", () => plannerAngre(c));
+  k(".mp-pl-pagar", () => updateComment(c, { status: "Pågår", plannerMerke: "" }));
+  k(".mp-pl-behold", () => updateComment(c, { plannerMerke: "" }));
+  k(".mp-pl-fjern", () => updateComment(c, { plannerMerke: "" }));
 }
 
 // ---------- ✏️ Redigering av markeringsteksten ----------
@@ -1708,7 +1884,8 @@ function svarSeksjonHtml(c) {
   let html = '<div class="mp-seksjon mp-svar-seksjon"><div class="mp-seksjon-tittel">' +
     t("Kommentarer") + (liste.length ? ' <span>' + liste.length + '</span>' : "") + '</div>';
 
-  html += liste.map(s => '<div class="mp-svar" data-svar="' + esc(s.id) + '">' +
+  html += liste.map(s => '<div class="mp-svar' + (s.kilde === "planner" ? " fra-planner" : "") +
+      '" data-svar="' + esc(s.id) + '">' +
       '<div class="mp-svar-meta"><span>' + esc(svarMetaTekst(s)) + '</span>' +
         '<span class="mp-svar-verktoy">' +
           '<button class="mp-svar-rediger" title="' + t("Endre kommentaren") + '">' + ikon("rediger") + '</button>' +
@@ -1860,6 +2037,7 @@ export function openMarkerPopup(c) {
         (ft.hast === "forfalt" || ft.hast === "rod" ? ikon("advarsel") + " " : "") +
         esc(ft.arg === null ? t(ft.nokkel) : t(ft.nokkel, ft.arg)) + '</div>';
     })() +
+    plannerStripeHtml(c) +
     '</div>' +
     '<div class="mp-act"><button class="mp-go">' + ikon("fokus") + ' ' + t("Gå til") + '</button>' +
       (c.taskId
@@ -1872,6 +2050,7 @@ export function openMarkerPopup(c) {
     koblRedigering(el, (tekst) => redigerMarkeringstekst(c, tekst));
   }
   koblSvarSeksjon(el, c);
+  koblPlannerStripe(el, c);
   el.querySelector(".mp-go").onclick = () => goToComment(c);
   el.querySelector(".mp-st").onchange = (e) => updateComment(c, { status: e.target.value });
   el.querySelector(".mp-ow").onchange = (e) => updateComment(c, { owner: e.target.value });
@@ -2672,7 +2851,7 @@ export function renderCommentList() {
           : "") +
         (c.usendt ? ' · <span style="color:var(--warn)" title="' + t("Ligger lagret på telefonen og sendes når du har nett igjen.") + '">' +
           ikon("advarsel") + ' ' + t("ikke sendt") + '</span>' : "") +
-        (c.taskId ? ' · <span title="Har en Planner-oppgave">' + ikon("planner") + '</span>' : "") +
+        plannerPillHtml(c) +
         (svarI(c).length ? ' · <span title="' + t("{0} kommentarer", svarI(c).length) + '">' +
           ikon("svar") + ' ' + svarI(c).length + '</span>' : "") +
         (tegningerI(c).length ? ' · <span title="' +
