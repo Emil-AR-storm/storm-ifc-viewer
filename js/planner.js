@@ -131,14 +131,27 @@ export async function opprettOppgave(token, { title, dueISO, description, assign
   return { id: task && task.id, url: planUrl() };
 }
 
-// Merker en oppgave som ferdig i Planner (brukes når markeringen settes til Løst)
-export async function fullforOppgave(token, taskId) {
+// Setter fremdriften på en oppgave i Planner: 0 = ikke startet, 50 = pågår,
+// 100 = ferdig. PATCH krever etag (If-Match), så oppgaven hentes først.
+export async function settProsent(token, taskId, prosent) {
   const t = await gGet(token, "/planner/tasks/" + taskId);
   await gFetch(token, "/planner/tasks/" + taskId, {
     method: "PATCH",
     headers: { "If-Match": t["@odata.etag"] },
-    body: JSON.stringify({ percentComplete: 100 })
+    body: JSON.stringify({ percentComplete: prosent })
   });
+}
+
+// Merker en oppgave som ferdig i Planner (brukes når markeringen settes til Løst)
+export async function fullforOppgave(token, taskId) {
+  return settProsent(token, taskId, 100);
+}
+
+// Åpner en oppgave igjen (Angre på «Lukket i Planner», 21.10.2026).
+// Pågår her → 50 % (pågår) i Planner; alt annet → 0 % (ikke startet).
+export const prosentFor = (status) => (status === "Pågår" ? 50 : 0);
+export async function apneOppgaveIgjen(token, taskId, status) {
+  return settProsent(token, taskId, prosentFor(status));
 }
 
 // 📋 Planner-status tilbake (runde 1, 21.10.2026): henter status for mange

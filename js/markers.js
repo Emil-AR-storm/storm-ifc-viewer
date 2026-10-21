@@ -14,7 +14,7 @@ import { tegnMarkering } from "./markerbilde.js";
 // som viser seg som «svart minikart bare på mobil».
 import { finnNevnte, koblNevning, nevnKandidater, nevningHtml } from "./nevning.js";
 import { fmtTid, lydStottes, startOpptak } from "./lyd.js";
-import { aapnePlanner, erPlannerUrl, fristTilISO, fullforOppgave, hentStatus, opprettOppgave, plannerToken } from "./planner.js";
+import { aapnePlanner, apneOppgaveIgjen, erPlannerUrl, fristTilISO, fullforOppgave, hentStatus, opprettOppgave, plannerToken } from "./planner.js";
 import { MIN_MELLOM_SYNK_MS, PLANNER_MERKER, patchFor, plannerDatoTekst, plannerSvarId, statusEndringer, visMerke } from "./planner-regn.js";
 import { setMode } from "./modes.js";
 import { camera, controls, frameHooks, markerGroup, meldLapp, omradeGroup, raycaster, renderer } from "./scene.js";
@@ -991,6 +991,27 @@ function plannerVisNytt(c) {
 
 // Ctrl+Z på en automatisk lukking. Angre beholder plannerLukket, ellers ville
 // neste synk lukket markeringen igjen — oppgaven er jo fortsatt 100 %.
+// Angre åpner også oppgaven igjen i Planner (Emil 21.10): ellers står den som
+// ferdig der mens markeringen er åpen her, og mottakeren tror saken er løst.
+// Stille token som resten av Planner-synken. Feiler det, er markeringen
+// likevel satt tilbake — da sier vi fra, så Emil kan åpne den i Planner selv.
+function apnePlannerIgjen(c, status) {
+  const taskId = c && c.taskId;
+  if (!taskId) return Promise.resolve(false);
+  return plannerToken(true)
+    .then(tok => { if (!tok) throw new Error("ikke innlogget"); return apneOppgaveIgjen(tok, taskId, status); })
+    .then(() => {
+      const x = S.comments.find(m => m.id == c.id) || c;
+      if (x.taskId === taskId && x.plannerSist !== "apen") { x.plannerSist = "apen"; persist(); pushSharedComments(); }
+      return true;
+    })
+    .catch(err => {
+      console.warn("Kunne ikke åpne Planner-oppgaven igjen:", err.message);
+      varsel(t("Markeringen er satt tilbake, men oppgaven kunne ikke åpnes igjen i Planner. Åpne den i Planner selv («Se oppgave»)."));
+      return false;
+    });
+}
+
 function meldPlannerAngre(id, for_, etter) {
   if (!S.pushAngre) return;
   const finn = () => S.comments.find(x => x.id == id);
@@ -1001,8 +1022,15 @@ function meldPlannerAngre(id, for_, etter) {
       plannerTilbake(x, for_);
       x.plannerLukket = etter.plannerLukket; x.plannerSist = "ferdig";
       plannerVisNytt(x);
+      apnePlannerIgjen(x, x.status);
     },
-    gjenopprett: () => { const x = finn(); if (!x) return; plannerTilbake(x, etter); plannerVisNytt(x); }
+    gjenopprett: () => {
+      const x = finn(); if (!x) return;
+      plannerTilbake(x, etter); plannerVisNytt(x);
+      // Gjenopprett = lukket igjen, også i Planner
+      if (x.taskId) plannerToken(true).then(tok => tok && fullforOppgave(tok, x.taskId))
+        .catch(err => console.warn("Kunne ikke fullføre Planner-oppgaven:", err.message));
+    }
   });
 }
 
@@ -1089,7 +1117,8 @@ function plannerPillHtml(c) {
   return c.taskId ? ' · <span title="Har en Planner-oppgave">' + ikon("planner") + '</span>' : "";
 }
 
-// Knappen «Angre» i stripa: status tilbake, Planner-linja ut av tråden.
+// Knappen «Angre» i stripa: status tilbake, Planner-linja ut av tråden, og
+// oppgaven åpnes igjen i Planner (Pågår → 50 %, ellers 0 %).
 // plannerLukket blir stående — ellers lukker neste synk den igjen.
 export function plannerAngre(c) {
   const fra = STATUS[c.plannerFra] ? c.plannerFra : "Åpen";
@@ -1097,6 +1126,7 @@ export function plannerAngre(c) {
   c.svar = svarI(c).filter(s => s.id !== sid);
   delete c.plannerFra;
   updateComment(c, { status: fra, plannerMerke: "", endret: naaTekst(), endretAv: innloggetNavn() });
+  return apnePlannerIgjen(c, fra);
 }
 
 function koblPlannerStripe(el, c) {

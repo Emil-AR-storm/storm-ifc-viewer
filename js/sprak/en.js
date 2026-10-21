@@ -374,6 +374,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Åpnet igjen i Planner": "Reopened in Planner",
   "Åpnet igjen": "Reopened",
   "Oppgaven finnes ikke": "Task not found",
+  "Markeringen er satt tilbake, men oppgaven kunne ikke åpnes igjen i Planner. Åpne den i Planner selv («Se oppgave»).": "The marker has been reverted, but the task could not be reopened in Planner. Open it in Planner yourself (“View task”).",
   "Slett": "Delete",
   "Åpne oppgaven i Planner": "Open the task in Planner",
   "Lag Teams Planner-oppgave": "Create a Teams Planner task",

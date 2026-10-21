@@ -374,6 +374,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Åpnet igjen i Planner": "Ponownie otwarte w Plannerze",
   "Åpnet igjen": "Otwarte ponownie",
   "Oppgaven finnes ikke": "Brak zadania",
+  "Markeringen er satt tilbake, men oppgaven kunne ikke åpnes igjen i Planner. Åpne den i Planner selv («Se oppgave»).": "Znacznik przywrócono, ale nie udało się ponownie otworzyć zadania w Plannerze. Otwórz je w Plannerze samodzielnie („Zobacz zadanie”).",
   "Slett": "Usuń",
   "Åpne oppgaven i Planner": "Otwórz zadanie w Plannerze",
   "Lag Teams Planner-oppgave": "Utwórz zadanie Teams Planner",

@@ -374,6 +374,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Åpnet igjen i Planner": "Vėl atidaryta Planner",
   "Åpnet igjen": "Vėl atidaryta",
   "Oppgaven finnes ikke": "Užduoties nėra",
+  "Markeringen er satt tilbake, men oppgaven kunne ikke åpnes igjen i Planner. Åpne den i Planner selv («Se oppgave»).": "Žymė atkurta, bet užduoties Planner nepavyko vėl atidaryti. Atidarykite ją Planner patys („Žiūrėti užduotį“).",
   "Slett": "Ištrinti",
   "Åpne oppgaven i Planner": "Atidaryti užduotį „Planner“",
   "Lag Teams Planner-oppgave": "Sukurti „Teams Planner“ užduotį",
