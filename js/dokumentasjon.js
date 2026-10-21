@@ -50,3 +50,9 @@ på("btnDokBcf", "click", () => {
   const b = $("rapBcf");
   if (b) b.click();
 });
+// 🔁 BCF-import (runde 2): samme mønster — knappen i rapportmenyen gjør jobben
+på("btnDokBcfImport", "click", () => {
+  if (!S.modelGroup) { varsel(t("Åpne en modell først.")); return; }
+  const b = $("rapBcfImport");
+  if (b) b.click();
+});

@@ -26,6 +26,7 @@
 import { S } from "./state.js";
 import { t } from "./i18n.js";
 import { STANDARD_GRENSER, hastegrad, iDagISO as fristIDag } from "./frist.js";
+import { erGuid, guidFraId } from "./bcf-les.js";
 
 export const BCF_VERSJON = "2.1";
 
@@ -307,7 +308,11 @@ export function byggSak(c, i, o) {
   const tittel = String(c.text || "").split("\n")[0].slice(0, 120) || t("Markering");
 
   return {
-    guid: opt.guid || nyGuid(),
+    // 🔁 Samme sak hver gang (runde 2, 21.10.2026): kom markeringen fra BCF,
+    // brukes den opprinnelige Topic Guid-en; ellers en fast GUID ut fra
+    // markeringens id. Da kjenner BCF-importen den igjen når RIB sender fila
+    // tilbake — og Solibri/BIMcollab oppdaterer saken i stedet for å lage en ny.
+    guid: opt.guid || (erGuid(c.bcfGuid) ? String(c.bcfGuid).toLowerCase() : guidFraId("m:" + c.id)),
     viewpointGuid: opt.viewpointGuid || nyGuid(),
     nr: i + 1,
     tittel,
@@ -326,7 +331,10 @@ export function byggSak(c, i, o) {
     bildeNavn: opt.bildeNavn || "snapshot.png",
     kamera: byggKamera(p, opt.avstand),
     kommentarer: svar.map(s => ({
-      guid: nyGuid(),
+      // Fast GUID også her, ellers ble hver kommentar en dublett ved rundtur
+      guid: /^bcf-/.test(String(s.id || "")) && erGuid(String(s.id).slice(4))
+        ? String(s.id).slice(4).toLowerCase()
+        : (s.id != null && s.id !== "" ? guidFraId("s:" + s.id) : nyGuid()),
       dato: tilIsoTid(s.dato),
       forfatter: String(s.forfatter || ""),
       tekst: String(s.tekst || "")

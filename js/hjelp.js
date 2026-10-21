@@ -265,7 +265,7 @@ export const KORT = [
   {
     hvor: "kontor", ikonNavn: "tegning",
     tittel: "Ta arbeidet ut igjen",
-    tekst: "Alt som lager en fil ligger i Dokumentasjon. Rapport gir en PDF med bilder og status. Riggplan og SW-tegning laster ned PDF-ene fra Rigg og SW-generator med valgene du har satt der. BCF-eksport gir en fil som Solibri, Dalux og Revit kan åpne. Del visning (i Storm-Byggeplass) lager en lenke som gjenskaper akkurat denne visningen hos andre."
+    tekst: "Alt som lager en fil ligger i Dokumentasjon. Rapport gir en PDF med bilder og status. Riggplan og SW-tegning laster ned PDF-ene fra Rigg og SW-generator med valgene du har satt der. BCF-eksport gir en fil som Solibri, Dalux og Revit kan åpne. Del visning (i Storm-Byggeplass) lager en lenke som gjenskaper akkurat denne visningen hos andre. BCF-import leser saker fra RIB eller ARK inn som markeringer, og en ny fil oppdaterer sakene i stedet for å lage dubletter."
   },
   {
     hvor: "kontor", ikonNavn: "innstillinger",

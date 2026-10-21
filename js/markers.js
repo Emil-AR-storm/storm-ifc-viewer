@@ -265,6 +265,14 @@ export function leggTilImportertMarkering(c) {
   addMarkerSprite(c);
 }
 
+// 🔁 BCF-import trenger å kunne ta bort det den la til (Angre for hele
+// importen) og tegne om bobler den har endret status på.
+export function fjernImportertMarkering(id) { return fjernMarkering(id); }
+export function tegnMarkeringPaNytt(c) {
+  tegnBoblePaNytt(c);
+  if (popFor && popFor.id == c.id) openMarkerPopup(c);
+}
+
 // LETTMODUS: nye markeringer og kommentarer sendes til Workerens innboks.
 //
 // J5 – KØ FOR DET SOM IKKE KOM FRAM.
@@ -395,7 +403,10 @@ const MARKERING_TEKSTFELT = ["text", "author", "status", "owner", "due", "date",
   // 📋 Planner-status tilbake (21.10.2026) — se js/planner-regn.js. Står de
   // ikke her, vasker vaskMarkering dem bort ved neste synk, og merket i bobla
   // forsvinner uten et ord.
-  "plannerMerke", "plannerDato", "plannerLukket", "plannerSist", "plannerFra", "plannerAv"];
+  "plannerMerke", "plannerDato", "plannerLukket", "plannerSist", "plannerFra", "plannerAv",
+  // 🔁 BCF-import (21.10.2026): Topic Guid fra RIB/ARK-fila, så neste import
+  // av samme sak oppdaterer i stedet for å lage en dublett (js/bcf-les.js).
+  "bcfGuid"];
 
 // ID som ikke kolliderer selv om to på hver sin maskin skriver i samme
 // millisekund – samme oppskrift som markeringene selv bruker.
@@ -447,7 +458,8 @@ export function vaskSvar(r) {
     // byggeplassen, der navnet er selvrapportert og ikke kontrollert mot noen
     // konto. Ukjent verdi kastes: heller ingen merkelapp enn en gjetning.
     // «planner» = linja synken skriver når oppgaven lukkes i Planner (21.10).
-    kilde: r.kilde === "bygg" || r.kilde === "kontor" || r.kilde === "planner" ? r.kilde : ""
+    // «bcf» = kommentar lest inn fra en .bcfzip (runde 2).
+    kilde: ["bygg", "kontor", "planner", "bcf"].includes(r.kilde) ? r.kilde : ""
   };
 }
 
@@ -470,6 +482,8 @@ export function vaskMarkering(r) {
   if (c.plannerSist && c.plannerSist !== "ferdig" && c.plannerSist !== "apen") delete c.plannerSist;
   if (c.plannerFra && !STATUS[c.plannerFra]) delete c.plannerFra;
   if (c.plannerDato && !/^\d{4}-\d{2}-\d{2}$/.test(c.plannerDato)) delete c.plannerDato;
+  // 🔁 bcfGuid: bare en ekte UUID — den skrives rett inn i XML ved eksport
+  if (c.bcfGuid && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(c.bcfGuid)) delete c.bcfGuid;
   if (Array.isArray(r.bilder)) c.bilder = r.bilder.filter(b => typeof b === "string");
   if (Array.isArray(r.bilderEtter)) c.bilderEtter = r.bilderEtter.filter(b => typeof b === "string");
   // Talemeldinger (N5). Navnet vaskes hardt: bare filnavnet, aldri en sti.

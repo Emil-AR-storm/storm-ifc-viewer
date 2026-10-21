@@ -616,6 +616,15 @@ på("rapBcf", "click", async () => {
   }
 });
 
+// 🔁 BCF-import (runde 2, 21.10.2026). Dialogen og lesingen lastes først når
+// noen trykker — ingen bruker betaler for den ellers.
+på("rapBcfImport", "click", async () => {
+  lukkRapMeny();
+  if (!S.modelGroup) { varsel(t("Åpne en modell først.")); return; }
+  try { (await import("./bcf-import.js")).startBcfImport(); }
+  catch (err) { varsel(t("Klarte ikke å lese BCF-fila: {0}", err.message)); }
+});
+
 document.querySelectorAll(".rap-valg").forEach((b) => {
   b.addEventListener("click", async () => {
     lukkRapMeny();
