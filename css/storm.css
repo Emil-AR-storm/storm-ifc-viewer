@@ -742,6 +742,31 @@ body:not(.har-modell) #btnFit { display: none !important; }
   display: flex; align-items: center; gap: 6px;
 }
 .mp-frist .ikon { width: 14px; height: 14px; flex: none; }
+
+/* 📋 Planner-status tilbake (21.10.2026, Emils valg B): stripa forteller hva
+   Planner har gjort, med knappene rett der. Samme form som .mp-frist. */
+.mp-planner {
+  margin-top: 8px; padding: 6px 10px; border-radius: 6px;
+  background: var(--panel2); font-size: 12px; color: var(--text);
+  display: flex; align-items: flex-start; gap: 7px;
+  border-left: 3px solid var(--border);
+}
+.mp-planner.ok { border-left-color: var(--ok); }
+.mp-planner.varsel { border-left-color: var(--warn); }
+.mp-planner .ikon { width: 14px; height: 14px; flex: none; margin-top: 2px; }
+.mp-planner small { display: block; color: var(--muted); font-size: 11px; }
+.mp-planner small:empty { display: none; }
+.mp-planner-kn { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 5px; }
+#markerPop .mp-svar.fra-planner { border-left-color: var(--ok); }
+#markerPop .mp-svar.fra-planner .mp-svar-meta { color: var(--ok); }
+.pl-pill {
+  display: inline-flex; align-items: center; gap: 3px;
+  border-radius: 999px; padding: 0 7px; font-size: 10.5px; font-weight: 600;
+  border: 1px solid var(--border); background: var(--panel2); color: var(--muted);
+}
+.pl-pill .ikon { width: 11px; height: 11px; }
+.pl-pill.ok { color: var(--ok); border-color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+.pl-pill.varsel { color: var(--warn); border-color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); }
 #commentFileInfo { font-size: 11px; color: var(--muted); }
 
 #markerPop .mp-late { color: var(--danger); font-size: 11px; margin-top: 6px; display: flex; align-items: center; gap: 5px; }
