@@ -1368,6 +1368,8 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "BCF-eksport": "Eksport BCF",
   // 📝 Endringsmelding fra modellen (26.10.2026)
   // 🔗 EM paring av fjernet + ny (26.10.2026)
+  "Sammenligningen er ikke aktiv. Åpne Sammenlign (den er ikke avsluttet før du trykker «Avslutt»), eller velg elementer og trykk «Valgte elementer».": "Porównanie nie jest aktywne. Otwórz Porównaj (nie kończy się, dopóki nie naciśniesz „Zakończ”) albo wybierz elementy i naciśnij „Wybrane elementy”.",
+  "Viser {0} av {1}: {2}": "Pokazano {0} z {1}: {2}",
   "Samme element, ny ID": "Ten sam element, nowe ID",
   "Mulig samme element (se Endringsmelding)": "Możliwie ten sam element (zob. Powiadomienie o zmianie)",
   "Samme element, ny ID — ikke priset": "Ten sam element, nowe ID — nie wyceniono",

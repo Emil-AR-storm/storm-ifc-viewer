@@ -668,8 +668,17 @@ function fullforManuelt(base, now, refN, navnNy) {
   renderPanel();
 }
 
+// Er en sammenligning FERDIG, lukker og åpner knappen bare panelet — den
+// avsluttes med «Avslutt» i panelet. Før avsluttet et nytt trykk alt, og
+// Emil måtte gjøre hele sammenligningen på nytt for å komme tilbake (26.10).
+function vekslePanel() {
+  const p = $("comparePanel");
+  if (p.classList.contains("open")) p.classList.remove("open");
+  else { apnePanel("comparePanel"); renderPanel(); }
+}
 på("btnCompare", "click", () => {
   if (!S.modelGroup) return;
+  if (S.compareOn && result) { vekslePanel(); return; }
   if (S.compareOn || S.compareBase || $("btnCompare").classList.contains("active")) { stopCompare(); return; }
   $("btnCompare").classList.add("active");
   visValg();

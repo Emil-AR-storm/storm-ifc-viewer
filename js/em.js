@@ -22,7 +22,7 @@ import { $, på, S, apnePanel, esc, ikon, loadingEl, loadingText } from "./state
 import { t } from "./i18n.js";
 import { varsel } from "./varsel.js";
 import { sammenligningForEm } from "./compare.js";
-import { allElementBoxes, lastNedXlsxFlere, quantitiesForSet, zoomToElement } from "./elements.js";
+import { allElementBoxes, lastNedXlsxFlere, quantitiesForSet, visElementUtenPanel, visPunkt } from "./elements.js";
 import { metaFor, typeFor } from "./ifcrpc.js";
 import { spLes, spPaalogget } from "./sp-lager.js";
 import { fraLagret, prislisteNokkel } from "./priskalk-regn.js";
@@ -43,6 +43,8 @@ const tilstand = {
   // 🔗 forslagene «mulig samme element» brukeren har krysset av (nøkkel → true),
   // og linjene som er krysset av automatisk som koordineringsobjekt én gang
   forslagValgt: new Set(), koordSett: new Set(),
+  // 👁 blaing: hvilken liste og hvilket element som vises nå, og per type i tabellen
+  bla: null, typeBla: {},
   // 🔒 fanen «Endringsmeldinger»
   fane: "ny", filter: "alle", sok: "", liste: [], listeStatus: ""
 };
@@ -107,7 +109,9 @@ export async function hentPriser() {
 const kr = (v) => v == null ? "—" : R.tallTekst(v) + " kr";
 function html() {
   const s = sammenligningForEm(), utv = utvalgsIder().length;
-  if (!s && tilstand.kilde === "sammenligning" && utv) tilstand.kilde = "utvalg";
+  // Kilden byttes ALDRI av seg selv. Før ble den byttet til «Valgte elementer»
+  // når sammenligningen var borte og ett element var valgt (det som ble vist
+  // med «Vis») — og EM-test 4 ble én bjelke i stedet for hele endringen.
   const L = linjer(), sum = R.sumAnslag(L, l => !tilstand.av.has(l.key));
   const iDag = iDagISO();
   if (!tilstand.oppdaget) tilstand.oppdaget = iDag;
@@ -118,6 +122,8 @@ function html() {
       (s ? esc(t("Sammenligning {0} → {1}", kortNavn(s.fra), kortNavn(s.til))) : esc(t("Ingen sammenligning — bruk Sammenlign først"))) + '</button>' +
     '<button class="em-kilde' + (tilstand.kilde === "utvalg" ? " valgt" : "") + '" data-kilde="utvalg"' + (utv ? "" : " disabled") + '>' +
       esc(t("Valgte elementer ({0})", utv)) + '</button></div>';
+  if (!s && tilstand.kilde === "sammenligning")
+    h += '<p class="em-hjelp em-mangler">' + ikon("advarsel") + ' ' + esc(t("Sammenligningen er ikke aktiv. Åpne Sammenlign (den er ikke avsluttet før du trykker «Avslutt»), eller velg elementer og trykk «Valgte elementer».")) + '</p>';
   h += sek(2, "Mengder og prisanslag");
   if (!L.length) h += '<p class="em-hjelp">' + esc(s || utv ? t("Ingen endringer å telle.") : t("Sammenlign to revisjoner, eller velg elementer i modellen (shift-klikk), og kom tilbake hit.")) + '</p>';
   else {
@@ -152,6 +158,21 @@ function html() {
       '<br><span class="em-hjelp">' + esc(t("Varsle uten ugrunnet opphold. Storms EM-flyt: frist 3 dager etter at endringen ble kjent.")) + '</span></div></div>';
   return h;
 }
+// 👁 Bla gjennom «samme element» / «mulig samme element» uten å lukke panelet
+function blaListe(liste) {
+  const k = tilstand.kilde === "sammenligning" ? sammenligningForEm() : null;
+  if (!k) return [];
+  return (liste === "forslag" ? k.res.forslag : k.res.uendretNyId) || [];
+}
+export function blaTil(liste, i) {
+  const arr = blaListe(liste);
+  if (!arr.length) return;
+  tilstand.bla = { liste, i: Math.max(0, Math.min(i, arr.length - 1)) };
+  const p = arr[tilstand.bla.i];
+  try { if (!visElementUtenPanel(p.til.id)) visPunkt(p.til.c, p.til.d); } catch (_) {}
+  tegn();
+}
+
 // 🔗 Prøve A (Emil 26.10): to bokser under mengdetabellen
 // «Flat Bars:Flattstål 120x8:235953» → «Bjelke Flattstål 120x8»
 const kortEl = (e) => { const d = String(e.name || "").split(":"); return (typeNavnKort(e.type) + " " + (d.length > 1 ? d[d.length - 2] : d[0])).trim(); };
@@ -161,24 +182,35 @@ function paringHtml() {
   if (!k) return "";
   const samme = k.res.uendretNyId || [], forslag = k.res.forslag || [], dobbelt = k.res.dobbelt || [];
   let h = "";
+  // 👁 «Viser nå: … ◀ 3 av 14 ▶» — bla uten at panelet lukkes
+  const blaLinje = (liste, arr) => {
+    const b = tilstand.bla;
+    if (!b || b.liste !== liste || !arr.length) return "";
+    const i = Math.min(b.i, arr.length - 1), p = arr[i];
+    return '<div class="em-bla"><button data-bla-steg="-1" data-bla-liste="' + liste + '" title="' + esc(t("Forrige")) + '">◀</button>' +
+      '<span>' + esc(t("Viser {0} av {1}: {2}", i + 1, arr.length, kortEl(p.til) + (R.akseFor(p.til.c, S.akseLinjer) ? " · " + R.akseFor(p.til.c, S.akseLinjer) : ""))) + '</span>' +
+      '<button data-bla-steg="1" data-bla-liste="' + liste + '" title="' + esc(t("Neste")) + '">▶</button></div>';
+  };
   if (samme.length) {
     h += '<div class="em-par"><div class="em-par-topp">' + ikon("hake") + ' <b>' + esc(t("Samme element, ny ID")) + '</b> <span class="em-antall-gra">' + samme.length + '</span>' +
       '<span class="em-hjelp"> — ' + esc(t("prises ikke")) + '</span></div>';
-    for (const p of samme.slice(0, 4)) h += '<div class="em-par-rad"><span class="em-under">' + esc(kortEl(p.til)) + (R.akseFor(p.til.c, S.akseLinjer) ? ' · ' + esc(R.akseFor(p.til.c, S.akseLinjer)) : '') + '</span>' +
+    h += blaLinje("samme", samme);
+    for (const [i, p] of samme.slice(0, 4).entries()) h += '<div class="em-par-rad' + (tilstand.bla && tilstand.bla.liste === "samme" && tilstand.bla.i === i ? " aktiv" : "") + '"><span class="em-under">' + esc(kortEl(p.til)) + (R.akseFor(p.til.c, S.akseLinjer) ? ' · ' + esc(R.akseFor(p.til.c, S.akseLinjer)) : '') + '</span>' +
       '<span class="em-hjelp">' + esc(p.grunn === "revit" ? t("Revit-nr. {0}", revitNr(p.til.name)) : t("samme sted")) + '</span>' +
-      '<button data-vis="' + esc(String(p.til.id)) + '">' + esc(t("Vis")) + '</button></div>';
+      '<button data-bla="samme:' + i + '">' + esc(t("Vis")) + '</button></div>';
     if (samme.length > 4) h += '<div class="em-hjelp">' + esc(t("+ {0} til — alle står i PDF-en og Excel", samme.length - 4)) + '</div>';
     h += '</div>';
   }
   if (forslag.length) {
     h += '<div class="em-par forslag"><div class="em-par-topp">? <b>' + esc(t("Mulig samme element")) + '</b> <span class="em-antall-gra">' + forslag.length + '</span>' +
       '<span class="em-hjelp"> — ' + esc(t("kryss av hvis det er samme stål")) + '</span></div>';
-    for (const f of forslag) {
+    h += blaLinje("forslag", forslag);
+    for (const [i, f] of forslag.entries()) {
       const key = forslagNokkel(f);
-      h += '<label class="em-par-rad"><input type="checkbox" data-forslag="' + esc(key) + '"' + (tilstand.forslagValgt.has(key) ? " checked" : "") + '>' +
+      h += '<label class="em-par-rad' + (tilstand.bla && tilstand.bla.liste === "forslag" && tilstand.bla.i === i ? " aktiv" : "") + '"><input type="checkbox" data-forslag="' + esc(key) + '"' + (tilstand.forslagValgt.has(key) ? " checked" : "") + '>' +
         '<span>' + esc(kortEl(f.til)) + (R.akseFor(f.til.c, S.akseLinjer) ? ' · ' + esc(R.akseFor(f.til.c, S.akseLinjer)) : '') + '</span>' +
         '<span class="em-blaa">' + esc(t("flyttet {0} mm", f.avstandMm)) + '</span>' +
-        '<button data-vis="' + esc(String(f.til.id)) + '">' + esc(t("Vis")) + '</button></label>';
+        '<button data-bla="forslag:' + i + '">' + esc(t("Vis")) + '</button></label>';
     }
     h += '</div>';
   }
@@ -288,10 +320,13 @@ export function tegn() {
       if (v === "") delete tilstand.egnePriser[key]; else if (isFinite(Number(v))) tilstand.egnePriser[key] = Number(v);
       tegn();
     };
-    // Trykk på typen → vis det første elementet i modellen
+    // Trykk på typen → vis elementene ett for ett (hvert trykk = neste), panelet blir stående
     rad.querySelector("td:nth-child(2)").onclick = () => {
       const l = linjer().find(x => x.key === key);
-      if (l && l.ider.length) { try { zoomToElement(l.ider[0]); } catch (_) {} }
+      if (!l || !l.ider.length) return;
+      const i = ((tilstand.typeBla[key] == null ? -1 : tilstand.typeBla[key]) + 1) % l.ider.length;
+      tilstand.typeBla[key] = i;
+      try { visElementUtenPanel(l.ider[i]); } catch (_) {}
     };
   });
   const tt = $("emTittel"); if (tt) tt.oninput = () => { tilstand.tittel = tt.value; };
@@ -302,7 +337,18 @@ export function tegn() {
     if (cb.checked) tilstand.forslagValgt.add(cb.dataset.forslag); else tilstand.forslagValgt.delete(cb.dataset.forslag);
     tegn();
   });
-  body.querySelectorAll(".em-par [data-vis]").forEach(b => b.onclick = (ev) => { ev.preventDefault(); try { zoomToElement(Number(b.dataset.vis)); } catch (_) {} });
+  body.querySelectorAll(".em-par [data-bla]").forEach(b => b.onclick = (ev) => {
+    ev.preventDefault();
+    const [liste, i] = b.dataset.bla.split(":");
+    blaTil(liste, Number(i));
+  });
+  body.querySelectorAll("[data-bla-steg]").forEach(b => b.onclick = (ev) => {
+    ev.preventDefault();
+    const liste = b.dataset.blaListe, n = blaListe(liste).length;
+    if (!n) return;
+    const i = tilstand.bla && tilstand.bla.liste === liste ? tilstand.bla.i : -1;
+    blaTil(liste, (i + Number(b.dataset.blaSteg) + n) % n);
+  });
   const harLinjer = linjer().some(l => !tilstand.av.has(l.key));
   if ($("emLag")) $("emLag").disabled = !harLinjer;
   if ($("emExcel")) $("emExcel").disabled = !harLinjer;

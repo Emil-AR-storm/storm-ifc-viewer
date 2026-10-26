@@ -1220,6 +1220,25 @@ function shiftClickAt(x, y) {
   visUtvalg();
 }
 
+// 👁 Vis et element UTEN å åpne egenskapspanelet (Emil 26.10: «Vis» i
+// Endringsmelding lukket hele EM-vinduet, fordi egenskapspanelet tok plassen).
+// Kameraet flyr dit og elementet blir uthevet; panelet du står i, blir stående.
+export function visElementUtenPanel(id) {
+  const box = elementBoxById(id);
+  if (!box) return false;
+  flyTil(box.getCenter(new THREE.Vector3()), box.getSize(new THREE.Vector3()).length());
+  selectElement(id);
+  return true;
+}
+// Et punkt uten element (det fjernede finnes bare i den gamle modellen)
+export function visPunkt(c, d) {
+  if (!Array.isArray(c)) return false;
+  const str = Array.isArray(d) ? Math.hypot(d[0], d[1], d[2]) : 0;
+  clearSelection();
+  flyTil(new THREE.Vector3(c[0], c[1], c[2]), str || undefined);
+  return true;
+}
+
 export function zoomToElement(id) {
   const box = elementBoxById(id);
   if (!box) return;

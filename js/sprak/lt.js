@@ -1368,6 +1368,8 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "BCF-eksport": "BCF eksportas",
   // 📝 Endringsmelding fra modellen (26.10.2026)
   // 🔗 EM paring av fjernet + ny (26.10.2026)
+  "Sammenligningen er ikke aktiv. Åpne Sammenlign (den er ikke avsluttet før du trykker «Avslutt»), eller velg elementer og trykk «Valgte elementer».": "Palyginimas neaktyvus. Atidarykite Palyginti (jis nesibaigia, kol nepaspausite „Baigti“) arba pasirinkite elementus ir paspauskite „Pasirinkti elementai“.",
+  "Viser {0} av {1}: {2}": "Rodoma {0} iš {1}: {2}",
   "Samme element, ny ID": "Tas pats elementas, naujas ID",
   "Mulig samme element (se Endringsmelding)": "Galbūt tas pats elementas (žr. Pakeitimo pranešimą)",
   "Samme element, ny ID — ikke priset": "Tas pats elementas, naujas ID — neįkainota",
