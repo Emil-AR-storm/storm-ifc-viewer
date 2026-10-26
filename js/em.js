@@ -152,7 +152,7 @@ function faneHtml() {
 function kortHtml(e) {
   const ant = e.endringer.reduce((s, x) => s + (x.antall || 0), 0);
   const knapp = (h, tekst, kl) => '<button data-handling="' + h + '"' + (kl ? ' class="' + kl + '"' : "") + '>' + esc(t(tekst)) + '</button>';
-  let k = knapp("skjema", "Åpne skjema") + knapp("pdf", "PDF");
+  let k = knapp("skjema", "Åpne skjema") + knapp("pdf", "PDF") + knapp("excel", "Excel");
   if (e.status === "opprettet") k += knapp("sendt", "Merk som sendt");
   else if (e.status === "sendt") k += knapp("godkjent", "Godkjent", "em-ok") + knapp("avvist", "Avvist", "em-nei");
   else k += knapp("kopier", "Kopier til ny");
@@ -196,6 +196,7 @@ function koblKort(rot) {
       const id = b.closest(".em-kort").dataset.em, h = b.dataset.handling;
       if (h === "skjema") apneEmSkjema(id);
       else if (h === "pdf") lastNedEmPdf(id).catch(err => varsel(t("Klarte ikke å lage PDF-en: {0}", err.message)));
+      else if (h === "excel") lastNedEmExcel(id).catch(err => varsel(err.message));
       else if (h === "sendt" || h === "godkjent" || h === "avvist") settStatus(id, h);
       else if (h === "kopier") kopierTilNy(id);
       else if (h === "slett") slett(id);
@@ -362,6 +363,18 @@ async function hentValgtLogo() {
   } catch (_) { return null; }
 }
 
+// 📊 Mengdelista til en lagret EM — vedlegget skjemaet nevner (Emil 26.10)
+export async function lastNedEmExcel(id) {
+  const em = finn(id); if (!em) return null;
+  const { emExcelArk } = await import("./em-detalj.js");
+  const { ordreUtad } = await import("./skjema-pdf.js");
+  const ordre = em.skjema && em.skjema.svar ? ordreUtad(em.skjema.svar.okonomi) : null;
+  const navn = ((S.prosjektInfo && S.prosjektInfo().nummer) ? S.prosjektInfo().nummer + " " : "") +
+    (em.nr ? em.nr + " " : "") + t("Mengdeliste") + " " + iDagISO() + ".xlsx";
+  await lastNedXlsxFlere(navn.replace(/[\\/:*?"<>|]/g, "-"), emExcelArk(em, ordre));
+  return navn;
+}
+
 export async function lastNedEmPdf(id) {
   const em = finn(id); if (!em) return null;
   const mal = await emMal(); if (!mal) return null;
@@ -413,7 +426,7 @@ export async function lagUtkast() {
     begrunnelse: R.faktablokk(L, { fra: kortNavn(k.fra), til: kortNavn(k.til), metode: k.metode,
       utvalg: k.utvalg, modell: kortNavn(k.modell), oppdaget: oppdagetTekst }),
     okonomi: R.ordrelinjer(L),
-    annet: [t("Vedlegg:"), "• " + t("Før- og etter-bilder fra 3D-modellen og mål for hvert endret element (bakerst i dokumentet)"), "• " + t("Mengdeliste (Excel) fra Storm IFC-Viewer")].join("\n")
+    annet: [t("Vedlegg:"), "• " + t("Før- og etter-bilder fra 3D-modellen og mål for hvert endret element (bakerst i dokumentet)"), "• " + t("Mengdeliste (Excel) fra Storm IFC-Viewer, sendes som egen fil sammen med dette dokumentet")].join("\n")
   };
   const sum = R.sumAnslag(L);
   const em = R.vaskEm({

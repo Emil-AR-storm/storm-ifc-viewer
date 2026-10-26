@@ -1368,6 +1368,8 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "BCF-eksport": "BCF eksportas",
   // 📝 Endringsmelding fra modellen (26.10.2026)
   // 🔍 EM detaljsider (26.10.2026)
+  "Mengdeliste (Excel) fra Storm IFC-Viewer, sendes som egen fil sammen med dette dokumentet": "Kiekių sąrašas (Excel) iš Storm IFC-Viewer, siunčiamas atskiru failu kartu su šiuo dokumentu",
+  "Mengdeliste": "Kiekių sąrašas",
   "PLAN OVENFRA": "PLANAS IŠ VIRŠAUS",
   "OPPRISS (SETT FRA SIDEN)": "VAIZDAS IŠ ŠONO",
   "hevet": "pakelta",

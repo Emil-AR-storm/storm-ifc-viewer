@@ -1368,6 +1368,8 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "BCF-eksport": "BCF export",
   // 📝 Endringsmelding fra modellen (26.10.2026)
   // 🔍 EM detaljsider (26.10.2026)
+  "Mengdeliste (Excel) fra Storm IFC-Viewer, sendes som egen fil sammen med dette dokumentet": "Quantity list (Excel) from Storm IFC-Viewer, sent as a separate file with this document",
+  "Mengdeliste": "Quantity list",
   "PLAN OVENFRA": "PLAN VIEW",
   "OPPRISS (SETT FRA SIDEN)": "ELEVATION (SIDE VIEW)",
   "hevet": "raised",

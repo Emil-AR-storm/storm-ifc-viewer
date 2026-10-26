@@ -216,3 +216,51 @@ export function detaljerFor(e, o) {
   if (!ut.punkter.length) P("liten", "Endret under 1 mm (avrundet bort) — ingen målbar endring");
   return ut;
 }
+
+// ---------- 📊 Mengdelista (Excel) til en lagret EM ----------
+// Vedlegget skjemaet lover («Mengdeliste (Excel) fra Storm IFC-Viewer»). Emil
+// 26.10: «jeg ser ikke noe sted og hente dette utfra» — Excel-knappen fantes
+// bare FØR utkastet ble laget. Nå lages lista fra den lagrede EM-en.
+// ordre = ordreUtad(skjema.svar.okonomi) fra skjema-pdf.js: SALGSPRIS, aldri
+// kostpris eller påslag — lista sendes til kontraktsparten sammen med PDF-en.
+// Svar: [{ navn, rader }] — ett ark per tema.
+const HVA_NAVN = { ny: "Ny", fjernet: "Fjernet", endret: "Endret", valgt: "Valgt" };
+export function emExcelArk(em, ordre) {
+  const topp = [["Endringsmelding", (em.nr ? em.nr + " · " : "") + em.tittel],
+    ["Modell", em.fra ? em.til + " mot " + em.fra : em.til], ["Laget", String(em.laget || "").slice(0, 10)], []];
+  // 1) Mengder per type
+  const mengder = topp.concat([["Type", "Elementer", "Ny", "Fjernet", "Endret", "Mengdeendring", "Enhet"]]);
+  for (const e of em.endringer || []) {
+    const n = (h) => e.elementer.filter(x => x.hva === h).length;
+    const sum = e.elementer.reduce((s, x) => s + (Number(x.mengde) || 0), 0);
+    mengder.push([e.navn, e.undertekst, n("ny") + n("valgt"), n("fjernet"), n("endret"), Math.round(sum * 1000) / 1000, e.enhet]);
+  }
+  mengder.push([], ["Mengdene er beregnet fra 3D-modellen og er et anslag, ikke oppmål."]);
+  // 2) Hvert element, med hva som er endret
+  const el = topp.concat([["Nr", "Type", "Element", "GlobalId", "Akse", "Hva", "Mengde", "Enhet", "Hva er endret"]]);
+  for (const e of em.endringer || []) {
+    let nr = 0;
+    for (const x of e.elementer) {
+      let tekst = "";
+      if (x.hva === "endret") {
+        nr++;
+        tekst = detaljerFor({ c: x.c, d: x.d, v: x.v, navn: x.navn, r: x.r, L: x.L,
+          fra: { c: x.fc, d: x.fd, v: x.fv, navn: x.nf || x.navn, r: x.fr, L: x.fL } }, { toM: em.toM, akser: em.akser })
+          .punkter.map(p => p.tekst).join(" · ");
+      }
+      el.push([x.hva === "endret" ? nr : "", e.navn, x.navn, x.guid, x.akse, HVA_NAVN[x.hva] || x.hva,
+        x.mengde == null ? "" : x.mengde, x.mengde == null ? "" : e.enhet, tekst]);
+    }
+    if (e.antall > e.elementer.length) el.push(["", e.navn, "+ " + (e.antall - e.elementer.length) + " til (ikke lagret)"]);
+  }
+  el.push([], ["Mål og vinkler er lest fra 3D-modellen. Endringer under 1 mm og 0,5° er avrundet bort."]);
+  const ark = [{ navn: "Mengder", rader: mengder }, { navn: "Elementer", rader: el }];
+  // 3) Økonomi — som i skjemaet (salgspris)
+  if (ordre && ordre.rader && ordre.rader.length) {
+    const ok = topp.concat([["Produkt", "Antall", "Enhet", "Enhetspris", "Sum eks. mva", "MVA %", "MVA", "Sum inkl. mva"]]);
+    for (const r of ordre.rader) ok.push([r.produkt, r.antall, r.enhet, r.enhetspris, r.eksMva, r.mvaProsent, r.mvaBelop, r.inklMva]);
+    ok.push([], ["Total", "", "", "", ordre.sum.eksMva, "", ordre.sum.mvaBelop, ordre.sum.inklMva]);
+    ark.push({ navn: "Økonomi", rader: ok });
+  }
+  return ark;
+}
