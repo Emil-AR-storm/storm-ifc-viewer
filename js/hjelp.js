@@ -123,6 +123,16 @@ export const KORT = [
     tekst: "Øyet på hver markering i lista skjuler den i modellen uten å slette noe — den står blass i lista, så du finner den igjen. Knappen øverst i lista skjuler eller viser alle på én gang."
   },
   {
+    hvor: "kontor", ikonNavn: "planner",
+    tittel: "Planner svarer tilbake",
+    tekst: "Krysser noen av oppgaven i Planner, blir markeringen Løst av seg selv, og en grønn stripe i markeringen sier hvem som lukket den. Angre i stripa setter markeringen tilbake og åpner oppgaven igjen i Planner. Åpnes oppgaven igjen i Planner, kommer en gul stripe: velg Sett til Pågår eller Behold Løst. Er oppgaven slettet i Planner, sier en grå stripe fra, og du kan lage en ny. Planner sjekkes når modellen åpnes og når du åpner markeringslista."
+  },
+  {
+    hvor: "kontor", ikonNavn: "markeringer",
+    tittel: "BCF-import: saker fra RIB og ARK",
+    tekst: "BCF-import (i Dokumentasjon eller PDF-menyen) leser en .bcfzip fra Solibri, BIMcollab eller Revit. Sakene deles i tre: nye markeringer, saker som finnes fra før og oppdateres, og saker der elementet ikke finnes i modellen. Du ser hva som endres før du trykker Importer. Status, frist og kommentarer oppdateres; teksten og ansvarlig hos Storm overskrives aldri — står det noe annet i fila, kommer det som en kommentar. Samme fil to ganger gir ingen dubletter, og hele importen angres med Ctrl+Z."
+  },
+  {
     hvor: "kontor", ikonNavn: "utseende",
     tittel: "Visning: snitt, etasjer og farger",
     tekst: "Snitt skjærer bort deler av modellen så du ser innenfor, Etasjer viser én etasje om gangen, Gjennomsiktig lar det bak skinne gjennom, og Farger lar deg fargelegge eller skjule elementtyper. Angre (Ctrl+Z) tar tilbake mål, koter, farger, snitt og skjuling."
