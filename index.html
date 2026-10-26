@@ -202,6 +202,7 @@
   <button id="btnPris" title="Priskalkulasjon: mengder fra modellen × dine priser — Excel med formler" data-i18n-title><svg class="ikon"><use href="#i-pris"/></svg><span class="btn-t" data-i18n>Priskalkulasjon</span></button>
   <button id="btnColors" title="Farge, skjul og vis elementtyper – og kantlinjer" data-i18n-title><svg class="ikon"><use href="#i-utseende"/></svg><span class="btn-t" data-i18n>Utseende</span></button>
   <button id="btnCompare" title="Sammenlign med en annen versjon av modellen" data-i18n-title><svg class="ikon"><use href="#i-sammenlign"/></svg><span class="btn-t" data-i18n>Sammenlign</span></button>
+  <button id="btnEm" title="Endringsmelding fra modellen: mengdeendring, prisanslag og EM-utkast" data-i18n-title><svg class="ikon"><use href="#i-rediger"/></svg><span class="btn-t" data-i18n>Endringsmelding</span></button>
   <button id="btnShare" title="Lag en lenke som gjenskaper denne visningen hos andre" data-i18n-title><svg class="ikon"><use href="#i-del"/></svg><span class="btn-t" data-i18n>Del visning</span></button>
   <button id="btnGrupper" title="Objektgrupper: lagre et utvalg med navn og hent det fram igjen" data-i18n-title><svg class="ikon"><use href="#i-fokus"/></svg><span class="btn-t" data-i18n>Grupper</span></button>
   <button id="btnTerreng" title="Terreng: hent landskapet rundt byggeplassen og sett modellen ned i det" data-i18n-title><svg class="ikon"><use href="#i-kote"/></svg><span class="btn-t" data-i18n>Terreng</span></button>
@@ -377,6 +378,17 @@
 <div class="panel" id="axesPanel">
   <header><span data-i18n>Aksesystem</span><button data-lukk="axesPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="axesBody"></div>
+</div>
+
+<!-- 📝 Endringsmelding fra modellen (js/em.js, 26.10.2026) -->
+<div class="panel em-panel" id="emPanel">
+  <header><span data-i18n>Endringsmelding</span><button data-lukk="emPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <div class="body" id="emBody"></div>
+  <div class="em-fot">
+    <span class="em-fot-hjelp" data-i18n>Lagres som markering med EM-skjemaet utfylt. Du går gjennom og låser selv.</span>
+    <button id="emExcel"><svg class="ikon"><use href="#i-lastned"/></svg> Excel</button>
+    <button id="emLag" class="primary" data-i18n>Lag EM-utkast</button>
+  </div>
 </div>
 
 <div class="panel" id="comparePanel">
