@@ -2401,7 +2401,7 @@ html[data-tema="lys"] #prisBody input, html[data-tema="lys"] #prisBody select { 
 .pu-tab tr { border-bottom: 1px solid; }
 .pu-bunn { position: absolute; left: 30px; right: 30px; bottom: 24px; border-top: 3px solid; padding-top: 10px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .pu-logo-liten { height: 24px; max-width: 90px; object-fit: contain; }
-.pu-sel { font-size: 12px; white-space: nowrap; overflow: hidden; }
+.pu-sel { font-size: 12px; line-height: 1.5; text-align: right; }   /* bryter til to linjer som PDF-en */
 .pu-sel i { font-style: normal; }
 .pu-pal { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px 2px; margin: 10px 0 6px; }
 .pu-rund { background: none; border: 0; padding: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 9.5px; color: var(--muted); }
@@ -2423,3 +2423,17 @@ html[data-tema="lys"] #prisBody input, html[data-tema="lys"] #prisBody select { 
 .pu-lagre { display: flex; gap: 6px; margin-top: 6px; }
 .pu-lagre input { flex: 1; }
 .bcfi-alt-inne { color: var(--ok); font-size: 12px; display: flex; gap: 6px; align-items: center; margin: 0 0 10px; }
+#puStorKnapp { margin-top: 2px; }
+/* 🔍 Vis forstørret (Emil 26.10) */
+#puStor { position: fixed; inset: 0; z-index: 75; background: var(--flate-82); display: flex; align-items: center; justify-content: center; padding: 12px; }
+.pu-stor-boks { max-width: 100%; max-height: 100%; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-stor); box-shadow: var(--skygge); }
+.pu-stor-boks header { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+.pu-stor-boks header .pu-hjelp { flex: 1; color: var(--muted); font-size: 11px; }
+.pu-stor-flate { overflow: auto; padding: 12px; display: flex; justify-content: center; }
+.pu-stor-ramme { position: relative; flex: none; box-shadow: 0 4px 24px rgba(0,0,0,.6); }
+.pu-stor-skala { transform-origin: top left; width: 420px; height: 594px; }
+.pu-stor-skala .pu-side { transform: none; }
+.pu-stor-boks footer { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 12px; border-top: 1px solid var(--border); font-size: 12px; }
+.pu-stor-navn { flex: 1; min-width: 140px; }
+.pu-stor-boks footer code { font-size: 11px; color: var(--muted); }
+.pu-stor-boks footer input[type=color] { width: 34px; height: 26px; padding: 0; border: 1px solid var(--border); border-radius: 5px; background: none; }
