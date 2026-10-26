@@ -2375,3 +2375,51 @@ html[data-tema="lys"] #prisBody input, html[data-tema="lys"] #prisBody select { 
 .bcfi-inf { flex: 1; min-width: 160px; color: var(--muted); font-size: 12px; }
 .bcfi-dlg footer button { padding: 7px 12px; font-size: 12px; }
 .bcfi-dlg footer button:disabled { opacity: .5; cursor: default; }
+
+/* 🎨 Innstillinger → Utseende PDF (26.10.2026, Emils valg C). Miniatyren er
+   en vanlig HTML-side i liten skala — den er en forhåndsvisning, ikke PDF-en. */
+#puSeksjon .pu-hjelp { color: var(--muted); font-size: 11px; margin: 4px 0 6px; }
+#puSeksjon .pu-h5 { margin: 12px 0 2px; font-size: 12px; }
+.pu-topprad { display: flex; gap: 10px; align-items: flex-start; }
+.pu-mini { flex: none; width: 118px; height: 167px; overflow: hidden; border-radius: 3px; box-shadow: 0 2px 10px rgba(0,0,0,.5); }
+.pu-side {
+  width: 420px; height: 594px; background: #fff; transform: scale(.28); transform-origin: top left;
+  padding: 26px 30px; position: relative; font-family: Calibri, Carlito, "Segoe UI", sans-serif; font-size: 13px; line-height: 1.35;
+  cursor: pointer;
+}
+.pu-side [data-rolle]:hover { outline: 3px dashed #3b82f6; outline-offset: 2px; }
+.pu-topp { display: flex; justify-content: space-between; align-items: flex-start; font-size: 12px; }
+.pu-logo { height: 46px; max-width: 200px; object-fit: contain; }
+.pu-logo-tom { display: inline-flex; align-items: center; justify-content: center; width: 150px; background: #e5e7eb; color: #6b7280; font-size: 16px; border-radius: 4px; }
+.pu-strek { height: 4px; margin: 12px 0 16px; }
+.pu-kick { font-size: 12px; letter-spacing: .2em; font-weight: 700; }
+.pu-tittel { font-size: 30px; font-weight: 700; margin: 2px 0 14px; }
+.pu-h3 { border-left: 6px solid; padding-left: 10px; font-weight: 700; font-size: 18px; margin: 10px 0; }
+.pu-boks { border: 1px solid; padding: 10px 12px; margin: 12px 0; font-size: 14px; }
+.pu-tab { width: 100%; border-collapse: collapse; font-size: 13px; }
+.pu-tab td { padding: 6px; }
+.pu-tab tr { border-bottom: 1px solid; }
+.pu-bunn { position: absolute; left: 30px; right: 30px; bottom: 24px; border-top: 3px solid; padding-top: 10px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.pu-logo-liten { height: 24px; max-width: 90px; object-fit: contain; }
+.pu-sel { font-size: 12px; white-space: nowrap; overflow: hidden; }
+.pu-sel i { font-style: normal; }
+.pu-pal { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px 2px; margin: 10px 0 6px; }
+.pu-rund { background: none; border: 0; padding: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 9.5px; color: var(--muted); }
+.pu-rund span { width: 24px; height: 24px; border-radius: 50%; border: 2px solid #ffffff55; }
+.pu-rund.valgt span { outline: 2px solid var(--text); outline-offset: 2px; }
+.pu-rund.endret small { color: var(--warn); }
+.pu-rund small { line-height: 1.1; text-align: center; overflow-wrap: anywhere; }
+.pu-valgt code { font-size: 11px; color: var(--muted); }
+.pu-valgt input[type=color] { width: 30px; height: 24px; padding: 0; border: 1px solid var(--border); border-radius: 5px; background: none; vertical-align: middle; }
+.pu-lite { padding: 2px 6px; }
+.pu-sel3 { display: grid; grid-template-columns: 1fr 1.3fr .55fr auto; gap: 4px; margin-bottom: 4px; }
+.pu-sel3 input, .pu-lagre input { min-width: 0; background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; font-size: 12px; font-family: inherit; }
+.pu-lagret { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 5px; background: var(--panel2); font-size: 12px; }
+.pu-lagret.aktiv { border-color: var(--accent2); }
+.pu-nv { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.pu-nv small { display: block; color: var(--muted); font-size: 10.5px; }
+.pu-stripe { display: flex; border-radius: 3px; overflow: hidden; flex: none; }
+.pu-stripe i { width: 8px; height: 14px; }
+.pu-lagre { display: flex; gap: 6px; margin-top: 6px; }
+.pu-lagre input { flex: 1; }
+.bcfi-alt-inne { color: var(--ok); font-size: 12px; display: flex; gap: 6px; align-items: center; margin: 0 0 10px; }
