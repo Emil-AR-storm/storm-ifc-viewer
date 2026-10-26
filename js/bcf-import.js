@@ -20,7 +20,8 @@ import { alleElementIder } from "./ifc.js";
 import { sikreMeta } from "./ifcrpc.js";
 import { bildeNavn, komprimer, lastOpp } from "./bilder.js";
 import { MAKS_BCF_MB, fraIfc, lagPlan, lesBcf, lesZip, telPlan } from "./bcf-les.js";
-import { fjernImportertMarkering, lagreOgSynk, leggTilImportertMarkering, nyId,
+import { ANSATTE } from "./config.js";
+import { fjernImportertMarkering, lagreOgSynk, leggTilImportertMarkering, naaTekst, nyId,
          tegnMarkeringPaNytt, vaskMarkering, vaskSvar } from "./markers.js";
 
 const FEILTEKST = {
@@ -66,6 +67,7 @@ export async function byggPlan(saker) {
   sisteKart = await guidKart();
   return lagPlan(saker, {
     markeringer: S.comments || [],
+    ansatte: ANSATTE,
     finnElement: finnElementFn(sisteKart),
     tilVisning: (P) => fraIfc(P, skala, S.koteMatrixInv && S.koteMatrixInv.elements),
     standardPunkt: controls && controls.target ? { x: controls.target.x, y: controls.target.y, z: controls.target.z } : null,
@@ -94,8 +96,9 @@ function detaljOppdater(p) {
   return p.endringer.map(e => {
     if (e.felt === "status") return esc(t("Status")) + ' <s>' + esc(t(e.fra)) + '</s> → <i>' + esc(t(e.til)) + '</i>';
     if (e.felt === "frist") return esc(t("frist")) + ' <s>' + esc(datoVis(e.fra)) + '</s> → <i>' + esc(datoVis(e.til)) + '</i>';
-    if (e.felt === "ansvarlig") return esc(t("ansvarlig")) + ' <s>' + esc(e.fra || t("ingen")) + '</s> → <i>' + esc(e.til) + '</i>';
-    if (e.felt === "tekst") return '<i>' + esc(t("teksten er endret")) + '</i>';
+    // Tekst og ansvarlig overskrives aldri (valg B, 26.10) — det står i diffen
+    if (e.felt === "tekst-notat") return '<i>' + esc(t("ny beskrivelse legges som kommentar")) + '</i>';
+    if (e.felt === "ansvarlig-notat") return '<i>' + esc(t("ansvarlig «{0}» legges som kommentar", e.til)) + '</i>';
     if (e.felt === "kommentarer") return '<i>' + esc(t("+{0} kommentarer", e.antall)) + '</i>';
     return "";
   }).filter(Boolean).join(" · ");
@@ -139,7 +142,7 @@ export function dialogHtml(filnavn, versjon, plan, feil) {
   if (feil && feil.length) html += '<p class="bcfi-feil">' + ikon("advarsel") + ' ' +
     esc(t("{0} saker i fila kunne ikke leses og er hoppet over.", feil.length)) + '</p>';
   const n = telPlan(plan).valgt;
-  html += '</div><footer><span class="bcfi-inf">' + esc(t("Hele importen kan angres med Ctrl+Z.")) + '</span>' +
+  html += '</div><footer><span class="bcfi-inf">' + esc(t("Teksten og ansvarlig i Storm overskrives aldri. Hele importen kan angres med Ctrl+Z.")) + '</span>' +
     '<button class="bcfi-avbryt">' + esc(t("Avbryt")) + '</button>' +
     '<button class="primary bcfi-ok"' + (n ? "" : " disabled") + '>' + esc(t("Importer {0} valgte", n)) + '</button></footer></div>';
   return html;
@@ -189,6 +192,8 @@ export async function importer(plan) {
       const svar = (p.nyeSvar || []).map(vaskSvar).filter(Boolean)
         .filter(s => !(c.svar || []).some(x => String(x.id) === s.id));
       if (svar.length) c.svar = (c.svar || []).concat(svar);
+      // Synlig i topplinja av bobla: «(endret av BCF-import 26.10.2026, 09:12)»
+      c.endret = naaTekst(); c.endretAv = "BCF-import";
       tegnMarkeringPaNytt(c);
       oppd.push({ c, for_, etter: klon(c) });
     }

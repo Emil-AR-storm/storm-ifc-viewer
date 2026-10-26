@@ -262,7 +262,35 @@ export function svarFraKommentar(k) {
            dato: fraIsoTid(k.dato), endret: "", kilde: "bcf" };
 }
 
-// k = { markeringer, finnElement(ifcGuid) → { id, senter } | null,
+// ---------- Hvem eier hvilket felt (Emils valg B, 26.10.2026) ----------
+// Storm eier TEKSTEN (det som ble funnet på plassen) og ANSVARLIG (hvem hos
+// Storm som skal gjøre noe — navnet brukes når Planner-oppgaven tildeles).
+// RIB/ARK eier SVARET sitt: status, frist og kommentarer.
+// Derfor: tekst og ansvarlig fra fila overskriver ALDRI en markering som
+// finnes. Er de annerledes, legges RIBs versjon inn som en kommentar — da
+// går ingenting tapt, og Emil kan flytte det inn selv hvis det er riktig.
+// Notat-id-en er fast ut fra sak + innhold, så samme fil to ganger ikke gir
+// to like kommentarer, men en NY endring fra RIB gir en ny.
+export function notatSvar(sak, art, verdi) {
+  const tekst = art === "tekst"
+    ? "Endret beskrivelse i BCF-fila: " + String(verdi)
+    : "Ansvarlig i BCF-fila: " + String(verdi);
+  return { id: "bcf-notat-" + guidFraId(String(sak.guid).toLowerCase() + "|" + art + "|" + verdi),
+           tekst: tekst.slice(0, 4000), forfatter: String(sak.forfatter || "BCF"),
+           dato: fraIsoTid(sak.opprettet), endret: "", kilde: "bcf" };
+}
+
+// AssignedTo → en ansatt i oppsettet (navn eller e-post), ellers null.
+// RIB skriver ofte e-post; Planner trenger Storms eget navn.
+export function finnAnsatt(verdi, ansatte) {
+  const v = String(verdi || "").trim().toLowerCase();
+  if (!v) return null;
+  return (ansatte || []).find(a => a && (String(a.navn || "").toLowerCase() === v ||
+    (a.mail && String(a.mail).toLowerCase() === v))) || null;
+}
+const harSvar = (c, id) => (Array.isArray(c && c.svar) ? c.svar : []).some(s => String(s.id) === id);
+
+// k = { markeringer, ansatte, finnElement(ifcGuid) → { id, senter } | null,
 //       tilVisning(ifcPunkt) → {x,y,z}, standardPunkt {x,y,z}, avstand, nyId() }
 // Ut: [{ sak, art: "ny"|"oppdater"|"uendret"|"finner-ikke", valgt, markering?, mål?, patch?, nyeSvar?, endringer? }]
 export function lagPlan(saker, k) {
@@ -276,12 +304,23 @@ export function lagPlan(saker, k) {
     const nyeSvar = sak.kommentarer.filter(km => km.guid && !(c && svarKjent(c, km.guid))).map(svarFraKommentar);
     if (c) {
       const patch = {}, endringer = [];
-      if (tekstNy && tekstNy !== String(c.text || "")) { patch.text = tekstNy; endringer.push({ felt: "tekst" }); }
+      // Tekst: aldri overskrevet — RIBs versjon blir en kommentar (se over)
+      if (tekstNy && tekstNy !== String(c.text || "")) {
+        const n = notatSvar(sak, "tekst", tekstNy);
+        if (!harSvar(c, n.id)) { nyeSvar.push(n); endringer.push({ felt: "tekst-notat" }); }
+      }
       if ((c.status || "Åpen") !== status) { patch.status = status; endringer.push({ felt: "status", fra: c.status || "Åpen", til: status }); }
       const frist = fraIsoDato(sak.frist);
       if (frist && frist !== (c.due || "")) { patch.due = frist; endringer.push({ felt: "frist", fra: c.due || "", til: frist }); }
-      if (sak.ansvarlig && sak.ansvarlig !== (c.owner || "")) { patch.owner = sak.ansvarlig; endringer.push({ felt: "ansvarlig", fra: c.owner || "", til: sak.ansvarlig }); }
-      if (nyeSvar.length) endringer.push({ felt: "kommentarer", antall: nyeSvar.length });
+      // Ansvarlig: aldri overskrevet. Er det en annen enn hos oss, blir det en kommentar.
+      const ans = finnAnsatt(sak.ansvarlig, o.ansatte);
+      const ansNavn = ans ? ans.navn : String(sak.ansvarlig || "").trim();
+      if (ansNavn && ansNavn !== (c.owner || "")) {
+        const n = notatSvar(sak, "ansvarlig", ansNavn);
+        if (!harSvar(c, n.id)) { nyeSvar.push(n); endringer.push({ felt: "ansvarlig-notat", til: ansNavn }); }
+      }
+      const vanlige = nyeSvar.filter(x => !/^bcf-notat-/.test(x.id)).length;
+      if (vanlige) endringer.push({ felt: "kommentarer", antall: vanlige });
       if (!c.bcfGuid) patch.bcfGuid = sak.guid;     // husk koblingen, også for eksporterte
       const art = endringer.length ? "oppdater" : "uendret";
       plan.push({ sak, art, valgt: art === "oppdater", mål: c, patch, nyeSvar, endringer });
@@ -295,10 +334,15 @@ export function lagPlan(saker, k) {
       pos = o.tilVisning({ x: kp.x + r.x / len * d, y: kp.y + r.y / len * d, z: kp.z + r.z / len * d });
     }
     pos = pos || o.standardPunkt || { x: 0, y: 0, z: 0 };
+    // Ny markering: ansvarlig settes bare når det er en av Storms ansatte —
+    // ellers ville Planner-oppgaven blitt liggende uten mottaker. Står det
+    // noe annet i fila (f.eks. RIBs e-post), blir det en kommentar.
+    const ans = finnAnsatt(sak.ansvarlig, o.ansatte);
+    if (!ans && String(sak.ansvarlig || "").trim()) nyeSvar.push(notatSvar(sak, "ansvarlig", String(sak.ansvarlig).trim()));
     const markering = {
       id: o.nyId ? o.nyId() : Date.now() + "-" + Math.random().toString(36).slice(2, 8),
       text: tekstNy || "BCF", author: sak.forfatter || "BCF", date: fraIsoTid(sak.opprettet),
-      status, owner: sak.ansvarlig || "", due: fraIsoDato(sak.frist),
+      status, owner: ans ? ans.navn : "", due: fraIsoDato(sak.frist),
       x: Number(pos.x) || 0, y: Number(pos.y) || 0, z: Number(pos.z) || 0,
       bcfGuid: sak.guid, svar: nyeSvar
     };
