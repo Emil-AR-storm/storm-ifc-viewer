@@ -1037,7 +1037,10 @@ function tegnArk(jsPDF, m) {
   };
   const kilde = bunn();
   d.text(t("Omtrentlig plassering (±1–2 m). Skal ikke brukes til utstikking.") + "   " + kilde, x0, R.h - R.marg);
-  tegnSelskaper(d, R.b - R.marg, R.h - R.marg, { align: "right", str: 6.5, maksB: 140 });
+  // Selskapene får plassen som er igjen til høyre for merknaden — krympes
+    // heller enn å skrive over den (Emil 26.10: 4+ selskaper overlappet).
+    tegnSelskaper(d, R.b - R.marg, R.h - R.marg, { align: "right", str: 6.5,
+      maksB: Math.max(40, R.b - 2 * R.marg - d.getTextWidth(t("Omtrentlig plassering (±1–2 m). Skal ikke brukes til utstikking.") + "   " + kilde) - 8) });
 
   // ── Side 2: oversiktsbildene ──
   if (m.oversikt && m.oversikt.length) {
@@ -1058,7 +1061,10 @@ function tegnArk(jsPDF, m) {
     });
     d.setFontSize(6.5); hex(d, GRÅ);
     d.text(t("Bildene er perspektiv og kan ikke måles på. Bruk planen på side 1 til mål.") + "   " + kilde, x0, R.h - R.marg);
-    tegnSelskaper(d, R.b - R.marg, R.h - R.marg, { align: "right", str: 6.5, maksB: 140 });
+    // Selskapene får plassen som er igjen til høyre for merknaden — krympes
+    // heller enn å skrive over den (Emil 26.10: 4+ selskaper overlappet).
+    tegnSelskaper(d, R.b - R.marg, R.h - R.marg, { align: "right", str: 6.5,
+      maksB: Math.max(40, R.b - 2 * R.marg - d.getTextWidth(t("Bildene er perspektiv og kan ikke måles på. Bruk planen på side 1 til mål.") + "   " + kilde) - 8) });
   }
   return d;
 }

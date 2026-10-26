@@ -1367,6 +1367,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   // ---------- 🔁 BCF-eksport ----------
   "BCF-eksport": "BCF export",
   // 🎨 Utseende PDF (26.10.2026)
+  "Vis forstørret": "Show enlarged",
   "Bokser": "Boxes",
   "Bruk": "Use",
   "Dokumenttittel": "Document title",

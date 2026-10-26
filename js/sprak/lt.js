@@ -1367,6 +1367,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   // ---------- 🔁 BCF-eksport ----------
   "BCF-eksport": "BCF eksportas",
   // 🎨 Utseende PDF (26.10.2026)
+  "Vis forstørret": "Rodyti padidintą",
   "Bokser": "Langeliai",
   "Bruk": "Naudoti",
   "Dokumenttittel": "Dokumento pavadinimas",

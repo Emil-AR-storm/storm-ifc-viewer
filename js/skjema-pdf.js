@@ -15,7 +15,7 @@
 import { t } from "./i18n.js";
 import { hentJsPDF } from "./rapport.js";
 import { alleFelt, kr, linjeSum, ordreSum, tomtSvar } from "./sjekkliste.js";
-import { lysKant, pdfFarger, profilFarge, tegnSelskaper } from "./pdf-utseende.js";
+import { lysKant, pdfFarger, profilFarge, tegnBunntekst } from "./pdf-utseende.js";
 
 // ═══════════════════════ REN LOGIKK ═══════════════════════
 
@@ -164,7 +164,7 @@ function papir(jsPDF, m) {
       d.setPage(i);
       d.setFontSize(7.5); hex(d, GRÅ);
       d.text(t("Side {0} av {1}", i, n) + (m.prosjekt ? " · " + m.prosjekt : "") +
-        " · " + norskDato(m.iDag), A4.b - A4.marg, A4.h - A4.marg + 1, { align: "right" });
+        " · " + norskDato(m.iDag), A4.b - A4.marg, P.hoyreY || A4.h - A4.marg + 1, { align: "right" });
     }
   };
   return P;
@@ -225,13 +225,12 @@ function bunnlinje(P) {
   d.line(A4.marg, A4.h - A4.marg - 4, A4.b - A4.marg, A4.h - A4.marg - 4);
   // 🎨 Avsender fra skjemaet hvis den finnes; ellers selskapene fra
   // Innstillinger → Utseende PDF (før: fast «Storm Entreprenør AS»).
-  const by = A4.h - A4.marg + 1;
-  d.setFontSize(7.5); hex(d, GRÅ);
-  let b = 0;
-  if (m.avsender && m.avsender.navn) { d.text(tilLatin1(m.avsender.navn), A4.marg, by); b = d.getTextWidth(tilLatin1(m.avsender.navn)); }
-  else b = tegnSelskaper(d, A4.marg, by, { str: 7.5, maksB: 110 });
-  d.setFont(undefined, "normal"); d.setFontSize(7.5); hex(d, GRÅ);
-  if (!m.laast) d.text((b ? " · " : "") + t("utkast"), A4.marg + b, by);
+  // For lang linje → to linjer under streken, innholdet flyttes ikke.
+  const L = tegnBunntekst(d, { x: A4.marg, y: A4.h - A4.marg + 1, bredde: A4.b - 2 * A4.marg, str: 7.5, grå: GRÅ,
+    tekstIstedet: m.avsender && m.avsender.navn ? tilLatin1(m.avsender.navn) : "",
+    hale: m.laast ? "" : t("utkast"),
+    hoyre: t("Side {0} av {1}", 99, 99) + (m.prosjekt ? " · " + m.prosjekt : "") + " · " + norskDato(m.iDag) });
+  P.hoyreY = L.hoyreY;
 }
 
 function overskrift(P, tekst, tillegg) {

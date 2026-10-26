@@ -149,3 +149,52 @@ export function profilFarge(F, rolle, lokal) {
   const f = (F || PDF_STANDARD)[rolle];
   return f && f !== PDF_STANDARD[rolle] ? f : (lokal || PDF_STANDARD[rolle]);
 }
+
+// ---------- Bunnteksten: én eller to linjer ----------
+// Emil 26.10: med 4+ selskaper krøp selskapslinja inn i «Side 1 av 2 ·
+// modell · dato» til høyre. Teksten skal IKKE flyttes inn i sideinnholdet
+// (da skyves alt nedover og over på nye sider). Løsningen er å bruke plassen
+// UNDER streken, som er tom uansett:
+//   • får alt plass på én linje → som før;
+//   • ellers → selskapene alene på linje 1 (over hele bredden, krympes om
+//     nødvendig), og hale (prosjekt, «utkast» …) + høyreteksten på linje 2.
+// Innholdsområdet (bunnGrense) er det samme i begge tilfeller.
+export const BUNN_LINJEAVSTAND = 3.6;   // mm mellom linje 1 og 2
+
+// Ren beslutning, så den kan testes: får alt plass på én linje?
+export function bunnPaaEnLinje(bSelskaper, bHale, bHoyre, bredde, luft) {
+  return bSelskaper + bHale + bHoyre + (luft == null ? 6 : luft) <= bredde;
+}
+
+// o = { x, y, bredde, hale, hoyre, str, grå, tekstIstedet }
+//   hale        tekst etter selskapene (grå), f.eks. «20653 · møteutgave»
+//   hoyre       tekst til høyre — BARE til måling (sidetallet tegnes senere,
+//               når antall sider er kjent); bruk svaret .hoyreY til det
+//   tekstIstedet  vanlig grå tekst i stedet for selskapene (skjemaets avsender)
+// Svar: { toLinjer, hoyreY }
+export function tegnBunntekst(d, o) {
+  const str = Number(o.str) || 7.5, grå = o.grå || PDF_STANDARD.hjelpetekst;
+  const u = pdfUtseende();
+  const gråTekst = (s, x, y) => { d.setFont(undefined, "normal"); d.setFontSize(str); d.setTextColor(...rgb(grå)); d.text(s, x, y); };
+  const mål = (s) => { d.setFont(undefined, "normal"); d.setFontSize(str); return d.getTextWidth(s || ""); };
+  // Bredden selskapene tar i full størrelse
+  const bSel = o.tekstIstedet ? mål(o.tekstIstedet)
+    : selskapDeler(u.selskaper, u.farger).reduce((s, p) => {
+        d.setFont(undefined, p.fet ? "bold" : "normal"); d.setFontSize(p.liten ? str * 0.82 : str);
+        return s + d.getTextWidth(p.tekst);
+      }, 0);
+  const hale = o.hale ? (bSel ? " · " : "") + o.hale : "";
+  const enLinje = bunnPaaEnLinje(bSel, mål(hale), mål(o.hoyre), o.bredde);
+  const venstre = (y, maksB) => o.tekstIstedet
+    ? (gråTekst(o.tekstIstedet, o.x, y), bSel)
+    : tegnSelskaper(d, o.x, y, { str, maksB, utseende: u });
+  if (enLinje) {
+    const b = venstre(o.y, o.bredde);
+    if (hale) gråTekst(hale, o.x + b, o.y);
+    return { toLinjer: false, hoyreY: o.y };
+  }
+  venstre(o.y, o.bredde);
+  const y2 = o.y + BUNN_LINJEAVSTAND;
+  if (o.hale) gråTekst(o.hale, o.x, y2);
+  return { toLinjer: true, hoyreY: y2 };
+}

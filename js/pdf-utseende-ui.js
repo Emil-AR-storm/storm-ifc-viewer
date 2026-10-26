@@ -93,7 +93,9 @@ export function pdfUtseendeHtml() {
   let h = '<details id="puSeksjon"' + (apen ? " open" : "") + '><summary><h4 style="display:inline">' + esc(t("Utseende PDF")) + "</h4>" + merke + "</summary>" +
     '<p class="pu-hjelp">' + esc(t("Gjelder alle PDF-er i systemet, unntatt konstruksjonstegninger fra Blikk, TRP og SW-generator. Logoen styres av logo-systemet (Prosjektinfo).")) + '</p>' +
     '<div class="pu-topprad"><div class="pu-mini">' + miniatyrHtml(u) + '</div>' +
-      '<p class="pu-hjelp">' + esc(t("Trykk på noe i den lille siden for å endre fargen der — eller bruk knappene under. Siden viser endringen med en gang.")) + '</p></div>' +
+      '<div><p class="pu-hjelp">' + esc(t("Trykk på noe i den lille siden for å endre fargen der — eller bruk knappene under. Siden viser endringen med en gang.")) + '</p>' +
+      // Emil 26.10: en knapp her som viser siden stort, så de små detaljene synes
+      '<button id="puStorKnapp">' + ikon("fullskjerm") + ' ' + esc(t("Vis forstørret")) + '</button></div></div>' +
     '<div class="pu-pal">' + PDF_ROLLER.map(x =>
       '<button class="pu-rund' + (x.k === rolle.k ? " valgt" : "") + (F[x.k] !== PDF_STANDARD[x.k] ? " endret" : "") + '" data-velg="' + x.k + '" title="' + esc(t(x.navn)) + '">' +
       '<span style="background:' + F[x.k] + '"></span><small>' + esc(t(x.navn)) + '</small></button>').join("") + '</div>' +
@@ -129,8 +131,58 @@ export function pdfUtseendeHtml() {
 }
 S.pdfUtseendeHtml = pdfUtseendeHtml;
 
+// ---------- Forstørret visning (Emil 26.10) ----------
+// Samme side som miniatyren, men så stor som vinduet tillater. Trykk på noe i
+// den for å velge fargen, og endre den rett i vinduet — miniatyren og
+// innstillingene følger med. Esc, ✕ eller trykk utenfor lukker.
+let storApen = false;
+export function storSkala(vinduB, vinduH) {
+  return Math.max(0.6, Math.min(2, (vinduH - 150) / 594, (vinduB - 48) / 420));
+}
+function storHtml() {
+  const u = pdfUtseende(), F = u.farger;
+  const rolle = PDF_ROLLER.find(x => x.k === valgtRolle) || PDF_ROLLER[0];
+  const k = storSkala(window.innerWidth || 1200, window.innerHeight || 800);
+  return '<div class="pu-stor-boks" role="dialog" aria-modal="true">' +
+    '<header><b>' + esc(t("Utseende PDF")) + '</b><span class="pu-hjelp">' + esc(t("Trykk på noe i siden for å endre fargen der")) + '</span>' +
+      '<button id="puStorX" title="' + esc(t("Lukk")) + '">' + ikon("lukk") + '</button></header>' +
+    '<div class="pu-stor-flate"><div class="pu-stor-ramme" style="width:' + Math.round(420 * k) + 'px;height:' + Math.round(594 * k) + 'px">' +
+      '<div class="pu-stor-skala" style="transform:scale(' + k.toFixed(3) + ')">' + miniatyrHtml(u) + '</div></div></div>' +
+    '<footer><span class="pu-rund valgt" style="pointer-events:none"><span style="background:' + F[rolle.k] + '"></span></span>' +
+      '<span class="pu-stor-navn"><b>' + esc(t(rolle.navn)) + '</b> <span class="pu-hjelp">' + esc(t(rolle.hjelp)) + '</span></span>' +
+      '<code>' + esc(F[rolle.k]) + '</code> <input type="color" id="puStorFarge" value="' + esc(F[rolle.k]) + '">' +
+      (F[rolle.k] !== PDF_STANDARD[rolle.k] ? ' <button id="puStorStd" class="pu-lite" title="' + esc(t("Tilbake til standardfargen")) + '">' + ikon("nullstill") + '</button>' : "") +
+    '</footer></div>';
+}
+function lukkStor() {
+  storApen = false;
+  const el = $("puStor"); if (el) el.remove();
+  document.removeEventListener("keydown", escStor, true);
+}
+function escStor(e) { if (e.key === "Escape") { e.stopPropagation(); lukkStor(); } }
+export function visStor() {
+  storApen = true;
+  let el = $("puStor");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "puStor";
+    document.body.appendChild(el);
+    el.addEventListener("pointerdown", (e) => { if (e.target === el) lukkStor(); });
+    document.addEventListener("keydown", escStor, true);
+  }
+  el.innerHTML = storHtml();
+  $("puStorX").onclick = lukkStor;
+  el.querySelectorAll(".pu-side [data-rolle]").forEach(n => n.onclick = (e) => {
+    e.stopPropagation(); valgtRolle = n.dataset.rolle; tegnPaNytt();
+  });
+  const ff = $("puStorFarge");
+  if (ff) ff.onchange = () => { const f = ff.value; endre(u => { u.farger[valgtRolle] = f; }); };
+  if ($("puStorStd")) $("puStorStd").onclick = () => endre(u => { u.farger[valgtRolle] = PDF_STANDARD[valgtRolle]; });
+}
+
 // ---------- Kobling ----------
 function tegnPaNytt() {
+  if (storApen) visStor();
   const sek = $("puSeksjon");
   if (!sek) return;
   apen = sek.open;
@@ -202,6 +254,7 @@ export function koblPdfUtseende() {
     if (apen && S.settings.rapLogo && logoFil !== S.settings.rapLogo) hentLogoBilde().then(tegnPaNytt);
   };
   if (apen && lagrede === null) hentLagrede().then(tegnPaNytt);
+  if ($("puStorKnapp")) $("puStorKnapp").onclick = visStor;
   sek.querySelectorAll("[data-velg]").forEach(b => b.onclick = () => { valgtRolle = b.dataset.velg; tegnPaNytt(); });
   sek.querySelectorAll(".pu-side [data-rolle]").forEach(el => el.onclick = (e) => {
     e.stopPropagation(); valgtRolle = el.dataset.rolle; tegnPaNytt();

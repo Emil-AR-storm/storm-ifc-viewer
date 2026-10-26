@@ -20,7 +20,7 @@ import { t } from "./i18n.js";
 import { HASTEGRAD, HASTEGRAD_REKKE, dagerTil, hastegrad, iDagISO } from "./frist.js";
 import { varsel } from "./varsel.js";
 import { csvCelle } from "./csv.js";
-import { lysKant, pdfFarger, profilFarge, tegnSelskaper } from "./pdf-utseende.js";
+import { lysKant, pdfFarger, profilFarge, tegnBunntekst } from "./pdf-utseende.js";
 
 // 4.2.1 (sikkerhetsrunden 19.10): 2.5.2 hadde kjente feil (ReDoS i addImage m.fl.)
 export const JSPDF_URL = "vendor/jspdf-4.2.1.umd.min.js";
@@ -376,7 +376,7 @@ function papir(jsPDF, m) {
       d.setPage(i);
       d.setFontSize(7.5); hex(d, GRÅ);
       d.text(t("Side {0} av {1}", i, n) + " · " + m.modell + " · " + norskDato(m.iDag),
-        A4.b - A4.marg, A4.h - A4.marg + 1, { align: "right" });
+        A4.b - A4.marg, P.hoyreY || A4.h - A4.marg + 1, { align: "right" });
     }
   };
   return P;
@@ -442,12 +442,13 @@ function bunnlinje(P) {
   hex(d, STREK, "strek"); d.setLineWidth(0.2);
   d.line(A4.marg, A4.h - A4.marg - 4, A4.b - A4.marg, A4.h - A4.marg - 4);
   // 🎨 Selskapene fra Innstillinger → Utseende PDF, i farger som i malen.
-  // Plassen er halve bredden: sidetallet og modellnavnet står til høyre.
-  const by = A4.h - A4.marg + 1;
-  const b = tegnSelskaper(d, A4.marg, by, { str: 7.5, maksB: 95 });
+  // Blir linja for lang (4+ selskaper), går den over to linjer UNDER streken —
+  // innholdet på siden flyttes ikke (tegnBunntekst i pdf-utseende.js).
+  // Høyreteksten måles med «Side 99 av 99» — sidetallet tegnes i P.slutt.
   const hale = [m.prosjekt, m.utgave === "mote" ? t("møteutgave") : ""].filter(Boolean).join(" · ");
-  d.setFont(undefined, "normal"); d.setFontSize(7.5); hex(d, GRÅ);
-  if (hale) d.text((b ? " · " : "") + hale, A4.marg + b, by);
+  const L = tegnBunntekst(d, { x: A4.marg, y: A4.h - A4.marg + 1, bredde: A4.b - 2 * A4.marg, str: 7.5, grå: GRÅ,
+    hale, hoyre: t("Side {0} av {1}", 99, 99) + " · " + m.modell + " · " + norskDato(m.iDag) });
+  P.hoyreY = L.hoyreY;
 }
 
 // ---------- Byggeklosser ----------
