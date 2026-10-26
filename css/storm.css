@@ -2443,6 +2443,20 @@ html[data-tema="lys"] #prisBody input, html[data-tema="lys"] #prisBody select { 
 #emPanel .body { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 .em-sek { display: flex; align-items: center; gap: 6px; margin: 12px 0 6px; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent2); }
 .em-sek:first-child { margin-top: 2px; }
+/* 📜 Steg 0: kontrakt og varsel (EM runde 2, prøve A) */
+.em-husk { margin-left: 6px; padding: 1px 7px; border: 1px solid var(--border); border-radius: 9px; font-size: 9px; color: var(--muted); letter-spacing: .06em; }
+.em-k-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 8px; margin-bottom: 6px; }
+.em-k-grid.tre { grid-template-columns: 1fr 1fr 1fr; }
+.em-k-felt { display: flex; flex-direction: column; gap: 3px; font-size: 10.5px; color: var(--muted); min-width: 0; }
+.em-k-felt .em-felt { margin: 0; width: 100%; box-sizing: border-box; }
+.em-k-felt.tom .em-felt { border-color: var(--danger); }
+.em-sjekk { margin-top: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 12px; }
+.em-sjekk > b { display: block; margin-bottom: 6px; }
+.em-sj { display: flex; gap: 6px; padding: 2px 0; }
+.em-sj > span { width: 12px; flex: none; font-weight: 700; }
+.em-sj.ok > span { color: var(--ok); } .em-sj.gul > span { color: var(--warn); } .em-sj.rod > span { color: var(--danger); }
+.em-sj.rod { color: var(--danger); }
+@media (max-width: 520px) { .em-k-grid, .em-k-grid.tre { grid-template-columns: 1fr; } }
 .em-n { background: var(--accent); color: var(--paa-accent); border-radius: 50%; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; letter-spacing: 0; }
 .em-kilder { display: flex; gap: 6px; flex-wrap: wrap; }
 .em-kilde { border-radius: 999px; padding: 4px 11px; font-size: 12px; }
@@ -2460,6 +2474,13 @@ html[data-tema="lys"] #prisBody input, html[data-tema="lys"] #prisBody select { 
 .em-tab select, .em-tab input.em-pris { background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 2px 4px; font-size: 11px; font-family: inherit; }
 .em-tab input.em-pris { width: 64px; text-align: right; }
 .em-tab input.em-pris::placeholder { color: var(--warn); }
+.em-prof-knapp { background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 5px; font-size: 10px; padding: 0 5px; margin-left: 4px; cursor: pointer; font-family: inherit; }
+.em-prof-knapp:hover { color: var(--text); }
+.em-tab tr.em-prof td { background: rgba(128,128,128,.06); padding-top: 3px; padding-bottom: 3px; font-size: 11px; }
+.em-tab .em-prof-navn { padding-left: 14px !important; }
+.em-prof.av td:not(:first-child) { opacity: .45; }
+.em-tab input.em-kgm { width: 52px; text-align: right; background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 2px 4px; font-size: 11px; font-family: inherit; }
+.em-tab input.em-kgm.modell { color: var(--muted); font-style: italic; }
 .em-sumrad td { font-weight: 700; border-bottom: 0; }
 .em-mangler { color: var(--warn); font-weight: 400; }
 .em-hjelp { color: var(--muted); font-size: 11px; margin: 6px 0; }
