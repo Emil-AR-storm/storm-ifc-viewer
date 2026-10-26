@@ -198,3 +198,101 @@ export function tegnBunntekst(d, o) {
   if (o.hale) gråTekst(o.hale, o.x, y2);
   return { toLinjer: true, hoyreY: y2 };
 }
+
+// ═════════ 📐 Felles oppsett (Emils valg A 26.10: malen på alle fem) ═════════
+// Topp:  logo øverst til venstre · infolinjer til høyre · strek i hovedfarge ·
+//        kicker (dokumenttypen, hovedfarge, sperret) · stor tittel · undertittel
+// Bunn:  strek i hovedfarge · liten logo til venstre · selskapene til høyre (linje 1)
+//        · hale til venstre og sidetall til høyre (linje 2)
+// Samme hjelpere brukes av rapport.js, skjema-pdf.js, stopeplan-pdf.js,
+// riggplan.js (toppbaand) og framdrift-pdf.js — så alle fem ser like ut.
+function logoMaal(logo, maksB, maksH) {
+  const b0 = Number(logo && logo.b) || maksB, h0 = Number(logo && logo.h) || maksH;
+  const f = Math.min(maksB / b0, maksH / h0);
+  return { b: b0 * f, h: h0 * f };
+}
+function tegnLogo(d, logo, x, y, maksB, maksH) {
+  if (!logo || !logo.data) return null;
+  const m = logoMaal(logo, maksB, maksH);
+  try { d.addImage(logo.data, logo.format || "PNG", x, y, m.b, m.h); } catch (_) { return null; }
+  return m;
+}
+
+// o = { x, y, bredde, logo, logoB, logoH, meta: [{ tekst, fet }], kicker,
+//       tittel, under, tittelStr }  →  y der innholdet kan starte
+export function malTopp(d, o) {
+  const u = pdfUtseende(), F = u.farger;
+  const lb = o.logoB || 42, lh = o.logoH || 16;
+  let hLogo = 0;
+  const m = tegnLogo(d, o.logo, o.x, o.y - 2, lb, lh);
+  if (m) hLogo = m.h - 2;
+  else if (u.selskaper[0] && u.selskaper[0].navn) {
+    // Uten logo: første selskaps navn, aldri en gjenskapt logo
+    d.setFont(undefined, "bold"); d.setFontSize(16); d.setTextColor(...rgb(F.tekst));
+    d.text(String(u.selskaper[0].navn), o.x, o.y + 5); hLogo = 7;
+  }
+  let my = o.y + 1;
+  for (const l of o.meta || []) {
+    if (!l || !String(l.tekst || "").trim()) continue;
+    d.setFont(undefined, l.fet ? "bold" : "normal"); d.setFontSize(7);
+    d.setTextColor(...rgb(l.fet ? F.tekst : F.hjelpetekst));
+    d.text(String(l.tekst), o.x + o.bredde, my, { align: "right" });
+    my += 3.4;
+  }
+  let y = Math.max(o.y + hLogo + 3, my);
+  d.setDrawColor(...rgb(F.hoved)); d.setLineWidth(0.6);
+  d.line(o.x, y, o.x + o.bredde, y);
+  y += 6;
+  if (o.kicker) {
+    d.setFont(undefined, "bold"); d.setFontSize(7); d.setTextColor(...rgb(F.hoved));
+    d.text(String(o.kicker).toUpperCase(), o.x, y, { charSpace: 0.7 });
+    y += 6.5;
+  }
+  if (o.tittel) {
+    const str = o.tittelStr || 18;
+    d.setFont(undefined, "bold"); d.setFontSize(str); d.setTextColor(...rgb(F.tekst));
+    d.text(String(o.tittel), o.x, y);
+    y += str * 0.22 + 1.5;
+  }
+  if (o.under) {
+    d.setFont(undefined, "normal"); d.setFontSize(9); d.setTextColor(...rgb(F.hjelpetekst));
+    d.text(String(o.under), o.x, y + 1.5);
+    y += 5;
+  }
+  d.setFont(undefined, "normal");
+  return y + 3;
+}
+
+// Høyden malTopp bruker med disse valgene (uten å tegne) — til A3-arkene som
+// må vite hvor planen kan starte FØR noe tegnes.
+export function malToppHoyde(o) {
+  const lh = (o && o.logoH) || 16;
+  let y = Math.max(lh + 1, ((o && o.meta) || []).filter(l => l && String(l.tekst || "").trim()).length * 3.4 + 1);
+  y += 6;
+  if (o && o.kicker) y += 6.5;
+  if (o && o.tittel) y += ((o.tittelStr || 18) * 0.22 + 1.5);
+  if (o && o.under) y += 5;
+  return y + 3;
+}
+
+// o = { x, bredde, yStrek, logo, str, hale, hoyreTekst, tekstIstedet }
+//  → { hoyreY } (linje 2, der sidetallet står)
+export const MAL_BUNN_H = 11;   // fra streken til linje 2
+export function malBunn(d, o) {
+  const u = pdfUtseende(), F = u.farger, str = Number(o.str) || 7.5;
+  d.setDrawColor(...rgb(F.hoved)); d.setLineWidth(0.5);
+  d.line(o.x, o.yStrek, o.x + o.bredde, o.yStrek);
+  const m = tegnLogo(d, o.logo, o.x, o.yStrek + 1.8, 30, 6.5);
+  const lb = m ? m.b : 0;
+  const r1 = o.yStrek + 5.2, r2 = r1 + 3.8;
+  if (o.tekstIstedet) {
+    d.setFont(undefined, "bold"); d.setFontSize(str); d.setTextColor(...rgb(F.tekst));
+    d.text(String(o.tekstIstedet), o.x + o.bredde, r1, { align: "right" });
+  } else tegnSelskaper(d, o.x + o.bredde, r1, { align: "right", str, maksB: o.bredde - lb - 8, utseende: u });
+  d.setFont(undefined, "normal"); d.setFontSize(str * 0.85); d.setTextColor(...rgb(F.hjelpetekst));
+  // Halen står til høyre for logoen på linje 2, så den aldri går oppi den
+  if (o.hale) d.text(String(o.hale), o.x + (lb ? lb + 4 : 0), r2, { maxWidth: o.bredde * 0.6 - lb });
+  if (o.hoyreTekst) d.text(String(o.hoyreTekst), o.x + o.bredde, r2, { align: "right" });
+  d.setFontSize(str);
+  return { hoyreY: r2 };
+}

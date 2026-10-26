@@ -143,6 +143,11 @@ export const KORT = [
     tekst: "Åpne den gamle modellen og trykk Sammenlign (i Bygg Info) — da tas et avtrykk. Åpne så den nye, og alt som er nytt, fjernet eller flyttet fargelegges og listes opp."
   },
   {
+    hvor: "kontor", ikonNavn: "rediger",
+    tittel: "Endringsmelding fra modellen",
+    tekst: "Etter Sammenlign (i Bygg Info) åpner du Endringsmelding: mengdeendringen per elementtype, med pris fra Priskalkulasjon. Kryss av linjene, velg enhet, skriv tittel og ta bilder før og etter. Lag EM-utkast lager en markering midt i endringen med EM-skjemaet utfylt — gå gjennom, lås og last ned PDF fra markeringen. Mengdene er et anslag fra modellen, ikke oppmål."
+  },
+  {
     hvor: "kontor", ikonNavn: "lastned",
     tittel: "Få modellen ut på plassen",
     tekst: "Byggeplass lager en lett kopi og en QR-kode. Montøren trenger verken app eller innlogging — bare koden."

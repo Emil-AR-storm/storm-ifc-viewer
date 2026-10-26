@@ -15,7 +15,7 @@
 import { t } from "./i18n.js";
 import { hentJsPDF } from "./rapport.js";
 import { alleFelt, kr, linjeSum, ordreSum, tomtSvar } from "./sjekkliste.js";
-import { lysKant, pdfFarger, profilFarge, tegnBunntekst } from "./pdf-utseende.js";
+import { lysKant, malBunn, malTopp, pdfFarger, profilFarge } from "./pdf-utseende.js";
 
 // ═══════════════════════ REN LOGIKK ═══════════════════════
 
@@ -172,36 +172,28 @@ function papir(jsPDF, m) {
 
 function topplinje(P, forste) {
   const { d, m } = P;
-  let y = A4.marg;
-  if (P.logo) {
-    const h = Math.min(16, 42 * (P.logo.h / P.logo.b));
-    try { d.addImage(P.logo.data, P.logo.format || "PNG", A4.marg, y - 2, 42, h); } catch (_) {}
-    y += h + 2;
-  }
-
-  d.setFontSize(forste ? 16 : 13); hex(d, SORT); d.setFont(undefined, "bold");
-  d.text(m.tittel, A4.marg, y + 5);
-  d.setFont(undefined, "normal");
-  d.setFontSize(9); hex(d, GRÅ);
-  const undertittel = [m.prosjekt, m.versjon > 1 ? t("Versjon {0}", m.versjon) : ""].filter(Boolean).join(" · ");
-  if (undertittel) d.text(undertittel, A4.marg, y + 10);
-
-  // Metablokka til høyre. Avsenderen står FØRST og i halvfet: dette er et
-  // varsel til en kontraktspart, og hvem det kommer fra er ikke en fotnote.
-  d.setFontSize(7.5);
-  hex(d, SORT); d.setFont(undefined, "bold");
-  let my = A4.marg + 2;
-  if (m.avsender.navn) { d.text(m.avsender.navn, A4.b - A4.marg, my, { align: "right" }); my += 3.6; }
-  d.setFont(undefined, "normal"); hex(d, GRÅ);
-  [m.avsender.orgnr ? t("Org.nr. {0}", m.avsender.orgnr) : "", m.avsender.adresse, m.avsender.sted,
-   m.markering ? t("Markering: {0}", m.markering) : "",
-   m.erstatter ? t("Erstatter versjon {0}", m.erstatter) : ""]
-    .filter(Boolean).forEach(linje => { d.text(String(linje), A4.b - A4.marg, my, { align: "right" }); my += 3.6; });
-
-  y = Math.max(y + 13, my + 1);
-  hex(d, HOVED, "strek"); d.setLineWidth(0.8);
-  d.line(A4.marg, y, A4.b - A4.marg, y);
-  P.y = y + 6;
+  // 📐 Felles oppsett (Emils valg A 26.10): malen. Avsenderen står FØRST og i
+  // halvfet i infolinjene til høyre — dette er et varsel til en kontraktspart,
+  // og hvem det kommer fra er ikke en fotnote. Sidene etter forsiden har som i
+  // malen ingen topp.
+  if (forste) {
+    const a = m.avsender || {};
+    P.y = malTopp(d, {
+      x: A4.marg, y: A4.marg, bredde: P.bredde, logo: P.logo,
+      meta: [
+        a.navn ? { tekst: a.navn, fet: true } : null,
+        a.orgnr ? { tekst: t("Org.nr. {0}", a.orgnr) } : null,
+        a.adresse ? { tekst: a.adresse } : null,
+        a.sted ? { tekst: a.sted } : null,
+        m.markering ? { tekst: t("Markering: {0}", m.markering) } : null,
+        m.erstatter ? { tekst: t("Erstatter versjon {0}", m.erstatter) } : null
+      ],
+      kicker: m.prosjekt ? t("Prosjekt {0}", m.prosjekt) : t("Skjema"),
+      tittel: m.tittel,
+      tittelStr: 16,
+      under: m.versjon > 1 ? t("Versjon {0}", m.versjon) : ""
+    });
+  } else P.y = A4.marg + 2;
 
   // UTKAST-båndet står på HVER side. Ett bånd bare på forsiden ville forsvunnet
   // i det noen skriver ut side 2 og legger den ved en e-post — samme grunn som
@@ -221,15 +213,11 @@ function topplinje(P, forste) {
 
 function bunnlinje(P) {
   const { d, m } = P;
-  hex(d, STREK, "strek"); d.setLineWidth(0.2);
-  d.line(A4.marg, A4.h - A4.marg - 4, A4.b - A4.marg, A4.h - A4.marg - 4);
-  // 🎨 Avsender fra skjemaet hvis den finnes; ellers selskapene fra
-  // Innstillinger → Utseende PDF (før: fast «Storm Entreprenør AS»).
-  // For lang linje → to linjer under streken, innholdet flyttes ikke.
-  const L = tegnBunntekst(d, { x: A4.marg, y: A4.h - A4.marg + 1, bredde: A4.b - 2 * A4.marg, str: 7.5, grå: GRÅ,
+  // 📐 Felles bunn (malen): logo til venstre, avsender (fra malen) eller
+  // selskapene til høyre, sidetallet på linja under (tegnes i P.slutt).
+  const L = malBunn(d, { x: A4.marg, bredde: P.bredde, yStrek: A4.h - A4.marg - 4, logo: P.logo, str: 7.5,
     tekstIstedet: m.avsender && m.avsender.navn ? tilLatin1(m.avsender.navn) : "",
-    hale: m.laast ? "" : t("utkast"),
-    hoyre: t("Side {0} av {1}", 99, 99) + (m.prosjekt ? " · " + m.prosjekt : "") + " · " + norskDato(m.iDag) });
+    hale: m.laast ? "" : t("utkast") });
   P.hoyreY = L.hoyreY;
 }
 

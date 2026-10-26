@@ -26,16 +26,20 @@ import {
 import { innholdTekst } from "./stopeplan-tid.js";
 import { stopeGroup, tegnStopeplan, feltBase, tilScene } from "./stopeplan-vis.js";
 import { varsel } from "./varsel.js";
-import { pdfFarger, pdfUtseende, profilFarge } from "./pdf-utseende.js";
+import { malBunn, malTopp, pdfFarger, profilFarge } from "./pdf-utseende.js";
 
 // Arket i mm (A3 liggende)
 export const ARK = {
   b: 420, h: 297, marg: 12,
+  // 📐 26.10 (Emils valg A, felles oppsett): malens topp (logo, infolinjer,
+  // strek, kicker, tittel) og bunn (strek, logo, selskaper, sidetall) i stedet
+  // for tegningsrammen og tittelfeltet. Toppen tar mer plass, så bildene og
+  // Gantt-en er litt lavere enn før (100/54 → 86/50). tfH er nå bunnsonen.
   toppY: 12, toppH: 16,
-  bildeY: 30, bildeH: 100, planB: 236, mellom: 4,
-  ganttY: 136, ganttH: 54, ganttEtikett: 52,
-  tabellY: 196, radH: 6.2,
-  tfH: 20
+  bildeY: 54, bildeH: 86, planB: 236, mellom: 4,
+  ganttY: 145, ganttH: 50, ganttEtikett: 52,
+  tabellY: 200, radH: 6.2,
+  tfH: 13
 };
 const PX_PER_MM = 6;
 // 🎨 Profilfargene fylles fra Innstillinger → Utseende PDF (26.10.2026).
@@ -315,13 +319,21 @@ function tegnArk(jsPDF, m) {
   d.setLineHeightFactor(1.15);
   const B = R.b - 2 * R.marg;
 
-  const ramme = () => { farge(d, SORT, "strek"); d.setLineWidth(0.5); d.rect(R.marg - 4, R.marg - 4, R.b - 2 * R.marg + 8, R.h - 2 * R.marg + 8); };
+  // 📐 Malens topp på hver side (A3-planen er en tegning som henger på
+  // plassen — hver side skal kunne leses alene).
+  const ramme = () => {};
   const topp = (side) => {
-    farge(d, SORT); d.setFont("helvetica", "bold"); d.setFontSize(20);
-    d.text(t("STØPEPLAN") + (side > 1 ? " — " + t("forts.") : ""), R.marg, R.toppY + 7);
-    d.setFont("helvetica", "normal"); d.setFontSize(10); farge(d, GRÅ);
-    const ukeTekst = m.uker ? " · " + t("uke {0}–{1}", m.uker.uker[0].nr, m.uker.uker[m.uker.uker.length - 1].nr) : "";
-    d.text(m.modell + " · " + t("per {0}", datoLang(m.iDag)) + ukeTekst, R.marg, R.toppY + 13);
+    d.setFont("helvetica", "normal");
+    const ukeTekst = m.uker ? t("uke {0}–{1}", m.uker.uker[0].nr, m.uker.uker[m.uker.uker.length - 1].nr) : "";
+    const modellNavn = String(m.modell || "").replace(/\.(ifc|glb)$/i, "");
+    malTopp(d, {
+      x: R.marg, y: R.toppY, bredde: B, logo: m.logo, logoB: 46, logoH: 15,
+      meta: [{ tekst: t("Tegnet av") + ": " + (m.av || "–"), fet: true },
+             { tekst: t("Dato") + ": " + datoLang(m.iDag) }, ukeTekst ? { tekst: ukeTekst } : null],
+      kicker: t("Støpeplan") + (side > 1 ? " — " + t("forts.") : ""),
+      tittel: m.prosjekt || modellNavn, tittelStr: 16,
+      under: [m.prosjekt ? modellNavn : "", t("per {0}", datoLang(m.iDag))].filter(Boolean).join(" · ")
+    });
   };
   ramme(); topp(1);
 
@@ -462,32 +474,19 @@ function tegnArk(jsPDF, m) {
   const n = d.getNumberOfPages();
   for (let i = 1; i <= n; i++) {
     d.setPage(i);
-    d.setFont("helvetica", "normal"); d.setFontSize(9); farge(d, SORT);
-    d.text(t("A3 liggende · side {0} av {1}", i, n), R.b - R.marg - 3, R.h - R.marg - 3, { align: "right" });
+    d.setFont("helvetica", "normal"); d.setFontSize(7 * 0.85); farge(d, GRÅ);
+    // linje 2 i malBunn (under selskapene)
+    d.text(t("A3 liggende · side {0} av {1}", i, n), R.b - R.marg, R.h - R.marg - R.tfH + 2 + 9, { align: "right" });
   }
   return d;
 }
 
 function tittelfelt(d, m, side) {
-  const R = ARK, B = R.b - 2 * R.marg, y = R.h - R.marg - R.tfH;
-  farge(d, SORT, "strek"); d.setLineWidth(0.5); d.rect(R.marg, y, B, R.tfH);
-  const kol = [{ b: 52 }, { b: 110, k: m.prosjekt ? t("Prosjekt") : t("Modell"), v: m.prosjekt || m.modell }, { b: 66, k: t("Tegning"), v: t("Støpeplan") },
-    { b: 52, k: t("Dato"), v: datoLang(m.iDag) }, { b: 66, k: t("Tegnet av"), v: m.av || "–" }, { b: 0, k: t("Ark"), v: "" }];
-  kol[kol.length - 1].b = B - kol.reduce((s, c) => s + c.b, 0);
-  let x = R.marg;
-  kol.forEach((c, i) => {
-    if (i) { d.setLineWidth(0.3); d.line(x, y, x, y + R.tfH); }
-    if (i === 0) {
-      if (m.logo) {
-        const f = Math.min((c.b - 6) / m.logo.b, (R.tfH - 6) / m.logo.h);
-        try { d.addImage(m.logo.data, m.logo.format || "PNG", x + (c.b - m.logo.b * f) / 2, y + (R.tfH - m.logo.h * f) / 2, m.logo.b * f, m.logo.h * f); } catch (_) {}
-      } else { d.setFont("helvetica", "bold"); d.setFontSize(14); farge(d, SORT); d.text(String((pdfUtseende().selskaper[0] || {}).navn || "").toUpperCase(), x + c.b / 2, y + R.tfH / 2 + 2, { align: "center" }); }   // uten logo: første selskap (Utseende PDF), ikke fast «STORM»
-    } else {
-      d.setFont("helvetica", "normal"); d.setFontSize(7); farge(d, GRÅ); d.text(c.k.toUpperCase(), x + 2.5, y + 4.5);
-      d.setFont("helvetica", "bold"); d.setFontSize(10); farge(d, SORT); d.text(String(c.v).slice(0, 60), x + 2.5, y + 10);
-    }
-    x += c.b;
-  });
+  // 📐 26.10: malens bunn i stedet for tittelfeltet (Emils valg A). Feltene
+  // (prosjekt, dato, tegnet av) står nå i toppen.
+  const R = ARK;
+  malBunn(d, { x: R.marg, bredde: R.b - 2 * R.marg, yStrek: R.h - R.marg - R.tfH + 2, logo: m.logo, str: 7,
+    hale: String(m.modell || "") });
 }
 
 // ═══════════════════════ EXCEL ═══════════════════════

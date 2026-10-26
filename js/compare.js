@@ -48,7 +48,8 @@ let result = null;      // { ny:[], slettet:[], endret:[], uendret:Set, metode }
 // Fargefilter: overlappende bokser kan skjule hverandre, så radene i panelet
 // kan trykkes for å vise ÉN farge om gangen. null = vis alle.
 let boksFilter = null;  // null | "ny" | "slettet" | "endret"
-const vis = (hva) => !boksFilter || boksFilter === hva;
+// «etter» brukes bare av EM-bildene: nytt og endret, ikke det fjernede
+const vis = (hva) => !boksFilter || boksFilter === hva || (boksFilter === "etter" && hva !== "slettet");
 
 // «Bare endringer» må overleve at panelet tegnes på nytt (hvert trykk på et
 // fargefilter gjør det). Sto den bare i knappens class, mistet knappen
@@ -660,4 +661,32 @@ export function manuellTekst(m, flytt) {
   if (!flytt) return del;
   const m_ = Math.hypot(flytt[0], flytt[1], flytt[2]) * (S.enhetSkala || 1);
   return del + " · " + t("den gamle flyttet {0}", m_ >= 1 ? m_.toFixed(2).replace(".", ",") + " m" : Math.round(m_ * 1000) + " mm");
+}
+
+
+// ---------- 📝 Endringsmelding fra modellen (em.js, 26.10.2026) ----------
+// Lesetilgang til siste sammenligning, uten å gi bort selve objektet.
+export function sammenligningForEm() {
+  if (!S.compareOn || !result) return null;
+  return {
+    res: { ny: result.ny.slice(), slettet: result.slettet.slice(), endret: result.endret.slice() },
+    fra: (S.compareBase && S.compareBase.file) || "",
+    til: S.fileName || "",
+    metode: result.metode || ""
+  };
+}
+
+// To bilder til EM-en: «før» = det som er fjernet (røde bokser), «etter» =
+// det som er nytt og endret. Samme kamera som nå. Fargefilteret settes
+// tilbake etterpå, også om fangsten feiler.
+export async function emBilder(fangst) {
+  if (!S.compareOn || !result || typeof fangst !== "function") return null;
+  const før = boksFilter;
+  try {
+    boksFilter = "slettet"; paint();
+    const a = await fangst();
+    boksFilter = "etter"; paint();
+    const b = await fangst();
+    return { for: a, etter: b };
+  } finally { boksFilter = før; paint(); }
 }

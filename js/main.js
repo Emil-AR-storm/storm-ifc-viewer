@@ -67,6 +67,7 @@ const MODULER = [
   ["./tema.js"],                   // lyst/mørkt tema – trenger knappen i toppbaren
   ["./hjul.js"],                   // navigasjonshjul – trenger knappen i verktøylinja
   ["./compare.js", true],
+  ["./em.js", true],               // 📝 Endringsmelding fra modellen (kun kontor) — ETTER compare.js
   ["./recent.js"],
   ["./share.js", true],
   ["./byggeplass.js", true],

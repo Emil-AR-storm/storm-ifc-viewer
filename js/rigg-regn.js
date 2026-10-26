@@ -925,8 +925,11 @@ export function nyRiggId() {
 //   └─────────────────────────────────────────────────────┘
 export const RIGGPLAN = {
   b: 420, h: 297, marg: 10,
-  toppH: 22,                   // toppbåndet (hele bredden)
-  bunnH: 7,                    // bunnlinja med forbehold og kartkilde
+  // 📐 26.10 (Emils valg A, felles oppsett): toppen og bunnen er malen fra
+  // «Arbeidstider»-PDF-en — logo, infolinjer, strek, kicker og tittel øverst;
+  // strek, logo, selskaper og forbehold nederst. Høyere enn før (22/7).
+  toppH: 40,                   // toppen (hele bredden) — malTopp med logo, kicker og tittel
+  bunnH: 13,                   // bunnen: strek, logo, selskaper + forbehold og kartkilde
   forklaringB: 100,            // «Hva er hva» (høyre)
   mellom: 4                    // luft mellom feltene
 };

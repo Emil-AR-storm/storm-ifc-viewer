@@ -35,7 +35,7 @@ import {
 } from "./rigg-regn.js";
 import { aktivRef, finnRiggObjekt, riggBase, riggGroup, toneFarge } from "./rigg-vis.js";
 import { varsel } from "./varsel.js";
-import { pdfFarger, profilFarge, tegnSelskaper } from "./pdf-utseende.js";
+import { malBunn, malTopp, pdfFarger, profilFarge } from "./pdf-utseende.js";
 
 const PX_PER_MM = 7;          // bildets oppløsning: 292 mm → ~2000 px
 // 🎨 «let»: fylles fra Innstillinger → Utseende PDF i brukProfil() (26.10.2026)
@@ -820,31 +820,16 @@ function lyshet(farge) {
 // og den eneste rødfargen på arket, så den ikke konkurrerer med objektene.
 export function toppbaand(d, m, tittel, under, info) {
   brukProfil();   // framdrift-pdf.js bruker også toppbåndet
-  const R = RIGGPLAN, x0 = R.marg, y0 = R.marg;
-  const lb = 46, lh = 16;
-  if (m.logo) {
-    // Originalbildet, aldri en gjenskaping — skalert inn i feltet med riktig form
-    const f = Math.min(lb / m.logo.b, lh / m.logo.h);
-    const b = m.logo.b * f, h = m.logo.h * f;
-    try { d.addImage(m.logo.data, m.logo.format || "PNG", x0, y0 + (lh - h) / 2, b, h); } catch (_) {}
-  } else {
-    d.setFontSize(16); d.setFont(undefined, "bold"); hex(d, SORT);
-    d.text("Storm", x0, y0 + 9);
-    tegnSelskaper(d, x0, y0 + 14, { str: 8, maksB: lb });
-  }
-  const tx = x0 + lb + 8;
-  d.setFontSize(20); d.setFont(undefined, "bold"); hex(d, SORT);
-  d.text(tittel, tx, y0 + 9);
-  d.setFont(undefined, "normal"); d.setFontSize(9); hex(d, GRÅ);
-  const infoB = (info || []).length * 36;
-  d.text(d.splitTextToSize(under || "", R.b - R.marg - infoB - tx - 4).slice(0, 1), tx, y0 + 15);
-  (info || []).forEach(([k, v], i) => {
-    const x = R.b - R.marg - ((info.length - i) * 36) + 2;
-    d.setFontSize(6); hex(d, GRÅ); d.text(k.toUpperCase(), x, y0 + 6);
-    d.setFontSize(9); hex(d, SORT); d.text(d.splitTextToSize(v || "—", 33)[0], x, y0 + 11.5);
+  // 📐 Felles oppsett (Emils valg A 26.10): malen — logo, infolinjer til
+  // høyre, strek, kicker (dokumenttypen) og tittel. «under» er
+  // «prosjekt · adresse · dato»: første del blir tittelen, resten undertittel.
+  const R = RIGGPLAN;
+  const deler = String(under || "").split(/\s+·\s+/).map(x => x.trim()).filter(Boolean);
+  malTopp(d, {
+    x: R.marg, y: R.marg, bredde: R.b - 2 * R.marg, logo: m.logo, logoB: 46, logoH: 15,
+    meta: (info || []).map(([k, v], i) => ({ tekst: String(k) + ": " + (v || "—"), fet: i === 0 })),
+    kicker: tittel, tittel: deler[0] || tittel, tittelStr: 16, under: deler.slice(1).join("  ·  ")
   });
-  hex(d, STORM_ROD, "strek"); d.setLineWidth(0.8);
-  d.line(x0, y0 + R.toppH, R.b - R.marg, y0 + R.toppH);
   d.setLineWidth(0.3);
 }
 
@@ -1036,11 +1021,9 @@ function tegnArk(jsPDF, m) {
     return kilde;
   };
   const kilde = bunn();
-  d.text(t("Omtrentlig plassering (±1–2 m). Skal ikke brukes til utstikking.") + "   " + kilde, x0, R.h - R.marg);
-  // Selskapene får plassen som er igjen til høyre for merknaden — krympes
-    // heller enn å skrive over den (Emil 26.10: 4+ selskaper overlappet).
-    tegnSelskaper(d, R.b - R.marg, R.h - R.marg, { align: "right", str: 6.5,
-      maksB: Math.max(40, R.b - 2 * R.marg - d.getTextWidth(t("Omtrentlig plassering (±1–2 m). Skal ikke brukes til utstikking.") + "   " + kilde) - 8) });
+  // 📐 Felles bunn (malen): logo, selskapene, og forbehold + kartkilde under
+  malBunn(d, { x: R.marg, bredde: R.b - 2 * R.marg, yStrek: R.h - R.marg - R.bunnH + 2, logo: m.logo, str: 7,
+    hale: t("Omtrentlig plassering (±1–2 m). Skal ikke brukes til utstikking.") + "   " + kilde });
 
   // ── Side 2: oversiktsbildene ──
   if (m.oversikt && m.oversikt.length) {
@@ -1059,12 +1042,8 @@ function tegnArk(jsPDF, m) {
       hex(d, SORT); d.text(b.navn, bx + 3 + pb / 2, by + 6.6, { align: "center", baseline: "middle" });
       d.setFont(undefined, "normal");
     });
-    d.setFontSize(6.5); hex(d, GRÅ);
-    d.text(t("Bildene er perspektiv og kan ikke måles på. Bruk planen på side 1 til mål.") + "   " + kilde, x0, R.h - R.marg);
-    // Selskapene får plassen som er igjen til høyre for merknaden — krympes
-    // heller enn å skrive over den (Emil 26.10: 4+ selskaper overlappet).
-    tegnSelskaper(d, R.b - R.marg, R.h - R.marg, { align: "right", str: 6.5,
-      maksB: Math.max(40, R.b - 2 * R.marg - d.getTextWidth(t("Bildene er perspektiv og kan ikke måles på. Bruk planen på side 1 til mål.") + "   " + kilde) - 8) });
+    malBunn(d, { x: R.marg, bredde: R.b - 2 * R.marg, yStrek: R.h - R.marg - R.bunnH + 2, logo: m.logo, str: 7,
+      hale: t("Bildene er perspektiv og kan ikke måles på. Bruk planen på side 1 til mål.") + "   " + kilde });
   }
   return d;
 }

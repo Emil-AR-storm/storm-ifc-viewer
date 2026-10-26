@@ -38,7 +38,7 @@ import { qrDataUrl } from "./qr.js";
 import { GULV_ID } from "./veggelement/tilstand.js";
 import { IFC_GRUPPE, framdriftFilnavn, idFor, ifcUnder, infoRader, pdfTrinn, slagFor, trinnTittel } from "./framdrift-regn.js";
 import { varsel } from "./varsel.js";
-import { pdfFarger, profilFarge } from "./pdf-utseende.js";
+import { malBunn, pdfFarger, profilFarge } from "./pdf-utseende.js";
 
 // 🎨 «let»: fylles fra Innstillinger → Utseende PDF i brukProfil() (26.10.2026)
 let GRÅ = "#6b7280", SORT = "#14161a", LINJE = "#c9ced6", KORT = "#f4f5f7";
@@ -470,9 +470,10 @@ export function tegnArk(jsPDF, m) {
     d.setFontSize(8); hex(d, GRÅ);
     d.text(t("Laget av: {0}", (m.av || "—") + " · " + norskDato(m.iDag)), ix, A.bunn - 5);
     // ── Bunnlinja ──
-    d.setFontSize(6.5); hex(d, GRÅ);
-    d.text(t("Farget: nytt i trinn {0} · Vanlige farger: utført i tidligere trinn", e.nr), R.marg, R.h - R.marg);
-    d.text(t("Side {0} av {1}", si + 1, ant), R.b - R.marg, R.h - R.marg, { align: "right" });
+    // 📐 Felles bunn (malen): logo, selskapene, forklaring og sidetall under
+    malBunn(d, { x: R.marg, bredde: R.b - 2 * R.marg, yStrek: R.h - R.marg - R.bunnH + 2, logo: m.logo, str: 7,
+      hale: t("Farget: nytt i trinn {0} · Vanlige farger: utført i tidligere trinn", e.nr),
+      hoyreTekst: t("Side {0} av {1}", si + 1, ant) });
   });
   return d;
 }

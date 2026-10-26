@@ -78,6 +78,9 @@ document.addEventListener("pointerdown", (e) => {
   const menu = $("setMenu");
   if (!menu.classList.contains("open")) return;
   if (menu.contains(e.target) || e.target.id === "btnSettings") return;
+  // 🔍 «Vis forstørret» (Utseende PDF) ligger utenfor menyen, men hører til
+  // den: ✕ eller et klikk der skal lukke BARE vinduet (Emil 26.10).
+  if (e.target.closest && e.target.closest("#puStor")) return;
   if (e.button === 2) return; // høyreklikk flytter menyen i stedet (contextmenu-håndtereren)
   closeSettings();
 }, true);
@@ -476,6 +479,9 @@ window.addEventListener("keydown", (e) => {
     // Sto de bakerst i denne rekka, ville Esc lukket et panel BAK sløret mens
     // kortene ble stående — og da ser Esc ut som om den ikke virker.
     if (hjelpApen()) { lukkHjelp(); return; }
+    // 🔍 Det forstørrede PDF-vinduet lukker seg selv (pdf-utseende-ui.js);
+    // Innstillinger under skal bli stående.
+    if ($("puStor")) return;
     // via cancelComment, ikke bare classList: ⭕▭-forhåndsvisningen og
     // pendingPoint/pendingOmrade skal ryddes når dialogen forlates med Esc
     if ($("commentDialog").classList.contains("open")) { if (window.cancelComment) window.cancelComment(); else $("commentDialog").classList.remove("open"); return; }

@@ -20,7 +20,7 @@ import { t } from "./i18n.js";
 import { HASTEGRAD, HASTEGRAD_REKKE, dagerTil, hastegrad, iDagISO } from "./frist.js";
 import { varsel } from "./varsel.js";
 import { csvCelle } from "./csv.js";
-import { lysKant, pdfFarger, profilFarge, tegnBunntekst } from "./pdf-utseende.js";
+import { lysKant, malBunn, malTopp, pdfFarger, profilFarge } from "./pdf-utseende.js";
 
 // 4.2.1 (sikkerhetsrunden 19.10): 2.5.2 hadde kjente feil (ReDoS i addImage m.fl.)
 export const JSPDF_URL = "vendor/jspdf-4.2.1.umd.min.js";
@@ -384,40 +384,23 @@ function papir(jsPDF, m) {
 
 function topplinje(P, forste) {
   const { d, m } = P;
-  let y = A4.marg;
-  if (P.logo) {
-    // Logoen tegnes i sin egen målestokk: 42 mm bred, høyden følger bildet.
-    const h = Math.min(16, 42 * (P.logo.h / P.logo.b));
-    try { d.addImage(P.logo.data, P.logo.format || "PNG", A4.marg, y - 2, 42, h); } catch (_) {}
-    y += h + 2;
-  } else {
-    d.setFontSize(15); hex(d, SORT); d.setFont(undefined, "bold");
-    d.text("Storm", A4.marg, y + 5); y += 9;
-    d.setFont(undefined, "normal");
-  }
-
-  d.setFontSize(forste ? 16 : 13); hex(d, SORT); d.setFont(undefined, "bold");
-  d.text(t("Statusrapport markeringer"), A4.marg, y + 5);
-  d.setFont(undefined, "normal");
-  // Undertittel bare når det finnes et prosjekt. Uten den sto modellnavnet
-  // tre ganger på samme side: her, i metablokka til høyre, og i bunnteksten.
-  d.setFontSize(9); hex(d, GRÅ);
-  if (m.prosjekt) d.text(m.prosjekt, A4.marg, y + 10);
-
-  // Metablokk til høyre
-  d.setFontSize(7.5);
-  const meta = [
-    t("Modell") + ": " + m.modell,
-    m.revisjon ? t("Revisjon") + ": " + m.revisjon : "",
-    t("Rapport") + ": " + norskDato(m.iDag),
-    t("Utskrift fra Storm IFC-Viewer")
-  ].filter(Boolean);
-  meta.forEach((linje, i) => d.text(linje, A4.b - A4.marg, A4.marg + 2 + i * 3.6, { align: "right" }));
-
-  y += 13;
-  hex(d, HOVED, "strek"); d.setLineWidth(0.8);
-  d.line(A4.marg, y, A4.b - A4.marg, y);
-  P.y = y + 6;
+  // 📐 Felles oppsett (Emils valg A 26.10): malen fra «Arbeidstider»-PDF-en.
+  // Forsiden får logo, infolinjer, strek, kicker og tittel; sidene etter har
+  // som i malen ingen topp — bare innholdet og bunnlinja.
+  if (forste) {
+    P.y = malTopp(d, {
+      x: A4.marg, y: A4.marg, bredde: P.bredde, logo: P.logo,
+      meta: [
+        { tekst: t("Utskrift fra Storm IFC-Viewer").toUpperCase(), fet: true },
+        { tekst: t("Modell") + ": " + m.modell },
+        m.revisjon ? { tekst: t("Revisjon") + ": " + m.revisjon } : null,
+        { tekst: t("Rapport") + ": " + norskDato(m.iDag) }
+      ],
+      kicker: t("Statusrapport markeringer") + (m.utgave === "mote" ? " · " + t("møteutgave") : ""),
+      tittel: m.prosjekt || String(m.modell || "").replace(/\.(ifc|glb)$/i, ""),
+      under: m.prosjekt ? m.modell : ""
+    });
+  } else P.y = A4.marg + 2;
 
   // Møteutgaven merkes på HVER side. Ett bånd bare på forsiden ville forsvunnet
   // i det noen skriver ut side 3 og legger den ved en e-post.
@@ -439,15 +422,14 @@ function topplinje(P, forste) {
 
 function bunnlinje(P) {
   const { d, m } = P;
-  hex(d, STREK, "strek"); d.setLineWidth(0.2);
-  d.line(A4.marg, A4.h - A4.marg - 4, A4.b - A4.marg, A4.h - A4.marg - 4);
   // 🎨 Selskapene fra Innstillinger → Utseende PDF, i farger som i malen.
   // Blir linja for lang (4+ selskaper), går den over to linjer UNDER streken —
   // innholdet på siden flyttes ikke (tegnBunntekst i pdf-utseende.js).
   // Høyreteksten måles med «Side 99 av 99» — sidetallet tegnes i P.slutt.
   const hale = [m.prosjekt, m.utgave === "mote" ? t("møteutgave") : ""].filter(Boolean).join(" · ");
-  const L = tegnBunntekst(d, { x: A4.marg, y: A4.h - A4.marg + 1, bredde: A4.b - 2 * A4.marg, str: 7.5, grå: GRÅ,
-    hale, hoyre: t("Side {0} av {1}", 99, 99) + " · " + m.modell + " · " + norskDato(m.iDag) });
+  // 📐 Felles bunn (malen): logo til venstre, selskapene til høyre, og
+  // sidetallet på linja under (tegnes i P.slutt når antall sider er kjent).
+  const L = malBunn(d, { x: A4.marg, bredde: P.bredde, yStrek: A4.h - A4.marg - 4, logo: P.logo, str: 7.5, hale });
   P.hoyreY = L.hoyreY;
 }
 
