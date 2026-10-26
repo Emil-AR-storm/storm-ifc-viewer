@@ -142,7 +142,9 @@ export function faktablokk(linjer, k) {
 // uten pris tas med med pris 0, så ingenting forsvinner stille.
 export function ordrelinjer(linjer) {
   return (linjer || []).map(l => ({
-    produkt: (l.navn + (l.undertekst ? " " + l.undertekst : "") + (l.pris == null ? " (mangler pris)" : "")).slice(0, 120),
+    // Ikke «(mangler pris)» i navnet: det ble stående i PDF-en etter at prisen
+    // var fylt inn i skjemaet (Emils test 26.10). Panelet viser hva som mangler.
+    produkt: (l.navn + (l.undertekst ? " " + l.undertekst : "")).slice(0, 120),
     antall: l.mengde, enhet: l.enhet, enhetspris: l.pris == null ? 0 : l.pris, paslag: 0, mva: 25
   }));
 }
@@ -235,6 +237,11 @@ export function akseFor(c, akser) {
   };
   const z = del(akser.z, c[2]), x = del(akser.x, c[0]);
   if (!z && !x) return "";
+  // Utenfor aksene: nærmeste akse og «utenfor» — ikke «<A/>6» (Emils test 26.10)
+  if (/[<>]/.test(z + x)) {
+    const zz = z.replace(/[<>]/g, ""), xx = x.replace(/[<>]/g, "");
+    return (/–/.test(zz + xx) ? [zz, xx].filter(Boolean).join("/") : zz + xx) + " (utenfor)";
+  }
   const enkel = (s) => !/[–<>]/.test(s);
   return (z && x && enkel(z) && enkel(x)) ? z + x : [z, x].filter(Boolean).join("/");
 }

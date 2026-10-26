@@ -139,8 +139,46 @@ export function detaljerFor(e, o) {
     return a ? "i enden ved akse " + a : "i den ene enden";
   };
 
+  // 0) Har endene flyttet seg ULIKT (ingen står stille)? Da beskrives hver
+  //    ende for seg. Ellers ble en skrå bjelke i Emils test 26.10 til «hevet
+  //    33 mm (underkant før −1,549 · etter −1,499)» — teksten og tallene i
+  //    parentesen sa ulike ting.
+  let hverEnde = false;
+  if (parene && fast < 0 && bevegelig >= 0) {
+    const m = parene.map(([a, b]) => [b[0] - a[0], b[1] - a[1], b[2] - a[2]]);
+    // Forskjellen mellom endene som bare går LANGS elementet er en lengdeendring
+    // (flyttet/senket + «−40 mm i enden»). Går den på tvers, har elementet
+    // vippet eller dreid — da beskrives hver ende for seg.
+    const anker = 1 - bevegelig, rest = [0, 1, 2].map(i => m[bevegelig][i] - m[anker][i]);
+    const langs = rest[0] * e.r[0] + rest[1] * e.r[1] + rest[2] * e.r[2];
+    const tvers = Math.hypot(rest[0] - langs * e.r[0], rest[1] - langs * e.r[1], rest[2] - langs * e.r[2]);
+    hverEnde = mm(tvers, toM) >= TERSKEL_MM;
+    if (hverEnde) {
+      const navn = (p) => {
+        if (vertikal) return p[1] > (f.c[1] || 0) ? "Toppen" : "Bunnen";
+        const a = akseFor(p, akser);
+        return a ? "Enden ved akse " + a : "Den ene enden";
+      };
+      // Står begge endene mellom de samme aksene, skilles de på retning: «enden mot akse 2»
+      let navnene = parene.map(([a]) => navn(a));
+      if (navnene[0] === navnene[1] && !vertikal) {
+        const k = Math.abs(f.r[0]) >= Math.abs(f.r[2]) ? 0 : 2, liste = akser && (k === 0 ? akser.x : akser.z);
+        navnene = parene.map(([a]) => { const ak = motAkse(liste, f.c[k], a[k] - f.c[k]); return ak ? "Enden mot akse " + ak : navnene[0]; });
+        if (navnene[0] === navnene[1]) navnene = ["Den ene enden", "Den andre enden"];
+      }
+      parene.forEach(([a, b], i) => {
+        const v = m[i], deler = [];
+        const h = mm(v[1], toM), x = mm(v[0], toM), z = mm(v[2], toM);
+        if (Math.abs(h) >= TERSKEL_MM) deler.push((h > 0 ? "hevet " : "senket ") + mmTekst(h));
+        if (Math.abs(x) >= TERSKEL_MM) { const ak = motAkse(akser && akser.x, a[0], x); deler.push("flyttet " + mmTekst(x) + (ak ? " mot akse " + ak : " i " + (x > 0 ? "+" : "−") + "X-retning")); }
+        if (Math.abs(z) >= TERSKEL_MM) { const ak = motAkse(akser && akser.z, a[2], z); deler.push("flyttet " + mmTekst(z) + (ak ? " mot akse " + ak : " i " + (z > 0 ? "+" : "−") + "Z-retning")); }
+        P("ende", navnene[i] + ": " + (deler.length ? deler.join(", ") : "står fast"));
+      });
+    }
+  }
+
   // 1) Flytting: ankerenden (eller senteret når retningen mangler)
-  const dv = trans || [e.c[0] - f.c[0], e.c[1] - f.c[1], e.c[2] - f.c[2]];
+  const dv = hverEnde ? [0, 0, 0] : (trans || [e.c[0] - f.c[0], e.c[1] - f.c[1], e.c[2] - f.c[2]]);
   const dx = mm(dv[0], toM), dz = mm(dv[2], toM);
   const plan = [];
   if (Math.abs(dx) >= TERSKEL_MM) {
@@ -155,7 +193,7 @@ export function detaljerFor(e, o) {
   if (plan.length) ut.tegning.flytt = { dx: Math.abs(dx) >= TERSKEL_MM ? dx : 0, dz: Math.abs(dz) >= TERSKEL_MM ? dz : 0 };
   // Høyden: ankerets høydeendring, med underkanten før og etter
   const ukF = (f.c[1] - (f.d ? f.d[1] / 2 : 0)) * toM, ukN = (e.c[1] - (e.d ? e.d[1] / 2 : 0)) * toM;
-  const dH = trans ? mm(trans[1], toM) : (ukN - ukF) * 1000;
+  const dH = hverEnde ? 0 : (trans ? mm(trans[1], toM) : (ukN - ukF) * 1000);
   if (Math.abs(dH) >= TERSKEL_MM) {
     P("hoyde", (dH > 0 ? "Hevet " : "Senket ") + mmTekst(dH) + " (underkant før " + koteTekst(ukF) + " · etter " + koteTekst(ukN) + ")", { mm: dH });
     ut.tegning.hoyde = dH;
@@ -176,7 +214,7 @@ export function detaljerFor(e, o) {
   const dL = lN - lF;
   if (lF > 0 && Math.abs(dL) >= TERSKEL_MM) {
     let hvor = "";
-    if (bevegelig >= 0 && parene) hvor = " " + endeNavn(parene[bevegelig][0]);
+    if (bevegelig >= 0 && parene && !hverEnde) hvor = " " + endeNavn(parene[bevegelig][0]);
     P("lengde", "Lengde før " + mmTekst(lF) + " · etter " + mmTekst(lN) + " (" + (dL > 0 ? "+" : "−") + mmTekst(dL) + hvor + ")", { foer: lF, etter: lN, mm: dL });
     ut.tegning.dL = dL; ut.tegning.lF = lF; ut.tegning.lN = lN;
     if (bevegelig >= 0) ut.tegning.enden = bevegelig;
@@ -258,8 +296,9 @@ export function emExcelArk(em, ordre) {
   // 3) Økonomi — som i skjemaet (salgspris)
   if (ordre && ordre.rader && ordre.rader.length) {
     const ok = topp.concat([["Produkt", "Antall", "Enhet", "Enhetspris", "Sum eks. mva", "MVA %", "MVA", "Sum inkl. mva"]]);
-    for (const r of ordre.rader) ok.push([r.produkt, r.antall, r.enhet, r.enhetspris, r.eksMva, r.mvaProsent, r.mvaBelop, r.inklMva]);
-    ok.push([], ["Total", "", "", "", ordre.sum.eksMva, "", ordre.sum.mvaBelop, ordre.sum.inklMva]);
+    const kr2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
+    for (const r of ordre.rader) ok.push([r.produkt, r.antall, r.enhet, kr2(r.enhetspris), kr2(r.eksMva), r.mvaProsent, kr2(r.mvaBelop), kr2(r.inklMva)]);
+    ok.push([], ["Total", "", "", "", kr2(ordre.sum.eksMva), "", kr2(ordre.sum.mvaBelop), kr2(ordre.sum.inklMva)]);
     ark.push({ navn: "Økonomi", rader: ok });
   }
   return ark;

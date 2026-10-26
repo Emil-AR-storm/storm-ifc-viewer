@@ -69,7 +69,8 @@ export function ordreUtad(rader) {
     rader: liste.map(r => {
       const l = linjeSum(r);
       return {
-        produkt: tilLatin1(r.produkt),
+        // «(mangler pris)» fra eldre EM-utkast fjernes når prisen er fylt inn
+        produkt: tilLatin1(l.salgsEnhetspris > 0 ? String(r.produkt || "").replace(/\s*\(mangler pris\)\s*$/, "") : r.produkt),
         antall: Number(r.antall) || 0,
         enhet: tilLatin1(r.enhet),
         enhetspris: l.salgsEnhetspris,   // SALGSPRIS, ikke kostpris
