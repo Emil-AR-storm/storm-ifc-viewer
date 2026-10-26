@@ -2437,3 +2437,40 @@ html[data-tema="lys"] #prisBody input, html[data-tema="lys"] #prisBody select { 
 .pu-stor-navn { flex: 1; min-width: 140px; }
 .pu-stor-boks footer code { font-size: 11px; color: var(--muted); }
 .pu-stor-boks footer input[type=color] { width: 34px; height: 26px; padding: 0; border: 1px solid var(--border); border-radius: 5px; background: none; }
+
+/* 📝 Endringsmelding fra modellen (26.10.2026, Emils valg A: sidepanel) */
+#emPanel { width: 560px; max-width: 100vw; max-height: 82vh; }
+#emPanel .body { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.em-sek { display: flex; align-items: center; gap: 6px; margin: 12px 0 6px; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent2); }
+.em-sek:first-child { margin-top: 2px; }
+.em-n { background: var(--accent); color: var(--paa-accent); border-radius: 50%; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; letter-spacing: 0; }
+.em-kilder { display: flex; gap: 6px; flex-wrap: wrap; }
+.em-kilde { border-radius: 999px; padding: 4px 11px; font-size: 12px; }
+.em-kilde.valgt { border-color: var(--accent2); background: color-mix(in srgb, var(--accent2) 15%, transparent); }
+.em-kilde:disabled { opacity: .5; cursor: default; }
+.em-tab { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+.em-tab th { color: var(--muted); font-weight: 500; text-align: left; padding: 4px 4px; border-bottom: 1px solid var(--border); font-size: 10.5px; }
+.em-tab td { padding: 5px 4px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.em-tab .r { text-align: right; }
+.em-tab td:nth-child(2) { cursor: pointer; }
+.em-under { color: var(--muted); font-size: 10.5px; overflow-wrap: anywhere; }
+.em-tall { color: var(--muted); white-space: nowrap; }
+.em-tab .pos { color: var(--ok); } .em-tab .neg { color: var(--danger); }
+.em-rad.av td:not(:first-child) { opacity: .45; }
+.em-tab select, .em-tab input.em-pris { background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 2px 4px; font-size: 11px; font-family: inherit; }
+.em-tab input.em-pris { width: 64px; text-align: right; }
+.em-tab input.em-pris::placeholder { color: var(--warn); }
+.em-sumrad td { font-weight: 700; border-bottom: 0; }
+.em-mangler { color: var(--warn); font-weight: 400; }
+.em-hjelp { color: var(--muted); font-size: 11px; margin: 6px 0; }
+.em-felt { width: 100%; box-sizing: border-box; background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-size: 12px; font-family: inherit; margin-bottom: 6px; }
+.em-bilder { display: flex; gap: 8px; margin-bottom: 6px; }
+.em-bilde { flex: 1; aspect-ratio: 3 / 2; border: 1px solid var(--border); border-radius: 6px; background: var(--panel2); position: relative; overflow: hidden; }
+.em-bilde img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.em-bilde span { position: absolute; left: 6px; top: 4px; font-size: 10px; background: #000a; color: #fff; padding: 1px 6px; border-radius: 4px; }
+.em-frist { display: flex; gap: 8px; align-items: flex-start; background: var(--panel2); border-left: 3px solid var(--warn); border-radius: 6px; padding: 7px 10px; font-size: 12px; margin-top: 8px; }
+.em-frist .ikon { flex: none; width: 14px; height: 14px; margin-top: 2px; color: var(--warn); }
+.em-frist input[type=date] { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 1px 4px; font-size: 11px; }
+.em-fot { display: flex; gap: 8px; align-items: center; padding: 10px 14px; border-top: 1px solid var(--border); flex: none; }
+.em-fot-hjelp { flex: 1; color: var(--muted); font-size: 11px; }
+.em-fot button:disabled { opacity: .5; cursor: default; }
