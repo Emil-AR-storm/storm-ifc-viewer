@@ -145,7 +145,7 @@ export const KORT = [
   {
     hvor: "kontor", ikonNavn: "rediger",
     tittel: "Endringsmelding fra modellen",
-    tekst: "Etter Sammenlign (i Bygg Info) åpner du Endringsmelding: mengdeendringen per elementtype, med pris fra Priskalkulasjon. Kryss av linjene, velg enhet, skriv tittel og ta bilder før og etter. Lag EM-utkast lager en markering midt i endringen med EM-skjemaet utfylt — gå gjennom, lås og last ned PDF fra markeringen. Mengdene er et anslag fra modellen, ikke oppmål."
+    tekst: "Etter Sammenlign (i Bygg Info) åpner du Endringsmelding: mengdeendringen per elementtype, med pris fra Priskalkulasjon. Kryss av linjene, velg enhet og skriv tittel. Lag EM-utkast tar før- og etter-bilder av hver endring (bare de elementene vises) og fyller ut EM-skjemaet. EM-en lagres internt i SharePoint og følger aldri med ut til byggeplassen. I fanen Endringsmeldinger finner du alle: åpne skjemaet, last ned PDF (bildene står på egne sider bakerst) og flytt den fra Opprettet til Sendt og Fullført (godkjent eller avvist). Mengdene er et anslag fra modellen, ikke oppmål."
   },
   {
     hvor: "kontor", ikonNavn: "lastned",

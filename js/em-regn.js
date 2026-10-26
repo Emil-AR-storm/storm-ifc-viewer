@@ -174,3 +174,175 @@ export function senter(punkter) {
   if (!p.length) return null;
   return p.reduce((s, x) => [s[0] + x[0] / p.length, s[1] + x[1] / p.length, s[2] + x[2] / p.length], [0, 0, 0]);
 }
+
+// ═══════════ 🔒 Intern EM-liste og bildesider (Emil 26.10: PDF C, lagring A) ═══════════
+// EM-ene er IKKE markeringer lenger. Markeringer reiser ut til byggeplassen
+// (byggeplass.js → <fil>.markeringer.json), og en endringsmelding med priser og
+// bilder skal bare finnes på kontoret. De lagres i SharePoint-mappa
+// «Endringsmeldinger», én fil per prosjekt, som Workeren aldri ser.
+
+// Statusene: Opprettet → Sendt → Fullført (Godkjent eller Avvist)
+export const EM_STATUS = ["opprettet", "sendt", "godkjent", "avvist"];
+export const STATUS_NAVN = { opprettet: "Opprettet", sendt: "Sendt", godkjent: "Fullført · godkjent", avvist: "Fullført · avvist" };
+export const erFullfort = (s) => s === "godkjent" || s === "avvist";
+// Filteret i lista: «fullført» dekker begge svarene
+export function iFilter(em, filter) {
+  if (!filter || filter === "alle") return true;
+  if (filter === "fullfort") return erFullfort(em.status);
+  return em.status === filter;
+}
+export function filtrerEm(liste, o) {
+  const opt = o || {}, sok = String(opt.sok || "").trim().toLowerCase();
+  return (liste || []).filter(e => e && !e.slettet && iFilter(e, opt.filter) &&
+    (!sok || (String(e.nr || "") + " " + String(e.tittel || "")).toLowerCase().includes(sok)))
+    .sort((a, b) => String(b.laget || "").localeCompare(String(a.laget || "")));
+}
+export function tellStatus(liste) {
+  const n = { alle: 0, opprettet: 0, sendt: 0, fullfort: 0 };
+  for (const e of liste || []) {
+    if (!e || e.slettet) continue;
+    n.alle++;
+    if (erFullfort(e.status)) n.fullfort++; else if (n[e.status] != null) n[e.status]++;
+  }
+  return n;
+}
+// Sum av det som fortsatt venter på svar (opprettet + sendt)
+export function sumApne(liste) {
+  return (liste || []).filter(e => e && !e.slettet && !erFullfort(e.status)).reduce((s, e) => s + (Number(e.sum) || 0), 0);
+}
+
+// Fila: prosjektnummeret hvis det finnes, ellers modellnavnet
+export function emFil(prosjektNr, modellFil) {
+  const ren = (s) => String(s || "").replace(/\.(ifc|glb)$/i, "").replace(/[\\/:*?"<>|#%]/g, "-").trim().slice(0, 80);
+  const n = ren(prosjektNr) || ren(modellFil) || "uten-prosjekt";
+  return n + ".endringsmeldinger.json";
+}
+
+// Aksen et punkt står på. akser = S.akseLinjer: { x:[{c,navn}] (tallakser),
+// z:[{c,navn}] (bokstavakser), tol }. «B3» på aksekrysset, «B–C/3» mellom.
+export function akseFor(c, akser) {
+  if (!akser || !Array.isArray(c)) return "";
+  const del = (liste, v) => {
+    const l = (liste || []).filter(a => a && isFinite(a.c)).slice().sort((a, b) => a.c - b.c);
+    if (!l.length || !isFinite(v)) return "";
+    const tol = Number(akser.tol) || 0;
+    let best = l[0];
+    for (const a of l) if (Math.abs(a.c - v) < Math.abs(best.c - v)) best = a;
+    if (Math.abs(best.c - v) <= tol) return String(best.navn);
+    const i = l.findIndex(a => a.c > v);
+    if (i <= 0) return (i === 0 ? "<" + l[0].navn : ">" + l[l.length - 1].navn);
+    return l[i - 1].navn + "–" + l[i].navn;
+  };
+  const z = del(akser.z, c[2]), x = del(akser.x, c[0]);
+  if (!z && !x) return "";
+  const enkel = (s) => !/[–<>]/.test(s);
+  return (z && x && enkel(z) && enkel(x)) ? z + x : [z, x].filter(Boolean).join("/");
+}
+
+const r3 = (n) => Math.round((Number(n) || 0) * 1000) / 1000;
+const pkt = (a) => Array.isArray(a) ? a.slice(0, 3).map(r3) : null;
+export const kortGuid = (g) => { const s = String(g || ""); return s.length > 10 ? s.slice(0, 4) + "…" + s.slice(-3) : s; };
+export const MAKS_ELEMENTER = 400;   // per endring i fila — resten telles
+
+// Én «endring» per linje (elementtype) som er krysset av: elementene med hva
+// som skjedde, aksen, mengden i linjas enhet, og boksene til bildene/planen.
+export function endringerFra(res, linjer, o) {
+  const opt = o || {}, toM = Number(opt.toM) || 1;
+  return (linjer || []).map(l => {
+    const av = (e) => (typeNokkel(e.type) || "ukjent") === l.key;
+    const el = [];
+    const legg = (e, hva) => {
+      let m;
+      if (hva === "fjernet") m = -mengdeFor(e, l.enhet, toM);
+      else if (hva === "endret") m = l.enhet === "stk" ? null : mengdeFor(e, l.enhet, toM) - mengdeFor(e.fra || {}, l.enhet, toM);
+      else m = mengdeFor(e, l.enhet, toM);
+      el.push({ hva, id: e.id != null ? e.id : null, navn: String(e.name || "").slice(0, 80), guid: String(e.guid || ""),
+        akse: akseFor(e.c, opt.akser), mengde: m == null ? null : avrund(m, l.enhet),
+        c: pkt(e.c), d: pkt(e.d), fc: e.fra ? pkt(e.fra.c) : null, fd: e.fra ? pkt(e.fra.d) : null });
+    };
+    const nyHva = opt.utvalg ? "valgt" : "ny";
+    for (const e of (res && res.slettet) || []) if (av(e)) legg(e, "fjernet");
+    for (const e of (res && res.ny) || []) if (av(e)) legg(e, nyHva);
+    for (const e of (res && res.endret) || []) if (av(e)) legg(e, "endret");
+    const deler = [];
+    if (opt.utvalg) deler.push(l.ny + " valgt");
+    else {
+      if (l.slettet) deler.push(l.slettet + " fjernet");
+      if (l.ny) deler.push(l.ny + " ny" + (l.ny > 1 ? "e" : ""));
+      if (l.endret) deler.push(l.endret + " endret");
+    }
+    return { key: l.key, navn: l.navn, undertekst: l.undertekst || "", enhet: l.enhet,
+      oppsummering: deler.join(" · ") + " → " + mengdeTekst(l),
+      antall: el.length, elementer: el.slice(0, MAKS_ELEMENTER), bilder: { for: "", etter: "" } };
+  });
+}
+
+// Mengden i tabellen på bildesida
+export function elementMengde(e, enhet) {
+  if (e.hva === "endret" && !e.mengde) return "endret";
+  if (e.mengde == null) return "";
+  const d = enhet === "stk" || enhet === "kg" ? 0 : 2;
+  return (e.mengde > 0 && e.hva !== "valgt" ? "+" : "") + tallTekst(e.mengde, d) + " " + enhet;
+}
+
+// Utsnittet i planen ovenfra (x mot høyre, z nedover): alle fotavtrykk
+// (også det gamle til endrede), med litt luft rundt.
+export function planUtsnitt(elementer) {
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  const ta = (c, d) => {
+    if (!c || !d) return;
+    x0 = Math.min(x0, c[0] - d[0] / 2); x1 = Math.max(x1, c[0] + d[0] / 2);
+    z0 = Math.min(z0, c[2] - d[2] / 2); z1 = Math.max(z1, c[2] + d[2] / 2);
+  };
+  for (const e of elementer || []) { ta(e.c, e.d); ta(e.fc, e.fd); }
+  if (!isFinite(x0)) return null;
+  const luft = Math.max(x1 - x0, z1 - z0) * 0.18 || 1;
+  return { x0: x0 - luft, x1: x1 + luft, z0: z0 - luft, z1: z1 + luft };
+}
+
+// Vask av en EM-post fra SharePoint: bare kjente felt, tekst er tekst
+const tekst = (v, n) => String(v == null ? "" : v).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "").slice(0, n || 200);
+const tall = (v) => (v == null || v === "" || !isFinite(Number(v))) ? null : Number(v);
+const trePkt = (a) => (Array.isArray(a) && a.length === 3 && a.every(x => isFinite(Number(x)))) ? a.map(Number) : null;
+export function vaskEm(r) {
+  if (!r || typeof r !== "object" || !r.id) return null;
+  const ut = {
+    id: tekst(r.id, 60), nr: tekst(r.nr, 30), tittel: tekst(r.tittel, 120),
+    status: EM_STATUS.includes(r.status) ? r.status : "opprettet",
+    laget: tekst(r.laget, 30), av: tekst(r.av, 80), oppdaget: tekst(r.oppdaget, 10), frist: tekst(r.frist, 10),
+    sum: tall(r.sum), manglerPris: Math.max(0, Math.round(tall(r.manglerPris) || 0)),
+    modell: tekst(r.modell, 160), fra: tekst(r.fra, 160), til: tekst(r.til, 160), metode: tekst(r.metode, 30),
+    utvalg: r.utvalg === true, toM: tall(r.toM) || 1,
+    endret: tekst(r.endret, 30), slettet: r.slettet === true,
+    historikk: (Array.isArray(r.historikk) ? r.historikk : []).slice(-50).map(h => ({ tid: tekst(h && h.tid, 30), av: tekst(h && h.av, 80), hva: tekst(h && h.hva, 120) })),
+    akser: null, endringer: [], skjema: (r.skjema && typeof r.skjema === "object") ? r.skjema : null
+  };
+  if (r.akser && typeof r.akser === "object") {
+    const a = (l) => (Array.isArray(l) ? l : []).slice(0, 80).filter(x => x && isFinite(Number(x.c))).map(x => ({ c: Number(x.c), navn: tekst(x.navn, 6) }));
+    ut.akser = { x: a(r.akser.x), z: a(r.akser.z), tol: tall(r.akser.tol) || 0 };
+  }
+  ut.endringer = (Array.isArray(r.endringer) ? r.endringer : []).slice(0, 40).map(e => ({
+    key: tekst(e && e.key, 60), navn: tekst(e && e.navn, 60), undertekst: tekst(e && e.undertekst, 120),
+    enhet: EM_ENHETER.includes(e && e.enhet) ? e.enhet : "stk", oppsummering: tekst(e && e.oppsummering, 160),
+    antall: Math.max(0, Math.round(tall(e && e.antall) || 0)),
+    bilder: { for: bildeNavnOk(e && e.bilder && e.bilder.for), etter: bildeNavnOk(e && e.bilder && e.bilder.etter) },
+    elementer: (Array.isArray(e && e.elementer) ? e.elementer : []).slice(0, MAKS_ELEMENTER).map(x => ({
+      hva: ["ny", "fjernet", "endret", "valgt"].includes(x && x.hva) ? x.hva : "ny",
+      id: tall(x && x.id), navn: tekst(x && x.navn, 80), guid: tekst(x && x.guid, 40), akse: tekst(x && x.akse, 20),
+      mengde: tall(x && x.mengde), c: trePkt(x && x.c), d: trePkt(x && x.d), fc: trePkt(x && x.fc), fd: trePkt(x && x.fd)
+    }))
+  }));
+  return ut;
+}
+// Bildene ligger i samme mappe, med navn vi selv har laget — alt annet avvises
+export function bildeNavnOk(n) { const s = String(n || ""); return /^em-[a-z0-9-]{4,60}\.jpg$/i.test(s) ? s : ""; }
+export function bildeFil(emId, i, hva) { return "em-" + String(emId).replace(/[^a-z0-9-]/gi, "").slice(0, 40) + "-" + (i + 1) + "-" + (hva === "for" ? "for" : "etter") + ".jpg"; }
+
+// Excel: oversikten over alle EM-ene i lista
+export function oversiktRader(liste) {
+  const rader = [["EM-nr", "Tittel", "Status", "Laget", "Av", "Frist", "Endringer", "Elementer", "Prisanslag (kr eks. mva)"]];
+  for (const e of filtrerEm(liste, {})) rader.push([e.nr, e.tittel, STATUS_NAVN[e.status] || e.status, String(e.laget || "").slice(0, 10), e.av, e.frist,
+    e.endringer.length, e.endringer.reduce((s, x) => s + (x.antall || 0), 0), e.sum == null ? "" : e.sum]);
+  rader.push([], ["Sum åpne (opprettet + sendt)", "", "", "", "", "", "", "", sumApne(liste)]);
+  return rader;
+}

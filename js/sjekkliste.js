@@ -597,11 +597,13 @@ function malfeilHtml(feil) {
 // `forslag` holdes utenfor `skjema` med vilje. Så lenge de er to forskjellige
 // objekter, kan et forslag ikke lagres ved et uhell.
 
-export async function apneSkjema(c, mal, skjema, lagre) {
+// valg (EM fra modellen, 26.10): { ekstraSider, referanse, utenMarkering }
+export async function apneSkjema(c, mal, skjema, lagre, valg) {
+  const v = valg || {};
   const el = overlay();
   // Konteksten bygges ÉN gang. Den henter ⛓-lenka over nettet, og skal ikke
   // gjøres på nytt for hver opptegning.
-  const kontekst = await byggKontekst(c);
+  const kontekst = await byggKontekst(c, v.kontekst);
   let forslag = byggForslag(mal, kontekst, skjema);
 
   // Ubesvart-merkingen oppdateres UTEN å tegne skjemaet på nytt. Tegner vi alt
@@ -812,8 +814,10 @@ export async function apneSkjema(c, mal, skjema, lagre) {
         await mod.lastNedSkjema({
           mal, skjema,
           prosjekt: kontekst.prosjekt,
-          markering: kontekst.tittel,
+          markering: v.utenMarkering ? "" : kontekst.tittel,
+          referanse: v.referanse || "",
           iDag: kontekst.iDag,
+          ekstraSider: v.ekstraSider,
           hentLogo: () => hentLogo(itemId)
         });
       } catch (err) {

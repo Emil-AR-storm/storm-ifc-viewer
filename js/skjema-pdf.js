@@ -50,6 +50,10 @@ export function tilLatin1(tekst) {
   return s.replace(/[^\x09\x0a\x0d\x20-\x7e\u00a1-\u00ff\u2013\u2014\u2018\u2019\u201a\u201c\u201d\u201e\u2020\u2021\u2022\u2026\u2030\u2039\u203a\u20ac\u0152\u0153\u0160\u0161\u0178\u017d\u017e\u0192\u02c6\u02dc\u2122]/g, "");
 }
 
+// Minus i beløp: kr() bruker det typografiske minustegnet (U+2212), som
+// Helvetica i jsPDF ikke har — det ble til «"40,00» i Emils EM-PDF 26.10.
+const krPdf = (n) => tilLatin1(kr(n).replace(/\u00a0/g, " "));   // tusenskillet (hardt mellomrom) må overleve
+
 export function svarTekst(f, verdi) {
   if (tomtSvar(verdi)) return "";
   if (f.type === "dato") return norskDato(verdi);
@@ -93,6 +97,8 @@ export function byggSkjemaModell(mal, skjema, meta) {
     },
     prosjekt: tilLatin1(o.prosjekt),
     markering: tilLatin1(o.markering),
+    // 📝 EM fra modellen: «EM-12 · tittel» i stedet for «Markering: …»
+    referanse: tilLatin1(o.referanse),
     iDag: String(o.iDag || ""),
     versjon: Number(skjema.versjon) || 1,
     erstatter: skjema.erstatter || null,
@@ -158,13 +164,17 @@ function papir(jsPDF, m) {
   P.nySide = () => { if (P.side > 0) bunnlinje(P); d.addPage(); P.side++; topplinje(P, false); };
   P.start = () => { P.side = 1; topplinje(P, true); };
   P.slutt = () => {
-    bunnlinje(P);
+    if (!P.bunnFerdig) bunnlinje(P);
     const n = d.getNumberOfPages();
     for (let i = 1; i <= n; i++) {
       d.setPage(i);
+      // Bildesidene til EM-en er LIGGENDE (em-pdf.js): sidetallet står da på
+      // samme avstand fra den nederste kanten av den sida, ikke av A4 stående.
+      const ps = d.internal && d.internal.pageSize;
+      const sb = ps && ps.getWidth ? ps.getWidth() : A4.b, sh = ps && ps.getHeight ? ps.getHeight() : A4.h;
       d.setFontSize(7.5); hex(d, GRÅ);
       d.text(t("Side {0} av {1}", i, n) + (m.prosjekt ? " · " + m.prosjekt : "") +
-        " · " + norskDato(m.iDag), A4.b - A4.marg, P.hoyreY || A4.h - A4.marg + 1, { align: "right" });
+        " · " + norskDato(m.iDag), sb - A4.marg, (P.hoyreY || A4.h - A4.marg + 1) - A4.h + sh, { align: "right" });
     }
   };
   return P;
@@ -186,6 +196,7 @@ function topplinje(P, forste) {
         a.adresse ? { tekst: a.adresse } : null,
         a.sted ? { tekst: a.sted } : null,
         m.markering ? { tekst: t("Markering: {0}", m.markering) } : null,
+        m.referanse ? { tekst: m.referanse } : null,
         m.erstatter ? { tekst: t("Erstatter versjon {0}", m.erstatter) } : null
       ],
       kicker: m.prosjekt ? t("Prosjekt {0}", m.prosjekt) : t("Skjema"),
@@ -314,7 +325,7 @@ function ordreTabell(P, f) {
     if (!P.plass(h + 3)) { P.nySide(); hode(); }
     d.setFontSize(8); hex(d, SORT);
     navn.forEach((l, i) => d.text(l, x[0], P.y + OVER + i * LINJEHOYDE));
-    const verdier = [null, String(r.antall), r.enhet, kr(r.enhetspris), kr(r.eksMva), kr(r.mvaBelop), kr(r.inklMva)];
+    const verdier = [null, tilLatin1(String(r.antall)), r.enhet, krPdf(r.enhetspris), krPdf(r.eksMva), krPdf(r.mvaBelop), krPdf(r.inklMva)];
     O_KOL.forEach((k, i) => {
       if (i === 0) return;
       d.text(verdier[i], k.h === "right" ? slutt(i) - 2 : x[i], P.y + OVER,
@@ -337,9 +348,9 @@ function ordreTabell(P, f) {
     d.text(verdi + " NOK", slutt(6) - 2, P.y, { align: "right" });
     P.y += fet ? 5.5 : 4.2;
   };
-  rad(t("Total (eks. mva)"), kr(s.eksMva), false);
-  rad(t("MVA"), kr(s.mvaBelop), false);
-  rad(t("Total (inkl. mva)"), kr(s.inklMva), true);
+  rad(t("Total (eks. mva)"), krPdf(s.eksMva), false);
+  rad(t("MVA"), krPdf(s.mvaBelop), false);
+  rad(t("Total (inkl. mva)"), krPdf(s.inklMva), true);
   d.setFont(undefined, "normal");
   P.y += 1;
   hex(d, STREK, "strek"); d.setLineWidth(0.2);
@@ -371,7 +382,9 @@ function signaturblokk(P) {
   P.y += 8;
 }
 
-export function tegn(jsPDF, m, logo) {
+// ekstra(d, { logo, m }): tegner egne sider ETTER skjemaet og FØR sidetallene
+// (EM-ens bildesider, em-pdf.js). Synkron — bildene er hentet på forhånd.
+export function tegn(jsPDF, m, logo, ekstra) {
   brukProfil();
   const P = papir(jsPDF, m);
   P.logo = logo || null;
@@ -385,6 +398,10 @@ export function tegn(jsPDF, m, logo) {
     P.y += 2;
   });
   signaturblokk(P);
+  if (typeof ekstra === "function") {
+    bunnlinje(P); P.bunnFerdig = true;
+    ekstra(P.d, { logo: P.logo, m });
+  }
   P.slutt();
   return P.d;
 }
@@ -402,7 +419,8 @@ export async function lastNedSkjema(opts) {
   const m = byggSkjemaModell(opts.mal, opts.skjema, opts);
   const logo = typeof opts.hentLogo === "function" ? await opts.hentLogo() : null;
   const jsPDF = await hentJsPDF();
-  const d = tegn(jsPDF, m, logo);
+  const ekstra = typeof opts.ekstraSider === "function" ? await opts.ekstraSider() : null;
+  const d = tegn(jsPDF, m, logo, ekstra);
   lastNedFil(d.output("blob"), filnavn(m));
   return filnavn(m);
 }
