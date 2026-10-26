@@ -1367,6 +1367,26 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   // ---------- 🔁 BCF-eksport ----------
   "BCF-eksport": "BCF export",
   // 📝 Endringsmelding fra modellen (26.10.2026)
+  // 🔗 EM paring av fjernet + ny (26.10.2026)
+  "Samme element, ny ID": "Same element, new ID",
+  "Mulig samme element (se Endringsmelding)": "Possibly the same element (see Change notice)",
+  "Samme element, ny ID — ikke priset": "Same element, new ID — not priced",
+  "Revit-nr.": "Revit no.",
+  "Revit-nr. {0}": "Revit no. {0}",
+  "samme sted": "same place",
+  "Vedlegg · kontroll av sammenligningen": "Appendix · check of the comparison",
+  "Samme element med ny ID": "Same element with new ID",
+  "Elementene fikk ny GlobalId i modellen, men er samme element på samme sted. De er ikke priset.": "The elements got a new GlobalId in the model but are the same element in the same place. They are not priced.",
+  "GlobalId før → etter": "GlobalId before → after",
+  "Funnet igjen på": "Found again by",
+  "Paret på Revit-nummer eller samme plassering (±5 mm) og samme mål (±1 mm).": "Paired on Revit number or the same position (±5 mm) and the same dimensions (±1 mm).",
+  "koordineringsobjekt – sjekk før det prises": "coordination object – check before pricing",
+  "prises ikke": "not priced",
+  "+ {0} til — alle står i PDF-en og Excel": "+ {0} more — all are in the PDF and Excel",
+  "Mulig samme element": "Possibly the same element",
+  "kryss av hvis det er samme stål": "tick if it is the same steel",
+  "flyttet {0} mm": "moved {0} mm",
+  "{0} nye elementer står oppå et annet likt element — mulig dobbeltelement i modellen. Sjekk før det prises.": "{0} new elements sit on top of another identical element — possible duplicate in the model. Check before pricing.",
   // 🔍 EM detaljsider (26.10.2026)
   "Mengdeliste (Excel) fra Storm IFC-Viewer, sendes som egen fil sammen med dette dokumentet": "Quantity list (Excel) from Storm IFC-Viewer, sent as a separate file with this document",
   "Mengdeliste": "Quantity list",

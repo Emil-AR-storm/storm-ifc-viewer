@@ -30,6 +30,7 @@ import { alleElementIder } from "./ifc.js";
 import { allElementBoxes, clearSelection, elemDisplayName, elementBoxById, fmtVol, quantitiesForSet, selectElement, val, zoomToElement } from "./elements.js";
 import { camera, controls, scene } from "./scene.js";
 import { pcaRetning } from "./em-detalj.js";
+import { parFjernetNy } from "./em-paring.js";
 
 // 🔍 Hovedretning og lengde per element (EM detaljer, Emil 26.10.2026):
 // «lengde før 1000 etter 960», «dreid 15°». Den ytre boksen kan ikke si det
@@ -228,6 +229,27 @@ function diff(baseItems, nowItems, tol) {
   return { ny, slettet, endret, uendret };
 }
 
+// 🔗 Restene etter GlobalId (em-paring.js, Emil 26.10): «fjernet + ny» som er
+// samme element med ny ID. Revit-nr. og samme sted pares automatisk — likt blir
+// «uendret (ny ID)», ellers «endret». Nærhet blir bare FORSLAG (r.forslag).
+export function parRest(r) {
+  const toM = S.enhetSkala || 1;
+  const p = parFjernetNy(r.slettet, r.ny, { toM });
+  r.uendretNyId = [];
+  for (const x of p.samme) {
+    if (x.uendret) { r.uendretNyId.push({ fra: x.fra, til: x.til, grunn: x.grunn }); if (r.uendret && r.uendret.add) r.uendret.add(x.til.id); }
+    else {
+      const e = x.til, b = x.fra;
+      r.endret.push(Object.assign({}, e, { fra: b, nyId: x.grunn,
+        flyttet: Math.hypot(e.c[0] - b.c[0], e.c[1] - b.c[1], e.c[2] - b.c[2]),
+        dMax: Math.max(...[0, 1, 2].map(i => Math.abs(e.d[i] - b.d[i]))),
+        dVol: b.v ? Math.abs(e.v - b.v) / Math.abs(b.v) : (e.v ? 1 : 0) }));
+    }
+  }
+  r.slettet = p.slettet; r.ny = p.ny; r.forslag = p.forslag; r.dobbelt = p.dobbelt;
+  return r;
+}
+
 export function compare(base, now) {
   const tol = Math.max(now.size * 2e-5, 0.001);   // ~3 mm på et 150 m bygg
   const minst = Math.max(1, Math.min(base.items.size, now.items.size));
@@ -245,6 +267,8 @@ export function compare(base, now) {
     if (treffGeo > treffGuid) { r = geo; metode = "geometri"; }
   }
 
+  parRest(r);
+  if (r.uendretNyId.length || r.endret.some(e => e.nyId)) metode += " + Revit-nr./sted";
   const sorter = (a, c) => (a.type || "").localeCompare(c.type || "") || (a.name || "").localeCompare(c.name || "");
   r.ny.sort(sorter); r.endret.sort(sorter); r.slettet.sort(sorter);
   const treff = r.uendret.size + r.endret.length;
@@ -315,6 +339,7 @@ export function compareManuelt(base, now, refB, refN, meterPerEnhet) {
   const treff = (x) => x.uendret.size + x.endret.length;
   let ut = r;
   if (treff(naer) > treff(r)) {
+    parRest(naer);
     const sorter = (a, c) => (a.type || "").localeCompare(c.type || "") || (a.name || "").localeCompare(c.name || "");
     naer.ny.sort(sorter); naer.endret.sort(sorter); naer.slettet.sort(sorter);
     const minst = Math.max(1, Math.min(base.items.size, now.items.size));
@@ -430,7 +455,10 @@ function renderPanel() {
     '<div class="qty-row cmp-filter" data-filter="ny" style="cursor:pointer"><div class="n"><span style="color:var(--ok)">●</span> ' + t("Nye") + '</div><div class="c">' + r.ny.length + '</div></div>' +
     '<div class="qty-row cmp-filter" data-filter="slettet" style="cursor:pointer"><div class="n"><span style="color:var(--danger)">●</span> ' + t("Slettet") + '</div><div class="c">' + r.slettet.length + '</div></div>' +
     '<div class="qty-row cmp-filter" data-filter="endret" style="cursor:pointer"><div class="n"><span style="color:#fbbf24">●</span> ' + t("Endret") + '</div><div class="c">' + r.endret.length + '</div></div>' +
-    '<div class="qty-row"><div class="n">' + t("Uendret") + '</div><div class="c">' + (Number(r.uendret.size) || 0) + '</div></div>';
+    '<div class="qty-row"><div class="n">' + t("Uendret") + '</div><div class="c">' + (Number(r.uendret.size) || 0) + '</div></div>' +
+    // 🔗 Paringen av «fjernet + ny» (em-paring.js)
+    ((r.uendretNyId || []).length ? '<div class="qty-row"><div class="n">' + ikon("hake") + ' ' + t("Samme element, ny ID") + '</div><div class="c">' + r.uendretNyId.length + '</div></div>' : '') +
+    ((r.forslag || []).length ? '<div class="qty-row"><div class="n" style="color:var(--warn)">? ' + t("Mulig samme element (se Endringsmelding)") + '</div><div class="c">' + r.forslag.length + '</div></div>' : '');
 
   if (!r.ny.length && !r.slettet.length && !r.endret.length)
     html += '<p style="margin-top:12px; font-size:13px">' + ikon("hake") + ' ' + t("Ingen forskjeller funnet.") + '</p>';
@@ -723,7 +751,8 @@ export function manuellTekst(m, flytt) {
 export function sammenligningForEm() {
   if (!S.compareOn || !result) return null;
   return {
-    res: { ny: result.ny.slice(), slettet: result.slettet.slice(), endret: result.endret.slice() },
+    res: { ny: result.ny.slice(), slettet: result.slettet.slice(), endret: result.endret.slice(),
+      uendretNyId: (result.uendretNyId || []).slice(), forslag: (result.forslag || []).slice(), dobbelt: (result.dobbelt || []).slice() },
     fra: (S.compareBase && S.compareBase.file) || "",
     til: S.fileName || "",
     metode: result.metode || ""

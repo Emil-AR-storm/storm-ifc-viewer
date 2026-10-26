@@ -16,7 +16,7 @@
 // Bildene er hentet på forhånd (data-URL-er), derfor ingen await her.
 import { t } from "./i18n.js";
 import { malBunn, malTopp } from "./pdf-utseende.js";
-import { elementMengde, kortGuid, planUtsnitt } from "./em-regn.js";
+import { elementMengde, kortGuid, planUtsnitt, typeNavn } from "./em-regn.js";
 import { detaljerFor, dimensjonAv } from "./em-detalj.js";
 import { tilLatin1 } from "./skjema-pdf.js";
 
@@ -90,7 +90,10 @@ function tabell(d, x, y, b, yMaks, endring) {
   d.setDrawColor(...rgb(FARGE.kant)); d.setLineWidth(0.25); d.line(x, y + 1.2, x + b, y + 1.2);
   let ry = y + 4.6;
   const RAD = 3.6;
-  const plass = Math.max(0, Math.floor((yMaks - ry) / RAD));
+  // 🔗 Plass til «samme element, ny ID» under lista (prøve A, Emil 26.10)
+  const nyId = endring.nyId || [];
+  const nyRader = nyId.length ? Math.min(nyId.length, 8) + 2 : 0;
+  const plass = Math.max(3, Math.floor((yMaks - ry) / RAD) - nyRader);
   // De endrede først: de har nummer og egne detaljsider, og skal ikke forsvinne i «+ n til»
   const el = endring.elementer.filter(e => e.hva === "endret").concat(endring.elementer.filter(e => e.hva !== "endret"));
   const flere = endring.antall > el.length ? endring.antall - el.length : 0;
@@ -112,6 +115,62 @@ function tabell(d, x, y, b, yMaks, endring) {
   if (rest > 0) {
     d.setFont(undefined, "normal"); d.setTextColor(...rgb(FARGE.gra));
     d.text(tilLatin1(t("+ {0} til — se mengdelista (Excel)", rest)), x, ry);
+    ry += RAD;
+  }
+  if (!nyId.length) return;
+  ry += 1.5;
+  d.setFont(undefined, "bold"); d.setFontSize(5.5); d.setTextColor(...rgb(FARGE.gra));
+  d.text(tilLatin1(t("Samme element, ny ID — ikke priset")).toUpperCase(), x, ry);
+  d.setDrawColor(...rgb(FARGE.kant)); d.line(x, ry + 1.2, x + b, ry + 1.2);
+  ry += 4.6;
+  const nyPlass = Math.max(1, Math.floor((yMaks - ry) / RAD));
+  const nyVis = nyId.length > nyPlass ? nyId.slice(0, nyPlass - 1) : nyId;
+  d.setFontSize(6);
+  for (const e of nyVis) {
+    d.setFont(undefined, "normal"); d.setTextColor(...rgb(FARGE.tekst));
+    d.text(kutt(d, tilLatin1(e.navn || e.gt || "—"), kol[0].b - 1.5), x, ry);
+    d.text(tilLatin1(e.akse || "—"), x + kol[0].b, ry);
+    d.setTextColor(...rgb(FARGE.gra));
+    d.text(tilLatin1(e.grunn === "revit" ? t("Revit-nr.") : t("samme sted")), x + kol[0].b + kol[1].b, ry);
+    ry += RAD;
+  }
+  if (nyVis.length < nyId.length) {
+    d.setTextColor(...rgb(FARGE.gra));
+    d.text(tilLatin1(t("+ {0} til — se mengdelista (Excel)", nyId.length - nyVis.length)), x, ry);
+  }
+}
+
+// 🔗 Typer der ALT er «samme element, ny ID» har ingen egen endringsside —
+// de står her, så kontrollen er synlig også for dem.
+function tegnNyIdSide(d, em, opt) {
+  const liste = em.nyIdAndre || [];
+  if (!liste.length) return;
+  const R = EM_SIDE, bredde = R.b - 2 * R.marg, RAD = 4.2;
+  let i = 0;
+  while (i < liste.length) {
+    d.addPage("a4", "landscape");
+    const y0 = malTopp(d, { x: R.marg, y: R.marg, bredde, logo: opt.logo, logoB: 40, logoH: 12,
+      meta: [opt.avsender ? { tekst: tilLatin1(opt.avsender), fet: true } : null, { tekst: tilLatin1((em.nr ? em.nr + " · " : "") + em.tittel) }],
+      kicker: t("Vedlegg · kontroll av sammenligningen"), tittel: tilLatin1(t("Samme element med ny ID")), tittelStr: 14,
+      under: tilLatin1(t("Elementene fikk ny GlobalId i modellen, men er samme element på samme sted. De er ikke priset.")) });
+    const kol = [["Type", 0.14], ["Element", 0.34], ["Akse", 0.1], ["GlobalId før → etter", 0.3], ["Funnet igjen på", 0.12]];
+    let y = y0 + 2, cx = R.marg;
+    d.setFont(undefined, "bold"); d.setFontSize(6); d.setTextColor(...rgb(FARGE.gra));
+    for (const [n, f] of kol) { d.text(tilLatin1(t(n)).toUpperCase(), cx, y); cx += bredde * f; }
+    d.setDrawColor(...rgb(FARGE.kant)); d.setLineWidth(0.25); d.line(R.marg, y + 1.3, R.marg + bredde, y + 1.3);
+    y += 5;
+    const yMaks = R.h - R.marg - 12;
+    d.setFont(undefined, "normal"); d.setFontSize(7); d.setTextColor(...rgb(FARGE.tekst));
+    while (i < liste.length && y < yMaks) {
+      const e = liste[i++]; cx = R.marg;
+      const celler = [t(typeNavn(e.type)), e.navn, e.akse || "—", (e.gf || "—") + " → " + (e.gt || "—"),
+        e.grunn === "revit" ? t("Revit-nr. {0}", e.nr) : t("samme sted")];
+      celler.forEach((c, k) => { d.text(kutt(d, tilLatin1(c), bredde * kol[k][1] - 2), cx, y); cx += bredde * kol[k][1]; });
+      y += RAD;
+    }
+    malBunn(d, { x: R.marg, bredde, yStrek: R.h - R.marg - 4, logo: opt.logo, str: 7,
+      tekstIstedet: opt.avsender ? tilLatin1(opt.avsender) : "",
+      hale: t("Paret på Revit-nummer eller samme plassering (±5 mm) og samme mål (±1 mm).") });
   }
 }
 
@@ -422,4 +481,5 @@ export function tegnEmSider(d, em, bilder, o) {
     // 🔍 rett etter oversikten: detaljene for de endrede elementene i den
     if (!em.utvalg) tegnDetaljsider(d, em, endring, i, n, opt);
   });
+  tegnNyIdSide(d, em, opt);
 }

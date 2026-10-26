@@ -15,7 +15,7 @@
 //
 // REN: ingen DOM, ingen three.js. _test/test-em.mjs regner alt direkte.
 // Koordinatene er modellens (three.js): x og z vannrett, y opp.
-import { akseFor } from "./em-regn.js";
+import { akseFor, typeNavn } from "./em-regn.js";
 
 export const TERSKEL_MM = 1;        // mindre enn dette er avrunding, ikke endring
 export const TERSKEL_GRADER = 0.5;
@@ -293,6 +293,14 @@ export function emExcelArk(em, ordre) {
   }
   el.push([], ["Mål og vinkler er lest fra 3D-modellen. Endringer under 1 mm og 0,5° er avrundet bort."]);
   const ark = [{ navn: "Mengder", rader: mengder }, { navn: "Elementer", rader: el }];
+  // 🔗 Samme element, ny ID (ikke priset) — alle, også typer uten andre endringer
+  const ny = [].concat(...(em.endringer || []).map(e => (e.nyId || []).map(x => [e.navn, x]))).concat((em.nyIdAndre || []).map(x => [typeNavn(x.type), x]));
+  if (ny.length) {
+    const r = topp.concat([["Type", "Element", "Akse", "GlobalId før", "GlobalId etter", "Funnet igjen på"]]);
+    for (const [typ, x] of ny) r.push([typ, x.navn, x.akse, x.gf, x.gt, x.grunn === "revit" ? "Revit-nr. " + x.nr : "samme sted (±5 mm, mål ±1 mm)"]);
+    r.push([], ["Elementene fikk ny GlobalId i modellen, men er samme element på samme sted. De er ikke priset."]);
+    ark.push({ navn: "Samme element ny ID", rader: r });
+  }
   // 3) Økonomi — som i skjemaet (salgspris)
   if (ordre && ordre.rader && ordre.rader.length) {
     const ok = topp.concat([["Produkt", "Antall", "Enhet", "Enhetspris", "Sum eks. mva", "MVA %", "MVA", "Sum inkl. mva"]]);

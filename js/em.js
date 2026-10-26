@@ -32,6 +32,7 @@ import { hentBilde, huskBilde, lagreEm, lastOppBilde, lesEm, slettEm } from "./e
 import { taEndringsbilder } from "./em-bilder.js";
 import { tegnEmSider } from "./em-pdf.js";
 import * as R from "./em-regn.js";
+import { erKoordinering, forslagNokkel, revitNr } from "./em-paring.js";
 
 export const EM_MAL_ID = "endringsmelding-v1";
 
@@ -39,6 +40,9 @@ const tilstand = {
   kilde: "sammenligning", enheter: {}, egnePriser: {}, av: new Set(),
   tittel: "", emNr: "", oppdaget: "", fristDager: 3,
   poster: [], prisStatus: "", egenRetning: false,
+  // 🔗 forslagene «mulig samme element» brukeren har krysset av (nøkkel → true),
+  // og linjene som er krysset av automatisk som koordineringsobjekt én gang
+  forslagValgt: new Set(), koordSett: new Set(),
   // 🔒 fanen «Endringsmeldinger»
   fane: "ny", filter: "alle", sok: "", liste: [], listeStatus: ""
 };
@@ -68,8 +72,19 @@ function utvalgSomResultat() {
   return { res: { ny, slettet: [], endret: [] }, utvalg: true, modell: S.fileName || "" };
 }
 export function kildeData() {
-  if (tilstand.kilde === "sammenligning") return sammenligningForEm();
-  return utvalgSomResultat();
+  if (tilstand.kilde !== "sammenligning") return utvalgSomResultat();
+  const k = sammenligningForEm();
+  if (!k) return k;
+  // 🔗 Avkryssede forslag: samme element — det gamle blir «fra» på det nye, og begge
+  // forsvinner fra fjernet/ny. Ikke avkrysset: står som før (fjernet + ny).
+  const valgt = (k.res.forslag || []).filter(f => tilstand.forslagValgt.has(forslagNokkel(f)));
+  if (valgt.length) {
+    const ut = new Set(valgt.map(f => f.fra)), inn = new Set(valgt.map(f => f.til));
+    k.res.slettet = k.res.slettet.filter(e => !ut.has(e));
+    k.res.ny = k.res.ny.filter(e => !inn.has(e));
+    k.res.endret = k.res.endret.concat(valgt.map(f => Object.assign({}, f.til, { fra: f.fra, nyId: "forslag" })));
+  }
+  return k;
 }
 export function linjer() {
   const k = kildeData();
@@ -108,10 +123,12 @@ function html() {
   else {
     h += '<table class="em-tab"><tr><th></th><th>' + esc(t("Type")) + '</th><th>' + esc(t("Ny / fjernet / endret")) + '</th><th class="r">' + esc(t("Endring")) + '</th><th>' + esc(t("Enhet")) + '</th><th class="r">' + esc(t("Pris")) + '</th><th class="r">' + esc(t("Sum")) + '</th></tr>';
     for (const l of L) {
+      const koord = erKoordinering(l.type, l.undertekst);
+      if (koord && !tilstand.koordSett.has(l.key)) { tilstand.koordSett.add(l.key); tilstand.av.add(l.key); }
       const av = tilstand.av.has(l.key);
       h += '<tr class="em-rad' + (av ? " av" : "") + '" data-key="' + esc(l.key) + '">' +
         '<td><input type="checkbox" class="em-med"' + (av ? "" : " checked") + '></td>' +
-        '<td><b>' + esc(t(l.navn)) + '</b><div class="em-under">' + esc(l.undertekst) + '</div></td>' +
+        '<td><b>' + esc(t(l.navn)) + '</b>' + (koord ? ' <span class="em-koord">' + esc(t("koordineringsobjekt – sjekk før det prises")) + '</span>' : '') + '<div class="em-under">' + esc(l.undertekst) + '</div></td>' +
         '<td class="em-tall">+' + l.ny + ' / −' + l.slettet + ' / ' + l.endret + '</td>' +
         '<td class="r ' + (l.mengde < 0 ? "neg" : "pos") + '">' + esc(R.mengdeTekst(l).replace(" " + l.enhet, "")) + '</td>' +
         '<td><select class="em-enhet">' + R.EM_ENHETER.map(e => '<option' + (e === l.enhet ? " selected" : "") + '>' + e + '</option>').join("") + '</select></td>' +
@@ -123,6 +140,7 @@ function html() {
     h += '<p class="em-hjelp">' + esc(tilstand.prisStatus === "ok" ? t("Prisene er hentet fra Priskalkulasjon for prosjektet. Skriv inn pris der den mangler.")
       : tilstand.prisStatus === "av" ? t("Logg inn for å hente priser fra Priskalkulasjon.") : t("Ingen prisliste i Priskalkulasjon for prosjektet ennå — skriv inn prisene her.")) + '</p>';
   }
+  h += paringHtml();
   h += sek(3, "Tittel, bilder og frist") +
     '<input id="emTittel" class="em-felt" maxlength="120" placeholder="' + esc(t("Tittel, f.eks. «Rev. B: nye søyler akse C»")) + '" value="' + esc(tilstand.tittel) + '">' +
     '<input id="emNr" class="em-felt" maxlength="30" placeholder="' + esc(t("EM-nummer (fra Storm Prosjektoversikt), f.eks. EM-14")) + '" value="' + esc(tilstand.emNr) + '">' +
@@ -134,6 +152,40 @@ function html() {
       '<br><span class="em-hjelp">' + esc(t("Varsle uten ugrunnet opphold. Storms EM-flyt: frist 3 dager etter at endringen ble kjent.")) + '</span></div></div>';
   return h;
 }
+// 🔗 Prøve A (Emil 26.10): to bokser under mengdetabellen
+// «Flat Bars:Flattstål 120x8:235953» → «Bjelke Flattstål 120x8»
+const kortEl = (e) => { const d = String(e.name || "").split(":"); return (typeNavnKort(e.type) + " " + (d.length > 1 ? d[d.length - 2] : d[0])).trim(); };
+const typeNavnKort = (type) => t(R.typeNavn(type));
+function paringHtml() {
+  const k = tilstand.kilde === "sammenligning" ? sammenligningForEm() : null;
+  if (!k) return "";
+  const samme = k.res.uendretNyId || [], forslag = k.res.forslag || [], dobbelt = k.res.dobbelt || [];
+  let h = "";
+  if (samme.length) {
+    h += '<div class="em-par"><div class="em-par-topp">' + ikon("hake") + ' <b>' + esc(t("Samme element, ny ID")) + '</b> <span class="em-antall-gra">' + samme.length + '</span>' +
+      '<span class="em-hjelp"> — ' + esc(t("prises ikke")) + '</span></div>';
+    for (const p of samme.slice(0, 4)) h += '<div class="em-par-rad"><span class="em-under">' + esc(kortEl(p.til)) + (R.akseFor(p.til.c, S.akseLinjer) ? ' · ' + esc(R.akseFor(p.til.c, S.akseLinjer)) : '') + '</span>' +
+      '<span class="em-hjelp">' + esc(p.grunn === "revit" ? t("Revit-nr. {0}", revitNr(p.til.name)) : t("samme sted")) + '</span>' +
+      '<button data-vis="' + esc(String(p.til.id)) + '">' + esc(t("Vis")) + '</button></div>';
+    if (samme.length > 4) h += '<div class="em-hjelp">' + esc(t("+ {0} til — alle står i PDF-en og Excel", samme.length - 4)) + '</div>';
+    h += '</div>';
+  }
+  if (forslag.length) {
+    h += '<div class="em-par forslag"><div class="em-par-topp">? <b>' + esc(t("Mulig samme element")) + '</b> <span class="em-antall-gra">' + forslag.length + '</span>' +
+      '<span class="em-hjelp"> — ' + esc(t("kryss av hvis det er samme stål")) + '</span></div>';
+    for (const f of forslag) {
+      const key = forslagNokkel(f);
+      h += '<label class="em-par-rad"><input type="checkbox" data-forslag="' + esc(key) + '"' + (tilstand.forslagValgt.has(key) ? " checked" : "") + '>' +
+        '<span>' + esc(kortEl(f.til)) + (R.akseFor(f.til.c, S.akseLinjer) ? ' · ' + esc(R.akseFor(f.til.c, S.akseLinjer)) : '') + '</span>' +
+        '<span class="em-blaa">' + esc(t("flyttet {0} mm", f.avstandMm)) + '</span>' +
+        '<button data-vis="' + esc(String(f.til.id)) + '">' + esc(t("Vis")) + '</button></label>';
+    }
+    h += '</div>';
+  }
+  if (dobbelt.length) h += '<p class="em-hjelp em-mangler">' + ikon("advarsel") + ' ' + esc(t("{0} nye elementer står oppå et annet likt element — mulig dobbeltelement i modellen. Sjekk før det prises.", dobbelt.length)) + '</p>';
+  return h;
+}
+
 const kortNavn = (f) => String(f || "").replace(/\.(ifc|glb)$/i, "").slice(0, 28);
 
 // ---------- 🔒 Fanen «Endringsmeldinger» ----------
@@ -246,6 +298,11 @@ export function tegn() {
   const nr = $("emNr"); if (nr) nr.oninput = () => { tilstand.emNr = nr.value; };
   const od = $("emOppdaget"); if (od) od.onchange = () => { tilstand.oppdaget = od.value || iDagISO(); tegn(); };
   const er = $("emEgenRetning"); if (er) er.onchange = () => { tilstand.egenRetning = er.checked; };
+  body.querySelectorAll("[data-forslag]").forEach(cb => cb.onchange = () => {
+    if (cb.checked) tilstand.forslagValgt.add(cb.dataset.forslag); else tilstand.forslagValgt.delete(cb.dataset.forslag);
+    tegn();
+  });
+  body.querySelectorAll(".em-par [data-vis]").forEach(b => b.onclick = (ev) => { ev.preventDefault(); try { zoomToElement(Number(b.dataset.vis)); } catch (_) {} });
   const harLinjer = linjer().some(l => !tilstand.av.has(l.key));
   if ($("emLag")) $("emLag").disabled = !harLinjer;
   if ($("emExcel")) $("emExcel").disabled = !harLinjer;
@@ -424,7 +481,7 @@ export async function lagUtkast() {
     oversendtDato: iDag,
     varselnummer: (String(tilstand.emNr || "").trim() ? String(tilstand.emNr).trim() + " – " : "") + tittel,
     begrunnelse: R.faktablokk(L, { fra: kortNavn(k.fra), til: kortNavn(k.til), metode: k.metode,
-      utvalg: k.utvalg, modell: kortNavn(k.modell), oppdaget: oppdagetTekst }),
+      utvalg: k.utvalg, modell: kortNavn(k.modell), oppdaget: oppdagetTekst, nyId: (k.res.uendretNyId || []).length }),
     okonomi: R.ordrelinjer(L),
     annet: [t("Vedlegg:"), "• " + t("Før- og etter-bilder fra 3D-modellen og mål for hvert endret element (bakerst i dokumentet)"), "• " + t("Mengdeliste (Excel) fra Storm IFC-Viewer, sendes som egen fil sammen med dette dokumentet")].join("\n")
   };
@@ -434,6 +491,7 @@ export async function lagUtkast() {
     oppdaget: tilstand.oppdaget || iDag, frist, sum: sum.sum, manglerPris: sum.manglerPris,
     modell: S.fileName || "", fra: kortNavn(k.fra), til: kortNavn(k.til || S.fileName), metode: k.metode || "",
     utvalg, toM: S.enhetSkala || 1, akser: kompakteAkser(S.akseLinjer), endringer, skjema: vaskSkjema(skjema),
+    nyIdAndre: R.nyIdUtenEndring(k.res, endringer, { akser: S.akseLinjer }),
     historikk: [hendelse(t("Laget"))]
   });
   const lagret = await lagre(em);

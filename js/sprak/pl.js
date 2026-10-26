@@ -1367,6 +1367,26 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   // ---------- 🔁 BCF-eksport ----------
   "BCF-eksport": "Eksport BCF",
   // 📝 Endringsmelding fra modellen (26.10.2026)
+  // 🔗 EM paring av fjernet + ny (26.10.2026)
+  "Samme element, ny ID": "Ten sam element, nowe ID",
+  "Mulig samme element (se Endringsmelding)": "Możliwie ten sam element (zob. Powiadomienie o zmianie)",
+  "Samme element, ny ID — ikke priset": "Ten sam element, nowe ID — nie wyceniono",
+  "Revit-nr.": "Nr Revit",
+  "Revit-nr. {0}": "Nr Revit {0}",
+  "samme sted": "to samo miejsce",
+  "Vedlegg · kontroll av sammenligningen": "Załącznik · kontrola porównania",
+  "Samme element med ny ID": "Ten sam element z nowym ID",
+  "Elementene fikk ny GlobalId i modellen, men er samme element på samme sted. De er ikke priset.": "Elementy otrzymały nowy GlobalId w modelu, ale są tym samym elementem w tym samym miejscu. Nie są wycenione.",
+  "GlobalId før → etter": "GlobalId przed → po",
+  "Funnet igjen på": "Odnaleziono po",
+  "Paret på Revit-nummer eller samme plassering (±5 mm) og samme mål (±1 mm).": "Sparowano po numerze Revit lub tej samej pozycji (±5 mm) i tych samych wymiarach (±1 mm).",
+  "koordineringsobjekt – sjekk før det prises": "obiekt koordynacyjny – sprawdź przed wyceną",
+  "prises ikke": "nie wyceniane",
+  "+ {0} til — alle står i PDF-en og Excel": "+ {0} więcej — wszystkie są w PDF i Excelu",
+  "Mulig samme element": "Możliwie ten sam element",
+  "kryss av hvis det er samme stål": "zaznacz, jeśli to ta sama stal",
+  "flyttet {0} mm": "przesunięto {0} mm",
+  "{0} nye elementer står oppå et annet likt element — mulig dobbeltelement i modellen. Sjekk før det prises.": "{0} nowe elementy leżą na innym identycznym elemencie — możliwy duplikat w modelu. Sprawdź przed wyceną.",
   // 🔍 EM detaljsider (26.10.2026)
   "Mengdeliste (Excel) fra Storm IFC-Viewer, sendes som egen fil sammen med dette dokumentet": "Lista ilości (Excel) ze Storm IFC-Viewer, wysyłana jako osobny plik wraz z tym dokumentem",
   "Mengdeliste": "Lista ilości",

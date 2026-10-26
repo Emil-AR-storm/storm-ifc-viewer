@@ -132,6 +132,7 @@ export function faktablokk(linjer, k) {
     if (x.endret) deler.push(x.endret + " endret");
     l.push("• " + x.navn + (x.undertekst ? " (" + x.undertekst + ")" : "") + ": " + deler.join(", ") + " → " + mengdeTekst(x));
   }
+  if (o.nyId) l.push("", o.nyId + (o.nyId === 1 ? " element har" : " elementer har") + " fått ny GlobalId i modellen, men er samme element på samme sted. De er kontrollert og ikke priset (se vedlegg).");
   l.push("", "Mengdene er beregnet fra 3D-modellen og er et anslag, ikke oppmål.");
   if (o.oppdaget) l.push("Endringen ble oppdaget " + o.oppdaget + ".");
   l.push("", "Hjemmel: [fyll inn punkt fra NS 84xx]");
@@ -284,10 +285,25 @@ export function endringerFra(res, linjer, o) {
       if (l.ny) deler.push(l.ny + " ny" + (l.ny > 1 ? "e" : ""));
       if (l.endret) deler.push(l.endret + " endret");
     }
+    const nyId = nyIdFor(res, opt, (e) => (typeNokkel(e.type) || "ukjent") === l.key);
     return { key: l.key, navn: l.navn, undertekst: l.undertekst || "", enhet: l.enhet,
-      oppsummering: deler.join(" · ") + " → " + mengdeTekst(l),
-      antall: el.length, elementer: el.slice(0, MAKS_ELEMENTER), bilder: { for: "", etter: "" } };
+      oppsummering: deler.join(" · ") + " → " + mengdeTekst(l) + (nyId.length ? " · " + nyId.length + " samme element med ny ID (ikke priset)" : ""),
+      antall: el.length, elementer: el.slice(0, MAKS_ELEMENTER), bilder: { for: "", etter: "" }, nyId };
   });
+}
+
+// 🔗 «Samme element, ny ID» (em-paring.js) i kort form: navn, akse, GlobalId før → etter, grunn
+export function nyIdFor(res, o, filter) {
+  return ((res && res.uendretNyId) || []).filter(p => p && p.til && (!filter || filter(p.til))).slice(0, MAKS_ELEMENTER).map(p => ({
+    navn: String(p.til.name || "").slice(0, 80), type: String(p.til.type || ""), akse: akseFor(p.til.c, o && o.akser),
+    gf: String(p.fra.guid || ""), gt: String(p.til.guid || ""), grunn: p.grunn === "revit" ? "revit" : "sted",
+    nr: p.grunn === "revit" ? (/:(\d{4,})\s*$/.exec(String(p.til.name || "")) || [])[1] || "" : "" }));
+}
+// Typene som bare har elementer med ny ID (ingen ekte endring) — de har ingen
+// egen endringsside, men skal likevel stå i PDF-en (Emil 26.10: «ja det skal det»)
+export function nyIdUtenEndring(res, endringer, o) {
+  const har = new Set((endringer || []).map(e => e.key));
+  return nyIdFor(res, o, (e) => !har.has(typeNokkel(e.type) || "ukjent"));
 }
 
 // Mengden i tabellen på bildesida
@@ -328,7 +344,7 @@ export function vaskEm(r) {
     utvalg: r.utvalg === true, toM: tall(r.toM) || 1,
     endret: tekst(r.endret, 30), slettet: r.slettet === true,
     historikk: (Array.isArray(r.historikk) ? r.historikk : []).slice(-50).map(h => ({ tid: tekst(h && h.tid, 30), av: tekst(h && h.av, 80), hva: tekst(h && h.hva, 120) })),
-    akser: null, endringer: [], skjema: (r.skjema && typeof r.skjema === "object") ? r.skjema : null
+    akser: null, endringer: [], nyIdAndre: vaskNyId(r.nyIdAndre), skjema: (r.skjema && typeof r.skjema === "object") ? r.skjema : null
   };
   if (r.akser && typeof r.akser === "object") {
     const a = (l) => (Array.isArray(l) ? l : []).slice(0, 80).filter(x => x && isFinite(Number(x.c))).map(x => ({ c: Number(x.c), navn: tekst(x.navn, 6) }));
@@ -339,6 +355,7 @@ export function vaskEm(r) {
     enhet: EM_ENHETER.includes(e && e.enhet) ? e.enhet : "stk", oppsummering: tekst(e && e.oppsummering, 160),
     antall: Math.max(0, Math.round(tall(e && e.antall) || 0)),
     bilder: { for: bildeNavnOk(e && e.bilder && e.bilder.for), etter: bildeNavnOk(e && e.bilder && e.bilder.etter) },
+    nyId: vaskNyId(e && e.nyId),
     elementer: (Array.isArray(e && e.elementer) ? e.elementer : []).slice(0, MAKS_ELEMENTER).map(x => ({
       hva: ["ny", "fjernet", "endret", "valgt"].includes(x && x.hva) ? x.hva : "ny",
       id: tall(x && x.id), navn: tekst(x && x.navn, 80), guid: tekst(x && x.guid, 40), akse: tekst(x && x.akse, 20),
@@ -350,6 +367,10 @@ export function vaskEm(r) {
   return ut;
 }
 // Bildene ligger i samme mappe, med navn vi selv har laget — alt annet avvises
+function vaskNyId(l) {
+  return (Array.isArray(l) ? l : []).slice(0, MAKS_ELEMENTER).map(x => ({ navn: tekst(x && x.navn, 80), type: tekst(x && x.type, 60),
+    akse: tekst(x && x.akse, 24), gf: tekst(x && x.gf, 40), gt: tekst(x && x.gt, 40), grunn: x && x.grunn === "revit" ? "revit" : "sted", nr: tekst(x && x.nr, 12) }));
+}
 export function bildeNavnOk(n) { const s = String(n || ""); return /^em-[a-z0-9-]{4,60}\.jpg$/i.test(s) ? s : ""; }
 export function bildeFil(emId, i, hva) { return "em-" + String(emId).replace(/[^a-z0-9-]/gi, "").slice(0, 40) + "-" + (i + 1) + "-" + (hva === "for" ? "for" : "etter") + ".jpg"; }
 

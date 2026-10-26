@@ -1367,6 +1367,26 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   // ---------- 🔁 BCF-eksport ----------
   "BCF-eksport": "BCF eksportas",
   // 📝 Endringsmelding fra modellen (26.10.2026)
+  // 🔗 EM paring av fjernet + ny (26.10.2026)
+  "Samme element, ny ID": "Tas pats elementas, naujas ID",
+  "Mulig samme element (se Endringsmelding)": "Galbūt tas pats elementas (žr. Pakeitimo pranešimą)",
+  "Samme element, ny ID — ikke priset": "Tas pats elementas, naujas ID — neįkainota",
+  "Revit-nr.": "Revit nr.",
+  "Revit-nr. {0}": "Revit nr. {0}",
+  "samme sted": "ta pati vieta",
+  "Vedlegg · kontroll av sammenligningen": "Priedas · palyginimo patikra",
+  "Samme element med ny ID": "Tas pats elementas su nauju ID",
+  "Elementene fikk ny GlobalId i modellen, men er samme element på samme sted. De er ikke priset.": "Elementai modelyje gavo naują GlobalId, bet tai tas pats elementas toje pačioje vietoje. Jie neįkainoti.",
+  "GlobalId før → etter": "GlobalId prieš → po",
+  "Funnet igjen på": "Rasta pagal",
+  "Paret på Revit-nummer eller samme plassering (±5 mm) og samme mål (±1 mm).": "Suporuota pagal Revit numerį arba tą pačią vietą (±5 mm) ir tuos pačius matmenis (±1 mm).",
+  "koordineringsobjekt – sjekk før det prises": "koordinavimo objektas – patikrinkite prieš įkainojant",
+  "prises ikke": "neįkainojama",
+  "+ {0} til — alle står i PDF-en og Excel": "+ dar {0} — visi yra PDF ir Excel",
+  "Mulig samme element": "Galbūt tas pats elementas",
+  "kryss av hvis det er samme stål": "pažymėkite, jei tai tas pats plienas",
+  "flyttet {0} mm": "perkelta {0} mm",
+  "{0} nye elementer står oppå et annet likt element — mulig dobbeltelement i modellen. Sjekk før det prises.": "{0} nauji elementai yra ant kito identiško elemento — galimas dublikatas modelyje. Patikrinkite prieš įkainojant.",
   // 🔍 EM detaljsider (26.10.2026)
   "Mengdeliste (Excel) fra Storm IFC-Viewer, sendes som egen fil sammen med dette dokumentet": "Kiekių sąrašas (Excel) iš Storm IFC-Viewer, siunčiamas atskiru failu kartu su šiuo dokumentu",
   "Mengdeliste": "Kiekių sąrašas",
