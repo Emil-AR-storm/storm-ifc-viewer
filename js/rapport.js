@@ -20,6 +20,7 @@ import { t } from "./i18n.js";
 import { HASTEGRAD, HASTEGRAD_REKKE, dagerTil, hastegrad, iDagISO } from "./frist.js";
 import { varsel } from "./varsel.js";
 import { csvCelle } from "./csv.js";
+import { lysKant, pdfFarger, profilFarge, tegnSelskaper } from "./pdf-utseende.js";
 
 // 4.2.1 (sikkerhetsrunden 19.10): 2.5.2 hadde kjente feil (ReDoS i addImage m.fl.)
 export const JSPDF_URL = "vendor/jspdf-4.2.1.umd.min.js";
@@ -306,7 +307,19 @@ export function filnavn(modell, endelse) {
 // Alt under dette punktet rører DOM, S eller jsPDF, og kjøres aldri i testen.
 
 const A4 = { b: 210, h: 297, marg: 15 };
-const GRÅ = "#6b7280", STREK = "#dcdfe4", ROD = "#a8232b", SORT = "#14161a";
+// 🎨 Farger fra Innstillinger → Utseende PDF (js/pdf-utseende.js, 26.10.2026).
+// «let», ikke «const»: brukProfil() fyller dem inn rett før hver tegning, så
+// en endring i innstillingene gjelder neste PDF uten omlasting.
+let GRÅ = "#6b7280", STREK = "#dcdfe4", ROD = "#a8232b", SORT = "#14161a";
+let HOVED = "#d22b34", LYS = "#fdf3f3", LYSKANT = "#f0cfcf", BOKS = "#f4f5f7";
+function brukProfil() {
+  const F = pdfFarger();
+  GRÅ = F.hjelpetekst; STREK = F.linjer; ROD = F.overskrift; SORT = F.tekst;
+  // Standard = PDF-ens egne gamle nyanser (se profilFarge): streken var mørk rød her.
+  HOVED = profilFarge(F, "hoved", "#a8232b"); LYS = F.lys;
+  LYSKANT = profilFarge(F, "hoved", "") === "#a8232b" ? "#f0cfcf" : lysKant(F);
+  BOKS = profilFarge(F, "bokser", "#f7f8f9");
+}
 
 function hex(d, farge, felt) {
   const n = parseInt(String(farge).replace("#", ""), 16);
@@ -402,7 +415,7 @@ function topplinje(P, forste) {
   meta.forEach((linje, i) => d.text(linje, A4.b - A4.marg, A4.marg + 2 + i * 3.6, { align: "right" }));
 
   y += 13;
-  hex(d, ROD, "strek"); d.setLineWidth(0.8);
+  hex(d, HOVED, "strek"); d.setLineWidth(0.8);
   d.line(A4.marg, y, A4.b - A4.marg, y);
   P.y = y + 6;
 
@@ -410,9 +423,9 @@ function topplinje(P, forste) {
   // i det noen skriver ut side 3 og legger den ved en e-post.
   if (m.utgave === "mote") {
     const h = forste ? 11 : 7;
-    hex(d, "#fdf3f3", "fyll"); hex(d, "#f0cfcf", "strek"); d.setLineWidth(0.2);
+    hex(d, LYS, "fyll"); hex(d, LYSKANT, "strek"); d.setLineWidth(0.2);
     d.roundedRect(A4.marg, P.y, P.bredde, h, 1.5, 1.5, "FD");
-    hex(d, ROD, "fyll"); d.rect(A4.marg, P.y, 1.2, h, "F");
+    hex(d, HOVED, "fyll"); d.rect(A4.marg, P.y, 1.2, h, "F");
     hex(d, ROD); d.setFontSize(8); d.setFont(undefined, "bold");
     d.text(t("Møteutgave – forkortet."), A4.marg + 4, P.y + 4.6);
     d.setFont(undefined, "normal"); hex(d, SORT);
@@ -428,9 +441,13 @@ function bunnlinje(P) {
   const { d, m } = P;
   hex(d, STREK, "strek"); d.setLineWidth(0.2);
   d.line(A4.marg, A4.h - A4.marg - 4, A4.b - A4.marg, A4.h - A4.marg - 4);
-  d.setFontSize(7.5); hex(d, GRÅ);
-  d.text("Storm Entreprenør AS" + (m.prosjekt ? " · " + m.prosjekt : "") +
-    (m.utgave === "mote" ? " · " + t("møteutgave") : ""), A4.marg, A4.h - A4.marg + 1);
+  // 🎨 Selskapene fra Innstillinger → Utseende PDF, i farger som i malen.
+  // Plassen er halve bredden: sidetallet og modellnavnet står til høyre.
+  const by = A4.h - A4.marg + 1;
+  const b = tegnSelskaper(d, A4.marg, by, { str: 7.5, maksB: 95 });
+  const hale = [m.prosjekt, m.utgave === "mote" ? t("møteutgave") : ""].filter(Boolean).join(" · ");
+  d.setFont(undefined, "normal"); d.setFontSize(7.5); hex(d, GRÅ);
+  if (hale) d.text((b ? " · " : "") + hale, A4.marg + b, by);
 }
 
 // ---------- Byggeklosser ----------
@@ -673,7 +690,7 @@ function saksmappe(P, b) {
       if (b.trad.etterForste && i === 1 && b.trad.utelatt) {
         P.sørgFor(7);
         d.setFontSize(6.8); hex(d, GRÅ);
-        hex(d, "#f7f8f9", "fyll"); hex(d, "#ccd2d8", "strek");
+        hex(d, BOKS, "fyll"); hex(d, "#ccd2d8", "strek");
         d.setLineDashPattern([0.8, 0.8], 0);
         d.roundedRect(P.x + 10, P.y - 2.6, P.bredde - 20, 5, 1, 1, "FD");
         d.setLineDashPattern([], 0);
@@ -701,7 +718,7 @@ function innlegg(P, s) {
 
   // Kule: rød ring = fra byggeplassen
   hex(d, "#ffffff", "fyll");
-  hex(d, k === "bygg" ? ROD : GRÅ, "strek"); d.setLineWidth(0.5);
+  hex(d, k === "bygg" ? HOVED : GRÅ, "strek"); d.setLineWidth(0.5);
   d.circle(P.x + 7, P.y + 0.6, 1.2, "FD");
 
   d.setFontSize(7.2); hex(d, SORT); d.setFont(undefined, "bold");
@@ -714,8 +731,8 @@ function innlegg(P, s) {
     const merke = k === "bygg" ? t("BYGGEPLASS") : t("KONTOR");
     d.setFontSize(5.5);
     const mb = d.getTextWidth(merke) + 2.4;
-    hex(d, k === "bygg" ? "#fdeceb" : "#eef2f7", "fyll");
-    hex(d, k === "bygg" ? "#f0c8c5" : "#d5dde6", "strek"); d.setLineWidth(0.15);
+    hex(d, k === "bygg" ? LYS : "#eef2f7", "fyll");
+    hex(d, k === "bygg" ? LYSKANT : "#d5dde6", "strek"); d.setLineWidth(0.15);
     d.roundedRect(bx, P.y - 1.4, mb, 3.2, 0.7, 0.7, "FD");
     hex(d, k === "bygg" ? ROD : "#44546a");
     d.text(merke, bx + 1.2, P.y + 1);
@@ -731,6 +748,7 @@ function innlegg(P, s) {
 
 // ---------- Selve rapporten ----------
 export async function tegn(jsPDF, m, bilde, logo) {
+  brukProfil();
   const P = papir(jsPDF, m);
   P.logo = logo;
   P.start();
@@ -783,9 +801,9 @@ export async function tegn(jsPDF, m, bilde, logo) {
   // morgenvarselet og prioriteringslista, og forsvinner derfor stille.
   if (m.utenFrist) {
     P.sørgFor(12);
-    hex(d, "#fff8f8", "fyll"); hex(d, "#f0d3d3", "strek"); d.setLineWidth(0.2);
+    hex(d, LYS, "fyll"); hex(d, LYSKANT, "strek"); d.setLineWidth(0.2);
     d.roundedRect(P.x, P.y, P.bredde, 9, 1.5, 1.5, "FD");
-    hex(d, ROD, "fyll"); d.rect(P.x, P.y, 1.2, 9, "F");
+    hex(d, HOVED, "fyll"); d.rect(P.x, P.y, 1.2, 9, "F");
     d.setFontSize(7.5); hex(d, ROD); d.setFont(undefined, "bold");
     d.text(t("{0} markeringer mangler frist.", m.utenFrist), P.x + 4, P.y + 3.8);
     d.setFont(undefined, "normal"); hex(d, SORT);

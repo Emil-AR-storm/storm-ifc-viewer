@@ -38,8 +38,15 @@ import { qrDataUrl } from "./qr.js";
 import { GULV_ID } from "./veggelement/tilstand.js";
 import { IFC_GRUPPE, framdriftFilnavn, idFor, ifcUnder, infoRader, pdfTrinn, slagFor, trinnTittel } from "./framdrift-regn.js";
 import { varsel } from "./varsel.js";
+import { pdfFarger, profilFarge } from "./pdf-utseende.js";
 
-const GRÅ = "#6b7280", SORT = "#14161a", LINJE = "#c9ced6", KORT = "#f4f5f7";
+// 🎨 «let»: fylles fra Innstillinger → Utseende PDF i brukProfil() (26.10.2026)
+let GRÅ = "#6b7280", SORT = "#14161a", LINJE = "#c9ced6", KORT = "#f4f5f7";
+function brukProfil() {
+  const F = pdfFarger();
+  GRÅ = F.hjelpetekst; SORT = F.tekst; LINJE = profilFarge(F, "linjer", "#c9ced6");
+  KORT = profilFarge(F, "bokser", "#f4f5f7");
+}
 const PX_PER_MM = 5;
 // Arket: A3 liggende, samme marger og toppbånd som riggplanen (RIGGPLAN)
 export const FRAMDRIFT_ARK = (() => {
@@ -389,6 +396,7 @@ function trinnLinje(d, x, y, b, alle, naa) {
 }
 
 export function tegnArk(jsPDF, m) {
+  brukProfil();
   const R = RIGGPLAN, A = FRAMDRIFT_ARK;
   const d = new jsPDF({ unit: "mm", format: "a3", orientation: "landscape" });
   const ant = m.sider.length;

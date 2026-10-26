@@ -124,6 +124,11 @@ export function dialogHtml(filnavn, versjon, plan, feil) {
       esc(filnavn) + (versjon ? " · BCF " + esc(versjon) : "") + " · " + esc(t("{0} saker", ant)) + '</span>' +
       '<button class="bcfi-x" title="' + esc(t("Lukk")) + '">' + ikon("lukk") + '</button></header><div class="bcfi-bd">';
   if (!ant) html += '<p class="bcfi-tom">' + esc(t("Fant ingen saker i fila.")) + '</p>';
+  // Emil testet 26.10 eksport → import av samme fil: alt sto som «uendret» og
+  // «0 av 0 valgt», som er RIKTIG, men så ut som en feil. Nå sies det rett ut.
+  else if (plan.every(p => p.art === "uendret"))
+    html += '<p class="bcfi-alt-inne">' + ikon("hake") + ' ' +
+      esc(t("Alt i fila er allerede i Storm, uten endringer — det er ingenting å importere.")) + '</p>';
   for (const g of GRUPPER) {
     const rader = plan.map((p, i) => [p, i]).filter(([p]) => g.arter.includes(p.art));
     if (!rader.length) continue;
@@ -132,7 +137,7 @@ export function dialogHtml(filnavn, versjon, plan, feil) {
     html += '<section class="bcfi-grp" data-grp="' + g.merke + '"><h4>' +
       '<span class="bcfi-merke ' + g.merke + '">' + (g.merke === "finn" ? ikon("advarsel") + " " : "") + esc(t(g.merkeTekst)) + '</span>' +
       (g.tittel ? '<span>' + esc(t(g.tittel)) + '</span>' : "") +
-      '<span class="bcfi-n">' + esc(t("{0} av {1} valgt", valgt, velgbare)) + '</span></h4>' +
+      '<span class="bcfi-n">' + esc(velgbare ? t("{0} av {1} valgt", valgt, velgbare) : t("ingen endringer")) + '</span></h4>' +
       rader.map(([p, i]) => '<label class="bcfi-rad' + (p.art === "uendret" ? " av" : "") + '">' +
         '<input type="checkbox" data-i="' + i + '"' + (p.valgt ? " checked" : "") + (p.art === "uendret" ? " disabled" : "") + '>' +
         '<div><b>' + esc(String(p.sak.tittel || (p.markering && p.markering.text) || "BCF").split("\n")[0]) + '</b>' +

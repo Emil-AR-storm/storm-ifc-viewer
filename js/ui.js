@@ -279,6 +279,8 @@ function renderSettings() {
       '<option value="' + k + '"' + (S.settings.cubePos === k ? " selected" : "") + '>' +
       t(navn) + '</option>').join("") + '</select></div></details>';
 
+  // 🎨 Utseende PDF (pdf-utseende-ui.js): farger og selskaper i alle PDF-er
+  if (S.pdfUtseendeHtml) html += S.pdfUtseendeHtml();
   // 🗂 Prosjektinfo (prosjektinfo.js): felles felt alle verktøy leser
   if (S.prosjektinfoHtml) html += S.prosjektinfoHtml();
   html += firmaoppsettHtml();
@@ -291,6 +293,7 @@ function renderSettings() {
 
   $("setBody").innerHTML = html;
   if (S.koblProsjektinfo) S.koblProsjektinfo();
+  if (S.koblPdfUtseende) S.koblPdfUtseende();
 
   $("stLang").onchange = async (e) => {
     // await: ordboka for det nye språket hentes fra js/sprak/ og er ikke på

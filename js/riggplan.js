@@ -35,12 +35,19 @@ import {
 } from "./rigg-regn.js";
 import { aktivRef, finnRiggObjekt, riggBase, riggGroup, toneFarge } from "./rigg-vis.js";
 import { varsel } from "./varsel.js";
+import { pdfFarger, profilFarge, tegnSelskaper } from "./pdf-utseende.js";
 
 const PX_PER_MM = 7;          // bildets oppløsning: 292 mm → ~2000 px
-const GRÅ = "#6b7280", SORT = "#14161a", LINJE = "#c9ced6", KORT = "#f4f5f7";
+// 🎨 «let»: fylles fra Innstillinger → Utseende PDF i brukProfil() (26.10.2026)
+let GRÅ = "#6b7280", SORT = "#14161a", LINJE = "#c9ced6", KORT = "#f4f5f7", OVERSKRIFT = "#a8232b";
 // Storms røde (samme som --storm-rod i css/storm.css). Arket er et dokument,
 // ikke skjermen, så CSS-variablene kan ikke brukes her.
-const STORM_ROD = "#d22b34";
+let STORM_ROD = "#d22b34";
+function brukProfil() {
+  const F = pdfFarger();
+  GRÅ = F.hjelpetekst; SORT = F.tekst; LINJE = profilFarge(F, "linjer", "#c9ced6");
+  KORT = profilFarge(F, "bokser", "#f4f5f7"); OVERSKRIFT = F.overskrift; STORM_ROD = F.hoved;
+}
 
 export function hex(d, farge, felt) {
   const n = parseInt(String(farge).slice(1), 16);
@@ -812,6 +819,7 @@ function lyshet(farge) {
 // dato, målestokk og laget av helt til høyre. Rød strek under — Storms farge,
 // og den eneste rødfargen på arket, så den ikke konkurrerer med objektene.
 export function toppbaand(d, m, tittel, under, info) {
+  brukProfil();   // framdrift-pdf.js bruker også toppbåndet
   const R = RIGGPLAN, x0 = R.marg, y0 = R.marg;
   const lb = 46, lh = 16;
   if (m.logo) {
@@ -822,8 +830,7 @@ export function toppbaand(d, m, tittel, under, info) {
   } else {
     d.setFontSize(16); d.setFont(undefined, "bold"); hex(d, SORT);
     d.text("Storm", x0, y0 + 9);
-    d.setFont(undefined, "normal"); d.setFontSize(8); hex(d, GRÅ);
-    d.text("Storm Entreprenør AS", x0, y0 + 14);
+    tegnSelskaper(d, x0, y0 + 14, { str: 8, maksB: lb });
   }
   const tx = x0 + lb + 8;
   d.setFontSize(20); d.setFont(undefined, "bold"); hex(d, SORT);
@@ -907,6 +914,7 @@ function tegnNodnummer(d, x, y, b) {
 }
 
 function tegnArk(jsPDF, m) {
+  brukProfil();
   const R = RIGGPLAN;
   const d = new jsPDF({ unit: "mm", format: "a3", orientation: "landscape" });
   const x0 = R.marg, y0 = R.bildeY;
@@ -958,7 +966,7 @@ function tegnArk(jsPDF, m) {
   d.setFontSize(7);
   merknader.forEach((tekst, i) => {
     hex(d, "#ffffff", "fyll"); d.rect(x0 + 2, y0 + 2.4 + i * 4, d.getTextWidth(tekst) + 4, 4, "F");
-    hex(d, "#a8232b"); d.text(tekst, x0 + 4, y0 + 5.4 + i * 4);
+    hex(d, OVERSKRIFT); d.text(tekst, x0 + 4, y0 + 5.4 + i * 4);
   });
 
   // ── Nålene ──
@@ -1029,7 +1037,7 @@ function tegnArk(jsPDF, m) {
   };
   const kilde = bunn();
   d.text(t("Omtrentlig plassering (±1–2 m). Skal ikke brukes til utstikking.") + "   " + kilde, x0, R.h - R.marg);
-  d.text("Storm Entreprenør AS", R.b - R.marg, R.h - R.marg, { align: "right" });
+  tegnSelskaper(d, R.b - R.marg, R.h - R.marg, { align: "right", str: 6.5, maksB: 140 });
 
   // ── Side 2: oversiktsbildene ──
   if (m.oversikt && m.oversikt.length) {
@@ -1050,7 +1058,7 @@ function tegnArk(jsPDF, m) {
     });
     d.setFontSize(6.5); hex(d, GRÅ);
     d.text(t("Bildene er perspektiv og kan ikke måles på. Bruk planen på side 1 til mål.") + "   " + kilde, x0, R.h - R.marg);
-    d.text("Storm Entreprenør AS", R.b - R.marg, R.h - R.marg, { align: "right" });
+    tegnSelskaper(d, R.b - R.marg, R.h - R.marg, { align: "right", str: 6.5, maksB: 140 });
   }
   return d;
 }

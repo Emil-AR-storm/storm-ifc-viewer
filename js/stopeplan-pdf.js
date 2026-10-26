@@ -26,6 +26,7 @@ import {
 import { innholdTekst } from "./stopeplan-tid.js";
 import { stopeGroup, tegnStopeplan, feltBase, tilScene } from "./stopeplan-vis.js";
 import { varsel } from "./varsel.js";
+import { pdfFarger, pdfUtseende, profilFarge } from "./pdf-utseende.js";
 
 // Arket i mm (A3 liggende)
 export const ARK = {
@@ -37,7 +38,15 @@ export const ARK = {
   tfH: 20
 };
 const PX_PER_MM = 6;
-const SORT = "#14161a", GRÅ = "#6b7280", LINJE = "#c9ced6", STØPT_GRØNN = "#1b7f3b", UKE_GUL = "#b26a00";
+// 🎨 Profilfargene fylles fra Innstillinger → Utseende PDF (26.10.2026).
+// Grønn (støpt) og gul (denne uka) er STATUS, ikke profil — de står fast.
+let SORT = "#14161a", GRÅ = "#6b7280", LINJE = "#c9ced6", THODE = "#14161a", PAFARGE = "#ffffff";
+const STØPT_GRØNN = "#1b7f3b", UKE_GUL = "#b26a00";
+function brukProfil() {
+  const F = pdfFarger();
+  SORT = F.tekst; GRÅ = F.hjelpetekst; LINJE = profilFarge(F, "linjer", "#c9ced6");
+  THODE = F.tabellhode; PAFARGE = F.paFarge;
+}
 
 function farge(d, hexFarge, felt) {
   const n = parseInt(String(hexFarge || "#000000").slice(1), 16);
@@ -300,6 +309,7 @@ function tekst(d, s, x, y, opt) {
 }
 
 function tegnArk(jsPDF, m) {
+  brukProfil();
   const R = ARK;
   const d = new jsPDF({ unit: "mm", format: "a3", orientation: "landscape" });
   d.setLineHeightFactor(1.15);
@@ -401,8 +411,8 @@ function tegnArk(jsPDF, m) {
   };
   const tfY = R.h - R.marg - R.tfH;
   const tabellHode = (y) => {
-    farge(d, SORT, "fyll"); d.rect(R.marg, y, B, R.radH, "F");
-    d.setFont("helvetica", "bold"); d.setFontSize(9); farge(d, "#ffffff");
+    farge(d, THODE, "fyll"); d.rect(R.marg, y, B, R.radH, "F");
+    d.setFont("helvetica", "bold"); d.setFontSize(9); farge(d, PAFARGE);
     let x = R.marg;
     for (const c of kol) { d.text(c.t, c.h ? x + c.b - 2 : x + 2, y + R.radH * 0.68, { align: c.h ? "right" : "left" }); x += c.b; }
     return y + R.radH;
@@ -471,7 +481,7 @@ function tittelfelt(d, m, side) {
       if (m.logo) {
         const f = Math.min((c.b - 6) / m.logo.b, (R.tfH - 6) / m.logo.h);
         try { d.addImage(m.logo.data, m.logo.format || "PNG", x + (c.b - m.logo.b * f) / 2, y + (R.tfH - m.logo.h * f) / 2, m.logo.b * f, m.logo.h * f); } catch (_) {}
-      } else { d.setFont("helvetica", "bold"); d.setFontSize(14); farge(d, SORT); d.text("STORM", x + c.b / 2, y + R.tfH / 2 + 2, { align: "center" }); }
+      } else { d.setFont("helvetica", "bold"); d.setFontSize(14); farge(d, SORT); d.text(String((pdfUtseende().selskaper[0] || {}).navn || "").toUpperCase(), x + c.b / 2, y + R.tfH / 2 + 2, { align: "center" }); }   // uten logo: første selskap (Utseende PDF), ikke fast «STORM»
     } else {
       d.setFont("helvetica", "normal"); d.setFontSize(7); farge(d, GRÅ); d.text(c.k.toUpperCase(), x + 2.5, y + 4.5);
       d.setFont("helvetica", "bold"); d.setFontSize(10); farge(d, SORT); d.text(String(c.v).slice(0, 60), x + 2.5, y + 10);

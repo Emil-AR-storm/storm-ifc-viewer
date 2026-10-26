@@ -53,6 +53,7 @@ const MODULER = [
   ["./vaer.js", true],             // 🌦 Vis vær (kun kontor — byggeplassen ser været i Framdriftsplan)
   ["./laster.js", true],           // ❄🌬 snø og vind (kun kontor)
   ["./dokumentasjon.js", true],    // 📄 snarveiene i gruppa Dokumentasjon (kun kontor)
+  ["./pdf-utseende-ui.js", true],  // 🎨 Innstillinger → Utseende PDF (kun kontor)
   ["./markers.js"],
   ["./minimap.js"],
   ["./viewcube.js"],

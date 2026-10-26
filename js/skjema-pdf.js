@@ -15,6 +15,7 @@
 import { t } from "./i18n.js";
 import { hentJsPDF } from "./rapport.js";
 import { alleFelt, kr, linjeSum, ordreSum, tomtSvar } from "./sjekkliste.js";
+import { lysKant, pdfFarger, profilFarge, tegnSelskaper } from "./pdf-utseende.js";
 
 // ═══════════════════════ REN LOGIKK ═══════════════════════
 
@@ -126,7 +127,19 @@ export function filnavn(m) {
 // verre enn ett stygt dokument.
 
 const A4 = { b: 210, h: 297, marg: 15 };
-const GRÅ = "#6b7280", STREK = "#dcdfe4", ROD = "#a8232b", SORT = "#14161a";
+// 🎨 Farger fra Innstillinger → Utseende PDF (js/pdf-utseende.js, 26.10.2026).
+// «let», ikke «const»: brukProfil() fyller dem inn rett før hver tegning, så
+// en endring i innstillingene gjelder neste PDF uten omlasting.
+let GRÅ = "#6b7280", STREK = "#dcdfe4", ROD = "#a8232b", SORT = "#14161a";
+let HOVED = "#d22b34", LYS = "#fdf3f3", LYSKANT = "#f0cfcf", BOKS = "#f4f5f7";
+function brukProfil() {
+  const F = pdfFarger();
+  GRÅ = F.hjelpetekst; STREK = F.linjer; ROD = F.overskrift; SORT = F.tekst;
+  // Standard = PDF-ens egne gamle nyanser (se profilFarge): streken var mørk rød her.
+  HOVED = profilFarge(F, "hoved", "#a8232b"); LYS = F.lys;
+  LYSKANT = profilFarge(F, "hoved", "") === "#a8232b" ? "#f0cfcf" : lysKant(F);
+  BOKS = profilFarge(F, "bokser", "#f4f5f7");
+}
 
 function hex(d, farge, felt) {
   const n = parseInt(String(farge).replace("#", ""), 16);
@@ -186,7 +199,7 @@ function topplinje(P, forste) {
     .filter(Boolean).forEach(linje => { d.text(String(linje), A4.b - A4.marg, my, { align: "right" }); my += 3.6; });
 
   y = Math.max(y + 13, my + 1);
-  hex(d, ROD, "strek"); d.setLineWidth(0.8);
+  hex(d, HOVED, "strek"); d.setLineWidth(0.8);
   d.line(A4.marg, y, A4.b - A4.marg, y);
   P.y = y + 6;
 
@@ -195,9 +208,9 @@ function topplinje(P, forste) {
   // møteutgaven i statusrapporten.
   if (!m.laast) {
     const h = forste ? 11 : 7;
-    hex(d, "#fdf3f3", "fyll"); hex(d, "#f0cfcf", "strek"); d.setLineWidth(0.2);
+    hex(d, LYS, "fyll"); hex(d, LYSKANT, "strek"); d.setLineWidth(0.2);
     d.roundedRect(A4.marg, P.y, P.bredde, h, 1.5, 1.5, "FD");
-    hex(d, ROD, "fyll"); d.rect(A4.marg, P.y, 1.2, h, "F");
+    hex(d, HOVED, "fyll"); d.rect(A4.marg, P.y, 1.2, h, "F");
     hex(d, ROD); d.setFontSize(8); d.setFont(undefined, "bold");
     d.text(t("Utkast – ikke fullført og ikke signert."), A4.marg + 4, P.y + 4.6);
     d.setFont(undefined, "normal"); hex(d, SORT);
@@ -210,9 +223,15 @@ function bunnlinje(P) {
   const { d, m } = P;
   hex(d, STREK, "strek"); d.setLineWidth(0.2);
   d.line(A4.marg, A4.h - A4.marg - 4, A4.b - A4.marg, A4.h - A4.marg - 4);
+  // 🎨 Avsender fra skjemaet hvis den finnes; ellers selskapene fra
+  // Innstillinger → Utseende PDF (før: fast «Storm Entreprenør AS»).
+  const by = A4.h - A4.marg + 1;
   d.setFontSize(7.5); hex(d, GRÅ);
-  d.text((m.avsender.navn || "Storm Entreprenør AS") + (m.laast ? "" : " · " + t("utkast")),
-    A4.marg, A4.h - A4.marg + 1);
+  let b = 0;
+  if (m.avsender && m.avsender.navn) { d.text(tilLatin1(m.avsender.navn), A4.marg, by); b = d.getTextWidth(tilLatin1(m.avsender.navn)); }
+  else b = tegnSelskaper(d, A4.marg, by, { str: 7.5, maksB: 110 });
+  d.setFont(undefined, "normal"); d.setFontSize(7.5); hex(d, GRÅ);
+  if (!m.laast) d.text((b ? " · " : "") + t("utkast"), A4.marg + b, by);
 }
 
 function overskrift(P, tekst, tillegg) {
@@ -366,6 +385,7 @@ function signaturblokk(P) {
 }
 
 export function tegn(jsPDF, m, logo) {
+  brukProfil();
   const P = papir(jsPDF, m);
   P.logo = logo || null;
   P.start();
