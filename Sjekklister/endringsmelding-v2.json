@@ -1,0 +1,184 @@
+{
+  "id": "endringsmelding-v2",
+  "navn": "Storm Endringsmelding",
+  "versjon": 1,
+  "beskrivelse": "Varsel om endring til kontraktspart, med kontrakt, mottaker, type varsel og hjemmel. Feltnummereringen følger Gripr-skjemaet til og med 1.3.",
+  "seksjoner": [
+    {
+      "tittel": "Innledning",
+      "felt": [
+        {
+          "id": "oversendtDato",
+          "nr": "1.1",
+          "navn": "Oversendt til kontraktspart",
+          "type": "dato",
+          "pakrevd": true,
+          "autofyll": "iDag",
+          "merknad": "Datoen varselet sendes. Ikke datoen Storm ble kjent med forholdet."
+        },
+        {
+          "id": "varselnummer",
+          "nr": "1.2",
+          "navn": "Varselnummer og/eller varselstittel",
+          "type": "tekst",
+          "pakrevd": true,
+          "autofyll": "varselnummer",
+          "merknad": "EM-nummeret hentes fra Storm Prosjektoversikt.xlsx og må fylles inn manuelt inntil koblingen er bygget."
+        },
+        {
+          "id": "begrunnelse",
+          "nr": "1.3",
+          "navn": "Begrunnelse for varsel / etterspørsel",
+          "type": "fritekst",
+          "pakrevd": true,
+          "autofyll": "faktablokk",
+          "merknad": "Forslaget er fakta fra modellen. Hvorfor dette utgjør en endring skriver du selv. Hjemmelen står i 1.7."
+        }
+      ]
+    },
+    {
+      "tittel": "Kontrakt og varsel",
+      "felt": [
+        {
+          "id": "mottaker",
+          "nr": "1.4",
+          "navn": "Mottaker (byggherrens / kontraktspartens representant)",
+          "type": "tekst",
+          "pakrevd": true,
+          "merknad": "Navn og firma på den varselet sendes til. Varsler som sendes til feil person kan bli bestridt."
+        },
+        {
+          "id": "kontrakt",
+          "nr": "1.5",
+          "navn": "Kontrakt og standard",
+          "type": "tekst",
+          "pakrevd": true,
+          "merknad": "Kontraktens navn/nummer, hvilken NS-standard som gjelder, og eventuelle avviksbilag."
+        },
+        {
+          "id": "typeVarsel",
+          "nr": "1.6",
+          "navn": "Type varsel",
+          "type": "valg",
+          "pakrevd": true,
+          "valg": [
+            "Varsel om endring",
+            "Nøytralt varsel",
+            "Spesifisert krav",
+            "Varsel om fristforlengelse"
+          ]
+        },
+        {
+          "id": "hjemmel",
+          "nr": "1.7",
+          "navn": "Hjemmel (punkt i kontrakten)",
+          "type": "tekst",
+          "pakrevd": true,
+          "merknad": "Skriv punktet i kontrakten/standarden selv. Verktøyet foreslår aldri punktnummer eller frister. Slå opp i kontrakten."
+        },
+        {
+          "id": "revisjon",
+          "nr": "1.8",
+          "navn": "Modellrevisjon (etter mot før)",
+          "type": "tekst",
+          "pakrevd": false
+        },
+        {
+          "id": "modellMottatt",
+          "nr": "1.9",
+          "navn": "Modellen / endringen mottatt",
+          "type": "dato",
+          "pakrevd": false,
+          "merknad": "Datoen Storm mottok revisjonen. Fristen for å varsle regnes fra når endringen ble kjent."
+        },
+        {
+          "id": "arbeidet",
+          "nr": "1.10",
+          "navn": "Arbeidet som endres er",
+          "type": "valg",
+          "pakrevd": false,
+          "valg": [
+            "Ikke produsert",
+            "Produsert",
+            "Levert",
+            "Montert"
+          ],
+          "merknad": "Er stålet produsert, levert eller montert, kan endringen gi omarbeid, vrak og fremdriftskonsekvenser."
+        }
+      ]
+    },
+    {
+      "tittel": "Fremdriftskonsekvenser",
+      "felt": [
+        {
+          "id": "fremdrift",
+          "nr": "2.1",
+          "navn": "Fremdriftskonsekvenser",
+          "type": "flervalg",
+          "pakrevd": true,
+          "valg": [
+            "Ingen påfølgende konsekvenser",
+            "Påfølgende konsekvenser kan dukke opp. Vil komme tilbake når alle forholdene er kartlagt",
+            "Endringen innebærer et tidsforlengelseskrav på antall dager (angi dater i notatfelt)"
+          ],
+          "merknad": "Velges «vil komme tilbake», er dette et nøytralt varsel. Spesifiseringen er en EGEN handling med EGEN frist."
+        },
+        {
+          "id": "godtgjorelse",
+          "nr": "2.2",
+          "navn": "Økonomiske konsekvenser / forslag til godtgjørelse",
+          "type": "flervalg",
+          "pakrevd": true,
+          "valg": [
+            "Enhetspris",
+            "Justere enhetsprisene ved kontrakt",
+            "Fast pris",
+            "Fakturerbart arbeid ihht kontraktens rater",
+            "Økonomisk omfang ikke kartlagt. Spesifiserte krav sendes når alle betingelser er kartlagt"
+          ],
+          "merknad": "Velges «ikke kartlagt», er dette et nøytralt varsel. Spesifiseringen må ettersendes."
+        },
+        {
+          "id": "okonomiKartlagt",
+          "nr": "2.3",
+          "navn": "Er økonomiske konsekvenser kartlagt?",
+          "type": "valg",
+          "pakrevd": true,
+          "valg": [
+            "JA",
+            "NEI",
+            "IR",
+            "Foreløpig – spesifisert krav ettersendes"
+          ]
+        },
+        {
+          "id": "okonomi",
+          "nr": "2.4",
+          "navn": "Økonomiske konsekvenser",
+          "type": "ordrelinjer",
+          "pakrevd": false,
+          "merknad": "Enhetspris er KOSTPRIS. Påslag, fortjeneste og kostnad vises bare her – PDF-en viser salgspris per enhet i stedet."
+        }
+      ]
+    },
+    {
+      "tittel": "Annet",
+      "felt": [
+        {
+          "id": "annet",
+          "nr": "3.1",
+          "navn": "Annet",
+          "type": "fritekst",
+          "pakrevd": false,
+          "autofyll": "vedleggsliste"
+        }
+      ]
+    }
+  ],
+  "avsender": {
+    "navn": "STORM BETONG AS",
+    "orgnr": "927610973",
+    "adresse": "Breiliveien 49",
+    "sted": "3217 SANDEFJORD"
+  }
+}
