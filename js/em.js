@@ -381,6 +381,8 @@ export async function lagUtkast() {
   const mal = await emMal(); if (!mal) return null;
   const k = kildeData() || { res: { ny: [], slettet: [], endret: [] } };
   const utvalg = !!k.utvalg;
+  // Aksenavnene («mot akse D») — lages stille hvis aksene ikke er slått på
+  if (!S.akseLinjer && S.sikreAkseLinjer) { try { await S.sikreAkseLinjer(); } catch (_) {} }
   const endringer = R.endringerFra(k.res, L, { toM: S.enhetSkala || 1, akser: S.akseLinjer, utvalg });
   const id = "em" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   const iDag = iDagISO(), frist = R.emFrist(tilstand.oppdaget || iDag, tilstand.fristDager);
@@ -411,7 +413,7 @@ export async function lagUtkast() {
     begrunnelse: R.faktablokk(L, { fra: kortNavn(k.fra), til: kortNavn(k.til), metode: k.metode,
       utvalg: k.utvalg, modell: kortNavn(k.modell), oppdaget: oppdagetTekst }),
     okonomi: R.ordrelinjer(L),
-    annet: [t("Vedlegg:"), "• " + t("Før- og etter-bilder fra 3D-modellen, én side per endring (bakerst i dokumentet)"), "• " + t("Mengdeliste (Excel) fra Storm IFC-Viewer")].join("\n")
+    annet: [t("Vedlegg:"), "• " + t("Før- og etter-bilder fra 3D-modellen og mål for hvert endret element (bakerst i dokumentet)"), "• " + t("Mengdeliste (Excel) fra Storm IFC-Viewer")].join("\n")
   };
   const sum = R.sumAnslag(L);
   const em = R.vaskEm({

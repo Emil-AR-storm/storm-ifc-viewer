@@ -1367,6 +1367,17 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   // ---------- 🔁 BCF-eksport ----------
   "BCF-eksport": "BCF eksportas",
   // 📝 Endringsmelding fra modellen (26.10.2026)
+  // 🔍 EM detaljsider (26.10.2026)
+  "PLAN OVENFRA": "PLANAS IŠ VIRŠAUS",
+  "OPPRISS (SETT FRA SIDEN)": "VAIZDAS IŠ ŠONO",
+  "hevet": "pakelta",
+  "senket": "nuleista",
+  "før": "prieš",
+  "etter": "po",
+  "Små endringer er tegnet større enn målestokk — tallene gjelder.": "Maži pakeitimai nupiešti didesni nei mastelis — galioja skaičiai.",
+  "Endring {0} av {1} · endrede elementer, side {2} av {3}": "Pakeitimas {0} iš {1} · pakeisti elementai, puslapis {2} iš {3}",
+  "Rød stiplet = før · oransje = etter · blått = hva som er endret": "Raudona punktyrinė = prieš · oranžinė = po · mėlyna = kas pakeista",
+  "Mål og vinkler er lest fra 3D-modellen. Endringer under 1 mm og 0,5° er avrundet bort.": "Matmenys ir kampai paimti iš 3D modelio. Pakeitimai mažesni nei 1 mm ir 0,5° neįtraukiami.",
   // 🔒 EM internt, bildesider og statuser (26.10.2026)
   "Bildene tas automatisk når du lager utkastet: ett før- og ett etter-bilde per endring, der bare elementene i endringen vises. De står på egne sider bakerst i PDF-en.": "Nuotraukos daromos automatiškai kuriant juodraštį: viena prieš ir viena po kiekvienam pakeitimui, rodomi tik to pakeitimo elementai. Jos yra atskiruose PDF puslapiuose gale.",
   "Ta bildene fra retningen jeg ser modellen fra nå (ellers skrått ovenfra)": "Fotografuoti iš krypties, iš kurios dabar žiūriu į modelį (kitaip – įstrižai iš viršaus)",
@@ -1394,7 +1405,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Signert av {0}": "Pasirašė {0}",
   "Logg inn for å lagre endringsmeldingen. Den lagres bare internt i SharePoint, aldri på byggeplassen.": "Prisijunkite, kad išsaugotumėte pakeitimo pranešimą. Jis saugomas tik viduje SharePoint, niekada statybvietėje.",
   "Tar bilder av endring {0} av {1} …": "Fotografuojamas pakeitimas {0} iš {1} …",
-  "Før- og etter-bilder fra 3D-modellen, én side per endring (bakerst i dokumentet)": "Nuotraukos prieš ir po iš 3D modelio, vienas puslapis kiekvienam pakeitimui (dokumento gale)",
+  "Før- og etter-bilder fra 3D-modellen og mål for hvert endret element (bakerst i dokumentet)": "Nuotraukos prieš ir po iš 3D modelio ir kiekvieno pakeisto elemento matmenys (dokumento gale)",
   "Laget": "Sukurta",
   "EM-utkastet er lagret internt i Endringsmeldinger. Gå gjennom skjemaet, signer og last ned PDF.": "Pakeitimo pranešimo juodraštis išsaugotas viduje skiltyje „Pakeitimų pranešimai“. Peržiūrėkite formą, pasirašykite ir atsisiųskite PDF.",
   "{0} bilder ble ikke lastet opp.": "{0} nuotraukų neįkelta.",

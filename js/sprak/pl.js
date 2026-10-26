@@ -1367,6 +1367,17 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   // ---------- 🔁 BCF-eksport ----------
   "BCF-eksport": "Eksport BCF",
   // 📝 Endringsmelding fra modellen (26.10.2026)
+  // 🔍 EM detaljsider (26.10.2026)
+  "PLAN OVENFRA": "RZUT Z GÓRY",
+  "OPPRISS (SETT FRA SIDEN)": "WIDOK Z BOKU",
+  "hevet": "podniesiono",
+  "senket": "obniżono",
+  "før": "przed",
+  "etter": "po",
+  "Små endringer er tegnet større enn målestokk — tallene gjelder.": "Małe zmiany są narysowane większe niż w skali — obowiązują liczby.",
+  "Endring {0} av {1} · endrede elementer, side {2} av {3}": "Zmiana {0} z {1} · zmienione elementy, strona {2} z {3}",
+  "Rød stiplet = før · oransje = etter · blått = hva som er endret": "Czerwona przerywana = przed · pomarańczowy = po · niebieski = co zostało zmienione",
+  "Mål og vinkler er lest fra 3D-modellen. Endringer under 1 mm og 0,5° er avrundet bort.": "Wymiary i kąty odczytano z modelu 3D. Zmiany poniżej 1 mm i 0,5° są pomijane.",
   // 🔒 EM internt, bildesider og statuser (26.10.2026)
   "Bildene tas automatisk når du lager utkastet: ett før- og ett etter-bilde per endring, der bare elementene i endringen vises. De står på egne sider bakerst i PDF-en.": "Zdjęcia są robione automatycznie przy tworzeniu wersji roboczej: jedno zdjęcie przed i jedno po dla każdej zmiany, pokazujące tylko elementy tej zmiany. Znajdują się na osobnych stronach na końcu PDF.",
   "Ta bildene fra retningen jeg ser modellen fra nå (ellers skrått ovenfra)": "Zrób zdjęcia z kierunku, z którego teraz patrzę na model (w przeciwnym razie ukośnie z góry)",
@@ -1394,7 +1405,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Signert av {0}": "Podpisane przez {0}",
   "Logg inn for å lagre endringsmeldingen. Den lagres bare internt i SharePoint, aldri på byggeplassen.": "Zaloguj się, aby zapisać powiadomienie o zmianie. Jest przechowywane tylko wewnętrznie w SharePoint, nigdy na budowie.",
   "Tar bilder av endring {0} av {1} …": "Robienie zdjęć zmiany {0} z {1} …",
-  "Før- og etter-bilder fra 3D-modellen, én side per endring (bakerst i dokumentet)": "Zdjęcia przed i po z modelu 3D, jedna strona na zmianę (na końcu dokumentu)",
+  "Før- og etter-bilder fra 3D-modellen og mål for hvert endret element (bakerst i dokumentet)": "Zdjęcia przed i po z modelu 3D oraz wymiary każdego zmienionego elementu (na końcu dokumentu)",
   "Laget": "Utworzono",
   "EM-utkastet er lagret internt i Endringsmeldinger. Gå gjennom skjemaet, signer og last ned PDF.": "Wersja robocza powiadomienia o zmianie została zapisana wewnętrznie w Powiadomieniach o zmianach. Przejrzyj formularz, podpisz i pobierz PDF.",
   "{0} bilder ble ikke lastet opp.": "{0} zdjęć nie zostało przesłanych.",

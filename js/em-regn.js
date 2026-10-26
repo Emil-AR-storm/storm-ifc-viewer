@@ -241,6 +241,8 @@ export function akseFor(c, akser) {
 
 const r3 = (n) => Math.round((Number(n) || 0) * 1000) / 1000;
 const pkt = (a) => Array.isArray(a) ? a.slice(0, 3).map(r3) : null;
+const r6 = (n) => Math.round((Number(n) || 0) * 1e6) / 1e6;
+const retn = (r) => (Array.isArray(r) && r.length === 3 && r.every(x => isFinite(Number(x)))) ? r.map(x => Math.round(Number(x) * 1e5) / 1e5) : null;
 export const kortGuid = (g) => { const s = String(g || ""); return s.length > 10 ? s.slice(0, 4) + "…" + s.slice(-3) : s; };
 export const MAKS_ELEMENTER = 400;   // per endring i fila — resten telles
 
@@ -258,7 +260,11 @@ export function endringerFra(res, linjer, o) {
       else m = mengdeFor(e, l.enhet, toM);
       el.push({ hva, id: e.id != null ? e.id : null, navn: String(e.name || "").slice(0, 80), guid: String(e.guid || ""),
         akse: akseFor(e.c, opt.akser), mengde: m == null ? null : avrund(m, l.enhet),
-        c: pkt(e.c), d: pkt(e.d), fc: e.fra ? pkt(e.fra.c) : null, fd: e.fra ? pkt(e.fra.d) : null });
+        c: pkt(e.c), d: pkt(e.d), fc: e.fra ? pkt(e.fra.c) : null, fd: e.fra ? pkt(e.fra.d) : null,
+        // 🔍 detaljene (em-detalj.js): retning, lengde, volum og navnet før
+        r: retn(e.r), L: r3(e.L), v: r6(e.v),
+        fr: e.fra ? retn(e.fra.r) : null, fL: e.fra ? r3(e.fra.L) : 0, fv: e.fra ? r6(e.fra.v) : 0,
+        nf: e.fra ? String(e.fra.name || "").slice(0, 80) : "" });
     };
     const nyHva = opt.utvalg ? "valgt" : "ny";
     for (const e of (res && res.slettet) || []) if (av(e)) legg(e, "fjernet");
@@ -329,7 +335,9 @@ export function vaskEm(r) {
     elementer: (Array.isArray(e && e.elementer) ? e.elementer : []).slice(0, MAKS_ELEMENTER).map(x => ({
       hva: ["ny", "fjernet", "endret", "valgt"].includes(x && x.hva) ? x.hva : "ny",
       id: tall(x && x.id), navn: tekst(x && x.navn, 80), guid: tekst(x && x.guid, 40), akse: tekst(x && x.akse, 20),
-      mengde: tall(x && x.mengde), c: trePkt(x && x.c), d: trePkt(x && x.d), fc: trePkt(x && x.fc), fd: trePkt(x && x.fd)
+      mengde: tall(x && x.mengde), c: trePkt(x && x.c), d: trePkt(x && x.d), fc: trePkt(x && x.fc), fd: trePkt(x && x.fd),
+      r: trePkt(x && x.r), L: tall(x && x.L) || 0, v: tall(x && x.v) || 0,
+      fr: trePkt(x && x.fr), fL: tall(x && x.fL) || 0, fv: tall(x && x.fv) || 0, nf: tekst(x && x.nf, 80)
     }))
   }));
   return ut;

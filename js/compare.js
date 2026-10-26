@@ -29,6 +29,58 @@ import { guidFor, sikreMeta, typeFor } from "./ifcrpc.js";
 import { alleElementIder } from "./ifc.js";
 import { allElementBoxes, clearSelection, elemDisplayName, elementBoxById, fmtVol, quantitiesForSet, selectElement, val, zoomToElement } from "./elements.js";
 import { camera, controls, scene } from "./scene.js";
+import { pcaRetning } from "./em-detalj.js";
+
+// 🔍 Hovedretning og lengde per element (EM detaljer, Emil 26.10.2026):
+// «lengde før 1000 etter 960», «dreid 15°». Den ytre boksen kan ikke si det
+// for et skrått element, så vi regner retningen fra hjørnene (PCA) og lengden
+// langs den. To runder over hjørnene: først snitt og spredning, så endene.
+function hvertHjorne(ids, fn) {
+  const v = new THREE.Vector3();
+  S.modelGroup.children.forEach(m => {
+    if (!m.geometry || !m.geometry.getAttribute) return;
+    const pos = m.geometry.getAttribute("position");
+    if (!pos) return;
+    if (m.userData.merged) {
+      const p = pos.array, ix = m.userData.origIndex || (m.geometry.getIndex() && m.geometry.getIndex().array);
+      if (!ix) return;
+      for (const r of (m.userData.ranges || [])) {
+        if (!ids.has(r.id)) continue;
+        for (let i = r.start; i < r.start + r.count; i++) { const vi = ix[i] * 3; fn(r.id, p[vi], p[vi + 1], p[vi + 2]); }
+      }
+    } else {
+      const id = m.userData.expressID;
+      if (id === undefined || !ids.has(id)) return;
+      m.updateMatrixWorld();
+      for (let i = 0; i < pos.count; i++) { v.fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld); fn(id, v.x, v.y, v.z); }
+    }
+  });
+}
+export function retningerFor(ids) {
+  const stat = new Map(), ut = new Map();
+  try {
+    hvertHjorne(ids, (id, x, y, z) => {
+      let s = stat.get(id);
+      // Første hjørne er nullpunkt: store (georefererte) koordinater i
+      // kvadratsummene ville ellers spist presisjonen i tverrsnittet.
+      if (!s) { s = { n: 0, sx: 0, sy: 0, sz: 0, sxx: 0, sxy: 0, sxz: 0, syy: 0, syz: 0, szz: 0, o: [x, y, z] }; stat.set(id, s); }
+      x -= s.o[0]; y -= s.o[1]; z -= s.o[2];
+      s.n++; s.sx += x; s.sy += y; s.sz += z;
+      s.sxx += x * x; s.sxy += x * y; s.sxz += x * z; s.syy += y * y; s.syz += y * z; s.szz += z * z;
+    });
+    const spenn = new Map();
+    for (const [id, s] of stat) {
+      const p = pcaRetning(s);
+      if (p) spenn.set(id, { r: p.r, min: Infinity, max: -Infinity });
+    }
+    hvertHjorne(new Set(spenn.keys()), (id, x, y, z) => {
+      const a = spenn.get(id), t = x * a.r[0] + y * a.r[1] + z * a.r[2];
+      if (t < a.min) a.min = t; if (t > a.max) a.max = t;
+    });
+    for (const [id, a] of spenn) ut.set(id, { r: a.r.map(x => Math.round(x * 1e5) / 1e5), L: a.max - a.min });
+  } catch (err) { console.warn("Retningene ble ikke regnet ut:", err); }
+  return ut;
+}
 
 const COL = { ny: 0x3cb44b, slettet: 0xef4444, endret: 0xfbbf24, uendret: 0x6b7280 };
 const MAT = {
@@ -121,6 +173,7 @@ export async function snapshotModel() {
   // Math.round(v * 1000) i geoKey NaN, og volumsjekken dVol > 0.005 i diff()
   // var alltid false: «volum 2,4 → 3,1 m³» har aldri slått ut i sammenligningen.
   const volAv = (id) => { const q = vols.get(id); return (q && q.vol) || 0; };
+  const retn = retningerFor(ids);
   const items = new Map();   // nøkkel → data
   let withGuid = 0;
   for (const id of ids) {
@@ -132,7 +185,8 @@ export async function snapshotModel() {
     if (guid) withGuid++;
     items.set(guid || ("geo:" + geoKey(c, d, volAv(id))), {
       id, guid, name: elemDisplayName(id), type: typeOf(id),
-      c: [c.x, c.y, c.z], d: [d.x, d.y, d.z], v: volAv(id)
+      c: [c.x, c.y, c.z], d: [d.x, d.y, d.z], v: volAv(id),
+      r: retn.has(id) ? retn.get(id).r : null, L: retn.has(id) ? retn.get(id).L : 0
     });
   }
   return { file: S.fileName, items, withGuid, count: ids.size, size: S.modelSize };

@@ -1367,6 +1367,17 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   // ---------- 🔁 BCF-eksport ----------
   "BCF-eksport": "BCF export",
   // 📝 Endringsmelding fra modellen (26.10.2026)
+  // 🔍 EM detaljsider (26.10.2026)
+  "PLAN OVENFRA": "PLAN VIEW",
+  "OPPRISS (SETT FRA SIDEN)": "ELEVATION (SIDE VIEW)",
+  "hevet": "raised",
+  "senket": "lowered",
+  "før": "before",
+  "etter": "after",
+  "Små endringer er tegnet større enn målestokk — tallene gjelder.": "Small changes are drawn larger than scale — the numbers apply.",
+  "Endring {0} av {1} · endrede elementer, side {2} av {3}": "Change {0} of {1} · changed elements, page {2} of {3}",
+  "Rød stiplet = før · oransje = etter · blått = hva som er endret": "Red dashed = before · orange = after · blue = what has changed",
+  "Mål og vinkler er lest fra 3D-modellen. Endringer under 1 mm og 0,5° er avrundet bort.": "Dimensions and angles are read from the 3D model. Changes under 1 mm and 0.5° are rounded away.",
   // 🔒 EM internt, bildesider og statuser (26.10.2026)
   "Bildene tas automatisk når du lager utkastet: ett før- og ett etter-bilde per endring, der bare elementene i endringen vises. De står på egne sider bakerst i PDF-en.": "The images are taken automatically when you create the draft: one before and one after image per change, showing only the elements in that change. They are on separate pages at the back of the PDF.",
   "Ta bildene fra retningen jeg ser modellen fra nå (ellers skrått ovenfra)": "Take the images from the direction I am viewing the model from now (otherwise at an angle from above)",
@@ -1394,7 +1405,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Signert av {0}": "Signed by {0}",
   "Logg inn for å lagre endringsmeldingen. Den lagres bare internt i SharePoint, aldri på byggeplassen.": "Sign in to save the change notice. It is only stored internally in SharePoint, never on the construction site.",
   "Tar bilder av endring {0} av {1} …": "Taking images of change {0} of {1} …",
-  "Før- og etter-bilder fra 3D-modellen, én side per endring (bakerst i dokumentet)": "Before and after images from the 3D model, one page per change (at the back of the document)",
+  "Før- og etter-bilder fra 3D-modellen og mål for hvert endret element (bakerst i dokumentet)": "Before and after images from the 3D model and dimensions for every changed element (at the back of the document)",
   "Laget": "Created",
   "EM-utkastet er lagret internt i Endringsmeldinger. Gå gjennom skjemaet, signer og last ned PDF.": "The change notice draft is saved internally in Change notices. Review the form, sign and download the PDF.",
   "{0} bilder ble ikke lastet opp.": "{0} images were not uploaded.",

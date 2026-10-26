@@ -23,6 +23,13 @@ import { allElementBoxes } from "./elements.js";
 export const EM_BILDE_PX = { b: 920, h: 1180 };
 const FARGE = { ny: 0x3cb44b, endret: 0xe9a13b, valgt: 0x3b82f6, fjernet: 0xd22b34, gammel: 0xa8650f };
 
+// Lyse farger: modellens lys alene gav nesten svart grønt og brunt oransje i
+// Emils første ekte PDF (26.10). Litt egenlys holder fargen lik tegnforklaringen.
+function lysMat(farge) {
+  const c = new THREE.Color(farge);
+  return new THREE.MeshLambertMaterial({ color: c, emissive: c.clone().multiplyScalar(0.55), side: THREE.DoubleSide });
+}
+
 function boks(c, d, min) {
   const m = Math.max(min, 1e-6);
   return new THREE.Box3().setFromCenterAndSize(new THREE.Vector3(...c),
@@ -46,7 +53,7 @@ function massiv(b, farge) {
   const g = new THREE.Group();
   const str = b.getSize(new THREE.Vector3()), mid = b.getCenter(new THREE.Vector3());
   const geo = new THREE.BoxGeometry(str.x, str.y, str.z);
-  const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: farge }));
+  const m = new THREE.Mesh(geo, lysMat(farge));
   const k = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: 0x333333 }));
   m.position.copy(mid); k.position.copy(mid);
   g.add(m, k);
@@ -135,7 +142,7 @@ export async function taEndringsbilder(endring, o) {
       const hva = new Map(etterDeler.map(([e]) => [e.id, e.hva]));
       const funnet = new Set();
       const mat = {};
-      const matFor = (h) => mat[h] || (mat[h] = new THREE.MeshLambertMaterial({ color: FARGE[h] || FARGE.ny, side: THREE.DoubleSide }));
+      const matFor = (h) => mat[h] || (mat[h] = lysMat(FARGE[h] || FARGE.ny));
       for (const x of mesher) {
         const id = x.m.userData.expressID;
         if (!x.m.userData.merged && id !== undefined && hva.has(id)) {

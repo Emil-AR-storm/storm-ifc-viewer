@@ -349,3 +349,16 @@ på("btnAxes", "click", async () => {
 frameHooks.push(() => { if (axesGroup.visible) updateAxisLOD(); });
 
 S.rebuildAxes = rebuildAxes;
+
+// 📝 EM fra modellen (26.10): aksenavnene trengs i PDF-en («flyttet 150 mm mot
+// akse D») selv om ingen har slått på aksene. Bygges stille med standardkildene
+// (søylene) — synligheten røres ikke.
+S.sikreAkseLinjer = async () => {
+  if (S.akseLinjer || !S.modelGroup) return S.akseLinjer || null;
+  try {
+    await sikreAxisRaw();
+    if (!S.axisSources) classifyAxisSources();
+    if (!S.axesBuilt) { axesGroup.clear(); buildAxes(); axesGroup.visible = !!S.axesOn; }
+  } catch (err) { console.warn("Aksene ble ikke laget:", err); }
+  return S.akseLinjer || null;
+};
