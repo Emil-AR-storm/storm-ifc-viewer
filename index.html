@@ -385,9 +385,11 @@
   <header><span data-i18n>Endringsmelding</span><button data-lukk="emPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="emBody"></div>
   <div class="em-fot">
-    <span class="em-fot-hjelp" data-i18n>Lagres som markering med EM-skjemaet utfylt. Du går gjennom og låser selv.</span>
-    <button id="emExcel"><svg class="ikon"><use href="#i-lastned"/></svg> Excel</button>
-    <button id="emLag" class="primary" data-i18n>Lag EM-utkast</button>
+    <span class="em-fot-hjelp em-kun-ny" data-i18n>Lagres internt i Endringsmeldinger (SharePoint). Følger aldri med ut til byggeplassen.</span>
+    <button id="emExcel" class="em-kun-ny"><svg class="ikon"><use href="#i-lastned"/></svg> Excel</button>
+    <button id="emLag" class="primary em-kun-ny" data-i18n>Lag EM-utkast</button>
+    <span id="emSumApne" class="em-fot-hjelp em-kun-liste"></span>
+    <button id="emOversikt" class="em-kun-liste"><svg class="ikon"><use href="#i-lastned"/></svg> <span data-i18n>Last ned oversikt (Excel)</span></button>
   </div>
 </div>
 
