@@ -98,6 +98,7 @@ export async function taEndringsbilder(endring, o) {
   const mesher = [];
   const kam = { p: camera.position.clone(), up: camera.up.clone(), m: controls.target.clone(), near: camera.near, far: camera.far, q: camera.quaternion.clone() };
   const tmp = new THREE.Group();
+  tmp.userData.sammenlign = true;   // skal synes selv om sammenligningen skjuler lagene (cmp-skjul.js)
   try {
     for (const ch of scene.children) {
       if (ch.isLight || ch === S.modelGroup || !ch.visible) continue;

@@ -27,8 +27,9 @@ import { $, på, S, apnePanel, esc, ikon, loadingEl, loadingText } from "./state
 import { t } from "./i18n.js";
 import { guidFor, sikreMeta, typeFor } from "./ifcrpc.js";
 import { alleElementIder } from "./ifc.js";
-import { allElementBoxes, clearSelection, elemDisplayName, elementBoxById, fmtVol, quantitiesForSet, selectElement, val, zoomToElement } from "./elements.js";
-import { camera, controls, scene } from "./scene.js";
+import { allElementBoxes, clearSelection, elemDisplayName, elementBoxById, fmtVol, quantitiesForSet, selectElement, val, visElementUtenPanel, visPunkt } from "./elements.js";
+import { axesGroup, camera, controls, grid, koteGroup, measureGroup, scene, selGroup } from "./scene.js";
+import { skjulStoy, visStoy } from "./cmp-skjul.js";
 import { pcaRetning } from "./em-detalj.js";
 import { parFjernetNy } from "./em-paring.js";
 
@@ -97,6 +98,21 @@ scene.add(compareGroup);
 
 // S.compareBase og S.compareOn er deklarert i state.js, som all annen S-tilstand
 let result = null;      // { ny:[], slettet:[], endret:[], uendret:Set, metode }
+
+// 🙈 Bare modellen mens sammenligningen står på (cmp-skjul.js, Emil 26.10).
+// Rett før hvert bilde: rigg, SW, tak/blikk, terreng, materiell, markeringer …
+// skjules. Det som står: modellen, fargeboksene, valget, akser, mål og lys.
+// Et lag som må stå kan merke gruppa med userData.sammenlign = true.
+let bareModellen = true;
+const stoyHoldt = new Map();
+const beholdes = (ch) => ch.isLight || ch.isCamera || ch === S.modelGroup || ch === compareGroup ||
+  ch === selGroup || ch === axesGroup || ch === measureGroup || ch === koteGroup || ch === grid ||
+  !!(ch.userData && ch.userData.sammenlign);
+export function oppdaterStoy() {
+  if (S.compareOn && result && bareModellen) skjulStoy(scene, beholdes, stoyHoldt);
+  else if (stoyHoldt.size) visStoy(stoyHoldt);
+}
+scene.onBeforeRender = oppdaterStoy;
 
 // Fargefilter: overlappende bokser kan skjule hverandre, så radene i panelet
 // kan trykkes for å vise ÉN farge om gangen. null = vis alle.
@@ -440,6 +456,8 @@ function renderPanel() {
   let html = '<div class="prop-actions">' +
     '<button id="cmpOnlyChanged"' + (bareEndringer ? ' class="active"' : '') + '>' +
     ikon("vis") + ' ' + t("Bare endringer") + '</button>' +
+    '<button id="cmpBareModell"' + (bareModellen ? ' class="active"' : '') + ' title="' + esc(t("Skjuler rigg, SW-vegger, tak og blikk, terreng, materiell og markeringer mens du sammenligner")) + '">' +
+    ikon("vis") + ' ' + t("Bare modellen") + '</button>' +
     '<button id="cmpStopp">' + ikon("lukk") + ' ' + t("Avslutt") + '</button></div>' +
     '<p style="font-size:12px; color:var(--muted); margin-bottom:8px">' +
     esc(S.compareBase.file) + ' → ' + esc(S.fileName) +
@@ -476,12 +494,29 @@ function renderPanel() {
     if (arr.length > 300) h += '<p style="color:var(--muted); font-size:11px">' + t("… og {0} flere", arr.length - 300) + '</p>';
     return h;
   };
+  // 🔗 Forslagene kan også trykkes på her (Emil 26.10) — avkrysningen skjer i Endringsmelding
+  const forslagListe = (arr) => {
+    if (!arr.length) return "";
+    let h = '<h4 style="margin:12px 0 4px; font-size:12px; color:var(--warn)">? ' + t("Mulig samme element") + ' (' + arr.length + ')</h4>';
+    arr.slice(0, 300).forEach((f, i) => {
+      h += '<div class="lib-item" data-cmp="forslag:' + i + '">' +
+        '<div class="n">' + esc(f.til.name || ("ID " + f.til.id)) + '</div>' +
+        '<div class="m">' + esc(f.til.type || "") + ' · ' + esc(t("{0} mm fra et fjernet element", f.avstandMm)) + '</div></div>';
+    });
+    return h;
+  };
   html += liste(t("Endret"), r.endret, "#fbbf24", "endret") +
+          forslagListe(r.forslag || []) +
           liste(t("Nye"), r.ny, "#3cb44b", "ny") +
           liste(t("Slettet"), r.slettet, "#ef4444", "slettet");
 
   $("compareBody").innerHTML = html;
   $("cmpStopp").onclick = stopCompare;
+  $("cmpBareModell").onclick = () => {
+    bareModellen = !bareModellen;
+    $("cmpBareModell").classList.toggle("active", bareModellen);
+    oppdaterStoy();
+  };
   // fargefilteret: marker aktiv rad og tegn boksene på nytt
   const merkFilter = () => {
     $("compareBody").querySelectorAll(".cmp-filter").forEach(el => {
@@ -513,18 +548,17 @@ function renderPanel() {
       if (m.material === MAT.uendret) m.visible = !skjul;
     });
   };
+  // Et trykk i lista flyr TIL elementet og velger det — uten egenskapspanelet.
+  // zoomToElement åpnet egenskapspanelet, som lukket Sammenlign-panelet, og
+  // Emil måtte åpne det igjen for hvert element (26.10).
   $("compareBody").querySelectorAll("[data-cmp]").forEach(el => {
     el.onclick = () => {
       const [type, i] = el.dataset.cmp.split(":");
-      const e = result[type][Number(i)];
-      if (type === "slettet") {
-        // ingen geometri å velge – flytt kameraet til der elementet lå
-        const c = new THREE.Vector3(...e.c);
-        controls.target.copy(c);
-        const dir = camera.position.clone().sub(c);
-        if (dir.lengthSq() < 1e-6) dir.set(1, 0.7, 1);
-        camera.position.copy(c).add(dir.normalize().multiplyScalar(Math.max(new THREE.Vector3(...e.d).length() * 2.5, S.modelSize * 0.02)));
-      } else if (elementBoxById(e.id)) zoomToElement(e.id);
+      const x = (result[type] || [])[Number(i)];
+      if (!x) return;
+      const e = type === "forslag" ? x.til : x;
+      // det slettede finnes ikke i denne modellen — kameraet flyr til der det lå
+      if (type === "slettet" || !visElementUtenPanel(e.id)) visPunkt(e.c, e.d);
     };
   });
 }

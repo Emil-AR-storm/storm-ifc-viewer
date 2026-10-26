@@ -1368,6 +1368,9 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "BCF-eksport": "Eksport BCF",
   // 📝 Endringsmelding fra modellen (26.10.2026)
   // 🔗 EM paring av fjernet + ny (26.10.2026)
+  "Bare modellen": "Tylko model",
+  "Skjuler rigg, SW-vegger, tak og blikk, terreng, materiell og markeringer mens du sammenligner": "Ukrywa zagospodarowanie placu, ściany SW, dach i obróbki blacharskie, teren, materiały i oznaczenia podczas porównania",
+  "{0} mm fra et fjernet element": "{0} mm od usuniętego elementu",
   "Sammenligningen er ikke aktiv. Åpne Sammenlign (den er ikke avsluttet før du trykker «Avslutt»), eller velg elementer og trykk «Valgte elementer».": "Porównanie nie jest aktywne. Otwórz Porównaj (nie kończy się, dopóki nie naciśniesz „Zakończ”) albo wybierz elementy i naciśnij „Wybrane elementy”.",
   "Viser {0} av {1}: {2}": "Pokazano {0} z {1}: {2}",
   "Samme element, ny ID": "Ten sam element, nowe ID",

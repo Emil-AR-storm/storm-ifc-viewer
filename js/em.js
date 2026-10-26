@@ -33,6 +33,7 @@ import { taEndringsbilder } from "./em-bilder.js";
 import { tegnEmSider } from "./em-pdf.js";
 import * as R from "./em-regn.js";
 import { erKoordinering, forslagNokkel, revitNr } from "./em-paring.js";
+import { detaljerFor } from "./em-detalj.js";
 
 export const EM_MAL_ID = "endringsmelding-v1";
 
@@ -177,6 +178,22 @@ export function blaTil(liste, i) {
 // «Flat Bars:Flattstål 120x8:235953» → «Bjelke Flattstål 120x8»
 const kortEl = (e) => { const d = String(e.name || "").split(":"); return (typeNavnKort(e.type) + " " + (d.length > 1 ? d[d.length - 2] : d[0])).trim(); };
 const typeNavnKort = (type) => t(R.typeNavn(type));
+// Hva er forskjellen på forslaget? «flyttet 25 mm» var senteret — en søyle som
+// er forlenget 50 mm i toppen flytter senteret 25 mm (Emil, EM-test 5, 26.10).
+// Nå står den korte teksten fra detaljene: «lengde +50 mm i toppen».
+export function forslagTekst(f) {
+  const el = (x) => ({ c: x.c, d: x.d, v: x.v, navn: x.name, r: x.r, L: x.L });
+  let d = null;
+  try { d = detaljerFor(Object.assign(el(f.til), { fra: el(f.fra) }), { toM: S.enhetSkala || 1, akser: S.akseLinjer }); } catch (_) { d = null; }
+  const p = (d && d.punkter || []).filter(x => x.k !== "liten");
+  if (!p.length) return t("flyttet {0} mm", f.avstandMm);
+  const kort = p.map(x => {
+    if (x.k === "lengde") { const m = /\(([^)]*)\)\s*$/.exec(x.tekst); return "lengde " + (m ? m[1] : ""); }
+    return x.tekst.replace(/\s*\([^)]*\)\s*$/, "");
+  }).join(", ");
+  return kort.charAt(0).toLowerCase() + kort.slice(1);
+}
+
 function paringHtml() {
   const k = tilstand.kilde === "sammenligning" ? sammenligningForEm() : null;
   if (!k) return "";
@@ -209,7 +226,7 @@ function paringHtml() {
       const key = forslagNokkel(f);
       h += '<label class="em-par-rad' + (tilstand.bla && tilstand.bla.liste === "forslag" && tilstand.bla.i === i ? " aktiv" : "") + '"><input type="checkbox" data-forslag="' + esc(key) + '"' + (tilstand.forslagValgt.has(key) ? " checked" : "") + '>' +
         '<span>' + esc(kortEl(f.til)) + (R.akseFor(f.til.c, S.akseLinjer) ? ' · ' + esc(R.akseFor(f.til.c, S.akseLinjer)) : '') + '</span>' +
-        '<span class="em-blaa">' + esc(t("flyttet {0} mm", f.avstandMm)) + '</span>' +
+        '<span class="em-blaa">' + esc(forslagTekst(f)) + '</span>' +
         '<button data-bla="forslag:' + i + '">' + esc(t("Vis")) + '</button></label>';
     }
     h += '</div>';

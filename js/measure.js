@@ -20,6 +20,7 @@ export function koteValue(point) {
 // Diameteren = snap-radiusen (følger slideren), og prikken hopper til hjørnet + blir mer solid når snappen tar tak.
 const snapCursorGroup = new THREE.Group();
 
+snapCursorGroup.userData.sammenlign = true;   // målepekeren står også under sammenligningen (cmp-skjul.js)
 scene.add(snapCursorGroup);
 
 const snapCursor = new THREE.Mesh(new THREE.SphereGeometry(1),
