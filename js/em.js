@@ -34,11 +34,19 @@ import { tegnEmSider } from "./em-pdf.js";
 import * as R from "./em-regn.js";
 import { erKoordinering, forslagNokkel, revitNr } from "./em-paring.js";
 import { detaljerFor } from "./em-detalj.js";
+import * as K from "./em-kontrakt.js";
 
-export const EM_MAL_ID = "endringsmelding-v1";
+// v2 har «Kontrakt og varsel» (1.4–1.10, runde 2). Finnes den ikke i
+// SharePoint ennå, brukes v1 — med en melding om at v2 må lastes opp.
+export const EM_MAL_ID = "endringsmelding-v2";
+export const EM_MAL_V1 = "endringsmelding-v1";
 
 const tilstand = {
   kilde: "sammenligning", enheter: {}, egnePriser: {}, av: new Set(),
+  // 📏 kg/m per profil (linje|profil → tall) og linjene der profilene er åpnet
+  kgPerM: {}, apne: new Set(),
+  // 📜 steg 0: kontrakten (huskes per prosjekt) og varselet (per EM)
+  kontrakt: K.vaskKontrakt({}), varsel: K.vaskVarsel({}), kontraktStatus: "", revForslag: "",
   tittel: "", emNr: "", oppdaget: "", fristDager: 3,
   poster: [], prisStatus: "", egenRetning: false,
   // 🔗 forslagene «mulig samme element» brukeren har krysset av (nøkkel → true),
@@ -89,10 +97,22 @@ export function kildeData() {
   }
   return k;
 }
+// kg/m huskes per profilnavn på maskinen — CFSHS100x6 veier det samme i alle prosjekter
+const KG_LAGER = "storm.em.kgPerM";
+export function husketKg() {
+  try { const v = JSON.parse(localStorage.getItem(KG_LAGER) || "{}"); return v && typeof v === "object" ? v : {}; } catch (_) { return {}; }
+}
+function huskKg(profil, verdi) {
+  try {
+    const v = husketKg();
+    if (verdi == null) delete v[profil]; else v[profil] = verdi;
+    localStorage.setItem(KG_LAGER, JSON.stringify(v));
+  } catch (_) {}
+}
 export function linjer() {
   const k = kildeData();
   if (!k) return [];
-  const l = R.mengdeDiff(k.res, { toM: S.enhetSkala || 1, enheter: tilstand.enheter });
+  const l = R.mengdeDiff(k.res, { toM: S.enhetSkala || 1, enheter: tilstand.enheter, kgPerM: tilstand.kgPerM, kgPerMProfil: husketKg() });
   return R.prisAnslag(l, tilstand.poster, tilstand.egnePriser);
 }
 const valgte = () => linjer().filter(l => !tilstand.av.has(l.key));
@@ -116,9 +136,9 @@ function html() {
   const L = linjer(), sum = R.sumAnslag(L, l => !tilstand.av.has(l.key));
   const iDag = iDagISO();
   if (!tilstand.oppdaget) tilstand.oppdaget = iDag;
-  const frist = R.emFrist(tilstand.oppdaget, tilstand.fristDager);
+  const frist = R.emFrist(tilstand.varsel.mottatt || tilstand.oppdaget, tilstand.fristDager);
   const sek = (n, tekst) => '<div class="em-sek"><span class="em-n">' + n + '</span>' + esc(t(tekst)) + '</div>';
-  let h = sek(1, "Kilde") + '<div class="em-kilder">' +
+  let h = steg0Html(s) + sek(1, "Kilde") + '<div class="em-kilder">' +
     '<button class="em-kilde' + (tilstand.kilde === "sammenligning" ? " valgt" : "") + '" data-kilde="sammenligning"' + (s ? "" : " disabled") + '>' +
       (s ? esc(t("Sammenligning {0} → {1}", kortNavn(s.fra), kortNavn(s.til))) : esc(t("Ingen sammenligning — bruk Sammenlign først"))) + '</button>' +
     '<button class="em-kilde' + (tilstand.kilde === "utvalg" ? " valgt" : "") + '" data-kilde="utvalg"' + (utv ? "" : " disabled") + '>' +
@@ -133,14 +153,18 @@ function html() {
       const koord = erKoordinering(l.type, l.undertekst);
       if (koord && !tilstand.koordSett.has(l.key)) { tilstand.koordSett.add(l.key); tilstand.av.add(l.key); }
       const av = tilstand.av.has(l.key);
+      const apen = tilstand.apne.has(l.key), np = (l.profiler || []).length;
       h += '<tr class="em-rad' + (av ? " av" : "") + '" data-key="' + esc(l.key) + '">' +
         '<td><input type="checkbox" class="em-med"' + (av ? "" : " checked") + '></td>' +
-        '<td><b>' + esc(t(l.navn)) + '</b>' + (koord ? ' <span class="em-koord">' + esc(t("koordineringsobjekt – sjekk før det prises")) + '</span>' : '') + '<div class="em-under">' + esc(l.undertekst) + '</div></td>' +
+        '<td><b>' + esc(t(l.navn)) + '</b>' +
+        (np ? ' <button class="em-prof-knapp" data-prof="' + esc(l.key) + '" title="' + esc(t("Vis profilene (dimensjonene) i linja")) + '">' + (apen ? "▾" : "▸") + ' ' + esc(np === 1 ? t("{0} profil", np) : t("{0} profiler", np)) + '</button>' : '') +
+        (koord ? ' <span class="em-koord">' + esc(t("koordineringsobjekt – sjekk før det prises")) + '</span>' : '') + '<div class="em-under">' + esc(l.undertekst) + '</div></td>' +
         '<td class="em-tall">+' + l.ny + ' / −' + l.slettet + ' / ' + l.endret + '</td>' +
         '<td class="r ' + (l.mengde < 0 ? "neg" : "pos") + '">' + esc(R.mengdeTekst(l).replace(" " + l.enhet, "")) + '</td>' +
         '<td><select class="em-enhet">' + R.EM_ENHETER.map(e => '<option' + (e === l.enhet ? " selected" : "") + '>' + e + '</option>').join("") + '</select></td>' +
         '<td class="r"><input class="em-pris" inputmode="decimal" value="' + (l.pris == null ? "" : esc(String(l.pris).replace(".", ","))) + '" placeholder="' + esc(t("mangler pris")) + '"></td>' +
         '<td class="r em-sum">' + esc(kr(l.sum)) + '</td></tr>';
+      if (apen) h += profilRader(l, av);
     }
     h += '<tr class="em-sumrad"><td></td><td colspan="5">' + esc(t("Prisanslag (eks. mva)")) +
       (sum.manglerPris ? ' · <span class="em-mangler">' + esc(t("{0} linjer mangler pris", sum.manglerPris)) + '</span>' : "") + '</td><td class="r">' + esc(kr(sum.sum)) + '</td></tr></table>';
@@ -155,10 +179,82 @@ function html() {
     '<label class="em-valg"><input type="checkbox" id="emEgenRetning"' + (tilstand.egenRetning ? " checked" : "") + '> ' +
       esc(t("Ta bildene fra retningen jeg ser modellen fra nå (ellers skrått ovenfra)")) + '</label>' +
     '<div class="em-frist">' + ikon("advarsel") + '<div>' + esc(t("Oppdaget")) + ' <input type="date" id="emOppdaget" value="' + esc(tilstand.oppdaget) + '"> · ' +
-      esc(t("frist")) + ' <b>' + esc(frist.split("-").reverse().join(".")) + '</b> (' + esc(t("{0} dager", tilstand.fristDager)) + ')' +
+      esc(t("frist")) + ' <b>' + esc(frist.split("-").reverse().join(".")) + '</b> (' + esc(t("{0} dager", tilstand.fristDager)) +
+      (tilstand.varsel.mottatt ? " " + esc(t("fra modell mottatt")) : "") + ')' +
       '<br><span class="em-hjelp">' + esc(t("Varsle uten ugrunnet opphold. Storms EM-flyt: frist 3 dager etter at endringen ble kjent.")) + '</span></div></div>';
+  h += sjekklisteHtml(L);
   return h;
 }
+
+// ---------- 📜 Steg 0: kontrakt og varsel (prøve A) ----------
+function steg0Html(s) {
+  const k = tilstand.kontrakt, v = tilstand.varsel;
+  // Revisjonene forhåndsutfylles fra filnavnene i sammenligningen — én gang, kan rettes
+  if (s) {
+    const forslag = kortNavn(s.fra) + ">" + kortNavn(s.til);
+    if (tilstand.revForslag !== forslag) { tilstand.revForslag = forslag; v.revFor = v.revFor || kortNavn(s.fra); v.revEtter = v.revEtter || kortNavn(s.til); }
+  }
+  const info = S.prosjektInfo ? S.prosjektInfo() : {};
+  const felt = (id, navn, inn, kl) => '<label class="em-k-felt' + (kl ? " " + kl : "") + '"><span>' + esc(t(navn)) + '</span>' + inn + '</label>';
+  const tx = (id, verdi, ph, ekstra) => '<input id="' + id + '" class="em-felt" maxlength="160" value="' + esc(verdi) + '"' + (ph ? ' placeholder="' + esc(t(ph)) + '"' : '') + (ekstra || "") + '>';
+  const sel = (id, liste, verdi, tom) => '<select id="' + id + '" class="em-felt"><option value="">' + esc(t(tom)) + '</option>' +
+    liste.map(x => '<option value="' + esc(x) + '"' + (x === verdi ? " selected" : "") + '>' + esc(t(x)) + '</option>').join("") + '</select>';
+  const hj = (k.hjemler[v.type] || []);
+  return '<div class="em-sek"><span class="em-n">0</span>' + esc(t("Kontrakt og varsel")) +
+      ' <span class="em-husk">' + esc(info && info.nummer ? t("huskes for prosjekt {0}", info.nummer) : t("huskes for prosjektet")) + '</span></div>' +
+    '<div class="em-k-grid">' +
+      felt("emKontrakt", "Kontrakt", tx("emKontrakt", k.kontrakt, "f.eks. Totalentreprise 2025-14"), k.kontrakt ? "" : "tom") +
+      felt("emStandard", "Standard", sel("emStandard", K.STANDARDER, k.standard, "velg …"), k.standard ? "" : "tom") +
+      felt("emBilag", "Avviksbilag", tx("emBilag", k.avviksbilag, "f.eks. Bilag 3 – endringer")) +
+      felt("emMottaker", "Mottaker (byggherrens representant)", tx("emMottaker", k.mottaker, "Navn, firma"), k.mottaker ? "" : "tom") +
+      felt("emType", "Type varsel", sel("emType", K.VARSELTYPER, v.type, "velg …"), v.type ? "" : "tom") +
+      felt("emHjemmel", "Hjemmel (punkt i kontrakten)", tx("emHjemmel", v.hjemmel, "skriv punktet fra kontrakten", ' list="emHjemler"') +
+        '<datalist id="emHjemler">' + hj.map(x => '<option value="' + esc(x) + '">').join("") + '</datalist>', v.hjemmel ? "" : "tom") +
+    '</div><div class="em-k-grid tre">' +
+      felt("emRevFor", "Revisjon før", tx("emRevFor", v.revFor, "f.eks. R06")) +
+      felt("emRevEtter", "Revisjon etter", tx("emRevEtter", v.revEtter, "f.eks. R07")) +
+      felt("emMottatt", "Modell mottatt (fristen starter)", '<input type="date" id="emMottatt" class="em-felt" value="' + esc(v.mottatt) + '">') +
+    '</div><div class="em-k-grid">' +
+      felt("emArbeidet", "Arbeidet som endres er", sel("emArbeidet", K.ARBEIDET, v.arbeidet, "velg …")) +
+    '</div>' +
+    '<p class="em-hjelp">' + esc(t("Hjemmelen skriver du selv fra kontrakten. Verktøyet foreslår aldri punktnummer eller frister fra NS-standardene.")) +
+      (tilstand.kontraktStatus === "av" ? " " + esc(t("Logg inn for å huske kontrakten for prosjektet.")) : "") + '</p>';
+}
+
+function endredeIValgte(L) {
+  return (L || []).filter(l => !tilstand.av.has(l.key)).reduce((s, l) => s + (l.endret || 0), 0);
+}
+export function sjekkPunkter(L) {
+  return K.sjekkliste(tilstand.kontrakt, tilstand.varsel, { emNr: tilstand.emNr, endret: endredeIValgte(L || linjer()) });
+}
+function sjekklisteHtml(L) {
+  const p = sjekkPunkter(L), okN = p.filter(x => x.niva === "ok").length, rode = K.rodePunkter(p);
+  const merke = { ok: "✓", gul: "!", rod: "✕" };
+  return '<div class="em-sjekk"><b>' + esc(t("Klar til sending? {0} av {1}", okN, p.length)) + '</b>' +
+    p.map(x => '<div class="em-sj ' + x.niva + '" data-sjekk="' + x.id + '"><span>' + merke[x.niva] + '</span> ' + esc(t(x.tekst)) + '</div>').join("") +
+    (rode.length ? '<p class="em-hjelp em-mangler">' + esc(t("{0} — utkastet lages, men merkes «ikke sendeklar», og det kan ikke signeres før det er fylt inn.", rode.map(x => t(x.tekst).split(" — ")[0]).join(", "))) + '</p>' : '') +
+    '</div>';
+}
+// 📏 Underlinjene: én per profil. I kg skrives kg/m inn (grått = anslag fra
+// modellen); linja blir summen av lengde × kg/m — som Revits stålskjema.
+function profilRader(l, av) {
+  const kg = l.enhet === "kg";
+  let h = "";
+  for (const p of l.profiler) {
+    const fraModell = p.kgPerMKilde === "modell";
+    h += '<tr class="em-prof' + (av ? " av" : "") + '" data-key="' + esc(l.key) + '" data-profil="' + esc(p.key) + '" data-profilnavn="' + esc(p.navn) + '">' +
+      '<td></td><td class="em-prof-navn">' + esc(p.navn) + '<div class="em-under">' + esc(t("{0} lm", R.tallTekst(p.lm, 2))) + '</div></td>' +
+      '<td class="em-tall">+' + p.ny + ' / −' + p.slettet + ' / ' + p.endret + '</td>' +
+      '<td class="r ' + (p.mengde < 0 ? "neg" : "pos") + '">' + esc(R.mengdeTekst({ mengde: p.mengde, enhet: l.enhet }).replace(" " + l.enhet, "")) + '</td>' +
+      (kg ? '<td colspan="2"><input class="em-kgm' + (fraModell ? " modell" : "") + '" inputmode="decimal" value="' + (p.kgPerM == null ? "" : esc(String(p.kgPerM).replace(".", ","))) + '"' +
+          ' title="' + esc(fraModell ? t("Anslag fra modellen (volum × 7 850 / lengde). Skriv inn kg/m fra profiltabellen.") : t("kg per løpemeter")) + '" placeholder="kg/m"> <span class="em-hjelp">kg/m' + (fraModell ? " · " + esc(t("modell")) : "") + '</span></td>'
+        : '<td colspan="2" class="em-hjelp">' + esc(l.enhet) + '</td>') +
+      '<td class="r em-sum">' + esc(l.pris == null ? "" : kr(Math.round(p.mengde * l.pris))) + '</td></tr>';
+  }
+  if (!kg) h += '<tr class="em-prof em-prof-hjelp" data-key="' + esc(l.key) + '"><td></td><td colspan="6" class="em-hjelp">' + esc(t("Velg kg som enhet for å prise stål per profil: lengde × kg/m.")) + '</td></tr>';
+  return h;
+}
+
 // 👁 Bla gjennom «samme element» / «mulig samme element» uten å lukke panelet
 function blaListe(liste) {
   const k = tilstand.kilde === "sammenligning" ? sammenligningForEm() : null;
@@ -254,7 +350,9 @@ function kortHtml(e) {
   const ant = e.endringer.reduce((s, x) => s + (x.antall || 0), 0);
   const knapp = (h, tekst, kl) => '<button data-handling="' + h + '"' + (kl ? ' class="' + kl + '"' : "") + '>' + esc(t(tekst)) + '</button>';
   let k = knapp("skjema", "Åpne skjema") + knapp("pdf", "PDF") + knapp("excel", "Excel");
-  if (e.status === "opprettet") k += knapp("sendt", "Merk som sendt");
+  // 🔒 «Merk som sendt» først når skjemaet er signert (B6)
+  if (e.status === "opprettet") k += (e.skjema && e.skjema.laast) ? knapp("sendt", "Merk som sendt")
+    : '<button data-handling="sendt" disabled title="' + esc(t("Signer skjemaet først (Åpne skjema → Fullfør). Mangler påkrevde felt, kan det ikke signeres.")) + '">' + esc(t("Merk som sendt")) + '</button>';
   else if (e.status === "sendt") k += knapp("godkjent", "Godkjent", "em-ok") + knapp("avvist", "Avvist", "em-nei");
   else k += knapp("kopier", "Kopier til ny");
   k += '<button data-handling="slett" class="em-slett" title="' + esc(t("Slett")) + '">' + ikon("slett") + '</button>';
@@ -346,8 +444,39 @@ export function tegn() {
       try { visElementUtenPanel(l.ider[i]); } catch (_) {}
     };
   });
+  body.querySelectorAll("[data-prof]").forEach(b => b.onclick = (ev) => {
+    ev.stopPropagation();
+    const k = b.dataset.prof;
+    if (tilstand.apne.has(k)) tilstand.apne.delete(k); else tilstand.apne.add(k);
+    tegn();
+  });
+  // Trykk på profilnavnet → elementene i profilen ett for ett
+  body.querySelectorAll(".em-prof[data-profil] .em-prof-navn").forEach(td => td.onclick = () => {
+    const rad = td.closest(".em-prof"), l = linjer().find(x => x.key === rad.dataset.key);
+    const p = l && l.profiler.find(x => x.key === rad.dataset.profil);
+    if (!p || !p.ider.length) return;
+    const i = ((tilstand.typeBla[p.key] == null ? -1 : tilstand.typeBla[p.key]) + 1) % p.ider.length;
+    tilstand.typeBla[p.key] = i;
+    try { visElementUtenPanel(p.ider[i]); } catch (_) {}
+  });
+  body.querySelectorAll(".em-prof .em-kgm").forEach(inp => inp.onchange = () => {
+    const rad = inp.closest(".em-prof"), key = rad.dataset.profil, navn = rad.dataset.profilnavn;
+    const v = String(inp.value).replace(/\s/g, "").replace(",", ".");
+    if (v === "") { delete tilstand.kgPerM[key]; huskKg(navn, null); }
+    else if (isFinite(Number(v)) && Number(v) > 0) { tilstand.kgPerM[key] = Number(v); huskKg(navn, Number(v)); }
+    tegn();
+  });
+  // 📜 steg 0 — tekstfeltene tegner ikke panelet på nytt mens man skriver (fokus),
+  // bare sjekklisten; valgene og datoen tegner på nytt
+  const kv = (id, felt, hvor) => { const el = $(id); if (!el) return;
+    const sett = () => { tilstand[hvor][felt] = el.value; oppdaterSjekk(); };
+    if (el.tagName === "SELECT" || el.type === "date") el.onchange = () => { sett(); tegn(); };
+    else { el.oninput = sett; el.onchange = () => { sett(); tegn(); }; } };
+  kv("emKontrakt", "kontrakt", "kontrakt"); kv("emStandard", "standard", "kontrakt"); kv("emBilag", "avviksbilag", "kontrakt");
+  kv("emMottaker", "mottaker", "kontrakt"); kv("emType", "type", "varsel"); kv("emHjemmel", "hjemmel", "varsel");
+  kv("emRevFor", "revFor", "varsel"); kv("emRevEtter", "revEtter", "varsel"); kv("emMottatt", "mottatt", "varsel"); kv("emArbeidet", "arbeidet", "varsel");
   const tt = $("emTittel"); if (tt) tt.oninput = () => { tilstand.tittel = tt.value; };
-  const nr = $("emNr"); if (nr) nr.oninput = () => { tilstand.emNr = nr.value; };
+  const nr = $("emNr"); if (nr) nr.oninput = () => { tilstand.emNr = nr.value; oppdaterSjekk(); };
   const od = $("emOppdaget"); if (od) od.onchange = () => { tilstand.oppdaget = od.value || iDagISO(); tegn(); };
   const er = $("emEgenRetning"); if (er) er.onchange = () => { tilstand.egenRetning = er.checked; };
   body.querySelectorAll("[data-forslag]").forEach(cb => cb.onchange = () => {
@@ -369,6 +498,28 @@ export function tegn() {
   const harLinjer = linjer().some(l => !tilstand.av.has(l.key));
   if ($("emLag")) $("emLag").disabled = !harLinjer;
   if ($("emExcel")) $("emExcel").disabled = !harLinjer;
+}
+
+// Sjekklisten oppdateres uten å tegne panelet på nytt (ellers mister feltet fokus)
+function oppdaterSjekk() {
+  const gammel = document.querySelector("#emBody .em-sjekk");
+  if (!gammel) return;
+  const ny = document.createElement("div"); ny.innerHTML = sjekklisteHtml(linjer());
+  gammel.replaceWith(ny.firstChild);
+}
+
+export async function hentKontrakt() {
+  try {
+    const r = await K.lesKontrakt();
+    tilstand.kontraktStatus = r.status;
+    if (r.status === "ok" || r.status === "tom") {
+      // det som alt er skrevet i panelet vinner over det lagrede
+      const k = tilstand.kontrakt, lagret = r.kontrakt;
+      tilstand.kontrakt = K.vaskKontrakt({ kontrakt: k.kontrakt || lagret.kontrakt, standard: k.standard || lagret.standard,
+        avviksbilag: k.avviksbilag || lagret.avviksbilag, mottaker: k.mottaker || lagret.mottaker, hjemler: lagret.hjemler });
+    }
+  } catch (_) { tilstand.kontraktStatus = "feil"; }
+  return tilstand.kontrakt;
 }
 
 // ---------- Excel ----------
@@ -402,6 +553,7 @@ async function lagre(em, feilTekst) {
 
 export async function settStatus(id, ny) {
   const em = finn(id); if (!em || em.status === ny) return null;
+  if (ny === "sendt" && !(em.skjema && em.skjema.laast)) { varsel(t("Signer skjemaet først (Åpne skjema → Fullfør). Mangler påkrevde felt, kan det ikke signeres.")); return null; }
   const forrige = em.status;
   const lagret = await lagre(Object.assign({}, em, { status: ny,
     historikk: em.historikk.concat(hendelse(t("Status: {0}", t(R.STATUS_NAVN[ny])))) }));
@@ -431,11 +583,20 @@ function kopierTilNy(id) {
 }
 
 // ---------- Skjemaet og PDF-en ----------
-async function emMal() {
+// malId: malen et lagret skjema ble laget fra (gamle EM-er er v1). Uten: v2,
+// og v1 hvis v2 ikke er lastet opp ennå.
+async function emMal(malId) {
   const maler = await hentMaler();
-  const mal = maler && maler.maler && maler.maler.find(m => m.id === EM_MAL_ID);
+  const l = (maler && maler.maler) || [];
+  const finnM = (id) => l.find(m => m.id === id);
+  let mal = malId ? finnM(malId) : null;
+  if (!mal && !malId) {
+    mal = finnM(EM_MAL_ID);
+    if (!mal && finnM(EM_MAL_V1)) { mal = finnM(EM_MAL_V1); varsel(t("Skjemaet med «Kontrakt og varsel» (endringsmelding-v2.json) er ikke lastet opp i SharePoint ennå. Bruker v1 — mottaker og hjemmel står da bare i begrunnelsen.")); }
+  }
+  if (!mal && malId) mal = finnM(EM_MAL_ID) || finnM(EM_MAL_V1);
   if (!mal) varsel(maler && maler.feil === "IKKE_INNLOGGET" ? t("Logg inn for å hente EM-skjemaet fra SharePoint.")
-    : t("Fant ikke EM-skjemaet (Sjekklister/endringsmelding-v1.json) i SharePoint."));
+    : t("Fant ikke EM-skjemaet (Sjekklister/endringsmelding-v2.json) i SharePoint."));
   return mal || null;
 }
 const referanse = (em) => (em.nr ? em.nr + " · " : "") + em.tittel;
@@ -461,7 +622,7 @@ async function lagreSkjemaEm(id, nytt) {
 
 export async function apneEmSkjema(id, malInn) {
   const em = finn(id); if (!em) return;
-  const mal = malInn || await emMal(); if (!mal) return;
+  const mal = malInn || await emMal(em.skjema && em.skjema.malId); if (!mal) return;
   const skjema = vaskSkjema(em.skjema) || nyttSkjema(mal);
   // Skjemaet åpnes i samme vindu som på markeringene, men «markeringen» her
   // er bare en bærer for tittel, forfatter og frist — den lagres aldri.
@@ -497,7 +658,7 @@ export async function lastNedEmExcel(id) {
 
 export async function lastNedEmPdf(id) {
   const em = finn(id); if (!em) return null;
-  const mal = await emMal(); if (!mal) return null;
+  const mal = await emMal(em.skjema && em.skjema.malId); if (!mal) return null;
   const skjema = vaskSkjema(em.skjema) || nyttSkjema(mal);
   const mod = await import("./skjema-pdf.js");
   return mod.lastNedSkjema({ mal, skjema, prosjekt: (S.prosjektInfo && S.prosjektInfo().nummer) || "",
@@ -518,7 +679,8 @@ export async function lagUtkast() {
   if (!S.akseLinjer && S.sikreAkseLinjer) { try { await S.sikreAkseLinjer(); } catch (_) {} }
   const endringer = R.endringerFra(k.res, L, { toM: S.enhetSkala || 1, akser: S.akseLinjer, utvalg });
   const id = "em" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-  const iDag = iDagISO(), frist = R.emFrist(tilstand.oppdaget || iDag, tilstand.fristDager);
+  const iDag = iDagISO(), frist = R.emFrist(tilstand.varsel.mottatt || tilstand.oppdaget || iDag, tilstand.fristDager);
+  const v2 = mal.id === EM_MAL_ID, kon = tilstand.kontrakt, vs = K.vaskVarsel(tilstand.varsel);
   const tittel = String(tilstand.tittel || "").trim() || t("Endringsmelding fra modellen");
   const oppdagetTekst = String(tilstand.oppdaget || iDag).split("-").reverse().join(".");
 
@@ -543,9 +705,17 @@ export async function lagUtkast() {
   skjema.svar = {
     oversendtDato: iDag,
     varselnummer: (String(tilstand.emNr || "").trim() ? String(tilstand.emNr).trim() + " – " : "") + tittel,
-    begrunnelse: R.faktablokk(L, { fra: kortNavn(k.fra), til: kortNavn(k.til), metode: k.metode,
-      utvalg: k.utvalg, modell: kortNavn(k.modell), oppdaget: oppdagetTekst, nyId: (k.res.uendretNyId || []).length }),
+    begrunnelse: R.faktablokk(L, { fra: vs.revFor || kortNavn(k.fra), til: vs.revEtter || kortNavn(k.til), metode: k.metode,
+      utvalg: k.utvalg, modell: kortNavn(k.modell), oppdaget: oppdagetTekst, nyId: (k.res.uendretNyId || []).length,
+      // v2: hjemmelen har sitt eget felt (1.7). v1: står i begrunnelsen hvis den er skrevet
+      hjemmel: v2 ? null : (vs.hjemmel || "") }),
     okonomi: R.ordrelinjer(L),
+    ...(v2 ? {
+      mottaker: kon.mottaker, kontrakt: K.kontraktTekst(kon), typeVarsel: vs.type, hjemmel: vs.hjemmel,
+      revisjon: K.revisjonTekst(vs), modellMottatt: vs.mottatt, arbeidet: vs.arbeidet,
+      // Mengdene er anslag fra modellen — kravet er foreløpig til det er spesifisert
+      okonomiKartlagt: K.FORELOPIG
+    } : {}),
     annet: [t("Vedlegg:"), "• " + t("Før- og etter-bilder fra 3D-modellen og mål for hvert endret element (bakerst i dokumentet)"), "• " + t("Mengdeliste (Excel) fra Storm IFC-Viewer, sendes som egen fil sammen med dette dokumentet")].join("\n")
   };
   const sum = R.sumAnslag(L);
@@ -555,10 +725,14 @@ export async function lagUtkast() {
     modell: S.fileName || "", fra: kortNavn(k.fra), til: kortNavn(k.til || S.fileName), metode: k.metode || "",
     utvalg, toM: S.enhetSkala || 1, akser: kompakteAkser(S.akseLinjer), endringer, skjema: vaskSkjema(skjema),
     nyIdAndre: R.nyIdUtenEndring(k.res, endringer, { akser: S.akseLinjer }),
+    kontrakt: { mottaker: kon.mottaker, kontrakt: K.kontraktTekst(kon) }, varsel: vs,
     historikk: [hendelse(t("Laget"))]
   });
   const lagret = await lagre(em);
   if (!lagret) return null;
+  // 📜 Kontrakten og hjemmelen huskes for prosjektet (neste EM har dem ferdig)
+  tilstand.kontrakt = K.huskHjemmel(K.vaskKontrakt(tilstand.kontrakt), vs.type, vs.hjemmel);
+  try { await K.lagreKontrakt(tilstand.kontrakt); } catch (_) {}
   if (S.pushAngre) S.pushAngre({ tekst: t("Endringsmelding"),
     angre: () => { const x = finn(id); if (x) slettEm(x).then(r => { if (r.ok) { tilstand.liste = r.liste; tegn(); } }); },
     gjenopprett: () => lagre(Object.assign({}, em, { slettet: false })) });
@@ -577,6 +751,7 @@ på("btnEm", "click", async () => {
   apnePanel("emPanel");
   tegn();
   try { await hentPriser(); } catch (_) {}
+  try { await hentKontrakt(); } catch (_) {}
   tegn();
   lastListe().catch(() => {});
 });

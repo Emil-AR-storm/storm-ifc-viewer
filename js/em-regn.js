@@ -24,7 +24,7 @@ const STANDARD = {
   ifcreinforcingbar: "kg", ifcreinforcingmesh: "kg", ifctendon: "kg"
 };
 export const typeNokkel = (t) => String(t || "").trim().toLowerCase();
-export function standardEnhet(type) { return STANDARD[typeNokkel(type)] || "stk"; }
+export function standardEnhet(type) { const k = typeNokkel(type); return STANDARD[k] || STANDARD["ifc" + k] || "stk"; }
 
 // «IFCCOLUMN» / «IfcColumn» → «Søyle» o.l. Ukjent: typen uten «Ifc».
 const NAVN = {
@@ -36,7 +36,8 @@ const NAVN = {
 };
 export function typeNavn(type) {
   const k = typeNokkel(type);
-  return NAVN[k] || String(type || "").replace(/^ifc/i, "") || "Ukjent";
+  // Lette kopier (GLB) har typen uten «Ifc» («Beam») — samme norske navn (Emils PDF 26.10)
+  return NAVN[k] || NAVN["ifc" + k] || String(type || "").replace(/^ifc/i, "") || "Ukjent";
 }
 
 // Mengden for ÉTT element i en enhet. e = { d:[x,y,z] (modellenheter), v (m³) }
@@ -53,33 +54,91 @@ export function mengdeFor(e, enhet, toM) {
   }
 }
 
+// 📏 PROFILEN (Emil 26.10, EM-test 5): «søyle CFSHS100x6 og søyle CFSHS100x8 er
+// begge 2 søyle CFSHS … forskjellige dimensjoner = forskjellige pris/vekt».
+// Revit-navnet er «Familie:Type:Id» — Type er profilen, som i Revits
+// stålskjema («Tabell Søyler Stål»: CFSHS100x6 · lengde · kg/m · vekt).
+export function profilNavn(navn) {
+  const deler = String(navn || "").split(":").map(x => x.trim()).filter(Boolean);
+  if (deler.length && /^\d+$/.test(deler[deler.length - 1])) deler.pop();
+  return (deler.length ? deler[deler.length - 1] : "").slice(0, 60) || "(uten navn)";
+}
+// Lengden langs elementet (PCA-lengden når den finnes, ellers boksens lengste side), i meter
+export function elementLengde(e, toM) {
+  const s = Number(toM) || 1;
+  if (e && Number(e.L) > 0) return Number(e.L) * s;
+  const d = (Array.isArray(e && e.d) ? e.d : [0, 0, 0]).map(x => Math.abs(Number(x) || 0));
+  return Math.max(0, ...d) * s;
+}
+export const profilNokkelFor = (linjeKey, profil) => linjeKey + "|" + profil;
+const rund1 = (x) => Math.round(x * 10) / 10;
+
 // Sammenlign-resultat → linjer per type. enheter = { [typeNokkel]: enhet }
 // (brukerens valg per linje); mangler den, brukes standardEnhet.
+//
+// Hver linje har også `profiler`: én underlinje per profil med antall, lengde-
+// endring (lm) og kg/m. I kg regnes linja som Σ lengde × kg/m per profil —
+// samme regning som Revits stålskjema. kg/m skrives inn av brukeren
+// (opt.kgPerM[linje|profil]); ellers brukes et anslag fra modellen
+// (volum × 7 850 / lengde), merket «modell». Et endret element som har byttet
+// profil trekkes fra den gamle profilen og legges til den nye.
 export function mengdeDiff(res, o) {
-  const opt = o || {}, toM = Number(opt.toM) || 1, valgt = opt.enheter || {};
+  const opt = o || {}, toM = Number(opt.toM) || 1, valgt = opt.enheter || {}, egneKg = opt.kgPerM || {}, huskKg = opt.kgPerMProfil || {};
   const per = new Map();
   const linje = (type) => {
     const k = typeNokkel(type) || "ukjent";
     if (!per.has(k)) per.set(k, { key: k, type: type || "", navn: typeNavn(type), enhet: valgt[k] || standardEnhet(type),
-      ny: 0, slettet: 0, endret: 0, mengde: 0, ider: [], navnSett: new Map() });
+      ny: 0, slettet: 0, endret: 0, mengde: 0, ider: [], navnSett: new Map(), prof: new Map() });
     return per.get(k);
   };
+  const prof = (l, navn) => {
+    const p = profilNavn(navn);
+    if (!l.prof.has(p)) l.prof.set(p, { key: profilNokkelFor(l.key, p), navn: p, ny: 0, slettet: 0, endret: 0, lm: 0, mengde: 0, volKg: 0, lengde: 0, utenLengde: 0, ider: [] });
+    return l.prof.get(p);
+  };
+  // modellanslaget for kg/m: alle elementene i profilen, før og etter
+  const maal = (p, e) => { const L = elementLengde(e, toM); if (L > 0 && e.v > 0) { p.volKg += Math.abs(e.v) * STAAL_KG_M3; p.lengde += L; } };
   const tellNavn = (l, n) => { const x = String(n || "").split(":")[0].trim(); if (x) l.navnSett.set(x, (l.navnSett.get(x) || 0) + 1); };
-  for (const e of (res && res.ny) || []) { const l = linje(e.type); l.ny++; l.mengde += mengdeFor(e, l.enhet, toM); if (e.id != null) l.ider.push(e.id); tellNavn(l, e.name); }
-  for (const e of (res && res.slettet) || []) { const l = linje(e.type); l.slettet++; l.mengde -= mengdeFor(e, l.enhet, toM); tellNavn(l, e.name); }
+  // fortegn: +1 ny, −1 fjernet. stk teller ikke endrede.
+  const legg = (l, p, e, fortegn) => { l.mengde += fortegn * mengdeFor(e, l.enhet, toM); p.lm += fortegn * elementLengde(e, toM); p.mengde += fortegn * mengdeFor(e, l.enhet, toM); p.kgVol = (p.kgVol || 0) + fortegn * mengdeFor(e, "kg", toM); maal(p, e); };
+  for (const e of (res && res.ny) || []) { const l = linje(e.type), p = prof(l, e.name); l.ny++; p.ny++; legg(l, p, e, 1); if (e.id != null) { l.ider.push(e.id); p.ider.push(e.id); } tellNavn(l, e.name); }
+  for (const e of (res && res.slettet) || []) { const l = linje(e.type), p = prof(l, e.name); l.slettet++; p.slettet++; legg(l, p, e, -1); tellNavn(l, e.name); }
   for (const e of (res && res.endret) || []) {
-    const l = linje(e.type); l.endret++;
-    const fra = e.fra || {};
+    const l = linje(e.type), p = prof(l, e.name); l.endret++; p.endret++;
+    const fra = e.fra || {}, pf = prof(l, fra.name || e.name);
     // stk teller ikke endrede: én søyle som blir lengre er fortsatt én søyle
-    if (l.enhet !== "stk") l.mengde += mengdeFor(e, l.enhet, toM) - mengdeFor(fra, l.enhet, toM);
-    if (e.id != null) l.ider.push(e.id); tellNavn(l, e.name);
+    if (l.enhet !== "stk") { legg(l, p, e, 1); legg(l, pf, fra, -1); }
+    else { maal(p, e); maal(pf, fra); p.lm += elementLengde(e, toM); pf.lm -= elementLengde(fra, toM); }
+    if (e.id != null) { l.ider.push(e.id); p.ider.push(e.id); } tellNavn(l, e.name);
   }
   return [...per.values()].map(l => {
     const navn = [...l.navnSett.entries()].sort((a, b) => b[1] - a[1]).map(x => x[0]);
-    delete l.navnSett;
-    return Object.assign(l, { undertekst: navn.slice(0, 2).join(", ") + (navn.length > 2 ? " …" : ""), mengde: avrund(l.mengde, l.enhet) });
+    const profiler = [...l.prof.values()].filter(p => p.ny || p.slettet || p.endret || Math.abs(p.lm) > 1e-9).map(p => {
+      // skrevet inn her (linje|profil), ellers husket fra før for samme profilnavn
+      const ok = (v) => v != null && v !== "" && isFinite(Number(v)) && Number(v) > 0;
+      const egen = ok(egneKg[p.key]) ? Number(egneKg[p.key]) : (ok(huskKg[p.navn]) ? Number(huskKg[p.navn]) : null);
+      const modell = p.lengde > 0 ? rund1(p.volKg / p.lengde) : null;
+      const kgPerM = egen != null ? egen : modell;
+      // kg: lengde × kg/m (uten lengde: volum × 7 850)
+      const mengde = l.enhet === "kg" ? (kgPerM != null ? p.lm * kgPerM : (p.kgVol || 0)) : (l.enhet === "stk" ? p.ny - p.slettet : p.mengde);
+      return { key: p.key, navn: p.navn, ny: p.ny, slettet: p.slettet, endret: p.endret, lm: avrund(p.lm, "lm"),
+        kgPerM, kgPerMKilde: egen != null ? "egen" : (modell != null ? "modell" : ""), kgPerMModell: modell,
+        mengde: avrund(mengde, l.enhet), ider: p.ider };
+    }).sort((a, b) => a.navn.localeCompare(b.navn, "no", { numeric: true }));
+    const mengde = l.enhet === "kg" ? profiler.reduce((s, p) => s + p.mengde, 0) : l.mengde;
+    delete l.navnSett; delete l.prof;
+    return Object.assign(l, { undertekst: navn.slice(0, 2).join(", ") + (navn.length > 2 ? " …" : ""), mengde: avrund(mengde, l.enhet), profiler });
   }).filter(l => l.ny || l.slettet || l.endret)
     .sort((a, b) => a.navn.localeCompare(b.navn, "no"));
+}
+
+// Mengden for ett element i linja — i kg med profilens kg/m (samme regning som linja)
+export function mengdeILinje(e, l, toM) {
+  if (l && l.enhet === "kg" && Array.isArray(l.profiler)) {
+    const p = l.profiler.find(x => x.navn === profilNavn(e && e.name));
+    if (p && p.kgPerM != null) return elementLengde(e, toM) * p.kgPerM;
+  }
+  return mengdeFor(e, l ? l.enhet : "stk", toM);
 }
 
 export function avrund(v, enhet) {
@@ -131,11 +190,16 @@ export function faktablokk(linjer, k) {
     if (x.slettet) deler.push("−" + x.slettet + " fjernet");
     if (x.endret) deler.push(x.endret + " endret");
     l.push("• " + x.navn + (x.undertekst ? " (" + x.undertekst + ")" : "") + ": " + deler.join(", ") + " → " + mengdeTekst(x));
+    // 📏 kg per profil: lengde × kg/m, så regningen kan etterprøves
+    if (x.enhet === "kg") for (const p of x.profiler || []) if (p.kgPerM != null && Math.abs(p.lm) > 1e-9)
+      l.push("   – " + p.navn + ": " + (p.lm > 0 ? "+" : "") + tallTekst(p.lm, 2) + " lm × " + tallTekst(p.kgPerM, 1) + " kg/m = " + mengdeTekst({ mengde: p.mengde, enhet: "kg" }) + (p.kgPerMKilde === "modell" || p.kilde === "modell" ? " (kg/m anslått fra modellen)" : ""));
   }
   if (o.nyId) l.push("", o.nyId + (o.nyId === 1 ? " element har" : " elementer har") + " fått ny GlobalId i modellen, men er samme element på samme sted. De er kontrollert og ikke priset (se vedlegg).");
   l.push("", "Mengdene er beregnet fra 3D-modellen og er et anslag, ikke oppmål.");
   if (o.oppdaget) l.push("Endringen ble oppdaget " + o.oppdaget + ".");
-  l.push("", "Hjemmel: [fyll inn punkt fra NS 84xx]");
+  // Med mal v2 har hjemmelen eget felt (1.7) og står ikke her (hjemmel: null).
+  // Verktøyet skriver aldri et punktnummer selv — bare det brukeren har skrevet.
+  if (o.hjemmel !== null) l.push("", "Hjemmel: " + (String(o.hjemmel || "").trim() || "[fyll inn punkt fra kontrakten]"));
   return l.join("\n");
 }
 
@@ -153,8 +217,12 @@ export function ordrelinjer(linjer) {
 // Excel: én rad per linje + sum
 export function excelRader(linjer, k) {
   const o = k || {};
-  const rader = [["Type", "Elementer", "Ny", "Fjernet", "Endret", "Mengdeendring", "Enhet", "Pris (kr/enhet)", "Sum (kr eks. mva)"]];
-  for (const l of linjer || []) rader.push([l.navn, l.undertekst || "", l.ny, l.slettet, l.endret, l.mengde, l.enhet, l.pris == null ? "mangler pris" : l.pris, l.sum == null ? "" : l.sum]);
+  const rader = [["Type", "Elementer / profil", "Ny", "Fjernet", "Endret", "Mengdeendring", "Enhet", "Pris (kr/enhet)", "Sum (kr eks. mva)", "Lengdeendring (lm)", "kg/m"]];
+  for (const l of linjer || []) {
+    rader.push([l.navn, l.undertekst || "", l.ny, l.slettet, l.endret, l.mengde, l.enhet, l.pris == null ? "mangler pris" : l.pris, l.sum == null ? "" : l.sum]);
+    for (const p of l.profiler || []) rader.push(["", "   " + p.navn, p.ny, p.slettet, p.endret, p.mengde, l.enhet, "",
+      l.pris == null ? "" : Math.round(p.mengde * l.pris), p.lm, l.enhet === "kg" && p.kgPerM != null ? p.kgPerM : ""]);
+  }
   const s = sumAnslag(linjer);
   rader.push([], ["Prisanslag (eks. mva)", "", "", "", "", "", "", "", s.sum]);
   if (o.fra || o.til) rader.push(["Revisjon " + (o.til || "") + " mot " + (o.fra || "")]);
@@ -263,9 +331,9 @@ export function endringerFra(res, linjer, o) {
     const el = [];
     const legg = (e, hva) => {
       let m;
-      if (hva === "fjernet") m = -mengdeFor(e, l.enhet, toM);
-      else if (hva === "endret") m = l.enhet === "stk" ? null : mengdeFor(e, l.enhet, toM) - mengdeFor(e.fra || {}, l.enhet, toM);
-      else m = mengdeFor(e, l.enhet, toM);
+      if (hva === "fjernet") m = -mengdeILinje(e, l, toM);
+      else if (hva === "endret") m = l.enhet === "stk" ? null : mengdeILinje(e, l, toM) - mengdeILinje(Object.assign({ name: e.name }, e.fra || {}), l, toM);
+      else m = mengdeILinje(e, l, toM);
       el.push({ hva, id: e.id != null ? e.id : null, navn: String(e.name || "").slice(0, 80), guid: String(e.guid || ""),
         akse: akseFor(e.c, opt.akser), mengde: m == null ? null : avrund(m, l.enhet),
         c: pkt(e.c), d: pkt(e.d), fc: e.fra ? pkt(e.fra.c) : null, fd: e.fra ? pkt(e.fra.d) : null,
@@ -288,7 +356,10 @@ export function endringerFra(res, linjer, o) {
     const nyId = nyIdFor(res, opt, (e) => (typeNokkel(e.type) || "ukjent") === l.key);
     return { key: l.key, navn: l.navn, undertekst: l.undertekst || "", enhet: l.enhet,
       oppsummering: deler.join(" · ") + " → " + mengdeTekst(l) + (nyId.length ? " · " + nyId.length + " samme element med ny ID (ikke priset)" : ""),
-      antall: el.length, elementer: el.slice(0, MAKS_ELEMENTER), bilder: { for: "", etter: "" }, nyId };
+      antall: el.length, elementer: el.slice(0, MAKS_ELEMENTER), bilder: { for: "", etter: "" }, nyId,
+      // 📏 per profil — står i PDF-en og Excel, så kontraktsparten ser regningen
+      profiler: (l.profiler || []).slice(0, 60).map(p => ({ navn: p.navn, ny: p.ny, slettet: p.slettet, endret: p.endret, lm: p.lm,
+        kgPerM: p.kgPerM, kilde: p.kgPerMKilde || "", mengde: p.mengde })) };
   });
 }
 
@@ -344,7 +415,10 @@ export function vaskEm(r) {
     utvalg: r.utvalg === true, toM: tall(r.toM) || 1,
     endret: tekst(r.endret, 30), slettet: r.slettet === true,
     historikk: (Array.isArray(r.historikk) ? r.historikk : []).slice(-50).map(h => ({ tid: tekst(h && h.tid, 30), av: tekst(h && h.av, 80), hva: tekst(h && h.hva, 120) })),
-    akser: null, endringer: [], nyIdAndre: vaskNyId(r.nyIdAndre), skjema: (r.skjema && typeof r.skjema === "object") ? r.skjema : null
+    akser: null, endringer: [], nyIdAndre: vaskNyId(r.nyIdAndre),
+    kontrakt: r.kontrakt && typeof r.kontrakt === "object" ? { mottaker: tekst(r.kontrakt.mottaker, 160), kontrakt: tekst(r.kontrakt.kontrakt, 320) } : null,
+    varsel: r.varsel && typeof r.varsel === "object" ? { type: tekst(r.varsel.type, 40), hjemmel: tekst(r.varsel.hjemmel, 160), revFor: tekst(r.varsel.revFor, 80),
+      revEtter: tekst(r.varsel.revEtter, 80), mottatt: tekst(r.varsel.mottatt, 10), arbeidet: tekst(r.varsel.arbeidet, 30) } : null, skjema: (r.skjema && typeof r.skjema === "object") ? r.skjema : null
   };
   if (r.akser && typeof r.akser === "object") {
     const a = (l) => (Array.isArray(l) ? l : []).slice(0, 80).filter(x => x && isFinite(Number(x.c))).map(x => ({ c: Number(x.c), navn: tekst(x.navn, 6) }));
@@ -356,6 +430,9 @@ export function vaskEm(r) {
     antall: Math.max(0, Math.round(tall(e && e.antall) || 0)),
     bilder: { for: bildeNavnOk(e && e.bilder && e.bilder.for), etter: bildeNavnOk(e && e.bilder && e.bilder.etter) },
     nyId: vaskNyId(e && e.nyId),
+    profiler: (Array.isArray(e && e.profiler) ? e.profiler : []).slice(0, 60).map(p => ({ navn: tekst(p && p.navn, 60),
+      ny: Math.max(0, Math.round(tall(p && p.ny) || 0)), slettet: Math.max(0, Math.round(tall(p && p.slettet) || 0)), endret: Math.max(0, Math.round(tall(p && p.endret) || 0)),
+      lm: tall(p && p.lm) || 0, kgPerM: tall(p && p.kgPerM), kilde: p && p.kilde === "egen" ? "egen" : (p && p.kilde === "modell" ? "modell" : ""), mengde: tall(p && p.mengde) || 0 })),
     elementer: (Array.isArray(e && e.elementer) ? e.elementer : []).slice(0, MAKS_ELEMENTER).map(x => ({
       hva: ["ny", "fjernet", "endret", "valgt"].includes(x && x.hva) ? x.hva : "ny",
       id: tall(x && x.id), navn: tekst(x && x.navn, 80), guid: tekst(x && x.guid, 40), akse: tekst(x && x.akse, 20),

@@ -16,7 +16,7 @@
 // Bildene er hentet på forhånd (data-URL-er), derfor ingen await her.
 import { t } from "./i18n.js";
 import { malBunn, malTopp } from "./pdf-utseende.js";
-import { elementMengde, kortGuid, planUtsnitt, typeNavn } from "./em-regn.js";
+import { elementMengde, kortGuid, planUtsnitt, tallTekst, typeNavn } from "./em-regn.js";
 import { detaljerFor, dimensjonAv } from "./em-detalj.js";
 import { tilLatin1 } from "./skjema-pdf.js";
 
@@ -81,7 +81,43 @@ function plan(d, x, y, b, h, endring, akser) {
   for (const e of endring.elementer) if (e.hva !== "fjernet") rute(e.c, e.d, FARGE[e.hva] || FARGE.ny, false);
 }
 
-function tabell(d, x, y, b, yMaks, endring) {
+// 📏 Per profil (Emil 26.10): «KG per type/dimensjon i løpemeter» — regningen
+// står over elementlista, så kontraktsparten ser lengde × kg/m for hver profil.
+function profilBlokk(d, x, y, b, endring) {
+  const prof = (endring.profiler || []).filter(p => p && (p.ny || p.slettet || p.endret || p.lm));
+  if (!prof.length || !["kg", "lm"].includes(endring.enhet)) return y;
+  const kg = endring.enhet === "kg";
+  const kol = [{ t: "Profil", b: b * 0.40 }, { t: "Lengde", b: b * 0.2, h: true }, { t: kg ? "kg/m" : "", b: b * 0.17, h: true }, { t: "Mengde", b: b * 0.23, h: true }];
+  d.setFont(undefined, "bold"); d.setFontSize(5.5); d.setTextColor(...rgb(FARGE.gra));
+  let cx = x;
+  for (const k of kol) { if (k.t) d.text(tilLatin1(t(k.t)).toUpperCase(), k.h ? cx + k.b : cx, y, k.h ? { align: "right" } : undefined); cx += k.b; }
+  d.setDrawColor(...rgb(FARGE.kant)); d.setLineWidth(0.25); d.line(x, y + 1.2, x + b, y + 1.2);
+  let ry = y + 4.6;
+  const vis = prof.slice(0, 8);
+  d.setFontSize(6);
+  for (const p of vis) {
+    cx = x;
+    d.setFont(undefined, "bold"); d.setTextColor(...rgb(FARGE.tekst));
+    d.text(kutt(d, tilLatin1(p.navn), kol[0].b - 1.5), cx, ry); cx += kol[0].b;
+    d.setFont(undefined, "normal");
+    d.text(tilLatin1((p.lm > 0 ? "+" : "") + tallTekst(p.lm, 2) + " lm"), cx + kol[1].b, ry, { align: "right" }); cx += kol[1].b;
+    if (kg) {
+      d.setTextColor(...rgb(p.kilde === "modell" ? FARGE.gra : FARGE.tekst));
+      d.text(tilLatin1(p.kgPerM == null ? "—" : "x " + tallTekst(p.kgPerM, 1) + (p.kilde === "modell" ? "*" : "")), cx + kol[2].b, ry, { align: "right" });
+      d.setTextColor(...rgb(FARGE.tekst));
+    }
+    cx += kol[2].b;
+    d.text(tilLatin1((p.mengde > 0 ? "+" : "") + tallTekst(p.mengde, kg ? 0 : 2) + " " + endring.enhet), cx + kol[3].b, ry, { align: "right" });
+    ry += 3.6;
+  }
+  d.setTextColor(...rgb(FARGE.gra));
+  if (prof.length > vis.length) { d.text(tilLatin1(t("+ {0} til — se mengdelista (Excel)", prof.length - vis.length)), x, ry); ry += 3.6; }
+  if (kg && vis.some(p => p.kilde === "modell")) { d.setFontSize(5); d.text(tilLatin1(t("* kg/m anslått fra modellen (volum × 7 850 / lengde)")), x, ry); ry += 3.2; }
+  return ry + 2.5;
+}
+
+function tabell(d, x, y0, b, yMaks, endring) {
+  const y = profilBlokk(d, x, y0, b, endring);
   const kol = [{ t: "Element", b: b * 0.48 }, { t: "Akse", b: b * 0.13 }, { t: "Hva", b: b * 0.19 }, { t: "Mengde", b: b * 0.2, h: true }];
   const nrAv = endretNummer(endring);
   d.setFont(undefined, "bold"); d.setFontSize(5.5); d.setTextColor(...rgb(FARGE.gra));

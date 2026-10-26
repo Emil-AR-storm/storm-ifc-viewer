@@ -104,6 +104,9 @@ export function byggSkjemaModell(mal, skjema, meta) {
     versjon: Number(skjema.versjon) || 1,
     erstatter: skjema.erstatter || null,
     laast: skjema.laast === true,
+    // 🚦 Påkrevde felt som står tomme (EM runde 2, B6): utkastet merkes
+    // «UTKAST – IKKE SENDEKLAR: … mangler» på HVER side, også bildesidene
+    mangler: felt.filter(f => f.pakrevd && tomtSvar(skjema.svar && skjema.svar[f.id])).map(f => tilLatin1(kortFelt(f.navn || f.id))),
     signertAv: tilLatin1(skjema.signertAv),
     signertTid: tilLatin1(skjema.signertTid),
     signatur: String(skjema.signatur || ""),
@@ -119,6 +122,14 @@ export function byggSkjemaModell(mal, skjema, meta) {
     })),
     _finn: undefined && finn
   };
+}
+
+// «Hjemmel (punkt i kontrakten)» → «Hjemmel» — stempelet skal være kort
+const kortFelt = (n) => String(n || "").replace(/\s*\(.*\)\s*$/, "").split(" / ")[0].trim();
+export function stempelTekst(m) {
+  if (!m || m.laast || !(m.mangler || []).length) return "";
+  const l = m.mangler.slice(0, 4).map(x => x.toLowerCase());
+  return t("UTKAST – IKKE SENDEKLAR: {0} mangler", l.join(", ") + (m.mangler.length > 4 ? " …" : ""));
 }
 
 export function filnavn(m) {
@@ -216,7 +227,7 @@ function topplinje(P, forste) {
     d.roundedRect(A4.marg, P.y, P.bredde, h, 1.5, 1.5, "FD");
     hex(d, HOVED, "fyll"); d.rect(A4.marg, P.y, 1.2, h, "F");
     hex(d, ROD); d.setFontSize(8); d.setFont(undefined, "bold");
-    d.text(t("Utkast – ikke fullført og ikke signert."), A4.marg + 4, P.y + 4.6);
+    d.text(tilLatin1(stempelTekst(m) || t("Utkast – ikke fullført og ikke signert.")), A4.marg + 4, P.y + 4.6);
     d.setFont(undefined, "normal"); hex(d, SORT);
     if (forste) d.text(t("Skjemaet kan fortsatt endres. Det er ikke et avsendt varsel."), A4.marg + 4, P.y + 8.4);
     P.y += h + 5;
@@ -401,7 +412,17 @@ export function tegn(jsPDF, m, logo, ekstra) {
   signaturblokk(P);
   if (typeof ekstra === "function") {
     bunnlinje(P); P.bunnFerdig = true;
+    const forsteEkstra = P.d.getNumberOfPages() + 1;
     ekstra(P.d, { logo: P.logo, m });
+    // Stempelet også på bildesidene — en side kan skrives ut og sendes alene
+    const st = stempelTekst(m);
+    if (st) for (let i = forsteEkstra; i <= P.d.getNumberOfPages(); i++) {
+      P.d.setPage(i);
+      const ps = P.d.internal && P.d.internal.pageSize, sb = ps && ps.getWidth ? ps.getWidth() : A4.b;
+      P.d.setFontSize(7); P.d.setFont(undefined, "bold"); hex(P.d, ROD);
+      P.d.text(tilLatin1(st), sb / 2, 9, { align: "center" });
+      P.d.setFont(undefined, "normal");
+    }
   }
   P.slutt();
   return P.d;
