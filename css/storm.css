@@ -1313,7 +1313,7 @@ body:not(.har-modell) #btnFit { display: none !important; }
 #skjemaVelg.open { display: flex; align-items: center; justify-content: center; }
 #skjemaVelg .sv-boks {
   background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
-  box-shadow: var(--skygge); width: min(720px, 94vw); max-height: 88vh;
+  box-shadow: var(--skygge); width: min(1080px, 96vw); max-height: 90vh;
   display: flex; flex-direction: column;
 }
 #skjemaVelg .sv-topp {
@@ -1416,7 +1416,9 @@ body:not(.har-modell) #btnFit { display: none !important; }
 
 /* Ordrelinjer (2.4). Kostnad, påslag og fortjeneste vises HER — de er
    prosjektlederens tall. `.intern` markerer at de ikke går ut av huset. */
-#skjemaVelg .sv-ordre { border: 1px solid var(--border); border-radius: 8px; padding: 8px; }
+#skjemaVelg .sv-ordre { border: 1px solid var(--border); border-radius: 8px; padding: 8px; overflow-x: auto; }
+#skjemaVelg .sv-o-tab { min-width: 860px; }
+#skjemaVelg .sv-o-bytt { margin-top: 6px; background: none; border: 1px solid var(--accent2); color: var(--text); border-radius: 6px; font-size: 11px; padding: 2px 8px; cursor: pointer; font-family: inherit; }
 #skjemaVelg .sv-o-tab { width: 100%; border-collapse: collapse; font-size: 11px; }
 #skjemaVelg .sv-o-tab th {
   text-align: left; font-weight: 600; font-size: 9px; letter-spacing: .03em;
