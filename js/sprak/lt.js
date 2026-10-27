@@ -1368,6 +1368,10 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "BCF-eksport": "BCF eksportas",
   // 📝 Endringsmelding fra modellen (26.10.2026)
   // 🔗 EM paring av fjernet + ny (26.10.2026)
+  "Ingenting å gjøre om i skjemaet.": "Formoje nėra ką pakartoti.",
+  "Ingenting å angre i skjemaet.": "Formoje nėra ką atšaukti.",
+  "Fant ikke endringsmeldingen. Skjemaet ble ikke lagret.": "Pakeitimo pranešimas nerastas. Forma neišsaugota.",
+  "Endringsmeldingen var slettet. Den er hentet fram igjen og lagret med skjemaet.": "Pakeitimo pranešimas buvo ištrintas. Jis atkurtas ir išsaugotas su forma.",
   "{0} byttet til annen profil": "{0} pakeista į kitą profilį",
   "Under halvparten av elementene lot seg parre (gjenkjent på {0}). Er dette to revisjoner av samme modell? Mellom ulike modeller blir nesten alt «ny» og «fjernet», og «endret» kan være to forskjellige elementer.": "Suporuoti pavyko mažiau nei pusę elementų (atpažinta pagal {0}). Ar tai dvi to paties modelio revizijos? Tarp skirtingų modelių beveik viskas tampa „nauja“ ir „pašalinta“, o „pakeista“ gali būti du skirtingi elementai.",
   "Pris i kg i stedet (lengde × kg/m)": "Įkainoti kg (ilgis × kg/m)",

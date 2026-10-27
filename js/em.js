@@ -26,7 +26,7 @@ import { allElementBoxes, lastNedXlsxFlere, quantitiesForSet, visElementUtenPane
 import { metaFor, typeFor } from "./ifcrpc.js";
 import { spLes, spPaalogget } from "./sp-lager.js";
 import { fraLagret, prislisteNokkel } from "./priskalk-regn.js";
-import { apneSkjema, hentMaler, iDagISO, nyttSkjema, vaskSkjema } from "./sjekkliste.js";
+import { apneSkjema, hentMaler, iDagISO, nyttSkjema, ordreSum, vaskSkjema } from "./sjekkliste.js";
 import { innloggetNavn } from "./markers.js";
 import { hentBilde, huskBilde, lagreEm, lastOppBilde, lesEm, slettEm } from "./em-lager.js";
 import { taEndringsbilder } from "./em-bilder.js";
@@ -676,11 +676,29 @@ export function ekstraSider(id) {
   };
 }
 
+// Summen på kortet følger 2.4 i skjemaet (sum eks. mva, salgspris). Før sto
+// prisanslaget fra panelet der for alltid — 442 076 kr på kortet mot 8,2 mill.
+// i skjemaet (stresstest 3, 27.10).
+export function skjemaSum(skjema) {
+  const rader = skjema && skjema.svar && Array.isArray(skjema.svar.okonomi) ? skjema.svar.okonomi : null;
+  if (!rader) return null;
+  const s = ordreSum(rader);
+  return { sum: Math.round(s.eksMva), manglerPris: rader.filter(r => r && String(r.enhet).trim() !== "%" && !(Number(r.enhetspris) > 0)).length };
+}
 async function lagreSkjemaEm(id, nytt) {
-  const em = finn(id); if (!em) return;
+  let em = finn(id);
+  // Slettet mens skjemaet sto åpent? Da hentes den fram igjen i stedet for at
+  // signeringen forsvinner uten et ord.
+  if (!em) {
+    const gravlagt = tilstand.liste.find(e => e.id === id && e.slettet);
+    if (!gravlagt) { varsel(t("Fant ikke endringsmeldingen. Skjemaet ble ikke lagret.")); return; }
+    em = Object.assign({}, gravlagt, { slettet: false });
+    varsel(t("Endringsmeldingen var slettet. Den er hentet fram igjen og lagret med skjemaet."));
+  }
   const rent = vaskSkjema(nytt);
   const signert = rent && rent.laast && !(em.skjema && em.skjema.laast);
-  await lagre(Object.assign({}, em, { skjema: rent,
+  const sum = skjemaSum(rent);
+  await lagre(Object.assign({}, em, { skjema: rent }, sum ? { sum: sum.sum, manglerPris: sum.manglerPris } : {}, {
     historikk: signert ? em.historikk.concat(hendelse(t("Signert av {0}", rent.signertAv || ""))) : em.historikk }));
 }
 
@@ -798,9 +816,9 @@ export async function lagUtkast() {
   // 📜 Kontrakten og hjemmelen huskes for prosjektet (neste EM har dem ferdig)
   tilstand.kontrakt = K.huskHjemmel(K.vaskKontrakt(tilstand.kontrakt), vs.type, vs.hjemmel);
   try { await K.lagreKontrakt(tilstand.kontrakt); } catch (_) {}
-  if (S.pushAngre) S.pushAngre({ tekst: t("Endringsmelding"),
-    angre: () => { const x = finn(id); if (x) slettEm(x).then(r => { if (r.ok) { tilstand.liste = r.liste; tegn(); } }); },
-    gjenopprett: () => lagre(Object.assign({}, em, { slettet: false })) });
+  // 🚫 Ingen angre-post for «laget»: Ctrl+Z i skjemaet (eller i modellen like
+  // etterpå) slettet hele EM-en, og «Fullfør og signer» lagret da ingenting
+  // (Emils stresstest 3, 27.10). Slett gjøres med søppelkassa, som kan angres.
   tilstand.fane = "liste"; tegn();
   varsel(t("EM-utkastet er lagret internt i Endringsmeldinger. Gå gjennom skjemaet, signer og last ned PDF.") +
     (bildeFeil ? " " + t("{0} bilder ble ikke lastet opp.", bildeFeil) : ""));

@@ -569,9 +569,21 @@ function overlay() {
   return el;
 }
 
+// Skjemaets egne lyttere (angre/gjenopprett) — fjernes når skjemaet lukkes
+// eller et nytt åpnes, så de ikke hoper seg opp på det samme vinduet
+let skjemaLyttere = null;
+function fjernSkjemaLyttere() {
+  const l = skjemaLyttere; if (!l) return;
+  l.el.removeEventListener("focusin", l.fokus);
+  l.el.removeEventListener("change", l.endring, true);
+  window.removeEventListener("keydown", l.tast, true);
+  skjemaLyttere = null;
+}
+
 function lukk() {
   const el = $("skjemaVelg");
   if (el) el.classList.remove("open");
+  fjernSkjemaLyttere();
 }
 
 function boks(tittel, kropp, bunn) {
@@ -641,6 +653,55 @@ export async function apneSkjema(c, mal, skjema, lagre, valg) {
   // gjøres på nytt for hver opptegning.
   const kontekst = await byggKontekst(c, v.kontekst);
   let forslag = byggForslag(mal, kontekst, skjema);
+
+  // ↩ ANGRE OG GJENOPPRETT INNE I SKJEMAET (Emil 27.10, stresstest 3):
+  // Ctrl+Z i skjemaet gikk til modellens angre-stabel — linja i 2.4 kom ikke
+  // tilbake, og det som ble angret var at EM-en ble laget (den ble slettet).
+  // Nå har skjemaet sin egen stabel med øyeblikksbilder av svarene, og
+  // tastene stoppes her mens skjemaet er åpent. I et tekstfelt angrer
+  // nettleseren skrivingen som før.
+  const angreS = [], gjenS = [];
+  let forFokus = null;
+  const svarJson = () => JSON.stringify({ svar: skjema.svar, fg: skjema.forslagGodkjent });
+  const huskSkjema = (bilde) => {
+    if (skjema.laast) return;
+    const b = bilde || svarJson();
+    if (angreS[angreS.length - 1] === b) return;
+    angreS.push(b); if (angreS.length > 60) angreS.shift();
+    gjenS.length = 0;
+  };
+  const skjemaAngre = (fram) => {
+    if (skjema.laast) return;
+    const fra = fram ? gjenS : angreS, til = fram ? angreS : gjenS;
+    if (!fra.length) { varsel(fram ? t("Ingenting å gjøre om i skjemaet.") : t("Ingenting å angre i skjemaet.")); return; }
+    til.push(svarJson());
+    const b = JSON.parse(fra.pop());
+    skjema.svar = b.svar || {}; skjema.forslagGodkjent = b.fg || [];
+    tegn();
+  };
+  const erTekst = (x) => x && (x.tagName === "TEXTAREA" || (x.tagName === "INPUT" && !/^(checkbox|radio|button|submit|range|color|file)$/i.test(x.type || "")) || x.isContentEditable);
+  fjernSkjemaLyttere();
+  const lyttere = {
+    el,
+    fokus: (e) => { if (erTekst(e.target)) forFokus = svarJson(); },
+    // capture: kjører FØR feltets egen handler — avkrysninger og valg tas før endringen,
+    // tekstfelt fra da feltet fikk fokus (input har alt skrevet inn i svarene)
+    endring: (e) => {
+      if (erTekst(e.target)) { huskSkjema(forFokus || svarJson()); setTimeout(() => { forFokus = svarJson(); }, 0); }
+      else huskSkjema();
+    },
+    tast: (e) => {
+      if (!el.classList.contains("open")) return;
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || !/^[zy]$/i.test(e.key || "")) return;
+      if (erTekst(e.target)) { e.stopImmediatePropagation(); return; }   // nettleserens egen angre i feltet
+      e.preventDefault(); e.stopImmediatePropagation();
+      skjemaAngre(/^y$/i.test(e.key) || (/^z$/i.test(e.key) && e.shiftKey));
+    }
+  };
+  el.addEventListener("focusin", lyttere.fokus);
+  el.addEventListener("change", lyttere.endring, true);
+  window.addEventListener("keydown", lyttere.tast, true);
+  skjemaLyttere = lyttere;
 
   // Ubesvart-merkingen oppdateres UTEN å tegne skjemaet på nytt. Tegner vi alt
   // på nytt ved hvert kryss, mister brukeren rulleposisjonen midt i et langt
@@ -769,6 +830,7 @@ export async function apneSkjema(c, mal, skjema, lagre, valg) {
     el.querySelectorAll(".sv-o-ny").forEach(b => {
       b.onclick = () => {
         const id = b.dataset.ordre;
+        huskSkjema();
         const rader = (Array.isArray(skjema.svar[id]) ? skjema.svar[id] : []).slice();
         rader.push(tomLinje());
         skjema.svar[id] = rader;
@@ -796,6 +858,7 @@ export async function apneSkjema(c, mal, skjema, lagre, valg) {
         const id = b.dataset.ordre, i = Number(b.dataset.rad);
         const rader = Array.isArray(skjema.svar[id]) ? skjema.svar[id] : [];
         if (!rader[i]) return;
+        huskSkjema();
         rader[i].enhet = "kg";
         // en lm-pris er ikke en kg-pris — nullstilles så ingen tror den gjelder
         rader[i].enhetspris = 0;
@@ -821,6 +884,7 @@ export async function apneSkjema(c, mal, skjema, lagre, valg) {
     el.querySelectorAll(".sv-o-slett").forEach(b => {
       b.onclick = () => {
         const id = b.dataset.ordre, i = Number(b.dataset.rad);
+        huskSkjema();
         skjema.svar[id] = (skjema.svar[id] || []).filter((_, n) => n !== i);
         tegn();
       };
@@ -831,6 +895,7 @@ export async function apneSkjema(c, mal, skjema, lagre, valg) {
         const id = b.dataset.godkjenn;
         const f = forslag[id];
         if (!f) return;
+        huskSkjema();
         skjema.svar[id] = f.verdi;
         if (!skjema.forslagGodkjent.includes(id)) skjema.forslagGodkjent.push(id);
         delete forslag[id];

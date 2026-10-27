@@ -692,7 +692,13 @@ export function quantitiesForSet(idSet) {
   const addTri = (p, i0, i1, i2, mtx, id) => {
     _qa.fromBufferAttribute(p, i0); _qb.fromBufferAttribute(p, i1); _qc.fromBufferAttribute(p, i2);
     if (mtx) { _qa.applyMatrix4(mtx); _qb.applyMatrix4(mtx); _qc.applyMatrix4(mtx); }
-    const t = triBidrag(_qa.x, _qa.y, _qa.z, _qb.x, _qb.y, _qb.z, _qc.x, _qc.y, _qc.z);
+    // Volumet regnes fra elementets EGET senter, ikke modellens nullpunkt. For
+    // en flate som ikke er lukket (armeringsjern, Tekla-avstivere) avhenger
+    // tetraeder-summen ellers av hvor langt unna nullpunktet elementet står —
+    // stresstest 27.10 (Revit 200 MB) gav et stag på −73 tonn. Normalen, arealet
+    // og projeksjonen er de samme uansett hvor punktet måles fra.
+    const sc = sentre.get(id) || [0, 0, 0];
+    const t = triBidrag(_qa.x - sc[0], _qa.y - sc[1], _qa.z - sc[2], _qb.x - sc[0], _qb.y - sc[1], _qb.z - sc[2], _qc.x - sc[0], _qc.y - sc[1], _qc.z - sc[2]);
     vols.set(id, (vols.get(id) || 0) + t.vol6 / 6);
     projs.set(id, (projs.get(id) || 0) + t.proj2);
     let f = flater.get(id);
