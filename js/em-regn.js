@@ -244,7 +244,8 @@ export function ordrelinjer(linjer, o) {
     };
     // 📏 Prøve C (Emil 26.10): regnestykket per profil følger med inn i 2.4 —
     // bare på skjermen. Antall = Σ lengde × kg/m (sjekkliste.js vaskLinje).
-    if (l.enhet === "kg" && (l.profiler || []).some(p => p.kgPerM != null && p.lm))
+    // Emil 27.10: også i lm — nedtrekket skal finnes uansett enhet (kg kan velges i 2.4)
+    if ((l.enhet === "kg" || l.enhet === "lm") && (l.profiler || []).some(p => p.lm))
       r.profiler = l.profiler.filter(p => p.lm).slice(0, 60).map(p => ({ navn: p.navn, lm: p.lm, kgPerM: p.kgPerM, kilde: p.kgPerMKilde || p.kilde || "" }));
     return r;
   });

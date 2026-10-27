@@ -1368,6 +1368,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "BCF-eksport": "BCF export",
   // 📝 Endringsmelding fra modellen (26.10.2026)
   // 🔗 EM paring av fjernet + ny (26.10.2026)
+  "Pris i kg i stedet (lengde × kg/m)": "Price in kg instead (length × kg/m)",
   "Punktet i kontraktens prisliste": "The item in the contract price schedule",
   "Mengder (eks. mva)": "Quantities (excl. VAT)",
   "{0} følgekostnader mangler pris": "{0} consequential costs are missing a price",

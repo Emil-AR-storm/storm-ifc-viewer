@@ -179,8 +179,13 @@ export function vaskLinje(r) {
         kgPerM: kg != null && kg > 0 ? kg : null, kilde: p.kilde === "egen" ? "egen" : (p.kilde === "modell" ? "modell" : "") };
     });
     if (ut.enhet === "kg") ut.antall = profilSum(ut.profiler);
+    else if (ut.enhet === "lm") ut.antall = profilLm(ut.profiler);
   }
   return ut;
+}
+// Σ lengde (lm), to desimaler
+export function profilLm(profiler) {
+  return Math.round((profiler || []).reduce((s, p) => s + (Number(p.lm) || 0), 0) * 100) / 100;
 }
 // Σ lengde × kg/m, rundet til hele kg (som i panelet)
 export function profilSum(profiler) {
@@ -772,6 +777,23 @@ export async function apneSkjema(c, mal, skjema, lagre, valg) {
     el.querySelectorAll(".sv-o-profknapp").forEach(b => {
       b.onclick = () => { const k = b.dataset.ordre + ":" + b.dataset.rad; if (ordreApne.has(k)) ordreApne.delete(k); else ordreApne.add(k); tegn(); };
     });
+    // Enheten byttet på en linje med profiler (lm ↔ kg): antall og regnestykket tegnes på nytt
+    el.querySelectorAll('[data-ordre][data-kol="enhet"]').forEach(inp => inp.addEventListener("change", () => {
+      const r = (skjema.svar[inp.dataset.ordre] || [])[Number(inp.dataset.rad)];
+      if (r && Array.isArray(r.profiler) && r.profiler.length) tegn();
+    }));
+    el.querySelectorAll(".sv-o-bytt").forEach(b => {
+      b.onclick = () => {
+        const id = b.dataset.ordre, i = Number(b.dataset.rad);
+        const rader = Array.isArray(skjema.svar[id]) ? skjema.svar[id] : [];
+        if (!rader[i]) return;
+        rader[i].enhet = "kg";
+        // en lm-pris er ikke en kg-pris — nullstilles så ingen tror den gjelder
+        rader[i].enhetspris = 0;
+        skjema.svar[id] = rader.map(r => vaskLinje(r) || tomLinje());
+        tegn();
+      };
+    });
     el.querySelectorAll(".sv-o-kgm").forEach(inp => {
       inp.onchange = () => {
         const id = inp.dataset.ordre, i = Number(inp.dataset.rad), j = Number(inp.dataset.prof);
@@ -908,7 +930,7 @@ export function ordreHtml(f, rader, laast) {
     '</tr></thead><tbody>' +
     (rader.length ? rader.map((r, i) => {
       const l = linjeSum(r, basis);
-      const prof = Array.isArray(r.profiler) && r.profiler.length && r.enhet === "kg" ? r.profiler : null;
+      const prof = Array.isArray(r.profiler) && r.profiler.length && (r.enhet === "kg" || r.enhet === "lm") ? r.profiler : null;
       const apen = prof && ordreApne.has(f.id + ":" + i);
       return '<tr data-rad="' + i + '"' + (r.folge ? ' class="sv-o-folge"' : '') + '>' +
         '<td><input type="text" class="sv-o-post" data-ordre="' + esc(f.id) + '" data-rad="' + i + '" ' +
@@ -956,8 +978,12 @@ function profilKort(f, r, i, laast) {
         esc(p.kgPerM == null ? "" : String(p.kgPerM).replace(".", ",")) + '" placeholder="kg/m"' + av + '> kg/m</span><span>=</span><b class="r">' + tallNo(kg, 1) + ' kg</b></div>';
   };
   const sumR = r.profiler.reduce((s, p) => s + (Number(p.lm) || 0) * (Number(p.kgPerM) || 0), 0);
+  const iKg = r.enhet === "kg";
   return '<tr class="sv-o-prof"><td colspan="11"><div class="sv-o-formel">' + r.profiler.map(rad).join("") +
-    '<div class="sv-o-fl sum"><span>' + esc(t("Sum → antall")) + '</span><span></span><span></span><span></span><span>=</span><b class="r">' + tallNo(sumR, 1) + ' → ' + tallNo(profilSum(r.profiler), 0) + ' kg</b></div>' +
+    '<div class="sv-o-fl sum"><span>' + esc(t("Sum → antall")) + '</span><b class="r">' + (iKg ? '' : tallNo(profilLm(r.profiler), 2) + ' lm') + '</b><span></span><span></span><span>=</span><b class="r">' +
+      (iKg ? tallNo(sumR, 1) + ' → ' + tallNo(profilSum(r.profiler), 0) + ' kg' : tallNo(sumR, 1) + ' kg') + '</b></div>' +
+    // I lm er antallet lengden; stål prises riktig per kg — ett trykk bytter (Emil 27.10)
+    (!iKg && !laast ? '<button class="sv-o-bytt" data-ordre="' + esc(f.id) + '" data-rad="' + i + '">' + esc(t("Pris i kg i stedet (lengde × kg/m)")) + '</button>' : '') +
     (r.profiler.some(p => p.kilde === "modell") ? '<div class="sv-o-fhjelp">' + esc(t("Kursiv = anslag fra modellen (volum × 7 850 / lengde). Skriv inn kg/m fra profiltabellen.")) + '</div>' : '') +
     '</div></td></tr>';
 }

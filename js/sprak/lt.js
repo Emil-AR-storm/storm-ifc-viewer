@@ -1368,6 +1368,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "BCF-eksport": "BCF eksportas",
   // 📝 Endringsmelding fra modellen (26.10.2026)
   // 🔗 EM paring av fjernet + ny (26.10.2026)
+  "Pris i kg i stedet (lengde × kg/m)": "Įkainoti kg (ilgis × kg/m)",
   "Punktet i kontraktens prisliste": "Sutarties kainyno punktas",
   "Mengder (eks. mva)": "Kiekiai (be PVM)",
   "{0} følgekostnader mangler pris": "{0} pasekmių išlaidoms trūksta kainos",
