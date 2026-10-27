@@ -2393,6 +2393,113 @@ html[data-tema="lys"] #prisBody input, html[data-tema="lys"] #prisBody select { 
 .bcfi-dlg footer button { padding: 7px 12px; font-size: 12px; }
 .bcfi-dlg footer button:disabled { opacity: .5; cursor: default; }
 
+/* 📋 Dagsrapport (runde 4, 27.10.2026 — Emils valg C: uke-stripe + skjema).
+   Dialogen lages av js/dagsrapport.js; ingenting av den står i HTML. */
+#dagsrapport {
+  position: fixed; inset: 0; z-index: 70;
+  background: var(--flate-60);
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px;
+}
+.dr-dlg {
+  width: min(640px, 100%); max-height: min(92vh, 900px);
+  display: flex; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--radius-stor); box-shadow: var(--skygge);
+}
+.dr-dlg header { display: flex; align-items: center; gap: 10px; padding: 11px 16px; border-bottom: 1px solid var(--border); }
+.dr-dlg header b { font-size: 15px; }
+.dr-prosjekt { flex: 1; min-width: 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.dr-lukk { padding: 3px 7px; }
+.dr-bd { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 12px 16px; display: flex; flex-direction: column; gap: 11px; }
+.dr-ukelinje { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.dr-uke-pil { padding: 2px 6px; }
+.dr-idag { padding: 2px 8px; font-size: 11px; }
+.dr-sammendrag { margin-left: auto; font-size: 12px; color: var(--muted); }
+.dr-rod { color: var(--danger); }
+.dr-gronn { color: var(--ok); }
+.dr-gra { color: var(--muted); }
+.dr-liten { font-size: 11px; }
+.dr-uke { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+.dr-dag {
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  padding: 5px 0; border-radius: var(--radius); font-size: 11px;
+  background: var(--panel2); border: 1px solid var(--border); color: var(--muted);
+}
+.dr-dag b { font-size: 15px; color: var(--text); }
+.dr-dag i { font-style: normal; font-size: 10px; min-height: 12px; }
+.dr-dag.levert { border-color: color-mix(in srgb, var(--ok) 55%, var(--border)); }
+.dr-dag.levert i { color: var(--ok); }
+.dr-dag.utkast { border-color: color-mix(in srgb, var(--warn) 55%, var(--border)); }
+.dr-dag.utkast i { color: var(--warn); }
+.dr-dag.mangler { border-color: color-mix(in srgb, var(--danger) 60%, var(--border)); }
+.dr-dag.mangler i { color: var(--danger); }
+.dr-dag.idag i { color: var(--accent); font-weight: 600; }
+.dr-dag.helg, .dr-dag.fremtid { opacity: .5; }
+.dr-dag:disabled { cursor: default; }
+.dr-dag.valgt { background: var(--aktiv-bg); border-color: var(--aktiv-bg); }
+.dr-dag.valgt b, .dr-dag.valgt span { color: var(--aktiv-tekst); }
+.dr-hint { font-size: 11px; color: var(--muted); }
+.dr-dagtittel { display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--border); padding-top: 10px; font-size: 14px; }
+.dr-dagtittel select { margin-left: auto; font-size: 12px; }
+.dr-laast, .dr-info {
+  display: flex; gap: 8px; align-items: flex-start; font-size: 12px;
+  padding: 8px 10px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--panel2);
+}
+.dr-laast { border-left: 3px solid var(--ok); }
+.dr-info { border-left: 3px solid var(--warn); }
+.dr-felt { display: flex; flex-direction: column; gap: 4px; }
+.dr-lbl { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); }
+.dr-auto { color: var(--ok); font-size: 10px; }
+.dr-knapper { margin-left: auto; display: flex; gap: 10px; }
+.dr-lenke { background: none; border: 0; padding: 0; color: var(--muted); font-size: 11px; cursor: pointer; margin-left: auto; }
+.dr-knapper .dr-lenke { margin-left: 0; }
+.dr-lenke:hover { color: var(--text); }
+.dr-vaer {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12.5px;
+  background: var(--panel2); border: 1px solid var(--border); border-radius: var(--radius); padding: 7px 10px;
+}
+.dr-vaer-ikon { font-size: 19px; line-height: 1; }
+.dr-tag { font-size: 10.5px; border-radius: 5px; padding: 2px 6px; font-weight: 600; border: 1px solid; }
+.dr-tag.gul { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 50%, transparent); background: color-mix(in srgb, var(--warn) 12%, transparent); }
+.dr-tag.rod { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 50%, transparent); background: color-mix(in srgb, var(--danger) 12%, transparent); }
+.dr-tag.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 50%, transparent); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+.dr-bm { width: 100%; border-collapse: collapse; font-size: 12px; }
+.dr-bm th { text-align: left; font-weight: 500; font-size: 11px; color: var(--muted); padding: 3px 4px; border-bottom: 1px solid var(--border); }
+.dr-bm td { padding: 3px 4px; border-bottom: 1px solid var(--border); }
+.dr-bm .tall { text-align: right; width: 70px; }
+.dr-bm td:last-child { width: 28px; }
+.dr-bm input { width: 100%; min-width: 0; font-size: 12px; padding: 4px 6px; }
+.dr-bm .tall input { text-align: right; }
+.dr-bm tfoot td { font-weight: 600; border-bottom: 0; }
+.dr-x { padding: 2px 5px; background: none; border: 0; color: var(--muted); }
+.dr-x:hover { color: var(--danger); }
+.dr-x .ikon { width: 12px; height: 12px; }
+.dr-felt textarea { width: 100%; resize: vertical; min-height: 54px; font: inherit; font-size: 12.5px; line-height: 1.45; padding: 7px 9px; }
+.dr-les { font-size: 12.5px; line-height: 1.45; white-space: pre-wrap; background: var(--panel2); border: 1px solid var(--border); border-radius: var(--radius); padding: 7px 9px; }
+.dr-bilder { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
+.dr-bilde { position: relative; display: flex; flex-direction: column; gap: 4px; font-size: 11px; }
+.dr-bilde img, .dr-bilde-laster { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); background: var(--panel2); }
+.dr-bilde-laster { display: flex; align-items: center; justify-content: center; color: var(--muted); }
+.dr-bilde input { font-size: 11px; padding: 3px 5px; }
+.dr-bilde-x { position: absolute; top: 3px; right: 3px; background: var(--flate-72); border-radius: 50%; }
+.dr-avkryss { display: flex; gap: 6px; align-items: center; font-size: 12px; }
+.dr-avkryss input { accent-color: var(--accent); }
+.dr-merk { font-size: 12px; padding-left: 4px; }
+.dr-merk div { display: flex; align-items: center; gap: 7px; padding: 3px 0; border-bottom: 1px solid var(--border); }
+.dr-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: #f59e0b; }
+.dr-dot.s-Pågår { background: #3b82f6; }
+.dr-dot.s-Løst { background: var(--ok); }
+.dr-dlg footer { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 10px 16px; border-top: 1px solid var(--border); }
+.dr-inf { flex: 1; min-width: 160px; color: var(--muted); font-size: 11px; }
+.dr-dlg footer button { padding: 7px 12px; font-size: 12px; display: inline-flex; gap: 5px; align-items: center; }
+.dr-dlg footer button:disabled { opacity: .5; cursor: default; }
+@media (max-width: 520px) {
+  .dr-uke { gap: 3px; }
+  .dr-dag b { font-size: 13px; }
+  .dr-bm .tall { width: 52px; }
+}
+
 /* 🎨 Innstillinger → Utseende PDF (26.10.2026, Emils valg C). Miniatyren er
    en vanlig HTML-side i liten skala — den er en forhåndsvisning, ikke PDF-en. */
 #puSeksjon .pu-hjelp { color: var(--muted); font-size: 11px; margin: 4px 0 6px; }
