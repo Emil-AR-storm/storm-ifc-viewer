@@ -1433,6 +1433,21 @@ body:not(.har-modell) #btnFit { display: none !important; }
 }
 #skjemaVelg .sv-o-produkt { width: 100%; min-width: 110px; }
 #skjemaVelg .sv-o-enhet { width: 46px; }
+/* 🧾 Runde 3: post, følgekostnad og regnestykket per profil (prøve C) */
+#skjemaVelg .sv-o-post { width: 58px; min-width: 58px; }
+#skjemaVelg .sv-o-merke { display: inline-block; font-size: 9px; border-radius: 8px; padding: 0 6px; background: rgba(233,161,59,.18); color: var(--warn); margin: 0 4px 2px 0; }
+#skjemaVelg tr.sv-o-folge td { background: rgba(233,161,59,.05); }
+#skjemaVelg .sv-o-profknapp { display: inline-block; background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 5px; font-size: 10px; padding: 0 5px; margin: 0 4px 2px 0; cursor: pointer; font-family: inherit; }
+#skjemaVelg .sv-o-profknapp:hover { color: var(--text); }
+#skjemaVelg .sv-o-laast { border-style: dashed !important; color: var(--muted); }
+#skjemaVelg tr.sv-o-prof td { padding: 0 0 6px; }
+#skjemaVelg .sv-o-formel { box-sizing: border-box; margin: 2px 0 2px 24px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel2); font-size: 11px; }
+#skjemaVelg .sv-o-fl { display: grid; grid-template-columns: minmax(110px, 1.4fr) 80px 14px minmax(110px, 1fr) 14px 90px; align-items: center; gap: 4px; padding: 2px 0; }
+#skjemaVelg .sv-o-fl .r { text-align: right; }
+#skjemaVelg .sv-o-fl.sum { border-top: 1px solid var(--border); margin-top: 4px; padding-top: 4px; font-weight: 700; }
+#skjemaVelg input.sv-o-kgm { width: 56px; text-align: right; }
+#skjemaVelg input.sv-o-kgm.modell { color: var(--muted); font-style: italic; }
+#skjemaVelg .sv-o-fhjelp { margin-top: 4px; color: var(--muted); font-size: 10.5px; }
 #skjemaVelg .sv-o-tall { text-align: right; }
 #skjemaVelg .sv-o-ut { text-align: right; color: var(--muted); white-space: nowrap; }
 #skjemaVelg .sv-o-ut.sterk { color: var(--text); font-weight: 600; }
@@ -2482,6 +2497,15 @@ html[data-tema="lys"] #prisBody input, html[data-tema="lys"] #prisBody select { 
 .em-tab input.em-kgm { width: 52px; text-align: right; background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 2px 4px; font-size: 11px; font-family: inherit; }
 .em-tab input.em-kgm.modell { color: var(--muted); font-style: italic; }
 .em-sumrad td { font-weight: 700; border-bottom: 0; }
+.em-post { display: inline-flex; align-items: center; gap: 4px; margin-top: 3px; font-size: 10px; color: var(--muted); }
+.em-post-inn, .em-f-inn { background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 1px 4px; font-size: 11px; font-family: inherit; }
+.em-post-inn { width: 52px; }
+.em-folge { margin-top: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: rgba(233,161,59,.04); font-size: 11.5px; }
+.em-folge > b { display: block; margin-bottom: 4px; }
+.em-f-rad { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 3px 0; }
+.em-f-inn { text-align: right; }
+.em-totalt { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; padding: 6px 10px; border-radius: 8px; background: var(--panel2); font-size: 12px; }
+.em-totalt b { font-size: 13px; }
 .em-mangler { color: var(--warn); font-weight: 400; }
 .em-hjelp { color: var(--muted); font-size: 11px; margin: 6px 0; }
 .em-felt { width: 100%; box-sizing: border-box; background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-size: 12px; font-family: inherit; margin-bottom: 6px; }
