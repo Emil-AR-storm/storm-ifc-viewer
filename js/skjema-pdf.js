@@ -348,7 +348,9 @@ function ordreTabell(P, f) {
     if (!P.plass(h + 3)) { P.nySide(); hode(); }
     d.setFontSize(8); hex(d, SORT);
     navn.forEach((l, i) => d.text(l, x[P0], P.y + OVER + i * LINJEHOYDE));
-    const verdier = (medPost ? [r.post || "—"] : []).concat([null, tilLatin1(String(r.antall)), r.enhet, r.enhetspris == null ? "—" : krPdf(r.enhetspris), krPdf(r.eksMva), krPdf(r.mvaBelop), krPdf(r.inklMva)]);
+    // Antall på norsk: «2 376,393», ikke «2376.393» (stresstest 27.10)
+    const antallTekst = tilLatin1((Number(r.antall) || 0).toLocaleString("nb-NO", { maximumFractionDigits: 3 }).replace(/\u00a0|\u202f/g, " "));
+    const verdier = (medPost ? [r.post || "—"] : []).concat([null, antallTekst, r.enhet, r.enhetspris == null ? "—" : krPdf(r.enhetspris), krPdf(r.eksMva), krPdf(r.mvaBelop), krPdf(r.inklMva)]);
     O_KOL.forEach((k, i) => {
       if (i === P0) return;
       d.text(verdier[i], k.h === "right" ? slutt(i) - 2 : x[i], P.y + OVER,
@@ -366,9 +368,12 @@ function ordreTabell(P, f) {
     d.setFont(undefined, fet ? "bold" : "normal");
     d.setFontSize(fet ? 9.5 : 8);
     hex(d, fet ? SORT : GRÅ);
-    d.text(etikett, slutt(5 + P0) - 2, P.y, { align: "right" });
+    // Store beløp («10 015 820,78 NOK») gikk inn i etiketten — den flyttes til venstre for beløpet
     hex(d, SORT);
+    const vb = d.getTextWidth(verdi + " NOK");
     d.text(verdi + " NOK", slutt(6 + P0) - 2, P.y, { align: "right" });
+    hex(d, fet ? SORT : GRÅ);
+    d.text(etikett, Math.min(slutt(5 + P0) - 2, slutt(6 + P0) - 2 - vb - 3), P.y, { align: "right" });
     P.y += fet ? 5.5 : 4.2;
   };
   rad(t("Total (eks. mva)"), krPdf(s.eksMva), false);

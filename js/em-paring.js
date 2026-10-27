@@ -38,7 +38,7 @@ export function profilNokkel(e) {
 }
 // Navnet på koordineringsobjekter (ikke fysisk stål): proxy-typen eller «Coordination»
 export function erKoordinering(type, navn) {
-  return typeNokkel(type) === "ifcbuildingelementproxy" || /coordination/i.test(String(navn || ""));
+  return typeNokkel(type) === "ifcbuildingelementproxy" || /(coordination|koordineringsobjekt|survey ?marker|survey ?point|kontrollpunkt)/i.test(String(navn || ""));
 }
 
 const avstMm = (a, b, toM) => Math.hypot(a.c[0] - b.c[0], a.c[1] - b.c[1], a.c[2] - b.c[2]) * toM * 1000;
@@ -53,6 +53,28 @@ export function parFjernetNy(slettet, ny, o) {
   const S = (slettet || []).filter(e => e && e.c && e.d), N = (ny || []).filter(e => e && e.c && e.d);
   const bruktS = new Set(), bruktN = new Set();
   const samme = [], forslag = [], dobbelt = [];
+  // ⚡ Emils stresstest 27.10 (6 166 mot 7 784 elementer): alle-mot-alle tok
+  // 130 s. Profilnøkkelen regnes én gang per element, og kandidatene hentes fra
+  // et rutenett (1 m ruter) per profil i stedet for hele lista. Samme svar.
+  const pk = new Map();
+  for (const e of S) pk.set(e, profilNokkel(e));
+  for (const e of N) pk.set(e, profilNokkel(e));
+  const celle = (NAER_MM / 1000) / toM;
+  const rute = (c) => [Math.floor(c[0] / celle), Math.floor(c[1] / celle), Math.floor(c[2] / celle)];
+  const lagNett = (liste) => {
+    const nett = new Map();
+    for (const e of liste) { const r = rute(e.c), k = pk.get(e) + "#" + r.join("|"); if (!nett.has(k)) nett.set(k, []); nett.get(k).push(e); }
+    return nett;
+  };
+  // alle i samme profil innen `n` ruter
+  const naboer = (nett, e, n) => {
+    const r = rute(e.c), p = pk.get(e), ut = [];
+    for (let x = r[0] - n; x <= r[0] + n; x++) for (let y = r[1] - n; y <= r[1] + n; y++) for (let z = r[2] - n; z <= r[2] + n; z++) {
+      const l = nett.get(p + "#" + x + "|" + y + "|" + z); if (l) for (const q of l) ut.push(q);
+    }
+    return ut;
+  };
+  const nettS = lagNett(S), nettN = lagNett(N);
   const ut = (fra, til, grunn) => {
     const a = avstMm(fra, til, toM);
     samme.push({ fra, til, grunn, avstandMm: Math.round(a), uendret: a <= SAMME_STED_MM && maalLike(fra, til, toM) && volLik(fra, til) });
@@ -61,10 +83,10 @@ export function parFjernetNy(slettet, ny, o) {
 
   // 1) Revit-nummer
   const perNr = new Map();
-  for (const s of S) { const nr = revitNr(s.name); if (nr) { const k = nr + "|" + profilNokkel(s); if (!perNr.has(k)) perNr.set(k, []); perNr.get(k).push(s); } }
+  for (const s of S) { const nr = revitNr(s.name); if (nr) { const k = nr + "|" + pk.get(s); if (!perNr.has(k)) perNr.set(k, []); perNr.get(k).push(s); } }
   for (const n of N) {
     const nr = revitNr(n.name); if (!nr) continue;
-    const kand = (perNr.get(nr + "|" + profilNokkel(n)) || []).filter(s => !bruktS.has(s));
+    const kand = (perNr.get(nr + "|" + pk.get(n)) || []).filter(s => !bruktS.has(s));
     if (!kand.length) continue;
     kand.sort((a, b) => avstMm(a, n, toM) - avstMm(b, n, toM));
     ut(kand[0], n, "revit");
@@ -73,30 +95,31 @@ export function parFjernetNy(slettet, ny, o) {
   // 2) Samme sted
   for (const n of N) {
     if (bruktN.has(n)) continue;
-    const kand = S.filter(s => !bruktS.has(s) && profilNokkel(s) === profilNokkel(n) && avstMm(s, n, toM) <= SAMME_STED_MM && maalLike(s, n, toM));
+    const kand = naboer(nettS, n, 1).filter(s => !bruktS.has(s) && avstMm(s, n, toM) <= SAMME_STED_MM && maalLike(s, n, toM));
     if (!kand.length) continue;
     kand.sort((a, b) => avstMm(a, n, toM) - avstMm(b, n, toM));
     ut(kand[0], n, "sted");
   }
   // To nye på stedet til ett gammelt: den andre er et mulig dobbeltelement
+  const stedTil = samme.filter(p => p.grunn === "sted").map(p => p.til);
+  const nettSted = lagNett(stedTil);
   for (const n of N) {
     if (bruktN.has(n)) continue;
-    if (samme.some(p => p.grunn === "sted" && profilNokkel(p.til) === profilNokkel(n) && avstMm(p.til, n, toM) <= SAMME_STED_MM)) dobbelt.push(n);
+    if (naboer(nettSted, n, 1).some(t => avstMm(t, n, toM) <= SAMME_STED_MM)) dobbelt.push(n);
   }
 
-  // 3) Forslag: gjensidig nærmeste innen 1 m, og klart nærmest
-  const restS = S.filter(s => !bruktS.has(s)), restN = N.filter(n => !bruktN.has(n) && !dobbelt.includes(n));
-  const naermest = (x, liste) => {
-    const k = liste.filter(y => profilNokkel(y) === profilNokkel(x)).map(y => ({ y, a: avstMm(x, y, toM) })).sort((p, q) => p.a - q.a);
-    return k;
-  };
+  // 3) Forslag: gjensidig nærmeste innen 1 m, og klart nærmest (neste minst
+  //    dobbelt så langt unna — derfor søkes det to ruter ut, ≥ 2 m)
+  const dobbeltSett = new Set(dobbelt);
+  const restS = new Set(S.filter(s => !bruktS.has(s))), restN = new Set(N.filter(n => !bruktN.has(n) && !dobbeltSett.has(n)));
+  const naermest = (x, nett, rest) => naboer(nett, x, 2).filter(y => rest.has(y)).map(y => ({ y, a: avstMm(x, y, toM) })).sort((p, q) => p.a - q.a);
   for (const n of restN) {
-    const kn = naermest(n, restS);
+    const kn = naermest(n, nettS, restS);
     if (!kn.length || kn[0].a > NAER_MM) continue;
     if (kn[1] && kn[1].a < kn[0].a * 2) continue;          // ikke entydig
     const s = kn[0].y;
-    const ks = naermest(s, restN);
-    if (ks[0].y !== n || (ks[1] && ks[1].a < ks[0].a * 2)) continue;   // ikke gjensidig / ikke entydig
+    const ks = naermest(s, nettN, restN);
+    if (!ks.length || ks[0].y !== n || (ks[1] && ks[1].a < ks[0].a * 2)) continue;   // ikke gjensidig / ikke entydig
     forslag.push({ fra: s, til: n, avstandMm: Math.round(kn[0].a) });
   }
   return { samme, forslag, dobbelt, slettet: S.filter(s => !bruktS.has(s)).concat((slettet || []).filter(e => !(e && e.c && e.d))),

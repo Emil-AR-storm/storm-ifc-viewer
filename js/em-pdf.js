@@ -62,8 +62,13 @@ function plan(d, x, y, b, h, endring, akser) {
   if (akser) {
     d.setDrawColor(...rgb(FARGE.akse)); d.setLineWidth(0.2); d.setLineDashPattern([1.2, 1], 0);
     d.setFont(undefined, "normal"); d.setFontSize(5.5); d.setTextColor(...rgb(FARGE.gra));
-    for (const a of akser.x || []) if (a.c > u.x0 && a.c < u.x1) { d.line(X(a.c), oy, X(a.c), Z(u.z1)); d.text(tilLatin1(a.navn), X(a.c), oy - 1, { align: "center" }); }
-    for (const a of akser.z || []) if (a.c > u.z0 && a.c < u.z1) { d.line(ox, Z(a.c), X(u.x1), Z(a.c)); d.text(tilLatin1(a.navn), ox - 1.2, Z(a.c) + 0.8, { align: "right" }); }
+    // Navnene tynnes ut når aksene står tett — på et stort bygg (40+ akser)
+    // ble de en uleselig strek (stresstest 27.10). Linjene tegnes alle.
+    let sisteX = -Infinity, sisteZ = -Infinity;
+    const ax = (akser.x || []).filter(a => a.c > u.x0 && a.c < u.x1).sort((p, q) => p.c - q.c);
+    const az = (akser.z || []).filter(a => a.c > u.z0 && a.c < u.z1).sort((p, q) => p.c - q.c);
+    for (const a of ax) { d.line(X(a.c), oy, X(a.c), Z(u.z1)); if (X(a.c) - sisteX >= 3.2) { d.text(tilLatin1(a.navn), X(a.c), oy - 1, { align: "center" }); sisteX = X(a.c); } }
+    for (const a of az) { d.line(ox, Z(a.c), X(u.x1), Z(a.c)); if (Z(a.c) - sisteZ >= 2.4) { d.text(tilLatin1(a.navn), ox - 1.2, Z(a.c) + 0.8, { align: "right" }); sisteZ = Z(a.c); } }
     d.setLineDashPattern([], 0);
   }
   const rute = (c, dd, farge, stiplet) => {
@@ -118,7 +123,8 @@ function profilBlokk(d, x, y, b, endring) {
 
 function tabell(d, x, y0, b, yMaks, endring) {
   const y = profilBlokk(d, x, y0, b, endring);
-  const kol = [{ t: "Element", b: b * 0.48 }, { t: "Akse", b: b * 0.13 }, { t: "Hva", b: b * 0.19 }, { t: "Mengde", b: b * 0.2, h: true }];
+  // Akse-kolonnen bredere: «AM–AN/14» gikk inn i «Ny» (stresstest 27.10)
+  const kol = [{ t: "Element", b: b * 0.42 }, { t: "Akse", b: b * 0.19 }, { t: "Hva", b: b * 0.19 }, { t: "Mengde", b: b * 0.2, h: true }];
   const nrAv = endretNummer(endring);
   d.setFont(undefined, "bold"); d.setFontSize(5.5); d.setTextColor(...rgb(FARGE.gra));
   let cx = x;
@@ -140,7 +146,7 @@ function tabell(d, x, y0, b, yMaks, endring) {
     const navn = kutt(d, tilLatin1(e.navn || e.guid || "—"), kol[0].b - 1.5);
     d.setFont(undefined, "normal"); d.setTextColor(...rgb(FARGE.tekst));
     d.text(navn, cx, ry); cx += kol[0].b;
-    d.text(tilLatin1(e.akse || "—"), cx, ry); cx += kol[1].b;
+    d.text(kutt(d, tilLatin1(e.akse || "—"), kol[1].b - 1.2), cx, ry); cx += kol[1].b;
     d.setFont(undefined, "bold"); d.setTextColor(...rgb(FARGE[e.hva === "endret" ? "gammel" : e.hva] || FARGE.tekst));
     d.text(tilLatin1(t(HVA[e.hva] || e.hva) + (nrAv.has(e) ? " " + nrAv.get(e) : "")), cx, ry); cx += kol[2].b;
     d.setFont(undefined, "normal"); d.setTextColor(...rgb(FARGE.tekst));
@@ -165,7 +171,7 @@ function tabell(d, x, y0, b, yMaks, endring) {
   for (const e of nyVis) {
     d.setFont(undefined, "normal"); d.setTextColor(...rgb(FARGE.tekst));
     d.text(kutt(d, tilLatin1(e.navn || e.gt || "—"), kol[0].b - 1.5), x, ry);
-    d.text(tilLatin1(e.akse || "—"), x + kol[0].b, ry);
+    d.text(kutt(d, tilLatin1(e.akse || "—"), kol[1].b - 1.2), x + kol[0].b, ry);
     d.setTextColor(...rgb(FARGE.gra));
     d.text(tilLatin1(e.grunn === "revit" ? t("Revit-nr.") : t("samme sted")), x + kol[0].b + kol[1].b, ry);
     ry += RAD;

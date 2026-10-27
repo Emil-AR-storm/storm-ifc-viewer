@@ -98,6 +98,8 @@ export function sjekkliste(k, v, o) {
     : opt.omarbeidMed && opt.omarbeidPris ? p("folge", "ok", "Følgekostnader: omarbeid av " + el + " er priset")
     : opt.omarbeidMed ? p("folge", "gul", "Følgekostnader: omarbeid av " + el + " mangler pris")
     : p("folge", "gul", "Følgekostnader: " + el + " er ikke priset (omarbeid)"));
+  // Sammenligningen parret under halvparten (to ulike modeller?) — vises bare da
+  if (opt.usikker) ut.push(p("usikker", "gul", "Sammenligningen er usikker: under halvparten av elementene lot seg parre — kontroller at det er to revisjoner av samme modell"));
   // 🧾 runde 3: kontraktsposten per linje
   const pm = Number(opt.postMangler) || 0;
   ut.push(pm ? p("post", "gul", "Kontraktspost mangler på " + pm + (pm === 1 ? " linje" : " linjer") + " — skriv punktet fra prislista")

@@ -163,6 +163,8 @@ function html() {
       (s ? esc(t("Sammenligning {0} → {1}", kortNavn(s.fra), kortNavn(s.til))) : esc(t("Ingen sammenligning — bruk Sammenlign først"))) + '</button>' +
     '<button class="em-kilde' + (tilstand.kilde === "utvalg" ? " valgt" : "") + '" data-kilde="utvalg"' + (utv ? "" : " disabled") + '>' +
       esc(t("Valgte elementer ({0})", utv)) + '</button></div>';
+  if (s && s.usikker && tilstand.kilde === "sammenligning")
+    h += '<p class="em-hjelp em-mangler">' + ikon("advarsel") + ' ' + esc(t("Under halvparten av elementene lot seg parre (gjenkjent på {0}). Er dette to revisjoner av samme modell? Mellom ulike modeller blir nesten alt «ny» og «fjernet», og «endret» kan være to forskjellige elementer.", t(s.metode || ""))) + '</p>';
   if (!s && tilstand.kilde === "sammenligning")
     h += '<p class="em-hjelp em-mangler">' + ikon("advarsel") + ' ' + esc(t("Sammenligningen er ikke aktiv. Åpne Sammenlign (den er ikke avsluttet før du trykker «Avslutt»), eller velg elementer og trykk «Valgte elementer».")) + '</p>';
   h += sek(2, "Mengder og prisanslag");
@@ -276,7 +278,8 @@ export function sjekkPunkter(L) {
   const med = LL.filter(l => !tilstand.av.has(l.key));
   return K.sjekkliste(tilstand.kontrakt, tilstand.varsel, { emNr: tilstand.emNr, endret: endredeIValgte(LL),
     omarbeidMed: v.omarbeid.med, omarbeidPris: Number(String(tilstand.folge.omarbeid.pris).replace(",", ".")) > 0,
-    postMangler: med.filter(l => !String(tilstand.post[l.key] || "").trim()).length, linjer: med.length });
+    postMangler: med.filter(l => !String(tilstand.post[l.key] || "").trim()).length, linjer: med.length,
+    usikker: tilstand.kilde === "sammenligning" && !!(sammenligningForEm() || {}).usikker });
 }
 function sjekklisteHtml(L) {
   const p = sjekkPunkter(L), okN = p.filter(x => x.niva === "ok").length, rode = K.rodePunkter(p);
@@ -295,7 +298,7 @@ function profilRader(l, av) {
     const fraModell = p.kgPerMKilde === "modell";
     h += '<tr class="em-prof' + (av ? " av" : "") + '" data-key="' + esc(l.key) + '" data-profil="' + esc(p.key) + '" data-profilnavn="' + esc(p.navn) + '">' +
       '<td></td><td class="em-prof-navn">' + esc(p.navn) + '<div class="em-under">' + esc(t("{0} lm", R.tallTekst(p.lm, 2))) + '</div></td>' +
-      '<td class="em-tall">+' + p.ny + ' / −' + p.slettet + ' / ' + p.endret + '</td>' +
+      '<td class="em-tall">+' + p.ny + ' / −' + p.slettet + ' / ' + p.endret + (p.byttetFra ? '<div class="em-under">' + esc(t("{0} byttet til annen profil", p.byttetFra)) + '</div>' : '') + '</td>' +
       '<td class="r ' + (p.mengde < 0 ? "neg" : "pos") + '">' + esc(R.mengdeTekst({ mengde: p.mengde, enhet: l.enhet }).replace(" " + l.enhet, "")) + '</td>' +
       (kg ? '<td colspan="2"><input class="em-kgm' + (fraModell ? " modell" : "") + '" inputmode="decimal" value="' + (p.kgPerM == null ? "" : esc(String(p.kgPerM).replace(".", ","))) + '"' +
           ' title="' + esc(fraModell ? t("Anslag fra modellen (volum × 7 850 / lengde). Skriv inn kg/m fra profiltabellen.") : t("kg per løpemeter")) + '" placeholder="kg/m"> <span class="em-hjelp">kg/m' + (fraModell ? " · " + esc(t("modell")) : "") + '</span></td>'

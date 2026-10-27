@@ -1368,6 +1368,8 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "BCF-eksport": "Eksport BCF",
   // 📝 Endringsmelding fra modellen (26.10.2026)
   // 🔗 EM paring av fjernet + ny (26.10.2026)
+  "{0} byttet til annen profil": "{0} zmieniono na inny profil",
+  "Under halvparten av elementene lot seg parre (gjenkjent på {0}). Er dette to revisjoner av samme modell? Mellom ulike modeller blir nesten alt «ny» og «fjernet», og «endret» kan være to forskjellige elementer.": "Mniej niż połowę elementów udało się sparować (rozpoznano po {0}). Czy to dwie rewizje tego samego modelu? Między różnymi modelami prawie wszystko staje się „nowe” i „usunięte”, a „zmienione” mogą być dwoma różnymi elementami.",
   "Pris i kg i stedet (lengde × kg/m)": "Wyceń w kg (długość × kg/m)",
   "Punktet i kontraktens prisliste": "Pozycja w cenniku umowy",
   "Mengder (eks. mva)": "Ilości (bez VAT)",

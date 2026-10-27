@@ -229,7 +229,9 @@ function rekeyGeo(items) {
   return m;
 }
 
-function diff(baseItems, nowItems, tol) {
+// o.utenVolum: volumet teller ikke (to ulike programmer — se compareManuelt)
+function diff(baseItems, nowItems, tol, o) {
+  const utenVolum = !!(o && o.utenVolum);
   const ny = [], slettet = [], endret = [], uendret = new Set();
   for (const [key, e] of nowItems) {
     const b = baseItems.get(key);
@@ -237,7 +239,7 @@ function diff(baseItems, nowItems, tol) {
     const flyttet = Math.hypot(e.c[0] - b.c[0], e.c[1] - b.c[1], e.c[2] - b.c[2]);
     const dMax = Math.max(...[0, 1, 2].map(i => Math.abs(e.d[i] - b.d[i])));
     const dVol = b.v ? Math.abs(e.v - b.v) / Math.abs(b.v) : (e.v ? 1 : 0);
-    if (flyttet > tol || dMax > tol || dVol > 0.005) {
+    if (flyttet > tol || dMax > tol || (!utenVolum && dVol > 0.005)) {
       endret.push(Object.assign({}, e, { fra: b, flyttet, dMax, dVol }));
     } else uendret.add(e.id);
   }
@@ -306,6 +308,18 @@ export function flyttAvtrykk(base, d) {
 // modellen det nærmeste i den gamle innen `R` — samme IFC-type teller mest,
 // så likt mål — og hvert element brukes bare én gang (nærmeste par først).
 // Svaret er to kart med FELLES nøkler for parene, klare for diff().
+// Familie («SHS (EN 10219-2) Column») og type («AFR_SCL_SHS100x6») fra Revit-
+// navnet «Familie:Type:Id». Ulike når BEGGE er ulike — et element som har
+// fått ny type i samme familie (100x6 → 100x8) er fortsatt samme element.
+const navnDeler = (n) => { const d = String(n || "").split(":").map(x => x.trim().toLowerCase()).filter(Boolean); if (d.length && /^\d+$/.test(d[d.length - 1])) d.pop(); return d; };
+export function ulikeNavn(a, b) {
+  const x = navnDeler(a), y = navnDeler(b);
+  if (!x.length || !y.length) return false;
+  const famX = x.length > 1 ? x[0] : "", famY = y.length > 1 ? y[0] : "";
+  const typX = x[x.length - 1], typY = y[y.length - 1];
+  return famX !== famY && typX !== typY;
+}
+const LINJEELEMENT = /^(ifc)?(beam|column|member)$/i;
 export function naerParing(baseItems, nowItems, R) {
   const celle = R, nokkel = (c) => Math.floor(c[0] / celle) + "|" + Math.floor(c[1] / celle) + "|" + Math.floor(c[2] / celle);
   const rute = new Map();
@@ -321,8 +335,19 @@ export function naerParing(baseItems, nowItems, R) {
         const dist = Math.hypot(e.c[0] - b.c[0], e.c[1] - b.c[1], e.c[2] - b.c[2]);
         if (dist > R) continue;
         const dMal = Math.max(...[0, 1, 2].map(q => Math.abs(e.d[q] - b.d[q])));
-        const annenType = (e.type || "") !== (b.type || "");
-        par.push({ i, j, s: dist + dMal * 0.5 + (annenType ? R : 0) });
+        // 🚫 Ikke par på tvers av IFC-type, og ikke to elementer med helt ulike
+        // navn (familie OG type) når målene også er ulike (over 20 %). Emils
+        // stresstest 27.10: «Bolt assembly» (150 mm) ble «endret» til
+        // «SurveyMarker» (70 mm), og «LØS PLATE» til et hulldekke på 36 m.
+        // «BJELKE» → «HEA100» med samme lengde (to programmer, samme bygg) går fortsatt.
+        // Unntak for stål på tvers av program: Tekla eksporterer stålsøyler som
+        // IfcBeam («STÅLSØYLE»), Revit som IfcColumn — samme stål. Bjelke, søyle og
+        // stav kan pares med hverandre når målene er like (±20 %).
+        const likeMaal = dMal <= 0.2 * Math.max(...e.d, ...b.d);
+        const annenType = (e.type || "").toLowerCase() !== (b.type || "").toLowerCase();
+        if (annenType && !(LINJEELEMENT.test(e.type || "") && LINJEELEMENT.test(b.type || "") && likeMaal)) continue;
+        if (ulikeNavn(e.name, b.name) && !likeMaal) continue;
+        par.push({ i, j, s: dist + dMal * 0.5 + (annenType ? R * 0.5 : 0) });
       }
     }
   });
@@ -351,7 +376,11 @@ export function compareManuelt(base, now, refB, refN, meterPerEnhet) {
   const r = compare(flyttet, now);
   const tol = Math.max(now.size * 2e-5, 0.001);
   const p = naerParing(flyttet.items, now.items, 0.3 / (meterPerEnhet || 1));
-  const naer = diff(p.base, p.now, tol);
+  // Parret på nærmeste element = modellene er laget hver for seg (Emils
+  // stresstest 27.10: Tekla-stål mot Revit-RIB). Programmene regner volumet
+  // ulikt for SAMME stål, så volumet teller ikke her — bare plassering og ytre
+  // mål, med 5 mm toleranse. Ellers ble 470 like stålbjelker «endret».
+  const naer = diff(p.base, p.now, Math.max(tol, 0.005 / (meterPerEnhet || 1)), { utenVolum: true });
   const treff = (x) => x.uendret.size + x.endret.length;
   let ut = r;
   if (treff(naer) > treff(r)) {
@@ -798,7 +827,9 @@ export function sammenligningForEm() {
       uendretNyId: (result.uendretNyId || []).slice(), forslag: (result.forslag || []).slice(), dobbelt: (result.dobbelt || []).slice() },
     fra: (S.compareBase && S.compareBase.file) || "",
     til: S.fileName || "",
-    metode: result.metode || ""
+    metode: result.metode || "",
+    // under halvparten parret — trolig ikke to revisjoner av samme modell (stresstest 27.10)
+    usikker: !!result.usikker
   };
 }
 

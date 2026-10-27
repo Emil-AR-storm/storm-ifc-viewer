@@ -23,7 +23,8 @@ const STANDARD = {
   ifccurtainwall: "m²", ifcstair: "stk", ifcfooting: "m³",
   ifcreinforcingbar: "kg", ifcreinforcingmesh: "kg", ifctendon: "kg"
 };
-export const typeNokkel = (t) => String(t || "").trim().toLowerCase();
+// IfcWallStandardCase er en vanlig vegg — to «Vegg Basic Wall»-linjer i Emils stresstest 27.10
+export const typeNokkel = (t) => String(t || "").trim().toLowerCase().replace(/^(ifc)?wallstandardcase$/, (m, i) => (i || "") + "wall");
 export function standardEnhet(type, staal) {
   const k = typeNokkel(type), kk = STANDARD[k] ? k : "ifc" + k;
   // 🔩 Stål prises i kg (Emil 27.10): søyler, bjelker, staver og plater med stålprofil
@@ -35,6 +36,48 @@ export function standardEnhet(type, staal) {
 export const STAAL_TYPER = ["ifccolumn", "ifcbeam", "ifcmember", "ifcplate"];
 const STAAL_RE = /\b(HE[ABM]|HEB|IPE|IPN|UPE|UPN|UNP|INP|CFSHS|CFRHS|CFCHS|HFSHS|HFRHS|HFCHS|CHS|RHS|SHS|KKR|VKR|HUP|Z\d|C\d|L\d|T\d|Flat ?bars?|Flattstål|Stålplate|Square ?bars?|Rundstål|Vinkelstål|stål|steel|S235|S275|S355|S420|S460)/i;
 const BETONG_RE = /\b(betong|concrete|B\d{2}\b|C\d{2}\/\d{2}|hulldekke|HD\d|prefab|plasstøpt)/i;
+// 🧱 MATERIALET (Emil 27.10, stresstest 200 MB): samme IFC-type kan være både
+// stål og betong («Søyle: SHS … Column, Søyle Betong Rektangulær») — og ble
+// da regnet i kg med stålets 7 850 kg/m³, også betongen. Isolasjon lå i
+// «Dekke» og «Vegg» og ble priset som betong. Nå deles en type i én linje per
+// materiale når den har MER ENN ETT kjent materiale. Navnet avgjør; uten
+// kjent materiale følger elementet flertallet i typen.
+const ISOLASJON_RE = /(isolasjon|insulation|\bEPS\b|\bXPS\b|mineralull|steinull|glava|rockwool|isopor|skumplast|\bPIR\b)/i;
+const BETONG_EKSTRA_RE = /(betong|concrete|fundament|såle|ringmur|hulldekke|plasstøpt|prefab|støpeplate|\bB\d{2}\b)/i;
+export const MATERIAL_NAVN = { staal: "stål", betong: "betong", isolasjon: "isolasjon", koord: "koordineringsobjekt", annet: "annet" };
+const KOORD_RE = /(coordination|survey ?marker|survey ?point|kontrollpunkt|origo|base ?point)/i;
+export function materialAv(navn) {
+  const n = String(navn || "");
+  if (KOORD_RE.test(n)) return "koord";
+  if (ISOLASJON_RE.test(n)) return "isolasjon";
+  if (erStaalNavn(n)) return "staal";
+  if (BETONG_EKSTRA_RE.test(n) || BETONG_RE.test(n)) return "betong";
+  return "";
+}
+// Nøkkelen (linja) hvert element hører til i dette resultatet: «ifccolumn»,
+// eller «ifccolumn|betong» når typen har flere materialer.
+export function linjeNokler(res) {
+  const alle = [].concat((res && res.ny) || [], (res && res.slettet) || [], (res && res.endret) || []);
+  const per = new Map();   // type → Map(materiale → antall)
+  for (const e of alle) {
+    const k = typeNokkel(e && e.type) || "ukjent", m = materialAv(e && e.name);
+    if (!per.has(k)) per.set(k, new Map());
+    if (m) per.get(k).set(m, (per.get(k).get(m) || 0) + 1);
+  }
+  const info = new Map();
+  for (const [k, m] of per) {
+    const sortert = [...m.entries()].sort((a, b) => b[1] - a[1]);
+    info.set(k, { delt: sortert.length > 1, flest: sortert.length ? sortert[0][0] : "" });
+  }
+  const nokkel = (e) => {
+    const k = typeNokkel(e && e.type) || "ukjent", i = info.get(k);
+    if (!i || !i.delt) return k;
+    return k + "|" + (materialAv(e && e.name) || i.flest);
+  };
+  nokkel.material = (e) => { const k = typeNokkel(e && e.type) || "ukjent", i = info.get(k); return materialAv(e && e.name) || (i ? i.flest : ""); };
+  nokkel.delt = (k) => { const i = info.get(k); return !!(i && i.delt); };
+  return nokkel;
+}
 export function erStaalNavn(navn) { const n = String(navn || ""); return STAAL_RE.test(n) && !BETONG_RE.test(n); }
 
 // «IFCCOLUMN» / «IfcColumn» → «Søyle» o.l. Ukjent: typen uten «Ifc».
@@ -96,17 +139,16 @@ const rund1 = (x) => Math.round(x * 10) / 10;
 export function mengdeDiff(res, o) {
   const opt = o || {}, toM = Number(opt.toM) || 1, valgt = opt.enheter || {}, egneKg = opt.kgPerM || {}, huskKg = opt.kgPerMProfil || {};
   const per = new Map();
-  // Stål eller ikke per type: flertallet av navnene avgjør (før noe telles, så enheten er riktig fra start)
-  const staalTall = new Map();
-  for (const e of [].concat((res && res.ny) || [], (res && res.slettet) || [], (res && res.endret) || [])) {
-    const k = typeNokkel(e && e.type) || "ukjent", x = staalTall.get(k) || [0, 0];
-    x[erStaalNavn(e && e.name) ? 0 : 1]++; staalTall.set(k, x);
-  }
-  const erStaal = (k) => { const x = staalTall.get(k); return !!x && x[0] > x[1]; };
-  const linje = (type) => {
-    const k = typeNokkel(type) || "ukjent";
-    if (!per.has(k)) per.set(k, { key: k, type: type || "", navn: typeNavn(type), enhet: valgt[k] || standardEnhet(type, erStaal(k)),
-      ny: 0, slettet: 0, endret: 0, mengde: 0, ider: [], navnSett: new Map(), prof: new Map() });
+  // Linja per type — og per materiale når typen er blandet (linjeNokler)
+  const nok = linjeNokler(res);
+  const linje = (e) => {
+    const type = e && e.type, k = nok(e);
+    if (!per.has(k)) {
+      const mat = nok.material(e), delt = nok.delt(typeNokkel(type) || "ukjent");
+      const std = mat === "isolasjon" && ["ifcslab", "ifcwall", "ifccovering", "ifcroof"].includes(typeNokkel(type)) ? "m²" : standardEnhet(type, mat === "staal");
+      per.set(k, { key: k, type: type || "", navn: typeNavn(type) + (delt ? " – " + MATERIAL_NAVN[mat || "annet"] : ""), material: mat || "",
+        enhet: valgt[k] || std, ny: 0, slettet: 0, endret: 0, mengde: 0, ider: [], navnSett: new Map(), prof: new Map() });
+    }
     return per.get(k);
   };
   const prof = (l, navn) => {
@@ -119,9 +161,9 @@ export function mengdeDiff(res, o) {
   const tellNavn = (l, n) => { const x = String(n || "").split(":")[0].trim(); if (x) l.navnSett.set(x, (l.navnSett.get(x) || 0) + 1); };
   // fortegn: +1 ny, −1 fjernet. stk teller ikke endrede.
   const legg = (l, p, e, fortegn) => { l.mengde += fortegn * mengdeFor(e, l.enhet, toM); p.lm += fortegn * elementLengde(e, toM); p.mengde += fortegn * mengdeFor(e, l.enhet, toM); p.kgVol = (p.kgVol || 0) + fortegn * mengdeFor(e, "kg", toM); maal(p, e); };
-  for (const e of (res && res.ny) || []) { const l = linje(e.type), p = prof(l, e.name); l.ny++; p.ny++; legg(l, p, e, 1); if (e.id != null) { l.ider.push(e.id); p.ider.push(e.id); } tellNavn(l, e.name); }
+  for (const e of (res && res.ny) || []) { const l = linje(e), p = prof(l, e.name); l.ny++; p.ny++; legg(l, p, e, 1); if (e.id != null) { l.ider.push(e.id); p.ider.push(e.id); } tellNavn(l, e.name); }
   for (const e of (res && res.slettet) || []) {
-    const l = linje(e.type), p = prof(l, e.name); l.slettet++; p.slettet++;
+    const l = linje(e), p = prof(l, e.name); l.slettet++; p.slettet++;
     // det fjernede for seg — brukes når arbeidet alt er produsert (ingen fradrag, runde 3)
     const lmF = elementLengde(e, toM);
     l.fjernetMengde = (l.fjernetMengde || 0) + mengdeFor(e, l.enhet, toM);
@@ -129,8 +171,10 @@ export function mengdeDiff(res, o) {
     legg(l, p, e, -1); tellNavn(l, e.name);
   }
   for (const e of (res && res.endret) || []) {
-    const l = linje(e.type), p = prof(l, e.name); l.endret++; p.endret++;
+    const l = linje(e), p = prof(l, e.name); l.endret++; p.endret++;
     const fra = e.fra || {}, pf = prof(l, fra.name || e.name);
+    // profilen elementet kom FRA — ellers sto den med 0 / 0 / 0 og et stort minus (stresstest 27.10)
+    if (pf !== p) pf.byttetFra = (pf.byttetFra || 0) + 1;
     // stk teller ikke endrede: én søyle som blir lengre er fortsatt én søyle
     if (l.enhet !== "stk") { legg(l, p, e, 1); legg(l, pf, fra, -1); }
     else { maal(p, e); maal(pf, fra); p.lm += elementLengde(e, toM); pf.lm -= elementLengde(fra, toM); }
@@ -138,7 +182,7 @@ export function mengdeDiff(res, o) {
   }
   return [...per.values()].map(l => {
     const navn = [...l.navnSett.entries()].sort((a, b) => b[1] - a[1]).map(x => x[0]);
-    const profiler = [...l.prof.values()].filter(p => p.ny || p.slettet || p.endret || Math.abs(p.lm) > 1e-9).map(p => {
+    const profiler = [...l.prof.values()].filter(p => p.ny || p.slettet || p.endret || p.byttetFra || Math.abs(p.lm) > 1e-9).map(p => {
       // skrevet inn her (linje|profil), ellers husket fra før for samme profilnavn
       const ok = (v) => v != null && v !== "" && isFinite(Number(v)) && Number(v) > 0;
       const egen = ok(egneKg[p.key]) ? Number(egneKg[p.key]) : (ok(huskKg[p.navn]) ? Number(huskKg[p.navn]) : null);
@@ -147,7 +191,7 @@ export function mengdeDiff(res, o) {
       // kg: lengde × kg/m (uten lengde: volum × 7 850)
       const mengde = l.enhet === "kg" ? (kgPerM != null ? p.lm * kgPerM : (p.kgVol || 0)) : (l.enhet === "stk" ? p.ny - p.slettet : p.mengde);
       const fjMengde = l.enhet === "kg" ? (kgPerM != null ? (p.lmFjernet || 0) * kgPerM : (p.fjKgVol || 0)) : (l.enhet === "stk" ? p.slettet : (p.fjMengde || 0));
-      return { key: p.key, navn: p.navn, ny: p.ny, slettet: p.slettet, endret: p.endret, lm: avrund(p.lm, "lm"),
+      return { key: p.key, navn: p.navn, ny: p.ny, slettet: p.slettet, endret: p.endret, byttetFra: p.byttetFra || 0, lm: avrund(p.lm, "lm"),
         lmFjernet: avrund(p.lmFjernet || 0, "lm"), mengdeFjernet: avrund(fjMengde, l.enhet),
         kgPerM, kgPerMKilde: egen != null ? "egen" : (modell != null ? "modell" : ""), kgPerMModell: modell,
         mengde: avrund(mengde, l.enhet), ider: p.ider };
@@ -436,7 +480,8 @@ export const MAKS_ELEMENTER = 400;   // per endring i fila — resten telles
 export function endringerFra(res, linjer, o) {
   const opt = o || {}, toM = Number(opt.toM) || 1;
   return (linjer || []).map(l => {
-    const av = (e) => (typeNokkel(e.type) || "ukjent") === l.key;
+    const nok = linjeNokler(res);
+    const av = (e) => nok(e) === l.key;
     const el = [];
     const legg = (e, hva) => {
       let m;
@@ -462,12 +507,15 @@ export function endringerFra(res, linjer, o) {
       if (l.ny) deler.push(l.ny + " ny" + (l.ny > 1 ? "e" : ""));
       if (l.endret) deler.push(l.endret + " endret");
     }
-    const nyId = nyIdFor(res, opt, (e) => (typeNokkel(e.type) || "ukjent") === l.key);
+    const nyId = nyIdFor(res, opt, (e) => nok(e) === l.key);
     return { key: l.key, navn: l.navn, undertekst: l.undertekst || "", enhet: l.enhet,
       oppsummering: deler.join(" · ") + " → " + mengdeTekst(l) + (nyId.length ? " · " + nyId.length + " samme element med ny ID (ikke priset)" : ""),
       antall: el.length, elementer: el.slice(0, MAKS_ELEMENTER), bilder: { for: "", etter: "" }, nyId,
+      // Antallene fra linja — elementlista er kuttet ved MAKS_ELEMENTER, og Excel
+      // talte fra den («Ny 400» der det var 769, stresstest 27.10)
+      tall: { ny: l.ny || 0, fjernet: l.slettet || 0, endret: l.endret || 0 },
       // 📏 per profil — står i PDF-en og Excel, så kontraktsparten ser regningen
-      profiler: (l.profiler || []).slice(0, 60).map(p => ({ navn: p.navn, ny: p.ny, slettet: p.slettet, endret: p.endret, lm: p.lm,
+      profiler: (l.profiler || []).slice(0, 60).map(p => ({ navn: p.navn, ny: p.ny, slettet: p.slettet, endret: p.endret, byttetFra: p.byttetFra || 0, lm: p.lm,
         kgPerM: p.kgPerM, kilde: p.kgPerMKilde || "", mengde: p.mengde })) };
   });
 }
@@ -483,7 +531,8 @@ export function nyIdFor(res, o, filter) {
 // egen endringsside, men skal likevel stå i PDF-en (Emil 26.10: «ja det skal det»)
 export function nyIdUtenEndring(res, endringer, o) {
   const har = new Set((endringer || []).map(e => e.key));
-  return nyIdFor(res, o, (e) => !har.has(typeNokkel(e.type) || "ukjent"));
+  const nok = linjeNokler(res);
+  return nyIdFor(res, o, (e) => !har.has(nok(e)));
 }
 
 // Mengden i tabellen på bildesida
@@ -539,8 +588,10 @@ export function vaskEm(r) {
     antall: Math.max(0, Math.round(tall(e && e.antall) || 0)),
     bilder: { for: bildeNavnOk(e && e.bilder && e.bilder.for), etter: bildeNavnOk(e && e.bilder && e.bilder.etter) },
     nyId: vaskNyId(e && e.nyId),
+    tall: e && e.tall && typeof e.tall === "object" ? { ny: Math.max(0, Math.round(tall(e.tall.ny) || 0)), fjernet: Math.max(0, Math.round(tall(e.tall.fjernet) || 0)), endret: Math.max(0, Math.round(tall(e.tall.endret) || 0)) } : null,
     profiler: (Array.isArray(e && e.profiler) ? e.profiler : []).slice(0, 60).map(p => ({ navn: tekst(p && p.navn, 60),
       ny: Math.max(0, Math.round(tall(p && p.ny) || 0)), slettet: Math.max(0, Math.round(tall(p && p.slettet) || 0)), endret: Math.max(0, Math.round(tall(p && p.endret) || 0)),
+      byttetFra: Math.max(0, Math.round(tall(p && p.byttetFra) || 0)),
       lm: tall(p && p.lm) || 0, kgPerM: tall(p && p.kgPerM), kilde: p && p.kilde === "egen" ? "egen" : (p && p.kilde === "modell" ? "modell" : ""), mengde: tall(p && p.mengde) || 0 })),
     elementer: (Array.isArray(e && e.elementer) ? e.elementer : []).slice(0, MAKS_ELEMENTER).map(x => ({
       hva: ["ny", "fjernet", "endret", "valgt"].includes(x && x.hva) ? x.hva : "ny",

@@ -267,20 +267,22 @@ export function emExcelArk(em, ordre) {
   const topp = [["Endringsmelding", (em.nr ? em.nr + " · " : "") + em.tittel],
     ["Modell", em.fra ? em.til + " mot " + em.fra : em.til], ["Laget", String(em.laget || "").slice(0, 10)], []];
   // 1) Mengder per type
-  const mengder = topp.concat([["Type", "Elementer / profil", "Ny", "Fjernet", "Endret", "Mengdeendring", "Enhet", "Lengdeendring (lm)", "kg/m", "kg/m fra"]]);
+  const mengder = topp.concat([["Type", "Elementer / profil", "Ny", "Fjernet", "Endret", "Mengdeendring", "Enhet", "Lengdeendring (lm)", "kg/m", "kg/m fra", "Byttet til annen profil"]]);
   let harModellKg = false;
   for (const e of em.endringer || []) {
     const n = (h) => e.elementer.filter(x => x.hva === h).length;
     const prof = e.profiler || [];
     // Med profiler er linja summen av dem (kg = lengde × kg/m per profil)
     const sum = prof.length ? prof.reduce((s, p) => s + (Number(p.mengde) || 0), 0) : e.elementer.reduce((s, x) => s + (Number(x.mengde) || 0), 0);
-    mengder.push([e.navn, e.undertekst, n("ny") + n("valgt"), n("fjernet"), n("endret"), Math.round(sum * 1000) / 1000, e.enhet]);
+    // Antallene fra linja (e.tall) — elementlista er kuttet ved 400 per type
+    const T = e.tall || { ny: n("ny") + n("valgt"), fjernet: n("fjernet"), endret: n("endret") };
+    mengder.push([e.navn, e.undertekst, T.ny, T.fjernet, T.endret, Math.round(sum * 1000) / 1000, e.enhet]);
     // 📏 én rad per profil (Emil 26.10: «forskjellige dimensjoner = forskjellige pris/vekt»)
     for (const p of prof) {
       if (p.kilde === "modell") harModellKg = true;
       mengder.push(["", "   " + p.navn, p.ny, p.slettet, p.endret, Math.round((Number(p.mengde) || 0) * 1000) / 1000, e.enhet,
         Math.round((Number(p.lm) || 0) * 100) / 100, e.enhet === "kg" && p.kgPerM != null ? p.kgPerM : "",
-        e.enhet === "kg" ? (p.kilde === "egen" ? "profiltabell" : p.kilde === "modell" ? "anslag fra modellen" : "") : ""]);
+        e.enhet === "kg" ? (p.kilde === "egen" ? "profiltabell" : p.kilde === "modell" ? "anslag fra modellen" : "") : "", p.byttetFra || ""]);
     }
   }
   mengder.push([], ["Mengdene er beregnet fra 3D-modellen og er et anslag, ikke oppmål."]);

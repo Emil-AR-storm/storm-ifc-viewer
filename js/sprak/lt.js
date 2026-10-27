@@ -1368,6 +1368,8 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "BCF-eksport": "BCF eksportas",
   // 📝 Endringsmelding fra modellen (26.10.2026)
   // 🔗 EM paring av fjernet + ny (26.10.2026)
+  "{0} byttet til annen profil": "{0} pakeista į kitą profilį",
+  "Under halvparten av elementene lot seg parre (gjenkjent på {0}). Er dette to revisjoner av samme modell? Mellom ulike modeller blir nesten alt «ny» og «fjernet», og «endret» kan være to forskjellige elementer.": "Suporuoti pavyko mažiau nei pusę elementų (atpažinta pagal {0}). Ar tai dvi to paties modelio revizijos? Tarp skirtingų modelių beveik viskas tampa „nauja“ ir „pašalinta“, o „pakeista“ gali būti du skirtingi elementai.",
   "Pris i kg i stedet (lengde × kg/m)": "Įkainoti kg (ilgis × kg/m)",
   "Punktet i kontraktens prisliste": "Sutarties kainyno punktas",
   "Mengder (eks. mva)": "Kiekiai (be PVM)",
