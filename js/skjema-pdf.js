@@ -73,11 +73,14 @@ export function ordreUtad(rader) {
       const l = linjeSum(r, basis);
       return {
         // «(mangler pris)» fra eldre EM-utkast fjernes når prisen er fylt inn
-        produkt: tilLatin1(l.salgsEnhetspris > 0 ? String(r.produkt || "").replace(/\s*\(mangler pris\)\s*$/, "") : r.produkt),
+        // Påslag i % (Emil 27.10): «3 % av 16 551,80» i teksten og «—» som
+        // enhetspris — 1 % av grunnlaget som «pris» ble lest som en pris
+        produkt: tilLatin1(String(r.enhet).trim() === "%" ? String(r.produkt || "") + " (" + (Number(r.antall) || 0).toString().replace(".", ",") + " % av " + kr(basis).replace(/\u00a0/g, " ") + ")"
+          : l.salgsEnhetspris > 0 ? String(r.produkt || "").replace(/\s*\(mangler pris\)\s*$/, "") : r.produkt),
         post: tilLatin1(r.post || ""),
         antall: Number(r.antall) || 0,
         enhet: tilLatin1(r.enhet),
-        enhetspris: l.salgsEnhetspris,   // SALGSPRIS, ikke kostpris
+        enhetspris: String(r.enhet).trim() === "%" ? null : l.salgsEnhetspris,   // SALGSPRIS, ikke kostpris
         eksMva: l.eksMva,
         mvaProsent: Number(r.mva) || 0,
         mvaBelop: l.mvaBelop,
@@ -345,7 +348,7 @@ function ordreTabell(P, f) {
     if (!P.plass(h + 3)) { P.nySide(); hode(); }
     d.setFontSize(8); hex(d, SORT);
     navn.forEach((l, i) => d.text(l, x[P0], P.y + OVER + i * LINJEHOYDE));
-    const verdier = (medPost ? [r.post || "—"] : []).concat([null, tilLatin1(String(r.antall)), r.enhet, krPdf(r.enhetspris), krPdf(r.eksMva), krPdf(r.mvaBelop), krPdf(r.inklMva)]);
+    const verdier = (medPost ? [r.post || "—"] : []).concat([null, tilLatin1(String(r.antall)), r.enhet, r.enhetspris == null ? "—" : krPdf(r.enhetspris), krPdf(r.eksMva), krPdf(r.mvaBelop), krPdf(r.inklMva)]);
     O_KOL.forEach((k, i) => {
       if (i === P0) return;
       d.text(verdier[i], k.h === "right" ? slutt(i) - 2 : x[i], P.y + OVER,

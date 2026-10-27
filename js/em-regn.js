@@ -24,7 +24,18 @@ const STANDARD = {
   ifcreinforcingbar: "kg", ifcreinforcingmesh: "kg", ifctendon: "kg"
 };
 export const typeNokkel = (t) => String(t || "").trim().toLowerCase();
-export function standardEnhet(type) { const k = typeNokkel(type); return STANDARD[k] || STANDARD["ifc" + k] || "stk"; }
+export function standardEnhet(type, staal) {
+  const k = typeNokkel(type), kk = STANDARD[k] ? k : "ifc" + k;
+  // 🔩 Stål prises i kg (Emil 27.10): søyler, bjelker, staver og plater med stålprofil
+  if (staal && STAAL_TYPER.includes(kk)) return "kg";
+  return STANDARD[kk] || "stk";
+}
+// Typene der stål gir kg som standard, og navnene som kjennetegner stål.
+// Betong (B30/B35 …, «betong», «concrete») er aldri stål, selv med mål i navnet.
+export const STAAL_TYPER = ["ifccolumn", "ifcbeam", "ifcmember", "ifcplate"];
+const STAAL_RE = /\b(HE[ABM]|HEB|IPE|IPN|UPE|UPN|UNP|INP|CFSHS|CFRHS|CFCHS|HFSHS|HFRHS|HFCHS|CHS|RHS|SHS|KKR|VKR|HUP|Z\d|C\d|L\d|T\d|Flat ?bars?|Flattstål|Stålplate|Square ?bars?|Rundstål|Vinkelstål|stål|steel|S235|S275|S355|S420|S460)/i;
+const BETONG_RE = /\b(betong|concrete|B\d{2}\b|C\d{2}\/\d{2}|hulldekke|HD\d|prefab|plasstøpt)/i;
+export function erStaalNavn(navn) { const n = String(navn || ""); return STAAL_RE.test(n) && !BETONG_RE.test(n); }
 
 // «IFCCOLUMN» / «IfcColumn» → «Søyle» o.l. Ukjent: typen uten «Ifc».
 const NAVN = {
@@ -85,9 +96,16 @@ const rund1 = (x) => Math.round(x * 10) / 10;
 export function mengdeDiff(res, o) {
   const opt = o || {}, toM = Number(opt.toM) || 1, valgt = opt.enheter || {}, egneKg = opt.kgPerM || {}, huskKg = opt.kgPerMProfil || {};
   const per = new Map();
+  // Stål eller ikke per type: flertallet av navnene avgjør (før noe telles, så enheten er riktig fra start)
+  const staalTall = new Map();
+  for (const e of [].concat((res && res.ny) || [], (res && res.slettet) || [], (res && res.endret) || [])) {
+    const k = typeNokkel(e && e.type) || "ukjent", x = staalTall.get(k) || [0, 0];
+    x[erStaalNavn(e && e.name) ? 0 : 1]++; staalTall.set(k, x);
+  }
+  const erStaal = (k) => { const x = staalTall.get(k); return !!x && x[0] > x[1]; };
   const linje = (type) => {
     const k = typeNokkel(type) || "ukjent";
-    if (!per.has(k)) per.set(k, { key: k, type: type || "", navn: typeNavn(type), enhet: valgt[k] || standardEnhet(type),
+    if (!per.has(k)) per.set(k, { key: k, type: type || "", navn: typeNavn(type), enhet: valgt[k] || standardEnhet(type, erStaal(k)),
       ny: 0, slettet: 0, endret: 0, mengde: 0, ider: [], navnSett: new Map(), prof: new Map() });
     return per.get(k);
   };
@@ -216,8 +234,7 @@ export function faktablokk(linjer, k) {
     if (x.endret) deler.push(x.endret + " endret");
     l.push("• " + x.navn + (x.undertekst ? " (" + x.undertekst + ")" : "") + ": " + deler.join(", ") + " → " + mengdeTekst(x));
     // 📏 kg per profil: lengde × kg/m, så regningen kan etterprøves
-    if (x.enhet === "kg") for (const p of x.profiler || []) if (p.kgPerM != null && Math.abs(p.lm) > 1e-9)
-      l.push("   – " + p.navn + ": " + (p.lm > 0 ? "+" : "") + tallTekst(p.lm, 2) + " lm × " + tallTekst(p.kgPerM, 1) + " kg/m = " + mengdeTekst({ mengde: p.mengde, enhet: "kg" }) + (p.kgPerMKilde === "modell" || p.kilde === "modell" ? " (kg/m anslått fra modellen)" : ""));
+    if (x.enhet === "kg") l.push(...profilLinjer(x.profiler));
   }
   if (o.utenFradrag) l.push("", "Arbeidet er " + String(o.arbeidet || "produsert").toLowerCase() + ": fjernede elementer er allerede produsert og er derfor ikke trukket fra.");
   if (o.nyId) l.push("", o.nyId + (o.nyId === 1 ? " element har" : " elementer har") + " fått ny GlobalId i modellen, men er samme element på samme sted. De er kontrollert og ikke priset (se vedlegg).");
@@ -226,6 +243,30 @@ export function faktablokk(linjer, k) {
   // Med mal v2 har hjemmelen eget felt (1.7) og står ikke her (hjemmel: null).
   // Verktøyet skriver aldri et punktnummer selv — bare det brukeren har skrevet.
   if (o.hjemmel !== null) l.push("", "Hjemmel: " + (String(o.hjemmel || "").trim() || "[fyll inn punkt fra kontrakten]"));
+  return l.join("\n");
+}
+
+// «   – CFSHS100x6: +0,3 lm × 17 kg/m = +5 kg» — regnestykket per profil i 1.3
+export function profilLinjer(profiler) {
+  return (profiler || []).filter(p => p && p.kgPerM != null && Math.abs(Number(p.lm) || 0) > 1e-9).map(p => {
+    const kg = p.mengde != null && p.kgPerMKilde !== undefined ? p.mengde : Math.round((Number(p.lm) || 0) * p.kgPerM);
+    return "   – " + p.navn + ": " + (p.lm > 0 ? "+" : "") + tallTekst(p.lm, 2) + " lm × " + tallTekst(p.kgPerM, 1) + " kg/m = " +
+      mengdeTekst({ mengde: kg, enhet: "kg" }) + (p.kgPerMKilde === "modell" || p.kilde === "modell" ? " (kg/m anslått fra modellen)" : "");
+  });
+}
+// 1.3 oppdateres når en linje i 2.4 får ny enhet eller nye kg/m: tallet etter
+// «→» på linja byttes, og regnestykket per profil skrives på nytt. Har brukeren
+// skrevet om linja (finner ikke starten), røres ingenting.
+export function oppdaterBegrunnelse(tekst, r) {
+  const s = String(tekst || "");
+  if (!r || !r.begr || !s) return s;
+  const l = s.split("\n"), i = l.findIndex(x => x.startsWith(r.begr));
+  if (i < 0 || !/→/.test(l[i])) return s;
+  l[i] = l[i].replace(/→[^→]*$/, "→ " + mengdeTekst({ mengde: Number(r.antall) || 0, enhet: r.enhet }));
+  let j = i + 1;
+  while (j < l.length && l[j].startsWith("   – ")) j++;
+  const nye = r.enhet === "kg" ? profilLinjer((r.profiler || []).map(p => ({ navn: p.navn, lm: p.lm, kgPerM: p.kgPerM, kilde: p.kilde }))) : [];
+  l.splice(i + 1, j - i - 1, ...nye);
   return l.join("\n");
 }
 
@@ -240,7 +281,10 @@ export function ordrelinjer(linjer, o) {
       // var fylt inn i skjemaet (Emils test 26.10). Panelet viser hva som mangler.
       produkt: (l.navn + (l.undertekst ? " " + l.undertekst : "")).slice(0, 120),
       antall: l.mengde, enhet: l.enhet, enhetspris: l.pris == null ? 0 : l.pris, paslag: 0, mva: 25,
-      post: String(post[l.key] || "").slice(0, 30)
+      post: String(post[l.key] || "").slice(0, 30),
+      // Starten på linja i begrunnelsen (1.3) — så 1.3 kan følge med når enheten
+      // eller kg/m endres i 2.4 (Emil 27.10, EM-test 8: 1.3 sa lm, 2.4 sa kg)
+      begr: ("• " + l.navn + (l.undertekst ? " (" + l.undertekst + ")" : "") + ":").slice(0, 200)
     };
     // 📏 Prøve C (Emil 26.10): regnestykket per profil følger med inn i 2.4 —
     // bare på skjermen. Antall = Σ lengde × kg/m (sjekkliste.js vaskLinje).

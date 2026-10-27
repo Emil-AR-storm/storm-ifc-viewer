@@ -317,7 +317,7 @@ export function emExcelArk(em, ordre) {
   if (ordre && ordre.rader && ordre.rader.length) {
     const ok = topp.concat([["Post", "Produkt", "Antall", "Enhet", "Enhetspris", "Sum eks. mva", "MVA %", "MVA", "Sum inkl. mva"]]);
     const kr2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
-    for (const r of ordre.rader) ok.push([r.post || "", r.produkt, r.antall, r.enhet, kr2(r.enhetspris), kr2(r.eksMva), r.mvaProsent, kr2(r.mvaBelop), kr2(r.inklMva)]);
+    for (const r of ordre.rader) ok.push([r.post || "", r.produkt, r.antall, r.enhet, r.enhetspris == null ? "" : kr2(r.enhetspris), kr2(r.eksMva), r.mvaProsent, kr2(r.mvaBelop), kr2(r.inklMva)]);
     ok.push([], ["", "Total", "", "", "", kr2(ordre.sum.eksMva), "", kr2(ordre.sum.mvaBelop), kr2(ordre.sum.inklMva)]);
     ark.push({ navn: "Økonomi", rader: ok });
   }

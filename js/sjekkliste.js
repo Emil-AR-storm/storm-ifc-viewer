@@ -27,6 +27,7 @@ import { LETT } from "./lett.js";
 import { GRAPH, SP, authHeaders, graphGet, spTokenSilent } from "./sharepoint.js";
 import { hentLogo, hentLogoer, lesMappe } from "./tegninger.js";
 import { varsel } from "./varsel.js";
+import { oppdaterBegrunnelse } from "./em-regn.js";
 
 export const sjekklisteMappe = () => SP.folder + "/Sjekklister";
 export const erJson = (navn) => /\.json$/i.test(String(navn || ""));
@@ -172,6 +173,7 @@ export function vaskLinje(r) {
     post: String(r.post == null ? "" : r.post).slice(0, 30)
   };
   if (FOLGETYPER.includes(r.folge)) ut.folge = r.folge;
+  if (r.begr) ut.begr = String(r.begr).slice(0, 200);
   if (Array.isArray(r.profiler) && r.profiler.length) {
     ut.profiler = r.profiler.slice(0, 60).filter(p => p && typeof p === "object").map(p => {
       const kg = tall(p.kgPerM, null);
@@ -198,11 +200,12 @@ export function tomLinje() {
 
 // Én linje regnet ut. `salgsEnhetspris` er den ENESTE prisen som skal ut av
 // huset — `kostnad` og `fortjeneste` er interne tall.
-// Enhet «%» (påslag/administrasjon, runde 3): prosent av kostnaden på alle de
-// andre linjene (`basis`, se ordreBasis). Enhetsprisen er da 1 % av basisen.
+// Enhet «%» (påslag/administrasjon, runde 3): prosent av SUM EKS. MVA på alle
+// de andre linjene (`basis`, se ordreBasis) — det tallet kontraktsparten ser i
+// PDF-en, så «3 % av 16 551,80» kan regnes etter (Emil 27.10).
 export function ordreBasis(rader) {
   return (Array.isArray(rader) ? rader : []).filter(r => r && String(r.enhet).trim() !== "%")
-    .reduce((s, r) => { const l = vaskLinje(r); return s + (l ? l.antall * l.enhetspris : 0); }, 0);
+    .reduce((s, r) => { const l = vaskLinje(r); return s + (l ? l.antall * l.enhetspris * (1 + l.paslag / 100) : 0); }, 0);
 }
 export function linjeSum(r, basis) {
   const l = vaskLinje(r) || tomLinje();
@@ -780,8 +783,14 @@ export async function apneSkjema(c, mal, skjema, lagre, valg) {
     // Enheten byttet på en linje med profiler (lm ↔ kg): antall og regnestykket tegnes på nytt
     el.querySelectorAll('[data-ordre][data-kol="enhet"]').forEach(inp => inp.addEventListener("change", () => {
       const r = (skjema.svar[inp.dataset.ordre] || [])[Number(inp.dataset.rad)];
-      if (r && Array.isArray(r.profiler) && r.profiler.length) tegn();
+      if (r && r.begr) folgBegrunnelse(r);
+      if (r && (r.begr || (Array.isArray(r.profiler) && r.profiler.length))) tegn();
     }));
+    // 1.3 følger med når en EM-linje får ny enhet eller nye kg/m (Emil 27.10)
+    function folgBegrunnelse(r) {
+      if (!r || !r.begr || typeof skjema.svar.begrunnelse !== "string" || skjema.laast) return;
+      skjema.svar.begrunnelse = oppdaterBegrunnelse(skjema.svar.begrunnelse, r);
+    }
     el.querySelectorAll(".sv-o-bytt").forEach(b => {
       b.onclick = () => {
         const id = b.dataset.ordre, i = Number(b.dataset.rad);
@@ -791,6 +800,7 @@ export async function apneSkjema(c, mal, skjema, lagre, valg) {
         // en lm-pris er ikke en kg-pris — nullstilles så ingen tror den gjelder
         rader[i].enhetspris = 0;
         skjema.svar[id] = rader.map(r => vaskLinje(r) || tomLinje());
+        folgBegrunnelse(skjema.svar[id][i]);
         tegn();
       };
     });
@@ -803,6 +813,7 @@ export async function apneSkjema(c, mal, skjema, lagre, valg) {
         const v = Number(String(inp.value).replace(/\s/g, "").replace(",", "."));
         if (isFinite(v) && v > 0) { p.kgPerM = v; p.kilde = "egen"; huskKgPerM(p.navn, v); }
         skjema.svar[id] = rader.map(r => vaskLinje(r) || tomLinje());
+        folgBegrunnelse(skjema.svar[id][i]);
         tegn();
       };
     });
