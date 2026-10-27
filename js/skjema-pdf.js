@@ -14,7 +14,7 @@
 // SALGSPRIS per enhet. Da går tallene opp, og kostnaden er ikke med.
 import { t } from "./i18n.js";
 import { hentJsPDF } from "./rapport.js";
-import { alleFelt, kr, linjeSum, ordreSum, tomtSvar } from "./sjekkliste.js";
+import { alleFelt, kr, linjeSum, ordreBasis, ordreSum, tomtSvar } from "./sjekkliste.js";
 import { lysKant, malBunn, malTopp, pdfFarger, profilFarge } from "./pdf-utseende.js";
 
 // ═══════════════════════ REN LOGIKK ═══════════════════════
@@ -64,13 +64,17 @@ export function svarTekst(f, verdi) {
 // Ordrelinjene slik de skal se ut UTAD. Merk hva som IKKE er med.
 export function ordreUtad(rader) {
   const liste = (Array.isArray(rader) ? rader : []).filter(r => r && typeof r === "object");
-  const sum = ordreSum(liste);
+  const sum = ordreSum(liste), basis = ordreBasis(liste);
   return {
+    // Profilene (regnestykket per profil) er med vilje IKKE med — de vises bare
+    // på skjermen (Emil 26.10). Posten er med: kontraktsparten skal se hvilken
+    // post i prislista linja prises etter.
     rader: liste.map(r => {
-      const l = linjeSum(r);
+      const l = linjeSum(r, basis);
       return {
         // «(mangler pris)» fra eldre EM-utkast fjernes når prisen er fylt inn
         produkt: tilLatin1(l.salgsEnhetspris > 0 ? String(r.produkt || "").replace(/\s*\(mangler pris\)\s*$/, "") : r.produkt),
+        post: tilLatin1(r.post || ""),
         antall: Number(r.antall) || 0,
         enhet: tilLatin1(r.enhet),
         enhetspris: l.salgsEnhetspris,   // SALGSPRIS, ikke kostpris
@@ -278,7 +282,7 @@ function feltBlokk(P, f) {
 
 // SEKS kolonner. Påslag, fortjeneste og kostnad finnes ikke i modellen og kan
 // derfor ikke tegnes ved et uhell.
-const O_KOL = [
+const O_KOL_STD = [
   { n: "produkt",    tittel: "Produkt",       b: 60, h: "left"  },
   { n: "antall",     tittel: "Antall",        b: 15, h: "right" },
   { n: "enhet",      tittel: "Enhet",         b: 13, h: "left"  },
@@ -306,6 +310,10 @@ function ordreTabell(P, f) {
     return;
   }
 
+  // 🧾 «Post»-kolonnen bare når minst én linje har post (runde 3)
+  const medPost = f.ordre.rader.some(r => r.post);
+  const O_KOL = medPost ? [{ n: "post", tittel: "Post", b: 14, h: "left" }].concat(O_KOL_STD) : O_KOL_STD;
+  const P0 = medPost ? 1 : 0;
   const skala = P.bredde / O_KOL.reduce((a, k) => a + k.b, 0);
   const x = []; let løpende = P.x;
   O_KOL.forEach((k, i) => { x[i] = løpende; løpende += k.b * skala; });
@@ -332,14 +340,14 @@ function ordreTabell(P, f) {
   const OVER = 3.2, LINJEHOYDE = 3.6, UNDER = 2.6;
 
   f.ordre.rader.forEach(r => {
-    const navn = bryt(d, r.produkt || "—", O_KOL[0].b * skala - 2);
+    const navn = bryt(d, r.produkt || "—", O_KOL[P0].b * skala - 2);
     const h = OVER + (navn.length - 1) * LINJEHOYDE + UNDER;
     if (!P.plass(h + 3)) { P.nySide(); hode(); }
     d.setFontSize(8); hex(d, SORT);
-    navn.forEach((l, i) => d.text(l, x[0], P.y + OVER + i * LINJEHOYDE));
-    const verdier = [null, tilLatin1(String(r.antall)), r.enhet, krPdf(r.enhetspris), krPdf(r.eksMva), krPdf(r.mvaBelop), krPdf(r.inklMva)];
+    navn.forEach((l, i) => d.text(l, x[P0], P.y + OVER + i * LINJEHOYDE));
+    const verdier = (medPost ? [r.post || "—"] : []).concat([null, tilLatin1(String(r.antall)), r.enhet, krPdf(r.enhetspris), krPdf(r.eksMva), krPdf(r.mvaBelop), krPdf(r.inklMva)]);
     O_KOL.forEach((k, i) => {
-      if (i === 0) return;
+      if (i === P0) return;
       d.text(verdier[i], k.h === "right" ? slutt(i) - 2 : x[i], P.y + OVER,
         { align: k.h === "right" ? "right" : "left" });
     });
@@ -355,9 +363,9 @@ function ordreTabell(P, f) {
     d.setFont(undefined, fet ? "bold" : "normal");
     d.setFontSize(fet ? 9.5 : 8);
     hex(d, fet ? SORT : GRÅ);
-    d.text(etikett, slutt(5) - 2, P.y, { align: "right" });
+    d.text(etikett, slutt(5 + P0) - 2, P.y, { align: "right" });
     hex(d, SORT);
-    d.text(verdi + " NOK", slutt(6) - 2, P.y, { align: "right" });
+    d.text(verdi + " NOK", slutt(6 + P0) - 2, P.y, { align: "right" });
     P.y += fet ? 5.5 : 4.2;
   };
   rad(t("Total (eks. mva)"), krPdf(s.eksMva), false);

@@ -154,27 +154,54 @@ export function alleFelt(mal) {
 
 export const STANDARD_MVA = 25;
 
+// 🧾 Runde 3 (EM, Emil 26.10): `post` = punktet i kontraktens prisliste,
+// `folge` = følgekostnad (omarbeid, vrak, tegninger, påslag), og `profiler` =
+// regnestykket per stålprofil (prøve C) — antall er da Σ lengde × kg/m og kan
+// ikke skrives over. Profilene vises bare på skjermen, aldri i PDF-en.
+export const FOLGETYPER = ["omarbeid", "vrak", "tegninger", "paslag"];
 export function vaskLinje(r) {
   if (!r || typeof r !== "object") return null;
   const tall = (v, d) => { const n = Number(String(v == null ? "" : v).replace(",", ".")); return isFinite(n) ? n : d; };
-  return {
+  const ut = {
     produkt: String(r.produkt == null ? "" : r.produkt).slice(0, 200),
     antall: tall(r.antall, 0),
     enhet: String(r.enhet == null ? "stk" : r.enhet).slice(0, 20),
     enhetspris: tall(r.enhetspris, 0),
     paslag: tall(r.paslag, 0),
-    mva: tall(r.mva, STANDARD_MVA)
+    mva: tall(r.mva, STANDARD_MVA),
+    post: String(r.post == null ? "" : r.post).slice(0, 30)
   };
+  if (FOLGETYPER.includes(r.folge)) ut.folge = r.folge;
+  if (Array.isArray(r.profiler) && r.profiler.length) {
+    ut.profiler = r.profiler.slice(0, 60).filter(p => p && typeof p === "object").map(p => {
+      const kg = tall(p.kgPerM, null);
+      return { navn: String(p.navn == null ? "" : p.navn).slice(0, 60), lm: tall(p.lm, 0),
+        kgPerM: kg != null && kg > 0 ? kg : null, kilde: p.kilde === "egen" ? "egen" : (p.kilde === "modell" ? "modell" : "") };
+    });
+    if (ut.enhet === "kg") ut.antall = profilSum(ut.profiler);
+  }
+  return ut;
+}
+// Σ lengde × kg/m, rundet til hele kg (som i panelet)
+export function profilSum(profiler) {
+  return Math.round((profiler || []).reduce((s, p) => s + (Number(p.lm) || 0) * (Number(p.kgPerM) || 0), 0));
 }
 
 export function tomLinje() {
-  return { produkt: "", antall: 0, enhet: "stk", enhetspris: 0, paslag: 0, mva: STANDARD_MVA };
+  return { produkt: "", antall: 0, enhet: "stk", enhetspris: 0, paslag: 0, mva: STANDARD_MVA, post: "" };
 }
 
 // Én linje regnet ut. `salgsEnhetspris` er den ENESTE prisen som skal ut av
 // huset — `kostnad` og `fortjeneste` er interne tall.
-export function linjeSum(r) {
+// Enhet «%» (påslag/administrasjon, runde 3): prosent av kostnaden på alle de
+// andre linjene (`basis`, se ordreBasis). Enhetsprisen er da 1 % av basisen.
+export function ordreBasis(rader) {
+  return (Array.isArray(rader) ? rader : []).filter(r => r && String(r.enhet).trim() !== "%")
+    .reduce((s, r) => { const l = vaskLinje(r); return s + (l ? l.antall * l.enhetspris : 0); }, 0);
+}
+export function linjeSum(r, basis) {
   const l = vaskLinje(r) || tomLinje();
+  if (String(l.enhet).trim() === "%") l.enhetspris = (Number(basis) || 0) / 100;
   const kostnad = l.antall * l.enhetspris;
   const fortjeneste = kostnad * (l.paslag / 100);
   const eksMva = kostnad + fortjeneste;
@@ -188,8 +215,9 @@ export function linjeSum(r) {
 
 export function ordreSum(rader) {
   const ut = { kostnad: 0, fortjeneste: 0, eksMva: 0, mvaBelop: 0, inklMva: 0, antallLinjer: 0 };
+  const basis = ordreBasis(rader);
   for (const r of (Array.isArray(rader) ? rader : [])) {
-    const s = linjeSum(r);
+    const s = linjeSum(r, basis);
     ut.kostnad += s.kostnad; ut.fortjeneste += s.fortjeneste;
     ut.eksMva += s.eksMva; ut.mvaBelop += s.mvaBelop; ut.inklMva += s.inklMva;
     ut.antallLinjer++;
@@ -705,8 +733,9 @@ export async function apneSkjema(c, mal, skjema, lagre, valg) {
       const boks = el.querySelector('.sv-ordre[data-ordrefelt="' + feltId + '"]');
       if (!boks) return;
       const rader = Array.isArray(skjema.svar[feltId]) ? skjema.svar[feltId] : [];
+      const basis = ordreBasis(rader);
       boks.querySelectorAll("tbody tr[data-rad]").forEach(tr => {
-        const l = linjeSum(rader[Number(tr.dataset.rad)]);
+        const l = linjeSum(rader[Number(tr.dataset.rad)], basis);
         tr.querySelectorAll(".sv-o-ut").forEach(td => { td.textContent = kr(l[td.dataset.ut]); });
       });
       const sum = ordreSum(rader);
@@ -721,7 +750,7 @@ export async function apneSkjema(c, mal, skjema, lagre, valg) {
         const id = inp.dataset.ordre, i = Number(inp.dataset.rad), kol = inp.dataset.kol;
         const rader = Array.isArray(skjema.svar[id]) ? skjema.svar[id] : [];
         if (!rader[i]) return;
-        rader[i][kol] = (kol === "produkt" || kol === "enhet") ? inp.value : inp.value;
+        rader[i][kol] = inp.value;
         skjema.svar[id] = rader.map(r => vaskLinje(r) || tomLinje());
         // vaskLinje gjør tall om til tall; skriv IKKE verdien tilbake i feltet,
         // det ville hoppet markøren og spist et halvskrevet «12,».
@@ -735,6 +764,23 @@ export async function apneSkjema(c, mal, skjema, lagre, valg) {
         const rader = (Array.isArray(skjema.svar[id]) ? skjema.svar[id] : []).slice();
         rader.push(tomLinje());
         skjema.svar[id] = rader;
+        tegn();
+      };
+    });
+
+    // 📏 Prøve C: regnestykket per profil åpnes/lukkes, og kg/m skrives inn
+    el.querySelectorAll(".sv-o-profknapp").forEach(b => {
+      b.onclick = () => { const k = b.dataset.ordre + ":" + b.dataset.rad; if (ordreApne.has(k)) ordreApne.delete(k); else ordreApne.add(k); tegn(); };
+    });
+    el.querySelectorAll(".sv-o-kgm").forEach(inp => {
+      inp.onchange = () => {
+        const id = inp.dataset.ordre, i = Number(inp.dataset.rad), j = Number(inp.dataset.prof);
+        const rader = Array.isArray(skjema.svar[id]) ? skjema.svar[id] : [];
+        const p = rader[i] && rader[i].profiler && rader[i].profiler[j];
+        if (!p) return;
+        const v = Number(String(inp.value).replace(/\s/g, "").replace(",", "."));
+        if (isFinite(v) && v > 0) { p.kgPerM = v; p.kilde = "egen"; huskKgPerM(p.navn, v); }
+        skjema.svar[id] = rader.map(r => vaskLinje(r) || tomLinje());
         tegn();
       };
     });
@@ -838,25 +884,41 @@ export async function apneSkjema(c, mal, skjema, lagre, valg) {
 // prosjektlederen trenger dem for å prise jobben. De skal ikke ut av huset —
 // PDF-en (js/skjema-pdf.js) utelater dem, og viser salgspris i stedet for
 // kostpris, slik at tallene går opp uten at kostnaden kan regnes tilbake.
+// Hvilke regnestykker (felt:rad) som står åpne — overlever ny tegning av skjemaet
+const ordreApne = new Set();
+// kg/m huskes per profilnavn på maskinen — samme lager som EM-panelet (em.js)
+function huskKgPerM(profil, verdi) {
+  try { const v = JSON.parse(localStorage.getItem("storm.em.kgPerM") || "{}"); v[profil] = verdi; localStorage.setItem("storm.em.kgPerM", JSON.stringify(v)); } catch (_) {}
+}
+const FOLGE_MERKE = { omarbeid: "følgekostnad", vrak: "følgekostnad", tegninger: "følgekostnad", paslag: "følgekostnad" };
+const tallNo = (v, d) => { const n = Number(v) || 0; return (n > 0 ? "+" : n < 0 ? "−" : "") + Math.abs(n).toFixed(d).replace(".", ","); };
+
 export function ordreHtml(f, rader, laast) {
   const av = laast ? " disabled" : "";
-  const sum = ordreSum(rader);
+  const sum = ordreSum(rader), basis = ordreBasis(rader);
   const celle = (i, n, verdi, bredde, steg) =>
     '<input type="number" step="' + (steg || "any") + '" class="sv-o-tall" style="width:' + bredde + '" ' +
     'data-ordre="' + esc(f.id) + '" data-rad="' + i + '" data-kol="' + n + '" value="' + esc(verdi) + '"' + av + '>';
 
   return '<div class="sv-ordre" data-ordrefelt="' + esc(f.id) + '">' +
     '<table class="sv-o-tab"><thead><tr>' +
-      '<th>' + t("Produkt") + '</th><th>' + t("Antall") + '</th><th>' + t("Enhet") + '</th>' +
+      '<th>' + t("Post") + '</th><th>' + t("Produkt") + '</th><th>' + t("Antall") + '</th><th>' + t("Enhet") + '</th>' +
       '<th>' + t("Enhetspris") + '</th><th>' + t("Totalpris") + '</th><th>' + t("Påslag") + '</th>' +
       '<th>' + t("Fortjeneste") + '</th><th>' + t("MVA") + '</th><th>' + t("Total (inkl. mva)") + '</th><th></th>' +
     '</tr></thead><tbody>' +
     (rader.length ? rader.map((r, i) => {
-      const l = linjeSum(r);
-      return '<tr data-rad="' + i + '">' +
-        '<td><input type="text" class="sv-o-produkt" data-ordre="' + esc(f.id) + '" data-rad="' + i + '" ' +
+      const l = linjeSum(r, basis);
+      const prof = Array.isArray(r.profiler) && r.profiler.length && r.enhet === "kg" ? r.profiler : null;
+      const apen = prof && ordreApne.has(f.id + ":" + i);
+      return '<tr data-rad="' + i + '"' + (r.folge ? ' class="sv-o-folge"' : '') + '>' +
+        '<td><input type="text" class="sv-o-post" data-ordre="' + esc(f.id) + '" data-rad="' + i + '" ' +
+          'data-kol="post" value="' + esc(r.post || "") + '" placeholder="—" title="' + esc(t("Punktet i kontraktens prisliste")) + '"' + av + '></td>' +
+        '<td>' + (r.folge ? '<span class="sv-o-merke">' + esc(t(FOLGE_MERKE[r.folge])) + '</span>' : '') +
+          (prof ? '<button class="sv-o-profknapp" data-ordre="' + esc(f.id) + '" data-rad="' + i + '" title="' + esc(t("Vis regnestykket per profil")) + '">' + (apen ? "▾ " : "▸ ") + esc(prof.length === 1 ? t("{0} profil", 1) : t("{0} profiler", prof.length)) + '</button>' : '') +
+          '<input type="text" class="sv-o-produkt" data-ordre="' + esc(f.id) + '" data-rad="' + i + '" ' +
           'data-kol="produkt" value="' + esc(r.produkt || "") + '"' + av + '></td>' +
-        '<td>' + celle(i, "antall", r.antall, "62px") + '</td>' +
+        '<td>' + (prof ? '<input type="number" class="sv-o-tall sv-o-laast" style="width:62px" value="' + esc(r.antall) + '" disabled title="' + esc(t("Summen av regnestykket per profil")) + '">'
+          : celle(i, "antall", r.antall, "62px")) + '</td>' +
         '<td><input type="text" class="sv-o-enhet" data-ordre="' + esc(f.id) + '" data-rad="' + i + '" ' +
           'data-kol="enhet" value="' + esc(r.enhet || "stk") + '"' + av + '></td>' +
         '<td>' + celle(i, "enhetspris", r.enhetspris, "84px") + '</td>' +
@@ -867,8 +929,8 @@ export function ordreHtml(f, rader, laast) {
         '<td class="sv-o-ut sterk" data-ut="inklMva">' + kr(l.inklMva) + '</td>' +
         '<td>' + (laast ? "" : '<button class="sv-o-slett" data-ordre="' + esc(f.id) +
           '" data-rad="' + i + '" title="' + t("Fjern linjen") + '">' + ikon("slett") + '</button>') + '</td>' +
-      '</tr>';
-    }).join("") : '<tr class="sv-o-tom"><td colspan="10">' + t("Ingen ordrelinjer ennå.") + '</td></tr>') +
+      '</tr>' + (apen ? profilKort(f, r, i, laast) : '');
+    }).join("") : '<tr class="sv-o-tom"><td colspan="11">' + t("Ingen ordrelinjer ennå.") + '</td></tr>') +
     '</tbody></table>' +
     (laast ? "" : '<button class="sv-o-ny" data-ordre="' + esc(f.id) + '">' +
       ikon("pluss") + ' ' + t("Legg til en fritekstrad") + '</button>') +
@@ -881,6 +943,23 @@ export function ordreHtml(f, rader, laast) {
         '</b> <em data-sum="margin">' + sum.margin.toFixed(0) + ' %</em></div>' +
       '<div class="sv-o-varsel">' + t("Kostnad, påslag og fortjeneste vises bare her. De kommer ikke med i PDF-en.") + '</div>' +
     '</div></div>';
+}
+
+// 📏 Prøve C: regnestykke-kortet under linja — «lengde × kg/m = kg» per profil
+// og summen nederst. Bare på skjermen; PDF-en viser linja med summen.
+function profilKort(f, r, i, laast) {
+  const av = laast ? " disabled" : "";
+  const rad = (p, j) => {
+    const kg = (Number(p.lm) || 0) * (Number(p.kgPerM) || 0);
+    return '<div class="sv-o-fl"><b>' + esc(p.navn) + '</b><span class="r">' + tallNo(p.lm, 2) + ' lm</span><span>×</span>' +
+      '<span><input class="sv-o-kgm' + (p.kilde === "modell" ? " modell" : "") + '" inputmode="decimal" data-ordre="' + esc(f.id) + '" data-rad="' + i + '" data-prof="' + j + '" value="' +
+        esc(p.kgPerM == null ? "" : String(p.kgPerM).replace(".", ",")) + '" placeholder="kg/m"' + av + '> kg/m</span><span>=</span><b class="r">' + tallNo(kg, 1) + ' kg</b></div>';
+  };
+  const sumR = r.profiler.reduce((s, p) => s + (Number(p.lm) || 0) * (Number(p.kgPerM) || 0), 0);
+  return '<tr class="sv-o-prof"><td colspan="11"><div class="sv-o-formel">' + r.profiler.map(rad).join("") +
+    '<div class="sv-o-fl sum"><span>' + esc(t("Sum → antall")) + '</span><span></span><span></span><span></span><span>=</span><b class="r">' + tallNo(sumR, 1) + ' → ' + tallNo(profilSum(r.profiler), 0) + ' kg</b></div>' +
+    (r.profiler.some(p => p.kilde === "modell") ? '<div class="sv-o-fhjelp">' + esc(t("Kursiv = anslag fra modellen (volum × 7 850 / lengde). Skriv inn kg/m fra profiltabellen.")) + '</div>' : '') +
+    '</div></td></tr>';
 }
 
 // Ett felt. Forslaget ligger UTENFOR input-elementet — aldri som value, aldri

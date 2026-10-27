@@ -79,7 +79,7 @@ export function huskHjemmel(k, type, hjemmel) {
   return Object.assign({}, k, { hjemler: Object.assign({}, k.hjemler, { [type]: l }) });
 }
 
-// 🚦 Sjekklisten. o: { emNr, endret (antall endrede elementer i EM-en) }
+// 🚦 Sjekklisten. o: { emNr, endret, omarbeidMed, omarbeidPris, postMangler, linjer }
 // Svar: [{ id, niva: "ok"|"gul"|"rod", tekst }] — rødt sperrer signering.
 export function sjekkliste(k, v, o) {
   const opt = o || {};
@@ -93,8 +93,15 @@ export function sjekkliste(k, v, o) {
   ut.push(v.type ? p("type", "ok", "Type varsel: " + v.type) : p("type", "rod", "Type varsel mangler"));
   ut.push(v.hjemmel ? p("hjemmel", "ok", "Hjemmel: " + v.hjemmel) : p("hjemmel", "rod", "Hjemmel mangler — skriv punktet fra kontrakten"));
   ut.push(v.revFor && v.revEtter ? p("rev", "ok", "Revisjon: " + revisjonTekst(v)) : p("rev", "gul", "Revisjon før/etter er ikke fylt inn"));
-  const n = Number(opt.endret) || 0;
-  ut.push(n ? p("folge", "gul", "Følgekostnader: " + (n === 1 ? "1 endret element er" : n + " endrede elementer er") + " ikke priset (omarbeid)") : p("folge", "ok", "Ingen endrede elementer som kan gi omarbeid"));
+  const n = Number(opt.endret) || 0, el = n === 1 ? "1 endret element" : n + " endrede elementer";
+  ut.push(!n ? p("folge", "ok", "Ingen endrede elementer som kan gi omarbeid")
+    : opt.omarbeidMed && opt.omarbeidPris ? p("folge", "ok", "Følgekostnader: omarbeid av " + el + " er priset")
+    : opt.omarbeidMed ? p("folge", "gul", "Følgekostnader: omarbeid av " + el + " mangler pris")
+    : p("folge", "gul", "Følgekostnader: " + el + " er ikke priset (omarbeid)"));
+  // 🧾 runde 3: kontraktsposten per linje
+  const pm = Number(opt.postMangler) || 0;
+  ut.push(pm ? p("post", "gul", "Kontraktspost mangler på " + pm + (pm === 1 ? " linje" : " linjer") + " — skriv punktet fra prislista")
+    : p("post", "ok", (opt.linjer ? "Kontraktspost på alle linjer" : "Ingen linjer å poste")));
   ut.push(!v.arbeidet ? p("arbeidet", "gul", "Velg om arbeidet er produsert, levert eller montert")
     : v.arbeidet === "Ikke produsert" ? p("arbeidet", "ok", "Arbeidet er ikke produsert")
     : p("arbeidet", "gul", "Arbeidet er " + v.arbeidet.toLowerCase() + " — vurder fremdrift (2.1) og omarbeid/vrak"));

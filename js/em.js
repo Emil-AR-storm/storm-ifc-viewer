@@ -47,6 +47,9 @@ const tilstand = {
   kgPerM: {}, apne: new Set(),
   // 📜 steg 0: kontrakten (huskes per prosjekt) og varselet (per EM)
   kontrakt: K.vaskKontrakt({}), varsel: K.vaskVarsel({}), kontraktStatus: "", revForslag: "",
+  // 🧾 runde 3: kontraktspost per linje, og følgekostnadene (med: null = standard)
+  post: {}, folge: { omarbeid: { med: null, pris: "", post: "" }, vrak: { med: null, pris: "", post: "" },
+    tegninger: { med: false, timer: "", pris: "", post: "" }, paslag: { med: false, prosent: "", post: "" } },
   tittel: "", emNr: "", oppdaget: "", fristDager: 3,
   poster: [], prisStatus: "", egenRetning: false,
   // 🔗 forslagene «mulig samme element» brukeren har krysset av (nøkkel → true),
@@ -112,9 +115,26 @@ function huskKg(profil, verdi) {
 export function linjer() {
   const k = kildeData();
   if (!k) return [];
-  const l = R.mengdeDiff(k.res, { toM: S.enhetSkala || 1, enheter: tilstand.enheter, kgPerM: tilstand.kgPerM, kgPerMProfil: husketKg() });
+  let l = R.mengdeDiff(k.res, { toM: S.enhetSkala || 1, enheter: tilstand.enheter, kgPerM: tilstand.kgPerM, kgPerMProfil: husketKg() });
+  // 🔁 Produsert/levert/montert: det fjernede trekkes ikke fra (runde 3)
+  if (erProdusert()) l = l.map(R.utenFradrag);
   return R.prisAnslag(l, tilstand.poster, tilstand.egnePriser);
 }
+const erProdusert = () => R.PRODUSERT.includes(tilstand.varsel.arbeidet);
+
+// 🧾 Følgekostnadene slik de står i panelet nå — antallene fra linjene som er med
+export function folgeValg(L) {
+  const med = (L || linjer()).filter(l => !tilstand.av.has(l.key));
+  const endret = med.reduce((s, l) => s + (l.endret || 0), 0), fjernet = med.reduce((s, l) => s + (l.slettet || 0), 0);
+  const f = tilstand.folge, prod = erProdusert();
+  return {
+    endret, fjernet, produsert: prod,
+    omarbeid: Object.assign({}, f.omarbeid, { med: endret > 0 && (f.omarbeid.med == null ? true : f.omarbeid.med), antall: endret }),
+    vrak: Object.assign({}, f.vrak, { med: prod && fjernet > 0 && (f.vrak.med == null ? true : f.vrak.med), antall: fjernet }),
+    tegninger: Object.assign({}, f.tegninger), paslag: Object.assign({}, f.paslag)
+  };
+}
+export function folgeLinjer(L) { return R.folgelinjer(folgeValg(L)); }
 const valgte = () => linjer().filter(l => !tilstand.av.has(l.key));
 
 export async function hentPriser() {
@@ -158,7 +178,8 @@ function html() {
         '<td><input type="checkbox" class="em-med"' + (av ? "" : " checked") + '></td>' +
         '<td><b>' + esc(t(l.navn)) + '</b>' +
         (np ? ' <button class="em-prof-knapp" data-prof="' + esc(l.key) + '" title="' + esc(t("Vis profilene (dimensjonene) i linja")) + '">' + (apen ? "▾" : "▸") + ' ' + esc(np === 1 ? t("{0} profil", np) : t("{0} profiler", np)) + '</button>' : '') +
-        (koord ? ' <span class="em-koord">' + esc(t("koordineringsobjekt – sjekk før det prises")) + '</span>' : '') + '<div class="em-under">' + esc(l.undertekst) + '</div></td>' +
+        (koord ? ' <span class="em-koord">' + esc(t("koordineringsobjekt – sjekk før det prises")) + '</span>' : '') + '<div class="em-under">' + esc(l.undertekst) + '</div>' +
+        '<label class="em-post">' + esc(t("Post")) + ' <input class="em-post-inn" maxlength="30" value="' + esc(tilstand.post[l.key] || "") + '" placeholder="—" title="' + esc(t("Punktet i kontraktens prisliste")) + '"></label></td>' +
         '<td class="em-tall">+' + l.ny + ' / −' + l.slettet + ' / ' + l.endret + '</td>' +
         '<td class="r ' + (l.mengde < 0 ? "neg" : "pos") + '">' + esc(R.mengdeTekst(l).replace(" " + l.enhet, "")) + '</td>' +
         '<td><select class="em-enhet">' + R.EM_ENHETER.map(e => '<option' + (e === l.enhet ? " selected" : "") + '>' + e + '</option>').join("") + '</select></td>' +
@@ -166,8 +187,12 @@ function html() {
         '<td class="r em-sum">' + esc(kr(l.sum)) + '</td></tr>';
       if (apen) h += profilRader(l, av);
     }
-    h += '<tr class="em-sumrad"><td></td><td colspan="5">' + esc(t("Prisanslag (eks. mva)")) +
+    const fl = folgeLinjer(L), fs = R.folgeSum(L.filter(l => !tilstand.av.has(l.key)), fl);
+    h += '<tr class="em-sumrad"><td></td><td colspan="5">' + esc(t("Mengder (eks. mva)")) +
       (sum.manglerPris ? ' · <span class="em-mangler">' + esc(t("{0} linjer mangler pris", sum.manglerPris)) + '</span>' : "") + '</td><td class="r">' + esc(kr(sum.sum)) + '</td></tr></table>';
+    h += folgeHtml(L) +
+      '<div class="em-totalt"><span>' + esc(t("Prisanslag (eks. mva)")) + (fs.manglerPris ? ' · <span class="em-mangler">' + esc(t("{0} følgekostnader mangler pris", fs.manglerPris)) + '</span>' : '') +
+      '</span><b>' + esc(kr(sum.sum + fs.sum)) + '</b></div>';
     h += '<p class="em-hjelp">' + esc(tilstand.prisStatus === "ok" ? t("Prisene er hentet fra Priskalkulasjon for prosjektet. Skriv inn pris der den mangler.")
       : tilstand.prisStatus === "av" ? t("Logg inn for å hente priser fra Priskalkulasjon.") : t("Ingen prisliste i Priskalkulasjon for prosjektet ennå — skriv inn prisene her.")) + '</p>';
   }
@@ -184,6 +209,28 @@ function html() {
       '<br><span class="em-hjelp">' + esc(t("Varsle uten ugrunnet opphold. Storms EM-flyt: frist 3 dager etter at endringen ble kjent.")) + '</span></div></div>';
   h += sjekklisteHtml(L);
   return h;
+}
+
+// ---------- 🧾 Følgekostnader og fradrag/vrak (runde 3) ----------
+function folgeHtml(L) {
+  const v = folgeValg(L), f = tilstand.folge;
+  const inn = (type, felt, verdi, ph, bredde) => '<input class="em-f-inn" data-folge="' + type + '" data-felt="' + felt + '" inputmode="decimal" style="width:' + (bredde || 54) + 'px" value="' + esc(verdi || "") + '" placeholder="' + esc(t(ph)) + '">';
+  const kryss = (type, med, ok) => '<input type="checkbox" data-folge="' + type + '" data-felt="med"' + (med ? " checked" : "") + (ok === false ? " disabled" : "") + '>';
+  const postInn = (type) => '<span class="em-hjelp">' + esc(t("post")) + '</span> ' + '<input class="em-f-inn" data-folge="' + type + '" data-felt="post" maxlength="30" style="width:46px" value="' + esc(f[type].post || "") + '" placeholder="—">';
+  let h = '<div class="em-folge"><b>' + esc(t("Følgekostnader")) + '</b>';
+  if (v.endret) h += '<label class="em-f-rad">' + kryss("omarbeid", v.omarbeid.med) + ' <span>' + esc(v.endret === 1 ? t("Omarbeid av 1 endret element") : t("Omarbeid av {0} endrede elementer", v.endret)) + '</span> <span class="em-hjelp">stk ×</span> ' +
+    inn("omarbeid", "pris", f.omarbeid.pris, "kr/stk", 64) + ' ' + postInn("omarbeid") + '</label>';
+  if (v.produsert && v.fjernet) h += '<label class="em-f-rad">' + kryss("vrak", v.vrak.med) + ' <span>' + esc(t("Vrak / håndtering av {0} fjernede elementer", v.fjernet)) + '</span> <span class="em-hjelp">stk ×</span> ' +
+    inn("vrak", "pris", f.vrak.pris, "kr/stk", 64) + ' ' + postInn("vrak") + '</label>';
+  h += '<label class="em-f-rad">' + kryss("tegninger", f.tegninger.med) + ' <span>' + esc(t("Revisjon av verkstedtegninger")) + '</span> ' + inn("tegninger", "timer", f.tegninger.timer, "timer", 46) +
+    ' <span class="em-hjelp">' + esc(t("timer ×")) + '</span> ' + inn("tegninger", "pris", f.tegninger.pris, "kr/time", 64) + ' ' + postInn("tegninger") + '</label>';
+  h += '<label class="em-f-rad">' + kryss("paslag", f.paslag.med) + ' <span>' + esc(t("Påslag / administrasjon")) + '</span> ' + inn("paslag", "prosent", f.paslag.prosent, "%", 46) + ' <span class="em-hjelp">%</span> ' + postInn("paslag") + '</label>';
+  // Fradrag eller ikke — styres av «Arbeidet er …» i steg 0
+  if (v.fjernet) h += '<p class="em-hjelp' + (tilstand.varsel.arbeidet ? "" : " em-mangler") + '">' + esc(
+    v.produsert ? t("Arbeidet er {0}: fjernet stål er allerede laget og trekkes ikke fra. Vrak/håndtering kan prises over.", t(tilstand.varsel.arbeidet).toLowerCase())
+    : tilstand.varsel.arbeidet ? t("Arbeidet er ikke produsert: fjernet stål trekkes fra (fradrag, minus i mengdene).")
+    : t("Velg «Arbeidet som endres er» i steg 0 — det avgjør om fjernet stål er fradrag eller ikke.")) + '</p>';
+  return h + '</div>';
 }
 
 // ---------- 📜 Steg 0: kontrakt og varsel (prøve A) ----------
@@ -225,7 +272,11 @@ function endredeIValgte(L) {
   return (L || []).filter(l => !tilstand.av.has(l.key)).reduce((s, l) => s + (l.endret || 0), 0);
 }
 export function sjekkPunkter(L) {
-  return K.sjekkliste(tilstand.kontrakt, tilstand.varsel, { emNr: tilstand.emNr, endret: endredeIValgte(L || linjer()) });
+  const LL = L || linjer(), v = folgeValg(LL);
+  const med = LL.filter(l => !tilstand.av.has(l.key));
+  return K.sjekkliste(tilstand.kontrakt, tilstand.varsel, { emNr: tilstand.emNr, endret: endredeIValgte(LL),
+    omarbeidMed: v.omarbeid.med, omarbeidPris: Number(String(tilstand.folge.omarbeid.pris).replace(",", ".")) > 0,
+    postMangler: med.filter(l => !String(tilstand.post[l.key] || "").trim()).length, linjer: med.length });
 }
 function sjekklisteHtml(L) {
   const p = sjekkPunkter(L), okN = p.filter(x => x.niva === "ok").length, rode = K.rodePunkter(p);
@@ -443,6 +494,16 @@ export function tegn() {
       tilstand.typeBla[key] = i;
       try { visElementUtenPanel(l.ider[i]); } catch (_) {}
     };
+  });
+  // 🧾 post per linje og følgekostnadene
+  body.querySelectorAll(".em-rad").forEach(rad => { const p = rad.querySelector(".em-post-inn"); if (p) {
+    p.onclick = (ev) => ev.stopPropagation();
+    p.oninput = () => { tilstand.post[rad.dataset.key] = p.value; oppdaterSjekk(); }; } });
+  body.querySelectorAll("[data-folge]").forEach(inp => {
+    const sett = () => { const f = tilstand.folge[inp.dataset.folge]; if (!f) return;
+      f[inp.dataset.felt] = inp.type === "checkbox" ? inp.checked : inp.value; };
+    if (inp.type === "checkbox") inp.onchange = () => { sett(); tegn(); };
+    else { inp.oninput = () => { sett(); oppdaterSjekk(); }; inp.onchange = () => { sett(); tegn(); }; }
   });
   body.querySelectorAll("[data-prof]").forEach(b => b.onclick = (ev) => {
     ev.stopPropagation();
@@ -708,8 +769,8 @@ export async function lagUtkast() {
     begrunnelse: R.faktablokk(L, { fra: vs.revFor || kortNavn(k.fra), til: vs.revEtter || kortNavn(k.til), metode: k.metode,
       utvalg: k.utvalg, modell: kortNavn(k.modell), oppdaget: oppdagetTekst, nyId: (k.res.uendretNyId || []).length,
       // v2: hjemmelen har sitt eget felt (1.7). v1: står i begrunnelsen hvis den er skrevet
-      hjemmel: v2 ? null : (vs.hjemmel || "") }),
-    okonomi: R.ordrelinjer(L),
+      hjemmel: v2 ? null : (vs.hjemmel || ""), utenFradrag: erProdusert() && L.some(l => l.slettet), arbeidet: vs.arbeidet }),
+    okonomi: R.ordrelinjer(L, { post: tilstand.post }).concat(folgeLinjer(L)),
     ...(v2 ? {
       mottaker: kon.mottaker, kontrakt: K.kontraktTekst(kon), typeVarsel: vs.type, hjemmel: vs.hjemmel,
       revisjon: K.revisjonTekst(vs), modellMottatt: vs.mottatt, arbeidet: vs.arbeidet,
@@ -718,7 +779,8 @@ export async function lagUtkast() {
     } : {}),
     annet: [t("Vedlegg:"), "• " + t("Før- og etter-bilder fra 3D-modellen og mål for hvert endret element (bakerst i dokumentet)"), "• " + t("Mengdeliste (Excel) fra Storm IFC-Viewer, sendes som egen fil sammen med dette dokumentet")].join("\n")
   };
-  const sum = R.sumAnslag(L);
+  const sum0 = R.sumAnslag(L), fs = R.folgeSum(L, folgeLinjer(L));
+  const sum = { sum: sum0.sum + fs.sum, manglerPris: sum0.manglerPris + fs.manglerPris };
   const em = R.vaskEm({
     id, nr: String(tilstand.emNr || "").trim(), tittel, status: "opprettet", laget: naa(), av: innloggetNavn() || "",
     oppdaget: tilstand.oppdaget || iDag, frist, sum: sum.sum, manglerPris: sum.manglerPris,

@@ -102,7 +102,14 @@ export function mengdeDiff(res, o) {
   // fortegn: +1 ny, −1 fjernet. stk teller ikke endrede.
   const legg = (l, p, e, fortegn) => { l.mengde += fortegn * mengdeFor(e, l.enhet, toM); p.lm += fortegn * elementLengde(e, toM); p.mengde += fortegn * mengdeFor(e, l.enhet, toM); p.kgVol = (p.kgVol || 0) + fortegn * mengdeFor(e, "kg", toM); maal(p, e); };
   for (const e of (res && res.ny) || []) { const l = linje(e.type), p = prof(l, e.name); l.ny++; p.ny++; legg(l, p, e, 1); if (e.id != null) { l.ider.push(e.id); p.ider.push(e.id); } tellNavn(l, e.name); }
-  for (const e of (res && res.slettet) || []) { const l = linje(e.type), p = prof(l, e.name); l.slettet++; p.slettet++; legg(l, p, e, -1); tellNavn(l, e.name); }
+  for (const e of (res && res.slettet) || []) {
+    const l = linje(e.type), p = prof(l, e.name); l.slettet++; p.slettet++;
+    // det fjernede for seg — brukes når arbeidet alt er produsert (ingen fradrag, runde 3)
+    const lmF = elementLengde(e, toM);
+    l.fjernetMengde = (l.fjernetMengde || 0) + mengdeFor(e, l.enhet, toM);
+    p.lmFjernet = (p.lmFjernet || 0) + lmF; p.fjMengde = (p.fjMengde || 0) + mengdeFor(e, l.enhet, toM); p.fjKgVol = (p.fjKgVol || 0) + mengdeFor(e, "kg", toM);
+    legg(l, p, e, -1); tellNavn(l, e.name);
+  }
   for (const e of (res && res.endret) || []) {
     const l = linje(e.type), p = prof(l, e.name); l.endret++; p.endret++;
     const fra = e.fra || {}, pf = prof(l, fra.name || e.name);
@@ -121,15 +128,33 @@ export function mengdeDiff(res, o) {
       const kgPerM = egen != null ? egen : modell;
       // kg: lengde × kg/m (uten lengde: volum × 7 850)
       const mengde = l.enhet === "kg" ? (kgPerM != null ? p.lm * kgPerM : (p.kgVol || 0)) : (l.enhet === "stk" ? p.ny - p.slettet : p.mengde);
+      const fjMengde = l.enhet === "kg" ? (kgPerM != null ? (p.lmFjernet || 0) * kgPerM : (p.fjKgVol || 0)) : (l.enhet === "stk" ? p.slettet : (p.fjMengde || 0));
       return { key: p.key, navn: p.navn, ny: p.ny, slettet: p.slettet, endret: p.endret, lm: avrund(p.lm, "lm"),
+        lmFjernet: avrund(p.lmFjernet || 0, "lm"), mengdeFjernet: avrund(fjMengde, l.enhet),
         kgPerM, kgPerMKilde: egen != null ? "egen" : (modell != null ? "modell" : ""), kgPerMModell: modell,
         mengde: avrund(mengde, l.enhet), ider: p.ider };
     }).sort((a, b) => a.navn.localeCompare(b.navn, "no", { numeric: true }));
     const mengde = l.enhet === "kg" ? profiler.reduce((s, p) => s + p.mengde, 0) : l.mengde;
+    const fjernetMengde = l.enhet === "kg" ? profiler.reduce((s, p) => s + p.mengdeFjernet, 0) : (l.fjernetMengde || 0);
+    delete l.fjernetMengde;
     delete l.navnSett; delete l.prof;
-    return Object.assign(l, { undertekst: navn.slice(0, 2).join(", ") + (navn.length > 2 ? " …" : ""), mengde: avrund(mengde, l.enhet), profiler });
+    return Object.assign(l, { undertekst: navn.slice(0, 2).join(", ") + (navn.length > 2 ? " …" : ""), mengde: avrund(mengde, l.enhet), profiler,
+      mengdeFjernet: avrund(fjernetMengde, l.enhet) });
   }).filter(l => l.ny || l.slettet || l.endret)
     .sort((a, b) => a.navn.localeCompare(b.navn, "no"));
+}
+
+// 🔁 Runde 3 (Emil 26.10): «Arbeidet er produsert/levert/montert» — stål som
+// alt er laget, kan ikke trekkes fra som om det aldri fantes. Det fjernede
+// trekkes da IKKE fra (ingen fradrag); linja og profilene regnes uten det.
+// «Ikke produsert»: som før — det fjernede er fradrag (minus).
+export const PRODUSERT = ["Produsert", "Levert", "Montert"];
+export function utenFradrag(l) {
+  if (!l || !(l.slettet > 0)) return l;
+  const profiler = (l.profiler || []).map(p => Object.assign({}, p, {
+    lm: avrund(p.lm + (p.lmFjernet || 0), "lm"), mengde: avrund(p.mengde + (p.mengdeFjernet || 0), l.enhet), lmFjernet: 0, mengdeFjernet: 0 }));
+  const mengde = l.enhet === "kg" && profiler.length ? profiler.reduce((s, p) => s + p.mengde, 0) : l.mengde + (l.mengdeFjernet || 0);
+  return Object.assign({}, l, { profiler, mengde: avrund(mengde, l.enhet), mengdeFjernet: 0, utenFradrag: true });
 }
 
 // Mengden for ett element i linja — i kg med profilens kg/m (samme regning som linja)
@@ -194,6 +219,7 @@ export function faktablokk(linjer, k) {
     if (x.enhet === "kg") for (const p of x.profiler || []) if (p.kgPerM != null && Math.abs(p.lm) > 1e-9)
       l.push("   – " + p.navn + ": " + (p.lm > 0 ? "+" : "") + tallTekst(p.lm, 2) + " lm × " + tallTekst(p.kgPerM, 1) + " kg/m = " + mengdeTekst({ mengde: p.mengde, enhet: "kg" }) + (p.kgPerMKilde === "modell" || p.kilde === "modell" ? " (kg/m anslått fra modellen)" : ""));
   }
+  if (o.utenFradrag) l.push("", "Arbeidet er " + String(o.arbeidet || "produsert").toLowerCase() + ": fjernede elementer er allerede produsert og er derfor ikke trukket fra.");
   if (o.nyId) l.push("", o.nyId + (o.nyId === 1 ? " element har" : " elementer har") + " fått ny GlobalId i modellen, men er samme element på samme sted. De er kontrollert og ikke priset (se vedlegg).");
   l.push("", "Mengdene er beregnet fra 3D-modellen og er et anslag, ikke oppmål.");
   if (o.oppdaget) l.push("Endringen ble oppdaget " + o.oppdaget + ".");
@@ -205,13 +231,51 @@ export function faktablokk(linjer, k) {
 
 // Ordrelinjer til felt «okonomi» (sjekkliste.js vaskLinje-formen). Linjer
 // uten pris tas med med pris 0, så ingenting forsvinner stille.
-export function ordrelinjer(linjer) {
-  return (linjer || []).map(l => ({
-    // Ikke «(mangler pris)» i navnet: det ble stående i PDF-en etter at prisen
-    // var fylt inn i skjemaet (Emils test 26.10). Panelet viser hva som mangler.
-    produkt: (l.navn + (l.undertekst ? " " + l.undertekst : "")).slice(0, 120),
-    antall: l.mengde, enhet: l.enhet, enhetspris: l.pris == null ? 0 : l.pris, paslag: 0, mva: 25
-  }));
+// o: { post: { [linjeKey]: "04.12" } } — kontraktsposten per linje (runde 3)
+export function ordrelinjer(linjer, o) {
+  const post = (o && o.post) || {};
+  return (linjer || []).map(l => {
+    const r = {
+      // Ikke «(mangler pris)» i navnet: det ble stående i PDF-en etter at prisen
+      // var fylt inn i skjemaet (Emils test 26.10). Panelet viser hva som mangler.
+      produkt: (l.navn + (l.undertekst ? " " + l.undertekst : "")).slice(0, 120),
+      antall: l.mengde, enhet: l.enhet, enhetspris: l.pris == null ? 0 : l.pris, paslag: 0, mva: 25,
+      post: String(post[l.key] || "").slice(0, 30)
+    };
+    // 📏 Prøve C (Emil 26.10): regnestykket per profil følger med inn i 2.4 —
+    // bare på skjermen. Antall = Σ lengde × kg/m (sjekkliste.js vaskLinje).
+    if (l.enhet === "kg" && (l.profiler || []).some(p => p.kgPerM != null && p.lm))
+      r.profiler = l.profiler.filter(p => p.lm).slice(0, 60).map(p => ({ navn: p.navn, lm: p.lm, kgPerM: p.kgPerM, kilde: p.kgPerMKilde || p.kilde || "" }));
+    return r;
+  });
+}
+
+// 🧾 Følgekostnader (runde 3) — egne ordrelinjer, merket folge.
+// f: { omarbeid: { med, antall, pris, post }, vrak: {…}, tegninger: { med, timer, pris, post }, paslag: { med, prosent, post } }
+export const FOLGE = {
+  omarbeid: "Omarbeid av endrede elementer",
+  vrak: "Vrak / håndtering av fjernet stål (allerede produsert)",
+  tegninger: "Revisjon av verkstedtegninger",
+  paslag: "Påslag / administrasjon"
+};
+export function folgelinjer(f) {
+  const o = f || {}, ut = [];
+  const n = (v) => Number(String(v == null ? "" : v).replace(",", ".")) || 0;
+  const linje = (type, produkt, antall, enhet, pris, post) => ({ produkt, antall, enhet, enhetspris: n(pris), paslag: 0, mva: 25, post: String(post || "").slice(0, 30), folge: type });
+  if (o.omarbeid && o.omarbeid.med && n(o.omarbeid.antall)) ut.push(linje("omarbeid", n(o.omarbeid.antall) === 1 ? "Omarbeid av 1 endret element" : "Omarbeid av " + n(o.omarbeid.antall) + " endrede elementer", n(o.omarbeid.antall), "stk", o.omarbeid.pris, o.omarbeid.post));
+  if (o.vrak && o.vrak.med && n(o.vrak.antall)) ut.push(linje("vrak", FOLGE.vrak, n(o.vrak.antall), "stk", o.vrak.pris, o.vrak.post));
+  if (o.tegninger && o.tegninger.med) ut.push(linje("tegninger", FOLGE.tegninger, n(o.tegninger.timer), "timer", o.tegninger.pris, o.tegninger.post));
+  if (o.paslag && o.paslag.med && n(o.paslag.prosent)) ut.push(linje("paslag", FOLGE.paslag, n(o.paslag.prosent), "%", 0, o.paslag.post));
+  return ut;
+}
+// Summen av følgelinjene; påslaget i % regnes av alt det andre (som i 2.4)
+export function folgeSum(linjer, folge) {
+  const base = (linjer || []).reduce((s, l) => s + (l.sum || 0), 0);
+  let sum = 0, manglerPris = 0;
+  const vanlige = (folge || []).filter(f => f.enhet !== "%");
+  for (const f of vanlige) { sum += f.antall * f.enhetspris; if (!f.enhetspris) manglerPris++; }
+  for (const f of (folge || []).filter(f => f.enhet === "%")) sum += (base + vanlige.reduce((s, x) => s + x.antall * x.enhetspris, 0)) * f.antall / 100;
+  return { sum: Math.round(sum), manglerPris };
 }
 
 // Excel: én rad per linje + sum
