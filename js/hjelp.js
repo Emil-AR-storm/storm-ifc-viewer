@@ -133,6 +133,11 @@ export const KORT = [
     tekst: "BCF-import (i Dokumentasjon eller PDF-menyen) leser en .bcfzip fra Solibri, BIMcollab eller Revit. Sakene deles i tre: nye markeringer, saker som finnes fra før og oppdateres, og saker der elementet ikke finnes i modellen. Du ser hva som endres før du trykker Importer. Status, frist og kommentarer oppdateres; teksten og ansvarlig hos Storm overskrives aldri — står det noe annet i fila, kommer det som en kommentar. Samme fil to ganger gir ingen dubletter, og hele importen angres med Ctrl+Z."
   },
   {
+    hvor: "kontor", ikonNavn: "tegning",
+    tittel: "Dagsrapport: én rapport per dag",
+    tekst: "Dagsrapport ligger i Rapport-menyen (Dokumentasjon), bare på kontorsiden. Uke-stripa viser hvilke dager som er levert, hvilke som er utkast og hvilke arbeidsdager som mangler (rødt). Været fylles inn av seg selv fra adressen i Prosjektinfo. Du fyller ut bemanning (firma, fag, antall, timer), utført arbeid og hindringer og avvik, og kan legge ved bilder. «Samme som sist» henter bemanningen fra forrige rapport. Signer og lag PDF låser rapporten og legger PDF-en i SharePoint. Ny versjon lager en kopi du kan endre, og den signerte blir liggende. Hele uka som PDF gir en forside med uka i tall og avvik, og så hver dag."
+  },
+  {
     hvor: "kontor", ikonNavn: "utseende",
     tittel: "Visning: snitt, etasjer og farger",
     tekst: "Snitt skjærer bort deler av modellen så du ser innenfor, Etasjer viser én etasje om gangen, Gjennomsiktig lar det bak skinne gjennom, og Farger lar deg fargelegge eller skjule elementtyper. Angre (Ctrl+Z) tar tilbake mål, koter, farger, snitt og skjuling."

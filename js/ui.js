@@ -634,7 +634,21 @@ på("rapBcfImport", "click", async () => {
   catch (err) { varsel(t("Klarte ikke å lese BCF-fila: {0}", err.message)); }
 });
 
-document.querySelectorAll(".rap-valg").forEach((b) => {
+// 📋 Dagsrapport (runde 4, Emil 27.10.2026: tredje valg i menyen, bare
+// kontorsiden). Dialogen lastes først når noen trykker.
+på("rapDag", "click", async () => {
+  lukkRapMeny();
+  if (!S.modelGroup) { varsel(t("Åpne en modell først.")); return; }
+  const velg = $("rapLogo");
+  const itemId = velg ? velg.value : "";
+  try { (await import("./dagsrapport.js")).apneDagsrapport({ hentLogo: () => hentLogo(itemId) }); }
+  catch (err) { varsel(t("Klarte ikke å åpne dagsrapporten: {0}", err.message)); }
+});
+
+// Bare knappene MED data-utgave lager statusrapport. Før 27.10 sto det
+// «.rap-valg» alene her — da lastet BCF-eksport og BCF-import ned en
+// fullstendig rapport i tillegg, fordi de bruker samme utseende-klasse.
+document.querySelectorAll(".rap-valg[data-utgave]").forEach((b) => {
   b.addEventListener("click", async () => {
     lukkRapMeny();
     if (!S.modelGroup) { varsel(t("Åpne en modell først.")); return; }
