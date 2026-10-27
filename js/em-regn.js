@@ -189,14 +189,17 @@ export function mengdeDiff(res, o) {
       const modell = p.lengde > 0 ? rund1(p.volKg / p.lengde) : null;
       const kgPerM = egen != null ? egen : modell;
       // kg: lengde × kg/m (uten lengde: volum × 7 850)
-      const mengde = l.enhet === "kg" ? (kgPerM != null ? p.lm * kgPerM : (p.kgVol || 0)) : (l.enhet === "stk" ? p.ny - p.slettet : p.mengde);
+      // kg regnes med lengden RUNDET slik den står i 2.4 (2 desimaler) — da gir
+      // skjemaets Σ lengde × kg/m samme tall som 1.3 (stresstest 4: 55 135 mot 55 133)
+      const mengde = l.enhet === "kg" ? (kgPerM != null ? avrund(p.lm, "lm") * kgPerM : (p.kgVol || 0)) : (l.enhet === "stk" ? p.ny - p.slettet : p.mengde);
       const fjMengde = l.enhet === "kg" ? (kgPerM != null ? (p.lmFjernet || 0) * kgPerM : (p.fjKgVol || 0)) : (l.enhet === "stk" ? p.slettet : (p.fjMengde || 0));
       return { key: p.key, navn: p.navn, ny: p.ny, slettet: p.slettet, endret: p.endret, byttetFra: p.byttetFra || 0, lm: avrund(p.lm, "lm"),
         lmFjernet: avrund(p.lmFjernet || 0, "lm"), mengdeFjernet: avrund(fjMengde, l.enhet),
         kgPerM, kgPerMKilde: egen != null ? "egen" : (modell != null ? "modell" : ""), kgPerMModell: modell,
-        mengde: avrund(mengde, l.enhet), ider: p.ider };
+        mengde: avrund(mengde, l.enhet), mengdeRaa: mengde, ider: p.ider };
     }).sort((a, b) => a.navn.localeCompare(b.navn, "no", { numeric: true }));
-    const mengde = l.enhet === "kg" ? profiler.reduce((s, p) => s + p.mengde, 0) : l.mengde;
+    // summen av de URUNDEDE profilene, rundet én gang (som skjemaet gjør)
+    const mengde = l.enhet === "kg" ? profiler.reduce((s, p) => s + p.mengdeRaa, 0) : l.mengde;
     const fjernetMengde = l.enhet === "kg" ? profiler.reduce((s, p) => s + p.mengdeFjernet, 0) : (l.fjernetMengde || 0);
     delete l.fjernetMengde;
     delete l.navnSett; delete l.prof;

@@ -683,7 +683,18 @@ export async function apneSkjema(c, mal, skjema, lagre, valg) {
   fjernSkjemaLyttere();
   const lyttere = {
     el,
-    fokus: (e) => { if (erTekst(e.target)) forFokus = svarJson(); },
+    fokus: (e) => {
+      if (erTekst(e.target)) forFokus = svarJson();
+      // Tallfeltene i 2.4 markeres når du trykker i dem, så det du skriver
+      // erstatter «0» (Emil 27.10: «må alltid slette 0-tallet først»)
+      const x = e.target;
+      if (x && x.matches && x.matches(".sv-o-tall, .sv-o-kgm, .sv-o-post, .sv-o-enhet") && !x.disabled) {
+        try { x.select(); } catch (_) {}
+        x.__valgt = true;   // testene: jsdom markerer ikke tallfelt
+        // ellers opphever musa markeringen når knappen slippes
+        x.addEventListener("mouseup", (m) => m.preventDefault(), { once: true });
+      }
+    },
     // capture: kjører FØR feltets egen handler — avkrysninger og valg tas før endringen,
     // tekstfelt fra da feltet fikk fokus (input har alt skrevet inn i svarene)
     endring: (e) => {

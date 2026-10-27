@@ -479,6 +479,12 @@ export function tegn() {
   if (sum) sum.textContent = t("Sum åpne (opprettet + sendt): {0} kr eks. mva", R.tallTekst(R.sumApne(tilstand.liste)));
   if (tilstand.fane === "liste") { koblListe(body); return; }
 
+  // Tallfeltene markeres ved trykk, så det du skriver erstatter det som står (Emil 27.10)
+  body.onfocusin = (e) => { const x = e.target;
+    if (x && x.matches && x.matches(".em-pris, .em-kgm, .em-f-inn, .em-post-inn")) {
+      try { x.select(); } catch (_) {}
+      x.addEventListener("mouseup", (m) => m.preventDefault(), { once: true });
+    } };
   body.querySelectorAll("[data-kilde]").forEach(b => b.onclick = () => { tilstand.kilde = b.dataset.kilde; tegn(); });
   body.querySelectorAll(".em-rad").forEach(rad => {
     const key = rad.dataset.key;
