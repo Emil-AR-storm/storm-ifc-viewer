@@ -158,6 +158,10 @@ canvas.addEventListener("pointerup", (e) => {
   // (1) panorerer i SimpleControls og skal ikke sette markering eller målepunkt
   // når draget er under 8 px. Høyre (2) gir innstillingsmenyen.
   if (e.button > 0) return;
+  // 📐 Lag → Juster plassering → «Midtpunkt …»: trykket velger søyla/pælen
+  // i hovedmodellen og så i laget (lag.js). Går foran alt annet, ellers ville
+  // trykket åpnet egenskapene i stedet.
+  if (S.lagKlikk && !S.mode && !e.shiftKey && S.lagKlikk(e.clientX, e.clientY)) return;
   // 🧱 Støpeplanens velgemodus: et vanlig trykk legger til / tar bort, som
   // shift-klikk. Shift + dra og shift-klikk går sin vanlige vei (elements.js).
   if (S.velgModusAktiv && !S.mode && !e.shiftKey) {

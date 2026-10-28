@@ -567,10 +567,17 @@ function cmdQto(_a, post) {
   return { enheter, elementer: [...perElement.entries()] };
 }
 
-// Etasjer med tilhørende elementer – hele utregningen gjøres her
-function cmdStoreys(_a, post) {
+// Etasjer med tilhørende elementer – hele utregningen gjøres her.
+// 📐 Lag (28.10): `mm` = Elevation i millimeter (via prosjektets lengdeenhet),
+// og `medTomme` tar med etasjer uten elementer — Juster plassering
+// sammenligner etasjene på navn, og en etasje kan være tom i én av filene.
+function cmdStoreys(a, post) {
   const puls = pulsGiver(post);
   puls();
+  const medTomme = !!(a && a.medTomme);
+  let mPerEnhet = 1;
+  try { mPerEnhet = (qtoEnheter || (qtoEnheter = lesEnheter())).lengde || 1; } catch (_) {}
+  const tilMm = (v) => Math.round(v * mPerEnhet * 1000 * 10) / 10;
   try {
     const byStorey = new Map();
     const rels = ifcApi.GetLineIDsWithType(modelID, WebIFC.IFCRELCONTAINEDINSPATIALSTRUCTURE);
@@ -583,9 +590,23 @@ function cmdStoreys(_a, post) {
       if (!e) {
         const line = ifcApi.GetLine(modelID, sid);
         e = { name: val(line.Name) || ("Etasje " + (byStorey.size + 1)), elev: Number(val(line.Elevation)) || 0, ids: [] };
+        e.mm = tilMm(e.elev);
         byStorey.set(sid, e);
       }
       (rel.RelatedElements || []).forEach(o => e.ids.push(o.value));
+    }
+    if (medTomme) {
+      try {
+        const alle = ifcApi.GetLineIDsWithType(modelID, WebIFC.IFCBUILDINGSTOREY);
+        for (let i = 0; i < alle.size(); i++) {
+          const sid = alle.get(i);
+          if (byStorey.has(sid)) continue;
+          const line = ifcApi.GetLine(modelID, sid);
+          const elev = Number(val(line.Elevation)) || 0;
+          byStorey.set(sid, { name: val(line.Name) || ("Etasje " + (byStorey.size + 1)), elev, mm: tilMm(elev), ids: [] });
+        }
+      } catch (_) {}
+      return [...byStorey.values()].sort((a, b) => a.elev - b.elev);
     }
     return [...byStorey.values()].filter(s => s.ids.length).sort((a, b) => a.elev - b.elev);
   } catch(_) { return []; }

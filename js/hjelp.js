@@ -138,6 +138,11 @@ export const KORT = [
     tekst: "Lag (i Bygg Info) legger armering, stål eller andre fagmodeller oppå hovedmodellen. Velg en IFC fra biblioteket eller disken og trykk Legg til — eller dra fila rett inn i den stiplede ruta. IFC-en gjøres om i bakgrunnen mens hovedmodellen blir liggende. Kortet viser antall, vekt og dimensjoner; for armering regnes vekten ut fra diameter, lengde og antall stenger. Trykk på et element i laget for nøkkeltall, Bare dette laget eller Skjul dette laget. Lagene kan også skjules under Farger i Visning. Ferdige lag lagres i SharePoint og åpnes raskt neste gang."
   },
   {
+    hvor: "kontor", ikonNavn: "lag",
+    tittel: "Lag: juster plassering",
+    tekst: "Ligger et lag litt feil oppå hovedmodellen, trykker du Juster plassering på kortet. Høyde fra etasjer sammenligner etasjene med samme navn og foreslår hvor mye laget skal flyttes opp eller ned (for eksempel −120 mm). Midtpunkt: klikk en søyle eller pæl i hovedmodellen og så den samme i laget, så legges midtpunktene sett ovenfra oppå hverandre. Flytt med tastene: piltastene flytter øst, vest, nord og sør, Z eller rullehjulet fram flytter opp, X eller rullehjulet bak flytter ned. Velg 1, 10 eller 100 mm per trykk, Shift gir 1 mm. Esc avslutter, og hele flyttingen kan angres med Ctrl+Z. Nullstill går tilbake til plasseringen fra Revit. Justeringen lagres og brukes igjen neste gang samme lag legges på samme hovedmodell."
+  },
+  {
     hvor: "kontor", ikonNavn: "tegning",
     tittel: "Dagsrapport: én rapport per dag",
     tekst: "Dagsrapport ligger i Rapport-menyen (Dokumentasjon), bare på kontorsiden. Uke-stripa viser hvilke dager som er levert, hvilke som er utkast og hvilke arbeidsdager som mangler (rødt). Været fylles inn av seg selv fra adressen i Prosjektinfo. Du fyller ut bemanning (firma, fag, antall, timer), utført arbeid og hindringer og avvik, og kan legge ved bilder. «Samme som sist» henter bemanningen fra forrige rapport. Signer og lag PDF låser rapporten og legger PDF-en i SharePoint. Ny versjon lager en kopi du kan endre, og den signerte blir liggende. Hele uka som PDF gir en forside med uka i tall og avvik, og så hver dag."

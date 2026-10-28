@@ -11,7 +11,7 @@
 // armeringsstang og hvert festemiddel er med.
 //
 // Svar: { deler: [{ pos, norm, idx, ranges, color }], kote, props, raaTall,
-//         lengde, antall }
+//         lengde, etasjer: [{ navn, mm }], antall }
 const STILLE_MS = 300000;   // 5 min stillhet — OpenModel på en stor fil gir ingen puls
 
 export function lagIfcTraad() {
@@ -91,6 +91,10 @@ export async function konverterIfc(buffer, framdrift, opts) {
     si("Leser nøkkeltall …", 0.92);
     let raa = { lengde: 1, tall: {} };
     try { raa = await s.kall("lagTall", {}); } catch (_) {}
+    // 📐 Etasjene (navn + høyde i mm) — Juster plassering sammenligner dem
+    // med hovedmodellens etasjer. Elementlistene trengs ikke her.
+    let etasjer = [];
+    try { etasjer = ((await s.kall("storeys", { medTomme: true })) || []).map(e => ({ navn: String(e.name || ""), mm: Number(e.mm) })).filter(e => e.navn && isFinite(e.mm)); } catch (_) {}
     try { await s.kall("close", {}); } catch (_) {}
     si("Ferdig", 1);
     // Matrisen fra geometryLight, ikke fra open — den fra open er alltid
@@ -102,7 +106,7 @@ export async function konverterIfc(buffer, framdrift, opts) {
       const { inverter } = await import("./lag-regn.js");
       kote = inverter(cm);
     }
-    return { deler, kote, props, raaTall: raa.tall || {}, lengde: raa.lengde || 1,
+    return { deler, kote, props, raaTall: raa.tall || {}, lengde: raa.lengde || 1, etasjer,
       antall: (geo && geo.shown) || Object.keys(props).length };
   } finally {
     s.avslutt();

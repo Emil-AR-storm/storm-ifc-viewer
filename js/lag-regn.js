@@ -236,3 +236,127 @@ export function nokkelRader(a) {
   if (a.pos) rader.push(["Posisjonsnummer", a.pos]);
   return rader;
 }
+
+// ---------- 📐 Juster plassering (Emils valg A, 28.10.2026) ----------
+// Selv med delte koordinater lå armeringen på Lørenskog 0,15–0,42 m over
+// veggtoppene: etasjene i armeringsfila står 120 mm høyere enn i betongen
+// (Kjeller 162 000 → 162 120 osv.). Derfor en justering OPPÅ T:
+//   • Høyde fra etasjene med samme navn (nøyaktig — hentet fra IFC-en).
+//   • Sideveis fra midtpunktet av samme søyle/pæl i begge (overdekningen
+//     gjør hjørnene ubrukelige, men midtpunktet er det samme).
+//   • Finjustering med piltaster, Z/X og rullehjulet.
+// Justeringen er i MILLIMETER langs modellens akser: øst = +X, nord = +Y,
+// høyde = +Z i IFC. I scenen (Y opp fra web-ifc) blir det x, −z og y.
+export const TOM_JUSTERING = Object.freeze({ ost: 0, nord: 0, hoyde: 0, kilde: [] });
+export const STEG_MM = [1, 10, 100];
+
+const runde = (x) => Math.round((Number(x) || 0) * 10) / 10;
+export function vaskJustering(j) {
+  if (!j || typeof j !== "object") return { ost: 0, nord: 0, hoyde: 0, kilde: [] };
+  const kilde = Array.isArray(j.kilde) ? [...new Set(j.kilde.map(String).filter(k => /^(etasjer|midtpunkt|manuelt)$/.test(k)))] : [];
+  return { ost: runde(j.ost), nord: runde(j.nord), hoyde: runde(j.hoyde), kilde };
+}
+export const erJustert = (j) => !!j && (Math.abs(j.ost || 0) >= 0.05 || Math.abs(j.nord || 0) >= 0.05 || Math.abs(j.hoyde || 0) >= 0.05);
+
+// mm langs IFC-aksene → forskyvning i scenen (modellenheter). meterPerEnhet = S.enhetSkala.
+export function justeringTilScene(j, meterPerEnhet) {
+  const e = (Number(meterPerEnhet) > 0 ? Number(meterPerEnhet) : 1) * 1000;   // mm per enhet
+  const v = vaskJustering(j);
+  return [v.ost / e, v.hoyde / e, -v.nord / e];
+}
+// Forskyvning i scenen → mm langs IFC-aksene (omvendt av den over)
+export function sceneTilJustering(d, meterPerEnhet) {
+  const e = (Number(meterPerEnhet) > 0 ? Number(meterPerEnhet) : 1) * 1000;
+  return { ost: runde(d[0] * e), nord: runde(-d[2] * e), hoyde: runde(d[1] * e) };
+}
+// Lagets matrise med justeringen: flytt(j) · T
+export function justertMatrise(T, j, meterPerEnhet) {
+  const [x, y, z] = justeringTilScene(j, meterPerEnhet);
+  const flytt = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, z, 1];
+  return gang(flytt, gyldig(T) ? T : ENHET);
+}
+export function leggTil(j, d, kilde) {
+  const v = vaskJustering(j);
+  const ut = vaskJustering({ ost: v.ost + (d.ost || 0), nord: v.nord + (d.nord || 0), hoyde: v.hoyde + (d.hoyde || 0), kilde: v.kilde.concat(kilde ? [kilde] : []) });
+  if (!erJustert(ut)) ut.kilde = [];
+  return ut;
+}
+
+// Ett tastetrykk / ett rullehakk i flytte-modus → endring i mm, eller null.
+// Piltastene: ← vest, → øst, ↑ nord, ↓ sør. Z / rull fram = opp, X / rull bak = ned.
+// Shift = 1 mm uansett valgt steg. Ctrl/Cmd/Alt slipper gjennom (Ctrl+Z er Angre).
+export function tasteFlytt(key, steg, mod) {
+  const m = mod || {};
+  if (m.ctrl || m.meta || m.alt) return null;
+  const s = m.shift ? 1 : (STEG_MM.includes(Number(steg)) ? Number(steg) : 10);
+  switch (String(key)) {
+    case "ArrowLeft": return { ost: -s };
+    case "ArrowRight": return { ost: s };
+    case "ArrowUp": return { nord: s };
+    case "ArrowDown": return { nord: -s };
+    case "z": case "Z": return { hoyde: s };
+    case "x": case "X": return { hoyde: -s };
+    default: return null;
+  }
+}
+export function rulleFlytt(deltaY, steg, shift) {
+  if (!deltaY) return null;
+  const s = shift ? 1 : (STEG_MM.includes(Number(steg)) ? Number(steg) : 10);
+  return { hoyde: deltaY < 0 ? s : -s };   // rull fram (deltaY < 0) = opp
+}
+
+// Etasjer med samme navn i hovedmodellen og laget → forslag til høyde.
+// hoved/lag: [{ navn, mm }] (høyde i mm fra IFC-ens IfcBuildingStorey.Elevation).
+// Svar: { par: [{ navn, hoved, lag, diff }], forslag (mm, flytt laget så mye),
+//         spredning (mm), antall }. forslag = −median(lag − hoved).
+const navnNokkel = (s) => String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
+export function etasjeForslag(hoved, lag) {
+  const h = new Map();
+  for (const e of hoved || []) if (e && e.navn && isFinite(e.mm)) h.set(navnNokkel(e.navn), e);
+  const par = [];
+  const sett = new Set();
+  for (const e of lag || []) {
+    if (!e || !e.navn || !isFinite(e.mm)) continue;
+    const k = navnNokkel(e.navn);
+    if (sett.has(k) || !h.has(k)) continue;
+    sett.add(k);
+    const hv = h.get(k);
+    // Et referansenivå som står på 0 i begge filene (Revits «Datum» på
+    // Lørenskog) sier ingenting om forskyvningen — det hoppes over.
+    if (Number(hv.mm) === 0 && Number(e.mm) === 0) continue;
+    par.push({ navn: String(hv.navn), hoved: Number(hv.mm), lag: Number(e.mm), diff: runde(Number(e.mm) - Number(hv.mm)) });
+  }
+  if (!par.length) return { par, forslag: 0, spredning: 0, antall: 0, like: [], avvik: [] };
+  par.sort((a, b) => a.hoved - b.hoved);
+  const d = par.map(p => p.diff).sort((a, b) => a - b);
+  const median = d.length % 2 ? d[(d.length - 1) / 2] : (d[d.length / 2 - 1] + d[d.length / 2]) / 2;
+  // «like» = etasjene som følger forslaget (±2 mm), «avvik» = de som ikke gjør det
+  const like = par.filter(p => Math.abs(p.diff - median) <= 2), avvik = par.filter(p => Math.abs(p.diff - median) > 2);
+  return { par, forslag: runde(-median) || 0, spredning: runde(d[d.length - 1] - d[0]), antall: par.length, like, avvik };
+}
+
+// To bokser (scenen, { min:[x,y,z], max:[x,y,z] }) → hvor mye laget skal
+// flyttes sideveis (mm) for at midtpunktene sett ovenfra blir like.
+export function midtpunktFlytt(hovedBoks, lagBoks, meterPerEnhet) {
+  if (!hovedBoks || !lagBoks) return null;
+  const m = (b, i) => (b.min[i] + b.max[i]) / 2;
+  const d = sceneTilJustering([m(hovedBoks, 0) - m(lagBoks, 0), 0, m(hovedBoks, 2) - m(lagBoks, 2)], meterPerEnhet);
+  return { ost: d.ost, nord: d.nord };
+}
+
+// Tekst på kortet: «Justert Ø +12 · N −5 · H −120 mm (etasjer, midtpunkt)».
+// Kildene er norske nøkler — den som tegner oversetter dem.
+const fortegn = (n) => (n > 0 ? "+" : n < 0 ? "−" : "") + tusen(Math.abs(n), Math.abs(n) % 1 ? 1 : 0);
+export function justeringTekst(j) {
+  const v = vaskJustering(j);
+  if (!erJustert(v)) return "";
+  const deler = [];
+  if (Math.abs(v.ost) >= 0.05) deler.push("Ø " + fortegn(v.ost));
+  if (Math.abs(v.nord) >= 0.05) deler.push("N " + fortegn(v.nord));
+  if (Math.abs(v.hoyde) >= 0.05) deler.push("H " + fortegn(v.hoyde));
+  return deler.join(" · ") + " mm";
+}
+export const mmFortegn = fortegn;
+
+// Nøkkelen en justering lagres under: samme lag på samme hovedmodell.
+export const justeringId = (hovedFil, lagFil) => String(hovedFil || "") + " | " + String(lagFil || "");

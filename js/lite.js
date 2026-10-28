@@ -135,7 +135,7 @@ export async function byggLettKopi(melding, opts) {
   }
   let columns = [], storeys = [];
   try { columns = (await kall("axisSources")).filter(k => k.t === "COLUMN").map(k => k.id); } catch(_) {}
-  try { storeys = (await kall("storeys")).map(s => ({ name: s.name, ids: s.ids })); } catch(_) {}
+  try { storeys = (await kall("storeys")).map(s => ({ name: s.name, ids: s.ids, mm: s.mm })); } catch(_) {}
 
   // sveis sammen dupliserte punkter – gir mange ganger mindre fil
   si(t("Komprimerer geometri …"));

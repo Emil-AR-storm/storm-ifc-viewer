@@ -21,17 +21,18 @@
 // Modellgruppe (lagre/åpne et sett lag) og «Mengder per lag» kommer i runde 5b.
 import * as THREE from "three";
 import { $, S, apnePanel, avregistrerEkstraGruppe, esc, ikon, på, registrerEkstraGruppe } from "./state.js";
-import { camera, flyTil, pointer, raycaster, renderer, scene } from "./scene.js";
+import { camera, canvas, flyTil, pointer, raycaster, renderer, scene } from "./scene.js";
 import { t } from "./i18n.js";
 import { varsel } from "./varsel.js";
-import { clearSelection, hitID } from "./elements.js";
-import { spLastOpp, spLesBin, spPaalogget } from "./sp-lager.js";
+import { clearSelection, elementBoxById, hitID, pick } from "./elements.js";
+import { spLastOpp, spLes, spLesBin, spPaalogget, spSkriv } from "./sp-lager.js";
 import * as R from "./lag-regn.js";
 
 export const LAG_MAPPE = "Lag";
 // 6 = koten (flyttingen til origo) er lest ETTER geometrien (28.10). Lag-GLB-er
 // med lavere versjon brukes ikke fra bufferen i SharePoint.
-export const LAG_GLB_VERSJON = 6;
+// 7 = etasjene (navn + høyde i mm) er med — Juster plassering trenger dem (28.10).
+export const LAG_GLB_VERSJON = 7;
 const lagene = [];               // { id, navn, fag, farge, gjennom, synlig, kilde, gruppe, props, tall, sum, … }
 export const _lagene = lagene;   // testene
 const tilstand = {
@@ -39,7 +40,11 @@ const tilstand = {
   fag: "", farge: "",
   bibliotek: null, bibStatus: "",
   jobber: null,                  // { tekst, andel } mens et lag gjøres om
-  bareLag: null                  // { id, foer: [...] } når «Bare dette laget» er på
+  bareLag: null,                 // { id, foer: [...] } når «Bare dette laget» er på
+  midt: null,                    // 📐 { lagId, steg 1|2, hovedBoks } mens Midtpunkt venter på klikk
+  flytt: null,                   // 📐 { lagId, start } mens «Flytt med tastene» er på
+  steg: 10,                      // mm per tastetrykk
+  hovedEt: null                  // hovedmodellens etasjer { fil, liste, grunn }
 };
 export const _tilstand = tilstand;
 let nesteId = 1;
@@ -63,7 +68,7 @@ function byggGruppe(lag, deler) {
   const g = new THREE.Group();
   g.name = "lag:" + lag.id;
   g.matrixAutoUpdate = false;
-  g.matrix.fromArray(lag.T);
+  g.matrix.fromArray(R.justertMatrise(lag.T, lag.justering, S.enhetSkala));
   lag.materiale = lagMateriale(lag);
   for (const d of deler) {
     const bg = new THREE.BufferGeometry();
@@ -251,7 +256,8 @@ async function lesGlb(bytes) {
   });
   const props = {};
   if (lite && lite.props) for (const [k, v] of Object.entries(lite.props)) props[k] = v;
-  return { deler, kote: lite && lite.kote, props, raaTall: (lite && lite.tall) || {}, kilde: (lite && lite.kilde) || null, v: Number(lite && lite.v) || 0 };
+  return { deler, kote: lite && lite.kote, props, raaTall: (lite && lite.tall) || {}, kilde: (lite && lite.kilde) || null, v: Number(lite && lite.v) || 0,
+    etasjer: Array.isArray(lite && lite.etasjer) ? lite.etasjer : [] };
 }
 
 async function lagGlb(lag, deler) {
@@ -270,7 +276,7 @@ async function lagGlb(lag, deler) {
     g.add(m);
   }
   g.userData.stormLite = { v: LAG_GLB_VERSJON, lag: true, name: lag.navn, kote: lag.kote, props: lag.props, tall: lag.raaTall,
-    kilde: lag.kilde, laget: new Date().toISOString() };
+    etasjer: lag.etasjer || [], kilde: lag.kilde, laget: new Date().toISOString() };
   const { GLTFExporter } = await import("three/addons/exporters/GLTFExporter.js");
   const glb = await new Promise((res, rej) => new GLTFExporter().parse(g, res, rej, { binary: true }));
   return new Uint8Array(glb);
@@ -320,6 +326,8 @@ export async function leggTilLag(kilde, valg) {
       }
     }
     lag.kote = data.kote || null;
+    lag.etasjer = Array.isArray(data.etasjer) ? data.etasjer : [];
+    lag.justering = R.vaskJustering(null);
     lag.props = data.props || {};
     lag.raaTall = data.raaTall || {};
     lag.tall = {};
@@ -358,6 +366,7 @@ export async function leggTilLag(kilde, valg) {
         .catch(() => {});
     } else lag.lagret = fraLager;
     lag.fraLager = fraLager;
+    hentLagretJustering(lag);   // 📐 samme lag på samme hovedmodell justert før? (i bakgrunnen)
     varsel(fraLager ? t("«{0}» lagt til (ferdig lag fra SharePoint).", lag.navn) : t("«{0}» lagt til som lag.", lag.navn));
     return lag;
   } catch (err) {
@@ -382,6 +391,7 @@ function settInn(lag) {
 }
 function taUt(lag) {
   if (tilstand.bareLag) bareDetteLaget(null);
+  stoppModuser(lag);
   const i = lagene.indexOf(lag);
   if (i >= 0) lagene.splice(i, 1);
   velgILag(lag, []);
@@ -404,6 +414,7 @@ export function fjernLag(lag) {
 // Hovedmodellen lukkes / byttes: lagene hører til den økta og fjernes uten angre
 S.ryddLag = () => {
   tilstand.bareLag = null;
+  stoppModuser(null);
   for (const lag of lagene.slice()) { taUt(lag); frigi(lag); }
 };
 
@@ -441,7 +452,10 @@ function kortHtml(lag) {
     '<label class="lag-glid"><span>' + esc(t("Gjennomsiktig")) + '</span><input type="range" min="0" max="90" step="5" value="' + lag.gjennom + '" data-gjennom="' + lag.id + '"><i>' + lag.gjennom + ' %</i></label>' +
     '<div class="lag-knapper"><button data-bare="' + lag.id + '">' + esc(tilstand.bareLag && tilstand.bareLag.id === lag.id ? t("Vis alle lag igjen") : t("Bare dette laget")) + '</button>' +
       '<label class="lag-fargevalg" title="' + esc(t("Farge")) + '"><input type="color" value="' + esc(lag.farge) + '" data-farge="' + lag.id + '"></label>' +
-      '<button data-hoved="' + lag.id + '">' + esc(t("Åpne som hovedmodell")) + '</button></div>' +
+      '<button data-hoved="' + lag.id + '">' + esc(t("Åpne som hovedmodell")) + '</button>' +
+      '<button data-juster="' + lag.id + '"' + (lag.visJuster ? ' class="active"' : "") + '>' + esc(t("Juster plassering")) + '</button></div>' +
+    (R.erJustert(lag.justering) ? '<div class="lag-justert" data-justert="' + lag.id + '">' + esc(justertTekst(lag)) + '</div>' : "") +
+    (lag.visJuster ? justerHtml(lag) : "") +
     '<div class="lag-status">' + esc(lag.fraLager ? t("Hentet ferdig fra SharePoint (Lag)") : lag.lagret ? t("Lagret i SharePoint (Lag) — åpnes raskt neste gang") : (lag.fil && /\.ifc$/i.test(lag.fil) && spPaalogget() ? t("Lagres i SharePoint …") : "")) + '</div>' +
   '</div>';
 }
@@ -501,6 +515,7 @@ function koble(body) {
   });
   body.querySelectorAll("[data-bare]").forEach(b => b.onclick = () => bareDetteLaget(tilstand.bareLag && tilstand.bareLag.id === Number(b.dataset.bare) ? null : finnLag(b.dataset.bare)));
   body.querySelectorAll("[data-hoved]").forEach(b => b.onclick = () => { const lag = finnLag(b.dataset.hoved); if (lag) apneSomHoved(lag); });
+  kobleJuster(body);
   const ks = $("lagKilde");
   if (ks) ks.onchange = () => {
     const v = ks.value;
@@ -587,6 +602,316 @@ på("btnLag", "click", () => {
   tegn();
   hentBibliotek();
 });
+
+// ---------- 📐 Juster plassering (Emils valg A, 28.10.2026) ----------
+// Inne på lag-kortet: høyde fra etasjene med samme navn, sideveis fra
+// midtpunktet av samme søyle/pæl i begge modellene, og finjustering med
+// tastene. Justeringen (mm langs IFC-aksene) legges OPPÅ T — se
+// lag-regn.js justertMatrise. Den lagres per hovedmodell + lag-fil, så
+// den er med neste gang samme lag legges på samme hovedmodell.
+const JUSTERING_FIL = "justeringer.json";
+const LOKAL_NOKKEL = "storm.lagJustering";
+
+function justertTekst(lag) {
+  const k = (lag.justering.kilde || []).map(x => t(x === "etasjer" ? "etasjer" : x === "midtpunkt" ? "midtpunkt" : "manuelt"));
+  return t("Justert {0}", R.justeringTekst(lag.justering)) + (k.length ? " (" + k.join(", ") + ")" : "") + " · " + t("lagres med laget");
+}
+
+// Flytter laget til justeringen j. Ingen angre her — den som kaller, eier angre-posten.
+function brukJustering(lag, j) {
+  lag.justering = R.vaskJustering(j);
+  if (lag.gruppe) {
+    lag.gruppe.matrix.fromArray(R.justertMatrise(lag.T, lag.justering, S.enhetSkala));
+    lag.gruppe.updateMatrixWorld(true);
+  }
+  oppdaterJusterTall(lag);
+}
+// Under flytting med tastene tegnes ikke hele panelet på nytt — bare tallene
+function oppdaterJusterTall(lag) {
+  const body = $("lagBody");
+  if (!body) return;
+  for (const [k, felt] of [["ost", "ost"], ["nord", "nord"], ["hoyde", "hoyde"]]) {
+    const inp = body.querySelector('[data-j-' + felt + '="' + lag.id + '"]');
+    if (inp && document.activeElement !== inp) inp.value = String(lag.justering[k] || 0).replace(".", ",");
+  }
+  const lbl = body.querySelector('[data-justert="' + lag.id + '"]');
+  if (lbl) lbl.textContent = R.erJustert(lag.justering) ? justertTekst(lag) : "";
+}
+
+// Én endring = én angre-post, og lagring
+function endreJustering(lag, ny, tekst) {
+  const foer = R.vaskJustering(lag.justering), etter = R.vaskJustering(ny);
+  if (JSON.stringify(foer) === JSON.stringify(etter)) return;
+  brukJustering(lag, etter);
+  lagreJustering(lag);
+  tegn();
+  if (S.pushAngre) S.pushAngre({ tekst: tekst || t("Laget flyttet"),
+    angre: () => { brukJustering(lag, foer); lagreJustering(lag); tegn(); },
+    gjenopprett: () => { brukJustering(lag, etter); lagreJustering(lag); tegn(); } });
+}
+
+// ----- Etasjene -----
+async function hovedEtasjer() {
+  const fil = S.fileName || "";
+  if (tilstand.hovedEt && tilstand.hovedEt.fil === fil) return tilstand.hovedEt;
+  let liste = null, grunn = "";
+  if (S.glbActive) {
+    const st = (S.glbStoreys || []).filter(e => e && isFinite(e.mm));
+    if (st.length) liste = st.map(e => ({ navn: e.name, mm: e.mm }));
+    else grunn = "lett";
+  } else if (S.modelID !== null && S.modelID !== undefined) {
+    try {
+      const { kall } = await import("./ifcrpc.js");
+      liste = ((await kall("storeys", { medTomme: true })) || []).filter(e => e && isFinite(e.mm)).map(e => ({ navn: e.name, mm: e.mm }));
+    } catch (_) { liste = null; grunn = "feil"; }
+  }
+  tilstand.hovedEt = { fil, liste, grunn };
+  return tilstand.hovedEt;
+}
+async function beregnForslag(lag) {
+  const h = await hovedEtasjer();
+  lag.forslag = h.liste ? Object.assign(R.etasjeForslag(h.liste, lag.etasjer || []), { grunn: "" })
+    : { par: [], forslag: 0, spredning: 0, antall: 0, grunn: h.grunn || "ingen" };
+  tegn();
+}
+
+function forslagHtml(lag) {
+  const f = lag.forslag;
+  if (!f) return '<div class="lag-forslag ok">' + esc(t("Leser etasjene …")) + '</div>';
+  if (f.grunn === "lett") return '<div class="lag-forslag ok">' + esc(t("Hovedmodellen er en lett kopi uten etasjehøyder. Lag den lette kopien på nytt, eller åpne IFC-en.")) + '</div>';
+  if (!(lag.etasjer || []).length) return '<div class="lag-forslag ok">' + esc(t("Laget har ingen etasjer i IFC-en. Bruk midtpunkt og tastene.")) + '</div>';
+  if (!f.antall) return '<div class="lag-forslag ok">' + esc(t("Fant ingen etasjer med samme navn i hovedmodellen og laget.")) + '</div>';
+  const navn = (f.like && f.like.length ? f.like : f.par).map(p => p.navn).join(", ");
+  const spr = f.avvik && f.avvik.length ? '<span>' + esc(t("Avviker: {0}. Kontroller før du justerer.", f.avvik.map(p => p.navn + " (" + R.mmFortegn(p.diff) + " mm)").join(", "))) + '</span>' : "";
+  if (Math.abs(f.forslag) < 0.5) return '<div class="lag-forslag ok">' + esc(t("Høyde fra etasjer: {0} stemmer (0 mm).", navn)) + spr + '</div>';
+  const ferdig = Math.abs((lag.justering.hoyde || 0) - f.forslag) < 0.5;
+  const retning = f.forslag < 0 ? t("{0} ligger {1} mm høyere i laget.", navn, R.heltall(Math.abs(f.forslag))) : t("{0} ligger {1} mm lavere i laget.", navn, R.heltall(Math.abs(f.forslag)));
+  return '<div class="lag-forslag' + (ferdig ? " ok" : "") + '"><span><b>' + esc(t("Høyde fra etasjer:")) + '</b> ' + esc(retning) + '</span>' + spr +
+    (ferdig ? '<span>✓ ' + esc(t("Høyden er justert etter etasjene.")) + '</span>'
+      : '<button class="primary" data-j-etasje="' + lag.id + '">' + esc(t("Juster {0} mm", R.mmFortegn(f.forslag))) + '</button>') + '</div>';
+}
+
+function justerHtml(lag) {
+  const m = tilstand.midt && tilstand.midt.lagId === lag.id ? tilstand.midt : null;
+  const fl = tilstand.flytt && tilstand.flytt.lagId === lag.id;
+  const steg = tilstand.steg || 10;
+  const tall = (k, lbl) => '<label>' + esc(lbl) + '<input type="text" inputmode="decimal" data-j-' + k + '="' + lag.id + '" value="' + esc(String(lag.justering[k] || 0).replace(".", ",")) + '"></label>';
+  return '<div class="lag-juster">' +
+    '<div class="lag-juster-lbl">' + esc(t("JUSTER PLASSERING")) + '</div>' +
+    forslagHtml(lag) +
+    '<div class="lag-sideveis' + (m ? " aktiv" : "") + '">' +
+      (m ? '<span>' + esc(m.steg === 1 ? t("1/2: Klikk en søyle eller pæl i hovedmodellen.") : t("2/2: Klikk den samme søylen eller pælen i laget.")) + '</span>' +
+           '<button data-j-midt-av="' + lag.id + '">' + esc(t("Avbryt")) + '</button>'
+         : '<span>' + esc(t("Sideveis: klikk en søyle/pæl i hovedmodellen, så den samme i laget. Midtpunktene sett ovenfra legges oppå hverandre.")) + '</span>' +
+           '<button data-j-midt="' + lag.id + '">' + esc(t("Midtpunkt …")) + '</button>') +
+    '</div>' +
+    '<div class="lag-tall">' + tall("ost", t("Øst (mm)")) + tall("nord", t("Nord (mm)")) + tall("hoyde", t("Høyde (mm)")) + '</div>' +
+    '<div class="lag-flytt"><button data-j-flytt="' + lag.id + '"' + (fl ? ' class="active"' : "") + '>⌨ ' + esc(fl ? t("Ferdig (Esc)") : t("Flytt med tastene")) + '</button>' +
+      '<span class="lag-steg">' + R.STEG_MM.map(n => '<button data-j-steg="' + n + '"' + (n === steg ? ' class="active"' : "") + '>' + n + ' mm</button>').join("") + '</span>' +
+      '<button data-j-null="' + lag.id + '"' + (R.erJustert(lag.justering) ? "" : " disabled") + '>' + esc(t("Nullstill")) + '</button></div>' +
+    '<div class="lag-taster">' + (fl
+      ? '<kbd>←</kbd> <kbd>→</kbd> ' + esc(t("vest/øst")) + ' · <kbd>↑</kbd> <kbd>↓</kbd> ' + esc(t("nord/sør")) + ' · <kbd>Z</kbd> / ' + esc(t("rull fram = opp")) + ' · <kbd>X</kbd> / ' + esc(t("rull bak = ned")) + ' · <kbd>Shift</kbd> = 1 mm'
+      : esc(t("Med «Flytt med tastene» på styrer piltastene, Z/X og rullehjulet laget i stedet for kameraet."))) + '</div>' +
+  '</div>';
+}
+
+const lesMm = (v) => { const n = Number(String(v || "").replace(/\s/g, "").replace(",", ".").replace("−", "-")); return isFinite(n) ? n : null; };
+
+function kobleJuster(body) {
+  body.querySelectorAll("[data-juster]").forEach(b => b.onclick = () => {
+    const lag = finnLag(b.dataset.juster); if (!lag) return;
+    lag.visJuster = !lag.visJuster;
+    if (!lag.visJuster) stoppModuser(lag);
+    tegn();
+    if (lag.visJuster && !lag.forslag) beregnForslag(lag);
+  });
+  body.querySelectorAll("[data-j-etasje]").forEach(b => b.onclick = () => {
+    const lag = finnLag(b.dataset.jEtasje); if (!lag || !lag.forslag) return;
+    const j = R.vaskJustering(lag.justering);
+    j.hoyde = lag.forslag.forslag;
+    if (!j.kilde.includes("etasjer")) j.kilde.push("etasjer");
+    endreJustering(lag, j, t("Høyde justert etter etasjene"));
+  });
+  body.querySelectorAll("[data-j-midt]").forEach(b => b.onclick = () => startMidtpunkt(finnLag(b.dataset.jMidt)));
+  body.querySelectorAll("[data-j-midt-av]").forEach(b => b.onclick = () => { stoppMidtpunkt(); tegn(); });
+  body.querySelectorAll("[data-j-flytt]").forEach(b => b.onclick = () => {
+    const lag = finnLag(b.dataset.jFlytt); if (!lag) return;
+    if (tilstand.flytt && tilstand.flytt.lagId === lag.id) stoppFlytt(); else startFlytt(lag);
+  });
+  body.querySelectorAll("[data-j-steg]").forEach(b => b.onclick = () => { tilstand.steg = Number(b.dataset.jSteg) || 10; tegn(); });
+  body.querySelectorAll("[data-j-null]").forEach(b => b.onclick = () => {
+    const lag = finnLag(b.dataset.jNull); if (!lag) return;
+    endreJustering(lag, R.vaskJustering(null), t("Lagets justering nullstilt"));
+  });
+  for (const k of ["ost", "nord", "hoyde"]) {
+    body.querySelectorAll("[data-j-" + k + "]").forEach(inp => {
+      inp.onkeydown = (e) => { if (e.key === "Enter") inp.blur(); };
+      inp.onchange = () => {
+        const lag = finnLag(inp.getAttribute("data-j-" + k)); if (!lag) return;
+        const v = lesMm(inp.value);
+        if (v === null) { inp.value = String(lag.justering[k] || 0).replace(".", ","); return; }
+        const j = R.vaskJustering(lag.justering);
+        j[k] = v;
+        if (!j.kilde.includes("manuelt")) j.kilde.push("manuelt");
+        endreJustering(lag, j, t("Laget flyttet"));
+      };
+    });
+  }
+}
+
+// ----- Midtpunkt: klikk i hovedmodellen, så i laget -----
+function startMidtpunkt(lag) {
+  if (!lag) return;
+  stoppFlytt();
+  tilstand.midt = { lagId: lag.id, steg: 1, hovedBoks: null };
+  S.lagKlikk = midtKlikk;
+  window.addEventListener("keydown", midtEsc, true);
+  tegn();
+  varsel(t("Klikk en søyle eller pæl i hovedmodellen."));
+}
+function stoppMidtpunkt() {
+  if (!tilstand.midt) return;
+  tilstand.midt = null;
+  if (S.lagKlikk === midtKlikk) S.lagKlikk = null;
+  window.removeEventListener("keydown", midtEsc, true);
+}
+function midtEsc(e) { if (e.key === "Escape") { e.preventDefault(); e.stopImmediatePropagation(); stoppMidtpunkt(); tegn(); } }
+
+// Boksen (scenen) rundt ett element i et lag — fra trekantene i `ranges`
+function lagElementBoks(lag, id) {
+  const b = new THREE.Box3(), v = new THREE.Vector3();
+  for (const m of lag.gruppe.children) {
+    if (!m.isMesh || !m.userData.ranges) continue;
+    const p = m.geometry.getAttribute("position").array, ix = m.geometry.getIndex().array;
+    for (const r of m.userData.ranges) {
+      if (r.id !== id) continue;
+      for (let i = r.start; i < r.start + r.count; i++) { const vi = ix[i] * 3; b.expandByPoint(v.set(p[vi], p[vi + 1], p[vi + 2]).applyMatrix4(m.matrixWorld)); }
+    }
+  }
+  return b.isEmpty() ? null : b;
+}
+const tilBoks = (b) => ({ min: b.min.toArray(), max: b.max.toArray() });
+
+// Svarer true når trykket er brukt (main.js spør S.lagKlikk først)
+function midtKlikk(x, y) {
+  const m = tilstand.midt;
+  if (!m) return false;
+  const lag = finnLag(m.lagId);
+  if (!lag || !lag.gruppe) { stoppMidtpunkt(); tegn(); return true; }
+  if (m.steg === 1) {
+    const h = pick(x, y);
+    const id = h ? hitID(h) : null;
+    const b = id != null ? elementBoxById(id) : null;
+    if (!b) { varsel(t("Traff ikke noe i hovedmodellen. Klikk en søyle eller pæl.")); return true; }
+    m.hovedBoks = tilBoks(b); m.steg = 2;
+    tegn();
+    varsel(t("Klikk den samme søylen eller pælen i laget «{0}».", lag.navn));
+    return true;
+  }
+  const k = kontrakt(lag).plukk(x, y);
+  const b = k ? lagElementBoks(lag, k.id) : null;
+  if (!b) { varsel(t("Traff ikke noe i laget «{0}». Klikk den samme søylen eller pælen der.", lag.navn)); return true; }
+  const d = R.midtpunktFlytt(m.hovedBoks, tilBoks(b), S.enhetSkala);
+  stoppMidtpunkt();
+  // Mer enn 25 cm? Da er det trolig ikke samme søyle/pæl (en vegg foran
+  // søyla gir fort en meter feil — funnet i testen 28.10). Spør først.
+  const lengde = Math.round(Math.hypot(d.ost, d.nord));
+  if (lengde > 250 && !confirm(t("Midtpunktene ligger {0} mm fra hverandre. Er det samme søyle eller pæl i begge? Flytt likevel?", R.heltall(lengde)))) { tegn(); return true; }
+  const j = R.vaskJustering(lag.justering);
+  j.ost = Math.round((j.ost + d.ost) * 10) / 10; j.nord = Math.round((j.nord + d.nord) * 10) / 10;
+  if (!j.kilde.includes("midtpunkt")) j.kilde.push("midtpunkt");
+  endreJustering(lag, j, t("Laget flyttet etter midtpunkt"));
+  varsel(t("Midtpunktene lagt oppå hverandre: Øst {0} mm, Nord {1} mm.", R.mmFortegn(d.ost), R.mmFortegn(d.nord)));
+  return true;
+}
+
+// ----- Flytt med tastene -----
+const erSkrivefelt = (el) => !!el && (el.tagName === "TEXTAREA" || el.tagName === "SELECT" || (el.tagName === "INPUT" && !/^(button|range|color|checkbox|radio)$/i.test(el.type)) || el.isContentEditable);
+function flyttTast(e) {
+  const f = tilstand.flytt; if (!f) return;
+  if (erSkrivefelt(e.target)) return;
+  if (e.key === "Escape" || e.key === "Enter") { e.preventDefault(); e.stopImmediatePropagation(); stoppFlytt(); return; }
+  const d = R.tasteFlytt(e.key, tilstand.steg || 10, { shift: e.shiftKey, ctrl: e.ctrlKey, meta: e.metaKey, alt: e.altKey });
+  if (!d) return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  const lag = finnLag(f.lagId); if (!lag) return;
+  brukJustering(lag, R.leggTil(lag.justering, d, "manuelt"));
+}
+function flyttRull(e) {
+  const f = tilstand.flytt; if (!f) return;
+  if (e.target !== canvas) return;   // rulling i panelene virker som før
+  e.preventDefault(); e.stopImmediatePropagation();
+  const d = R.rulleFlytt(e.deltaY, tilstand.steg || 10, e.shiftKey);
+  const lag = finnLag(f.lagId);
+  if (d && lag) brukJustering(lag, R.leggTil(lag.justering, d, "manuelt"));
+}
+function startFlytt(lag) {
+  stoppMidtpunkt();
+  stoppFlytt();
+  tilstand.flytt = { lagId: lag.id, start: R.vaskJustering(lag.justering) };
+  window.addEventListener("keydown", flyttTast, true);
+  window.addEventListener("wheel", flyttRull, { capture: true, passive: false });
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  tegn();
+  varsel(t("Flytt laget med piltastene, Z/X eller rullehjulet. Esc = ferdig."));
+}
+// Hele flytte-økta blir ÉN angre-post
+function stoppFlytt() {
+  const f = tilstand.flytt;
+  if (!f) return;
+  tilstand.flytt = null;
+  window.removeEventListener("keydown", flyttTast, true);
+  window.removeEventListener("wheel", flyttRull, { capture: true });
+  const lag = finnLag(f.lagId);
+  if (lag) {
+    const foer = f.start, etter = R.vaskJustering(lag.justering);
+    if (JSON.stringify(foer) !== JSON.stringify(etter)) {
+      lagreJustering(lag);
+      if (S.pushAngre) S.pushAngre({ tekst: t("Laget flyttet med tastene"),
+        angre: () => { brukJustering(lag, foer); lagreJustering(lag); tegn(); },
+        gjenopprett: () => { brukJustering(lag, etter); lagreJustering(lag); tegn(); } });
+    }
+  }
+  tegn();
+}
+function stoppModuser(lag) {
+  if (!lag || (tilstand.midt && tilstand.midt.lagId === lag.id)) stoppMidtpunkt();
+  if (!lag || (tilstand.flytt && tilstand.flytt.lagId === lag.id)) stoppFlytt();
+}
+
+// ----- Lagring: denne maskinen + SharePoint (Lag/justeringer.json) -----
+function lesLokalt() { try { return JSON.parse(localStorage.getItem(LOKAL_NOKKEL) || "{}") || {}; } catch (_) { return {}; } }
+function lagreJustering(lag) {
+  if (!S.fileName || !lag.fil) return;
+  const id = R.justeringId(S.fileName, lag.fil);
+  const post = Object.assign({ id, hoved: S.fileName, lag: lag.fil, endret: new Date().toISOString() }, R.vaskJustering(lag.justering));
+  try { const alle = lesLokalt(); alle[id] = post; localStorage.setItem(LOKAL_NOKKEL, JSON.stringify(alle)); } catch (_) {}
+  clearTimeout(lag._lagreTid);
+  if (spPaalogget()) lag._lagreTid = setTimeout(() => {
+    spSkriv(LAG_MAPPE, JUSTERING_FIL, [post], (p) => String(p && p.id || "")).catch(() => {});
+  }, 1500);
+}
+async function hentLagretJustering(lag) {
+  if (!S.fileName || !lag.fil) return;
+  const id = R.justeringId(S.fileName, lag.fil);
+  let best = lesLokalt()[id] || null;
+  if (spPaalogget()) {
+    try {
+      const r = await spLes(LAG_MAPPE, JUSTERING_FIL);
+      const p = (r.liste || []).find(x => x && x.id === id);
+      if (p && (!best || String(p.endret || "") > String(best.endret || ""))) best = p;
+    } catch (_) {}
+  }
+  if (!best || !lagene.includes(lag)) return;
+  // Brukeren rakk å justere selv mens vi leste — da vinner det
+  if (R.erJustert(lag.justering)) return;
+  const j = R.vaskJustering(best);
+  if (!R.erJustert(j)) return;
+  brukJustering(lag, j);
+  tegn();
+  varsel(t("«{0}»: lagret justering brukt ({1}).", lag.navn, R.justeringTekst(j)));
+}
+export { brukJustering as _brukJustering, midtKlikk as _midtKlikk, startFlytt as _startFlytt, stoppFlytt as _stoppFlytt, startMidtpunkt as _startMidtpunkt };
 
 // Gå til et lag (brukes av testene og hjelpekortet)
 export function zoomTilLag(lag) {
