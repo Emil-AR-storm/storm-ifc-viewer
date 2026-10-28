@@ -93,10 +93,14 @@ export async function konverterIfc(buffer, framdrift, opts) {
     try { raa = await s.kall("lagTall", {}); } catch (_) {}
     try { await s.kall("close", {}); } catch (_) {}
     si("Ferdig", 1);
+    // Matrisen fra geometryLight, ikke fra open — den fra open er alltid
+    // enhetsmatrisen i web-ifc 0.0.57 (Emils bilder 28.10: armeringen lå
+    // ca. 5 m for lavt fordi begge modellene fikk «ingen flytting»).
+    const cm = (geo && Array.isArray(geo.coordMatrix) && geo.coordMatrix.length === 16) ? geo.coordMatrix : info.coordMatrix;
     let kote = null;
-    if (Array.isArray(info.coordMatrix) && info.coordMatrix.length === 16) {
+    if (Array.isArray(cm) && cm.length === 16) {
       const { inverter } = await import("./lag-regn.js");
-      kote = inverter(info.coordMatrix);
+      kote = inverter(cm);
     }
     return { deler, kote, props, raaTall: raa.tall || {}, lengde: raa.lengde || 1,
       antall: (geo && geo.shown) || Object.keys(props).length };

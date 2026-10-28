@@ -140,6 +140,8 @@ export async function pickFile() {
     const dt = e.dataTransfer;
     if (!dt) return;
     e.preventDefault(); depth = 0; show(false);
+    // 🧅 Sluppet i Lag-panelets rute — der blir fila et lag (js/lag.js)
+    if (e.lagHåndtert) return;
 
     const item = dt.items && dt.items[0];
     let file = (dt.files && dt.files[0]) || null;
@@ -289,6 +291,14 @@ export async function loadModel(buffer) {
 
   const res = S.lightLoaded ? await byggLett(info) : await byggFull(info);
   const tGeo = performance.now();
+  // 🧭 Den RIKTIGE flyttingen til origo kommer først etter geometrien (se
+  // cmdOpen i ifc-worker.js). Før 28.10 ble enhetsmatrisen fra «open» brukt,
+  // og da viste Kote høyder målt fra modellens første element — ikke de ekte
+  // kotene — og et Lag fra samme Revit-prosjekt havnet noen meter feil.
+  if (Array.isArray(res.coordMatrix) && res.coordMatrix.length === 16) {
+    S.coordMatrix = new THREE.Matrix4().fromArray(res.coordMatrix);
+    S.koteMatrixInv = S.coordMatrix.clone().invert();
+  }
 
   // Etterarbeidet (samlet boks over alle mesh, innramming, minikart) tar flere
   // sekunder på en modell med tusenvis av elementer. Uten denne linja sto
@@ -376,7 +386,7 @@ async function byggFull(info) {
     }
     visFramdrift(t("Leser geometrien …"), m.done, m.total);
   });
-  return { shown: svar.shown || count, skipped: svar.skipped || 0 };
+  return { shown: svar.shown || count, skipped: svar.skipped || 0, coordMatrix: svar.coordMatrix };
 }
 
 // 🪶 Lav kvalitet: tråden har alt slått sammen per farge

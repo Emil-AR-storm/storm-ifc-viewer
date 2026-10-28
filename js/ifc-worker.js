@@ -72,6 +72,11 @@ async function cmdOpen({ buffer, light, minst, sirkel, alle }) {
     ? { COORDINATE_TO_ORIGIN: true, CIRCLE_SEGMENTS: sirkel || 6 }
     : { COORDINATE_TO_ORIGIN: true });
 
+  // NB: rett etter OpenModel er denne ALLTID enhetsmatrisen i web-ifc 0.0.57 —
+  // flyttingen til origo bestemmes først når geometrien leses (Lørenskog-
+  // filene 28.10: open ga 1,0,0,…; etter StreamAllMeshes 429,16 / −161,85 /
+  // 299,51). Den riktige sendes derfor med svaret fra geometryFull/Light
+  // (koordinasjonsmatrise() under), og ifc.js bytter til den.
   let coordMatrix = null;
   try { coordMatrix = Array.from(ifcApi.GetCoordinationMatrix(modelID)); } catch(_) {}
 
@@ -87,6 +92,11 @@ async function cmdOpen({ buffer, light, minst, sirkel, alle }) {
   if (!total) total = maxId;
 
   return { coordMatrix, total, basis, maxId };
+}
+
+// Koordinasjonsmatrisen ETTER at geometrien er lest — den gjelder.
+function koordinasjonsmatrise() {
+  try { return Array.from(ifcApi.GetCoordinationMatrix(modelID)); } catch (_) { return null; }
 }
 
 // Leser ett mesh til rene array-er
@@ -147,7 +157,7 @@ function cmdGeometryFull({ total, basis, maxId }, post) {
     }
   });
   send(true);
-  return { shown: count, skipped: 0 };
+  return { shown: count, skipped: 0, coordMatrix: koordinasjonsmatrise() };
 }
 
 // 🪶 Lav kvalitet: slås sammen per farge HER, så hovedtråden får ferdige buffere
@@ -227,7 +237,7 @@ function cmdGeometryLight({ maxId, basis }, post) {
     post({ type: "bucket", pos, norm, idx, ranges, color: b.color, nr: nr++, av: buckets.size },
       [pos.buffer, norm.buffer, idx.buffer]);
   }
-  return { shown, skipped };
+  return { shown, skipped, coordMatrix: koordinasjonsmatrise() };
 }
 
 // ---------- Materiale per element ----------

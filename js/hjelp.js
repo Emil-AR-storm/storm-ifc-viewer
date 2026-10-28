@@ -135,7 +135,7 @@ export const KORT = [
   {
     hvor: "kontor", ikonNavn: "lag",
     tittel: "Lag: modeller oppå hovedmodellen",
-    tekst: "Lag (i Bygg Info) legger armering, stål eller andre fagmodeller oppå hovedmodellen. Velg en IFC fra biblioteket eller disken, velg fag og farge, og trykk Legg til — IFC-en gjøres om i bakgrunnen mens hovedmodellen blir liggende. Kortet viser antall, vekt og dimensjoner. For armering regnes vekten ut fra diameter, lengde og antall stenger. Trykk på et element i laget for nøkkeltall som diameter, lengde, bøyeform og stålkvalitet. Gjennomsiktig, farge, Bare dette laget og Åpne som hovedmodell ligger på kortet. Ferdige lag lagres i SharePoint og åpnes raskt neste gang."
+    tekst: "Lag (i Bygg Info) legger armering, stål eller andre fagmodeller oppå hovedmodellen. Velg en IFC fra biblioteket eller disken og trykk Legg til — eller dra fila rett inn i den stiplede ruta. IFC-en gjøres om i bakgrunnen mens hovedmodellen blir liggende. Kortet viser antall, vekt og dimensjoner; for armering regnes vekten ut fra diameter, lengde og antall stenger. Trykk på et element i laget for nøkkeltall, Bare dette laget eller Skjul dette laget. Lagene kan også skjules under Farger i Visning. Ferdige lag lagres i SharePoint og åpnes raskt neste gang."
   },
   {
     hvor: "kontor", ikonNavn: "tegning",

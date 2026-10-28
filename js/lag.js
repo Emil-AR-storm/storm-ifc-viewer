@@ -91,6 +91,30 @@ function boksFor(obj) {
   return b.isEmpty() ? null : { min: b.min.toArray(), max: b.max.toArray() };
 }
 
+// Vis/skjul ett lag — fra kortet, egenskapsboksen og Utseende. Én vei, én
+// angrepost, så de tre stedene aldri kommer ut av takt med hverandre.
+function settSynlig(lag, synlig) {
+  if (!lag || lag.synlig === synlig) return;
+  const foer = lag.synlig;
+  const bruk = (v) => { lag.synlig = v; if (lag.gruppe) lag.gruppe.visible = v; if (!v) velgILag(lag, []); tegn(); if (S.oppdaterVisAlle) S.oppdaterVisAlle(); if (S.tegnUtseendePanel) S.tegnUtseendePanel(); };
+  bruk(synlig);
+  if (S.pushAngre) S.pushAngre({ tekst: synlig ? t("Lag vist") : t("Lag skjult"), angre: () => bruk(foer), gjenopprett: () => bruk(synlig) });
+}
+
+// 🎨 Utseende: én blokk «Lag» med en vis/skjul-rad per lag (Emil 28.10).
+// Hvert lag melder inn evnen, men bare det FØRSTE tegner blokken — ellers
+// ville den kommet én gang per lag.
+function utseendeRader(body) {
+  if (!body || !lagene.length) return;
+  const boks = document.createElement("div");
+  boks.innerHTML = '<div class="qty-row" style="margin-top:10px"><div class="n" style="font-weight:700">' + ikon("lag") + ' ' + esc(t("Lag")) + '</div><div class="c"></div></div>' +
+    lagene.map(l => '<div class="qty-row"><div class="n"><span class="lag-prikk" style="background:' + esc(l.farge) + '"></span>' + esc(l.navn) +
+      ' <span style="color:var(--muted);font-size:11px">(' + esc(t(l.fag)) + ')</span></div><div class="c"><button data-lag-skjul="' + l.id + '" title="' + esc(t("Skjul/vis")) +
+      '" style="padding:3px 8px">' + ikon(l.synlig ? "vis" : "skjul") + '</button></div></div>').join("");
+  body.appendChild(boks);
+  boks.querySelectorAll("[data-lag-skjul]").forEach(b => b.onclick = () => { const l = finnLag(b.dataset.lagSkjul); if (l) settSynlig(l, !l.synlig); });
+}
+
 // ---------- Kontrakten mot resten av viewer'en ----------
 function kontrakt(lag) {
   return {
@@ -116,6 +140,7 @@ function kontrakt(lag) {
     valgte: () => [...(lag.valgt || [])],
     visEgenskaper(id) { visEgenskaper(lag, id); },
     noeSkjult: () => !lag.synlig,
+    utseendeRader(body) { if (lagene[0] === lag) utseendeRader(body); },
     visAlt() { if (!lag.synlig) { lag.synlig = true; lag.gruppe.visible = true; tegn(); } },
     skjulTilstand: () => ({ synlig: lag.synlig }),
     settSkjulTilstand(v) { lag.synlig = !(v && v.synlig === false); if (lag.gruppe) lag.gruppe.visible = lag.synlig; tegn(); }
@@ -156,7 +181,9 @@ function visEgenskaper(lag, id) {
   const rad = (k, v) => '<div class="prop-row"><div class="k">' + esc(k) + '</div><div class="v">' + v + '</div></div>';
   let html = '<div class="prop-actions">';
   if (a) html += '<button id="lagLike">' + ikon("fokus") + ' ' + esc(t("Marker alle like ({0})", R.likeArmering(lag.tall, id).length)) + '</button>';
-  html += '<button id="lagBare">' + ikon("vis") + ' ' + esc(tilstand.bareLag ? t("Vis alle lag igjen") : t("Bare dette laget")) + '</button></div>';
+  html += '<button id="lagBare">' + ikon("vis") + ' ' + esc(tilstand.bareLag ? t("Vis alle lag igjen") : t("Bare dette laget")) + '</button>';
+  // 🙈 Emil 28.10: skjul laget rett herfra — uten å åpne Lag-panelet hver gang
+  html += '<button id="lagSkjulDette">' + ikon("skjul") + ' ' + esc(t("Skjul dette laget")) + '</button></div>';
   html += rad(t("Lag"), esc(lag.navn) + ' <span class="lag-fag">' + esc(t(lag.fag)) + '</span>');
   if (p[2]) html += rad(t("Type"), esc(p[2]));
   if (p[0]) html += rad("Name", esc(p[0]));
@@ -181,6 +208,7 @@ function visEgenskaper(lag, id) {
     varsel(t("{0} like armeringer valgt i «{1}».", ider.length, lag.navn));
   };
   $("lagBare").onclick = () => { bareDetteLaget(lag); visEgenskaper(lag, id); };
+  $("lagSkjulDette").onclick = () => { settSynlig(lag, false); $("propPanel").classList.remove("open"); };
 }
 
 // ---------- Legge til ----------
@@ -332,6 +360,7 @@ export async function leggTilLag(kilde, valg) {
 
 function settInn(lag) {
   if (!lag.gruppe) return;
+  setTimeout(() => { if (S.tegnUtseendePanel) S.tegnUtseendePanel(); }, 0);
   if (!lagene.includes(lag)) lagene.push(lag);
   lag.gruppe.visible = lag.synlig;
   scene.add(lag.gruppe);
@@ -422,7 +451,8 @@ function leggTilHtml() {
       '<label class="lag-fargevalg stor"><input type="color" id="lagFarge" value="' + esc(farge) + '"></label>' +
       '<button class="primary" id="lagLeggTil"' + (k && !j ? "" : " disabled") + '>' + esc(t("Legg til")) + '</button></div>' +
     (j ? '<div class="lag-lbl"><span id="lagProgTekst">' + esc(t(j.tekst)) + ' ' + Math.round(j.andel * 100) + ' %</span></div><div class="lag-prog"><i id="lagProg" style="width:' + Math.round(j.andel * 100) + '%"></i></div>'
-       : '<div class="lag-hjelp">' + esc(t("IFC gjøres om i bakgrunnen. Hovedmodellen blir liggende. Ferdige lag lagres i SharePoint og åpnes raskt neste gang.")) + '</div>') +
+       : '<div class="lag-slipp" id="lagSlipp">' + ikon("lag") + ' ' + esc(t("Slipp IFC her for å legge den til som lag")) + '</div>' +
+         '<div class="lag-hjelp">' + esc(t("IFC gjøres om i bakgrunnen. Hovedmodellen blir liggende. Ferdige lag lagres i SharePoint og åpnes raskt neste gang.")) + '</div>') +
   '</div>';
 }
 
@@ -440,16 +470,7 @@ export function tegn() {
 function finnLag(id) { return lagene.find(l => l.id === Number(id)); }
 
 function koble(body) {
-  body.querySelectorAll("[data-oye]").forEach(b => b.onclick = () => {
-    const lag = finnLag(b.dataset.oye); if (!lag) return;
-    const foer = lag.synlig;
-    lag.synlig = !lag.synlig; lag.gruppe.visible = lag.synlig;
-    if (S.pushAngre) S.pushAngre({ tekst: t("Lag vist/skjult"),
-      angre: () => { lag.synlig = foer; if (lag.gruppe) lag.gruppe.visible = foer; tegn(); },
-      gjenopprett: () => { lag.synlig = !foer; if (lag.gruppe) lag.gruppe.visible = !foer; tegn(); } });
-    if (S.oppdaterVisAlle) S.oppdaterVisAlle();
-    tegn();
-  });
+  body.querySelectorAll("[data-oye]").forEach(b => b.onclick = () => { const lag = finnLag(b.dataset.oye); if (lag) settSynlig(lag, !lag.synlig); });
   body.querySelectorAll("[data-fjern]").forEach(b => b.onclick = () => { const lag = finnLag(b.dataset.fjern); if (lag) fjernLag(lag); });
   body.querySelectorAll("[data-gjennom]").forEach(inp => {
     inp.oninput = () => {
@@ -489,6 +510,30 @@ function koble(body) {
   if (fag) fag.onchange = () => { tilstand.fag = fag.value; tilstand.farge = ""; tegn(); };
   const fa = $("lagFarge");
   if (fa) fa.oninput = () => { tilstand.farge = fa.value; };
+  // 🧲 Dra og slipp (Emil 28.10): IFC-er som slippes i den stiplede ruta blir
+  // LAG — ikke ny hovedmodell. Slippet merkes (e.lagHåndtert), og vinduets
+  // eget slipp i ifc.js nullstiller rammen og gjør ellers ingenting.
+  const sl = $("lagSlipp");
+  if (sl) {
+    const harFiler = (e) => e.dataTransfer && [...e.dataTransfer.types].includes("Files");
+    sl.ondragover = (e) => {
+      if (!harFiler(e)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+      sl.classList.add("over");
+      const h = $("dropHint"); if (h) h.classList.remove("open");
+    };
+    sl.ondragleave = () => sl.classList.remove("over");
+    sl.ondrop = (e) => {
+      e.preventDefault(); e.lagHåndtert = true;
+      sl.classList.remove("over");
+      const h = $("dropHint"); if (h) h.classList.remove("open");
+      const dt = e.dataTransfer;
+      let filer = dt && dt.files ? [...dt.files] : [];
+      if (!filer.length && dt && dt.items) filer = [...dt.items].filter(i => i.kind === "file").map(i => { try { return i.getAsFile(); } catch (_) { return null; } }).filter(Boolean);
+      slippFiler(filer);
+    };
+  }
   const lt = $("lagLeggTil");
   if (lt) lt.onclick = async () => {
     const k = tilstand.kilde; if (!k) return;
@@ -497,6 +542,16 @@ function koble(body) {
     const lag = await leggTilLag(k, valg);
     if (lag) { tilstand.kilde = null; tilstand.fag = ""; tilstand.farge = ""; tegn(); }
   };
+}
+
+// Én eller flere filer sluppet i ruta — legges til etter tur.
+export async function slippFiler(filer) {
+  const gode = (filer || []).filter(f => f && /\.(ifc|glb)$/i.test(f.name || ""));
+  if (!gode.length) { varsel(t("Slipp en .ifc- eller .glb-fil.")); return; }
+  for (const f of gode) {
+    const fag = R.gjettFag(f.name);
+    await leggTilLag({ art: "disk", fil: f }, { fag, farge: R.fargeFor(fag) });
+  }
 }
 
 async function hentBibliotek() {
