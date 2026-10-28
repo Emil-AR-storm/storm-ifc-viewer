@@ -3181,4 +3181,6 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Skjul dette laget": "Ukryj tę warstwę",
   "Slipp IFC her for å legge den til som lag": "Upuść tutaj IFC, aby dodać go jako warstwę",
   "Slipp en .ifc- eller .glb-fil.": "Upuść plik .ifc lub .glb.",
+  "Hovedmodellen er en lett kopi uten plassering (laget før 28.10.2026). Lag den lette kopien på nytt, eller åpne IFC-en, så havner lagene riktig.": "Model główny to lekka kopia bez położenia (utworzona przed 28.10.2026). Utwórz lekką kopię ponownie lub otwórz IFC, aby warstwy trafiły na właściwe miejsce.",
+  "«{0}» er laget før 28.10.2026 og mangler plassering. Legg til IFC-en i stedet, så havner laget riktig.": "«{0}» utworzono przed 28.10.2026 i nie ma położenia. Dodaj zamiast tego IFC, aby warstwa trafiła na właściwe miejsce.",
 };

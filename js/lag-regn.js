@@ -74,6 +74,8 @@ export function inverter(m) {
   if (!det) return null;
   return inv.map(x => x / det);
 }
+// Enhetsmatrise (eller ingen) = «ingen flytting lagret»
+export const erEnhet = (m) => !Array.isArray(m) || m.length !== 16 || m.every((x, i) => Math.abs(x - ENHET[i]) < 1e-9);
 const gyldig = (m) => Array.isArray(m) && m.length === 16 && m.every(x => isFinite(x));
 
 // PLASSERINGEN. web-ifc flytter hver modell til origo når den åpnes
@@ -177,7 +179,8 @@ export function lagSum(props, tall, volum) {
   const perDiameter = [...perD.values()].sort((a, b) => a.d - b.d)
     .map(x => ({ d: x.d, stk: x.stk, kg: Math.round(x.kg * 10) / 10, lm: Math.round(x.lm * 10) / 10 }));
   const volumM3 = volum ? [...volum.values()].reduce((s, v) => s + Math.abs(v), 0) : 0;
-  const materialer = [...new Set(ider.map(i => props[i] && props[i][3]).filter(Boolean))].sort();
+  // «<Unnamed>» og «Default» er Revits plassholdere, ikke materialer (Emils bilde 28.10)
+  const materialer = [...new Set(ider.map(i => props[i] && props[i][3]).filter(m => m && !/^(<unnamed>|default)$/i.test(String(m).trim())))].sort();
   const dims = perDiameter.filter(x => x.d).map(x => x.d);
   return {
     elementer: ider.length,

@@ -3181,4 +3181,6 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Skjul dette laget": "Slėpti šį sluoksnį",
   "Slipp IFC her for å legge den til som lag": "Numeskite IFC čia, kad pridėtumėte kaip sluoksnį",
   "Slipp en .ifc- eller .glb-fil.": "Numeskite .ifc arba .glb failą.",
+  "Hovedmodellen er en lett kopi uten plassering (laget før 28.10.2026). Lag den lette kopien på nytt, eller åpne IFC-en, så havner lagene riktig.": "Pagrindinis modelis yra lengva kopija be padėties (sukurta iki 2026-10-28). Sukurkite lengvą kopiją iš naujo arba atidarykite IFC, kad sluoksniai atsidurtų teisingoje vietoje.",
+  "«{0}» er laget før 28.10.2026 og mangler plassering. Legg til IFC-en i stedet, så havner laget riktig.": "«{0}» sukurtas iki 2026-10-28 ir neturi padėties. Pridėkite IFC, kad sluoksnis atsidurtų teisingoje vietoje.",
 };

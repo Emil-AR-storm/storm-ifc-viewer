@@ -3181,4 +3181,6 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Skjul dette laget": "Hide this layer",
   "Slipp IFC her for å legge den til som lag": "Drop an IFC here to add it as a layer",
   "Slipp en .ifc- eller .glb-fil.": "Drop an .ifc or .glb file.",
+  "Hovedmodellen er en lett kopi uten plassering (laget før 28.10.2026). Lag den lette kopien på nytt, eller åpne IFC-en, så havner lagene riktig.": "The main model is a light copy without placement (made before 28.10.2026). Make the light copy again, or open the IFC, so the layers end up in the right place.",
+  "«{0}» er laget før 28.10.2026 og mangler plassering. Legg til IFC-en i stedet, så havner laget riktig.": "«{0}» was made before 28.10.2026 and has no placement. Add the IFC instead, so the layer ends up in the right place.",
 };

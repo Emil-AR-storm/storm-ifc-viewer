@@ -29,6 +29,9 @@ import { spLastOpp, spLesBin, spPaalogget } from "./sp-lager.js";
 import * as R from "./lag-regn.js";
 
 export const LAG_MAPPE = "Lag";
+// 6 = koten (flyttingen til origo) er lest ETTER geometrien (28.10). Lag-GLB-er
+// med lavere versjon brukes ikke fra bufferen i SharePoint.
+export const LAG_GLB_VERSJON = 6;
 const lagene = [];               // { id, navn, fag, farge, gjennom, synlig, kilde, gruppe, props, tall, sum, … }
 export const _lagene = lagene;   // testene
 const tilstand = {
@@ -248,7 +251,7 @@ async function lesGlb(bytes) {
   });
   const props = {};
   if (lite && lite.props) for (const [k, v] of Object.entries(lite.props)) props[k] = v;
-  return { deler, kote: lite && lite.kote, props, raaTall: (lite && lite.tall) || {}, kilde: (lite && lite.kilde) || null };
+  return { deler, kote: lite && lite.kote, props, raaTall: (lite && lite.tall) || {}, kilde: (lite && lite.kilde) || null, v: Number(lite && lite.v) || 0 };
 }
 
 async function lagGlb(lag, deler) {
@@ -266,7 +269,7 @@ async function lagGlb(lag, deler) {
     m.userData.ranges = d.ranges;
     g.add(m);
   }
-  g.userData.stormLite = { v: 5, lag: true, name: lag.navn, kote: lag.kote, props: lag.props, tall: lag.raaTall,
+  g.userData.stormLite = { v: LAG_GLB_VERSJON, lag: true, name: lag.navn, kote: lag.kote, props: lag.props, tall: lag.raaTall,
     kilde: lag.kilde, laget: new Date().toISOString() };
   const { GLTFExporter } = await import("three/addons/exporters/GLTFExporter.js");
   const glb = await new Promise((res, rej) => new GLTFExporter().parse(g, res, rej, { binary: true }));
@@ -299,7 +302,10 @@ export async function leggTilLag(kilde, valg) {
         const r = await spLesBin(LAG_MAPPE, R.lagGlbNavn(navn));
         if (r.status === "ok" && r.data) {
           const g = await lesGlb(new Uint8Array(r.data));
-          if (g.kilde && g.kilde.size === lag.kilde.size && g.kilde.endret === lag.kilde.endret) { data = g; fraLager = true; }
+          // v6+: kote fra ETTER geometrien. Eldre lag i SharePoint (laget før
+          // rettingen 28.10) har enhetsmatrise og havner flere hundre meter feil
+          // (Emils bilde 28.10) — de lages på nytt og overskrives.
+          if (g.v >= LAG_GLB_VERSJON && g.kilde && g.kilde.size === lag.kilde.size && g.kilde.endret === lag.kilde.endret) { data = g; fraLager = true; }
         }
       } catch (_) {}
     }
@@ -331,6 +337,12 @@ export async function leggTilLag(kilde, valg) {
     for (const id of Object.keys(lag.tall)) lag.volum.delete(Number(id));   // armering telles i kg
     lag.sum = R.lagSum(lag.props, lag.tall, lag.volum);
     settInn(lag, byggGruppe(lag, data.deler));
+    // En lett kopi eller lag-GLB laget før 28.10 har «ingen flytting» lagret.
+    // Det kan ikke rettes i ettertid — men det skal sies, ikke skje i det stille.
+    if (S.glbActive && R.erEnhet(S.koteMatrixInv ? Array.from(S.koteMatrixInv.elements) : null))
+      varsel(t("Hovedmodellen er en lett kopi uten plassering (laget før 28.10.2026). Lag den lette kopien på nytt, eller åpne IFC-en, så havner lagene riktig."));
+    else if (/\.glb$/i.test(navn) && !(data.v >= LAG_GLB_VERSJON) && R.erEnhet(lag.kote))
+      varsel(t("«{0}» er laget før 28.10.2026 og mangler plassering. Legg til IFC-en i stedet, så havner laget riktig.", lag.navn));
     const sjekk = R.avstandSjekk(boksFor(S.modelGroup), boksFor(lag.gruppe));
     if (sjekk.langt) varsel(t("«{0}» ligger langt unna hovedmodellen. Er begge eksportert med delte koordinater fra samme Revit-prosjekt?", lag.navn));
     if (S.pushAngre) S.pushAngre({
