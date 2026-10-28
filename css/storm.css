@@ -2454,6 +2454,27 @@ html[data-tema="lys"] .lag-rad select { color-scheme: light; }
 .lag-prog i { display: block; height: 100%; background: var(--accent); transition: width .2s; }
 .lag-nokkel { margin: 8px 0 2px; font-size: 10.5px; font-weight: 700; letter-spacing: .4px; color: var(--warn); }
 .lag-merk { font-size: 11px; color: var(--muted); margin-top: 6px; }
+/* 📐 Juster plassering (Emils valg A, 28.10.2026) — inne på lag-kortet */
+.lag-juster { border-top: 1px solid var(--border); padding-top: 8px; display: flex; flex-direction: column; gap: 7px; }
+.lag-juster-lbl { font-size: 10.5px; font-weight: 700; letter-spacing: .4px; color: var(--muted); }
+.lag-forslag { background: color-mix(in srgb, var(--accent) 10%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border)); border-radius: 6px; padding: 6px 8px; font-size: 11.5px; display: flex; flex-direction: column; gap: 5px; }
+.lag-forslag.ok { background: var(--bg); border-color: var(--border); color: var(--muted); }
+.lag-forslag button { align-self: flex-start; font-size: 11px; padding: 4px 9px; }
+.lag-sideveis { font-size: 11.5px; display: flex; flex-direction: column; gap: 5px; }
+.lag-sideveis button { align-self: flex-start; font-size: 11px; padding: 4px 9px; }
+.lag-sideveis.aktiv { color: var(--accent); font-weight: 600; }
+.lag-tall { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.lag-tall label { display: flex; flex-direction: column; font-size: 10px; color: var(--muted); gap: 2px; }
+.lag-tall input { width: 100%; box-sizing: border-box; padding: 4px 6px; font-size: 12.5px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; font-variant-numeric: tabular-nums; }
+.lag-flytt { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.lag-flytt button { font-size: 11px; padding: 4px 9px; }
+.lag-flytt button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.lag-steg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.lag-steg button { border: 0; border-radius: 0; padding: 4px 7px; font-size: 10.5px; background: var(--panel2); }
+.lag-steg button.active { background: var(--accent); color: #fff; }
+.lag-taster { font-size: 10.5px; color: var(--muted); line-height: 1.5; }
+.lag-taster kbd { font-family: inherit; font-size: 10px; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; background: var(--bg); color: var(--text); }
+.lag-justert { font-size: 10.5px; color: var(--accent); font-weight: 600; }
 @media (max-width: 520px) { #lagPanel { width: 100vw; border-radius: var(--radius-stor) var(--radius-stor) 0 0; } }
 
 /* 📋 Dagsrapport (runde 4, 27.10.2026 — Emils valg C: uke-stripe + skjema).
