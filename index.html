@@ -93,6 +93,7 @@
   <symbol id="i-bibliotek" viewBox="0 0 24 24"><rect width="8" height="18" x="3" y="3" rx="1" /><path d="M7 3v18" /><path d="M20.4 18.9c.2.5-.1 1.1-.6 1.3l-1.9.7c-.5.2-1.1-.1-1.3-.6L11.1 5.1c-.2-.5.1-1.1.6-1.3l1.9-.7c.5-.2 1.1.1 1.3.6Z" /></symbol>
   <symbol id="i-lav" viewBox="0 0 24 24"><path d="M14.086 18.412A2 2 0 0112.67 19H5v-7.672a2 2 0 01.586-1.414L11.75 3.75a6 6 0 118.49 8.49z" /><path d="M16 8 2 22" /><path d="M17.488 15H9" /></symbol>
   <symbol id="i-markeringer" viewBox="0 0 24 24"><path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z" /></symbol>
+  <symbol id="i-lag" viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5Z" /><path d="m2 17 10 5 10-5" /><path d="m2 12 10 5 10-5" /></symbol>
   <symbol id="i-fokus" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><line x1="22" x2="18" y1="12" y2="12" /><line x1="6" x2="2" y1="12" y2="12" /><line x1="12" x2="12" y1="6" y2="2" /><line x1="12" x2="12" y1="22" y2="18" /></symbol>
   <symbol id="i-markering" viewBox="0 0 24 24"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0" /><circle cx="12" cy="10" r="3" /></symbol>
   <symbol id="i-maal" viewBox="0 0 24 24"><path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z" /><path d="m14.5 12.5 2-2" /><path d="m11.5 9.5 2-2" /><path d="m8.5 6.5 2-2" /><path d="m17.5 15.5 2-2" /></symbol>
@@ -203,6 +204,7 @@
   <button id="btnColors" title="Farge, skjul og vis elementtyper – og kantlinjer" data-i18n-title><svg class="ikon"><use href="#i-utseende"/></svg><span class="btn-t" data-i18n>Utseende</span></button>
   <button id="btnCompare" title="Sammenlign med en annen versjon av modellen" data-i18n-title><svg class="ikon"><use href="#i-sammenlign"/></svg><span class="btn-t" data-i18n>Sammenlign</span></button>
   <button id="btnEm" title="Endringsmelding fra modellen: mengdeendring, prisanslag og EM-utkast" data-i18n-title><svg class="ikon"><use href="#i-rediger"/></svg><span class="btn-t" data-i18n>Endringsmelding</span></button>
+  <button id="btnLag" title="Lag: legg armering, stål eller andre fagmodeller oppå hovedmodellen" data-i18n-title><svg class="ikon"><use href="#i-lag"/></svg><span class="btn-t" data-i18n>Lag</span></button>
   <button id="btnShare" title="Lag en lenke som gjenskaper denne visningen hos andre" data-i18n-title><svg class="ikon"><use href="#i-del"/></svg><span class="btn-t" data-i18n>Del visning</span></button>
   <button id="btnGrupper" title="Objektgrupper: lagre et utvalg med navn og hent det fram igjen" data-i18n-title><svg class="ikon"><use href="#i-fokus"/></svg><span class="btn-t" data-i18n>Grupper</span></button>
   <button id="btnTerreng" title="Terreng: hent landskapet rundt byggeplassen og sett modellen ned i det" data-i18n-title><svg class="ikon"><use href="#i-kote"/></svg><span class="btn-t" data-i18n>Terreng</span></button>
@@ -381,6 +383,13 @@
 </div>
 
 <!-- 📝 Endringsmelding fra modellen (js/em.js, 26.10.2026) -->
+<!-- 🧅 Lag (runde 5, 28.10.2026): kortene tegnes av js/lag.js. Står til
+     VENSTRE, så egenskapsboksen (til høyre) kan åpnes ved siden av. -->
+<div class="panel lag-panel" id="lagPanel">
+  <header><span data-i18n>Lag</span><button data-lukk="lagPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <div class="body" id="lagBody"></div>
+</div>
+
 <div class="panel em-panel" id="emPanel">
   <header><span data-i18n>Endringsmelding</span><button data-lukk="emPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="emBody"></div>
