@@ -68,6 +68,7 @@ const MODULER = [
   ["./hjul.js"],                   // navigasjonshjul – trenger knappen i verktøylinja
   ["./compare.js", true],
   ["./em.js", true],               // 📝 Endringsmelding fra modellen (kun kontor) — ETTER compare.js
+  ["./lag.js", true],              // 🧅 Lag: fagmodeller oppå hovedmodellen (kun kontor, runde 5)
   ["./recent.js"],
   ["./share.js", true],
   ["./byggeplass.js", true],

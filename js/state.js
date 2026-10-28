@@ -461,6 +461,16 @@ export function registrerEkstraGruppe(g, kontrakt) {
   EKSTRA_LAG.push(Object.assign({ id: "", navn: "", gruppe: g }, kontrakt || {}));
 }
 
+// 🧅 Et lag som tas UT av scenen igjen (Lag-verktøyet, runde 5). Rigg, SW og
+// materiell blir værende hele økta, men et modell-lag kan fjernes — og da
+// skal det ikke lenger svare på plukk, Vis alle eller Gjennomsiktig.
+export function avregistrerEkstraGruppe(g) {
+  const i = EKSTRA_GRUPPER.indexOf(g);
+  if (i >= 0) EKSTRA_GRUPPER.splice(i, 1);
+  const j = EKSTRA_LAG.findIndex(l => l.gruppe === g);
+  if (j >= 0) EKSTRA_LAG.splice(j, 1);
+}
+
 // Lagene som melder at de kan `evne`. Alltid en liste — også når den er tom,
 // så kallstedet kan løkke uten å sjekke.
 export function ekstraLagSom(evne) {

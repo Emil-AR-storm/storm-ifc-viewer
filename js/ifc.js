@@ -201,6 +201,7 @@ function clearModel() {
   markerGroup.clear();
   ryddOmrader();          // ⭕▭ markeringenes områder hører til modellen som lukkes
   if (S.ryddSW) S.ryddSW();   // 🧱 genererte veggelementer likeså
+  if (S.ryddLag) S.ryddLag(); // 🧅 lagene hører til hovedmodellen som lukkes
   measureGroup.clear();
   koteGroup.clear();
   axesGroup.clear();

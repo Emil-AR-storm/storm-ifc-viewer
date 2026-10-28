@@ -157,7 +157,7 @@ export async function graphToken(scopes, opts) {
 // i hele kodebasen som starter MSAL av seg selv – den gates, ikke fjernes.
 if (!LETT && !SP.clientId.startsWith("FYLL")) msalInit().catch(() => { visInnlogging("feil"); });
 
-async function spToken() {
+export async function spToken() {
   return graphToken(SP_SCOPES, { after: "lib" });
 }
 
@@ -350,7 +350,8 @@ async function spFetchFolder(mappe, token) {
   }
 }
 
-async function spFetchList(fane) {
+// Eksportert for 🧅 Lag-verktøyet (runde 5): samme liste som biblioteket.
+export async function spFetchList(fane) {
   const token = await spToken();
   if (!token) return null; // på vei til innlogging
   if (!S.spSiteId) {

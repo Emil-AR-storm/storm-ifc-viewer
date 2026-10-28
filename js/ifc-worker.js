@@ -52,9 +52,15 @@ function typeNavn(id) {
 // ---------- Kommandoer ----------
 
 let testMinst = 0.15;   // settes av cmdOpen, leses av cmdGeometryLight
+// 🧅 Lag-verktøyet (runde 5, 28.10.2026): et lag skal ha ALT med — hver eneste
+// armeringsstang og festemiddel. Settes av cmdOpen({ alle: true }), som bare
+// lag-konverteringen sender. Hovedmodellen åpnes som før.
+let taMedAlle = false;
 
-async function cmdOpen({ buffer, light, minst, sirkel }) {
-  testMinst = minst || 0.15;
+async function cmdOpen({ buffer, light, minst, sirkel, alle }) {
+  // minst: 0 er gyldig for lag (ingenting siles bort). Før ble 0 til 0,15 her.
+  testMinst = (typeof minst === "number" && minst >= 0) ? (minst || (alle ? 0 : 0.15)) : 0.15;
+  taMedAlle = !!alle;
   if (!klar) klar = ifcApi.Init();
   await klar;
   if (modelID !== null) { try { ifcApi.CloseModel(modelID); } catch(_) {} modelID = null; }
@@ -158,7 +164,7 @@ function cmdGeometryLight({ maxId, basis }, post) {
     // derfor helt stille i minutter, og ville blitt drept av stille-klokka.
     puls();
     const id = mesh.expressID;
-    try { if (skipTypes.has(ifcApi.GetLineType(modelID, id))) { skipped++; return; } } catch(_) {}
+    if (!taMedAlle) try { if (skipTypes.has(ifcApi.GetLineType(modelID, id))) { skipped++; return; } } catch(_) {}
 
     const parts = lesDeler(mesh);
     let mnx = Infinity, mny = Infinity, mnz = Infinity, mxx = -Infinity, mxy = -Infinity, mxz = -Infinity;
@@ -184,8 +190,8 @@ function cmdGeometryLight({ maxId, basis }, post) {
         norm[k] = rx / len; norm[k + 1] = ry / len; norm[k + 2] = rz / len;
       }
     }
-    // dropp veldig små elementer (< 0,15 i modellens enheter)
-    if (Math.hypot(mxx - mnx, mxy - mny, mxz - mnz) < testMinst) { skipped++; return; }
+    // dropp veldig små elementer (< 0,15 i modellens enheter) — ikke i et lag
+    if (!taMedAlle && Math.hypot(mxx - mnx, mxy - mny, mxz - mnz) < testMinst) { skipped++; return; }
 
     for (const p of parts) {
       const key = [p.color.x, p.color.y, p.color.z, p.color.w].join(",");
@@ -611,9 +617,88 @@ function cmdBuffer(_a, post) {
   return { buffer: ut, _overfor: [ut] };
 }
 
+// ---------- 🧅 Nøkkeltall til Lag-verktøyet (runde 5, 28.10.2026) ----------
+// Armeringsmodeller fra Revit (Lørenskog 14.10) har INGEN mengdesett og intet
+// vektfelt. Det som finnes, står på selve IfcReinforcingBar:
+//   NominalDiameter (16), BarLength (5145), CrossSectionArea, SteelGrade
+// og i Pset_ReinforcingBarBendingsISOCD3766Common (bøyeform + mål a, b, c …).
+// Et Revit-SETT er ÉN IfcReinforcingBar med én solid per stang i Body-
+// representasjonen — antall stenger = antall solider. Vekten regnes i
+// lag-regn.js (π/4 · d² · L · 7 850), ikke her.
+// Svar: { lengde: meter per modellenhet, tall: { id: { d, L, n, form, mal, kval, ref, pos } } }
+// d og L i mm.
+function antallSolider(line) {
+  try {
+    const rep = line.Representation && line.Representation.value;
+    if (!rep) return 1;
+    const pds = ifcApi.GetLine(modelID, rep);
+    for (const r of (pds.Representations || [])) {
+      const sr = ifcApi.GetLine(modelID, r && r.value);
+      const navn = String(val(sr && sr.RepresentationIdentifier) || "");
+      if (/^body$/i.test(navn) && Array.isArray(sr.Items)) return Math.max(1, sr.Items.length);
+    }
+  } catch (_) {}
+  return 1;
+}
+function cmdLagTall(_args, post) {
+  const puls = pulsGiver(post);
+  const enh = qtoEnheter || (qtoEnheter = lesEnheter());
+  const tilMm = (v) => { const n = Number(v); return isFinite(n) && n > 0 ? Math.round(n * (enh.lengde || 1) * 1000 * 10) / 10 : null; };
+  const tall = {};
+  let ider = [];
+  try {
+    const v = ifcApi.GetLineIDsWithType(modelID, WebIFC.IFCREINFORCINGBAR);
+    for (let i = 0; i < v.size(); i++) ider.push(v.get(i));
+  } catch (_) { ider = []; }
+  let teller = 0;
+  for (const id of ider) {
+    if ((++teller & 255) === 0) puls();
+    let line;
+    try { line = ifcApi.GetLine(modelID, id); } catch (_) { continue; }
+    tall[id] = { d: tilMm(val(line.NominalDiameter)), L: tilMm(val(line.BarLength)),
+      n: antallSolider(line), kval: String(val(line.SteelGrade) || ""), form: "", mal: {}, ref: "", pos: "" };
+  }
+  if (ider.length) {
+    const sett = new Set(ider);
+    try {
+      const rels = ifcApi.GetLineIDsWithType(modelID, WebIFC.IFCRELDEFINESBYPROPERTIES);
+      for (let i = 0; i < rels.size(); i++) {
+        if ((i & 511) === 0) puls();
+        const rel = ifcApi.GetLine(modelID, rels.get(i));
+        const mine = (rel.RelatedObjects || []).map(o => o && o.value).filter(x => sett.has(x));
+        if (!mine.length || !rel.RelatingPropertyDefinition) continue;
+        const pset = ifcApi.GetLine(modelID, rel.RelatingPropertyDefinition.value);
+        if (!pset || !Array.isArray(pset.HasProperties)) continue;
+        const ut = { mal: {} };
+        for (const pr of pset.HasProperties) {
+          let p; try { p = ifcApi.GetLine(modelID, pr && pr.value); } catch (_) { continue; }
+          const navn = String(val(p && p.Name) || ""), v = val(p && p.NominalValue);
+          if (v == null || v === "") continue;
+          let m;
+          if (/ShapeCode$/i.test(navn) || /^(Shape|Bøyeform|BendingShape)$/i.test(navn)) ut.form = String(v);
+          else if ((m = /ShapeParameter_([A-Za-z0-9]+)$/.exec(navn))) ut.mal[m[1]] = tilMm(v);
+          else if (/^Reference$/i.test(navn)) ut.ref = String(v);
+          else if (/^(Rebar Number|Schedule Mark|Bar Mark|Pos(isjon)?(snummer|\.? ?nr)?|Mark)$/i.test(navn)) ut.pos = String(v);
+          else if (/^(SteelGrade|Grade|Stålkvalitet)$/i.test(navn)) ut.kval = String(v);
+        }
+        for (const id of mine) {
+          const t = tall[id];
+          if (ut.form) t.form = ut.form;
+          if (ut.ref) t.ref = ut.ref;
+          if (ut.pos) t.pos = ut.pos;
+          if (ut.kval && !t.kval) t.kval = ut.kval;
+          Object.assign(t.mal, ut.mal);
+        }
+      }
+    } catch (_) {}
+  }
+  return { lengde: enh.lengde || 1, tall };
+}
+
 function cmdClose() {
   if (modelID !== null) { try { ifcApi.CloseModel(modelID); } catch(_) {} }
   modelID = null;
+  taMedAlle = false;
   matKart = null;
   lagKart = null;
   qtoEnheter = null;
@@ -628,6 +713,7 @@ export const KOMMANDOER = {
   geometryFull: cmdGeometryFull,
   geometryLight: cmdGeometryLight,
   meta: cmdMeta,
+  lagTall: cmdLagTall,   // 🧅 Lag-verktøyet: armeringens nøkkeltall
   props: cmdProps,
   qto: cmdQto,
   storeys: cmdStoreys,
