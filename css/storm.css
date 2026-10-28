@@ -2442,6 +2442,14 @@ html[data-tema="lys"] .lag-rad select { color-scheme: light; }
 .lag-rad button { padding: 6px 12px; font-size: 12px; }
 #lagPanel button:disabled { opacity: .45; cursor: default; }
 .lag-disk { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 30px; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; background: var(--panel2); }
+.lag-slipp {
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  min-height: 46px; padding: 8px; text-align: center;
+  border: 2px dashed var(--accent); border-radius: 10px;
+  font-size: 12px; font-weight: 600; color: var(--text); background: var(--sone);
+}
+.lag-slipp.over { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.lag-prikk { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 6px; vertical-align: middle; }
 .lag-prog { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
 .lag-prog i { display: block; height: 100%; background: var(--accent); transition: width .2s; }
 .lag-nokkel { margin: 8px 0 2px; font-size: 10.5px; font-weight: 700; letter-spacing: .4px; color: var(--warn); }
