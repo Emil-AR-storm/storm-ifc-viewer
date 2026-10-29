@@ -2786,3 +2786,33 @@ select.lag-enhet.egen { border-color: var(--warn); color: var(--warn); }
 .lag-mat { font-size: 10px; color: var(--muted); }
 table.lag-m td { vertical-align: middle; }
 table.lag-m tr.sum2 td { font-weight: 700; border-bottom: 0; }
+/* 💥 Kollisjon (runde 6, Emils valg A 29.10.2026) */
+#kollPanel { left: 0; right: auto; width: 400px; max-height: 82vh; border-radius: 0 var(--radius-stor) 0 0; }
+#kollPanel .body { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+#kollPanel button:disabled { opacity: .45; cursor: default; }
+.koll-lbl { font-size: 11px; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; letter-spacing: .3px; }
+.koll-lbl span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.koll-rad { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel2); cursor: pointer; }
+.koll-navn { display: flex; flex-direction: column; min-width: 0; }
+.koll-navn b { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.koll-navn span { font-size: 10.5px; color: var(--muted); }
+.koll-od { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); padding-left: 30px; }
+.koll-od input { width: 64px; font-size: 12px; padding: 3px 6px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 5px; }
+.koll-jobb { font-size: 11.5px; color: var(--accent2); }
+.koll-chips { display: flex; gap: 5px; flex-wrap: wrap; }
+.koll-chips button { font-size: 11px; padding: 3px 9px; border-radius: 14px; }
+.koll-chips button.active { background: var(--aktiv-bg); color: var(--aktiv-tekst); font-weight: 600; }
+.koll-funn { display: flex; flex-direction: column; gap: 2px; text-align: left; width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel2); font-size: 11.5px; }
+.koll-funn.aktiv { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--panel2)); }
+.koll-ft { display: flex; gap: 6px; align-items: center; }
+.koll-ft b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.koll-fu { color: var(--muted); font-size: 10.5px; }
+.koll-st { font-style: normal; font-size: 10px; padding: 1px 6px; border-radius: 5px; font-weight: 700; }
+.koll-st.ny { background: var(--danger); color: #fff; }
+.koll-st.godkjent { background: var(--warn); color: #111; }
+.koll-st.lost { background: var(--ok); color: #fff; }
+.koll-nav { position: fixed; left: 50%; transform: translateX(-50%); bottom: 62px; z-index: 60; display: flex; align-items: center; gap: 8px; max-width: calc(100vw - 32px);
+  background: var(--panel); border: 1px solid var(--accent); border-radius: var(--radius-stor); padding: 7px 10px; font-size: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
+.koll-nav button { font-size: 12px; padding: 4px 9px; }
+.koll-nt { color: var(--muted); max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 520px) { #kollPanel { width: 100vw; border-radius: var(--radius-stor) var(--radius-stor) 0 0; } .koll-nt { display: none; } }
