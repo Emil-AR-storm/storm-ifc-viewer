@@ -52,6 +52,7 @@ const tilstand = {
   grJobber: "",                  // tekst mens en gruppe åpnes/lagres
   visMengder: false,             // 📊 «Mengder per lag» foldet ut
   hovedM: null,                  // { fil, m } | { fil, regner: true } — hovedmodellens mengder
+  fane: "lag",                   // 💥 "lag" | "kollisjon" (fanen Kollisjon finnes bare med lag)
   enheter: lesEnheter()          // 📏 valgt enhet per rad { "Revit-type|materiale": "m²" } — huskes på maskinen
 };
 export const _tilstand = tilstand;
@@ -551,10 +552,23 @@ export function tegn() {
   if (!body) return;
   const hoved = S.fileName ? '<div class="lag-hoved"><span class="lag-oye-dummy">' + ikon(S.modelGroup && S.modelGroup.visible === false ? "skjul" : "vis") + '</span>' +
     '<div><b>' + esc(S.fileName) + '</b><span>' + esc(t("Hovedmodell · alle verktøy")) + '</span></div></div>' : "";
-  body.innerHTML = gruppeHtml() + hoved +
-    (lagene.length ? lagene.map(kortHtml).join("") : '<p class="lag-tom">' + esc(t("Ingen lag ennå. Legg til armering, stål eller en annen fagmodell oppå hovedmodellen.")) + '</p>') +
-    mengderHtml() + leggTilHtml();
-  koble(body);
+  // 💥 Fanene «Lag» og «Kollisjon» (Emils valg C 29.10). Kollisjon virker
+  // bare med lag, så fanen finnes ikke før et lag er lagt til.
+  if (!lagene.length || !S.kollisjonFyll) tilstand.fane = "lag";
+  const nye = S.kollisjonNye ? S.kollisjonNye() : null;
+  const faner = lagene.length && S.kollisjonFyll ? '<div class="lag-faner"><button data-lag-fane="lag"' + (tilstand.fane === "lag" ? ' class="active"' : "") + '>' + esc(t("Lag")) + ' (' + lagene.length + ')</button>' +
+    '<button data-lag-fane="kollisjon"' + (tilstand.fane === "kollisjon" ? ' class="active"' : "") + '>' + esc(t("Kollisjon")) + (nye ? ' <b class="lag-fane-tall">' + nye + '</b>' : "") + '</button></div>' : "";
+  if (tilstand.fane === "kollisjon") {
+    body.innerHTML = faner;
+    S.kollisjonFyll(body);
+  } else {
+    body.innerHTML = faner + gruppeHtml() + hoved +
+      (lagene.length ? lagene.map(kortHtml).join("") : '<p class="lag-tom">' + esc(t("Ingen lag ennå. Legg til armering, stål eller en annen fagmodell oppå hovedmodellen.")) + '</p>') +
+      mengderHtml() + leggTilHtml();
+    koble(body);
+  }
+  body.querySelectorAll("[data-lag-fane]").forEach(b => b.onclick = () => { tilstand.fane = b.dataset.lagFane; tegn(); });
+  if (S.kollisjonNav) S.kollisjonNav();
 }
 
 function finnLag(id) { return lagene.find(l => l.id === Number(id)); }

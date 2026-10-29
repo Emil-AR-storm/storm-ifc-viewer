@@ -1,6 +1,7 @@
-// 💥 KOLLISJON — panelet (runde 6 / 9b, Emils valg A 29.10.2026).
+// 💥 KOLLISJON — fanen i Lag-panelet (runde 6 / 9b, Emils valg A 29.10.2026;
+// flyttet inn i Lag som egen fane, valg C samme dag).
 //
-// Eget verktøy i Bygg Info. Hvert lag i Lag-panelet kontrolleres mot
+// Hvert lag i Lag-panelet kontrolleres mot
 // hovedmodellen med regelen som passer faget:
 //   • Armering mot betong: armering UTENFOR betongen og (hvis kravet er
 //     skrevet inn) for liten OVERDEKNING. Kravet kommer fra RIBs beskrivelse.
@@ -12,11 +13,11 @@
 //
 // Regningen bor i kollisjon-regn.js (ren, testet med kjente kasser).
 import * as THREE from "three";
-import { $, S, apnePanel, EKSTRA_LAG, esc, på } from "./state.js";
+import { $, S, EKSTRA_LAG, esc } from "./state.js";
 import { flyTil } from "./scene.js";
 import { t } from "./i18n.js";
 import { varsel } from "./varsel.js";
-import { _lagene as lagene } from "./lag.js";
+import { _lagene as lagene, _tilstand as lagTilstand, tegn as tegnLag } from "./lag.js";
 import { spLes, spPaalogget, spSkriv } from "./sp-lager.js";
 import * as K from "./kollisjon-regn.js";
 
@@ -303,10 +304,19 @@ export async function lastNedExcel() {
   await E.lastNedXlsx(base + " - kollisjoner.xlsx", t("Kollisjoner"), rader);
 }
 
-// ---------- Panelet ----------
-export function tegn() {
-  const body = $("kollBody");
+// ---------- Fanen «Kollisjon» i Lag-panelet (Emils valg C 29.10.2026) ----------
+// Kollisjon virker bare med lag, så den bor i Lag-panelet som egen fane — og
+// fanen finnes bare når minst ett lag er lagt til. lag.js tegner fanene og
+// kaller S.kollisjonFyll(body) når fanen «Kollisjon» er valgt.
+const fanenErApen = () => { const p = $("lagPanel"); return !!(p && p.classList.contains("open") && lagTilstand.fane === "kollisjon" && lagene.length); };
+export function tegn() { tegnLag(); tegnNav(); }
+S.kollisjonNye = () => (tilstand.funn && tilstand.fil === S.fileName ? K.telling(tilstand.funn).ny : null);
+S.kollisjonNav = () => tegnNav();
+S.kollisjonFyll = (body) => fyll(body);
+function fyll(body) {
   if (!body) return;
+  // Har hovedmodellen armering? (Armering åpnet som hovedmodell, betong som lag)
+  if (S.hovedHarArmering == null && S.qtyCache && S.qtyCache.groups) S.hovedHarArmering = S.qtyCache.groups.some(([, g]) => /ReinforcingBar/i.test(String(g.type || "")));
   const ks = kontroller();
   let h = '<div class="koll-lbl">' + esc(t("KONTROLLER")) + '<span>' + esc(t("lagene mot {0}", S.fileName || t("hovedmodellen"))) + '</span></div>';
   if (!ks.length) h += '<p class="lag-tom">' + esc(t("Ingen lag å kontrollere. Legg til armering, stål eller en annen fagmodell i Lag-panelet først.")) + '</p>';
@@ -333,15 +343,17 @@ export function tegn() {
     if (liste.length > MAKS_I_LISTA) h += '<p class="lag-merk">' + esc(t("… og {0} til (se Excel)", liste.length - MAKS_I_LISTA)) + '</p>';
     h += '<div class="lag-knapper"><button id="kollBcf"' + (liste.length ? "" : " disabled") + '>' + esc(t("BCF")) + '</button><button id="kollXlsx"' + (liste.length ? "" : " disabled") + '>' + esc(t("Excel")) + '</button></div>';
   }
-  body.innerHTML = h;
-  koble(body);
-  tegnNav();
+  const boks = document.createElement("div");
+  boks.className = "koll-fane";
+  boks.id = "kollBody";
+  boks.innerHTML = h;
+  body.appendChild(boks);
+  koble(boks);
 }
 function tegnNav() {
   let nav = $("kollNav");
-  const p = $("kollPanel");
   const liste = synlige();
-  const vis = p && p.classList.contains("open") && tilstand.funn && liste.length && tilstand.fil === S.fileName;
+  const vis = fanenErApen() && tilstand.funn && liste.length && tilstand.fil === S.fileName;
   if (!vis) { if (nav) nav.remove(); return; }
   if (!nav) { nav = document.createElement("div"); nav.id = "kollNav"; nav.className = "koll-nav"; document.body.appendChild(nav); }
   const f = liste[Math.min(tilstand.nr, liste.length - 1)];
@@ -380,19 +392,10 @@ function koble(body) {
 
 try { tilstand.overdekning = JSON.parse(localStorage.getItem("storm.kollisjon.od") || "{}") || {}; } catch (_) {}
 
-på("btnKollisjon", "click", () => {
-  const p = $("kollPanel");
-  if (p && p.classList.contains("open")) { p.classList.remove("open"); tegnNav(); return; }
-  if (!S.modelGroup) { varsel(t("Åpne en modell først.")); return; }
-  apnePanel("kollPanel");
-  // Har hovedmodellen armering? (Armering åpnet som hovedmodell, betong som lag)
-  S.hovedHarArmering = !!(S.qtyCache && S.qtyCache.groups && S.qtyCache.groups.some(([, g]) => /ReinforcingBar/i.test(String(g.type || ""))));
-  tegn();
-});
-// Panelet lukkes med krysset → ta bort navigasjonslinja
-document.addEventListener("click", (e) => { if (e.target && e.target.closest && e.target.closest('[data-lukk="kollPanel"]')) setTimeout(tegnNav, 0); });
+// Lag-panelet lukkes med krysset → ta bort navigasjonslinja
+document.addEventListener("click", (e) => { if (e.target && e.target.closest && e.target.closest('[data-lukk="lagPanel"]')) setTimeout(tegnNav, 0); });
 // Ny hovedmodell: funnene hører til den gamle (S.ryddLag kalles av clearModel)
 {
   const tidligere = S.ryddLag;
-  S.ryddLag = () => { if (tidligere) tidligere(); tilstand.funn = null; tilstand.fil = ""; tegnNav(); };
+  S.ryddLag = () => { if (tidligere) tidligere(); tilstand.funn = null; tilstand.fil = ""; S.hovedHarArmering = null; tegnNav(); };
 }

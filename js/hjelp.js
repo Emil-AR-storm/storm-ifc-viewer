@@ -150,7 +150,7 @@ export const KORT = [
   {
     hvor: "kontor", ikonNavn: "kollisjon",
     tittel: "Kollisjon: armering utenfor betongen og stål som går inn",
-    tekst: "Kollisjon (i Bygg Info) kontrollerer hvert lag fra Lag-panelet mot hovedmodellen. Armering mot betong: finner armering som stikker utenfor betongen, og for liten overdekning hvis du skriver inn kravet fra RIB (tomt felt = ikke kontrollert). Stål, rør og andre lag: finner det som går inn i betongen (å ligge an mot er i orden). Trykk Kjør kontroll. Pilene nederst går gjennom funnene ett og ett og zoomer dit. Godkjenn det som er riktig (for eksempel oppstikk til neste støp) med en kort begrunnelse, eller lag en markering. Status (Ny, Godkjent, Løst) lagres i SharePoint, så neste kjøring viser bare det som er nytt — og det RIB har rettet, blir Løst av seg selv. BCF og Excel lages fra lista."
+    tekst: "Fanen Kollisjon i Lag-panelet (den kommer når et lag er lagt til) kontrollerer hvert lag mot hovedmodellen. Armering mot betong: finner armering som stikker utenfor betongen, og for liten overdekning hvis du skriver inn kravet fra RIB (tomt felt = ikke kontrollert). Stål, rør og andre lag: finner det som går inn i betongen (å ligge an mot er i orden). Trykk Kjør kontroll. Pilene nederst går gjennom funnene ett og ett og zoomer dit. Godkjenn det som er riktig (for eksempel oppstikk til neste støp) med en kort begrunnelse, eller lag en markering. Status (Ny, Godkjent, Løst) lagres i SharePoint, så neste kjøring viser bare det som er nytt — og det RIB har rettet, blir Løst av seg selv. BCF og Excel lages fra lista."
   },
   {
     hvor: "kontor", ikonNavn: "tegning",
