@@ -2779,3 +2779,10 @@ table.lag-m td { padding: 3px 5px; text-align: right; border-bottom: 1px solid c
 table.lag-m th:first-child, table.lag-m td:first-child { text-align: left; }
 table.lag-m td:last-child:not(:first-child) { white-space: nowrap; }
 table.lag-m tr.sum td { font-weight: 700; border-top: 1px solid var(--muted); border-bottom: 0; }
+/* 📏 Valgfri enhet per rad i «Mengder per lag» (Emils valg A 29.10.2026) */
+select.lag-enhet { font-size: 11px; font-family: inherit; padding: 2px 4px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 5px; color-scheme: dark; }
+html[data-tema="lys"] select.lag-enhet { color-scheme: light; }
+select.lag-enhet.egen { border-color: var(--warn); color: var(--warn); }
+.lag-mat { font-size: 10px; color: var(--muted); }
+table.lag-m td { vertical-align: middle; }
+table.lag-m tr.sum2 td { font-weight: 700; border-bottom: 0; }
