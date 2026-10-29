@@ -143,6 +143,11 @@ export const KORT = [
     tekst: "Ligger et lag litt feil oppå hovedmodellen, trykker du Juster plassering på kortet. Høyde fra etasjer sammenligner etasjene med samme navn og foreslår hvor mye laget skal flyttes opp eller ned (for eksempel −120 mm). Midtpunkt: klikk en søyle eller pæl i hovedmodellen og så den samme i laget, så legges midtpunktene sett ovenfra oppå hverandre. Flytt med tastene: piltastene flytter øst, vest, nord og sør, Z eller rullehjulet fram flytter opp, X eller rullehjulet bak flytter ned. Velg 1, 10 eller 100 mm per trykk, Shift gir 1 mm. Esc avslutter, og hele flyttingen kan angres med Ctrl+Z. Nullstill går tilbake til plasseringen fra Revit. Justeringen lagres og brukes igjen neste gang samme lag legges på samme hovedmodell."
   },
   {
+    hvor: "kontor", ikonNavn: "lag",
+    tittel: "Lag: modellgruppe og mengder per lag",
+    tekst: "Øverst i Lag-panelet kan du lagre det som er åpent som en modellgruppe: hovedmodellen og lagene med farge, gjennomsiktighet og justering. Velg gruppen i lista og trykk Åpne, så åpnes alt med ett trykk, også på en annen PC. Gruppene og lagene lagres i SharePoint, så du må være logget inn. Står det «Ikke lagret — logg inn på SharePoint» med rødt på et lag-kort, er laget ikke lagret ennå; det lagres av seg selv når du logger inn. Mengder per lag (under kortene) viser hovedmodellen per type og armeringen per diameter med stenger, løpemeter og vekt. Excel-knappen lager ett ark per lag og et sammendrag."
+  },
+  {
     hvor: "kontor", ikonNavn: "tegning",
     tittel: "Dagsrapport: én rapport per dag",
     tekst: "Dagsrapport ligger i Rapport-menyen (Dokumentasjon), bare på kontorsiden. Uke-stripa viser hvilke dager som er levert, hvilke som er utkast og hvilke arbeidsdager som mangler (rødt). Været fylles inn av seg selv fra adressen i Prosjektinfo. Du fyller ut bemanning (firma, fag, antall, timer), utført arbeid og hindringer og avvik, og kan legge ved bilder. «Samme som sist» henter bemanningen fra forrige rapport. Signer og lag PDF låser rapporten og legger PDF-en i SharePoint. Ny versjon lager en kopi du kan endre, og den signerte blir liggende. Hele uka som PDF gir en forside med uka i tall og avvik, og så hver dag."

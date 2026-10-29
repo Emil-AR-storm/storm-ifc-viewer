@@ -360,3 +360,149 @@ export const mmFortegn = fortegn;
 
 // Nøkkelen en justering lagres under: samme lag på samme hovedmodell.
 export const justeringId = (hovedFil, lagFil) => String(hovedFil || "") + " | " + String(lagFil || "");
+
+// ---------- 🗂 Modellgruppe (runde 5b, Emils valg A 29.10.2026) ----------
+// Et sett «hovedmodell + lag» lagres i SharePoint og åpnes med ett trykk.
+// Alle gruppene ligger i ÉN liste (Modellgrupper/modellgrupper.json) og
+// flettes på id — som SW-resultater og grupper (sp-lager.js). Selve lagene
+// ligger som ferdige lag-GLB i mappa «Lag»; gruppen er bare oppskriften.
+export const GRUPPE_MAPPE = "Modellgrupper";
+export const GRUPPE_FIL = "modellgrupper.json";
+const tekst = (s, n) => String(s == null ? "" : s).slice(0, n || 200);
+const hex = (s) => /^#[0-9a-f]{6}$/i.test(String(s || "")) ? String(s).toLowerCase() : null;
+export const nyGruppeId = () => "g" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+export function vaskGruppe(g) {
+  if (!g || typeof g !== "object" || !g.id) return null;
+  if (g.slettet) return { id: tekst(g.id, 60), slettet: true, endret: tekst(g.endret, 40) };
+  const h = g.hoved && typeof g.hoved === "object" ? g.hoved : {};
+  const lag = (Array.isArray(g.lag) ? g.lag : []).slice(0, MAKS_LAG).map(l => {
+    if (!l || typeof l !== "object" || !l.fil) return null;
+    const fag = FAG.some(f => f.k === l.fag) ? l.fag : "Annet";
+    return {
+      fil: tekst(l.fil), navn: tekst(l.navn || lagNavn(l.fil)), fag, farge: hex(l.farge) || fargeFor(fag),
+      gjennom: Math.max(0, Math.min(90, Math.round(Number(l.gjennom) || 0))), synlig: l.synlig !== false,
+      justering: vaskJustering(l.justering), libId: l.libId ? tekst(l.libId, 120) : null,
+      size: Math.max(0, Number(l.size) || 0), endret: tekst(l.endret, 40)
+    };
+  }).filter(Boolean);
+  return {
+    id: tekst(g.id, 60), navn: tekst(g.navn, 80).trim() || "Gruppe",
+    hoved: { navn: tekst(h.navn), libId: h.libId ? tekst(h.libId, 120) : null, size: Math.max(0, Number(h.size) || 0) },
+    lag, endret: tekst(g.endret, 40), av: tekst(g.av, 80)
+  };
+}
+
+// Det som er åpent nå → en gruppepost. hoved: { navn, libId, size }.
+// lagene: lag-objektene fra lag.js (kilde, kildeRef, justering …).
+export function gruppeFraOppsett(o) {
+  return vaskGruppe({
+    id: o.id || nyGruppeId(), navn: o.navn, av: o.av || "", endret: o.endret || new Date().toISOString(),
+    hoved: o.hoved,
+    lag: (o.lagene || []).map(l => ({
+      fil: l.fil, navn: l.navn, fag: l.fag, farge: l.farge, gjennom: l.gjennom, synlig: l.synlig, justering: l.justering,
+      libId: l.kildeRef && l.kildeRef.art === "bibliotek" && l.kildeRef.item ? l.kildeRef.item.id : (l.libId || null),
+      size: l.kilde && l.kilde.size, endret: l.kilde && l.kilde.endret
+    }))
+  });
+}
+
+// Lista i nedtrekket: gruppene for modellen som er åpen først, så resten.
+// Slettede (gravsteiner) vises ikke.
+export function sorterGrupper(liste, hovedNavn) {
+  const levende = (liste || []).map(vaskGruppe).filter(g => g && !g.slettet);
+  const her = levende.filter(g => g.hoved.navn === hovedNavn).sort((a, b) => a.navn.localeCompare(b.navn, "no"));
+  const andre = levende.filter(g => g.hoved.navn !== hovedNavn).sort((a, b) => a.navn.localeCompare(b.navn, "no"));
+  return { her, andre };
+}
+
+// ---------- 📊 Mengder per lag ----------
+// Samme skrivemåte i hovedmodellen og lagene: «Wall», ikke «IfcWall», og
+// Revits plassholdere «<Unnamed>» / «Default» er ikke materialer (Lørenskog 29.10).
+const typeUtenIfc = (x) => String(x || "Ukjent").replace(/^Ifc/i, "") || "Ukjent";
+const vaskMateriale = (m) => { const s = String(m || "").trim(); return /^(<unnamed>|default)$/i.test(s) ? "" : s; };
+// Et lag: armering per diameter (fra nøkkeltallene) + alt annet per IFC-type
+// og materiale (volum fra geometrien, m³). props/tall/volum som i lagSum.
+export function lagMengder(props, tall, volum) {
+  const s = lagSum(props, tall, volum);
+  const typer = new Map();
+  for (const id of Object.keys(props || {})) {
+    if (tall && tall[id]) continue;   // armeringen telles per diameter
+    const p = props[id] || [];
+    const type = typeUtenIfc(p[2]), materiale = vaskMateriale(p[3]);
+    const k = type + "|" + materiale;
+    const x = typer.get(k) || { type, materiale, antall: 0, volumM3: 0 };
+    x.antall++; x.volumM3 += Math.abs((volum && volum.get(Number(id))) || 0);
+    typer.set(k, x);
+  }
+  const liste = [...typer.values()].map(x => ({ ...x, volumM3: Math.round(x.volumM3 * 100) / 100 }))
+    .sort((a, b) => b.volumM3 - a.volumM3 || b.antall - a.antall);
+  return {
+    perDiameter: s.perDiameter.filter(x => x.stk > 0),
+    sumArm: { stk: s.stenger, lm: Math.round(s.perDiameter.reduce((a, x) => a + x.lm, 0) * 10) / 10, kg: s.kg },
+    typer: liste,
+    sumTyper: { antall: liste.reduce((a, x) => a + x.antall, 0), volumM3: Math.round(liste.reduce((a, x) => a + x.volumM3, 0) * 100) / 100 }
+  };
+}
+
+// Hovedmodellen: gruppene fra Mengder (elements.js computeQuantities) slått
+// sammen per IFC-type og materiale. groups: [[nøkkel, { type, material, count, vol }], …]
+export function hovedMengder(groups) {
+  const typer = new Map();
+  for (const [, g] of groups || []) {
+    if (!g) continue;
+    const type = typeUtenIfc(g.type), materiale = vaskMateriale(g.material);
+    const k = type + "|" + materiale;
+    const x = typer.get(k) || { type, materiale, antall: 0, volumM3: 0 };
+    x.antall += Number(g.count) || 0; x.volumM3 += Number(g.vol) || 0;
+    typer.set(k, x);
+  }
+  const liste = [...typer.values()].map(x => ({ ...x, volumM3: Math.round(x.volumM3 * 100) / 100 }))
+    .sort((a, b) => b.volumM3 - a.volumM3 || b.antall - a.antall);
+  return { perDiameter: [], sumArm: { stk: 0, lm: 0, kg: 0 }, typer: liste,
+    sumTyper: { antall: liste.reduce((a, x) => a + x.antall, 0), volumM3: Math.round(liste.reduce((a, x) => a + x.volumM3, 0) * 100) / 100 } };
+}
+
+// Excel: ett ark per modell. Overskriftene er norske nøkler (t() hos kalleren).
+// Tall står som tall (ikke tekst), så Excel kan summere. SUM nederst som formel
+// med ferdig regnet svar (vises også i «Beskyttet visning»).
+export function mengdeRader(m, ov) {
+  const T = ov || ((x) => x);
+  const rader = [];
+  const sum = (kol, fra, til, verdi) => ({ formel: "=SUM(" + kol + fra + ":" + kol + til + ")", verdi });
+  if (m.perDiameter.length) {
+    rader.push([T("Diameter"), T("Stenger"), T("Løpemeter (m)"), T("Vekt (kg)")]);
+    const fra = rader.length + 1;
+    for (const x of m.perDiameter) rader.push([x.d ? "Ø" + x.d : T("Ukjent"), x.stk, x.lm, x.kg]);
+    const til = rader.length;
+    rader.push([T("Sum"), sum("B", fra, til, m.sumArm.stk), sum("C", fra, til, m.sumArm.lm), sum("D", fra, til, m.sumArm.kg)]);
+    if (m.typer.length) rader.push([]);
+  }
+  if (m.typer.length) {
+    rader.push([T("IFC-type"), T("Materiale"), T("Antall"), T("Volum (m3)")]);
+    const fra = rader.length + 1;
+    for (const x of m.typer) rader.push([x.type, x.materiale, x.antall, x.volumM3]);
+    const til = rader.length;
+    rader.push([T("Sum"), "", sum("C", fra, til, m.sumTyper.antall), sum("D", fra, til, m.sumTyper.volumM3)]);
+  }
+  if (!rader.length) rader.push([T("Ingen mengder")]);
+  return rader;
+}
+// Sammendraget: én rad per modell. liste: [{ navn, rolle, m }]
+export function sammendragRader(liste, ov) {
+  const T = ov || ((x) => x);
+  const rader = [[T("Modell"), T("Rolle"), T("Elementer (uten armering)"), T("Volum (m3)"), T("Armering (stenger)"), T("Armering (kg)")]];
+  for (const x of liste) rader.push([x.navn, T(x.rolle), x.m.sumTyper.antall, x.m.sumTyper.volumM3, x.m.sumArm.stk, x.m.sumArm.kg]);
+  return rader;
+}
+// Excel tåler maks 31 tegn og ikke : \ / ? * [ ] i arknavn — og ingen like navn
+export function arkNavnListe(navn) {
+  const brukt = new Set();
+  return navn.map(n => {
+    let s = String(n || "Ark").replace(/[:\\/?*\[\]]/g, "-").slice(0, 31).trim() || "Ark";
+    let k = s, i = 2;
+    while (brukt.has(k.toLowerCase())) { const hale = " (" + i++ + ")"; k = s.slice(0, 31 - hale.length) + hale; }
+    brukt.add(k.toLowerCase());
+    return k;
+  });
+}

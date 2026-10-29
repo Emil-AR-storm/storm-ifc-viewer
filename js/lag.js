@@ -44,7 +44,14 @@ const tilstand = {
   midt: null,                    // 📐 { lagId, steg 1|2, hovedBoks } mens Midtpunkt venter på klikk
   flytt: null,                   // 📐 { lagId, start } mens «Flytt med tastene» er på
   steg: 10,                      // mm per tastetrykk
-  hovedEt: null                  // hovedmodellens etasjer { fil, liste, grunn }
+  hovedEt: null,                 // hovedmodellens etasjer { fil, liste, grunn }
+  grupper: null,                 // 🗂 modellgruppene fra SharePoint (rå liste) — null = ikke hentet
+  grStatus: "",                  // "henter" | feiltekst
+  grValgt: "",                   // id i nedtrekket
+  grNavnFelt: false,             // navnefeltet for «Lagre gruppe» er åpent
+  grJobber: "",                  // tekst mens en gruppe åpnes/lagres
+  visMengder: false,             // 📊 «Mengder per lag» foldet ut
+  hovedM: null                   // { fil, m } | { fil, regner: true } — hovedmodellens mengder
 };
 export const _tilstand = tilstand;
 let nesteId = 1;
@@ -222,6 +229,12 @@ function visEgenskaper(lag, id) {
 // ---------- Legge til ----------
 async function lesFil(kilde, si) {
   if (kilde.art === "disk") return new Uint8Array(await kilde.fil.arrayBuffer());
+  // 🗂 Fra en modellgruppe: den ferdige lag-GLB-en fantes ikke (eller IFC-en
+  // er endret). Ligger IFC-en i biblioteket, hentes den derfra og gjøres om.
+  if (kilde.art === "gruppe") {
+    if (!kilde.item) throw new Error(t("«{0}» finnes ikke i SharePoint. Legg laget til på nytt mens du er logget inn, og lagre gruppen igjen.", kilde.navn));
+    kilde = { art: "bibliotek", item: kilde.item };
+  }
   const { graphGet, spToken, SP } = await import("./sharepoint.js");
   const token = await spToken();
   if (!token) throw new Error(t("Logg inn for å hente fra biblioteket."));
@@ -234,9 +247,10 @@ async function lesFil(kilde, si) {
   if (!r.ok) throw new Error(t("Nedlasting feilet ({0})", r.status));
   return new Uint8Array(await r.arrayBuffer());
 }
-const kildeNavn = (k) => (k.art === "disk" ? k.fil.name : k.item.name);
-const kildeStorrelse = (k) => (k.art === "disk" ? k.fil.size : k.item.size) || 0;
-const kildeEndret = (k) => (k.art === "disk" ? String(k.fil.lastModified || "") : String(k.item.lastModifiedDateTime || ""));
+// art: "disk" { fil } · "bibliotek" { item } · "gruppe" { navn, size, endret, item? } (fra en modellgruppe)
+const kildeNavn = (k) => (k.art === "disk" ? k.fil.name : k.art === "gruppe" ? k.navn : k.item.name);
+const kildeStorrelse = (k) => (k.art === "disk" ? k.fil.size : k.art === "gruppe" ? k.size : k.item.size) || 0;
+const kildeEndret = (k) => (k.art === "disk" ? String(k.fil.lastModified || "") : k.art === "gruppe" ? String(k.endret || "") : String(k.item.lastModifiedDateTime || ""));
 
 // GLB → { deler, kote, props, raaTall, kilde }
 async function lesGlb(bytes) {
@@ -296,7 +310,7 @@ export async function leggTilLag(kilde, valg) {
   const navn = kildeNavn(kilde);
   const fag = (valg && valg.fag) || R.gjettFag(navn);
   const lag = { id: nesteId++, navn: R.lagNavn(navn), fil: navn, fag, farge: (valg && valg.farge) || R.fargeFor(fag),
-    gjennom: fag === "ARK" ? 60 : 0, synlig: true, kildeRef: kilde, valgt: new Set(),
+    gjennom: fag === "ARK" ? 60 : 0, synlig: true, kildeRef: kilde, valgt: new Set(), fraGruppe: !!(valg && valg.fraGruppe),
     kilde: { navn, size: kildeStorrelse(kilde), endret: kildeEndret(kilde) } };
   si("Starter …", 0.01); tegn();
   try {
@@ -358,14 +372,12 @@ export async function leggTilLag(kilde, valg) {
       angre: () => taUt(lag), gjenopprett: () => settInn(lag),
       forkast: (grunn) => { if (!lagene.includes(lag) && grunn !== "full") frigi(lag); }
     });
-    // 3) Lagre ferdig lag i SharePoint (i bakgrunnen — brukeren venter ikke)
-    if (!fraLager && /\.ifc$/i.test(navn) && spPaalogget()) {
-      lagGlb(lag, data.deler)
-        .then(bytes => spLastOpp(LAG_MAPPE, R.lagGlbNavn(navn), bytes, "model/gltf-binary"))
-        .then(r => { lag.lagret = !!(r && r.ok); tegn(); })
-        .catch(() => {});
-    } else lag.lagret = fraLager;
+    // 3) Lagre ferdig lag i SharePoint (i bakgrunnen — brukeren venter ikke).
+    // Ikke logget inn: kortet sier fra med rødt, og laget lagres så snart
+    // brukeren logger inn (S.onSignedIn nederst) — Emil 29.10.
+    lag.lagret = fraLager;
     lag.fraLager = fraLager;
+    if (!fraLager) lagreLagISharePoint(lag);
     hentLagretJustering(lag);   // 📐 samme lag på samme hovedmodell justert før? (i bakgrunnen)
     varsel(fraLager ? t("«{0}» lagt til (ferdig lag fra SharePoint).", lag.navn) : t("«{0}» lagt til som lag.", lag.navn));
     return lag;
@@ -414,6 +426,7 @@ export function fjernLag(lag) {
 // Hovedmodellen lukkes / byttes: lagene hører til den økta og fjernes uten angre
 S.ryddLag = () => {
   tilstand.bareLag = null;
+  tilstand.hovedM = null;
   stoppModuser(null);
   for (const lag of lagene.slice()) { taUt(lag); frigi(lag); }
 };
@@ -438,7 +451,48 @@ async function apneSomHoved(lag) {
   if (!confirm(t("Åpne «{0}» som hovedmodell? Lagene lukkes, og alle verktøy jobber da på denne fila.", lag.navn))) return;
   const k = lag.kildeRef;
   if (k.art === "bibliotek") (await import("./sharepoint.js")).spOpenFile(k.item);
+  else if (k.art === "gruppe") { if (k.item) (await import("./sharepoint.js")).spOpenFile(k.item); else varsel(t("«{0}» ligger ikke i biblioteket og kan ikke åpnes som hovedmodell herfra.", lag.navn)); }
   else (await import("./ifc.js")).openLocalFile(k.fil);
+}
+
+// ---------- Lagring av laget i SharePoint ----------
+// Et lag fra en IFC lagres som ferdig «<navn>.lag.glb» i mappa Lag. Det er
+// DEN fila en modellgruppe henter igjen — også når IFC-en kom fra disken.
+// Uten innlogging kan ingenting lagres; da sier kortet fra med rødt (Emil 29.10).
+const kanLagres = (lag) => /\.ifc$/i.test(lag.fil || "");
+const iBiblioteket = (lag) => !!(lag.kildeRef && (lag.kildeRef.art === "bibliotek" || (lag.kildeRef.art === "gruppe" && lag.kildeRef.item)));
+export async function lagreLagISharePoint(lag) {
+  if (!kanLagres(lag) || lag.lagret || lag.lagrer || !lag.gruppe) return;
+  if (!spPaalogget()) { tegn(); return; }
+  lag.lagrer = true; lag.lagreFeil = false; tegn();
+  try {
+    // Geometrien hentes fra scenen (lagets egne koordinater, før T), så laget
+    // kan lagres også lenge etter at det ble lagt til.
+    const deler = lag.gruppe.children.filter(m => m.isMesh && m.userData.ranges && m.geometry && m.geometry.getIndex())
+      .map(m => ({ pos: m.geometry.getAttribute("position").array, idx: m.geometry.getIndex().array, ranges: m.userData.ranges }));
+    const bytes = await lagGlb(lag, deler);
+    const r = await spLastOpp(LAG_MAPPE, R.lagGlbNavn(lag.fil), bytes, "model/gltf-binary");
+    lag.lagret = !!(r && r.ok);
+    lag.lagreFeil = !lag.lagret;
+  } catch (err) {
+    console.warn("Laget ble ikke lagret i SharePoint:", err);
+    lag.lagreFeil = true;
+  } finally {
+    lag.lagrer = false;
+    tegn();
+  }
+}
+function statusHtml(lag) {
+  const grå = (tx) => '<div class="lag-status">' + esc(tx) + '</div>';
+  const rød = (tx, knapp, data) => '<div class="lag-ulagret" data-ulagret="' + lag.id + '">⚠ ' + esc(tx) +
+    (knapp ? ' <button data-' + data + '="' + lag.id + '">' + esc(knapp) + '</button>' : "") + '</div>';
+  if (lag.fraLager) return grå(t("Hentet ferdig fra SharePoint (Lag)"));
+  if (lag.lagret) return grå(t("Lagret i SharePoint (Lag) — åpnes raskt neste gang"));
+  if (!kanLagres(lag)) return iBiblioteket(lag) ? grå(t("Ligger i biblioteket")) : rød(t("Ikke lagret i SharePoint — legg til IFC-en i stedet"));
+  if (!spPaalogget()) return rød(t("Ikke lagret — logg inn på SharePoint"), t("Logg inn"), "lag-logginn");
+  if (lag.lagrer) return grå(t("Lagres i SharePoint …"));
+  if (lag.lagreFeil) return rød(t("Ikke lagret i SharePoint — opplastingen feilet"), t("Prøv igjen"), "lag-lagre");
+  return grå(t("Lagres i SharePoint …"));
 }
 
 // ---------- Panelet ----------
@@ -456,7 +510,7 @@ function kortHtml(lag) {
       '<button data-juster="' + lag.id + '"' + (lag.visJuster ? ' class="active"' : "") + '>' + esc(t("Juster plassering")) + '</button></div>' +
     (R.erJustert(lag.justering) ? '<div class="lag-justert" data-justert="' + lag.id + '">' + esc(justertTekst(lag)) + '</div>' : "") +
     (lag.visJuster ? justerHtml(lag) : "") +
-    '<div class="lag-status">' + esc(lag.fraLager ? t("Hentet ferdig fra SharePoint (Lag)") : lag.lagret ? t("Lagret i SharePoint (Lag) — åpnes raskt neste gang") : (lag.fil && /\.ifc$/i.test(lag.fil) && spPaalogget() ? t("Lagres i SharePoint …") : "")) + '</div>' +
+    statusHtml(lag) +
   '</div>';
 }
 
@@ -487,9 +541,9 @@ export function tegn() {
   if (!body) return;
   const hoved = S.fileName ? '<div class="lag-hoved"><span class="lag-oye-dummy">' + ikon(S.modelGroup && S.modelGroup.visible === false ? "skjul" : "vis") + '</span>' +
     '<div><b>' + esc(S.fileName) + '</b><span>' + esc(t("Hovedmodell · alle verktøy")) + '</span></div></div>' : "";
-  body.innerHTML = hoved +
+  body.innerHTML = gruppeHtml() + hoved +
     (lagene.length ? lagene.map(kortHtml).join("") : '<p class="lag-tom">' + esc(t("Ingen lag ennå. Legg til armering, stål eller en annen fagmodell oppå hovedmodellen.")) + '</p>') +
-    leggTilHtml();
+    mengderHtml() + leggTilHtml();
   koble(body);
 }
 
@@ -516,6 +570,13 @@ function koble(body) {
   body.querySelectorAll("[data-bare]").forEach(b => b.onclick = () => bareDetteLaget(tilstand.bareLag && tilstand.bareLag.id === Number(b.dataset.bare) ? null : finnLag(b.dataset.bare)));
   body.querySelectorAll("[data-hoved]").forEach(b => b.onclick = () => { const lag = finnLag(b.dataset.hoved); if (lag) apneSomHoved(lag); });
   kobleJuster(body);
+  body.querySelectorAll("[data-lag-logginn]").forEach(b => b.onclick = async () => {
+    try { const { spToken } = await import("./sharepoint.js"); await spToken(); } catch (_) {}
+    lagreUlagrede();
+  });
+  body.querySelectorAll("[data-lag-lagre]").forEach(b => b.onclick = () => { const lag = finnLag(b.dataset.lagLagre); if (lag) { lag.lagreFeil = false; lagreLagISharePoint(lag); } });
+  kobleGrupper(body);
+  kobleMengder(body);
   const ks = $("lagKilde");
   if (ks) ks.onchange = () => {
     const v = ks.value;
@@ -601,7 +662,251 @@ på("btnLag", "click", () => {
   apnePanel("lagPanel");
   tegn();
   hentBibliotek();
+  hentGrupper();
 });
+
+// ---------- 🗂 Modellgruppe (runde 5b, Emils valg A 29.10.2026) ----------
+// Gruppe-linja øverst i Lag-panelet: velg gruppe · Åpne · Lagre gruppe.
+// Gruppene ligger i SharePoint (Modellgrupper/modellgrupper.json) og er
+// felles for alle som er logget inn mot samme område.
+const innlogget = () => (S.innloggetNavn ? S.innloggetNavn() : "") || "";
+const datoTekst = (iso) => { const d = new Date(iso); return isNaN(d) ? "" : d.toLocaleDateString("no-NO", { day: "2-digit", month: "2-digit" }) + " " + d.toLocaleTimeString("no-NO", { hour: "2-digit", minute: "2-digit" }); };
+
+async function hentGrupper(tving) {
+  if (!spPaalogget()) { tilstand.grupper = null; tegn(); return; }
+  if ((tilstand.grupper && !tving) || tilstand.grStatus === "henter") return;
+  tilstand.grStatus = "henter"; tegn();
+  try {
+    const r = await spLes(R.GRUPPE_MAPPE, R.GRUPPE_FIL);
+    if (r.status === "feil") throw new Error("les");
+    tilstand.grupper = r.liste || [];
+    tilstand.grStatus = "";
+  } catch (_) { tilstand.grupper = null; tilstand.grStatus = t("Klarte ikke å hente modellgruppene"); }
+  tegn();
+}
+function valgtGruppe() {
+  const g = (tilstand.grupper || []).find(x => x && x.id === tilstand.grValgt);
+  return g ? R.vaskGruppe(g) : null;
+}
+
+function gruppeHtml() {
+  if (!S.fileName) return "";
+  const lbl = '<div class="lag-lbl">' + esc(t("MODELLGRUPPE")) + '<span>' + esc(t("SharePoint · Modellgrupper")) + '</span></div>';
+  if (!spPaalogget()) return '<div class="lag-grp">' + lbl +
+    '<div class="lag-ulagret">⚠ ' + esc(t("Logg inn på SharePoint for å lagre og åpne modellgrupper.")) + ' <button data-lag-logginn="0">' + esc(t("Logg inn")) + '</button></div></div>';
+  const { her, andre } = R.sorterGrupper(tilstand.grupper || [], S.fileName);
+  const opt = (g, medHoved) => '<option value="' + esc(g.id) + '"' + (g.id === tilstand.grValgt ? " selected" : "") + '>' + esc(g.navn + (medHoved ? " — " + g.hoved.navn : "")) + '</option>';
+  const tom = tilstand.grStatus === "henter" ? t("Henter grupper …") : tilstand.grStatus || (her.length + andre.length ? t("Velg gruppe …") : t("Ingen grupper ennå"));
+  let valg = '<option value="">' + esc(tom) + '</option>';
+  if (her.length) valg += '<optgroup label="' + esc(t("For denne modellen")) + '">' + her.map(g => opt(g, false)).join("") + '</optgroup>';
+  if (andre.length) valg += '<optgroup label="' + esc(t("Andre modeller")) + '">' + andre.map(g => opt(g, true)).join("") + '</optgroup>';
+  const g = valgtGruppe(), j = tilstand.grJobber;
+  const info = j ? esc(j)
+    : g ? esc(t("{0} + {1} lag", g.hoved.navn, g.lag.length) + (g.lag.some(l => R.erJustert(l.justering)) ? " · " + t("justeringer med") : "") +
+        (g.av || g.endret ? " · " + t("sist lagret av {0} {1}", g.av || "?", datoTekst(g.endret)) : ""))
+    : esc(lagene.length ? t("{0} lag åpne nå. Lagre dem som en gruppe, så åpnes alt med ett trykk.", lagene.length) : t("Legg til lag, og lagre dem som en gruppe."));
+  let navnFelt = "";
+  if (tilstand.grNavnFelt) {
+    const forslag = g && g.hoved.navn === S.fileName ? g.navn : R.lagNavn(S.fileName);
+    navnFelt = '<div class="lag-rad"><input type="text" id="lagGruppeNavn" maxlength="80" placeholder="' + esc(t("Navn på gruppen")) + '" value="' + esc(forslag) + '">' +
+      '<button class="primary" id="lagGruppeLagreOk">' + esc(t("Lagre")) + '</button><button id="lagGruppeAvbryt">' + esc(t("Avbryt")) + '</button></div>' +
+      '<div class="lag-grp-info">' + esc(t("Samme navn lagrer over gruppen. Nytt navn lager en ny gruppe.")) + '</div>';
+  }
+  return '<div class="lag-grp">' + lbl +
+    '<div class="lag-rad"><select id="lagGruppeValg"' + (j ? " disabled" : "") + '>' + valg + '</select>' +
+      '<button id="lagGruppeApne"' + (g && !j ? "" : " disabled") + '>' + esc(t("Åpne")) + '</button>' +
+      '<button class="primary" id="lagGruppeLagre"' + (lagene.length && !j && !tilstand.jobber ? "" : " disabled") + '>' + esc(t("Lagre gruppe")) + '</button></div>' +
+    navnFelt + '<div class="lag-grp-info">' + info + '</div></div>';
+}
+
+function kobleGrupper(body) {
+  const v = body.querySelector("#lagGruppeValg");
+  if (v) v.onchange = () => { tilstand.grValgt = v.value; tilstand.grNavnFelt = false; tegn(); };
+  const a = body.querySelector("#lagGruppeApne");
+  if (a) a.onclick = () => { const g = valgtGruppe(); if (g) apneGruppe(g); };
+  const l = body.querySelector("#lagGruppeLagre");
+  if (l) l.onclick = () => {
+    tilstand.grNavnFelt = !tilstand.grNavnFelt; tegn();
+    const f = $("lagGruppeNavn"); if (f) { f.focus(); f.select(); }
+  };
+  const av = body.querySelector("#lagGruppeAvbryt");
+  if (av) av.onclick = () => { tilstand.grNavnFelt = false; tegn(); };
+  const ok = body.querySelector("#lagGruppeLagreOk"), felt = body.querySelector("#lagGruppeNavn");
+  if (ok && felt) {
+    ok.onclick = () => lagreGruppe(felt.value);
+    felt.onkeydown = (e) => { if (e.key === "Enter") lagreGruppe(felt.value); if (e.key === "Escape") { tilstand.grNavnFelt = false; tegn(); } };
+  }
+}
+
+export async function lagreGruppe(navn) {
+  const n = String(navn || "").trim();
+  if (!n) { varsel(t("Skriv et navn på gruppen.")); return null; }
+  if (!spPaalogget()) { varsel(t("Logg inn på SharePoint for å lagre og åpne modellgrupper.")); return null; }
+  if (!lagene.length) return null;
+  if (!tilstand.grupper) await hentGrupper(true);
+  const finnes = R.sorterGrupper(tilstand.grupper || [], S.fileName).her.find(g => g.navn.toLowerCase() === n.toLowerCase());
+  const info = S.lastLoadInfo || {};
+  const post = R.gruppeFraOppsett({ id: finnes ? finnes.id : null, navn: n, av: innlogget(),
+    hoved: { navn: S.fileName, libId: info.name === S.fileName ? info.libId : null, size: info.name === S.fileName ? info.size : 0 }, lagene });
+  tilstand.grJobber = t("Lagrer gruppen …"); tegn();
+  try {
+    const r = await spSkriv(R.GRUPPE_MAPPE, R.GRUPPE_FIL, [post], (p) => String(p && p.id || ""));
+    if (!r || !r.ok) throw new Error(r && r.grunn || "feil");
+    tilstand.grupper = r.liste || tilstand.grupper;
+    tilstand.grValgt = post.id;
+    tilstand.grNavnFelt = false;
+    const mangler = lagene.filter(x => !x.lagret && !x.fraLager && !iBiblioteket(x));
+    if (!post.hoved.libId) varsel(t("Gruppen «{0}» er lagret. Hovedmodellen ligger ikke i biblioteket — den må åpnes for hånd før gruppen.", n));
+    else if (mangler.length) varsel(t("Gruppen «{0}» er lagret, men {1} er ikke lagret i SharePoint og kan ikke åpnes fra gruppen.", n, mangler.map(x => "«" + x.navn + "»").join(", ")));
+    else varsel(finnes ? t("Gruppen «{0}» er oppdatert.", n) : t("Gruppen «{0}» er lagret.", n));
+    return post;
+  } catch (err) {
+    varsel(t("Klarte ikke å lagre gruppen: {0}", err.message));
+    return null;
+  } finally {
+    tilstand.grJobber = ""; tegn();
+  }
+}
+
+export async function apneGruppe(g) {
+  if (!g || tilstand.grJobber || tilstand.jobber) return;
+  stoppModuser(null);
+  if (S.fileName !== g.hoved.navn) {
+    if (!g.hoved.libId) { varsel(t("Åpne «{0}» først — den ligger ikke i biblioteket. Velg så gruppen på nytt.", g.hoved.navn)); return; }
+    if (S.modelGroup && !confirm(t("Åpne gruppen «{0}»? «{1}» lukkes, og «{2}» åpnes med lagene.", g.navn, S.fileName, g.hoved.navn))) return;
+    tilstand.grJobber = t("Åpner {0} …", g.hoved.navn); tegn();
+    try { await (await import("./sharepoint.js")).spOpenFile({ id: g.hoved.libId, name: g.hoved.navn, size: g.hoved.size }); } catch (_) {}
+    if (S.fileName !== g.hoved.navn || !S.modelGroup) { tilstand.grJobber = ""; tegn(); varsel(t("Klarte ikke å åpne «{0}».", g.hoved.navn)); return; }
+    apnePanel("lagPanel");
+  }
+  const mangler = [];
+  try {
+    for (let i = 0; i < g.lag.length; i++) {
+      const l = g.lag[i];
+      tilstand.grJobber = t("Legger på lag {0} av {1}: {2}", i + 1, g.lag.length, l.navn); tegn();
+      let lag = lagene.find(x => x.fil === l.fil);
+      if (!lag) {
+        const kilde = { art: "gruppe", navn: l.fil, size: l.size, endret: l.endret,
+          item: l.libId ? { id: l.libId, name: l.fil, size: l.size, lastModifiedDateTime: l.endret } : null };
+        lag = await leggTilLag(kilde, { fag: l.fag, farge: l.farge, fraGruppe: true });
+      }
+      if (!lag) { mangler.push(l.navn); continue; }
+      // Gruppens oppsett: farge, gjennomsiktighet, synlig og justering
+      lag.fraGruppe = true;
+      lag.farge = l.farge; if (lag.materiale) lag.materiale.color.set(l.farge);
+      lag.gjennom = l.gjennom; if (lag.materiale) settGjennomsiktig(lag.materiale, l.gjennom);
+      lag.synlig = l.synlig; if (lag.gruppe) lag.gruppe.visible = l.synlig;
+      brukJustering(lag, l.justering);
+      if (R.erJustert(lag.justering)) lagreJustering(lag);
+    }
+  } finally {
+    tilstand.grJobber = "";
+    tilstand.grValgt = g.id;
+    tegn();
+    if (S.oppdaterVisAlle) S.oppdaterVisAlle();
+    if (S.tegnUtseendePanel) S.tegnUtseendePanel();
+  }
+  varsel(mangler.length ? t("Gruppen «{0}» er åpnet, men {1} kunne ikke legges på.", g.navn, mangler.map(x => "«" + x + "»").join(", "))
+    : t("Gruppen «{0}» er åpnet ({1} lag).", g.navn, g.lag.length));
+}
+
+// Logget inn (popup — siden står): lagre lagene som ventet, hent gruppene
+function lagreUlagrede() {
+  for (const lag of lagene) if (kanLagres(lag) && !lag.lagret && !lag.fraLager) { lag.lagreFeil = false; lagreLagISharePoint(lag); }
+  tilstand.grupper = null;
+  const p = $("lagPanel");
+  if (p && p.classList.contains("open")) hentGrupper(true);
+  tegn();
+}
+{
+  const tidligere = S.onSignedIn;
+  S.onSignedIn = () => { if (tidligere) try { tidligere(); } catch (_) {} setTimeout(lagreUlagrede, 0); };
+}
+
+// ---------- 📊 Mengder per lag ----------
+// Folder seg ut under kortene. Hovedmodellen fra Mengder (samme tall som
+// Mengder-panelet), lagene fra egne nøkkeltall og volum. Excel: ett ark per
+// modell + Sammendrag.
+function mengdeListe() {
+  const ut = [];
+  if (tilstand.hovedM && tilstand.hovedM.m && tilstand.hovedM.fil === S.fileName)
+    ut.push({ navn: R.lagNavn(S.fileName), rolle: "Hovedmodell", farge: "#8b939e", m: tilstand.hovedM.m });
+  for (const lag of lagene) ut.push({ navn: lag.navn, rolle: "Lag", farge: lag.farge, m: R.lagMengder(lag.props || {}, lag.tall || {}, lag.volum || null) });
+  return ut;
+}
+async function regnHovedMengder() {
+  if (!S.modelGroup || (tilstand.hovedM && tilstand.hovedM.fil === S.fileName)) return;
+  const fil = S.fileName;
+  tilstand.hovedM = { fil, regner: true }; tegn();
+  try {
+    const E = await import("./elements.js");
+    const c = await E.sikreMengder();
+    if (S.fileName === fil) tilstand.hovedM = { fil, m: R.hovedMengder(c ? c.groups : []) };
+  } catch (err) {
+    console.warn(err);
+    tilstand.hovedM = { fil, feil: true };
+  }
+  tegn();
+}
+const MAKS_TYPER_I_PANELET = 10;
+function tabellHtml(m) {
+  let h = "";
+  const tall = (n, d) => R.heltall(n) + (d ? " " + d : "");
+  if (m.perDiameter.length) {
+    h += '<table class="lag-m"><tr><th>' + esc(t("Diameter")) + '</th><th>' + esc(t("Stenger")) + '</th><th>' + esc(t("Løpemeter")) + '</th><th>' + esc(t("Vekt")) + '</th></tr>' +
+      m.perDiameter.map(x => '<tr><td>' + (x.d ? "Ø" + x.d : esc(t("Ukjent"))) + '</td><td>' + tall(x.stk) + '</td><td>' + tall(x.lm, "m") + '</td><td>' + esc(R.vektTekst(x.kg)) + '</td></tr>').join("") +
+      '<tr class="sum"><td>' + esc(t("Sum")) + '</td><td>' + tall(m.sumArm.stk) + '</td><td>' + tall(m.sumArm.lm, "m") + '</td><td>' + esc(R.vektTekst(m.sumArm.kg)) + '</td></tr></table>';
+  }
+  if (m.typer.length) {
+    const vis = m.typer.slice(0, MAKS_TYPER_I_PANELET);
+    h += '<table class="lag-m"><tr><th>' + esc(t("Type")) + '</th><th>' + esc(t("Antall")) + '</th><th>' + esc(t("Volum")) + '</th><th>' + esc(t("Materiale")) + '</th></tr>' +
+      vis.map(x => '<tr><td>' + esc(x.type) + '</td><td>' + tall(x.antall) + '</td><td>' + esc(R.volumTekst(x.volumM3)) + '</td><td>' + esc(x.materiale) + '</td></tr>').join("") +
+      (m.typer.length > vis.length ? '<tr><td colspan="4" class="lag-merk">' + esc(t("… og {0} typer til (se Excel)", m.typer.length - vis.length)) + '</td></tr>' : "") +
+      '<tr class="sum"><td>' + esc(t("Sum")) + '</td><td>' + tall(m.sumTyper.antall) + '</td><td>' + esc(R.volumTekst(m.sumTyper.volumM3)) + '</td><td></td></tr></table>';
+  }
+  return h || '<p class="lag-merk">' + esc(t("Ingen mengder")) + '</p>';
+}
+function mengderHtml() {
+  if (!lagene.length) return "";
+  const antall = lagene.length + 1;
+  let h = '<button class="lag-mengder-knapp" id="lagMengder"><b>' + (tilstand.visMengder ? "▾ " : "▸ ") + esc(t("Mengder per lag")) + '</b><span>' + esc(t("{0} modeller", antall)) + '</span></button>';
+  if (!tilstand.visMengder) return h;
+  h += '<div class="lag-mengder">';
+  const hm = tilstand.hovedM && tilstand.hovedM.fil === S.fileName ? tilstand.hovedM : null;
+  if (!hm) setTimeout(regnHovedMengder, 0);
+  h += '<div class="lag-mh"><span class="lag-prikk" style="background:#8b939e"></span>' + esc(R.lagNavn(S.fileName)) + ' <i>' + esc(t("hovedmodell")) + '</i></div>';
+  h += !hm || hm.regner ? '<p class="lag-merk">' + esc(t("Regner ut mengder …")) + '</p>' : hm.feil ? '<p class="lag-merk">' + esc(t("Klarte ikke å regne ut mengdene for hovedmodellen.")) + '</p>' : tabellHtml(hm.m);
+  for (const lag of lagene) h += '<div class="lag-mh"><span class="lag-prikk" style="background:' + esc(lag.farge) + '"></span>' + esc(lag.navn) + ' <i>' + esc(t(lag.fag)) + '</i></div>' +
+    tabellHtml(R.lagMengder(lag.props || {}, lag.tall || {}, lag.volum || null));
+  h += '<div class="lag-knapper"><button class="primary" id="lagMengderXlsx">' + esc(t("Excel – ett ark per lag")) + '</button><button id="lagMengderKopier">' + esc(t("Kopier")) + '</button></div>';
+  return h + '</div>';
+}
+function arkene() {
+  const liste = mengdeListe();
+  const navn = R.arkNavnListe([t("Sammendrag")].concat(liste.map(x => x.navn)));
+  return [{ navn: navn[0], rader: R.sammendragRader(liste, t) }]
+    .concat(liste.map((x, i) => ({ navn: navn[i + 1], rader: R.mengdeRader(x.m, t) })));
+}
+export async function lastNedMengder() {
+  const E = await import("./elements.js");
+  const g = valgtGruppe();
+  const base = (g && g.hoved.navn === S.fileName ? g.navn : R.lagNavn(S.fileName)).replace(/[\\/:*?"<>|]/g, "-");
+  return E.lastNedXlsxFlere(base + " - mengder per lag.xlsx", arkene());
+}
+function kobleMengder(body) {
+  const k = body.querySelector("#lagMengder");
+  if (k) k.onclick = () => { tilstand.visMengder = !tilstand.visMengder; tegn(); if (tilstand.visMengder) regnHovedMengder(); };
+  const x = body.querySelector("#lagMengderXlsx");
+  if (x) x.onclick = () => lastNedMengder().catch(err => varsel(t("Klarte ikke å lage Excel-fila: ") + (err && err.message || err)));
+  const c = body.querySelector("#lagMengderKopier");
+  if (c) c.onclick = async () => {
+    const celle = (v) => (v && typeof v === "object" ? String(v.verdi ?? "") : String(v ?? "")).replace(/[\t\r\n]/g, " ").replace(/^([=+\-@])/, "'$1");
+    const tsv = arkene().map(a => a.navn + "\r\n" + a.rader.map(r => r.map(celle).join("\t")).join("\r\n")).join("\r\n\r\n");
+    try { await navigator.clipboard.writeText(tsv); c.textContent = t("Kopiert"); setTimeout(() => { if (c.isConnected) c.textContent = t("Kopier"); }, 1500); }
+    catch (_) { varsel(t("Klarte ikke å kopiere. Bruk Excel-knappen i stedet.")); }
+  };
+}
+export { arkene as _arkene, mengdeListe as _mengdeListe, hentGrupper as _hentGrupper };
 
 // ---------- 📐 Juster plassering (Emils valg A, 28.10.2026) ----------
 // Inne på lag-kortet: høyde fra etasjene med samme navn, sideveis fra
@@ -904,7 +1209,7 @@ async function hentLagretJustering(lag) {
   }
   if (!best || !lagene.includes(lag)) return;
   // Brukeren rakk å justere selv mens vi leste — da vinner det
-  if (R.erJustert(lag.justering)) return;
+  if (R.erJustert(lag.justering) || lag.fraGruppe) return;   // gruppens justering vinner
   const j = R.vaskJustering(best);
   if (!R.erJustert(j)) return;
   brukJustering(lag, j);
