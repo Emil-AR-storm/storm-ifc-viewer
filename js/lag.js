@@ -841,7 +841,22 @@ async function regnHovedMengder() {
   try {
     const E = await import("./elements.js");
     const c = await E.sikreMengder();
-    if (S.fileName === fil) tilstand.hovedM = { fil, m: R.hovedMengder(c ? c.groups : []) };
+    // 🧅 Armeringen i hovedmodellen: nøkkeltallene leses fra IFC-en i
+    // IFC-tråden (samme kommando som for lag). Bare når hovedmodellen er en
+    // åpen IFC — en lett kopi (GLB) har ikke stangdataene.
+    let tall = null;
+    if (!S.glbActive && S.modelID !== null && S.modelID !== undefined) {
+      try {
+        const { kall, navnFor } = await import("./ifcrpc.js");
+        const raa = await kall("lagTall", {});
+        tall = {};
+        for (const [id, x] of Object.entries((raa && raa.tall) || {})) {
+          const a = R.armeringTall(x, navnFor(Number(id)));
+          if (a) tall[id] = a;
+        }
+      } catch (_) { tall = null; }
+    }
+    if (S.fileName === fil) tilstand.hovedM = { fil, m: R.hovedMengder(c ? c.groups : [], tall), utenStangdata: !!S.glbActive };
   } catch (err) {
     console.warn(err);
     tilstand.hovedM = { fil, feil: true };
@@ -856,6 +871,8 @@ function tabellHtml(m) {
     h += '<table class="lag-m"><tr><th>' + esc(t("Diameter")) + '</th><th>' + esc(t("Stenger")) + '</th><th>' + esc(t("Løpemeter")) + '</th><th>' + esc(t("Vekt")) + '</th></tr>' +
       m.perDiameter.map(x => '<tr><td>' + (x.d ? "Ø" + x.d : esc(t("Ukjent"))) + '</td><td>' + tall(x.stk) + '</td><td>' + tall(x.lm, "m") + '</td><td>' + esc(R.vektTekst(x.kg)) + '</td></tr>').join("") +
       '<tr class="sum"><td>' + esc(t("Sum")) + '</td><td>' + tall(m.sumArm.stk) + '</td><td>' + tall(m.sumArm.lm, "m") + '</td><td>' + esc(R.vektTekst(m.sumArm.kg)) + '</td></tr></table>';
+    const former = new Set((m.perForm || []).map(x => x.form).filter(Boolean)).size;
+    if (former) h += '<p class="lag-merk">' + esc(t("{0} bøyeformer — se arket «Per bøyeform» i Excel.", former)) + '</p>';
   }
   if (m.typer.length) {
     const vis = m.typer.slice(0, MAKS_TYPER_I_PANELET);
@@ -875,17 +892,23 @@ function mengderHtml() {
   const hm = tilstand.hovedM && tilstand.hovedM.fil === S.fileName ? tilstand.hovedM : null;
   if (!hm) setTimeout(regnHovedMengder, 0);
   h += '<div class="lag-mh"><span class="lag-prikk" style="background:#8b939e"></span>' + esc(R.lagNavn(S.fileName)) + ' <i>' + esc(t("hovedmodell")) + '</i></div>';
-  h += !hm || hm.regner ? '<p class="lag-merk">' + esc(t("Regner ut mengder …")) + '</p>' : hm.feil ? '<p class="lag-merk">' + esc(t("Klarte ikke å regne ut mengdene for hovedmodellen.")) + '</p>' : tabellHtml(hm.m);
+  h += !hm || hm.regner ? '<p class="lag-merk">' + esc(t("Regner ut mengder …")) + '</p>' : hm.feil ? '<p class="lag-merk">' + esc(t("Klarte ikke å regne ut mengdene for hovedmodellen.")) + '</p>' :
+    tabellHtml(hm.m) + (hm.utenStangdata && hm.m.typer.some(x => /ReinforcingBar/i.test(x.type)) ? '<p class="lag-merk">' + esc(t("Hovedmodellen er en lett kopi: armeringen telles som Revit-sett, uten diameter og vekt. Åpne IFC-en for stenger og vekt.")) + '</p>' : "");
   for (const lag of lagene) h += '<div class="lag-mh"><span class="lag-prikk" style="background:' + esc(lag.farge) + '"></span>' + esc(lag.navn) + ' <i>' + esc(t(lag.fag)) + '</i></div>' +
     tabellHtml(R.lagMengder(lag.props || {}, lag.tall || {}, lag.volum || null));
   h += '<div class="lag-knapper"><button class="primary" id="lagMengderXlsx">' + esc(t("Excel – ett ark per lag")) + '</button><button id="lagMengderKopier">' + esc(t("Kopier")) + '</button></div>';
   return h + '</div>';
 }
+// Excel: Sammendrag, ett ark per modell, og «Per bøyeform» for hver modell
+// med armering (Emil 29.10). Er det bare én, heter arket bare «Per bøyeform».
 function arkene() {
   const liste = mengdeListe();
-  const navn = R.arkNavnListe([t("Sammendrag")].concat(liste.map(x => x.navn)));
+  const medForm = liste.filter(x => x.m.perForm && x.m.perForm.length);
+  const formNavn = medForm.map(x => medForm.length === 1 ? t("Per bøyeform") : t("Bøyeform") + " " + x.navn);
+  const navn = R.arkNavnListe([t("Sammendrag")].concat(liste.map(x => x.navn), formNavn));
   return [{ navn: navn[0], rader: R.sammendragRader(liste, t) }]
-    .concat(liste.map((x, i) => ({ navn: navn[i + 1], rader: R.mengdeRader(x.m, t) })));
+    .concat(liste.map((x, i) => ({ navn: navn[i + 1], rader: R.mengdeRader(x.m, t) })))
+    .concat(medForm.map((x, i) => ({ navn: navn[liste.length + 1 + i], rader: R.boyeformRader(x.m.perForm, t) })));
 }
 export async function lastNedMengder() {
   const E = await import("./elements.js");

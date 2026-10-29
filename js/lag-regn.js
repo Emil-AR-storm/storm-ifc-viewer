@@ -439,6 +439,7 @@ export function lagMengder(props, tall, volum) {
     .sort((a, b) => b.volumM3 - a.volumM3 || b.antall - a.antall);
   return {
     perDiameter: s.perDiameter.filter(x => x.stk > 0),
+    perForm: perBoyeform(tall),
     sumArm: { stk: s.stenger, lm: Math.round(s.perDiameter.reduce((a, x) => a + x.lm, 0) * 10) / 10, kg: s.kg },
     typer: liste,
     sumTyper: { antall: liste.reduce((a, x) => a + x.antall, 0), volumM3: Math.round(liste.reduce((a, x) => a + x.volumM3, 0) * 100) / 100 }
@@ -447,10 +448,17 @@ export function lagMengder(props, tall, volum) {
 
 // Hovedmodellen: gruppene fra Mengder (elements.js computeQuantities) slått
 // sammen per IFC-type og materiale. groups: [[nøkkel, { type, material, count, vol }], …]
-export function hovedMengder(groups) {
+// 🧅 tall (valgfri): armeringens nøkkeltall lest fra IFC-en (cmdLagTall).
+// Emils Excel 29.10: med armeringen som HOVEDMODELL sto det bare
+// «ReinforcingBar 391 stk, 1,49 m³» — 391 Revit-sett, ikke 4 716 stenger,
+// og ingen vekt. Med tall telles armeringen per diameter som i et lag, og
+// ReinforcingBar-radene tas ut av typetabellen (ellers telles den to ganger).
+export function hovedMengder(groups, tall) {
+  const arm = tall && Object.keys(tall).length ? tall : null;
   const typer = new Map();
   for (const [, g] of groups || []) {
     if (!g) continue;
+    if (arm && /^(Ifc)?ReinforcingBar$/i.test(String(g.type || ""))) continue;
     const type = typeUtenIfc(g.type), materiale = vaskMateriale(g.material);
     const k = type + "|" + materiale;
     const x = typer.get(k) || { type, materiale, antall: 0, volumM3: 0 };
@@ -459,8 +467,39 @@ export function hovedMengder(groups) {
   }
   const liste = [...typer.values()].map(x => ({ ...x, volumM3: Math.round(x.volumM3 * 100) / 100 }))
     .sort((a, b) => b.volumM3 - a.volumM3 || b.antall - a.antall);
-  return { perDiameter: [], sumArm: { stk: 0, lm: 0, kg: 0 }, typer: liste,
+  const s = arm ? lagSum({}, arm, null) : null;
+  const perDiameter = s ? s.perDiameter.filter(x => x.stk > 0) : [];
+  return { perDiameter, perForm: arm ? perBoyeform(arm) : [],
+    sumArm: s ? { stk: s.stenger, lm: Math.round(perDiameter.reduce((a, x) => a + x.lm, 0) * 10) / 10, kg: s.kg } : { stk: 0, lm: 0, kg: 0 },
+    typer: liste,
     sumTyper: { antall: liste.reduce((a, x) => a + x.antall, 0), volumM3: Math.round(liste.reduce((a, x) => a + x.volumM3, 0) * 100) / 100 } };
+}
+
+// 📐 Per bøyeform (Emil 29.10): bøyeform × diameter, med stenger, løpemeter
+// og vekt. Bøyeformen er Revits kode (ISO 3766, f.eks. «RSH_00_RNO»); den
+// oversettes IKKE til norske navn — hva kodene betyr, sjekkes mot bøyelista.
+export function perBoyeform(tall) {
+  const m = new Map();
+  for (const a of Object.values(tall || {})) {
+    if (!a) continue;
+    const form = String(a.form || "").trim(), d = a.d || 0;
+    const k = form + "|" + d;
+    const x = m.get(k) || { form, d, stk: 0, lm: 0, kg: 0 };
+    x.stk += a.n; x.lm += a.lm || 0; x.kg += a.kg || 0;
+    m.set(k, x);
+  }
+  return [...m.values()].map(x => ({ ...x, lm: Math.round(x.lm * 10) / 10, kg: Math.round(x.kg * 10) / 10 }))
+    .sort((a, b) => (!a.form - !b.form) || a.form.localeCompare(b.form, "no") || a.d - b.d);   // uten kode til slutt
+}
+export function boyeformRader(liste, ov) {
+  const T = ov || ((x) => x);
+  const rader = [[T("Bøyeform"), T("Diameter"), T("Stenger"), T("Løpemeter (m)"), T("Vekt (kg)")]];
+  const fra = rader.length + 1;
+  for (const x of liste) rader.push([x.form || T("Ukjent"), x.d ? "Ø" + x.d : T("Ukjent"), x.stk, x.lm, x.kg]);
+  const til = rader.length;
+  const sum = (kol, felt) => ({ formel: "=SUM(" + kol + fra + ":" + kol + til + ")", verdi: Math.round(liste.reduce((a, x) => a + x[felt], 0) * 10) / 10 });
+  if (liste.length) rader.push([T("Sum"), "", sum("C", "stk"), sum("D", "lm"), sum("E", "kg")]);
+  return rader;
 }
 
 // Excel: ett ark per modell. Overskriftene er norske nøkler (t() hos kalleren).

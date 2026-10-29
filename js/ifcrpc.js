@@ -30,6 +30,7 @@ const STILLE_MS = {
   props: 60000,
   qto: 120000,           // 📐 én runde gjennom alle egenskapsrelasjonene — puls underveis
   storeys: 120000,
+  lagTall: 120000,       // 🧅 armeringens nøkkeltall — også for hovedmodellen (Mengder per lag)
   axisSources: 120000,
   buffer: 20000,
   close: 20000
