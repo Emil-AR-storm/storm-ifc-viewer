@@ -69,6 +69,7 @@ const MODULER = [
   ["./compare.js", true],
   ["./em.js", true],               // 📝 Endringsmelding fra modellen (kun kontor) — ETTER compare.js
   ["./lag.js", true],              // 🧅 Lag: fagmodeller oppå hovedmodellen (kun kontor, runde 5)
+  ["./kollisjon.js", true],        // 💥 Kollisjon: lagene mot hovedmodellen (kun kontor, runde 6)
   ["./recent.js"],
   ["./share.js", true],
   ["./byggeplass.js", true],
