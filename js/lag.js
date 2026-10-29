@@ -51,9 +51,12 @@ const tilstand = {
   grNavnFelt: false,             // navnefeltet for «Lagre gruppe» er åpent
   grJobber: "",                  // tekst mens en gruppe åpnes/lagres
   visMengder: false,             // 📊 «Mengder per lag» foldet ut
-  hovedM: null                   // { fil, m } | { fil, regner: true } — hovedmodellens mengder
+  hovedM: null,                  // { fil, m } | { fil, regner: true } — hovedmodellens mengder
+  enheter: lesEnheter()          // 📏 valgt enhet per rad { "Revit-type|materiale": "m²" } — huskes på maskinen
 };
 export const _tilstand = tilstand;
+function lesEnheter() { try { return JSON.parse(localStorage.getItem("storm.lagEnheter") || "{}") || {}; } catch (_) { return {}; } }
+function lagreEnheter() { try { localStorage.setItem("storm.lagEnheter", JSON.stringify(tilstand.enheter)); } catch (_) {} }
 let nesteId = 1;
 
 // ---------- Scenen ----------
@@ -357,6 +360,13 @@ export async function leggTilLag(kilde, valg) {
     for (const d of data.deler) R.elementVolumer(d.pos, d.idx, d.ranges, lag.volum);
     for (const [k, v] of lag.volum) lag.volum.set(k, Math.abs(v) * toM * toM * toM);
     for (const id of Object.keys(lag.tall)) lag.volum.delete(Number(id));   // armering telles i kg
+    // 📏 Lengde og største flate per element (ikke armeringen) — til valgfri
+    // enhet i «Mengder per lag» (Emil 29.10: isolasjon prises i m²)
+    {
+      const hopp = new Set(Object.keys(lag.tall).map(Number)), kart = new Map();
+      for (const d of data.deler) R.elementMaal(d.pos, d.idx, d.ranges, hopp, 0.005 / toM, kart);
+      lag.maal = R.ferdigeMaal(kart, toM);
+    }
     lag.sum = R.lagSum(lag.props, lag.tall, lag.volum);
     settInn(lag, byggGruppe(lag, data.deler));
     // En lett kopi eller lag-GLB laget før 28.10 har «ingen flytting» lagret.
@@ -831,7 +841,7 @@ function mengdeListe() {
   const ut = [];
   if (tilstand.hovedM && tilstand.hovedM.m && tilstand.hovedM.fil === S.fileName)
     ut.push({ navn: R.lagNavn(S.fileName), rolle: "Hovedmodell", farge: "#8b939e", m: tilstand.hovedM.m });
-  for (const lag of lagene) ut.push({ navn: lag.navn, rolle: "Lag", farge: lag.farge, m: R.lagMengder(lag.props || {}, lag.tall || {}, lag.volum || null) });
+  for (const lag of lagene) ut.push({ navn: lag.navn, rolle: "Lag", farge: lag.farge, m: R.lagMengder(lag.props || {}, lag.tall || {}, lag.volum || null, lag.maal || null) });
   return ut;
 }
 async function regnHovedMengder() {
@@ -874,12 +884,16 @@ function tabellHtml(m) {
     const former = new Set((m.perForm || []).map(x => x.form).filter(Boolean)).size;
     if (former) h += '<p class="lag-merk">' + esc(t("{0} bøyeformer — se arket «Per bøyeform» i Excel.", former)) + '</p>';
   }
-  if (m.typer.length) {
-    const vis = m.typer.slice(0, MAKS_TYPER_I_PANELET);
-    h += '<table class="lag-m"><tr><th>' + esc(t("Type")) + '</th><th>' + esc(t("Antall")) + '</th><th>' + esc(t("Volum")) + '</th><th>' + esc(t("Materiale")) + '</th></tr>' +
-      vis.map(x => '<tr><td>' + esc(x.type) + '</td><td>' + tall(x.antall) + '</td><td>' + esc(R.volumTekst(x.volumM3)) + '</td><td>' + esc(x.materiale) + '</td></tr>').join("") +
-      (m.typer.length > vis.length ? '<tr><td colspan="4" class="lag-merk">' + esc(t("… og {0} typer til (se Excel)", m.typer.length - vis.length)) + '</td></tr>' : "") +
-      '<tr class="sum"><td>' + esc(t("Sum")) + '</td><td>' + tall(m.sumTyper.antall) + '</td><td>' + esc(R.volumTekst(m.sumTyper.volumM3)) + '</td><td></td></tr></table>';
+  if (m.rader.length) {
+    // 📏 Enhet per rad (Emils valg A 29.10) — som i Endringsmelding
+    const r = R.medEnhet(m.rader, tilstand.enheter);
+    const vis = r.slice(0, MAKS_TYPER_I_PANELET);
+    const valg = (x) => '<select class="lag-enhet' + (x.egenValgt ? " egen" : "") + '" data-enhet="' + esc(R.radNokkel(x.navn, x.materiale)) + '" title="' + esc(t("Enhet")) + '">' +
+      R.ENHETER.map(e => '<option' + (e === x.enhet ? " selected" : "") + '>' + e + '</option>').join("") + '</select>';
+    h += '<table class="lag-m"><tr><th>' + esc(t("Type")) + '</th><th>' + esc(t("Antall")) + '</th><th>' + esc(t("Enhet")) + '</th><th>' + esc(t("Mengde")) + '</th></tr>' +
+      vis.map(x => '<tr><td>' + esc(x.navn) + (x.materiale ? '<div class="lag-mat">' + esc(x.materiale) + '</div>' : "") + '</td><td>' + tall(x.antall) + '</td><td>' + valg(x) + '</td><td><b>' + esc(R.enhetTekst(x.mengde, x.enhet)) + '</b></td></tr>').join("") +
+      (r.length > vis.length ? '<tr><td colspan="4" class="lag-merk">' + esc(t("… og {0} typer til (se Excel)", r.length - vis.length)) + '</td></tr>' : "") +
+      R.sumPerEnhet(r).map((x, n) => '<tr class="' + (n ? "sum2" : "sum") + '"><td>' + esc(t("Sum")) + ' ' + x.enhet + '</td><td></td><td></td><td>' + esc(R.enhetTekst(x.mengde, x.enhet)) + '</td></tr>').join("") + '</table>';
   }
   return h || '<p class="lag-merk">' + esc(t("Ingen mengder")) + '</p>';
 }
@@ -893,9 +907,9 @@ function mengderHtml() {
   if (!hm) setTimeout(regnHovedMengder, 0);
   h += '<div class="lag-mh"><span class="lag-prikk" style="background:#8b939e"></span>' + esc(R.lagNavn(S.fileName)) + ' <i>' + esc(t("hovedmodell")) + '</i></div>';
   h += !hm || hm.regner ? '<p class="lag-merk">' + esc(t("Regner ut mengder …")) + '</p>' : hm.feil ? '<p class="lag-merk">' + esc(t("Klarte ikke å regne ut mengdene for hovedmodellen.")) + '</p>' :
-    tabellHtml(hm.m) + (hm.utenStangdata && hm.m.typer.some(x => /ReinforcingBar/i.test(x.type)) ? '<p class="lag-merk">' + esc(t("Hovedmodellen er en lett kopi: armeringen telles som Revit-sett, uten diameter og vekt. Åpne IFC-en for stenger og vekt.")) + '</p>' : "");
+    tabellHtml(hm.m) + (hm.utenStangdata && hm.m.rader.some(x => /ReinforcingBar/i.test(x.type)) ? '<p class="lag-merk">' + esc(t("Hovedmodellen er en lett kopi: armeringen telles som Revit-sett, uten diameter og vekt. Åpne IFC-en for stenger og vekt.")) + '</p>' : "");
   for (const lag of lagene) h += '<div class="lag-mh"><span class="lag-prikk" style="background:' + esc(lag.farge) + '"></span>' + esc(lag.navn) + ' <i>' + esc(t(lag.fag)) + '</i></div>' +
-    tabellHtml(R.lagMengder(lag.props || {}, lag.tall || {}, lag.volum || null));
+    tabellHtml(R.lagMengder(lag.props || {}, lag.tall || {}, lag.volum || null, lag.maal || null));
   h += '<div class="lag-knapper"><button class="primary" id="lagMengderXlsx">' + esc(t("Excel – ett ark per lag")) + '</button><button id="lagMengderKopier">' + esc(t("Kopier")) + '</button></div>';
   return h + '</div>';
 }
@@ -907,7 +921,7 @@ function arkene() {
   const formNavn = medForm.map(x => medForm.length === 1 ? t("Per bøyeform") : t("Bøyeform") + " " + x.navn);
   const navn = R.arkNavnListe([t("Sammendrag")].concat(liste.map(x => x.navn), formNavn));
   return [{ navn: navn[0], rader: R.sammendragRader(liste, t) }]
-    .concat(liste.map((x, i) => ({ navn: navn[i + 1], rader: R.mengdeRader(x.m, t) })))
+    .concat(liste.map((x, i) => ({ navn: navn[i + 1], rader: R.mengdeRader(x.m, t, tilstand.enheter) })))
     .concat(medForm.map((x, i) => ({ navn: navn[liste.length + 1 + i], rader: R.boyeformRader(x.m.perForm, t) })));
 }
 export async function lastNedMengder() {
@@ -919,6 +933,11 @@ export async function lastNedMengder() {
 function kobleMengder(body) {
   const k = body.querySelector("#lagMengder");
   if (k) k.onclick = () => { tilstand.visMengder = !tilstand.visMengder; tegn(); if (tilstand.visMengder) regnHovedMengder(); };
+  body.querySelectorAll("select[data-enhet]").forEach(sel => sel.onchange = () => {
+    tilstand.enheter[sel.dataset.enhet] = sel.value;
+    lagreEnheter();
+    tegn();
+  });
   const x = body.querySelector("#lagMengderXlsx");
   if (x) x.onclick = () => lastNedMengder().catch(err => varsel(t("Klarte ikke å lage Excel-fila: ") + (err && err.message || err)));
   const c = body.querySelector("#lagMengderKopier");

@@ -10,6 +10,8 @@
 // posisjonsnummer. Vekten regnes derfor her: π/4 · d² · L · 7 850 kg/m³ per
 // stang, ganger antall stenger i Revit-settet.
 //
+import { EM_ENHETER, materialAv, standardEnhet } from "./em-regn.js";
+
 // Alt her er uten DOM, S og three.js. Matrisene er 16 tall i kolonnerekkefølge
 // (samme som THREE.Matrix4.elements).
 
@@ -421,58 +423,164 @@ export function sorterGrupper(liste, hovedNavn) {
 // Revits plassholdere «<Unnamed>» / «Default» er ikke materialer (Lørenskog 29.10).
 const typeUtenIfc = (x) => String(x || "Ukjent").replace(/^Ifc/i, "") || "Ukjent";
 const vaskMateriale = (m) => { const s = String(m || "").trim(); return /^(<unnamed>|default)$/i.test(s) ? "" : s; };
-// Et lag: armering per diameter (fra nøkkeltallene) + alt annet per IFC-type
-// og materiale (volum fra geometrien, m³). props/tall/volum som i lagSum.
-export function lagMengder(props, tall, volum) {
+// ---------- 📏 Valgfri enhet per rad (Emils valg A, 29.10.2026) ----------
+// «Ikke alt i en betongmodell måles med samme enhet — isolasjon prises i m²,
+// ikke m³.» Hver rad (Revit-type + materiale) har alle målene: stk, lm, m²,
+// m³ og kg. Enheten velges per rad som i Endringsmelding; standarden følger
+// materialet (isolasjon m², betong m³, stål kg), ellers Endringsmeldingens
+// standard per IFC-type. Radene er per REVIT-TYPE (som Mengder), så
+// «XPS 150mm» og «XPS 100mm» står hver for seg.
+export const ENHETER = EM_ENHETER;
+export function radNokkel(navn, materiale) { return String(navn || "") + "|" + String(materiale || ""); }
+export function standardEnhetForRad(r) {
+  const m = materialAv(String(r.materiale || "") + " " + String(r.navn || ""));
+  if (m === "isolasjon") return "m²";
+  if (m === "staal") return "kg";
+  if (m === "betong") return "m³";
+  if (m === "koord") return "stk";
+  return standardEnhet(r.type, false);
+}
+export function radMengde(r, enhet) {
+  switch (enhet) {
+    case "lm": return r.lm; case "m²": return r.m2; case "m³": return r.m3;
+    case "kg": return r.kg; default: return r.antall;
+  }
+}
+// Rader med valgt enhet og mengde. valgt: { [radNokkel]: enhet }
+export function medEnhet(rader, valgt) {
+  return (rader || []).map(r => {
+    const v = valgt && valgt[radNokkel(r.navn, r.materiale)];
+    const enhet = ENHETER.includes(v) ? v : standardEnhetForRad(r);
+    return { ...r, enhet, mengde: rundEnhet(radMengde(r, enhet), enhet), egenValgt: ENHETER.includes(v) };
+  });
+}
+export function rundEnhet(x, enhet) {
+  const n = Number(x) || 0;
+  return enhet === "stk" ? Math.round(n) : enhet === "kg" ? Math.round(n) : Math.round(n * 100) / 100;
+}
+export function enhetTekst(x, enhet) {
+  const n = Number(x) || 0;
+  return (enhet === "stk" || enhet === "kg" || n >= 100 ? tusen(n, 0) : tusen(n, 1)) + " " + enhet;
+}
+// Sum per enhet (kan ikke summeres på tvers): [{ enhet, mengde }]
+export function sumPerEnhet(rader) {
+  const m = new Map();
+  for (const r of rader) m.set(r.enhet, (m.get(r.enhet) || 0) + (Number(r.mengde) || 0));
+  return ENHETER.filter(e => m.has(e)).map(e => ({ enhet: e, mengde: rundEnhet(m.get(e), e) }));
+}
+
+// Mål per element i et lag: lengde (lengste avstand mellom to punkter) og
+// største flate (største plan, trekantene gruppert på normal og avstand —
+// samme tanke som Mengder). pos/idx/ranges som i elementVolumer, svar i
+// modellenheter. hopp: id-er som ikke trengs (armeringen).
+export function elementMaal(pos, idx, ranges, hopp, tol, ut) {
+  const kart = ut || new Map();
+  const T = Number(tol) > 0 ? Number(tol) : 0.005;
+  for (const r of ranges || []) {
+    if (hopp && hopp.has(r.id)) continue;
+    const e = kart.get(r.id) || { pkt: null, fjern: null, l2: 0, plan: [] };
+    for (let i = r.start; i < r.start + r.count; i += 3) {
+      const a = idx[i] * 3, b = idx[i + 1] * 3, c = idx[i + 2] * 3;
+      for (const v of [a, b, c]) {
+        const x = pos[v], y = pos[v + 1], z = pos[v + 2];
+        if (!e.pkt) { e.pkt = [x, y, z]; e.fjern = [x, y, z]; e.alle = []; }
+        if (e.alle.length < 200000) e.alle.push(x, y, z);
+        const d2 = (x - e.pkt[0]) ** 2 + (y - e.pkt[1]) ** 2 + (z - e.pkt[2]) ** 2;
+        if (d2 > e.l2) { e.l2 = d2; e.fjern = [x, y, z]; }
+      }
+      const ux = pos[b] - pos[a], uy = pos[b + 1] - pos[a + 1], uz = pos[b + 2] - pos[a + 2];
+      const vx = pos[c] - pos[a], vy = pos[c + 1] - pos[a + 1], vz = pos[c + 2] - pos[a + 2];
+      const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+      const a2 = Math.hypot(nx, ny, nz);
+      if (!(a2 > 0)) continue;
+      const ex = nx / a2, ey = ny / a2, ez = nz / a2, d = ex * pos[a] + ey * pos[a + 1] + ez * pos[a + 2];
+      let funnet = null;
+      for (const p of e.plan) if (p[0] * ex + p[1] * ey + p[2] * ez > 0.9995 && Math.abs(p[3] - d) < T) { funnet = p; break; }
+      if (funnet) funnet[4] += a2 / 2;
+      else if (e.plan.length < 400) e.plan.push([ex, ey, ez, d, a2 / 2]);
+    }
+    kart.set(r.id, e);
+  }
+  return kart;
+}
+// Gjør råmålene om til { lm, m2 } i meter (toM = meter per modellenhet)
+export function ferdigeMaal(kart, toM) {
+  const s = Number(toM) || 1, ut = new Map();
+  for (const [id, e] of kart) {
+    // Andre runde: lengst unna punktet som lå lengst unna det første
+    let l2 = 0;
+    const f = e.fjern || [0, 0, 0], a = e.alle || [];
+    for (let i = 0; i < a.length; i += 3) { const d2 = (a[i] - f[0]) ** 2 + (a[i + 1] - f[1]) ** 2 + (a[i + 2] - f[2]) ** 2; if (d2 > l2) l2 = d2; }
+    const storst = e.plan.reduce((m, p) => Math.max(m, p[4]), 0);
+    ut.set(Number(id), { lm: Math.sqrt(Math.max(l2, e.l2)) * s, m2: storst * s * s });
+  }
+  return ut;
+}
+
+const radNavn = (p) => String((p && (p[1] || String(p[0] || "").replace(/:\d+$/, ""))) || "").trim() || typeUtenIfc(p && p[2]);
+const sorterRader = (a, b) => b.m3 - a.m3 || b.m2 - a.m2 || b.antall - a.antall || a.navn.localeCompare(b.navn, "no");
+const avrundRad = (x) => ({ ...x, lm: Math.round(x.lm * 100) / 100, m2: Math.round(x.m2 * 100) / 100, m3: Math.round(x.m3 * 1000) / 1000, kg: Math.round(x.kg * 10) / 10 });
+// kg bare for stål (Emil 29.10): betongvekten (2 400 kg/m³) var bare støy
+// i Excel — «473 t» på et gulv på grunn prises ikke i kg.
+const erStaalRad = (navn, materiale) => materialAv(String(materiale || "") + " " + String(navn || "")) === "staal";
+function tetthetFor(navn, materiale) { return erStaalRad(navn, materiale) ? STAAL_TETTHET : 0; }
+function sumRader(rader) {
+  return { antall: rader.reduce((a, x) => a + x.antall, 0), volumM3: Math.round(rader.reduce((a, x) => a + x.m3, 0) * 100) / 100 };
+}
+
+// Et lag: armering per diameter (fra nøkkeltallene) + alt annet per Revit-type
+// og materiale med alle målene. maal: Map id → { lm, m2 } (meter), volum: Map id → m³.
+export function lagMengder(props, tall, volum, maal) {
   const s = lagSum(props, tall, volum);
-  const typer = new Map();
+  const rader = new Map();
   for (const id of Object.keys(props || {})) {
     if (tall && tall[id]) continue;   // armeringen telles per diameter
     const p = props[id] || [];
-    const type = typeUtenIfc(p[2]), materiale = vaskMateriale(p[3]);
-    const k = type + "|" + materiale;
-    const x = typer.get(k) || { type, materiale, antall: 0, volumM3: 0 };
-    x.antall++; x.volumM3 += Math.abs((volum && volum.get(Number(id))) || 0);
-    typer.set(k, x);
+    const navn = radNavn(p), type = typeUtenIfc(p[2]), materiale = vaskMateriale(p[3]);
+    const k = radNokkel(navn, materiale);
+    const x = rader.get(k) || { navn, type, materiale, antall: 0, lm: 0, m2: 0, m3: 0, kg: 0 };
+    const v = Math.abs((volum && volum.get(Number(id))) || 0), mm = (maal && maal.get(Number(id))) || {};
+    x.antall++; x.m3 += v; x.lm += mm.lm || 0; x.m2 += mm.m2 || 0; x.kg += v * tetthetFor(navn, materiale);
+    rader.set(k, x);
   }
-  const liste = [...typer.values()].map(x => ({ ...x, volumM3: Math.round(x.volumM3 * 100) / 100 }))
-    .sort((a, b) => b.volumM3 - a.volumM3 || b.antall - a.antall);
+  const liste = [...rader.values()].map(avrundRad).sort(sorterRader);
   return {
     perDiameter: s.perDiameter.filter(x => x.stk > 0),
     perForm: perBoyeform(tall),
     sumArm: { stk: s.stenger, lm: Math.round(s.perDiameter.reduce((a, x) => a + x.lm, 0) * 10) / 10, kg: s.kg },
-    typer: liste,
-    sumTyper: { antall: liste.reduce((a, x) => a + x.antall, 0), volumM3: Math.round(liste.reduce((a, x) => a + x.volumM3, 0) * 100) / 100 }
+    rader: liste,
+    sumTyper: sumRader(liste)
   };
 }
 
-// Hovedmodellen: gruppene fra Mengder (elements.js computeQuantities) slått
-// sammen per IFC-type og materiale. groups: [[nøkkel, { type, material, count, vol }], …]
+// Hovedmodellen: gruppene fra Mengder (elements.js computeQuantities) — de er
+// alt per Revit-type og materiale, med lengde, største flate, volum og vekt.
+// groups: [[nøkkel «Revit-type · materiale», { type, material, count, length, flate, vol, kg }], …]
 // 🧅 tall (valgfri): armeringens nøkkeltall lest fra IFC-en (cmdLagTall).
 // Emils Excel 29.10: med armeringen som HOVEDMODELL sto det bare
 // «ReinforcingBar 391 stk, 1,49 m³» — 391 Revit-sett, ikke 4 716 stenger,
 // og ingen vekt. Med tall telles armeringen per diameter som i et lag, og
-// ReinforcingBar-radene tas ut av typetabellen (ellers telles den to ganger).
+// ReinforcingBar-radene tas ut av radene (ellers telles den to ganger).
 export function hovedMengder(groups, tall) {
   const arm = tall && Object.keys(tall).length ? tall : null;
-  const typer = new Map();
-  for (const [, g] of groups || []) {
+  const rader = new Map();
+  for (const [nokkel, g] of groups || []) {
     if (!g) continue;
     if (arm && /^(Ifc)?ReinforcingBar$/i.test(String(g.type || ""))) continue;
-    const type = typeUtenIfc(g.type), materiale = vaskMateriale(g.material);
-    const k = type + "|" + materiale;
-    const x = typer.get(k) || { type, materiale, antall: 0, volumM3: 0 };
-    x.antall += Number(g.count) || 0; x.volumM3 += Number(g.vol) || 0;
-    typer.set(k, x);
+    const materiale = vaskMateriale(g.material), rå = String(nokkel || "");
+    const navn = (g.material && rå.endsWith(" · " + g.material) ? rå.slice(0, -(" · " + g.material).length) : rå).trim() || typeUtenIfc(g.type);
+    const k = radNokkel(navn, materiale);
+    const x = rader.get(k) || { navn, type: typeUtenIfc(g.type), materiale, antall: 0, lm: 0, m2: 0, m3: 0, kg: 0 };
+    x.antall += Number(g.count) || 0; x.lm += Number(g.length) || 0; x.m2 += Number(g.flate) || Number(g.area) || 0;
+    x.m3 += Number(g.vol) || 0; if (erStaalRad(navn, materiale)) x.kg += Number(g.kg) || 0;
+    rader.set(k, x);
   }
-  const liste = [...typer.values()].map(x => ({ ...x, volumM3: Math.round(x.volumM3 * 100) / 100 }))
-    .sort((a, b) => b.volumM3 - a.volumM3 || b.antall - a.antall);
+  const liste = [...rader.values()].map(avrundRad).sort(sorterRader);
   const s = arm ? lagSum({}, arm, null) : null;
   const perDiameter = s ? s.perDiameter.filter(x => x.stk > 0) : [];
   return { perDiameter, perForm: arm ? perBoyeform(arm) : [],
     sumArm: s ? { stk: s.stenger, lm: Math.round(perDiameter.reduce((a, x) => a + x.lm, 0) * 10) / 10, kg: s.kg } : { stk: 0, lm: 0, kg: 0 },
-    typer: liste,
-    sumTyper: { antall: liste.reduce((a, x) => a + x.antall, 0), volumM3: Math.round(liste.reduce((a, x) => a + x.volumM3, 0) * 100) / 100 } };
+    rader: liste, sumTyper: sumRader(liste) };
 }
 
 // 📐 Per bøyeform (Emil 29.10): bøyeform × diameter, med stenger, løpemeter
@@ -505,7 +613,7 @@ export function boyeformRader(liste, ov) {
 // Excel: ett ark per modell. Overskriftene er norske nøkler (t() hos kalleren).
 // Tall står som tall (ikke tekst), så Excel kan summere. SUM nederst som formel
 // med ferdig regnet svar (vises også i «Beskyttet visning»).
-export function mengdeRader(m, ov) {
+export function mengdeRader(m, ov, valgt) {
   const T = ov || ((x) => x);
   const rader = [];
   const sum = (kol, fra, til, verdi) => ({ formel: "=SUM(" + kol + fra + ":" + kol + til + ")", verdi });
@@ -515,14 +623,15 @@ export function mengdeRader(m, ov) {
     for (const x of m.perDiameter) rader.push([x.d ? "Ø" + x.d : T("Ukjent"), x.stk, x.lm, x.kg]);
     const til = rader.length;
     rader.push([T("Sum"), sum("B", fra, til, m.sumArm.stk), sum("C", fra, til, m.sumArm.lm), sum("D", fra, til, m.sumArm.kg)]);
-    if (m.typer.length) rader.push([]);
+    if (m.rader.length) rader.push([]);
   }
-  if (m.typer.length) {
-    rader.push([T("IFC-type"), T("Materiale"), T("Antall"), T("Volum (m3)")]);
-    const fra = rader.length + 1;
-    for (const x of m.typer) rader.push([x.type, x.materiale, x.antall, x.volumM3]);
-    const til = rader.length;
-    rader.push([T("Sum"), "", sum("C", fra, til, m.sumTyper.antall), sum("D", fra, til, m.sumTyper.volumM3)]);
+  if (m.rader.length) {
+    // 📏 Mengde + Enhet (valgt per rad), og alle målene til høyre for kontroll
+    const r = medEnhet(m.rader, valgt);
+    rader.push([T("Type"), T("IFC-type"), T("Materiale"), T("Antall"), T("Mengde"), T("Enhet"), "lm", "m²", "m³", "kg"]);
+    for (const x of r) rader.push([x.navn, x.type, x.materiale, x.antall, x.mengde, x.enhet, x.lm, x.m2, x.m3, x.kg || ""]);
+    rader.push([]);
+    for (const s2 of sumPerEnhet(r)) rader.push([T("Sum") + " " + s2.enhet, "", "", "", s2.mengde, s2.enhet]);
   }
   if (!rader.length) rader.push([T("Ingen mengder")]);
   return rader;

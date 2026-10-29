@@ -145,7 +145,7 @@ export const KORT = [
   {
     hvor: "kontor", ikonNavn: "lag",
     tittel: "Lag: modellgruppe og mengder per lag",
-    tekst: "Øverst i Lag-panelet kan du lagre det som er åpent som en modellgruppe: hovedmodellen og lagene med farge, gjennomsiktighet og justering. Velg gruppen i lista og trykk Åpne, så åpnes alt med ett trykk, også på en annen PC. Gruppene og lagene lagres i SharePoint, så du må være logget inn. Står det «Ikke lagret — logg inn på SharePoint» med rødt på et lag-kort, er laget ikke lagret ennå; det lagres av seg selv når du logger inn. Mengder per lag (under kortene) viser hovedmodellen per type og armeringen per diameter med stenger, løpemeter og vekt. Armeringen telles slik også når den er åpnet som hovedmodell (IFC). Excel-knappen lager ett ark per lag, et sammendrag og et ark per bøyeform for armeringen."
+    tekst: "Øverst i Lag-panelet kan du lagre det som er åpent som en modellgruppe: hovedmodellen og lagene med farge, gjennomsiktighet og justering. Velg gruppen i lista og trykk Åpne, så åpnes alt med ett trykk, også på en annen PC. Gruppene og lagene lagres i SharePoint, så du må være logget inn. Står det «Ikke lagret — logg inn på SharePoint» med rødt på et lag-kort, er laget ikke lagret ennå; det lagres av seg selv når du logger inn. Mengder per lag (under kortene) viser hver type (som i Mengder) og armeringen per diameter med stenger, løpemeter og vekt. Velg enhet per rad (lm, m², m³, stk eller kg): isolasjon står i m² og betong i m³ fra start, og valget huskes. Armeringen telles slik også når den er åpnet som hovedmodell (IFC). Excel-knappen lager ett ark per lag, et sammendrag og et ark per bøyeform for armeringen."
   },
   {
     hvor: "kontor", ikonNavn: "tegning",
