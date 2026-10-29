@@ -206,7 +206,6 @@
   <button id="btnCompare" title="Sammenlign med en annen versjon av modellen" data-i18n-title><svg class="ikon"><use href="#i-sammenlign"/></svg><span class="btn-t" data-i18n>Sammenlign</span></button>
   <button id="btnEm" title="Endringsmelding fra modellen: mengdeendring, prisanslag og EM-utkast" data-i18n-title><svg class="ikon"><use href="#i-rediger"/></svg><span class="btn-t" data-i18n>Endringsmelding</span></button>
   <button id="btnLag" title="Lag: legg armering, stål eller andre fagmodeller oppå hovedmodellen" data-i18n-title><svg class="ikon"><use href="#i-lag"/></svg><span class="btn-t" data-i18n>Lag</span></button>
-  <button id="btnKollisjon" title="Kollisjon: finn armering utenfor betongen og stål som går inn i betongen" data-i18n-title><svg class="ikon"><use href="#i-kollisjon"/></svg><span class="btn-t" data-i18n>Kollisjon</span></button>
   <button id="btnShare" title="Lag en lenke som gjenskaper denne visningen hos andre" data-i18n-title><svg class="ikon"><use href="#i-del"/></svg><span class="btn-t" data-i18n>Del visning</span></button>
   <button id="btnGrupper" title="Objektgrupper: lagre et utvalg med navn og hent det fram igjen" data-i18n-title><svg class="ikon"><use href="#i-fokus"/></svg><span class="btn-t" data-i18n>Grupper</span></button>
   <button id="btnTerreng" title="Terreng: hent landskapet rundt byggeplassen og sett modellen ned i det" data-i18n-title><svg class="ikon"><use href="#i-kote"/></svg><span class="btn-t" data-i18n>Terreng</span></button>
@@ -387,10 +386,6 @@
 <!-- 📝 Endringsmelding fra modellen (js/em.js, 26.10.2026) -->
 <!-- 🧅 Lag (runde 5, 28.10.2026): kortene tegnes av js/lag.js. Står til
      VENSTRE, så egenskapsboksen (til høyre) kan åpnes ved siden av. -->
-<div class="panel koll-panel" id="kollPanel">
-  <header><span data-i18n>Kollisjon</span><button data-lukk="kollPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
-  <div class="body" id="kollBody"></div>
-</div>
 <div class="panel lag-panel" id="lagPanel">
   <header><span data-i18n>Lag</span><button data-lukk="lagPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="lagBody"></div>
