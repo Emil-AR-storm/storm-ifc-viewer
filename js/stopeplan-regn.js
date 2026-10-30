@@ -13,6 +13,8 @@
 // Pour 1 blå, 2 lilla, 3 oransje, 4 teal, 5 rosa. Rødt er med vilje IKKE med —
 // rødt er hovedhandlingen og HOLD. Etter 5 går rekken rundt igjen; nummeret
 // på etappen skiller dem da.
+import { sjekkStatus, vaskSjekk } from "./stopesjekk-regn.js";
+
 export const FARGER = ["#2f6fdb", "#7c4dcc", "#f08a24", "#14a3a3", "#c2388a"];
 export const MAKS_ETAPPER = 200;
 
@@ -69,8 +71,12 @@ export function vaskEtappe(e) {
     elementer: Array.isArray(e.elementer) ? e.elementer.map(vaskElement).filter(Boolean).slice(0, 20000) : [],
     felt: Array.isArray(e.felt) ? e.felt.slice(0, 200).map(vaskFelt).filter(Boolean) : [],
     vanntetting: Array.isArray(e.vanntetting) ? e.vanntetting.slice(0, 500).map(vaskVann).filter(Boolean) : [],
+    // 📋 Sjekkliste før støp (runde 9, Emils valg 5C). null = ikke tatt i bruk.
+    sjekk: vaskSjekk(e.sjekk),
     endret, av: tekst(e.av, 60)
   };
+  // ✅ «Klar til støp»: bare når sjekklista er ferdig OG signert, og ikke etter støp
+  ut.klar = e.klar === true && ut.status !== "stopt" && sjekkStatus(ut.sjekk).kanKlar;
   return ut;
 }
 
@@ -135,7 +141,10 @@ export function sortert(liste) {
 export function stopeplanForByggeplass(liste) {
   return synlige(liste).map(e => ({
     id: e.id, nr: e.nr, navn: e.navn, farge: e.farge, dato: e.dato, status: e.status, stoptDato: e.stoptDato,
-    elementer: e.elementer, felt: e.felt, vanntetting: e.vanntetting
+    elementer: e.elementer, felt: e.felt, vanntetting: e.vanntetting,
+    // 📋 Sjekklista til telefonen (runde 9b) — uten signaturbildet (bare hvem og når)
+    sjekk: e.sjekk ? { punkter: e.sjekk.punkter, svar: e.sjekk.svar, signert: e.sjekk.signert ? { av: e.sjekk.signert.av, tid: e.sjekk.signert.tid, kilde: e.sjekk.signert.kilde } : null } : null,
+    klar: e.klar
   }));
 }
 

@@ -26,6 +26,7 @@ import { antallElementer, antallFelt, settVistPer as settVist, tegnTidslinje as 
 import { clearSelection, quantitiesForSet } from "./elements.js";
 import { metaFor } from "./ifcrpc.js";
 import { varsel } from "./varsel.js";
+import { koblSjekk, sjekkHtml } from "./stopesjekk.js";
 
 const SP_MAPPE = "Stopeplan";
 let spStatus = "av";          // "av" | "ok" | "feil" — vises nederst i panelet
@@ -142,6 +143,14 @@ export function endreEtappe(id, endring) {
   const foer = vaskEtappeListe(S.stopeplan);
   endreEtappeUtenAngre(id, endring);
   angreStopeplan("Etappe endret", foer);
+}
+
+// 📋 Som endreEtappe, men med egen angretekst (sjekklista: «Punkt huket av» …)
+function endreMedTekst(id, endring, tekst) {
+  const foer = vaskEtappeListe(S.stopeplan);
+  endreEtappeUtenAngre(id, endring);
+  angreStopeplan(tekst || "Etappe endret", foer);
+  tegnPanel();
 }
 
 export function leggTilEtappe() {
@@ -479,6 +488,8 @@ export function tegnPanel() {
             '<span class="st-merke" style="color:' + STATUS_FARGE[st] + '">' + esc(t(STATUS_TEKST[st])) + "</span>") +
       "</div>" +
       '<div class="st-innhold">' + esc(innhold) + "</div>" + feltHtml + vannHtml(e) +
+      // 📋 Sjekkliste før støp (runde 9a, Emils valg 5C)
+      sjekkHtml(e) +
       '<div class="st-rad st-knapper">' +
         '<button class="st-legg' + (velgerEtappe() === e.id ? " aktiv" : "") + '">' +
           esc(velgerEtappe() === e.id ? t("Velger …") : t("+ Legg til")) + "</button>" +
@@ -534,6 +545,7 @@ export function tegnPanel() {
     rad.querySelectorAll(".st-vann-slett").forEach(b => b.onclick = () => SF && SF.slettVann(b.dataset.vann));
     const tom = rad.querySelector(".st-tom");
     if (tom) tom.onclick = () => { if (confirm(t("Ta alle elementene ut av etappen?"))) tomElementer(id); };
+    koblSjekk(rad, synlige(S.stopeplan).find(x => x.id === id), endreMedTekst, tegnPanel);
     rad.querySelector(".st-slett").onclick = () => {
       const e = synlige(S.stopeplan).find(x => x.id === id);
       if (e && confirm(t("Slette {0}?", e.navn))) slettEtappe(id);
