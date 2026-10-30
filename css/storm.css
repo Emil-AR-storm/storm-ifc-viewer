@@ -2871,3 +2871,19 @@ html[data-tema="lys"] .fdv-u3 input, html[data-tema="lys"] .fdv-u3 select, html[
 .fdv-vare .fdv-sub a:hover { text-decoration: underline; }
 .fdv-note { font-size: 10.5px; color: var(--muted); margin: 4px 0 0; }
 @media (max-width: 520px) { #fdvPanel { width: 100vw; border-radius: var(--radius-stor) var(--radius-stor) 0 0; } }
+
+/* 🏗 Løfteplan i tårnkranen (Rigg, runde 8) */
+.lp { display: flex; flex-direction: column; gap: 6px; }
+.lp-liten { font-size: 11px; color: var(--muted); margin: 0; }
+.lp-kurve { display: grid; grid-template-columns: 1fr 1.4fr 24px; gap: 4px 6px; align-items: center; font-size: 11px; color: var(--muted); }
+.lp-kurve input, .lp-felt input, .lp-felt select { font-size: 12px; padding: 4px 6px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 5px; min-width: 0; text-align: right; color-scheme: dark; }
+.lp-felt { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; }
+.lp-felt input { width: 80px; } .lp-felt select { text-align: left; max-width: 190px; }
+html[data-tema="lys"] .lp-kurve input, html[data-tema="lys"] .lp-felt input, html[data-tema="lys"] .lp-felt select { color-scheme: light; }
+.lp-grupper { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; }
+.lp-grupper label { display: inline-flex; align-items: center; gap: 4px; }
+.lp-tell { font-size: 12px; display: flex; align-items: center; gap: 6px; }
+.lp-rad { display: flex; align-items: center; gap: 6px; font-size: 11.5px; padding: 3px 4px; border-radius: 5px; cursor: pointer; }
+.lp-rad:hover { background: var(--panel2); }
+.lp-n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lp-t { color: var(--muted); white-space: nowrap; }
