@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { S, fmtLen, tilM } from "./state.js";
 import { pick, pickFlate } from "./elements.js";
 import { naermesteMaaleflate } from "./pek-eier.js";
-import { camera, canvas, frameHooks, koteGroup, makeLabel, measureGroup, renderer, scene, updateScreenScaled } from "./scene.js";
+import { camera, canvas, frameHooks, koteGroup, makeLabel, measureGroup, meldLapperIGruppe, renderer, scene, updateScreenScaled } from "./scene.js";
 
 // ---------- Kote ----------
 export function koteValue(point) {
@@ -378,10 +378,40 @@ export function oppdaterLengdeEtiketter() {
   }
 }
 
+// ⛰ Et lite cyan punkt der hver kote står (Emil 30.10, valg A): når kote-
+// boksen må vike for naboen og skjules, ser man fortsatt hvor koten er.
+// Punktet ligger UNDER boksen (lavere renderOrder), så det synes bare når
+// boksen er skjult eller har krympet. Det ligger i koteGroup selv, så det
+// skjules med kotene (minikart, ID-avlesning, Tøm koter), og synkes hver
+// ramme, så Angre og enhetsbytte ikke trenger å vite om det.
+const kotePrikkGeo = new THREE.SphereGeometry(1, 10, 8);
+const kotePrikkMat = new THREE.MeshBasicMaterial({ color: 0x22d3ee, depthTest: false });
+function synkKotePrikker() {
+  const brukt = new Set();
+  for (const o of koteGroup.children) {
+    if (!o.isSprite || typeof o.userData.meter !== "number") continue;
+    let p = o.userData.prikk;
+    if (!p) {
+      p = new THREE.Mesh(kotePrikkGeo, kotePrikkMat);
+      p.renderOrder = 997; p.userData.px = 6; p.userData.kotePrikk = true;
+      p.raycast = () => {};   // punktet skal ikke kunne trykkes på
+      o.userData.prikk = p;
+    }
+    p.position.copy(o.position);
+    if (p.parent !== koteGroup) koteGroup.add(p);
+    brukt.add(p);
+  }
+  for (const p of koteGroup.children.slice()) if (p.userData.kotePrikk && !brukt.has(p)) koteGroup.remove(p);
+}
+
 // hold måle-/kotelapper og snap-prikk i konstant skjermstørrelse
 frameHooks.push(() => {
+  synkKotePrikker();
   updateScreenScaled(measureGroup);
   updateScreenScaled(koteGroup);
   updateScreenScaled(snapCursorGroup);
+  // 🏷 Kote-boksene viker for hverandre som materiell-lappene (valg A 30.10):
+  // krymper til de ikke rører, blir de for små skjules de (punktet står igjen).
+  meldLapperIGruppe(koteGroup, 0.6);
 });
 

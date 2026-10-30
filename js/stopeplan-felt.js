@@ -24,7 +24,7 @@
 import * as THREE from "three";
 import { $, S, esc } from "./state.js";
 import { t } from "./i18n.js";
-import { camera, canvas, frameHooks, makeLabel, raycaster, renderer, scene, updateScreenScaled } from "./scene.js";
+import { camera, canvas, frameHooks, makeLabel, meldLapperIGruppe, raycaster, renderer, scene, updateScreenScaled } from "./scene.js";
 import { elementBoxById, hitID } from "./elements.js";
 import {
   FELT_TOL_M, feltAreal, finnFelt, fjernFelt, fjernHjorne, flyttPunkter, kantLengde, leggTilFelt,
@@ -48,7 +48,7 @@ export const tegnerFelt = () => (tegner ? tegner.etappeId : null);
 export const handtakGroup = new THREE.Group();
 handtakGroup.name = "stopeplan-handtak";
 scene.add(handtakGroup);
-frameHooks.push(() => updateScreenScaled(handtakGroup));
+frameHooks.push(() => { updateScreenScaled(handtakGroup); meldLapperIGruppe(handtakGroup, 0.3); });
 
 const erApen = () => { const p = $("stopePanel"); return !!(p && p.classList.contains("open")); };
 const aktiv = () => erApen() && !S.velgModusAktiv && !S.mode;

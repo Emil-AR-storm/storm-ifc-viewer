@@ -432,6 +432,7 @@ export function makeLabel(text, color = "#f59e0b", sizeF = 0.028) {
   const tex = new THREE.CanvasTexture(c);
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false }));
   sprite.renderOrder = 998;
+  sprite.userData.lapp = true;   // 🏷 en tekstboks (meldLapperIGruppe kjenner den igjen)
   const s = S.modelSize * sizeF;
   sprite.scale.set(s * c.width / c.height, s, 1);
   return sprite;
@@ -488,6 +489,21 @@ const lappKo = new Map();
 export function meldLapp(sprite, prio, min, kanSkjules) {
   lappKo.set(sprite, { s: sprite, prio: prio || 0, min: min || 0, kanSkjules: kanSkjules !== false });
 }
+// 🏷 Alle tekstbokser i en gruppe inn i samme regel (Emil 30.10, valg A:
+// «stopp når de kommer inntil hverandre, slik som materiell — på alle
+// tekstbokser i hele Storm IFC»). En lapp regelen skjulte forrige ramme, får
+// komme tilbake først — ellers ble den borte for godt, også når man zoomer inn.
+// Lapper andre har skjult (verktøyet er lukket o.l.) røres ikke.
+//   prio: lavere = viktigere. Markeringer og mål 0, laster 0.5, kote 0.6,
+//         navnelapper 1, akser 1.2. Tegne-lappene (terreng, støpeplan) 0.3.
+export function meldLapperIGruppe(group, prio, min, kanSkjules) {
+  if (!group || !group.children.length) return;
+  group.traverse(o => {
+    if (!o.isSprite || !o.userData.lapp) return;
+    if (o.userData.lappSkjult) { o.userData.lappSkjult = false; o.visible = true; }
+    if (o.visible) meldLapp(o, prio, min == null ? LAPP_MIN_PX : min, kanSkjules !== false);
+  });
+}
 const _kV = new THREE.Vector3();
 function synligHeltOpp(o) {
   for (let p = o; p; p = p.parent) if (!p.visible) return false;
@@ -519,7 +535,7 @@ function fordelMeldteLapper() {
   const svar = fordelLapper(inn);
   for (let i = 0; i < med.length; i++) {
     const s = med[i].s, r = svar[i];
-    if (!r.vis) { s.visible = false; continue; }
+    if (!r.vis) { s.visible = false; s.userData.lappSkjult = true; continue; }
     if (r.faktor < 1) s.scale.set(s.scale.x * r.faktor, s.scale.y * r.faktor, 1);
   }
 }

@@ -23,7 +23,7 @@ import * as THREE from "three";
 import { $, S, apnePanel, esc, ikon, på, registrerEkstraGruppe } from "./state.js";
 import { t } from "./i18n.js";
 import { flettPaaId, spLes, spLesBin, spPaalogget, spSkriv, spSkrivBin } from "./sp-lager.js";
-import { camera, canvas, controls, frameHooks, grid, makeLabel, renderer, scene, updateScreenScaled } from "./scene.js";
+import { camera, canvas, controls, frameHooks, grid, makeLabel, meldLapperIGruppe, renderer, scene, updateScreenScaled } from "./scene.js";
 import {
   STANDARD_UTSNITT, UTSNITT, adresseUrl, bboxFra, byggTilTerreng, terrengTilBygg, flyttKlippKant, flyttPadKant, flyttPlass,
   fulltKlipp, gridTilTrekanter, hoydeFarger, hoydeIPunkt, kartUv, nordRetning, topoUrl, hoydeSpenn, hoydeVed, klippHandtak,
@@ -555,7 +555,7 @@ frameHooks.push(() => {
   for (const o of padGroup.children) if (o !== plateMesh) o.visible = vis;
   flyttGroup.visible = vis && flyttModus;
   festGroup.visible = vis;
-  if (vis) { updateScreenScaled(klippGroup); updateScreenScaled(padGroup); updateScreenScaled(festGroup); if (flyttModus) updateScreenScaled(flyttGroup); }
+  if (vis) { updateScreenScaled(klippGroup); updateScreenScaled(padGroup); updateScreenScaled(festGroup); if (flyttModus) updateScreenScaled(flyttGroup); meldLapperIGruppe(festGroup, 0.3); }
 });
 
 // ═══════════════════════ TEGNING ═══════════════════════
@@ -658,6 +658,7 @@ frameHooks.push(() => {
   kompass.style.display = vis ? "block" : "none";
   if (!vis || !kompassPil) return;
   updateScreenScaled(nordGroup);
+  meldLapperIGruppe(nordGroup, 0.3);
   // Nord i verden → to punkt på skjermen → vinkelen pilen skal peke.
   // Skjermkoordinatene (NDC) strekkes med bildeforholdet, ellers blir
   // vinkelen feil på en bred skjerm.

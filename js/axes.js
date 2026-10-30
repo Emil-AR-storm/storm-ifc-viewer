@@ -5,7 +5,7 @@ import { t } from "./i18n.js";
 import { val } from "./elements.js";
 import { lightElementBoxes } from "./ifc.js";
 import { kall } from "./ifcrpc.js";
-import { axesGroup, camera, frameHooks, makeLabel, renderer } from "./scene.js";
+import { axesGroup, camera, frameHooks, makeLabel, meldLapperIGruppe, renderer } from "./scene.js";
 
 // Zoom-avhengige akse-lapper: skjul lapper som ville blitt for små på skjermen.
 // Mål-lappene (gule) krever mer plass enn aksenavnene og dukker opp først når man zoomer inn.
@@ -15,6 +15,11 @@ function updateAxisLOD() {
   const hpx = renderer.domElement.clientHeight / (2 * Math.tan(camera.fov * Math.PI / 360));
   for (const o of axesGroup.children) {
     if (!o.isSprite || !o.userData.axisTag) continue;
+    // 🏷 Full størrelse hver ramme: regelen for tekstbokser (meldLapperIGruppe)
+    // krymper lappene når de ville overlappet, og må få begynne på nytt.
+    const bs = o.userData.baseScale;
+    if (bs) o.scale.set(bs.x * S.axisFontF, bs.y * S.axisFontF, 1);
+    if (o.userData.lappSkjult) o.userData.lappSkjult = false;
     const d = _lodV.copy(o.position).sub(camera.position).length() || 1;
     const px = (o.scale.y / d) * hpx; // lappens høyde i skjerm-piksler
     o.visible = px > (o.userData.dim ? 12 : 7);
@@ -346,7 +351,7 @@ på("btnAxes", "click", async () => {
 });
 
 // oppdater aksenes detaljnivå hver frame
-frameHooks.push(() => { if (axesGroup.visible) updateAxisLOD(); });
+frameHooks.push(() => { if (axesGroup.visible) { updateAxisLOD(); meldLapperIGruppe(axesGroup, 1.2); } });
 
 S.rebuildAxes = rebuildAxes;
 
