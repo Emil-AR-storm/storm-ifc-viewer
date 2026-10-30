@@ -94,6 +94,7 @@
   <symbol id="i-lav" viewBox="0 0 24 24"><path d="M14.086 18.412A2 2 0 0112.67 19H5v-7.672a2 2 0 01.586-1.414L11.75 3.75a6 6 0 118.49 8.49z" /><path d="M16 8 2 22" /><path d="M17.488 15H9" /></symbol>
   <symbol id="i-markeringer" viewBox="0 0 24 24"><path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z" /></symbol>
   <symbol id="i-kollisjon" viewBox="0 0 24 24"><path d="M4 4h9v9H4z" /><path d="M11 11h9v9h-9z" /><path d="M11 11h2v2h-2z" fill="currentColor" /></symbol>
+  <symbol id="i-fdv" viewBox="0 0 24 24"><path d="M4 20h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-7.9a1 1 0 0 1-.8-.4L10 5H4a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1Z" /><path d="m9 13 2 2 4-4" /></symbol>
   <symbol id="i-lag" viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5Z" /><path d="m2 17 10 5 10-5" /><path d="m2 12 10 5 10-5" /></symbol>
   <symbol id="i-fokus" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><line x1="22" x2="18" y1="12" y2="12" /><line x1="6" x2="2" y1="12" y2="12" /><line x1="12" x2="12" y1="6" y2="2" /><line x1="12" x2="12" y1="22" y2="18" /></symbol>
   <symbol id="i-markering" viewBox="0 0 24 24"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0" /><circle cx="12" cy="10" r="3" /></symbol>
@@ -225,6 +226,7 @@
   <button id="btnDokSW" title="Last ned instruksjonstegningen for SW-elementene (åpner SW-generator)" data-i18n-title><svg class="ikon"><use href="#i-sw"/></svg><span class="btn-t" data-i18n>SW-tegning (PDF)</span></button>
   <button id="btnDokBcf" title="Markeringene som BCF-fil til Solibri, Dalux eller BIMcollab" data-i18n-title><svg class="ikon"><use href="#i-markeringer"/></svg><span class="btn-t" data-i18n>BCF-eksport</span></button>
   <button id="btnDokBcfImport" title="Les inn saker fra RIB eller ARK (.bcfzip) som markeringer" data-i18n-title><svg class="ikon"><use href="#i-markeringer"/></svg><span class="btn-t" data-i18n>BCF-import</span></button>
+  <button id="btnFdv" title="FDV: koble FDV-dokumenter til objektene og lag overleveringspakken" data-i18n-title><svg class="ikon"><use href="#i-fdv"/></svg><span class="btn-t" data-i18n>FDV</span></button>
   <button id="btnSaveLite" title="Eksporter forenklet modell (.glb) som funker på mobil" data-i18n-title><svg class="ikon"><use href="#i-lagre"/></svg><span class="btn-t" data-i18n>Lett kopi</span></button>
   <button id="btnByggeplass" title="Last opp lett kopi til byggeplass-lenka (Cloudflare)" data-i18n-title><svg class="ikon"><use href="#i-lastned"/></svg><span class="btn-t" data-i18n>Publiser Byggeplass</span></button>
   <button id="btnHjul" title="Navigasjonshjul – naviger uten mus" data-i18n-title><svg class="ikon"><use href="#i-hjul"/></svg><span class="btn-t" data-i18n>Navigasjon</span></button>
@@ -386,6 +388,11 @@
 <!-- 📝 Endringsmelding fra modellen (js/em.js, 26.10.2026) -->
 <!-- 🧅 Lag (runde 5, 28.10.2026): kortene tegnes av js/lag.js. Står til
      VENSTRE, så egenskapsboksen (til høyre) kan åpnes ved siden av. -->
+<!-- 📁 FDV (runde 7, 29.10.2026): FDV-grupper og overlevering (js/fdv.js) -->
+<div class="panel fdv-panel" id="fdvPanel">
+  <header><span data-i18n>FDV</span><button data-lukk="fdvPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <div class="body" id="fdvBody"></div>
+</div>
 <div class="panel lag-panel" id="lagPanel">
   <header><span data-i18n>Lag</span><button data-lukk="lagPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
   <div class="body" id="lagBody"></div>
