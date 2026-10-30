@@ -3357,6 +3357,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "«{0}» flyttet fra «{1}» til «{2}».": "«{0}» moved from «{1}» to «{2}».",
   "«{0}» lagt til i «{1}».": "«{0}» added to «{1}».",
   "Klikk først et objekt i 3D.": "Click an object in 3D first.",
+  "FDV-redigeringen er avsluttet fordi et annet verktøy ble valgt. Trykk «Rediger» på gruppa for å fortsette.": "FDV editing has ended because another tool was selected. Press «Rediger» on the group to continue.",
   "Lager FDV-pakken …": "Creating the O&M package …",
   "FDV-register": "O&M register",
   "FDV-grupper": "O&M groups",

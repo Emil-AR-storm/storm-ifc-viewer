@@ -12,6 +12,7 @@
 import * as THREE from "three";
 import { $, S, apnePanel, esc, på } from "./state.js";
 import { scene } from "./scene.js";
+import { setMode } from "./modes.js";
 import { t } from "./i18n.js";
 import { varsel } from "./varsel.js";
 import { _lagene as lagene } from "./lag.js";
@@ -155,6 +156,11 @@ export async function leggTilPdfer(filer, gruppeId) {
 
 // ---------- Redigering: klikk i 3D legger til / tar ut ----------
 export function startRedigering(id) {
+  // Emil 30.10 (skjermbilde): «Kote» sto på, så klikkene i 3D gikk til kote-
+  // verktøyet og ingenting ble lagt i gruppa. Mål/Kote står med vilje på når
+  // man åpner paneler — men å klikke objekter inn i en FDV-gruppe ER et
+  // klikkverktøy, så de slås av her.
+  if (S.mode) setMode(S.mode);
   tilstand.aktiv = id;
   S.fdvKlikk = klikk;
   window.addEventListener("keydown", escTast, true);
@@ -194,6 +200,15 @@ function klikk(x, y) {
     }
   });
   return true;
+}
+// Velger man Mål, Kote o.l. mens en gruppe redigeres, er man ferdig med
+// gruppa — ellers ville klikkene stille gått til det andre verktøyet.
+{
+  const tidligere = S.modusByttet;
+  S.modusByttet = (m) => {
+    if (tidligere) try { tidligere(m); } catch (_) {}
+    if (m && tilstand.aktiv) { stoppRedigering(); varsel(t("FDV-redigeringen er avsluttet fordi et annet verktøy ble valgt. Trykk «Rediger» på gruppa for å fortsette.")); }
+  };
 }
 // Alle med samme Revit-type som sist klikkede (legg til eller ta ut)
 export async function alleLike(taUtIstedet) {

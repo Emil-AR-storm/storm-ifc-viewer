@@ -3357,6 +3357,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "«{0}» flyttet fra «{1}» til «{2}».": "«{0}» perkelta iš «{1}» į «{2}».",
   "«{0}» lagt til i «{1}».": "«{0}» pridėta į «{1}».",
   "Klikk først et objekt i 3D.": "Pirmiausia spustelėkite objektą 3D.",
+  "FDV-redigeringen er avsluttet fordi et annet verktøy ble valgt. Trykk «Rediger» på gruppa for å fortsette.": "FDV redagavimas baigtas, nes pasirinktas kitas įrankis. Paspauskite «Rediger» grupėje, kad tęstumėte.",
   "Lager FDV-pakken …": "Kuriamas eksploatacijos paketas …",
   "FDV-register": "Eksploatacijos registras",
   "FDV-grupper": "Eksploatacijos grupės",

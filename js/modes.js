@@ -60,6 +60,8 @@ export function setMode(m) {
   S.measureFirst = null;
   hideSnapPreview();
   updateModeBar();
+  // Krok for verktøy som må vite at et annet ble valgt (FDV-redigeringen)
+  if (S.modusByttet) { try { S.modusByttet(S.mode); } catch (_) {} }
 }
 
 // materiell.js trenger å tegne kontrollinja på nytt uten sirkulær import
@@ -73,14 +75,31 @@ S.oppdaterModeBar = updateModeBar;
 // med. Verdien er panelet som EIER modusen: åpner du det, skal modusen stå.
 //
 // DISSE STÅR MED VILJE IKKE I LISTA:
-//   · Mål og Kote legger bare på en måling. Du skal kunne måle mens du ser på
-//     mengder, og målene blir stående uansett.
+//   · Mål, Kote, Kjedemål og Vinkel — de har sin egen regel rett under
+//     (Emil 30.10: verktøyet slås av, målene blir stående).
 //   · Snitt, etasjefilter, gjennomsiktig og fargelegging er VISNINGER, ikke
 //     moduser. De bestemmer hva du ser på, og skal overleve at du bytter
 //     verktøy — nøyaktig som at du skrur dem av selv når du er ferdig.
 const KLIKKMODUSER = { marker: "commentPanel", materiell: "materiellPanel", rigg: "riggPanel", terreng: "terrengPanel" };
 
+// 📏 Måleverktøyene (Emil 30.10): «har du oppe et mål-verktøy og trykker på
+// et annet verktøy, står målene fortsatt, men du går ut av målemodus». Før
+// sto Mål/Kote på mens man åpnet andre verktøy (se over) — og da gikk
+// klikkene i FDV-gruppa til kote-verktøyet uten at man skjønte hvorfor.
+// Målene, kotene, kjedemålene og vinklene blir STÅENDE; de fjernes bare med
+// «Tøm mål» / «Tøm koter» når verktøyet åpnes igjen.
+// Egenskapspanelet (propPanel) er ikke et verktøy — det åpnes av et klikk på
+// et element eller en rad, og skal ikke avbryte målingen.
+const MAALEMODUSER = new Set(["measure", "kote", "kjede", "vinkel"]);
+
 S.avsluttKlikkModus = (nyttPanel) => {
+  if (MAALEMODUSER.has(S.mode)) {
+    if (nyttPanel === "propPanel") return;
+    // et påbegynt mål (første punkt satt) ryddes bort — det blir aldri ferdig
+    for (const o of measureGroup.children.slice()) if (o.userData.temp) measureGroup.remove(o);
+    setMode(S.mode);   // av; setMode kaster også et påbegynt kjedemål / vinkel
+    return;
+  }
   const eier = KLIKKMODUSER[S.mode];
   if (!eier || eier === nyttPanel) return;
   // materiell-modusen eies av js/materiell.js og må avsluttes derfra: den

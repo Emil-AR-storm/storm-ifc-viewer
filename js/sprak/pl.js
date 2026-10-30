@@ -3357,6 +3357,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "«{0}» flyttet fra «{1}» til «{2}».": "«{0}» przeniesiono z «{1}» do «{2}».",
   "«{0}» lagt til i «{1}».": "«{0}» dodano do «{1}».",
   "Klikk først et objekt i 3D.": "Najpierw kliknij obiekt w 3D.",
+  "FDV-redigeringen er avsluttet fordi et annet verktøy ble valgt. Trykk «Rediger» på gruppa for å fortsette.": "Edycja FDV została zakończona, ponieważ wybrano inne narzędzie. Naciśnij «Rediger» w grupie, aby kontynuować.",
   "Lager FDV-pakken …": "Tworzenie pakietu DTR …",
   "FDV-register": "Rejestr DTR",
   "FDV-grupper": "Grupy DTR",
