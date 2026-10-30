@@ -2819,3 +2819,37 @@ table.lag-m tr.sum2 td { font-weight: 700; border-bottom: 0; }
 .lag-faner button.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
 .lag-fane-tall { color: #fff; background: var(--danger); border-radius: 9px; padding: 0 6px; font-size: 10.5px; margin-left: 3px; }
 .koll-fane { display: flex; flex-direction: column; gap: 8px; }
+/* 📁 FDV (runde 7, Emils valg A + B 29.10.2026) */
+#fdvPanel { left: 0; right: auto; width: 400px; max-height: 82vh; border-radius: 0 var(--radius-stor) 0 0; }
+#fdvPanel .body { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+#fdvPanel button:disabled { opacity: .45; cursor: default; }
+.fdv-fag { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 5px 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel2); }
+.fdv-fag b { width: 80px; }
+.fdv-fag span:last-child { width: 38px; text-align: right; font-variant-numeric: tabular-nums; }
+.fdv-bar { flex: 1; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+.fdv-bar i { display: block; height: 100%; }
+.fdv-farger { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); flex-wrap: wrap; }
+.fdv-prikk { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-left: 4px; }
+.lag-slipp.liten { padding: 6px; font-size: 11px; }
+#fdvSlipp { cursor: pointer; }
+.fdv-gruppe { border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel2); padding: 7px 9px; display: flex; flex-direction: column; gap: 6px; }
+.fdv-gruppe.aktiv { border-color: #3b82f6; }
+.fdv-gh { display: flex; align-items: center; gap: 7px; }
+.fdv-gh b { flex: 1; min-width: 0; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fdv-navn { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 700; padding: 3px 6px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 5px; }
+.fdv-ant { font-size: 10.5px; color: var(--muted); white-space: nowrap; }
+.fdv-pill { font-size: 10px; padding: 1px 6px; border-radius: 5px; font-weight: 700; }
+.fdv-pill.g { background: var(--ok); color: #fff; } .fdv-pill.y { background: var(--warn); color: #111; } .fdv-pill.r { background: var(--danger); color: #fff; }
+.fdv-sub, .fdv-hint { font-size: 10.5px; color: var(--muted); }
+.fdv-hint { color: #6aa5ff; }
+.fdv-dok { display: flex; align-items: center; gap: 6px; font-size: 11.5px; border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent); padding: 3px 0; }
+.fdv-dok > span:first-child { flex: 1; }
+.fdv-dok .ok { color: var(--ok); } .fdv-dok .mangler, .fdv-fil .mangler { color: var(--danger); } .fdv-ia { color: var(--muted); }
+.fdv-ia-valg { font-size: 10px; color: var(--muted); display: inline-flex; align-items: center; gap: 3px; }
+.fdv-fil { display: flex; align-items: center; gap: 6px; font-size: 11px; }
+.fdv-fil a { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.fdv-fil select { font-size: 10.5px; max-width: 150px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 5px; color-scheme: dark; }
+html[data-tema="lys"] .fdv-fil select { color-scheme: light; }
+.fdv-obj { display: flex; align-items: center; gap: 6px; font-size: 11.5px; }
+.fdv-obj span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 520px) { #fdvPanel { width: 100vw; border-radius: var(--radius-stor) var(--radius-stor) 0 0; } }
