@@ -31,7 +31,7 @@ export function vaskLastkurve(liste) {
 // Det som lagres på kranen (riggobjektet): lastkurve, løfteutstyr, hvordan
 // radius måles, og hvilke materialgrupper kranen løfter.
 export const MODUSER = ["midt", "hjorne"];
-export const STD_GRUPPER = ["Stål", "Tre", "Aluminium"];
+export const STD_GRUPPER = ["Stål", "Tre", "Aluminium", "Materiell"];
 export function vaskLofteplan(p) {
   const o = p && typeof p === "object" ? p : {};
   const utstyr = tall(o.utstyrKg);
@@ -68,12 +68,19 @@ export function radiusTil(kran, box, modus, skala) {
 }
 
 // Én vurdering. kg = elementets vekt (0/ukjent → "ukjent").
-// Svar: { farge: "gronn"|"gul"|"rod"|"ukjent"|"utenfor", utn, last, kap }
-export function vurder(kg, utstyrKg, kap, rM, radiusM) {
+// Svar: { farge, utn, last, kap }. farge:
+//   "gronn" | "gul" | "rod"
+//   "ukjent"     — vekten er ukjent
+//   "ingenKurve" — lastkurven er ikke skrevet inn ennå (Emil 30.10: alt sto
+//                  som «utenfor» før kurven var fylt ut — det var feil)
+//   "utenfor"    — lenger ut enn bomlengden
+//   "forLangt"   — innenfor bommen, men lenger ut enn lastkurvens siste punkt
+export function vurder(kg, utstyrKg, kap, rM, radiusM, harKurve) {
+  if (radiusM > 0 && rM > radiusM + 1e-9) return { farge: "utenfor", utn: null, last: kg > 0 ? kg + (utstyrKg || 0) : null, kap: null };
+  if (harKurve === false) return { farge: "ingenKurve", utn: null, last: kg > 0 ? kg + (utstyrKg || 0) : null, kap: null };
   if (!(kg > 0)) return { farge: "ukjent", utn: null, last: null, kap };
   const last = kg + (utstyrKg || 0);
-  if (radiusM > 0 && rM > radiusM + 1e-9) return { farge: "utenfor", utn: null, last, kap: null };
-  if (kap == null) return { farge: "utenfor", utn: null, last, kap: null };
+  if (kap == null) return { farge: "forLangt", utn: null, last, kap: null };
   const utn = last / kap;
   return { farge: utn > 1 + 1e-9 ? "rod" : utn >= GUL_FRA ? "gul" : "gronn", utn, last, kap };
 }
@@ -84,17 +91,18 @@ export function vurder(kg, utstyrKg, kap, rM, radiusM) {
 export function kransjekk(elementer, kran, skala) {
   const plan = vaskLofteplan(kran && kran.plan);
   const med = new Set(plan.grupper);
-  const rader = [], telling = { gronn: 0, gul: 0, rod: 0, ukjent: 0, utenfor: 0, totalt: 0 };
+  const rader = [], telling = { gronn: 0, gul: 0, rod: 0, ukjent: 0, ingenKurve: 0, forLangt: 0, utenfor: 0, totalt: 0 };
+  const harKurve = plan.kurve.length > 0;
   for (const e of elementer || []) {
     if (!med.has(e.gruppe || "")) continue;
     const r = radiusTil(kran.xz, e.box, plan.modus, skala);
-    const v = vurder(e.kg, plan.utstyrKg, kapasitetVed(plan.kurve, r), r, kran.radiusM);
-    rader.push({ id: e.id, navn: e.navn || "", type: e.type || "", material: e.material || "", gruppe: e.gruppe || "", kg: e.kg > 0 ? Math.round(e.kg) : 0,
+    const v = vurder(e.kg, plan.utstyrKg, kapasitetVed(plan.kurve, r), r, kran.radiusM, harKurve);
+    rader.push({ id: e.id, mat: !!e.mat, navn: e.navn || "", type: e.type || "", material: e.material || "", gruppe: e.gruppe || "", kg: e.kg > 0 ? Math.round(e.kg) : 0,
       r: Math.round(r * 10) / 10, last: v.last == null ? null : Math.round(v.last), kap: v.kap, utn: v.utn == null ? null : Math.round(v.utn * 1000) / 10, farge: v.farge });
     telling[v.farge]++; telling.totalt++;
   }
-  // Verst først: rød (høyest %), gul, utenfor, ukjent, grønn
-  const rang = { rod: 0, gul: 1, utenfor: 2, ukjent: 3, gronn: 4 };
+  // Verst først: rød (høyest %), gul, lenger ut enn kurven, utenfor bommen, ukjent vekt, uten kurve, grønn
+  const rang = { rod: 0, gul: 1, forLangt: 2, utenfor: 3, ukjent: 4, ingenKurve: 5, gronn: 6 };
   rader.sort((a, b) => rang[a.farge] - rang[b.farge] || (b.utn || 0) - (a.utn || 0) || b.kg - a.kg);
   return { rader, telling };
 }
@@ -109,8 +117,25 @@ export function grupperIModell(elementer) {
 // Excel-radene
 export function excelRader(rader, ov) {
   const T = ov || ((x) => x);
-  const STATUS = { gronn: "OK", gul: "Sjekk (90–100 %)", rod: "Over kapasitet", ukjent: "Ukjent vekt", utenfor: "Utenfor lastkurven" };
+  const STATUS = { gronn: "OK", gul: "Sjekk (90–100 %)", rod: "Over kapasitet", ukjent: "Ukjent vekt", utenfor: "Utenfor bommen",
+    forLangt: "Lenger ut enn lastkurven", ingenKurve: "Mangler lastkurve" };
   const ut = [[T("Status"), T("Element"), T("Type"), T("Materiale"), T("Vekt (kg)"), T("Last med utstyr (kg)"), T("Radius (m)"), T("Kapasitet (kg)"), T("Utnyttelse (%)")]];
   for (const r of rader) ut.push([T(STATUS[r.farge]), r.navn, r.type, r.material, r.kg || "", r.last == null ? "" : r.last, r.r, r.kap == null ? "" : r.kap, r.utn == null ? "" : r.utn]);
   return ut;
+}
+
+// Lastkurve-feltene slik de står i panelet: [{ r, kg }] som tekst.
+// Svar: { hele: rader med begge felt, halve: antall rader med bare det ene }
+// (Emil 30.10: en rad med bare radius ble lagret, kastet og visket ut — nå
+// lagres kurven først når hver påbegynt rad har både radius og kg.)
+export function delKurveFelt(felt) {
+  const hele = [], tom = (v) => String(v == null ? "" : v).trim() === "";
+  let halve = 0;
+  for (const f of felt || []) {
+    const a = tom(f.r), b = tom(f.kg);
+    if (a && b) continue;
+    if (a || b) { halve++; continue; }
+    hele.push({ r: f.r, kg: f.kg });
+  }
+  return { hele, halve };
 }

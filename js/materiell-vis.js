@@ -181,6 +181,9 @@ export function vaskMateriell(p) {
     antall: Math.round(tall(p.antall, 1, MATERIELL_MAKS_ANTALL, 1)),
     x: Number(p.x) || 0, y: Number(p.y) || 0, z: Number(p.z) || 0,
     rot: Number(p.rot) || 0,
+    // 🏗 Vekt for hele objektet/bunken slik kranen løfter det (Løfteplan,
+    // Emil 30.10). 0 = ukjent. Skrives inn i Løfteplan-lista i tårnkranen.
+    vektKg: Math.max(0, Math.min(200000, Math.round(Number(p.vektKg) || 0))),
     // skjult = midlertidig ute av visningen (vises igjen fra panelet).
     // Feltet følger med i eksporten, så byggeplassen viser det samme som deg.
     skjult: p.skjult === true

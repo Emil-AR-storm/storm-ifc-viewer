@@ -1961,6 +1961,7 @@ export const __rigg = { startPlassering, avbrytPlassering, leggTil, fjern, oppda
 
 // 🏗 Snarveien «Løfteplan» i Dokumentasjon (dokumentasjon.js): velg den første
 // tårnkranen og åpne seksjonen Løfteplan. Ingen kran → si fra.
+S.riggTegnPanel = () => { if (erApen()) tegnPanel(); };
 S.riggApneLofteplan = () => {
   const kran = riggObjekter(S.rigg || []).find(o => erKran(o));
   if (!kran) { varsel(t("Plasser en tårnkran i Rigg først — løfteplanen ligger inni kranen.")); return "ingen-kran"; }

@@ -274,6 +274,8 @@ function settMateriellModus(paa) {
 // «Trykk på et materiell-objekt …» stående nederst mens SW-generatoren var
 // oppe, og klikk i modellen ble fortsatt tolket som materiell-klikk.
 S.avsluttMateriell = () => settMateriellModus(false);
+// 🏗 Løfteplan (Emil 30.10): vekten av en bunke skrives inn fra kranens liste
+S.materiellSettVekt = (id, kg) => { if (!hentP(id)) return false; oppdater(id, { vektKg: Math.max(0, Math.round(Number(String(kg).replace(/\s/g, "").replace(",", ".")) || 0)) }, "Vekt endret"); return true; };
 
 // ---------- Plassering ----------
 function startPlassering(mal) {

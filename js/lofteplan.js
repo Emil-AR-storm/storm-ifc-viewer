@@ -14,12 +14,37 @@ import { t } from "./i18n.js";
 import { varsel } from "./varsel.js";
 import * as K from "./kran-regn.js";
 
-const tilstand = { farger: true, svar: null, nokkel: "", kranId: "", regner: false, elementer: null, elementNokkel: "" };
+const tilstand = { farger: true, svar: null, nokkel: "", kranId: "", regner: false, elementer: null, elementNokkel: "",
+  utkast: null };   // { kranId, felt: [{ r, kg }] } — lastkurve-rader som ikke er ferdig utfylt
+const utkastFor = (id) => (tilstand.utkast && tilstand.utkast.kranId === id ? tilstand.utkast.felt : null);
 export const _tilstand = tilstand;
 const tusen = (n) => Math.round(n).toLocaleString("nb-NO");
 
 // ---------- Elementene: vekt (Mengder) + boks (modellen) ----------
 async function elementer() {
+  return (await ifcElementer()).concat(await materiellElementer());
+}
+// 📦 Materiell (Emil 30.10: «materiell-objekt må legges inn som et punkt som
+// kan sjekkes av på Hva løfter kranen»). Ett «element» per materiell-objekt
+// (bunke), plassert der det står. Vekten skrives inn (vektKg) — materiellet
+// har ingen geometri å regne vekt av. Fagverkshalvdeler har kgHalv.
+async function materiellElementer() {
+  if (!S.materiell || !S.materiell.length) return [];
+  const MV = await import("./materiell-vis.js");
+  const ut = [];
+  for (const p of MV.vaskMateriellListe(S.materiell)) {
+    if (p.skjult) continue;
+    const g = MV.finnObjekt(p.id);
+    if (!g) continue;
+    const b = new THREE.Box3().setFromObject(g);
+    if (b.isEmpty()) continue;
+    const kg = p.vektKg > 0 ? p.vektKg : (p.kgHalv > 0 ? p.kgHalv : 0);
+    ut.push({ id: "mat:" + p.id, mat: true, navn: p.navn || MV.materiellTypeLabel(p), type: MV.materiellTypeLabel(p), material: "Materiell", gruppe: "Materiell",
+      kg, box: { min: [b.min.x, b.min.y, b.min.z], max: [b.max.x, b.max.y, b.max.z] } });
+  }
+  return ut;
+}
+async function ifcElementer() {
   const nokkel = (S.fileName || "") + "|" + (S.modelGroup ? S.modelGroup.uuid : "");
   if (tilstand.elementer && tilstand.elementNokkel === nokkel) return tilstand.elementer;
   if (!S.modelGroup) return [];
@@ -70,15 +95,16 @@ export async function regn(o) {
 // ---------- HTML ----------
 export function lofteplanHtml(o) {
   const p = K.vaskLofteplan(o.lofteplan);
-  const rader = p.kurve.length ? p.kurve : [{ r: "", kg: "" }];
+  const rader = utkastFor(o.id) || (p.kurve.length ? p.kurve : [{ r: "", kg: "" }]);
   let h = '<h4 data-sek="rigg-lofteplan" style="margin:12px 0 4px">🏗 ' + esc(t("Løfteplan")) + "</h4>" +
     '<div id="lpBody" class="lp">' +
     '<p class="lp-liten">' + esc(t("Lastkurve fra kranens datablad: maks last (kg) ved radius (m). Mellom punktene brukes kapasiteten ved neste større radius (på den sikre siden).")) + "</p>" +
     '<div class="lp-kurve"><span>' + esc(t("Radius (m)")) + "</span><span>" + esc(t("Maks last (kg)")) + "</span><span></span>" +
-    rader.map((q, i) => '<input type="text" inputmode="decimal" data-lp-r="' + i + '" value="' + esc(q.r) + '" placeholder="' + (10 * (i + 1)) + '">' +
+    rader.map((q, i) => '<input type="text" inputmode="decimal" data-lp-r="' + i + '" value="' + esc(q.r) + '" placeholder="m">' +
       '<input type="text" inputmode="decimal" data-lp-kg="' + i + '" value="' + (q.kg === "" ? "" : esc(q.kg)) + '" placeholder="kg">' +
       '<button class="lag-x" data-lp-fjern="' + i + '" title="' + esc(t("Fjern punktet")) + '">✕</button>').join("") + "</div>" +
     '<div class="lag-knapper"><button data-lp-ny>' + esc(t("＋ Punkt")) + "</button></div>" +
+    (utkastFor(o.id) ? '<p class="lp-liten" style="color:var(--warn)">' + esc(t("Fyll inn både radius og maks last på hver rad — da lagres kurven.")) + "</p>" : "") +
     '<label class="lp-felt">' + esc(t("Løfteutstyr (åk, stropper) kg")) + '<input type="text" inputmode="decimal" id="lpUtstyr" value="' + p.utstyrKg + '"></label>' +
     '<label class="lp-felt">' + esc(t("Radius måles til")) + '<select id="lpModus"><option value="midt"' + (p.modus === "midt" ? " selected" : "") + ">" + esc(t("midten av elementet")) + "</option>" +
     '<option value="hjorne"' + (p.modus === "hjorne" ? " selected" : "") + ">" + esc(t("hjørnet lengst unna (sikrest)")) + "</option></select></label>" +
@@ -90,21 +116,27 @@ export function lofteplanHtml(o) {
   return h;
 }
 
-const FARGE = { gronn: "#2e9e4a", gul: "#e9a13b", rod: "#d22b34", ukjent: "#6b7280", utenfor: "#6b7280" };
-const NAVN = { gronn: "innenfor (under 90 %)", gul: "90–100 % — sjekk", rod: "over kapasitet", utenfor: "utenfor lastkurven / bommen", ukjent: "ukjent vekt" };
+const FARGE = { gronn: "#2e9e4a", gul: "#e9a13b", rod: "#d22b34", ukjent: "#6b7280", utenfor: "#6b7280", forLangt: "#8b5cf6", ingenKurve: "#6b7280" };
+const NAVN = { gronn: "innenfor (under 90 %)", gul: "90–100 % — sjekk", rod: "over kapasitet", utenfor: "utenfor bommen",
+  forLangt: "lenger ut enn lastkurven", ukjent: "ukjent vekt", ingenKurve: "venter på lastkurven" };
+const REKKE = ["gronn", "gul", "rod", "forLangt", "utenfor", "ukjent", "ingenKurve"];
 
 function resultatHtml(svar, harKurve) {
   const tl = svar.telling;
   let h = "";
   if (!harKurve) h += '<div class="lag-ulagret" style="color:var(--warn)">⚠ ' + esc(t("Skriv inn lastkurven fra kranens datablad for å sjekke løftene.")) + "</div>";
   if (!tl.totalt) return h + '<p class="lp-liten">' + esc(t("Ingen elementer i de valgte materialgruppene.")) + "</p>";
-  h += ["gronn", "gul", "rod", "utenfor", "ukjent"].filter(k => tl[k]).map(k => '<div class="lp-tell"><span class="fdv-pill" style="background:' + FARGE[k] + ';color:' + (k === "gul" ? "#111" : "#fff") + '">' + tl[k] + "</span> " + esc(t(NAVN[k])) + "</div>").join("");
+  h += REKKE.filter(k => tl[k]).map(k => '<div class="lp-tell"><span class="fdv-pill" style="background:' + FARGE[k] + ';color:' + (k === "gul" ? "#111" : "#fff") + '">' + tl[k] + "</span> " + esc(t(NAVN[k])) + "</div>").join("");
   h += '<label class="fdv-farger"><input type="checkbox" id="lpFarger"' + (tilstand.farger ? " checked" : "") + "> " + esc(t("Fargelegg modellen")) + "</label>";
-  const ikkeOk = svar.rader.filter(r => r.farge !== "gronn");
+  // Uten lastkurve er det bare vekten som kan sjekkes: vis de som mangler vekt
+  const ikkeOk = svar.rader.filter(r => r.farge !== "gronn" && r.farge !== "ingenKurve");
   if (ikkeOk.length) {
     h += '<div class="koll-lbl">' + esc(t("MÅ SJEKKES · {0}", ikkeOk.length)) + "</div>";
-    h += ikkeOk.slice(0, 40).map(r => '<div class="lp-rad" data-lp-gaa="' + r.id + '"><span class="fdv-prikk" style="background:' + FARGE[r.farge] + '"></span><span class="lp-n">' + esc(r.navn || r.type) + "</span>" +
-      '<span class="lp-t">' + (r.kg ? esc(tusen(r.kg)) + " kg" : esc(t("ukjent vekt"))) + " · R " + String(r.r).replace(".", ",") + " m" + (r.utn != null ? " · <b>" + String(r.utn).replace(".", ",") + " %</b>" : "") + "</span></div>").join("");
+    h += ikkeOk.slice(0, 40).map(r => '<div class="lp-rad" data-lp-gaa="' + esc(r.id) + '"><span class="fdv-prikk" style="background:' + FARGE[r.farge] + '"></span><span class="lp-n">' + (r.mat ? "📦 " : "") + esc(r.navn || r.type) + "</span>" +
+      '<span class="lp-t">' + (r.kg ? esc(tusen(r.kg)) + " kg"
+        // 📦 Materiell uten vekt: skriv den inn her (lagres på materiell-objektet)
+        : r.mat ? '<input type="text" inputmode="decimal" class="lp-vekt" data-lp-vekt="' + esc(String(r.id).slice(4)) + '" placeholder="' + esc(t("vekt kg")) + '">'
+        : esc(t("ukjent vekt"))) + " · R " + String(r.r).replace(".", ",") + " m" + (r.utn != null ? " · <b>" + String(r.utn).replace(".", ",") + " %</b>" : "") + "</span></div>").join("");
     if (ikkeOk.length > 40) h += '<p class="lp-liten">' + esc(t("… og {0} til (se Excel).", ikkeOk.length - 40)) + "</p>";
   }
   h += '<div class="lag-knapper"><button class="primary" id="lpExcel">' + esc(t("Excel")) + "</button>" +
@@ -124,13 +156,28 @@ export function koblLofteplan(o, oppdater) {
     return ut;
   };
   const lagre = (endring, tekst) => oppdater({ lofteplan: Object.assign({}, p, endring) }, tekst || "Løfteplan endret");
-  body.querySelectorAll("[data-lp-r], [data-lp-kg]").forEach(inp => {
-    inp.onchange = () => lagre({ kurve: K.vaskLastkurve(lesKurve()) }, "Lastkurve endret");
+  // Kurven lagres først når ingen rad er halvfylt. Til da står feltene som
+  // et utkast (de overlever at panelet tegnes på nytt).
+  const lagreKurve = (felt) => {
+    const d = K.delKurveFelt(felt);
+    if (d.halve) {
+      const forste = !utkastFor(o.id);
+      tilstand.utkast = { kranId: o.id, felt };
+      if (forste) { const h = body.querySelector(".lp-kurve"); if (h && !body.querySelector(".lp-utkast")) h.insertAdjacentHTML("afterend", '<p class="lp-liten lp-utkast" style="color:var(--warn)">' + esc(t("Fyll inn både radius og maks last på hver rad — da lagres kurven.")) + "</p>"); }
+      return;
+    }
+    tilstand.utkast = null;
+    lagre({ kurve: K.vaskLastkurve(d.hele) }, "Lastkurve endret");
+  };
+  const koblFelt = (inp) => {
+    inp.onchange = () => lagreKurve(lesKurve());
     inp.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); inp.blur(); } };
-  });
+  };
+  body.querySelectorAll("[data-lp-r], [data-lp-kg]").forEach(koblFelt);
   body.querySelectorAll("[data-lp-fjern]").forEach(b => b.onclick = () => {
     const i = Number(b.dataset.lpFjern);
-    lagre({ kurve: K.vaskLastkurve(lesKurve().filter((_, j) => j !== i)) }, "Lastkurve endret");
+    lagreKurve(lesKurve().filter((_, j) => j !== i));
+    if (tilstand.utkast) { const R = S.riggTegnPanel; if (R) R(); }
   });
   const ny = body.querySelector("[data-lp-ny]");
   if (ny) ny.onclick = () => {
@@ -138,7 +185,7 @@ export function koblLofteplan(o, oppdater) {
     const k = body.querySelector(".lp-kurve");
     const i = body.querySelectorAll("[data-lp-r]").length;
     k.insertAdjacentHTML("beforeend", '<input type="text" inputmode="decimal" data-lp-r="' + i + '" placeholder="m"><input type="text" inputmode="decimal" data-lp-kg="' + i + '" placeholder="kg"><span></span>');
-    k.querySelectorAll('[data-lp-r="' + i + '"], [data-lp-kg="' + i + '"]').forEach(inp => { inp.onchange = () => lagre({ kurve: K.vaskLastkurve(lesKurve()) }, "Lastkurve endret"); });
+    k.querySelectorAll('[data-lp-r="' + i + '"], [data-lp-kg="' + i + '"]').forEach(koblFelt);
     const f = k.querySelector('[data-lp-r="' + i + '"]'); if (f) f.focus();
   };
   const ut = $("lpUtstyr"); if (ut) ut.onchange = () => lagre({ utstyrKg: ut.value }, "Løfteutstyr endret");
@@ -146,6 +193,7 @@ export function koblLofteplan(o, oppdater) {
   oppdaterResultat(o, oppdater);
 }
 
+const hentKran = (o) => (S.rigg || []).find(x => x && x.id === o.id) || null;
 async function oppdaterResultat(o, oppdater) {
   const p = K.vaskLofteplan(o.lofteplan);
   const svar = await regn(o).catch(() => null);
@@ -162,7 +210,12 @@ async function oppdaterResultat(o, oppdater) {
   });
   rEl.innerHTML = resultatHtml(svar, p.kurve.length > 0);
   const fa = $("lpFarger"); if (fa) fa.onchange = () => { tilstand.farger = fa.checked; tegnFarger(); };
-  rEl.querySelectorAll("[data-lp-gaa]").forEach(d => d.onclick = () => gaaTil(Number(d.dataset.lpGaa)));
+  rEl.querySelectorAll("[data-lp-gaa]").forEach(d => d.onclick = (e) => { if (e.target && e.target.closest && e.target.closest("input")) return; const v = d.dataset.lpGaa; gaaTil(/^mat:/.test(v) ? v : Number(v)); });
+  rEl.querySelectorAll("[data-lp-vekt]").forEach(inp => {
+    const sett = () => { if (!inp.value.trim() || !S.materiellSettVekt) return; if (S.materiellSettVekt(inp.dataset.lpVekt, inp.value)) oppdaterResultat(hentKran(o) || o, oppdater); };
+    inp.onchange = sett;
+    inp.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); inp.blur(); } };
+  });
   const ex = $("lpExcel"); if (ex) ex.onclick = () => lastNedExcel(o);
   const mk = $("lpMark"); if (mk) mk.onclick = () => lagMarkeringer(o);
   tegnFarger();
@@ -186,8 +239,20 @@ async function tegnFarger() {
   const E = await import("./elements.js");
   if (r !== runde) return;
   const v = new THREE.Vector3();
-  for (const f of ["gronn", "gul", "rod", "utenfor", "ukjent"]) {
-    const ider = new Set(tilstand.svar.rader.filter(x => x.farge === f).map(x => x.id));
+  const elMap = new Map((await elementer()).filter(e => e.mat).map(e => [e.id, e]));
+  if (r !== runde) return;
+  for (const f of REKKE) {
+    const rad = tilstand.svar.rader.filter(x => x.farge === f);
+    const ider = new Set(rad.filter(x => !x.mat).map(x => x.id));
+    // 📦 materiellet: en farget boks rundt bunken
+    for (const x of rad.filter(x => x.mat)) {
+      const e = elMap.get(x.id); if (!e) continue;
+      const st = [0, 1, 2].map(i => Math.max(1e-3, e.box.max[i] - e.box.min[i]) * 1.04);
+      const m = new THREE.Mesh(new THREE.BoxGeometry(st[0], st[1], st[2]), new THREE.MeshBasicMaterial({ color: FARGE[f], transparent: true, opacity: 0.55, depthWrite: false }));
+      m.position.set((e.box.min[0] + e.box.max[0]) / 2, (e.box.min[1] + e.box.max[1]) / 2, (e.box.min[2] + e.box.max[2]) / 2);
+      m.renderOrder = 990; m.raycast = () => {};
+      fargeGruppe.add(m);
+    }
     if (!ider.size) continue;
     const pos = [];
     E.forHverTrekant(ider, (pp, a, b, c, mtx) => { for (const i of [a, b, c]) { v.fromBufferAttribute(pp, i); if (mtx) v.applyMatrix4(mtx); pos.push(v.x, v.y, v.z); } });
@@ -206,6 +271,13 @@ export function etterRiggPanel(valgtKran) {
 }
 
 async function gaaTil(id) {
+  if (typeof id === "string" && id.startsWith("mat:")) {
+    const e = (await materiellElementer()).find(x => x.id === id);
+    if (!e) return;
+    const c = new THREE.Vector3((e.box.min[0] + e.box.max[0]) / 2, (e.box.min[1] + e.box.max[1]) / 2, (e.box.min[2] + e.box.max[2]) / 2);
+    flyTil(c, Math.max(Math.hypot(e.box.max[0] - e.box.min[0], e.box.max[1] - e.box.min[1], e.box.max[2] - e.box.min[2]) * 2.5, 2.5 / (S.enhetSkala || 1)));
+    return;
+  }
   const E = await import("./elements.js");
   const b = E.allElementBoxes().get(id);
   if (!b) return;
@@ -240,12 +312,14 @@ export async function lagMarkeringer(o) {
   const E = await import("./elements.js");
   const boxes = E.allElementBoxes();
   const laget = [];
+  const matEl = new Map((await materiellElementer()).map(e => [e.id, e]));
   for (const r of rode) {
-    const b = boxes.get(r.id); if (!b) continue;
-    const c = b.getCenter(new THREE.Vector3());
-    let gid = ""; try { const { metaFor } = await import("./ifcrpc.js"); gid = (metaFor(r.id) || {}).globalId || ""; } catch (_) {}
+    let c;
+    if (r.mat) { const e = matEl.get(r.id); if (!e) continue; c = new THREE.Vector3((e.box.min[0] + e.box.max[0]) / 2, (e.box.min[1] + e.box.max[1]) / 2, (e.box.min[2] + e.box.max[2]) / 2); }
+    else { const b = boxes.get(r.id); if (!b) continue; c = b.getCenter(new THREE.Vector3()); }
+    let gid = ""; if (!r.mat) try { const { metaFor } = await import("./ifcrpc.js"); gid = (metaFor(r.id) || {}).globalId || ""; } catch (_) {}
     const m = M.vaskMarkering({ id: M.nyId(), text: t("Kransjekk") + ": " + (r.navn || r.type) + "\n" + t("{0} kg med utstyr · radius {1} m · kapasitet {2} kg · {3} %", tusen(r.last), String(r.r).replace(".", ","), tusen(r.kap), String(r.utn).replace(".", ",")),
-      author: M.innloggetNavn(), date: M.naaTekst(), status: "Åpen", x: c.x, y: c.y, z: c.z, globalId: gid, elementId: r.id });
+      author: M.innloggetNavn(), date: M.naaTekst(), status: "Åpen", x: c.x, y: c.y, z: c.z, globalId: gid, elementId: r.mat ? undefined : r.id });
     if (!m) continue;
     M.leggTilImportertMarkering(m); laget.push(m);
   }
