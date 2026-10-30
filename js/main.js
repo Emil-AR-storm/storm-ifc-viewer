@@ -70,6 +70,7 @@ const MODULER = [
   ["./em.js", true],               // 📝 Endringsmelding fra modellen (kun kontor) — ETTER compare.js
   ["./lag.js", true],              // 🧅 Lag: fagmodeller oppå hovedmodellen (kun kontor, runde 5)
   ["./kollisjon.js", true],        // 💥 Kollisjon: lagene mot hovedmodellen (kun kontor, runde 6)
+  ["./fdv.js", true],              // 📁 FDV: FDV-grupper og overlevering (kun kontor, runde 7)
   ["./recent.js"],
   ["./share.js", true],
   ["./byggeplass.js", true],
@@ -163,6 +164,8 @@ canvas.addEventListener("pointerup", (e) => {
   // i hovedmodellen og så i laget (lag.js). Går foran alt annet, ellers ville
   // trykket åpnet egenskapene i stedet.
   if (S.lagKlikk && !S.mode && !e.shiftKey && S.lagKlikk(e.clientX, e.clientY)) return;
+  // 📁 FDV → «Rediger»: trykket legger objektet i FDV-gruppa (eller tar det ut)
+  if (S.fdvKlikk && !S.mode && S.fdvKlikk(e.clientX, e.clientY)) return;
   // 🧱 Støpeplanens velgemodus: et vanlig trykk legger til / tar bort, som
   // shift-klikk. Shift + dra og shift-klikk går sin vanlige vei (elements.js).
   if (S.velgModusAktiv && !S.mode && !e.shiftKey) {

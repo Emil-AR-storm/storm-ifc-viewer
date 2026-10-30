@@ -153,6 +153,11 @@ export const KORT = [
     tekst: "Fanen Kollisjon i Lag-panelet (den kommer når et lag er lagt til) kontrollerer hvert lag mot hovedmodellen. Armering mot betong: finner armering som stikker utenfor betongen, og for liten overdekning hvis du skriver inn kravet fra RIB (tomt felt = ikke kontrollert). Stål, rør og andre lag: finner det som går inn i betongen (å ligge an mot er i orden). Trykk Kjør kontroll. Pilene nederst går gjennom funnene ett og ett og zoomer dit. Godkjenn det som er riktig (for eksempel oppstikk til neste støp) med en kort begrunnelse, eller lag en markering. Status (Ny, Godkjent, Løst) lagres i SharePoint, så neste kjøring viser bare det som er nytt — og det RIB har rettet, blir Løst av seg selv. BCF og Excel lages fra lista."
   },
   {
+    hvor: "kontor", ikonNavn: "fdv",
+    tittel: "FDV: én gruppe per vare, med PDF-ene og objektene",
+    tekst: "FDV (i Dokumentasjon) samler FDV-dokumentene. Slipp PDF-ene for en vare (FDV, produktdatablad, ytelseserklæring, samsvarserklæring) i ruta, så blir det en FDV-gruppe. Klikk så objektene i 3D som hører til — de blir blå. Et nytt klikk tar et objekt ut igjen, så det er lett å rette en feil. «Marker alle like» tar med alle av samme Revit-type. Samme vare kan ha mange navn i modellen; det er derfor objektene, ikke navnene, kobles til gruppa. Modellen fargelegges: grønn = gruppa har alle dokumentene, gul = noe mangler, rød = objektet er ikke i noen gruppe. FDV-pakke laster ned Excel-register og en ZIP med PDF-ene sortert per gruppe. Gruppene og PDF-ene lagres i SharePoint (FDV), så du må være logget inn."
+  },
+  {
     hvor: "kontor", ikonNavn: "tegning",
     tittel: "Dagsrapport: én rapport per dag",
     tekst: "Dagsrapport ligger i Rapport-menyen (Dokumentasjon), bare på kontorsiden. Uke-stripa viser hvilke dager som er levert, hvilke som er utkast og hvilke arbeidsdager som mangler (rødt). Været fylles inn av seg selv fra adressen i Prosjektinfo. Du fyller ut bemanning (firma, fag, antall, timer), utført arbeid og hindringer og avvik, og kan legge ved bilder. «Samme som sist» henter bemanningen fra forrige rapport. Signer og lag PDF låser rapporten og legger PDF-en i SharePoint. Ny versjon lager en kopi du kan endre, og den signerte blir liggende. Hele uka som PDF gir en forside med uka i tall og avvik, og så hver dag."

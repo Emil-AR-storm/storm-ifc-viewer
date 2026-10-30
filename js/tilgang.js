@@ -45,7 +45,7 @@ const testÅpent = () => TESTKOPI && !globalThis.__STORM_TEST_LÅS;
 // Låsen settes PER KNAPP, fordi Bygg Info er delvis gratis (Søk og Markeringer).
 export const LÅSTE_KNAPPER = [
   // Bygg Info
-  "btnQty", "btnPris", "btnGrupper", "btnLaster", "btnCompare", "btnEm", "btnLag",
+  "btnQty", "btnPris", "btnGrupper", "btnLaster", "btnCompare", "btnEm", "btnLag", "btnFdv",
   // Planlegging
   "btnTerreng", "btnRigg", "btnStopeplan", "btnFramdrift", "btnVaer",
   // Storm-Byggeplass
