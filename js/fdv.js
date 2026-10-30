@@ -28,7 +28,13 @@ const tilstand = {
   ulagret: new Set(),        // filer som venter på opplasting
   indeks: null,              // { nokkel, objekter: [...], perGid: Map }
   lest: "",                  // nøkkelen gruppene er lest for
-  jobber: ""
+  jobber: "",
+  // 📚 FDV-biblioteket (valg A 30.10): varene for hele Storm, på tvers av prosjekter
+  bib: [],                   // alle varer (også gravsteiner), som i SharePoint
+  bibLest: false,
+  fane: "prosjekt",          // "prosjekt" | "bibliotek"
+  sok: "",
+  skjulForslag: ""           // nøkkelen forslagene er skjult for (denne økta)
 };
 export const _tilstand = tilstand;
 const nokkel = () => F.lagerNokkel(S.prosjektInfo ? S.prosjektInfo().nummer : "", S.fileName);
@@ -80,8 +86,61 @@ async function lesGrupper() {
       if (r.status === "ok") liste = flett(liste, r.liste);
     } catch (_) {}
   }
-  tilstand.grupper = liste.map(F.vaskGruppe).filter(Boolean);
+  await lesBib();
+  // Dokumenter andre prosjekter har lagt på samme vare, blir med her også
+  const varer = new Map(F.levendeVarer(tilstand.bib).map(v => [v.id, v]));
+  tilstand.grupper = liste.map(F.vaskGruppe).filter(Boolean).map(g => (g.slettet || !varer.has(F.vareId(g)) ? g : F.flettVareDok(g, varer.get(F.vareId(g)))));
   tilstand.lest = k;
+  // Grupper fra før biblioteket fantes (eller laget uten innlogging): inn nå
+  const mangler = F.levende(tilstand.grupper).filter(g => !varer.has(F.vareId(g)));
+  if (mangler.length) oppdaterBib(mangler);
+}
+// ---------- 📚 Biblioteket ----------
+const BIB_LOKAL = "storm.fdv._bibliotek";
+async function lesBib() {
+  if (tilstand.bibLest) return;
+  let liste = [];
+  try { liste = JSON.parse(localStorage.getItem(BIB_LOKAL) || "[]") || []; } catch (_) {}
+  if (spPaalogget()) {
+    try {
+      const r = await spLes(F.FDV_MAPPE, F.BIB_FIL);
+      if (r.status === "ok") liste = flettVarer(liste, r.liste);
+    } catch (_) {}
+  }
+  tilstand.bib = liste.map(F.vaskVare).filter(Boolean);
+  tilstand.bibLest = true;
+}
+function flettVarer(a, b) {
+  const m = new Map();
+  for (const v0 of (b || []).concat(a || [])) { const v = F.vaskVare(v0); if (!v) continue; const f = m.get(v.id); if (!f || String(v.endret) > String(f.endret)) m.set(v.id, v); }
+  return [...m.values()];
+}
+function lagreBib(endrede) {
+  if (!endrede.length) return;
+  const m = new Map(tilstand.bib.map(v => [v.id, v]));
+  for (const v of endrede) m.set(v.id, v);
+  tilstand.bib = [...m.values()];
+  try { localStorage.setItem(BIB_LOKAL, JSON.stringify(tilstand.bib)); } catch (_) {}
+  if (spPaalogget()) spSkriv(F.FDV_MAPPE, F.BIB_FIL, endrede, (p) => String(p && p.id || "")).catch(() => {});
+}
+// Endrede grupper → varene i biblioteket (gruppa lærer biblioteket typene sine)
+function oppdaterBib(endrede) {
+  const ut = [];
+  for (const g of endrede || []) {
+    if (!g || g.slettet) continue;
+    if (!g.dokumenter.length && !g.objekter.length && !g.uten3d.length) continue;   // tom «Ny vare» — ikke ennå
+    const v = F.vareFraGruppe(tilstand.bib, g, nokkel(), naa(), innlogget());
+    if (v) ut.push(v);
+  }
+  lagreBib(ut);
+}
+const finnVare = (id) => F.levendeVarer(tilstand.bib).find(v => v.id === id) || null;
+// En hel type tatt ut av gruppa = feilkobling: biblioteket glemmer den
+function glemTyper(g, typer) {
+  const v = finnVare(F.vareId(g));
+  if (!v || !typer.length) return;
+  let ny = v; for (const ty of typer) ny = F.glemType(ny, ty, naa());
+  lagreBib([ny]);
 }
 function flett(a, b) {
   const m = new Map();
@@ -90,6 +149,7 @@ function flett(a, b) {
 }
 function lagre(endrede) {
   try { localStorage.setItem(lokalNokkel(), JSON.stringify(tilstand.grupper)); } catch (_) {}
+  try { oppdaterBib((endrede || []).map(F.vaskGruppe)); } catch (_) {}
   if (spPaalogget() && endrede && endrede.length) spSkriv(F.FDV_MAPPE, filnavn(), endrede.map(F.vaskGruppe).filter(Boolean), (p) => String(p && p.id || "")).catch(() => {});
 }
 // Ny liste + angre. tekst = hva som skjedde (vises i Angre)
@@ -216,7 +276,7 @@ export async function alleLike(taUtIstedet) {
   if (!g || !o) { varsel(t("Klikk først et objekt i 3D.")); return; }
   const ix = await byggIndeks();
   const like = ix.objekter.filter(x => x.type === o.type);
-  if (taUtIstedet) bytt(F.taUt(tilstand.grupper, g.id, like.map(x => x.gid), naa()), t("Tatt ut av FDV-gruppe"), [g.id]);
+  if (taUtIstedet) { bytt(F.taUt(tilstand.grupper, g.id, like.map(x => x.gid), naa()), t("Tatt ut av FDV-gruppe"), [g.id]); glemTyper(g, [o.type]); }
   else {
     const r = F.leggTil(tilstand.grupper, g.id, like.map(x => ({ gid: x.gid, type: x.type })), naa());
     bytt(r.grupper, t("Lagt til i FDV-gruppe"), null);
@@ -309,6 +369,67 @@ export async function lastNedPakke() {
   } finally { tilstand.jobber = ""; tegn(); }
 }
 
+// ---------- 📚 Bruk en vare fra biblioteket ----------
+// medObjekter: legg også inn de ledige objektene med typene varen kjenner
+export async function brukVare(id, medObjekter, rediger) {
+  await lesGrupper();
+  const v = finnVare(id);
+  if (!v) return null;
+  if (F.levende(tilstand.grupper).some(g => F.vareId(g) === v.id)) { varsel(t("«{0}» er allerede i dette prosjektet.", v.navn)); return null; }
+  let g = F.gruppeFraVare(v, naa(), innlogget());
+  let liste = tilstand.grupper.concat([g]);
+  let n = 0;
+  if (medObjekter) {
+    const ix = await byggIndeks();
+    const f = F.forslag([v], tilstand.grupper, ix.objekter)[0];
+    if (f) { liste = F.leggTil(liste, g.id, f.objekter, naa()).grupper; n = f.objekter.length; }
+  }
+  bytt(liste, t("Vare hentet fra FDV-biblioteket"), [g.id]);
+  tilstand.fane = "prosjekt";
+  if (rediger) startRedigering(g.id); else tegn();
+  varsel(n ? t("«{0}» hentet fra biblioteket med {1} objekter.", v.navn, n) : t("«{0}» hentet fra biblioteket. Klikk objektene i 3D som hører til.", v.navn));
+  return finn(g.id);
+}
+export async function brukAlleForslag() {
+  await lesGrupper();
+  const ix = await byggIndeks();
+  const fs = F.forslag(tilstand.bib, tilstand.grupper, ix.objekter);
+  if (!fs.length) return 0;
+  let liste = tilstand.grupper; const ider = [];
+  for (const f of fs) {
+    const g = F.gruppeFraVare(f.vare, naa(), innlogget());
+    liste = F.leggTil(liste.concat([g]), g.id, f.objekter, naa()).grupper; ider.push(g.id);
+  }
+  bytt(liste, t("Varer hentet fra FDV-biblioteket"), ider);
+  varsel(t("{0} varer hentet fra biblioteket.", fs.length));
+  return fs.length;
+}
+// Ny vare uten PDF (f.eks. spiker — PDF-en kommer senere)
+export function nyTomVare() {
+  const g = F.vaskGruppe({ id: F.nyId(), navn: t("Ny vare"), dokumenter: [], objekter: [], endret: naa(), av: innlogget() });
+  bytt(tilstand.grupper.concat([g]), t("Ny FDV-gruppe"), [g.id]);
+  startRedigering(g.id);
+  return g;
+}
+// 🔩 Linjer uten 3D i gruppa
+export function leggTilLinje(gruppeId, navn, mengde, enhet) {
+  const l = F.vaskLinje({ id: F.nyId(), navn, mengde, enhet });
+  const g = finn(gruppeId);
+  if (!l || !g) { varsel(t("Skriv navnet på varen.")); return null; }
+  bytt(tilstand.grupper.map(x => (x && x.id === g.id ? Object.assign({}, x, { uten3d: (x.uten3d || []).concat([l]), endret: naa() }) : x)), t("Vare uten 3D lagt til"), [g.id]);
+  return l;
+}
+function endreLinjer(gruppeId, gjor, tekst) {
+  const g = finn(gruppeId); if (!g) return;
+  bytt(tilstand.grupper.map(x => (x && x.id === g.id ? Object.assign({}, x, { uten3d: gjor(g.uten3d), endret: naa() }) : x)), tekst, [g.id]);
+}
+function slettVare(id) {
+  const v = finnVare(id);
+  if (!v || !confirm(t("Slette «{0}» fra FDV-biblioteket? Prosjektene som bruker varen beholder gruppa si. PDF-ene blir liggende i SharePoint.", v.navn))) return;
+  lagreBib([{ id: v.id, slettet: true, endret: naa() }]);
+  tegn();
+}
+
 // ---------- Panelet ----------
 const DOKNAVN = (k) => t((F.DOKTYPER.find(d => d.k === k) || F.DOKTYPER[4]).navn);
 export async function tegn() {
@@ -319,18 +440,29 @@ export async function tegn() {
   const ix = await byggIndeks();
   const kart = F.objektKart(tilstand.grupper);
   const grupper = F.levende(tilstand.grupper);
-  let h = "";
+  const varer = F.levendeVarer(tilstand.bib);
+  let h = '<div class="lag-faner fdv-faner"><button data-fdv-fane="prosjekt" class="' + (tilstand.fane === "prosjekt" ? "active" : "") + '">' + esc(t("Dette prosjektet")) + '</button>' +
+    '<button data-fdv-fane="bibliotek" class="' + (tilstand.fane === "bibliotek" ? "active" : "") + '">' + esc(t("Bibliotek · {0}", varer.length)) + '</button></div>';
   if (!spPaalogget()) h += '<div class="lag-ulagret">⚠ ' + esc(t("Ikke lagret — logg inn på SharePoint")) + ' <button data-fdv-logginn>' + esc(t("Logg inn")) + '</button></div>';
   else if (tilstand.ulagret.size) h += '<div class="lag-ulagret">⚠ ' + esc(t("{0} PDF-er venter på opplasting", tilstand.ulagret.size)) + ' <button data-fdv-lastopp>' + esc(t("Prøv igjen")) + '</button></div>';
+  if (tilstand.fane === "bibliotek") { body.innerHTML = h + bibHtml(varer, grupper); koble(body); tegnFarger(); return; }
+  // 💡 Forslag fra biblioteket (typer som er koblet i tidligere prosjekter)
+  const fs = tilstand.skjulForslag === nokkel() ? [] : F.forslag(tilstand.bib, tilstand.grupper, ix.objekter);
+  if (fs.length) {
+    h += '<div class="fdv-forslag"><b>💡 ' + esc(t("{0} varer fra biblioteket passer modellen", fs.length)) + '</b>';
+    for (const f of fs.slice(0, 12)) h += '<div class="fdv-fl"><span>' + esc(f.vare.navn) + ' → ' + f.typer.map(x => '<span class="fdv-tag">' + esc(x.type) + '</span>').join(" ") + ' ' + esc(t("{0} obj", f.antall)) + '</span><button class="primary" data-fdv-bruk="' + esc(f.vare.id) + '">' + esc(t("Bruk")) + '</button></div>';
+    h += '<div class="lag-knapper"><button data-fdv-brukalle>' + esc(t("Bruk alle {0}", fs.length)) + '</button><button data-fdv-skjulforslag>' + esc(t("Skjul")) + '</button></div></div>';
+  }
   h += '<div class="koll-lbl">' + esc(t("STATUS PER FAG")) + '<span>' + esc(t("{0} objekter", ix.objekter.length)) + '</span></div>';
-  for (const s of F.statusPerFag(ix.objekter, kart)) {
+  for (const s of F.statusPerFag(ix.objekter, kart, tilstand.grupper)) {
     const farge = s.prosent >= 100 ? "var(--ok)" : s.prosent > 0 ? "var(--warn)" : "var(--danger)";
     h += '<div class="fdv-fag"><b>' + esc(t(s.fag)) + '</b><span class="fdv-bar"><i style="width:' + s.prosent + '%;background:' + farge + '"></i></span><span>' + s.prosent + ' %</span></div>';
   }
   h += '<label class="fdv-farger"><input type="checkbox" id="fdvFarger"' + (tilstand.farger ? " checked" : "") + '> ' + esc(t("Fargelegg modellen")) +
     ' <span class="fdv-prikk" style="background:#3cb44b"></span>' + esc(t("ferdig")) + ' <span class="fdv-prikk" style="background:#e9a13b"></span>' + esc(t("mangler dokument")) +
     ' <span class="fdv-prikk" style="background:#d22b34"></span>' + esc(t("ikke i gruppe")) + '</label>';
-  h += '<div class="lag-slipp" id="fdvSlipp">' + esc(t("Slipp FDV-PDF-er her → ny FDV-gruppe")) + '<input type="file" id="fdvFil" accept=".pdf" multiple hidden></div>';
+  h += '<div class="lag-slipp" id="fdvSlipp">' + esc(t("Slipp FDV-PDF-er her → ny FDV-gruppe")) + '<input type="file" id="fdvFil" accept=".pdf" multiple hidden></div>' +
+    '<div class="lag-knapper"><button data-fdv-tom>' + esc(t("＋ Ny vare uten PDF (skriv inn)")) + '</button></div>';
   if (tilstand.jobber) h += '<div class="koll-jobb">' + esc(tilstand.jobber) + '</div>';
   h += '<div class="koll-lbl">' + esc(t("FDV-GRUPPER · {0}", grupper.length)) + '</div>';
   if (!grupper.length) h += '<p class="lag-tom">' + esc(t("Ingen FDV-grupper ennå. Slipp PDF-ene for en vare i ruta over, og klikk objektene i 3D som hører til.")) + '</p>';
@@ -339,7 +471,8 @@ export async function tegn() {
     h += '<div class="fdv-gruppe' + (aktiv ? " aktiv" : "") + '" data-fdv-gruppe="' + esc(g.id) + '">' +
       '<div class="fdv-gh"><span class="fdv-pill ' + (st.ferdig ? "g" : st.har.length ? "y" : "r") + '">' + st.har.length + '/' + st.krav.length + '</span>' +
       (aktiv ? '<input type="text" class="fdv-navn" data-fdv-navn="' + esc(g.id) + '" value="' + esc(g.navn) + '">' : '<b>' + esc(g.navn) + '</b>') +
-      '<span class="fdv-ant">' + esc(t("{0} objekter", g.objekter.length)) + '</span></div>';
+      (g.fraBib ? '<span class="fdv-tag" title="' + esc(t("fra biblioteket")) + '">📚</span>' : "") +
+      (g.uten3d.length && !g.objekter.length ? '<span class="fdv-tag uten">' + esc(t("uten 3D")) + '</span>' : '<span class="fdv-ant">' + esc(t("{0} objekter", g.objekter.length)) + '</span>') + '</div>';
     if (aktiv) {
       h += '<div class="fdv-hint">👆 ' + esc(t("Klikk objektene i 3D som hører til (blå). Klikk igjen for å ta ut. Esc = ferdig.")) + '</div>' +
         '<div class="lag-knapper"><button data-fdv-like>' + esc(t("Marker alle like")) + '</button><button data-fdv-ikkelike>' + esc(t("Fjern alle like")) + '</button><button class="primary" data-fdv-ferdig>' + esc(t("Ferdig")) + '</button></div>';
@@ -353,11 +486,15 @@ export async function tegn() {
         '<select data-fdv-type="' + i + '">' + F.DOKTYPER.map(x => '<option value="' + x.k + '"' + (x.k === d.type ? " selected" : "") + '>' + esc(t(x.navn)) + '</option>').join("") + '</select>' +
         '<button class="lag-x" data-fdv-fjerndok="' + i + '" title="' + esc(t("Fjern dokumentet")) + '">✕</button></div>').join("");
       h += '<div class="lag-slipp liten" data-fdv-slipp="' + esc(g.id) + '">' + esc(t("Slipp flere PDF-er på denne gruppa")) + '</div>';
+      h += '<div class="koll-lbl">' + esc(t("VARER UTEN 3D-MODELL")) + '</div>';
+      h += g.uten3d.map((l, i) => '<div class="fdv-u3"><span>' + esc(l.navn) + '</span><input type="text" inputmode="decimal" class="fdv-u3m" data-fdv-u3mengde="' + i + '" value="' + (l.mengde == null ? "" : String(l.mengde).replace(".", ",")) + '" placeholder="' + esc(t("mengde")) + '"><span class="fdv-u3e">' + esc(l.enhet) + '</span><button class="lag-x" data-fdv-u3fjern="' + i + '" title="' + esc(t("Fjern")) + '">✕</button></div>').join("");
+      h += '<div class="fdv-u3 ny"><input type="text" id="fdvU3Navn" placeholder="' + esc(t("Navn, f.eks. Skruer 6×60 A4")) + '"><input type="text" inputmode="decimal" id="fdvU3Mengde" class="fdv-u3m" placeholder="' + esc(t("mengde")) + '">' +
+        '<select id="fdvU3Enhet">' + F.ENHETER.map(e => '<option>' + esc(e) + '</option>').join("") + '</select><button class="primary" data-fdv-u3ny>＋</button></div>';
       const pt = F.perType(g);
       if (pt.length) h += '<div class="koll-lbl">' + esc(t("OBJEKTER I GRUPPA")) + '</div>' + pt.map(x => '<div class="fdv-obj"><span>' + esc(x.type) + '</span><b>' + x.antall + '</b><button class="lag-x" data-fdv-fjerntype="' + esc(x.type) + '" title="' + esc(t("Ta ut av gruppa")) + '">✕</button></div>').join("");
       h += '<div class="lag-knapper"><button data-fdv-slett>' + esc(t("Slett gruppa")) + '</button></div>';
     } else {
-      h += '<div class="fdv-sub">' + esc(F.perType(g).slice(0, 3).map(x => x.type + " (" + x.antall + ")").join(" · ") || t("ingen objekter ennå")) +
+      h += '<div class="fdv-sub">' + esc(F.perType(g).slice(0, 3).map(x => x.type + " (" + x.antall + ")").concat(g.uten3d.slice(0, 3).map(l => l.navn + " (" + F.mengdeTekst(l) + ")")).join(" · ") || t("ingen objekter ennå")) +
         (st.mangler.length ? ' · ' + esc(t("mangler {0}", st.mangler.map(DOKNAVN).join(", "))) : "") + '</div>' +
         '<div class="lag-knapper"><button data-fdv-rediger="' + esc(g.id) + '">' + esc(t("Rediger")) + '</button></div>';
     }
@@ -369,7 +506,37 @@ export async function tegn() {
   tegnFarger();
 }
 
+function bibHtml(varer, grupper) {
+  const brukt = new Set(grupper.map(F.vareId));
+  const treff = F.sokVarer(tilstand.bib, tilstand.sok);
+  let h = '<input type="search" class="fdv-sok" id="fdvSok" placeholder="🔍 ' + esc(t("Søk i biblioteket (navn eller Revit-type)")) + '" value="' + esc(tilstand.sok) + '">';
+  if (!varer.length) return h + '<p class="lag-tom">' + esc(t("Biblioteket er tomt. Hver FDV-gruppe du lager i et prosjekt, havner her av seg selv — med PDF-ene og Revit-typene.")) + '</p>';
+  if (!treff.length) h += '<p class="lag-tom">' + esc(t("Ingen treff.")) + '</p>';
+  for (const v of treff.slice(0, 80)) {
+    const st = F.gruppeStatus(v);
+    h += '<div class="fdv-gruppe fdv-vare"><div class="fdv-gh"><b>' + esc(v.navn) + '</b>' +
+      (v.uten3d.length && !v.typer.length ? '<span class="fdv-tag uten">' + esc(t("uten 3D")) + '</span>' : "") +
+      '<span class="fdv-pill ' + (st.ferdig ? "g" : st.har.length ? "y" : "r") + '">' + st.har.length + '/' + st.krav.length + '</span></div>' +
+      '<div class="fdv-sub">' + esc(t("Brukt i {0} prosjekter", v.prosjekter.length)) + (v.typer.length ? ' · ' + esc(t("Revit-typer: {0}", v.typer.slice(0, 4).join(", ") + (v.typer.length > 4 ? " …" : ""))) : "") +
+      (v.uten3d.length ? ' · ' + esc(v.uten3d.slice(0, 3).map(l => l.navn + " (" + l.enhet + ")").join(", ")) : "") + '</div>' +
+      (v.dokumenter.length ? '<div class="fdv-sub">' + v.dokumenter.map(d => '<a href="#" data-fdv-apne="' + esc(d.fil) + '">📄 ' + esc(DOKNAVN(d.type)) + '</a>').join(" · ") + '</div>' : "") +
+      '<div class="lag-knapper">' + (brukt.has(v.id) ? '<span class="fdv-ibruk">✓ ' + esc(t("i dette prosjektet")) + '</span>' : '<button class="primary" data-fdv-brukbib="' + esc(v.id) + '">' + esc(t("Bruk i dette prosjektet")) + '</button>') +
+      '<button class="lag-x" data-fdv-slettvare="' + esc(v.id) + '" title="' + esc(t("Slett fra biblioteket")) + '">🗑</button></div></div>';
+  }
+  h += '<p class="fdv-note">' + esc(t("Biblioteket ligger i SharePoint (FDV/_bibliotek.fdv.json) og er felles for alle prosjekter. En PDF lagt på en vare i ett prosjekt, kommer med i de andre prosjektene som bruker varen.")) + '</p>';
+  return h;
+}
+
 function koble(body) {
+  body.querySelectorAll("[data-fdv-fane]").forEach(b => b.onclick = () => { tilstand.fane = b.dataset.fdvFane; if (tilstand.aktiv && tilstand.fane !== "prosjekt") stoppRedigering(); else tegn(); });
+  body.querySelectorAll("[data-fdv-bruk]").forEach(b => b.onclick = () => brukVare(b.dataset.fdvBruk, true, false));
+  body.querySelectorAll("[data-fdv-brukbib]").forEach(b => b.onclick = () => brukVare(b.dataset.fdvBrukbib, true, true));
+  body.querySelectorAll("[data-fdv-brukalle]").forEach(b => b.onclick = () => brukAlleForslag());
+  body.querySelectorAll("[data-fdv-skjulforslag]").forEach(b => b.onclick = () => { tilstand.skjulForslag = nokkel(); tegn(); });
+  body.querySelectorAll("[data-fdv-slettvare]").forEach(b => b.onclick = () => slettVare(b.dataset.fdvSlettvare));
+  body.querySelectorAll("[data-fdv-tom]").forEach(b => b.onclick = () => nyTomVare());
+  const sok = body.querySelector("#fdvSok");
+  if (sok) sok.oninput = () => { tilstand.sok = sok.value; const pos = sok.selectionStart; tegn().then(() => { const n = $("fdvSok"); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch (_) {} } }); };
   const fa = body.querySelector("#fdvFarger"); if (fa) fa.onchange = () => { tilstand.farger = fa.checked; tegnFarger(); };
   const sl = body.querySelector("#fdvSlipp"), fil = body.querySelector("#fdvFil");
   if (sl) {
@@ -407,6 +574,23 @@ function koble(body) {
     if (!g) return;
     const gids = g.objekter.filter(o => o.type === b.dataset.fdvFjerntype).map(o => o.gid);
     bytt(F.taUt(tilstand.grupper, g.id, gids, naa()), t("Tatt ut av FDV-gruppe"), [g.id]);
+    glemTyper(g, [b.dataset.fdvFjerntype]);
+  });
+  // 🔩 Varer uten 3D
+  body.querySelectorAll("[data-fdv-u3ny]").forEach(b => b.onclick = () => {
+    if (!g) return;
+    const n = $("fdvU3Navn"), m = $("fdvU3Mengde"), e = $("fdvU3Enhet");
+    if (leggTilLinje(g.id, n ? n.value : "", m ? m.value : "", e ? e.value : "stk")) { const ny = $("fdvU3Navn"); if (ny) ny.focus(); }
+  });
+  const u3n = body.querySelector("#fdvU3Navn"), u3m = body.querySelector("#fdvU3Mengde");
+  [u3n, u3m].forEach(inp => { if (inp) inp.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); const k = body.querySelector("[data-fdv-u3ny]"); if (k) k.click(); } }; });
+  body.querySelectorAll("[data-fdv-u3fjern]").forEach(b => b.onclick = () => {
+    if (!g) return; const i = Number(b.dataset.fdvU3fjern);
+    endreLinjer(g.id, (ls) => ls.filter((_, j) => j !== i), t("Vare uten 3D fjernet"));
+  });
+  body.querySelectorAll("[data-fdv-u3mengde]").forEach(inp => inp.onchange = () => {
+    if (!g) return; const i = Number(inp.dataset.fdvU3mengde);
+    endreLinjer(g.id, (ls) => ls.map((l, j) => (j === i ? F.vaskLinje(Object.assign({}, l, { mengde: inp.value })) : l)), t("Mengde endret"));
   });
   body.querySelectorAll("[data-fdv-slett]").forEach(b => b.onclick = () => {
     if (!g || !confirm(t("Slette FDV-gruppa «{0}»? Objektene blir røde igjen. PDF-ene blir liggende i SharePoint.", g.navn))) return;
@@ -448,6 +632,6 @@ document.addEventListener("click", (e) => { if (e.target && e.target.closest && 
 // Innlogget (popup): last opp PDF-ene som venter, og les gruppene fra SharePoint
 {
   const tidligere = S.onSignedIn;
-  S.onSignedIn = () => { if (tidligere) try { tidligere(); } catch (_) {} tilstand.lest = ""; setTimeout(async () => { await lastOppVentende(); const p = $("fdvPanel"); if (p && p.classList.contains("open")) { await lesGrupper(); tegn(); } }, 0); };
+  S.onSignedIn = () => { if (tidligere) try { tidligere(); } catch (_) {} tilstand.lest = ""; tilstand.bibLest = false; setTimeout(async () => { await lastOppVentende(); const p = $("fdvPanel"); if (p && p.classList.contains("open")) { await lesGrupper(); tegn(); } }, 0); };
 }
 export { byggIndeks as _byggIndeks, lesGrupper as _lesGrupper, klikk as _klikk, fargeGruppe as _fargeGruppe, tegnFarger as _tegnFarger };

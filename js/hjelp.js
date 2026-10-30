@@ -158,6 +158,11 @@ export const KORT = [
     tekst: "FDV (i Dokumentasjon) samler FDV-dokumentene. Slipp PDF-ene for en vare (FDV, produktdatablad, ytelseserklæring, samsvarserklæring) i ruta, så blir det en FDV-gruppe. Klikk så objektene i 3D som hører til — de blir blå. Et nytt klikk tar et objekt ut igjen, så det er lett å rette en feil. «Marker alle like» tar med alle av samme Revit-type. Samme vare kan ha mange navn i modellen; det er derfor objektene, ikke navnene, kobles til gruppa. Modellen fargelegges: grønn = gruppa har alle dokumentene, gul = noe mangler, rød = objektet er ikke i noen gruppe. FDV-pakke laster ned Excel-register og en ZIP med PDF-ene sortert per gruppe. Gruppene og PDF-ene lagres i SharePoint (FDV), så du må være logget inn."
   },
   {
+    tittel: "FDV-bibliotek og varer uten 3D",
+    hvor: "kontor", ikonNavn: "fdv",
+    tekst: "Hver FDV-gruppe du lager, havner av seg selv i FDV-biblioteket (fanen Bibliotek i FDV-panelet) — med PDF-ene og Revit-typene du koblet. Åpner du et nytt prosjekt med de samme typene, foreslår Storm varen i en gul boks: trykk Bruk, så kommer PDF-ene og objektene inn med en gang. I Bibliotek-fanen kan du søke og hente en vare selv. Tar du en hel type ut av en gruppe, glemmer biblioteket den koblingen. Varer som ikke finnes i modellen (skruer, byggeskum, spiker) skriver du inn under «Varer uten 3D-modell» i gruppa, med mengde og enhet — eller lag en «Ny vare uten PDF» og legg PDF-en på senere. De kommer med i status (raden Uten 3D) og i FDV-pakken."
+  },
+  {
     hvor: "kontor", ikonNavn: "tegning",
     tittel: "Dagsrapport: én rapport per dag",
     tekst: "Dagsrapport ligger i Rapport-menyen (Dokumentasjon), bare på kontorsiden. Uke-stripa viser hvilke dager som er levert, hvilke som er utkast og hvilke arbeidsdager som mangler (rødt). Været fylles inn av seg selv fra adressen i Prosjektinfo. Du fyller ut bemanning (firma, fag, antall, timer), utført arbeid og hindringer og avvik, og kan legge ved bilder. «Samme som sist» henter bemanningen fra forrige rapport. Signer og lag PDF låser rapporten og legger PDF-en i SharePoint. Ny versjon lager en kopi du kan endre, og den signerte blir liggende. Hele uka som PDF gir en forside med uka i tall og avvik, og så hver dag."
