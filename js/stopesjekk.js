@@ -106,11 +106,44 @@ export async function lastNedPdf(e) {
   const info = S.prosjektInfo ? S.prosjektInfo() : {};
   const prosjekt = [info.nummer, info.navn].filter(Boolean).join(" · ") || String(S.fileName || "").replace(/\.(ifc|glb)$/i, "");
   try {
-    const fil = await P.lastNedSkjema({ mal, skjema, prosjekt, referanse: t("Etappe {0}", e.nr) + " · " + e.navn + (e.dato ? " · " + e.dato.split("-").reverse().join(".") : ""),
-      iDag: new Date().toISOString().slice(0, 10), hentLogo: hentStopeLogo });
+    const referanse = t("Etappe {0}", e.nr) + " · " + e.navn + (e.dato ? " · " + e.dato.split("-").reverse().join(".") : "");
+    const fil = await P.lastNedSkjema({ mal, skjema, prosjekt, referanse,
+      iDag: new Date().toISOString().slice(0, 10), hentLogo: hentStopeLogo,
+      // 📷 bildene fra telefonen som egne sider etter skjemaet (Emil 30.10)
+      ekstraSider: async () => {
+        const bilder = await hentBilder(e);
+        if (!bilder.length) return null;
+        const { tegnSjekkBilder } = await import("./stopesjekk-pdf.js");
+        return (d, { logo }) => tegnSjekkBilder(d, bilder, { logo, referanse, prosjekt });
+      } });
     varsel(t("Sjekklista er lastet ned: {0}", fil));
   } catch (err) { varsel(t("Klarte ikke å lage PDF-en: {0}", err.message)); }
 }
+// Bildene på punktene, i punktrekkefølge, som data-URL-er (jsPDF tegner synkront)
+async function hentBilder(e) {
+  const ut = [];
+  const v = J.vaskSjekk(e.sjekk);
+  if (!v) return ut;
+  const { bildeUrl } = await import("./bilder.js");
+  for (let i = 0; i < v.punkter.length; i++) {
+    const p = v.punkter[i], a = v.svar[p.id];
+    if (!a || !a.bilde) continue;
+    let data = null;
+    try {
+      const url = await bildeUrl(a.bilde);
+      if (url) data = await tilDataUrl(await (await fetch(url)).blob());
+    } catch (_) { data = null; }
+    ut.push({ nr: i + 1, tekst: t(p.tekst), av: a.av, tid: J.kortTid(a.tid), data });
+  }
+  return ut;
+}
+const tilDataUrl = (blob) => new Promise((ok, feil) => {
+  const r = new FileReader();
+  r.onload = () => ok(String(r.result || ""));
+  r.onerror = () => feil(r.error);
+  r.readAsDataURL(blob);
+});
+
 // Samme logo som Støpeplan-PDF-en (valget «Logo på PDF» i panelet)
 async function hentStopeLogo() {
   try {
