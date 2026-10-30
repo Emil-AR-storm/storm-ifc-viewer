@@ -43,6 +43,14 @@ på("btnDokRigg", "click", () =>
   apneOgTrykk("riggPanel", "btnRigg", "riggPdf", "Legg inn noe rigg først — planen er tom."));
 på("btnDokSW", "click", () =>
   apneOgTrykk("swPanel", "btnSW", "swTegning"));
+// 🏗 Løfteplan (runde 8, Emil 30.10: «en snarvei lagt inn i Dokumentasjon»):
+// åpner Rigg og den første tårnkranen, med seksjonen Løfteplan åpen.
+på("btnDokLofte", "click", () => {
+  if (!S.modelGroup) { varsel(t("Åpne en modell først.")); return; }
+  const panel = $("riggPanel");
+  if (!(panel && panel.classList.contains("open"))) { const b = $("btnRigg"); if (b) b.click(); }
+  if (S.riggApneLofteplan) S.riggApneLofteplan();
+});
 // BCF ligger i rapportmenyen, som finnes fra start — der er det ikke noe
 // panel å åpne, bare knappen å trykke.
 på("btnDokBcf", "click", () => {

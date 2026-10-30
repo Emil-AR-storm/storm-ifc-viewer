@@ -51,7 +51,7 @@ export const LÅSTE_KNAPPER = [
   // Storm-Byggeplass
   "btnByggeplass", "btnMateriell", "btnSW", "btnTak", "btnShare", "btnHistorikk",
   // Dokumentasjon
-  "btnRapport", "btnDokStope", "btnDokRigg", "btnDokSW", "btnDokBcf", "btnDokBcfImport", "btnSaveLite",
+  "btnRapport", "btnDokStope", "btnDokRigg", "btnDokLofte", "btnDokSW", "btnDokBcf", "btnDokBcfImport", "btnSaveLite",
   // Biblioteket (SharePoint) — kort + Microsoft-innlogging som i dag
   "btnLib", "btnLibSplash"
 ];

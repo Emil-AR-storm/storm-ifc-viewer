@@ -52,6 +52,7 @@ import {
   riggTypeLabel, settGjerdeMarkering, stillasBakkeFor, tegnEnRigg, tegnRigg
 } from "./rigg-vis.js";
 import { varsel } from "./varsel.js";
+import { lofteplanHtml, koblLofteplan, etterRiggPanel, ryddFarger as ryddLofteFarger } from "./lofteplan.js";
 
 // ═══════════════════════ TILSTAND ═══════════════════════
 let plasserer = null;   // { o, gruppe } — objektet som henger på pekeren
@@ -1459,6 +1460,9 @@ function tegnPanel() {
   // gang — det er dem man trenger for å komme i gang.
   // Katalogen står i sin egen stripe til venstre (tegnKatalog, runde 15b).
 
+  // 🏗 Løfteplan (runde 8, Emils valg 3A): egen seksjon inni tårnkranen
+  if (valgt && erKran(valgt)) html += lofteplanHtml(valgt);
+
   // Det som er plassert
   const liste = riggObjekter(S.rigg || []);
   html += '<h4 data-sek="rigg-plassert" style="margin:12px 0 4px">' + t("Plassert på tomta") +
@@ -1533,6 +1537,8 @@ function tegnPanel() {
   body.innerHTML = html;
   foldSeksjoner(body, { nokkel: "storm-rigg-seksjoner-apne", standard: ["rigg-plassert"] });
   if (valgt) koblSkjema(valgt);
+  if (valgt && erKran(valgt)) koblLofteplan(valgt, (felter, tekst) => oppdater(valgt.id, felter, tekst));
+  etterRiggPanel(valgt && erKran(valgt) ? valgt : null);
   plasserValgBar();
   oppdaterValgBar();
   if (fokusId && $(fokusId)) {
@@ -1952,3 +1958,22 @@ export const __rigg = { startPlassering, avbrytPlassering, leggTil, fjern, oppda
   startPortModus, avsluttPortModus, portStegStatus, lagPortNaa, veksleStykke,
   get portModus() { return portModus; }, get valgteStykker() { return valgteStykker.slice(); },
   get plasserer() { return plasserer; }, REF_ID };
+
+// 🏗 Snarveien «Løfteplan» i Dokumentasjon (dokumentasjon.js): velg den første
+// tårnkranen og åpne seksjonen Løfteplan. Ingen kran → si fra.
+S.riggApneLofteplan = () => {
+  const kran = riggObjekter(S.rigg || []).find(o => erKran(o));
+  if (!kran) { varsel(t("Plasser en tårnkran i Rigg først — løfteplanen ligger inni kranen.")); return "ingen-kran"; }
+  velg(kran.id);
+  tegnPanel();
+  const d = document.querySelector('#riggBody details[data-sek="rigg-lofteplan"]');
+  if (d) { d.open = true; try { d.scrollIntoView({ block: "start", behavior: "smooth" }); } catch (_) {} }
+  return "apnet";
+};
+// Fargene fra kransjekken hører til Rigg-panelet: borte når det lukkes eller
+// et annet panel åpnes.
+document.addEventListener("click", (e) => { if (e.target && e.target.closest && e.target.closest('[data-lukk="riggPanel"]')) setTimeout(ryddLofteFarger, 0); });
+{
+  const tidligere = S.avsluttKlikkModus;
+  S.avsluttKlikkModus = (id) => { if (tidligere) try { tidligere(id); } catch (_) {} if (id !== "riggPanel") ryddLofteFarger(); };
+}

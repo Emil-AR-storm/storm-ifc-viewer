@@ -12,6 +12,7 @@
 // Alt her testes i Node (_test/test-rigg.mjs).
 
 import { vaskStillasFelt, stillasMengder, stillasOmriss, STILLAS_STD } from "./stillas-regn.js";
+import { vaskLofteplan } from "./kran-regn.js";
 
 // ═══════════════════════ OBJEKTMALENE ═══════════════════════
 //
@@ -339,6 +340,10 @@ export function vaskRiggObjekt(p) {
     // For smal sektor (kan bare komme fra en fil) → hel sirkel, ikke en strek
     const bredde = (ut.sektorTil - ut.sektorFra + 360) % 360;
     if (bredde && bredde < KRAN_MIN_SEKTOR) ut.sektorTil = ut.sektorFra;
+    // 🏗 Løfteplan (runde 8, Emils valg 3A 30.10): lastkurve, løfteutstyr,
+    // radius-måling og materialgruppene kranen løfter. Gamle filer har det
+    // ikke → tom kurve (ingen kapasitet før den er skrevet inn).
+    ut.lofteplan = vaskLofteplan(p.lofteplan);
   }
   if (M.stillas) {
     vaskStillasFelt(p, ut);
