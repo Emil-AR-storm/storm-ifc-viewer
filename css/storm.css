@@ -2902,3 +2902,10 @@ html[data-tema="lys"] .lp-vekt { color-scheme: light; }
 .sj-punkt small { display: block; font-size: 10.5px; color: var(--muted); }
 .sj-klar { font-size: 12px; color: var(--ok); font-weight: 600; align-self: center; }
 .sj-klar-knapp[disabled] { opacity: .6; cursor: not-allowed; }
+/* 📷 Bilde per punkt (runde 9b): kontoret åpner bildeviseren, telefonen tar bildet */
+.sj-punkt > span { flex: 1; }
+.sj-bilde, .sj-foto { margin-left: auto; padding: 0 6px; min-height: 0; line-height: 1.6; font-size: 13px; background: transparent; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
+.sj-punkt-lett { align-items: center; }
+.sj-punkt-lett > label { display: flex; gap: 8px; align-items: flex-start; flex: 1; cursor: pointer; }
+.sj-punkt-lett input[type="checkbox"] { width: 20px; height: 20px; flex: none; }
+.sj-punkt-lett .sj-foto { font-size: 17px; padding: 2px 10px; }
