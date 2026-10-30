@@ -18,6 +18,7 @@ import { grupperForEksport } from "./grupper.js";
 import { swForByggeplass, takForByggeplass } from "./veggelement.js";
 import { FRISTER, TJENESTER } from "./config.js";
 import { stopeplanForByggeplass } from "./stopeplan-regn.js";
+import { erSjekkBilde } from "./stopesjekk-regn.js";
 import { framdriftForByggeplass } from "./framdrift-regn.js";
 import { kilderForByggeplass } from "./framdrift-kilde.js";
 import { forByggeplass } from "./prosjektinfo-regn.js";
@@ -490,11 +491,16 @@ async function hentInnboks(prosjekt, token) {
     const alle = await r.json();
 
     // 1) HENDELSER (h-….json): nye markeringer og kommentarer fra byggeplassen
+    //    📋 9b: sjekkliste-hendelsene samles og flettes inn i Støpeplan i
+    //    tidsrekkefølge etterpå (siste tid vinner per punkt).
+    const sjekk = [];
     for (const navn of alle.filter(n => /^h-.*\.json$/.test(n))) {
       const hr = await hent(navn);
       if (!hr.ok) continue;
       let h; try { h = await hr.json(); } catch (_) { continue; }
-      if (h.type === "ny-markering" && h.markering) {
+      if (h.type === "sjekkliste") {
+        sjekk.push({ navn, h });
+      } else if (h.type === "ny-markering" && h.markering) {
         const c = vaskMarkering(h.markering);
         if (c && !(S.comments || []).some(k => String(k.id) === String(c.id))) {
           c.status = "Åpen"; c.owner = ""; c.due = "";   // status og ansvar settes HER, ikke på plassen
@@ -529,10 +535,30 @@ async function hentInnboks(prosjekt, token) {
       }
     }
 
+    if (sjekk.length && S.stopeFlettSjekk) {
+      sjekk.sort((a, b) => String(a.h.tid || (a.h.signert && a.h.signert.tid) || a.h.mottatt || "")
+        .localeCompare(String(b.h.tid || (b.h.signert && b.h.signert.tid) || b.h.mottatt || "")));
+      const brukt = S.stopeFlettSjekk(sjekk.map(x => x.h));
+      for (let i = 0; i < sjekk.length; i++) {
+        if (brukt.has(i)) { await slett(sjekk[i].navn); inn++; }
+        else if (gammel(sjekk[i].h.mottatt)) await slett(sjekk[i].navn);   // annen modell / slettet etappe
+      }
+    }
+
+    // 1b) 📋 Sjekklistebildene (sjk_….jpg): rett til SharePoint. Koblingen til
+    //     punktet står i hendelsen (feltet bilde), så rekkefølgen spiller ingen rolle.
+    for (const navn of alle.filter(n => erSjekkBilde(n))) {
+      const bi = await hent(navn);
+      if (!bi.ok) { console.warn("Fikk ikke hentet «" + navn + "» fra innboksen (HTTP " + bi.status + ")"); continue; }
+      await lastOpp(await bi.blob(), navn);
+      await slett(navn);
+      await slett(navn + ".json");
+    }
+
     // 2) BILDER (….jpg) og TALEMELDINGER (….m4a/.webm) med sidekort som sier
     //    hvilken seksjon de hører til. Samme navneskjema, samme opprydding —
     //    det eneste som skiller dem er hvilket felt de havner i.
-    for (const navn of alle.filter(n => /\.(jpg|m4a|webm)$/i.test(n))) {
+    for (const navn of alle.filter(n => /\.(jpg|m4a|webm)$/i.test(n) && !erSjekkBilde(n))) {
       const erLyd = /\.(m4a|webm)$/i.test(navn);
       const deler = navn.replace(/\.(jpg|m4a|webm)$/i, "").split("-");
       if (deler.length < 3) continue;

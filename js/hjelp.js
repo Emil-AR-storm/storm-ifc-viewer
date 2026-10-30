@@ -165,7 +165,7 @@ export const KORT = [
   {
     hvor: "kontor", ikonNavn: "stope",
     tittel: "Sjekkliste før støp per etappe",
-    tekst: "Hver etappe i Støpeplan har en sjekkliste «Før støp». Trykk «Start sjekkliste» på etappekortet, og huk av punktene etter hvert — det står hvem som huket av og når. Når alt er huket av, signerer du med fingeren eller musa (samme signaturboks som Dagsrapport). Først da kan etappen settes «Klar til støp». Tas et punkt av etterpå, faller signaturen og «klar» bort. PDF-knappen gir sjekklista med signatur. Punktene er forslag: vil dere ha egne, legg malen for-stop.json i SharePoint-mappa Sjekklister og endre den der."
+    tekst: "Hver etappe i Støpeplan har en sjekkliste «Før støp». Trykk «Start sjekkliste» på etappekortet, og huk av punktene etter hvert — det står hvem som huket av og når. Når alt er huket av, signerer du med fingeren eller musa (samme signaturboks som Dagsrapport). Først da kan etappen settes «Klar til støp». Tas et punkt av etterpå, faller signaturen og «klar» bort. PDF-knappen gir sjekklista med signatur. Punktene er forslag: vil dere ha egne, legg malen for-stop.json i SharePoint-mappa Sjekklister og endre den der. På byggeplass-siden kan basen huke av, ta bilde av punktet og signere med fingeren på telefonen. Det kommer inn her (med 📱 og 📷) når du trykker Storm-Byggeplass, og Teams får beskjed når lista er ferdig huket av og når den er signert."
   },
   {
     hvor: "kontor", ikonNavn: "kran",

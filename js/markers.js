@@ -295,7 +295,7 @@ function koSkriv(a) {
   try { localStorage.setItem(KO_NOKKEL, JSON.stringify(a)); } catch (_) {}
 }
 
-async function sendHendelse(hendelse, fraKo) {
+export async function sendHendelse(hendelse, fraKo) {
   try {
     const r = await fetch("/hendelse", {
       method: "POST",
@@ -1836,6 +1836,17 @@ function visStort(c, nr) {
     BV.navn.length,
     (i) => bvTellerTekst(BV.merker, i)   // «Etter 2 av 3», ikke «5 av 6»
   );
+  el.classList.add("open");
+  bvVis(Math.max(0, nr || 0));
+}
+
+// 📋 Bildeviseren for en enkel liste med filnavn (sjekklista før støp, 9b)
+export function visBildeListe(navn, nr, merke) {
+  const el = byggBildeVis();
+  BV.navn = (navn || []).filter(Boolean);
+  BV.merker = BV.navn.map(() => merke || "");
+  if (!BV.navn.length) return;
+  bvSettKilde((i) => bildeUrl(BV.navn[i]), BV.navn.length, (i) => bvTellerTekst(BV.merker, i));
   el.classList.add("open");
   bvVis(Math.max(0, nr || 0));
 }

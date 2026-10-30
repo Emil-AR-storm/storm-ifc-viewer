@@ -27,6 +27,7 @@ import { clearSelection, quantitiesForSet } from "./elements.js";
 import { metaFor } from "./ifcrpc.js";
 import { varsel } from "./varsel.js";
 import { koblSjekk, sjekkHtml } from "./stopesjekk.js";
+import { flettHendelse } from "./stopesjekk-regn.js";
 
 const SP_MAPPE = "Stopeplan";
 let spStatus = "av";          // "av" | "ok" | "feil" — vises nederst i panelet
@@ -561,6 +562,29 @@ S.lastStopeplan = () => {
   tegnStopeplan();
   if (erApen()) tegnPanel();
   hentFraSp();          // i bakgrunnen
+};
+// 📋 9b: sjekkliste-hendelser fra byggeplassen (byggeplass.js hentInnboks).
+// Returnerer et sett med indeksene som ble brukt — resten hører til en annen
+// modell i samme prosjekt (eller en etappe som er slettet) og blir liggende.
+S.stopeFlettSjekk = (hendelser) => {
+  const brukt = new Set();
+  const naa = new Date().toISOString();
+  let liste = vaskEtappeListe(S.stopeplan);
+  (hendelser || []).forEach((h, i) => {
+    const e = liste.find(x => x.id === (h && h.etappe) && !x.slettet);
+    if (!e) return;
+    brukt.add(i);
+    const ny = flettHendelse(e.sjekk, h);
+    if (JSON.stringify(ny) === JSON.stringify(e.sjekk)) return;
+    liste = liste.map(x => x.id === e.id ? vaskEtappe(Object.assign({}, x, { sjekk: ny, endret: naa })) : x);
+  });
+  if (brukt.size) {
+    S.stopeplan = vaskEtappeListe(liste);
+    lagre();
+    tegnStopeplan();
+    if (erApen()) tegnPanel();
+  }
+  return brukt;
 };
 S.ryddStopeplan = () => { if (velger) avsluttVelg(false); if (S.ryddStopeFelt) S.ryddStopeFelt(); S.stopeplan = []; volumBuffer.clear(); tegnStopeplan([]); };
 

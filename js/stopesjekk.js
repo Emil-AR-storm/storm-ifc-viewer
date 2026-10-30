@@ -4,7 +4,8 @@
 // lista med avhuking (hvem og når), signering (samme signaturboks som
 // Dagsrapport og skjemaene) og PDF (samme skjema-motor som sjekklistene på
 // markeringer). «Klar til støp» er låst til alt er huket av og signert.
-// Byggeplass-siden (runde 9b) huker av på telefonen — svarene kommer inn hit.
+// Byggeplass-siden (runde 9b) huker av på telefonen — svarene kommer inn hit
+// via innboksen (byggeplass.js), med bildene (📷 åpner bildeviseren).
 //
 // Regningen står i stopesjekk-regn.js. stopeplan.js tegner kortet og gir oss
 // `endre(id, endring, angreTekst)` — samme lagring og angre som resten av panelet.
@@ -53,7 +54,8 @@ export function sjekkHtml(e) {
     h += '<div class="sj-liste">' + e.sjekk.punkter.map(p => {
       const a = e.sjekk.svar[p.id];
       return '<label class="sj-punkt"><input type="checkbox" data-sj-punkt="' + esc(p.id) + '"' + (a && a.ok ? " checked" : "") + "> <span>" + esc(t(p.tekst)) +
-        (a && a.ok ? '<small>' + esc([a.av, J.kortTid(a.tid), a.kilde === "bygg" ? "📱 " + t("byggeplassen") : ""].filter(Boolean).join(" · ")) + "</small>" : "") + "</span></label>";
+        (a && a.ok ? '<small>' + esc([a.av, J.kortTid(a.tid), a.kilde === "bygg" ? "📱 " + t("byggeplassen") : ""].filter(Boolean).join(" · ")) + "</small>" : "") + "</span>" +
+        (a && a.bilde ? '<button class="sj-bilde" data-sj-bilde="' + esc(a.bilde) + '" title="' + esc(t("Vis bildet")) + '">📷</button>' : "") + "</label>";
     }).join("") + "</div>" +
     (e.sjekk.signert ? '<p class="set-hjelp">✍ ' + esc(t("Signert av {0}, {1}", e.sjekk.signert.av, J.kortTid(e.sjekk.signert.tid))) + (e.sjekk.signert.kilde === "bygg" ? " · 📱 " + esc(t("byggeplassen")) : "") + "</p>" : "") +
     '<div class="st-rad st-knapper">' +
@@ -87,6 +89,13 @@ export function koblSjekk(rad, e, endre, tegnPanel) {
   if (kl) kl.onclick = () => { if (J.sjekkStatus(e.sjekk).kanKlar) endre(e.id, { klar: true }, "Klar til støp"); };
   const ik = q(".sj-ikke-klar");
   if (ik) ik.onclick = () => endre(e.id, { klar: false }, "Ikke klar til støp");
+  // 📷 Bildene fra telefonen (9b): bildeviseren, blar mellom etappens bilder
+  rad.querySelectorAll("[data-sj-bilde]").forEach(b => b.onclick = async (ev) => {
+    ev.preventDefault(); ev.stopPropagation();
+    const alle = e.sjekk.punkter.map(p => e.sjekk.svar[p.id] && e.sjekk.svar[p.id].bilde).filter(Boolean);
+    const { visBildeListe } = await import("./markers.js");
+    visBildeListe(alle, Math.max(0, alle.indexOf(b.dataset.sjBilde)), t("Sjekkliste før støp"));
+  });
   const pdf = q(".sj-pdf");
   if (pdf) pdf.onclick = () => lastNedPdf(e);
 }
