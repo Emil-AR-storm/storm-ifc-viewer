@@ -64,18 +64,25 @@ export function celleVerdi(v) {
 // Indeksen er plassen i cellXfs nedenfor:
 //   0 vanlig · 1 fet · 2 gul (fyll inn) · 3 overskrift (fet, grå) ·
 //   4 tall 2 des. · 5 fet tall 2 des. · 6 tittel (stor, fet) · 7 gul tall 2 des.
-export const STILER = ["vanlig", "fet", "gul", "overskrift", "tall", "fet-tall", "tittel", "gul-tall"];
+//   8 grønn · 9 gul status · 10 rød · 11 grå · 12 lilla — 🏗 statusfarger
+//   (kransjekken, Emil 30.10: «samme farger som i Storm-IFC»)
+export const STILER = ["vanlig", "fet", "gul", "overskrift", "tall", "fet-tall", "tittel", "gul-tall", "gronn", "gul-status", "rod", "gra", "lilla"];
 export const STILER_XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
   '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
   '<fonts count="3"><font><sz val="11"/><name val="Calibri"/></font>' +
   '<font><b/><sz val="11"/><name val="Calibri"/></font>' +
   '<font><b/><sz val="14"/><name val="Calibri"/></font></fonts>' +
-  '<fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>' +
+  '<fills count="9"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>' +
   '<fill><patternFill patternType="solid"><fgColor rgb="FFFFF2CC"/><bgColor indexed="64"/></patternFill></fill>' +
-  '<fill><patternFill patternType="solid"><fgColor rgb="FFF3E1E2"/><bgColor indexed="64"/></patternFill></fill></fills>' +
+  '<fill><patternFill patternType="solid"><fgColor rgb="FFF3E1E2"/><bgColor indexed="64"/></patternFill></fill>' +
+  '<fill><patternFill patternType="solid"><fgColor rgb="FFC6EFCE"/><bgColor indexed="64"/></patternFill></fill>' +
+  '<fill><patternFill patternType="solid"><fgColor rgb="FFFFEB9C"/><bgColor indexed="64"/></patternFill></fill>' +
+  '<fill><patternFill patternType="solid"><fgColor rgb="FFFFC7CE"/><bgColor indexed="64"/></patternFill></fill>' +
+  '<fill><patternFill patternType="solid"><fgColor rgb="FFE7E6E6"/><bgColor indexed="64"/></patternFill></fill>' +
+  '<fill><patternFill patternType="solid"><fgColor rgb="FFE4DFEC"/><bgColor indexed="64"/></patternFill></fill></fills>' +
   '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>' +
   '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
-  '<cellXfs count="8">' +
+  '<cellXfs count="13">' +
   '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
   '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>' +
   '<xf numFmtId="0" fontId="0" fillId="2" borderId="0" xfId="0" applyFill="1"/>' +
@@ -84,6 +91,11 @@ export const STILER_XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"
   '<xf numFmtId="4" fontId="1" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1"/>' +
   '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>' +
   '<xf numFmtId="4" fontId="0" fillId="2" borderId="0" xfId="0" applyNumberFormat="1" applyFill="1"/>' +
+  '<xf numFmtId="0" fontId="0" fillId="4" borderId="0" xfId="0" applyFill="1"/>' +
+  '<xf numFmtId="0" fontId="0" fillId="5" borderId="0" xfId="0" applyFill="1"/>' +
+  '<xf numFmtId="0" fontId="0" fillId="6" borderId="0" xfId="0" applyFill="1"/>' +
+  '<xf numFmtId="0" fontId="0" fillId="7" borderId="0" xfId="0" applyFill="1"/>' +
+  '<xf numFmtId="0" fontId="0" fillId="8" borderId="0" xfId="0" applyFill="1"/>' +
   '</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>' +
   '</styleSheet>';
 

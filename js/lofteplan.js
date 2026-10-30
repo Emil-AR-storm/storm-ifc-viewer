@@ -110,7 +110,7 @@ export function lofteplanHtml(o) {
 }
 
 const FARGE = { gronn: "#2e9e4a", gul: "#e9a13b", rod: "#d22b34", ukjent: "#6b7280", utenfor: "#6b7280", forLangt: "#8b5cf6", ingenKurve: "#6b7280" };
-const NAVN = { gronn: "innenfor (under 90 %)", gul: "90–100 % — sjekk", rod: "over kapasitet", utenfor: "utenfor bommen",
+const NAVN = { gronn: "innenfor (under 80 %)", gul: "80–99 % — sjekk", rod: "100 % eller mer", utenfor: "utenfor bommen",
   forLangt: "lenger ut enn lastkurven", ukjent: "ukjent vekt", ingenKurve: "venter på maks last" };
 const REKKE = ["gronn", "gul", "rod", "forLangt", "utenfor", "ukjent", "ingenKurve"];
 
@@ -251,7 +251,7 @@ export async function lastNedExcel(o) {
   const p = K.vaskLofteplan(o.lofteplan);
   const kurve = [[t("Svingradius = bomlengde (m)"), o.radius], [t("Maks last ytterst på bommen (kg)"), o.maksLast || ""], [t("Løfteutstyr (kg)"), p.utstyrKg], [t("Radius måles til"), t(p.modus === "hjorne" ? "hjørnet lengst unna (sikrest)" : "midten av elementet")],
     [t("Materialgrupper"), p.grupper.map(g => t(g)).join(", ")]];
-  const data = X.lagXlsxFlere([{ navn: t("Kransjekk"), rader: K.excelRader(svar.rader, t) }, { navn: t("Kran"), rader: kurve }], await excelToppfelt());
+  const data = X.lagXlsxFlere([{ navn: t("Kransjekk"), rader: K.excelRader(svar.rader, t), stil: K.excelStil(svar.rader), bredder: [22, 40, 30, 16, 11, 14, 11, 13, 13] }, { navn: t("Kran"), rader: kurve }], await excelToppfelt());
   const base = String(S.fileName || "modell").replace(/\.(ifc|glb)$/i, "").replace(/[\\/:*?"<>|]/g, "-");
   const url = URL.createObjectURL(new Blob([data], { type: X.XLSX_MIME }));
   const a = document.createElement("a"); a.href = url; a.download = base + " kransjekk " + (o.navn || t("Tårnkran")).replace(/[\\/:*?"<>|]/g, "-") + ".xlsx";

@@ -3,7 +3,7 @@
 // Spørsmålet: klarer tårnkranen å løfte hvert element der det skal stå?
 //   kapasitet ved radius (fra LASTKURVEN i kranens datablad, skrives inn)
 //   mot vekten av elementet (fra modellen) + løfteutstyret (åk, stropper).
-// Grønn under 90 % utnyttelse, gul 90–100 %, rød over 100 %. Grå = vet ikke
+// Grønn under 80 % utnyttelse, gul 80–99 %, rød 100 % eller mer (Emil 30.10). Grå = vet ikke
 // (ukjent vekt, eller utenfor bomlengden / lastkurven).
 //
 // KONSERVATIVT, med vilje: mellom to punkter i lastkurven brukes kapasiteten
@@ -14,7 +14,7 @@
 // standardkurve [SLÅ OPP].
 
 export const MAKS_PUNKTER = 24;
-export const GUL_FRA = 0.9;      // 90 %
+export const GUL_FRA = 0.8;      // 80 % (Emil 30.10: «alt mellom 99 % og 80 % = gul»)
 const tall = (v) => { const n = Number(String(v == null ? "" : v).replace(/\s/g, "").replace(",", ".")); return Number.isFinite(n) ? n : null; };
 
 // [{ r, kg }] sortert på radius, uten like radier (siste vinner), innenfor fornuftige grenser
@@ -82,7 +82,8 @@ export function vurder(kg, utstyrKg, kap, rM, radiusM, harKurve) {
   const last = kg + (utstyrKg || 0);
   if (kap == null) return { farge: "forLangt", utn: null, last, kap: null };
   const utn = last / kap;
-  return { farge: utn > 1 + 1e-9 ? "rod" : utn >= GUL_FRA ? "gul" : "gronn", utn, last, kap };
+  // 100 % eller mer = rød (Emil 30.10) — på grensen er det ingenting å gå på
+  return { farge: utn >= 1 - 1e-9 ? "rod" : utn >= GUL_FRA - 1e-9 ? "gul" : "gronn", utn, last, kap };
 }
 
 // Hele modellen. elementer: [{ id, navn, type, material, gruppe, kg, box }]
@@ -117,7 +118,7 @@ export function grupperIModell(elementer) {
 // Excel-radene
 export function excelRader(rader, ov) {
   const T = ov || ((x) => x);
-  const STATUS = { gronn: "OK", gul: "Sjekk (90–100 %)", rod: "Over kapasitet", ukjent: "Ukjent vekt", utenfor: "Utenfor bommen",
+  const STATUS = { gronn: "OK", gul: "Sjekk (80–99 %)", rod: "Over kapasitet", ukjent: "Ukjent vekt", utenfor: "Utenfor bommen",
     forLangt: "Lenger ut enn lastkurven", ingenKurve: "Mangler lastkurve" };
   const ut = [[T("Status"), T("Element"), T("Type"), T("Materiale"), T("Vekt (kg)"), T("Last med utstyr (kg)"), T("Radius (m)"), T("Kapasitet (kg)"), T("Utnyttelse (%)")]];
   for (const r of rader) ut.push([T(STATUS[r.farge]), r.navn, r.type, r.material, r.kg || "", r.last == null ? "" : r.last, r.r, r.kap == null ? "" : r.kap, r.utn == null ? "" : r.utn]);
@@ -146,4 +147,17 @@ export function delKurveFelt(felt) {
 export function kurveFraKran(o) {
   const r = Number(o && o.radius), kg = Number(o && o.maksLast);
   return r > 0 && kg > 0 ? [{ r, kg }] : [];
+}
+
+// 🎨 Excel med samme farger som i 3D (Emil 30.10): hele raden farges etter
+// status. Indeksene er i xlsx.js STILER: 3 overskrift, 8 grønn, 9 gul,
+// 10 rød, 11 grå (vet ikke), 12 lilla (lenger ut enn lastkurven).
+export const EXCEL_STIL = { gronn: 8, gul: 9, rod: 10, ukjent: 11, ingenKurve: 11, utenfor: 11, forLangt: 12 };
+export function excelStil(rader) {
+  return (i, k) => {
+    if (k > 8) return 0;
+    if (i === 0) return 3;
+    const r = rader[i - 1];
+    return r ? EXCEL_STIL[r.farge] || 0 : 0;
+  };
 }
