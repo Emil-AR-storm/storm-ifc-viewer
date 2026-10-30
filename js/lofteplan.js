@@ -122,15 +122,23 @@ function resultatHtml(svar, harKurve) {
   h += REKKE.filter(k => tl[k]).map(k => '<div class="lp-tell"><span class="fdv-pill" style="background:' + FARGE[k] + ';color:' + (k === "gul" ? "#111" : "#fff") + '">' + tl[k] + "</span> " + esc(t(NAVN[k])) + "</div>").join("");
   h += '<label class="fdv-farger"><input type="checkbox" id="lpFarger"' + (tilstand.farger ? " checked" : "") + "> " + esc(t("Fargelegg modellen")) + "</label>";
   // Uten lastkurve er det bare vekten som kan sjekkes: vis de som mangler vekt
-  const ikkeOk = svar.rader.filter(r => r.farge !== "gronn" && r.farge !== "ingenKurve");
+  // 📦 Materiellet har sin egen liste (under), med vekten som kan rettes
+  const ikkeOk = svar.rader.filter(r => !r.mat && r.farge !== "gronn" && r.farge !== "ingenKurve");
   if (ikkeOk.length) {
     h += '<div class="koll-lbl">' + esc(t("MÅ SJEKKES · {0}", ikkeOk.length)) + "</div>";
     h += ikkeOk.slice(0, 40).map(r => '<div class="lp-rad" data-lp-gaa="' + esc(r.id) + '"><span class="fdv-prikk" style="background:' + FARGE[r.farge] + '"></span><span class="lp-n">' + (r.mat ? "📦 " : "") + esc(r.navn || r.type) + "</span>" +
       '<span class="lp-t">' + (r.kg ? esc(tusen(r.kg)) + " kg"
-        // 📦 Materiell uten vekt: skriv den inn her (lagres på materiell-objektet)
-        : r.mat ? '<input type="text" inputmode="decimal" class="lp-vekt" data-lp-vekt="' + esc(String(r.id).slice(4)) + '" placeholder="' + esc(t("vekt kg")) + '">'
         : esc(t("ukjent vekt"))) + " · R " + String(r.r).replace(".", ",") + " m" + (r.utn != null ? " · <b>" + String(r.utn).replace(".", ",") + " %</b>" : "") + "</span></div>").join("");
     if (ikkeOk.length > 40) h += '<p class="lp-liten">' + esc(t("… og {0} til (se Excel).", ikkeOk.length - 40)) + "</p>";
+  }
+  // 📦 Materiell (Emil 30.10): ALLE bunkene, med vekten i et felt som alltid
+  // kan rettes — også når bunken er grønn. Tømmes feltet, blir vekten ukjent.
+  const mat = svar.rader.filter(r => r.mat);
+  if (mat.length) {
+    h += '<div class="koll-lbl">' + esc(t("MATERIELL · VEKT PER BUNKE · {0}", mat.length)) + "</div>";
+    h += mat.slice(0, 60).map(r => '<div class="lp-rad" data-lp-gaa="' + esc(r.id) + '"><span class="fdv-prikk" style="background:' + FARGE[r.farge] + '"></span><span class="lp-n">📦 ' + esc(r.navn || r.type) + "</span>" +
+      '<span class="lp-t"><input type="text" inputmode="decimal" class="lp-vekt" data-lp-vekt="' + esc(String(r.id).slice(4)) + '" value="' + (r.kg ? r.kg : "") + '" placeholder="' + esc(t("vekt kg")) + '"> kg' +
+      " · R " + String(r.r).replace(".", ",") + " m" + (r.utn != null ? " · <b>" + String(r.utn).replace(".", ",") + " %</b>" : "") + "</span></div>").join("");
   }
   h += '<div class="lag-knapper"><button class="primary" id="lpExcel">' + esc(t("Excel")) + "</button>" +
     (svar.telling.rod ? '<button id="lpMark">' + esc(t("Lag markeringer ({0} røde)", svar.telling.rod)) + "</button>" : "") + "</div>";
@@ -170,7 +178,8 @@ async function oppdaterResultat(o, oppdater) {
   const fa = $("lpFarger"); if (fa) fa.onchange = () => { tilstand.farger = fa.checked; tegnFarger(); };
   rEl.querySelectorAll("[data-lp-gaa]").forEach(d => d.onclick = (e) => { if (e.target && e.target.closest && e.target.closest("input")) return; const v = d.dataset.lpGaa; gaaTil(/^mat:/.test(v) ? v : Number(v)); });
   rEl.querySelectorAll("[data-lp-vekt]").forEach(inp => {
-    const sett = () => { if (!inp.value.trim() || !S.materiellSettVekt) return; if (S.materiellSettVekt(inp.dataset.lpVekt, inp.value)) oppdaterResultat(hentKran(o) || o, oppdater); };
+    // Tomt felt = vekten fjernes (ukjent). Endret tall = ny vekt (med angre).
+    const sett = () => { if (!S.materiellSettVekt) return; if (S.materiellSettVekt(inp.dataset.lpVekt, inp.value.trim() || 0)) oppdaterResultat(hentKran(o) || o, oppdater); };
     inp.onchange = sett;
     inp.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); inp.blur(); } };
   });

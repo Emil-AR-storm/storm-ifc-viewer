@@ -3358,6 +3358,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "«{0}» lagt til i «{1}».": "«{0}» pridėta į «{1}».",
   "Klikk først et objekt i 3D.": "Pirmiausia spustelėkite objektą 3D.",
   "FDV-redigeringen er avsluttet fordi et annet verktøy ble valgt. Trykk «Rediger» på gruppa for å fortsette.": "FDV redagavimas baigtas, nes pasirinktas kitas įrankis. Paspauskite «Rediger» grupėje, kad tęstumėte.",
+  "MATERIELL · VEKT PER BUNKE · {0}": "MEDŽIAGOS · SVORIS RIETUVEI · {0}",
   "innenfor (under 80 %)": "ribose (mažiau nei 80 %)",
   "80–99 % — sjekk": "80–99 % — patikrinti",
   "100 % eller mer": "100 % ar daugiau",

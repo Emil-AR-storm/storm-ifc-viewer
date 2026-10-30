@@ -3358,6 +3358,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "«{0}» lagt til i «{1}».": "«{0}» added to «{1}».",
   "Klikk først et objekt i 3D.": "Click an object in 3D first.",
   "FDV-redigeringen er avsluttet fordi et annet verktøy ble valgt. Trykk «Rediger» på gruppa for å fortsette.": "FDV editing has ended because another tool was selected. Press «Rediger» on the group to continue.",
+  "MATERIELL · VEKT PER BUNKE · {0}": "MATERIALS · WEIGHT PER STACK · {0}",
   "innenfor (under 80 %)": "within (below 80 %)",
   "80–99 % — sjekk": "80–99 % — check",
   "100 % eller mer": "100 % or more",
