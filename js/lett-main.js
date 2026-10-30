@@ -13,10 +13,12 @@ import { setClipFromFace } from "./clip.js";
 import { clearSelection, hitID, pick, pickEkstra, selectElement, showProperties } from "./elements.js";
 import { afterLoad, ifcReady, loadGlb } from "./ifc.js";
 import { closeMarkerPopup, forberedNyMarkering, openMarkerPopup, pickMarker } from "./markers.js";
+// 📌 Markeringene ligger oppå alt: en truffet markering eier klikket (som på kontoret, Emil 30.10)
+registrerPeker("markering", (x, y) => (pickMarker(x, y) ? 0 : null));
 import { snapshotModel } from "./compare.js";
 import { addMeasure, koteValue, rettPunkt, snapPoint } from "./measure.js";
 import { canvas, koteGroup, makeLabel, measureGroup } from "./scene.js";
-import { naermesteMaaleflate } from "./pek-eier.js";
+import { naermesteMaaleflate, registrerPeker } from "./pek-eier.js";
 import { MODELL_FRIST_MS, hentMedFrist } from "./nett.js";
 import { lagreApning, lesApning } from "./apning.js";
 

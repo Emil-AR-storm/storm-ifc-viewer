@@ -52,7 +52,7 @@ import {
   riggTypeLabel, settGjerdeMarkering, stillasBakkeFor, tegnEnRigg, tegnRigg
 } from "./rigg-vis.js";
 import { varsel } from "./varsel.js";
-import { lofteplanHtml, koblLofteplan, etterRiggPanel, ryddFarger as ryddLofteFarger } from "./lofteplan.js";
+import { lofteplanHtml, koblLofteplan, oppdaterLofteplan, etterRiggPanel, ryddFarger as ryddLofteFarger } from "./lofteplan.js";
 
 // ═══════════════════════ TILSTAND ═══════════════════════
 let plasserer = null;   // { o, gruppe } — objektet som henger på pekeren
@@ -1780,6 +1780,7 @@ function skjemaHtml(o) {
         '<input type="hidden" id="riggB" value="' + o.B + '">'
       : M.kran
       ? felt("riggRadius", "Svingradius = bomlengde (m)", o.radius, KRAN_MIN_R, KRAN_MAKS_R, 0.5) +
+        felt("riggMaksLast", "Maks last ytterst på bommen (kg)", o.maksLast || "", 0, 200000, 10) +
         felt("riggH", "Mastehøyde (m)", o.H, 0.1, KRAN_MAKS_H, 0.1) +
         felt("riggL", "Fundament lengde (m)", o.L, 0.1, 30, 0.01) + felt("riggB", "Fundament bredde (m)", o.B, 0.1, 30, 0.01) +
         "<p " + LITEN + ">" + t("Trykk «Radius» i raden over for å stille inn hvor kranen får svinge.") + "</p>"
@@ -1836,6 +1837,7 @@ function koblSkjema(o) {
     }
     if (M.moduler) { felter.moduler = $("riggMod").value; felter.etasjer = $("riggEt").value; }
     if (M.kran && $("riggRadius")) felter.radius = $("riggRadius").value;
+    if (M.kran && $("riggMaksLast")) felter.maksLast = $("riggMaksLast").value;
     if (M.stillas) Object.assign(felter, stillasFelter(hentO(o.id) || o));
     return felter;
   };
@@ -1856,6 +1858,8 @@ function koblSkjema(o) {
     sett("riggL", etter.L); sett("riggB", etter.B); sett("riggH", etter.H); sett("riggRot", etter.rot);
     if (M.moduler) { sett("riggMod", etter.moduler); sett("riggEt", etter.etasjer); }
     if (M.kran) sett("riggRadius", etter.radius);
+    // 🏗 Ny bomlengde eller maks last: kransjekken regnes på nytt (panelet tegnes ikke om)
+    if (M.kran) { sett("riggMaksLast", etter.maksLast || ""); oppdaterLofteplan(etter, (felter, tekst) => oppdater(etter.id, felter, tekst)); }
     // 🧱 stillaset: form, etasjer og mengdelista endrer hvilke felt som finnes
     if (M.stillas && erApen()) setTimeout(() => tegnPanel(), 0);
   };

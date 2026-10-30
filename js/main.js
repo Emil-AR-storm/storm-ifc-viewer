@@ -148,6 +148,11 @@ if (sprakVelg) {
 // (SW, blikk, takplater, støpeplan …) med i avgjørelsen: nærmeste vinner.
 registrerPeker("modell", (x, y) => { const h = pick(x, y); return h ? h.distance : null; });
 registrerPeker("lag", (x, y) => { const h = pickEkstra(x, y); return h ? h.avstand : null; });
+// 📌 Markeringene tegnes OPPÅ alt (Emil 30.10: en markering laget med «Lag
+// markering» foran en container eller en bunke kunne ikke trykkes på — riggen
+// og materiellet tok klikket og valgte objektet bak). En truffet markering
+// har avstand 0: den eier alltid klikket. Ellers gjelder nærmeste som før.
+registrerPeker("markering", (x, y) => (pickMarker(x, y) ? 0 : null));
 
 canvas.addEventListener("pointerdown", (e) => { S.downPos = { x: e.clientX, y: e.clientY }; });
 

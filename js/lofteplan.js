@@ -14,9 +14,7 @@ import { t } from "./i18n.js";
 import { varsel } from "./varsel.js";
 import * as K from "./kran-regn.js";
 
-const tilstand = { farger: true, svar: null, nokkel: "", kranId: "", regner: false, elementer: null, elementNokkel: "",
-  utkast: null };   // { kranId, felt: [{ r, kg }] } — lastkurve-rader som ikke er ferdig utfylt
-const utkastFor = (id) => (tilstand.utkast && tilstand.utkast.kranId === id ? tilstand.utkast.felt : null);
+const tilstand = { farger: true, svar: null, nokkel: "", kranId: "", regner: false, elementer: null, elementNokkel: "" };
 export const _tilstand = tilstand;
 const tusen = (n) => Math.round(n).toLocaleString("nb-NO");
 
@@ -87,7 +85,9 @@ export async function regn(o) {
   const xz = await kranXZ(o);
   if (!xz) return null;
   const els = await elementer();
-  const svar = K.kransjekk(els, { xz, radiusM: o.radius, plan: o.lofteplan }, S.enhetSkala || 1);
+  // Kapasiteten kommer fra kranens egne felt (Emil 30.10): svingradius = bomlengde og maks last
+  const plan = Object.assign({}, K.vaskLofteplan(o.lofteplan), { kurve: K.kurveFraKran(o) });
+  const svar = K.kransjekk(els, { xz, radiusM: o.radius, plan }, S.enhetSkala || 1);
   svar.grupper = K.grupperIModell(els);
   return svar;
 }
@@ -95,16 +95,9 @@ export async function regn(o) {
 // ---------- HTML ----------
 export function lofteplanHtml(o) {
   const p = K.vaskLofteplan(o.lofteplan);
-  const rader = utkastFor(o.id) || (p.kurve.length ? p.kurve : [{ r: "", kg: "" }]);
   let h = '<h4 data-sek="rigg-lofteplan" style="margin:12px 0 4px">🏗 ' + esc(t("Løfteplan")) + "</h4>" +
     '<div id="lpBody" class="lp">' +
-    '<p class="lp-liten">' + esc(t("Lastkurve fra kranens datablad: maks last (kg) ved radius (m). Mellom punktene brukes kapasiteten ved neste større radius (på den sikre siden).")) + "</p>" +
-    '<div class="lp-kurve"><span>' + esc(t("Radius (m)")) + "</span><span>" + esc(t("Maks last (kg)")) + "</span><span></span>" +
-    rader.map((q, i) => '<input type="text" inputmode="decimal" data-lp-r="' + i + '" value="' + esc(q.r) + '" placeholder="m">' +
-      '<input type="text" inputmode="decimal" data-lp-kg="' + i + '" value="' + (q.kg === "" ? "" : esc(q.kg)) + '" placeholder="kg">' +
-      '<button class="lag-x" data-lp-fjern="' + i + '" title="' + esc(t("Fjern punktet")) + '">✕</button>').join("") + "</div>" +
-    '<div class="lag-knapper"><button data-lp-ny>' + esc(t("＋ Punkt")) + "</button></div>" +
-    (utkastFor(o.id) ? '<p class="lp-liten" style="color:var(--warn)">' + esc(t("Fyll inn både radius og maks last på hver rad — da lagres kurven.")) + "</p>" : "") +
+    '<p class="lp-liten">' + esc(t("Kapasiteten er «Maks last ytterst på bommen» i kranens felt over, helt ut til svingradius = bomlengde (på den sikre siden).")) + "</p>" +
     '<label class="lp-felt">' + esc(t("Løfteutstyr (åk, stropper) kg")) + '<input type="text" inputmode="decimal" id="lpUtstyr" value="' + p.utstyrKg + '"></label>' +
     '<label class="lp-felt">' + esc(t("Radius måles til")) + '<select id="lpModus"><option value="midt"' + (p.modus === "midt" ? " selected" : "") + ">" + esc(t("midten av elementet")) + "</option>" +
     '<option value="hjorne"' + (p.modus === "hjorne" ? " selected" : "") + ">" + esc(t("hjørnet lengst unna (sikrest)")) + "</option></select></label>" +
@@ -118,13 +111,13 @@ export function lofteplanHtml(o) {
 
 const FARGE = { gronn: "#2e9e4a", gul: "#e9a13b", rod: "#d22b34", ukjent: "#6b7280", utenfor: "#6b7280", forLangt: "#8b5cf6", ingenKurve: "#6b7280" };
 const NAVN = { gronn: "innenfor (under 90 %)", gul: "90–100 % — sjekk", rod: "over kapasitet", utenfor: "utenfor bommen",
-  forLangt: "lenger ut enn lastkurven", ukjent: "ukjent vekt", ingenKurve: "venter på lastkurven" };
+  forLangt: "lenger ut enn lastkurven", ukjent: "ukjent vekt", ingenKurve: "venter på maks last" };
 const REKKE = ["gronn", "gul", "rod", "forLangt", "utenfor", "ukjent", "ingenKurve"];
 
 function resultatHtml(svar, harKurve) {
   const tl = svar.telling;
   let h = "";
-  if (!harKurve) h += '<div class="lag-ulagret" style="color:var(--warn)">⚠ ' + esc(t("Skriv inn lastkurven fra kranens datablad for å sjekke løftene.")) + "</div>";
+  if (!harKurve) h += '<div class="lag-ulagret" style="color:var(--warn)">⚠ ' + esc(t("Skriv inn «Maks last ytterst på bommen» i kranens felt over for å sjekke løftene.")) + "</div>";
   if (!tl.totalt) return h + '<p class="lp-liten">' + esc(t("Ingen elementer i de valgte materialgruppene.")) + "</p>";
   h += REKKE.filter(k => tl[k]).map(k => '<div class="lp-tell"><span class="fdv-pill" style="background:' + FARGE[k] + ';color:' + (k === "gul" ? "#111" : "#fff") + '">' + tl[k] + "</span> " + esc(t(NAVN[k])) + "</div>").join("");
   h += '<label class="fdv-farger"><input type="checkbox" id="lpFarger"' + (tilstand.farger ? " checked" : "") + "> " + esc(t("Fargelegg modellen")) + "</label>";
@@ -150,49 +143,14 @@ export function koblLofteplan(o, oppdater) {
   const body = $("lpBody");
   if (!body) return;
   const p = K.vaskLofteplan(o.lofteplan);
-  const lesKurve = () => {
-    const ut = [];
-    body.querySelectorAll("[data-lp-r]").forEach(inp => { const i = inp.dataset.lpR; const kg = body.querySelector('[data-lp-kg="' + i + '"]'); ut.push({ r: inp.value, kg: kg ? kg.value : "" }); });
-    return ut;
-  };
   const lagre = (endring, tekst) => oppdater({ lofteplan: Object.assign({}, p, endring) }, tekst || "Løfteplan endret");
-  // Kurven lagres først når ingen rad er halvfylt. Til da står feltene som
-  // et utkast (de overlever at panelet tegnes på nytt).
-  const lagreKurve = (felt) => {
-    const d = K.delKurveFelt(felt);
-    if (d.halve) {
-      const forste = !utkastFor(o.id);
-      tilstand.utkast = { kranId: o.id, felt };
-      if (forste) { const h = body.querySelector(".lp-kurve"); if (h && !body.querySelector(".lp-utkast")) h.insertAdjacentHTML("afterend", '<p class="lp-liten lp-utkast" style="color:var(--warn)">' + esc(t("Fyll inn både radius og maks last på hver rad — da lagres kurven.")) + "</p>"); }
-      return;
-    }
-    tilstand.utkast = null;
-    lagre({ kurve: K.vaskLastkurve(d.hele) }, "Lastkurve endret");
-  };
-  const koblFelt = (inp) => {
-    inp.onchange = () => lagreKurve(lesKurve());
-    inp.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); inp.blur(); } };
-  };
-  body.querySelectorAll("[data-lp-r], [data-lp-kg]").forEach(koblFelt);
-  body.querySelectorAll("[data-lp-fjern]").forEach(b => b.onclick = () => {
-    const i = Number(b.dataset.lpFjern);
-    lagreKurve(lesKurve().filter((_, j) => j !== i));
-    if (tilstand.utkast) { const R = S.riggTegnPanel; if (R) R(); }
-  });
-  const ny = body.querySelector("[data-lp-ny]");
-  if (ny) ny.onclick = () => {
-    // Et tomt felt nederst — lagres først når det er fylt ut
-    const k = body.querySelector(".lp-kurve");
-    const i = body.querySelectorAll("[data-lp-r]").length;
-    k.insertAdjacentHTML("beforeend", '<input type="text" inputmode="decimal" data-lp-r="' + i + '" placeholder="m"><input type="text" inputmode="decimal" data-lp-kg="' + i + '" placeholder="kg"><span></span>');
-    k.querySelectorAll('[data-lp-r="' + i + '"], [data-lp-kg="' + i + '"]').forEach(koblFelt);
-    const f = k.querySelector('[data-lp-r="' + i + '"]'); if (f) f.focus();
-  };
   const ut = $("lpUtstyr"); if (ut) ut.onchange = () => lagre({ utstyrKg: ut.value }, "Løfteutstyr endret");
   const mo = $("lpModus"); if (mo) mo.onchange = () => lagre({ modus: mo.value }, "Løfteplan endret");
   oppdaterResultat(o, oppdater);
 }
 
+// rigg.js: kranens felt (bomlengde, maks last) er endret uten at panelet tegnes på nytt
+export function oppdaterLofteplan(o, oppdater) { if ($("lpResultat")) oppdaterResultat(o, oppdater); }
 const hentKran = (o) => (S.rigg || []).find(x => x && x.id === o.id) || null;
 async function oppdaterResultat(o, oppdater) {
   const p = K.vaskLofteplan(o.lofteplan);
@@ -208,7 +166,7 @@ async function oppdaterResultat(o, oppdater) {
     const ny = new Set(p.grupper); if (c.checked) ny.add(c.dataset.lpGruppe); else ny.delete(c.dataset.lpGruppe);
     oppdater({ lofteplan: Object.assign({}, p, { grupper: [...ny] }) }, "Løfteplan endret");
   });
-  rEl.innerHTML = resultatHtml(svar, p.kurve.length > 0);
+  rEl.innerHTML = resultatHtml(svar, K.kurveFraKran(o).length > 0);
   const fa = $("lpFarger"); if (fa) fa.onchange = () => { tilstand.farger = fa.checked; tegnFarger(); };
   rEl.querySelectorAll("[data-lp-gaa]").forEach(d => d.onclick = (e) => { if (e.target && e.target.closest && e.target.closest("input")) return; const v = d.dataset.lpGaa; gaaTil(/^mat:/.test(v) ? v : Number(v)); });
   rEl.querySelectorAll("[data-lp-vekt]").forEach(inp => {
@@ -291,9 +249,9 @@ export async function lastNedExcel(o) {
   const X = await import("./xlsx.js");
   const { excelToppfelt } = await import("./excel-logo.js");
   const p = K.vaskLofteplan(o.lofteplan);
-  const kurve = [[t("Radius (m)"), t("Maks last (kg)")]].concat(p.kurve.map(q => [q.r, q.kg])).concat([[], [t("Løfteutstyr (kg)"), p.utstyrKg], [t("Radius måles til"), t(p.modus === "hjorne" ? "hjørnet lengst unna (sikrest)" : "midten av elementet")],
-    [t("Bomlengde (m)"), o.radius], [t("Materialgrupper"), p.grupper.map(g => t(g)).join(", ")]]);
-  const data = X.lagXlsxFlere([{ navn: t("Kransjekk"), rader: K.excelRader(svar.rader, t) }, { navn: t("Lastkurve"), rader: kurve }], await excelToppfelt());
+  const kurve = [[t("Svingradius = bomlengde (m)"), o.radius], [t("Maks last ytterst på bommen (kg)"), o.maksLast || ""], [t("Løfteutstyr (kg)"), p.utstyrKg], [t("Radius måles til"), t(p.modus === "hjorne" ? "hjørnet lengst unna (sikrest)" : "midten av elementet")],
+    [t("Materialgrupper"), p.grupper.map(g => t(g)).join(", ")]];
+  const data = X.lagXlsxFlere([{ navn: t("Kransjekk"), rader: K.excelRader(svar.rader, t) }, { navn: t("Kran"), rader: kurve }], await excelToppfelt());
   const base = String(S.fileName || "modell").replace(/\.(ifc|glb)$/i, "").replace(/[\\/:*?"<>|]/g, "-");
   const url = URL.createObjectURL(new Blob([data], { type: X.XLSX_MIME }));
   const a = document.createElement("a"); a.href = url; a.download = base + " kransjekk " + (o.navn || t("Tårnkran")).replace(/[\\/:*?"<>|]/g, "-") + ".xlsx";

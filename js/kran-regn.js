@@ -139,3 +139,11 @@ export function delKurveFelt(felt) {
   }
   return { hele, halve };
 }
+
+// 🏗 Kurven fra kranens felt (Emil 30.10): svingradius = bomlengde og maks last.
+// Én verdi: maks last gjelder helt ut til bommens ende (på den sikre siden —
+// inne ved masta tåler kranen mer enn dette).
+export function kurveFraKran(o) {
+  const r = Number(o && o.radius), kg = Number(o && o.maksLast);
+  return r > 0 && kg > 0 ? [{ r, kg }] : [];
+}

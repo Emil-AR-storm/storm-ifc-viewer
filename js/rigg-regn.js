@@ -344,6 +344,15 @@ export function vaskRiggObjekt(p) {
     // radius-måling og materialgruppene kranen løfter. Gamle filer har det
     // ikke → tom kurve (ingen kapasitet før den er skrevet inn).
     ut.lofteplan = vaskLofteplan(p.lofteplan);
+    // 🏗 Maks last (Emil 30.10): ett tall i kranens felt, sammen med
+    // svingradius = bomlengde. Kapasiteten er maks last helt ut til bommens
+    // ende — det tallet databladet gir ytterst, altså på den sikre siden.
+    // Kraner fra før med lastkurve: siste punktet (ytterst) blir maks last.
+    {
+      const m = Number(String(p.maksLast == null ? "" : p.maksLast).replace(/\s/g, "").replace(",", "."));
+      const kurve = ut.lofteplan.kurve;
+      ut.maksLast = Number.isFinite(m) && m > 0 ? Math.min(200000, Math.round(m)) : (kurve.length ? kurve[kurve.length - 1].kg : 0);
+    }
   }
   if (M.stillas) {
     vaskStillasFelt(p, ut);
