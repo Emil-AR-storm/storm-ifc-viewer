@@ -284,6 +284,11 @@ export const KORT = [
   },
   {
     hvor: "kontor", ikonNavn: "framdrift",
+    tittel: "Framdriftsrapport: hvor langt har vi kommet?",
+    tekst: "Fanen 📊 Rapport i Framdriftsplan viser hvor mye som er ferdig — totalt og per elementtype. Velg i modellen (trykk, eller shift + dra) og trykk ✅ Ferdigmeld valgte; Ikke ferdig tar det tilbake. Den hvite streken på hver linje er der planen sier dere skal være i dag, regnet jevnt over hvert trinn fra Fra- til Til-dato. Farge: grønn i rute, gul litt bak, rød forsinket. Modellen farges likt: grønn ferdig, gul pågår, rød skulle vært ferdig, grå ikke startet. To nedlastinger: Intern (plan mot faktisk, trinn, forsinkede og hvert objekt i Excel) til dere selv, og Status (bare % ferdig per elementtype) til byggherre og andre mottakere. Telles i antall objekter, arbeidsdager er mandag–fredag."
+  },
+  {
+    hvor: "kontor", ikonNavn: "framdrift",
     tittel: "Framdriftsplan: trinn, glider, PDF og video",
     tekst: "Framdriftsplan (i Planlegging) deler arbeidet i trinn med Fra- og Til-dato. Trykk + Legg til på trinnet og velg det som utføres da — elementer, SW-elementer, takplater, blikk, rigg, materiell og markeringer (trykk, eller shift + dra en boks). Det som allerede ligger i et trinn, er skjult mens du velger. − Fjern tar ting ut igjen. Glideren nederst viser bygget en valgt dag, og materiellbunkene brukes opp etter hvert som det de er levert til monteres. Last ned PDF gir én side per trinn, Lag video en film der kameraet går rundt bygget — videoen lagres i SharePoint, og PDF-en får en QR-kode til den. Planen følger med ut til byggeplassen når du trykker Storm-Byggeplass."
   },

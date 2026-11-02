@@ -265,6 +265,14 @@ export const IFC_GRUPPE = {
   IfcDoor: "Dører", IfcWindow: "Vinduer", IfcCovering: "Kledning", IfcPile: "Peler",
   IfcReinforcingBar: "Armering", IfcReinforcingMesh: "Armering", IfcBuildingElementProxy: "Objekter"
 };
+// typeName fra IFC-tråden er uten «Ifc» og kan komme i ulik skrivemåte
+// («Slab», «SLAB», «IfcSlab») — slås opp uten å bry seg om det. Før dette
+// (02.11) traff oppslaget aldri, og alt het «Elementer» i Framdriftsplan-PDF-en.
+const IFC_GRUPPE_LITEN = new Map(Object.entries(IFC_GRUPPE).map(([k, v]) => [k.toLowerCase().replace(/^ifc/, ""), v]));
+export function ifcGruppe(typeName) {
+  const k = String(typeName || "").toLowerCase().replace(/^ifc/, "");
+  return k ? IFC_GRUPPE_LITEN.get(k) || "" : "";
+}
 // Profilen/typen ut av IFC-navnet: «HE-A:HEA200:12345» → «HEA200»,
 // «CFSHS (EN 10219-2) Column:CFSHS100x6» → «CFSHS100x6». Uten kolon: hele navnet.
 export function ifcUnder(navn) {

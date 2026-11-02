@@ -36,7 +36,7 @@ import { veggMedId } from "./veggelement/juster.js";
 import { spFilInfo, spPaalogget } from "./sp-lager.js";
 import { qrDataUrl } from "./qr.js";
 import { GULV_ID } from "./veggelement/tilstand.js";
-import { IFC_GRUPPE, framdriftFilnavn, idFor, ifcUnder, infoRader, pdfTrinn, slagFor, trinnTittel } from "./framdrift-regn.js";
+import { ifcGruppe, framdriftFilnavn, idFor, ifcUnder, infoRader, pdfTrinn, slagFor, trinnTittel } from "./framdrift-regn.js";
 import { varsel } from "./varsel.js";
 import { malBunn, pdfFarger, profilFarge } from "./pdf-utseende.js";
 
@@ -80,7 +80,7 @@ function postFor(k) {
   const s = slagFor(k), id = idFor(k);
   if (s === "id") {
     const m = metaFor(Number(id)) || {};
-    return { gruppe: t(IFC_GRUPPE[m.typeName] || "Elementer"), under: ifcUnder(m.name || m.objectType || "") };
+    return { gruppe: t(ifcGruppe(m.typeName) || "Elementer"), under: ifcUnder(m.name || m.objectType || "") };
   }
   if (s === "sw") {
     if (id === GULV_ID) return { gruppe: t("Betonggulv") };

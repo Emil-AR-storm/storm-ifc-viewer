@@ -31,6 +31,7 @@ import { begrensListe, forberedMobilPanel, ryddFramdriftVis, settSkjulTildelte, 
 import { LAG_ID as TRP_BLIKK_LAG } from "./framdrift-plukk.js";
 import { forberedKilder, nullstillKilder } from "./framdrift-kilde.js";
 import { varsel } from "./varsel.js";
+import { lastFerdig, ryddFarger as ryddFerdigFarger, ryddFerdig, tegnRapport } from "./ferdig.js";
 // Stempel-hjelperen for angre bor hos støpeplanen (samme listeform, samme fletting)
 import { settListeStemplet } from "./stopeplan-regn.js";
 
@@ -174,6 +175,13 @@ function markEffekt() {
 S.riggFlervalg = riggUtvalg;          // rigg-vis.js maler dem blå (valgt)
 // Alt som er valgt akkurat nå, som nøkler { k, gid? }.
 export function valgteObjekter() {
+  // «Legg til»: det som allerede ligger i et trinn, kan ikke legges inn på
+  // nytt. «Fjern»: bare det som ligger i DETTE trinnet kan tas ut (Emil 01.10).
+  return valgteRaa().filter(o => tillatt(o.k));
+}
+// 📊 Utvalget uten trinn-filteret — ferdigmeldingen (ferdig.js) bruker det
+S.framdriftValgteRaa = () => valgteRaa();
+function valgteRaa() {
   const ut = [];
   const ider = (S.multiSel && S.multiSel.size) ? [...S.multiSel.keys()] : (S.currentPropID != null ? [S.currentPropID] : []);
   for (const n of ider.map(Number).filter(n => n > 0)) {
@@ -194,10 +202,8 @@ export function valgteObjekter() {
   for (const id of mat) { const k = nokkel("mat", id); if (k) ut.push({ k }); }
   for (const id of riggUtvalg) { const k = nokkel("rigg", id); if (k) ut.push({ k }); }
   for (const id of markUtvalg) { const k = nokkel("mark", id); if (k) ut.push({ k }); }
-  // «Legg til»: det som allerede ligger i et trinn, kan ikke legges inn på
-  // nytt. «Fjern»: bare det som ligger i DETTE trinnet kan tas ut (Emil 01.10).
   const sett = new Set();
-  return ut.filter(o => o.k && !sett.has(o.k) && sett.add(o.k) && tillatt(o.k));
+  return ut.filter(o => o.k && !sett.has(o.k) && sett.add(o.k));
 }
 // Hva velgemodusen kan ta med akkurat nå
 function tillatt(k) {
@@ -381,9 +387,32 @@ function slippFokus(ev) {
   if (el && typeof document !== "undefined" && document.activeElement === el && el.blur) el.blur();
 }
 
+// 📊 Fanene: «Plan» (trinnene) og «Rapport» (runde 10, ferdig.js)
+function faneHtml() {
+  const f = S.fpFane === "rapport" ? "rapport" : "plan";
+  return '<div class="fp-faner"><button data-fane="plan"' + (f === "plan" ? ' class="aktiv"' : "") + ">📅 " + esc(t("Plan")) + "</button>" +
+    '<button data-fane="rapport"' + (f === "rapport" ? ' class="aktiv"' : "") + ">📊 " + esc(t("Rapport")) + "</button></div>";
+}
+function koblFaner(body) {
+  body.querySelectorAll(".fp-faner [data-fane]").forEach(b => b.onclick = () => {
+    if (S.fpFane === b.dataset.fane) return;
+    if (velger) avsluttVelg(false);
+    S.fpFane = b.dataset.fane;
+    if (S.fpFane !== "rapport") ryddFerdigFarger();
+    tegnPanel();
+  });
+}
+
 export function tegnPanel() {
   const body = $("framdriftBody");
   if (!body) return;
+  if (S.fpFane === "rapport") {
+    body.innerHTML = faneHtml() + '<div id="ferdigBody"></div>';
+    koblFaner(body);
+    oppdaterVis();
+    tegnRapport($("ferdigBody"));
+    return;
+  }
   const liste = sortert(S.framdrift);
   // Forklaringen står åpen til det finnes trinn — så er den én linje du kan
   // trykke på, og trinnene får plassen (Emil 02.10: panelet var for stort)
@@ -430,7 +459,8 @@ export function tegnPanel() {
       '<button id="fpVideo"' + (pdfTrinn(S.framdrift).length ? "" : " disabled") + ' title="' + esc(t("Kameraet går én gang rundt bygget mens trinnene bygges opp. Lagres i SharePoint, så PDF-en får en QR-kode til videoen.")) + '">' +
       ikon("lastned") + " " + esc(t("Lag video")) + "</button></div>" +
     '<p class="set-hjelp" id="fpLagring">' + esc(lagringsTekst()) + "</p>";
-  body.innerHTML = html;
+  body.innerHTML = faneHtml() + html;
+  koblFaner(body);
 
   $("fpNy").onclick = () => leggTilEtappe();
   $("fpPdf").onclick = () => lastNedPdf();
@@ -482,7 +512,8 @@ function oppdaterVis() {
     return;
   }
   settSkjulTildelte(false);
-  const paa = erApen() && S.framdriftVis !== false && !velger;
+  // 📊 Rapport-fanen: hele modellen synlig (fargene ligger oppå), ingen glider
+  const paa = erApen() && S.framdriftVis !== false && !velger && S.fpFane !== "rapport";
   // 📦 Hvilke bunker som brukes opp, finnes én gang per modell (stålet leses
   // fra modellen) — så tegnes glideren på nytt med bunkene
   if (paa) forberedKilder().then(() => { if (erApen() && S.framdriftVis !== false && !velger) tegnFramdrift(); }).catch(() => {});
@@ -538,10 +569,11 @@ S.lastFramdrift = () => {
   nullstillKilder();
   S.framdrift = lesLokalt();
   sisteMelding = "";
+  lastFerdig();          // 📊 ferdigmeldingene for denne modellen
   if (erApen()) tegnPanel();
   hentFraSp();
 };
-S.ryddFramdrift = () => { if (velger) avsluttVelg(false); ryddFramdriftVis(); S.framdrift = []; };
+S.ryddFramdrift = () => { if (velger) avsluttVelg(false); ryddFramdriftVis(); ryddFerdig(); S.framdrift = []; };
 
 på("btnFramdrift", "click", () => {
   const panel = $("framdriftPanel");
@@ -563,6 +595,6 @@ på("btnFramdrift", "click", () => {
     if (naa === varApen) return;
     varApen = naa;
     if (!naa && velger) avsluttVelg(false);
-    if (!naa) oppdaterVis();
+    if (!naa) { ryddFerdigFarger(); oppdaterVis(); }
   }).observe(p, { attributes: true, attributeFilter: ["class"] });
 })();
