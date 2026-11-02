@@ -19,7 +19,7 @@
 // tar dem med overalt også (Emil 05.10) — oppsummeringen samler dem per type
 // (flervalgRader), så tusen blikkstykker blir noen få linjer.
 import * as THREE from "three";
-import { $, S, apnePanel, esc, registrerEkstraGruppe } from "./state.js";
+import { $, EKSTRA_LAG, S, apnePanel, esc, ikon, registrerEkstraGruppe } from "./state.js";
 import { t } from "./i18n.js";
 import { BESLAG_FORM, BESLAG_FORM_NAVN, BLIKK_TYPE_NAVN } from "./sw-blikk.js";
 import { blikkInfoRad } from "./veggelement/tilstand.js";
@@ -122,6 +122,8 @@ registrerEkstraGruppe(gruppe, {
     oppdaterEffekt();
   },
   valgte: () => [...valgt],
+  // «Skjul valgte» i flervalget treffer platene og blikket også
+  skjul(ider) { skjulNokler(ider); },
   // ⇧ Shift-klikk utenfor velgemodusen: platene og blikket telles i
   // oppsummeringen (antall og løpemeter per type), som SW-elementene
   flervalgRader(ider) {
@@ -186,6 +188,15 @@ export function infoFor(k) {
   const r = blikkInfoRad(m.userData.blikkInfo);
   return r ? { slag: "blikk", r } : null;
 }
+// 👁 Skjul: går til SW-lagets skjuling (samme sett, samme «Vis alle», samme angre)
+function swLag() { return EKSTRA_LAG.find(l => l.id === "sw" && typeof l.skjul === "function") || null; }
+function skjulNokler(ider) {
+  const l = swLag();
+  const k = (ider || []).filter(x => /^(tak|blikk):/.test(String(x)));
+  if (!l || !k.length) return;
+  for (const x of k) valgt.delete(x);
+  l.skjul(k);
+}
 function visInfo(k) {
   const i = infoFor(k);
   if (!i || !$("propTitle")) return;
@@ -209,6 +220,9 @@ function visInfo(k) {
       (r.b ? rad(t("Benlengde"), r.b + " mm") : "") +
       rad(t("Plassering"), (r.se === "inner" ? t("Innervegg") : t("Yttervegg")) + (r.fa ? " · " + r.fa : ""));
   }
+  $("propBody").insertAdjacentHTML("afterbegin", '<div class="prop-actions"><button id="paSkjulTrpBlikk">' + ikon("skjul") + " " + esc(t("Skjul dette elementet")) + "</button></div>");
+  $("propBody").insertAdjacentHTML("beforeend", '<p style="color:var(--muted); font-size:11px; margin-top:8px">' + esc(t("Skjulte SW-elementer hentes fram igjen med «Vis alle».")) + "</p>");
+  $("paSkjulTrpBlikk").onclick = () => skjulNokler([k]);
   const p = $("propPanel");
   if (p) p.dataset.navn = $("propTitle").textContent;
   apnePanel("propPanel");
