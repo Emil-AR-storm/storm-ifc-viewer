@@ -363,6 +363,19 @@ export function tegnAlt() {
   // yttervegger.
   try { tegnInnervegger(); }
   catch (err) { console.warn("Innerveggene kunne ikke tegnes:", err); }
+  // 👁 Blikk og takplater skjult enkeltvis (Emil 02.11: «det går ikke an å
+  // skjule blikk/beslag med Skjul dette elementet»). Nøklene «blikk:<id>» og
+  // «tak:<id>» ligger i det samme settet som SW-elementene, så «Vis alle»
+  // henter dem fram igjen. Tas UT av gruppa (ikke bare usynlige), så de ikke
+  // telles i Mengder — samme regel som for skjulte SW-elementer.
+  if (swSkjultId.size) {
+    for (const o of [...swGroup.children]) {
+      const u = o.userData || {};
+      const k = (u.trpId !== undefined && u.trpId !== null && u.trpId !== "") ? "tak:" + u.trpId
+        : (u.blikkId !== undefined && u.blikkId !== null && u.blikkId !== "") ? "blikk:" + u.blikkId : null;
+      if (k && swSkjultId.has(k)) swGroup.remove(o);
+    }
+  }
   // swGroup er revet og bygget opp igjen — alt er ferske materialer som ikke
   // vet at Gjennomsiktig står på. Uten dette kom elementer generert MENS ghost
   // var på ut solide midt i en gjennomsiktig modell.
