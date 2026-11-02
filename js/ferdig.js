@@ -17,7 +17,7 @@
 // Regningen står i ferdig-regn.js. Byggeplassen (10b) melder via innboksen.
 import * as THREE from "three";
 import { $, S, esc, ikon } from "./state.js";
-import { scene } from "./scene.js";
+import { frameHooks, scene } from "./scene.js";
 import { t, tn } from "./i18n.js";
 import { varsel } from "./varsel.js";
 import { flettPaaId, spLes, spPaalogget, spSkriv } from "./sp-lager.js";
@@ -216,6 +216,11 @@ export async function tegnRapport(el) {
   h += '<div class="prop-actions fr-knapper"><button id="frMeld" class="primary"' + (vm ? " disabled" : "") + ">✅ " + esc(vm ? t("Velger … ({0})", nValgt) : t("Ferdigmeld")) + "</button>" +
     '<button id="frIkke"' + (vm ? " disabled" : "") + ">" + esc(t("Ikke ferdig")) + "</button></div>" +
     '<label class="set-hjelp fp-vis"><input type="checkbox" id="frFarg"' + (farger ? " checked" : "") + "> " + esc(t("Farg modellen etter framdrift")) + "</label>" +
+    // 👁 Visningen (Emil 02.11): slå lagene og det ferdige av og på
+    '<div class="fr-visning"><span class="set-hjelp">' + esc(t("Vis i modellen:")) + "</span>" +
+      [["sw", "SW-elementer"], ["blikk", "Blikk"], ["tak", "Takplater"], ["ferdig", "Ferdige"]].map(([k, n]) =>
+        '<button class="fr-vis-knapp' + (VIS[k] !== false ? " aktiv" : "") + '" data-vis="' + k + '">' + esc(t(n)) + "</button>").join("") +
+    '<span class="set-hjelp fr-vis-hjelp">' + esc(t("Rigg, materiell, terreng og markeringer er skjult mens Rapport er åpen.")) + "</span></div>" +
     '<div class="fr-last"><div class="set-hjelp"><b>' + esc(t("Intern (plan mot faktisk)")) + "</b> — " + esc(t("alt: typer, trinn, forsinkede og hvert objekt")) + "</div>" +
     '<div class="prop-actions"><button id="frIntPdf">' + ikon("lastned") + " PDF</button><button id=\"frIntXlsx\">" + ikon("lastned") + " Excel</button></div>" +
     '<div class="set-hjelp"><b>' + esc(t("Status (til mottaker)")) + "</b> — " + esc(t("bare % ferdig per elementtype og totalt")) + "</div>" +
@@ -227,6 +232,12 @@ export async function tegnRapport(el) {
   $("frMeld").onclick = () => { if (velgerAktiv()) return; S.startFerdigVelg(true); };
   $("frIkke").onclick = () => { if (velgerAktiv()) return; S.startFerdigVelg(false); };
   $("frFarg").onchange = (ev) => { farger = !!ev.target.checked; tegnFarger(); };
+  el.querySelectorAll("[data-vis]").forEach(b => b.onclick = () => {
+    const k = b.dataset.vis;
+    VIS[k] = VIS[k] === false;
+    b.classList.toggle("aktiv", VIS[k] !== false);
+    tegnFarger();
+  });
   $("frIntPdf").onclick = () => last("pdf", "intern");
   $("frIntXlsx").onclick = () => last("xlsx", "intern");
   $("frStPdf").onclick = () => last("pdf", "status");
@@ -249,39 +260,132 @@ function oppdater() { if (aktiv()) tegnRapport($("ferdigBody")); else ryddFarger
 S.ferdigOppdater = oppdater;
 
 // ═══════════ FARGENE I MODELLEN ═══════════
+// IFC-elementene: en kopi av trekantene i fargen (som før). SW-elementer,
+// takplater og blikk (Emil 02.11: «får ikke rød/grønn slik som bjelker og
+// søyler»): hvert mesh i laget får en tvilling med SAMME geometri (delt, ikke
+// kopiert) og fargen oppå, plassert med meshets matrixWorld.
 const fargeGruppe = new THREE.Group();
 fargeGruppe.name = "ferdigFarger";
 scene.add(fargeGruppe);
 const FARGE = { gronn: 0x3cb44b, gul: 0xe9a13b, rod: 0xef4444, gra: 0x8a929c };
-export function ryddFarger() {
-  fargeGruppe.children.forEach(m => { m.geometry.dispose(); m.material.dispose(); });
+const fargeMat = (f) => new THREE.MeshBasicMaterial({ color: FARGE[f], transparent: true, opacity: f === "gra" ? 0.35 : 0.8, side: THREE.DoubleSide,
+  polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1, depthWrite: false });
+function ryddFargeMesh() {
+  fargeGruppe.children.forEach(m => { if (!m.userData.delt) m.geometry.dispose(); m.material.dispose(); });
   fargeGruppe.clear();
 }
+// Kalles når fanen forlates / panelet lukkes: farger, skjuling og støy tilbake
+export function ryddFarger() {
+  fargeRunde++;
+  ryddFargeMesh();
+  visAltIgjen();
+}
+
+// ═══════════ VISNINGEN: BARE DET SOM HØRER TIL (Emil 02.11) ═══════════
+// «samme funksjon som endringsmelding med at alt som ikke er relevant blir
+// skjult + en egen liten tab som lar deg velge mellom å skjule og vise
+// SW-elementer, blikk, takplater og ferdig-markerte objekter». Rigg,
+// materiell, terreng, markeringer o.l. skjules mens Rapport-fanen er åpen
+// (samme teknikk som Sammenlign, cmp-skjul.js). SW/tak/blikk og det ferdige
+// kan slås av og på hver for seg.
+export const VIS = { sw: true, blikk: true, tak: true, ferdig: true };
+const stoyHoldt = new Map();
+const objSkjult = new Set();       // SW/tak/blikk-objekter VI har skjult
+let ifcSkjultAvOss = false;
+let LAG = null;                     // lazy: { finnObjekter, settIfcSkjult, skjulStoy, visStoy, behold }
+async function lag() {
+  if (LAG) return LAG;
+  const V = await import("./framdrift-vis.js");
+  const C = await import("./cmp-skjul.js");
+  const SC = await import("./scene.js");
+  const { EKSTRA_LAG } = await import("./state.js");
+  const holdes = (ch) => ch.isLight || ch.isCamera || ch === S.modelGroup || ch === fargeGruppe || ch === SC.selGroup ||
+    ch === SC.axesGroup || ch === SC.measureGroup || ch === SC.koteGroup || ch === SC.grid ||
+    EKSTRA_LAG.some(l => (l.id === "sw" || l.id === "tak") && l.gruppe === ch);
+  LAG = { V, C, holdes };
+  return LAG;
+}
+// Hvert bilde: støyen holdes skjult mens fanen er åpen (terrenget slår seg på selv)
+frameHooks.push(() => {
+  if (aktiv() && LAG) LAG.C.skjulStoy(scene, LAG.holdes, stoyHoldt);
+  else if (stoyHoldt.size && LAG) LAG.C.visStoy(stoyHoldt);
+});
+function visAltIgjen() {
+  for (const o of objSkjult) o.visible = true;
+  objSkjult.clear();
+  if (ifcSkjultAvOss && LAG) { LAG.V.settIfcSkjult(new Set()); ifcSkjultAvOss = false; }
+  if (stoyHoldt.size && LAG) LAG.C.visStoy(stoyHoldt);
+}
+const SLAG_VIS = { sw: "sw", tak: "tak", blikk: "blikk" };
+function slagSynlig(k) { const s = slagFor(k); return !(s in SLAG_VIS) || VIS[s] !== false; }
+
 let fargeRunde = 0;
 async function tegnFarger() {
   const runde = ++fargeRunde;
-  ryddFarger();
-  if (!farger || !aktiv() || !sisteRapport) return;
+  ryddFargeMesh();
+  if (!aktiv() || !sisteRapport) { visAltIgjen(); return; }
+  const L = await lag();
   const E = await import("./elements.js");
   if (runde !== fargeRunde) return;
+  // 1) Skjul: SW/tak/blikk som er slått av, og det ferdige når «Ferdige» er av
+  for (const o of objSkjult) o.visible = true;
+  objSkjult.clear();
+  const objMap = L.V.finnObjekter();
+  const ferdigK = new Set(sisteRapport.rader.filter(x => x.ferdig).map(x => x.k));
+  const skjul = (o) => { if (o.visible) { o.visible = false; objSkjult.add(o); } };
+  for (const [k, os] of objMap) {
+    if (!(slagFor(k) in SLAG_VIS)) continue;
+    if (!slagSynlig(k) || (VIS.ferdig === false && ferdigK.has(k))) os.forEach(skjul);
+  }
+  // Lapper og utsparingsmerking som hører til SW-objekter (fpEiere): borte når alle eierne er borte
+  const { EKSTRA_LAG } = await import("./state.js");
+  const borte = (k) => !slagSynlig(k) || (VIS.ferdig === false && ferdigK.has(k));
+  for (const l of EKSTRA_LAG) {
+    if (l.id !== "sw" || !l.gruppe) continue;
+    for (const o of l.gruppe.children) { const e = o.userData.fpEiere; if (e && e.length && e.every(borte)) skjul(o); }
+  }
+  const ifcFerdig = new Set();
+  if (VIS.ferdig === false) for (const k of ferdigK) if (slagFor(k) === "id") ifcFerdig.add(Number(idFor(k)));
+  if (ifcFerdig.size || ifcSkjultAvOss) { L.V.settIfcSkjult(ifcFerdig); ifcSkjultAvOss = ifcFerdig.size > 0; }
+  if (!farger) return;
+  // 2) Fargene. I Ferdigmeld-modusen skal det valgte synes blått — ingen farge oppå
+  const valgtK = new Set(velgerAktiv() && S.framdriftValgteRaa ? S.framdriftValgteRaa().map(o => o.k) : []);
+  if (velgerAktiv() && S.currentPropID != null) valgtK.add("id:" + S.currentPropID);
   const v = new THREE.Vector3();
   for (const f of ["gronn", "gul", "rod", "gra"]) {
-    const ider = new Set(sisteRapport.rader.filter(x => x.farge === f && slagFor(x.k) === "id").map(x => Number(idFor(x.k))));
-    // I Ferdigmeld-modusen skal det valgte synes blått — det får ingen farge oppå
-    if (velgerAktiv()) { for (const id of (S.multiSel ? S.multiSel.keys() : [])) ider.delete(Number(id)); if (S.currentPropID != null) ider.delete(Number(S.currentPropID)); }
-    if (!ider.size) continue;
-    const pos = [];
-    E.forHverTrekant(ider, (pp, a, b, c, mtx) => { for (const i of [a, b, c]) { v.fromBufferAttribute(pp, i); if (mtx) v.applyMatrix4(mtx); pos.push(v.x, v.y, v.z); } });
-    if (!pos.length) continue;
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(pos), 3));
-    const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: FARGE[f], transparent: true, opacity: f === "gra" ? 0.35 : 0.8, side: THREE.DoubleSide,
-      polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1, depthWrite: false }));
-    mesh.renderOrder = 989; mesh.raycast = () => {};
-    fargeGruppe.add(mesh);
+    const rader = sisteRapport.rader.filter(x => x.farge === f && !valgtK.has(x.k) && !(VIS.ferdig === false && x.ferdig));
+    const ider = new Set(rader.filter(x => slagFor(x.k) === "id").map(x => Number(idFor(x.k))));
+    if (ider.size) {
+      const pos = [];
+      E.forHverTrekant(ider, (pp, a, b, c, mtx) => { for (const i of [a, b, c]) { v.fromBufferAttribute(pp, i); if (mtx) v.applyMatrix4(mtx); pos.push(v.x, v.y, v.z); } });
+      if (pos.length) {
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(pos), 3));
+        const mesh = new THREE.Mesh(geo, fargeMat(f));
+        mesh.renderOrder = 989; mesh.raycast = () => {};
+        fargeGruppe.add(mesh);
+      }
+    }
+    // SW-elementer, takplater og blikk
+    const mat = fargeMat(f);
+    let brukt = false;
+    for (const r of rader) {
+      if (!(slagFor(r.k) in SLAG_VIS) || !slagSynlig(r.k)) continue;
+      for (const o of objMap.get(r.k) || []) {
+        if (!o.visible) continue;
+        o.updateWorldMatrix(true, true);
+        o.traverse(m => {
+          if (!m.isMesh || !m.geometry || m.isSprite || !m.visible) return;
+          const t2 = new THREE.Mesh(m.geometry, mat);
+          t2.matrixAutoUpdate = false; t2.matrix.copy(m.matrixWorld);
+          t2.userData.delt = true; t2.renderOrder = 989; t2.raycast = () => {};
+          fargeGruppe.add(t2); brukt = true;
+        });
+      }
+    }
+    if (!brukt) mat.dispose();
   }
 }
-
 // Modusen (framdrift.js velgemodus) — knappen viser «Velger … (n)» så lenge den er på
 const velgerAktiv = () => !!(S.ferdigVelgAktiv && S.ferdigVelgAktiv());
 S.ferdigMeld = (ferdig) => meld(ferdig);
