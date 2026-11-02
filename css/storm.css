@@ -2931,3 +2931,7 @@ html[data-tema="lys"] .lp-vekt { color-scheme: light; }
 .fr-kt { font-size: 10px; fill: var(--muted); }
 .fr-knapper { margin-top: 8px; }
 .fr-last { border-top: 1px dashed var(--border); margin-top: 8px; padding-top: 6px; display: flex; flex-direction: column; gap: 4px; }
+.fr-visning { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 6px 0; }
+.fr-vis-knapp { padding: 2px 9px; font-size: 12px; border-radius: 12px; opacity: .55; }
+.fr-vis-knapp.aktiv { opacity: 1; background: var(--aktiv-bg); color: var(--aktiv-tekst); font-weight: 600; }
+.fr-vis-hjelp { flex-basis: 100%; }
