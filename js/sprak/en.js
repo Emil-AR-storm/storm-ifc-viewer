@@ -3473,6 +3473,8 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "{0} meldinger venter på at kontoret henter dem": "{0} reports are waiting for the office to fetch them",
   "{0} meldinger venter på at kontoret henter dem|one": "{0} report is waiting for the office to fetch it",
   "{0} meldinger venter på at kontoret henter dem|few": "{0} reports are waiting for the office to fetch them",
+  "Trinn nå:": "Stage now:",
+  "Neste trinn:": "Next stage:",
   "Start sjekkliste": "Start checklist",
   "Klar til støp": "Ready to pour",
   "Angre «klar til støp»": "Undo «ready to pour»",

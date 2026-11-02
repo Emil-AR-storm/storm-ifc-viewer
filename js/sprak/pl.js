@@ -3473,6 +3473,8 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "{0} meldinger venter på at kontoret henter dem": "{0} zgłoszenia czekają na pobranie przez biuro",
   "{0} meldinger venter på at kontoret henter dem|one": "{0} zgłoszenie czeka na pobranie przez biuro",
   "{0} meldinger venter på at kontoret henter dem|few": "{0} zgłoszenia czekają na pobranie przez biuro",
+  "Trinn nå:": "Etap teraz:",
+  "Neste trinn:": "Następny etap:",
   "Start sjekkliste": "Rozpocznij listę kontrolną",
   "Klar til støp": "Gotowe do betonowania",
   "Angre «klar til støp»": "Cofnij «gotowe do betonowania»",

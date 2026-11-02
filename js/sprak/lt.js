@@ -3473,6 +3473,8 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "{0} meldinger venter på at kontoret henter dem": "{0} pranešimai laukia, kol biuras juos gaus",
   "{0} meldinger venter på at kontoret henter dem|one": "{0} pranešimas laukia, kol biuras jį gaus",
   "{0} meldinger venter på at kontoret henter dem|few": "{0} pranešimai laukia, kol biuras juos gaus",
+  "Trinn nå:": "Dabartinis etapas:",
+  "Neste trinn:": "Kitas etapas:",
   "Start sjekkliste": "Pradėti kontrolinį sąrašą",
   "Klar til støp": "Paruošta betonavimui",
   "Angre «klar til støp»": "Atšaukti «paruošta betonavimui»",

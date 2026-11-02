@@ -56,35 +56,61 @@ function oppdaterVis() {
   tegnTidslinje(paa);
 }
 
+// 📱 Tre faner (Emils valg B 02.11): 📊 Status · 📅 Trinn · ⚙ Vis. Én om
+// gangen, og panelet har fast høyde (≤ 48 % av skjermen på telefon), så
+// modellen får plassen. Status er standard når det finnes noe å melde.
+let fane = "status";
+const iDagIso = () => { const d = new Date(); const to = (n) => String(n).padStart(2, "0"); return d.getFullYear() + "-" + to(d.getMonth() + 1) + "-" + to(d.getDate()); };
+// Trinnet som pågår i dag — ellers det neste, ellers det siste
+export function trinnNa(liste, iDag) {
+  const m = (liste || []).filter(e => e.dato);
+  const pa = m.find(e => e.dato <= iDag && (e.slutt || e.dato) >= iDag);
+  if (pa) return { e: pa, naa: true };
+  const neste = m.filter(e => e.dato > iDag).sort((x, y) => (x.dato < y.dato ? -1 : 1))[0];
+  if (neste) return { e: neste, naa: false };
+  return m.length ? { e: m[m.length - 1], naa: false } : null;
+}
 export function tegnPanel() {
   const body = $("framdriftBody");
   if (!body) return;
   const liste = sortert(S.framdrift);
-  let html = '<details class="set-hjelp fp-hjelp"><summary>' + esc(t("Slik bruker du framdriftsplanen")) + "</summary>" +
-    esc(t("Planen er laget på kontoret. Dra glideren nederst for å se hva som er bygget når — trykk på et trinn for å gå dit det er ferdig.")) + "</details>";
-  if (liste.length) html += '<label class="set-hjelp fp-vis"><input type="checkbox" id="fpVis"' + (S.framdriftVis !== false ? " checked" : "") + "> " +
-    esc(t("Vis framdriften i modellen — dra glideren nederst")) + "</label>" +
+  const status = ferdigHtml();
+  if (fane === "status" && !status) fane = "trinn";
+  const knapp = (id, tekst) => '<button class="fp-lett-fane' + (fane === id ? " aktiv" : "") + '" data-fane="' + id + '">' + esc(tekst) + "</button>";
+  let html = '<div class="fp-lett-faner">' + (status ? knapp("status", "📊 " + t("Status")) : "") + knapp("trinn", "📅 " + t("Trinn")) + knapp("vis", "⚙ " + t("Vis")) + "</div>";
+  if (fane === "status") {
+    const n = trinnNa(liste, iDagIso());
+    if (n) html += '<p class="set-hjelp fp-trinn-na">' + esc(n.naa ? t("Trinn nå:") : t("Neste trinn:")) + " <b>" + n.e.nr + " · " + esc(n.e.navn) + "</b> (" + esc(datoTekst(n.e)) + ")</p>";
+    html += status;
+  } else if (fane === "trinn") {
+    if (!liste.length) html += '<p class="hint">' + esc(t("Ingen trinn ennå.")) + "</p>";
+    html += '<div class="fp-liste" id="fpListe">';
+    for (const e of liste) {
+      html += '<div class="st-etappe st-lett fp-etappe" data-id="' + esc(e.id) + '" style="border-left:4px solid ' + esc(e.farge) + '">' +
+        '<div class="st-rad"><b class="st-nr">' + e.nr + "</b> <b>" + esc(e.navn) + "</b></div>" +
+        '<div class="st-rad fp-lett-rad"><span>' + esc(datoTekst(e)) + '</span><span class="st-innhold">' + esc(innholdTekst(e)) + "</span></div>" +
+      "</div>";
+    }
+    html += "</div>";
+  } else {
+    if (liste.length) html += '<label class="set-hjelp fp-vis"><input type="checkbox" id="fpVis"' + (S.framdriftVis !== false ? " checked" : "") + "> " +
+      esc(t("Vis framdriften i modellen — dra glideren nederst")) + "</label>";
     // 🌦 Sier fra hvorfor været mangler, i stedet for at det bare ikke vises
-    (S.vaerStatus && S.vaerStatus() ? '<p class="hint fp-vaer-status">🌦 ' + esc(S.vaerStatus()) + "</p>" : "");
-  if (!liste.length) html += '<p class="hint">' + esc(t("Ingen trinn ennå.")) + "</p>";
-  html += ferdigHtml();
-  html += '<div class="fp-liste" id="fpListe">';
-  for (const e of liste) {
-    html += '<div class="st-etappe st-lett fp-etappe" data-id="' + esc(e.id) + '" style="border-left:4px solid ' + esc(e.farge) + '">' +
-      '<div class="st-rad"><b class="st-nr">' + e.nr + "</b> <b>" + esc(e.navn) + "</b></div>" +
-      '<div class="st-rad fp-lett-rad"><span>' + esc(datoTekst(e)) + '</span><span class="st-innhold">' + esc(innholdTekst(e)) + "</span></div>" +
-    "</div>";
+    if (S.vaerStatus && S.vaerStatus()) html += '<p class="hint fp-vaer-status">🌦 ' + esc(S.vaerStatus()) + "</p>";
+    html += '<details class="set-hjelp fp-hjelp" open><summary>' + esc(t("Slik bruker du framdriftsplanen")) + "</summary>" +
+      esc(t("Planen er laget på kontoret. Dra glideren nederst for å se hva som er bygget når — trykk på et trinn for å gå dit det er ferdig.")) + "</details>";
   }
-  html += "</div>";
   body.innerHTML = html;
-  koblFerdig();
-  begrensListe($("fpListe"));
+  body.querySelectorAll(".fp-lett-fane").forEach(b => b.onclick = () => { fane = b.dataset.fane; tegnPanel(); });
+  if (fane === "status") koblFerdig();
+  else if (S.ferdigLettFarger) S.ferdigLettFarger();
+  if ($("fpListe")) begrensListe($("fpListe"));
   if ($("fpVis")) $("fpVis").onchange = (ev) => { S.framdriftVis = ev.target.checked; oppdaterVis(); };
   body.querySelectorAll(".fp-etappe").forEach(rad => rad.onclick = () => {
     const e = synlige(S.framdrift).find(x => x.id === rad.dataset.id);
     const tt = e && trinnTid(e);
     if (!tt) return;
-    if (S.framdriftVis === false) { S.framdriftVis = true; const c = $("fpVis"); if (c) c.checked = true; }
+    if (S.framdriftVis === false) { S.framdriftVis = true; }
     tegnFramdrift(true);
     tegnTidslinje(true);
     settFramdriftTid(tt.b, true);
