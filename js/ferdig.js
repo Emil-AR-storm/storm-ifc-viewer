@@ -72,6 +72,7 @@ async function hentFraSp() {
 // Modellens bygningsdeler (IFC) + genererte SW-elementer, takplater og blikk
 // som ligger i et trinn eller er ferdigmeldt.
 let universBuffer = null, universNokkel = "";
+let borte = 0;   // objekter i planen/meldingene som ikke finnes i modellen lenger
 export async function univers() {
   const n = (S.fileName || "") + "|" + (S.modelGroup ? S.modelGroup.uuid : "");
   const ut = [];
@@ -93,11 +94,23 @@ export async function univers() {
     universBuffer = ifc; universNokkel = n;
   }
   ut.push(...universBuffer);
+  // 🔎 Emil 02.11 («4/8 takplater, men alle er markert»): takplatenes id
+  // lages av hvor plata ligger (sw-tak.js plateId), så når taket regnes på
+  // nytt får platene nye id-er — og de gamle ble stående i trinnet og telte
+  // som «ikke ferdig» for alltid. Nå telles bare SW/tak/blikk som FINNES i
+  // modellen. Er laget ikke tegnet i det hele tatt, telles det som står.
   const sett = new Set();
+  let objMap = null;
+  try { objMap = (await import("./framdrift-vis.js")).finnObjekter(); } catch (_) { objMap = null; }
+  const harSlag = new Set();
+  if (objMap) for (const k of objMap.keys()) harSlag.add(slagFor(k));
+  borte = 0;
   const leggTil = (k) => {
-    const s = slagFor(k);
-    if (!F.SLAG_GRUPPE[s] || sett.has(k)) return;
-    sett.add(k); ut.push({ k, gruppe: F.SLAG_GRUPPE[s], navn: idFor(k) });
+    const g = F.gruppeForNokkel(k);
+    if (!g || sett.has(k)) return;
+    sett.add(k);
+    if (objMap && harSlag.has(slagFor(k)) && !objMap.has(k)) { borte++; return; }
+    ut.push({ k, gruppe: g, navn: idFor(k) });
   };
   for (const e of synlige(S.framdrift)) for (const o of e.objekter) leggTil(o.k);
   for (const m of F.vaskMeldinger(S.ferdig)) leggTil(m.k);
@@ -207,6 +220,7 @@ export async function tegnRapport(el) {
       // Streken og planstreken på samme grunnlag: bare det som ligger i et trinn
       bar(x.planN ? x.faktiskPlanPst : x.pst, STATUS_FARGE[x.status === "gra" ? (x.ferdig ? "gronn" : "gra") : x.status], x.planN ? x.planPst : null) + "</div>";
   }
+  if (borte) h += '<p class="set-hjelp">' + esc(t("{0} objekter i planen finnes ikke lenger i modellen (SW eller taket er regnet på nytt) og er ikke telt. Legg de nye inn i trinnet i Plan-fanen.", borte)) + "</p>";
   if (r.uten.n && r.plan.n) h += '<p class="set-hjelp">' + esc(t("{0} objekter ligger ikke i noe trinn ({1} ferdig) — de er med i totalen, men har ingen plan.", r.uten.n, r.uten.ferdig)) + "</p>";
   h += '<div class="fr-leg"><span style="--c:var(--ok)">' + esc(t("I rute / ferdig")) + '</span><span style="--c:var(--warn)">' + esc(t("Litt bak / pågår")) + "</span>" +
     '<span style="--c:var(--danger)">' + esc(t("Forsinket")) + '</span><span style="--c:var(--text)">' + esc(t("Plan i dag")) + "</span></div>";

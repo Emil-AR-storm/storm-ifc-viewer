@@ -36,6 +36,9 @@ export function nokkelForMesh(o) {
     const u = o.userData || {};
     if (u.trpId !== undefined && u.trpId !== null && u.trpId !== "") return "tak:" + u.trpId;
     if (u.blikkId !== undefined && u.blikkId !== null && u.blikkId !== "") return "blikk:" + u.blikkId;
+    // 🧱 Isolasjonen under betonggulvet (Emil 02.11: «trykker bare gjennom
+    // det»). Har ingen swId med vilje (den støpes ikke), så den svares for her.
+    if (u.gulvIsoId) return "sw:" + u.gulvIsoId;
     o = o.parent;
   }
   return null;
@@ -82,6 +85,9 @@ registrerEkstraGruppe(gruppe, {
       // Det FØRSTE synlige treffet avgjør: er det en vegg, er det ikke en
       // plate bak veggen du trykte på (da svarer SW-laget).
       const k = nokkelForMesh(h.object);
+      // Isolasjonen kan bare velges i velgemodusen (framdriftsplan / ferdigmelding).
+      // Ellers går trykket gjennom til det bak, som før.
+      if (k && k.startsWith("sw:") && !aktiv()) continue;
       return k ? { id: k, avstand: h.distance } : null;
     }
     return null;
@@ -97,6 +103,7 @@ registrerEkstraGruppe(gruppe, {
     swGroup.updateMatrixWorld(true);
     camera.updateMatrixWorld(true);
     for (const [k, liste] of meshPerNokkel()) {
+      if (k.startsWith("sw:") && !aktiv()) continue;
       _b.makeEmpty();
       for (const o of liste) if (synligKjede(o)) _b.expandByObject(o);
       if (_b.isEmpty()) continue;

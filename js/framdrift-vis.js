@@ -31,7 +31,7 @@ scene.add(framdriftGroup);
 
 // Hvilke lag som har hvilke objekter, og hvor id-en står på objektet.
 const LAG_SLAG = {
-  sw: [["swId", "sw"], ["swLettId", "sw"], ["trpId", "tak"], ["blikkId", "blikk"]],
+  sw: [["swId", "sw"], ["swLettId", "sw"], ["trpId", "tak"], ["blikkId", "blikk"], ["gulvIsoId", "sw"]],
   tak: [["takLettId", "tak"]],
   materiell: [["materiellId", "mat"]],
   rigg: [["riggId", "rigg"]]

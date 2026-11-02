@@ -193,7 +193,8 @@ function valgteRaa() {
   for (const l of ekstraLagSom("valgte")) {
     if (!l.flervalg) continue;
     // Generert blikk og TRP-plater (framdrift-plukk.js): id-ene er hele nøkler
-    if (l.id === TRP_BLIKK_LAG) { for (const k of l.valgte()) if (/^(tak|blikk):/.test(k)) ut.push({ k }); continue; }
+    // …og isolasjonen under betonggulvet (sw:gulv-iso, bare i velgemodusen — Emil 02.11)
+    if (l.id === TRP_BLIKK_LAG) { for (const k of l.valgte()) if (/^(tak|blikk):/.test(k) || k === "sw:gulv-iso") ut.push({ k }); continue; }
     if (l.id !== "sw" && l.id !== "tak") continue;
     for (const id of l.valgte()) { const k = nokkel(l.id, id); if (k) ut.push({ k }); }
   }
@@ -271,10 +272,11 @@ function tegnVelgBar() {
     el.innerHTML =
       '<span class="st-velg-farge" style="background:' + (velger.ferdig ? "var(--ok)" : "var(--muted)") + '"></span>' +
       '<span class="st-velg-tekst"><b>' + esc(velger.ferdig ? t("Ferdigmeld") : t("Ikke ferdig")) + "</b><br>" +
-        esc(velger.ferdig ? t("Trykk på det som er ferdig — elementer, SW-elementer, takplater og blikk. Shift + dra for mange på en gang. Trykk Ferdig når du er ferdig.")
-          : t("Trykk på det som likevel ikke er ferdig. Shift + dra for mange på en gang. Trykk Ferdig når du er ferdig.")) + "</span>" +
+        esc(velger.ferdig ? t("Trykk på det som er ferdig — elementer, SW-elementer, betonggulv og isolasjon, takplater og blikk. Shift + dra for mange på en gang. Trykk Lagre når du er ferdig.")
+          : t("Trykk på det som likevel ikke er ferdig. Shift + dra for mange på en gang. Trykk Lagre når du er ferdig.")) + "</span>" +
       '<span class="st-velg-ant">' + esc(t("{0} valgt", n)) + "</span>" +
-      '<button id="fpVelgFerdig" class="primary"' + (n ? "" : " disabled") + ">" + esc(t("Ferdig")) + "</button>" +
+      // Emil 02.11: «Lagre», ikke «Ferdig» — det sto «Ferdig» og «Ferdigmeld» ved siden av hverandre
+      '<button id="fpVelgFerdig" class="primary"' + (n ? "" : " disabled") + ">" + esc(t("Lagre")) + "</button>" +
       '<button id="fpVelgAvbryt">' + esc(t("Avbryt")) + "</button>";
     $("fpVelgFerdig").onclick = () => avsluttVelg(true);
     $("fpVelgAvbryt").onclick = () => avsluttVelg(false);

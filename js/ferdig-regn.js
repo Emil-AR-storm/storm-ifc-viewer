@@ -32,6 +32,17 @@ export const ikkeTell = (typeName) => IKKE_TELL_SETT.has(String(typeName || "").
 // Slagene som kan ferdigmeldes (materiell, rigg og markeringer er ikke bygget)
 export const KAN_MELDES = ["id", "sw", "tak", "blikk"];
 export const SLAG_GRUPPE = { sw: "SW-elementer", tak: "Takplater", blikk: "Blikk" };
+// Gruppen et generert objekt telles under. Fra SW-laget: betonggulvet og
+// isolasjonen under har egne linjer (Emil 02.11), ringmurbitene også.
+export function gruppeForNokkel(k) {
+  const s = slagFor(k), id = idFor(k);
+  if (s === "sw") {
+    if (id === "gulv") return "Betonggulv";
+    if (id === "gulv-iso") return "Isolasjon under gulv";
+    if (/^i?r\d+$/.test(id)) return "Ringmur";
+  }
+  return SLAG_GRUPPE[s] || "";
+}
 
 // Gruppen (elementtypen) et IFC-element telles under. Ukjent klasse: navnet
 // uten «Ifc»; «IfcBuildingElementProxy» → «Objekter» (IFC_GRUPPE).
