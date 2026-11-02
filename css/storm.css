@@ -205,6 +205,12 @@ button.active { background: var(--aktiv-bg); border-color: var(--aktiv-bg); colo
   overflow-wrap: anywhere;
 }
 #nettBanner button { padding: 4px 10px; font-size: 12px; margin-top: 6px; }
+/* Forslag 5 (02.11): feilraden er én kompakt linje med «Prøv igjen» og × */
+#nettBanner .nett-feil { display: flex; align-items: center; gap: 8px; }
+#nettBanner .nett-feil + div { margin-top: 4px; }
+#nettBanner .nett-feil-tekst { flex: 1; min-width: 0; }
+#nettBanner .nett-feil button { margin-top: 0; flex: none; }
+#nettBanner .nett-lukk { padding: 2px 8px; font-size: 16px; line-height: 1; background: transparent; border-color: transparent; color: var(--muted); }
 /* «Ny versjon klar» er en handling, ikke en advarsel. Knappen bærer
    aksentfargen; rammen fortsetter å si hvor alvorlig tilstanden er. */
 #nettBanner button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
@@ -2955,3 +2961,16 @@ html[data-tema="lys"] .lp-vekt { color-scheme: light; }
 @media (max-width: 700px) {
   [data-lett="1"] #framdriftPanel:not(.fp-sammen) .body { height: 30vh; max-height: 30vh; }
 }
+
+/* ---------- 🧭 Alle verktøy (js/alle-verktoy.js, forslag 7 02.11) ---------- */
+#alleVerktoyPanel h4 { margin: 12px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.av-liste { display: flex; flex-direction: column; gap: 4px; }
+.av-rad { display: flex; align-items: flex-start; gap: 10px; width: 100%; text-align: left; padding: 7px 9px; border-radius: 8px;
+  background: var(--panel2); border: 1px solid var(--border); color: var(--text); cursor: pointer; }
+.av-rad:hover, .av-rad:focus-visible { border-color: var(--accent); outline: none; }
+.av-rad .ikon { flex: none; width: 18px; height: 18px; margin-top: 1px; color: var(--muted); }
+.av-tekst { display: flex; flex-direction: column; min-width: 0; }
+.av-tekst small { color: var(--muted); font-size: 11px; line-height: 1.3; margin-top: 2px; }
+.av-inni { font-size: 11px; color: var(--accent); font-weight: 600; }
+.sj-boks.blink { animation: av-blink .5s ease 3; }
+@keyframes av-blink { 50% { box-shadow: 0 0 0 2px var(--accent); } }
