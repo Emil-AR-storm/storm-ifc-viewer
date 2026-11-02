@@ -80,12 +80,18 @@ export async function hentMedFrist(url, opts, ms) {
 // med kabel, og en ekstra rad i toppbaren hans er bare støy.
 
 let sisteFeil = "";
+let provIgjenHandling = null;
 let lagretKopiTid = 0;
 let nyVersjonHandling = null;
 
 // En feil som skal stå til den er rettet. Tom streng fjerner den.
-export function meldNettfeil(tekst) {
+// provIgjen (valgfri): funksjon bak «Prøv igjen»-knappen på feilraden.
+// Forslag 5 (02.11): den røde linja sto fast nederst over panelet på
+// telefonen. Nå har den «Prøv igjen» og et kryss — krysset gjemmer feilen til
+// neste gang noe feiler (påstanden er gammel, og montøren har lest den).
+export function meldNettfeil(tekst, provIgjen) {
   sisteFeil = tekst || "";
+  provIgjenHandling = sisteFeil && typeof provIgjen === "function" ? provIgjen : null;
   tegnNettBanner();
 }
 
@@ -137,12 +143,12 @@ export async function tegnNettBanner() {
   const deler = [];
   let farge = "var(--warn)";
 
-  if (sisteFeil) { deler.push(sisteFeil); farge = "var(--danger)"; }
+  if (sisteFeil) farge = "var(--danger)";
   if (lagretKopiTid) deler.push(t("Markeringer sist hentet {0}", klokkeslett(lagretKopiTid)));
   if (avNett) deler.push(t("Ingen nett – det du gjør lagres og sendes når du får dekning."));
   if (usendt) deler.push(t("{0} ikke sendt", usendt));
 
-  if (!deler.length && !nyVersjonHandling) {
+  if (!sisteFeil && !deler.length && !nyVersjonHandling) {
     el.style.display = "none";
     el.textContent = "";
     settHoyde(el, 0);
@@ -150,6 +156,34 @@ export async function tegnNettBanner() {
   }
 
   el.textContent = "";
+  if (sisteFeil) {
+    // Egen, kompakt rad: tekst + «Prøv igjen» + ×
+    const rad = document.createElement("div");
+    rad.className = "nett-feil";
+    const tx = document.createElement("span");
+    tx.className = "nett-feil-tekst";
+    tx.textContent = sisteFeil;
+    tx.style.color = "var(--danger)";
+    rad.appendChild(tx);
+    if (provIgjenHandling) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "nett-prov";
+      b.textContent = t("Prøv igjen");
+      const h = provIgjenHandling;
+      b.onclick = async () => { b.disabled = true; b.textContent = t("Henter …"); try { await h(); } catch (_) {} };
+      rad.appendChild(b);
+    }
+    const x = document.createElement("button");
+    x.type = "button";
+    x.className = "nett-lukk";
+    x.title = t("Lukk");
+    x.setAttribute("aria-label", t("Lukk"));
+    x.textContent = "×";
+    x.onclick = () => meldNettfeil("");
+    rad.appendChild(x);
+    el.appendChild(rad);
+  }
   if (deler.length) {
     const linje = document.createElement("div");
     linje.textContent = deler.join(" · ");

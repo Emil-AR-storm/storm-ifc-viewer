@@ -1,7 +1,7 @@
 // ⚙ Innstillingsmeny og hurtigtaster.
 import { $, DEFAULT_APPEAR, DEFAULT_KEYS, DEFAULT_SETTINGS, på, S, esc, gjettEnhetSkala, ikon, lukkPaneler, panelListe, velgEnhetSkala, writePrefs } from "./state.js";
 import { SPRAK, setLang, t } from "./i18n.js";
-import { LETT } from "./lett.js";
+import { LETT, montorNavn, settMontorNavn } from "./lett.js";
 import { OPPSETT_FELT, OPPSETT_FIL, OPPSETT_STATUS } from "./oppsett.js";
 import { angre, gjenopprett } from "./angre.js";
 import { FRISTER } from "./config.js";
@@ -157,6 +157,11 @@ function firmaoppsettHtml() {
 function renderSettings() {
   const bgVal = "#" + scene.background.getHexString();
   let html = "";
+  // 👷 Byggeplass-siden: navnet på markeringer og ferdigmeldinger (forslag 2,
+  // 02.11). Skrives i kodeboksen første gang — endres her.
+  if (LETT) html += '<h4>' + t("Navnet ditt") + '</h4>' +
+    '<div class="set-row"><input type="text" id="stNavn" maxlength="40" autocomplete="name" style="flex:1" value="' + esc(montorNavn()) + '"></div>' +
+    '<p class="set-hjelp">' + t("Står på markeringene, bildene og ferdigmeldingene dine.") + '</p>';
   html += '<h4>' + t("Kamera") + '</h4>' +
     '<div class="set-row"><span class="n">' + t("Rotasjonshastighet") + '</span>' +
     '<input type="range" id="stRot" min="0.3" max="3" step="0.1" value="' + S.settings.rotSpeed + '"></div>' +
@@ -295,6 +300,7 @@ function renderSettings() {
     '<div class="prop-actions" style="margin-top:10px"><button id="stReset">' + ikon("nullstill") + ' ' + t("Tilbakestill alt") + '</button></div>';
 
   $("setBody").innerHTML = html;
+  if ($("stNavn")) $("stNavn").onchange = (e) => { const n = settMontorNavn(e.target.value); if (n) e.target.value = n; else e.target.value = montorNavn(); };
   if (S.koblProsjektinfo) S.koblProsjektinfo();
   if (S.koblPdfUtseende) S.koblPdfUtseende();
 

@@ -59,8 +59,9 @@ export const GRUPPER = [
   // panelet sitt og trykker den samme knappen der (js/dokumentasjon.js), så
   // målestokk, tittelfelt og sjekkene før nedlasting er de samme.
   { id: "dok",      navn: "Dokumentasjon",    ikonNavn: "tegning",
-    hjelp: "Dokumentasjon: rapport, riggplan, løfteplan, SW-tegning, BCF, FDV og lett kopi",
-    knapper: ["btnRapport", "btnDokStope", "btnDokRigg", "btnDokLofte", "btnDokSW", "btnDokBcf", "btnDokBcfImport", "btnFdv", "btnSaveLite"] }
+    hjelp: "Dokumentasjon: rapport, riggplan, løfteplan, SW-tegning, BCF, FDV, lett kopi og oversikt over alle verktøy",
+    // 🧭 «Alle verktøy» (forslag 7, 02.11) står sist: en oversikt, ikke et dokument
+    knapper: ["btnRapport", "btnDokStope", "btnDokRigg", "btnDokLofte", "btnDokSW", "btnDokBcf", "btnDokBcfImport", "btnFdv", "btnSaveLite", "btnAlleVerktoy"] }
 ];
 
 // Knapper som står uansett hvilken gruppe som er valgt. Angre, Gjenopprett og

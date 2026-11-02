@@ -222,17 +222,39 @@ export function startRedigering(id) {
   // klikkverktøy, så de slås av her.
   if (S.mode) setMode(S.mode);
   tilstand.aktiv = id;
+  // Forslag 9 (02.11): «Avbryt» skal sette alt tilbake slik det var da
+  // redigeringen startet. Klikkene lagres fortløpende (som før), så vi tar
+  // vare på et øyeblikksbilde her og legger det tilbake ved Avbryt.
+  tilstand.foerRedigering = JSON.stringify(tilstand.grupper);
   S.fdvKlikk = klikk;
   window.addEventListener("keydown", escTast, true);
   tegn();
 }
+export function avbrytRedigering() {
+  const foer = tilstand.foerRedigering;
+  stoppRedigering();
+  if (!foer || foer === JSON.stringify(tilstand.grupper)) return;
+  let gamle; try { gamle = JSON.parse(foer); } catch (_) { return; }
+  // Bare gruppene som faktisk ble endret (et objekt kan ha blitt flyttet fra en
+  // annen gruppe), og med ny «endret»-tid så tilbakestillingen vinner over
+  // SharePoint-kopien ved neste fletting.
+  const naaMap = new Map(tilstand.grupper.filter(Boolean).map(g => [g.id, JSON.stringify(g)]));
+  const endret = new Set();
+  const tid = naa();
+  const liste = gamle.map(g => { if (g && naaMap.get(g.id) !== JSON.stringify(g)) { endret.add(g.id); return Object.assign({}, g, { endret: tid }); } return g; });
+  // grupper som ble laget under redigeringen (finnes ikke i bildet) beholdes
+  for (const g of tilstand.grupper) if (g && !gamle.some(x => x && x.id === g.id)) liste.push(g);
+  bytt(liste, t("Avbrøt FDV-redigering"), [...endret]);
+}
 export function stoppRedigering() {
   tilstand.aktiv = "";
+  tilstand.foerRedigering = "";
   if (S.fdvKlikk === klikk) S.fdvKlikk = null;
   window.removeEventListener("keydown", escTast, true);
   tegn();
 }
-function escTast(e) { if (e.key === "Escape" && tilstand.aktiv) { e.preventDefault(); e.stopImmediatePropagation(); stoppRedigering(); } }
+// Esc = Avbryt, som i de andre markeringsmodusene (forslag 9, 02.11)
+function escTast(e) { if (e.key === "Escape" && tilstand.aktiv) { e.preventDefault(); e.stopImmediatePropagation(); avbrytRedigering(); } }
 
 async function objektVed(x, y) {
   const E = await import("./elements.js");
@@ -474,8 +496,8 @@ export async function tegn() {
       (g.fraBib ? '<span class="fdv-tag" title="' + esc(t("fra biblioteket")) + '">📚</span>' : "") +
       (g.uten3d.length && !g.objekter.length ? '<span class="fdv-tag uten">' + esc(t("uten 3D")) + '</span>' : '<span class="fdv-ant">' + esc(t("{0} objekter", g.objekter.length)) + '</span>') + '</div>';
     if (aktiv) {
-      h += '<div class="fdv-hint">👆 ' + esc(t("Klikk objektene i 3D som hører til (blå). Klikk igjen for å ta ut. Esc = ferdig.")) + '</div>' +
-        '<div class="lag-knapper"><button data-fdv-like>' + esc(t("Marker alle like")) + '</button><button data-fdv-ikkelike>' + esc(t("Fjern alle like")) + '</button><button class="primary" data-fdv-ferdig>' + esc(t("Ferdig")) + '</button></div>';
+      h += '<div class="fdv-hint">👆 ' + esc(t("Klikk objektene i 3D som hører til (blå). Klikk igjen for å ta ut. Lagre når du er ferdig — Avbryt setter gruppa tilbake.")) + '</div>' +
+        '<div class="lag-knapper"><button data-fdv-like>' + esc(t("Marker alle like")) + '</button><button data-fdv-ikkelike>' + esc(t("Fjern alle like")) + '</button><button class="primary" data-fdv-ferdig>' + esc(t("Lagre")) + '</button><button data-fdv-avbryt>' + esc(t("Avbryt")) + '</button></div>';
       for (const d of F.DOKTYPER.filter(x => x.k !== "annet")) {
         const ia = g.ikkeAktuelt.includes(d.k);
         const har = g.dokumenter.filter(x => x.type === d.k);
@@ -548,6 +570,7 @@ function koble(body) {
   body.querySelectorAll("[data-fdv-rediger]").forEach(b => b.onclick = () => startRedigering(b.dataset.fdvRediger));
   const g = finn(tilstand.aktiv);
   body.querySelectorAll("[data-fdv-ferdig]").forEach(b => b.onclick = () => stoppRedigering());
+  body.querySelectorAll("[data-fdv-avbryt]").forEach(b => b.onclick = () => avbrytRedigering());
   body.querySelectorAll("[data-fdv-like]").forEach(b => b.onclick = () => alleLike(false));
   body.querySelectorAll("[data-fdv-ikkelike]").forEach(b => b.onclick = () => alleLike(true));
   body.querySelectorAll("[data-fdv-navn]").forEach(inp => inp.onchange = () => {

@@ -248,7 +248,7 @@ function tegnVelgBar() {
     '<span class="st-velg-tekst"><b>' + esc(t("Legg til i {0}", e ? e.navn : "")) + "</b><br>" +
       esc(t("Trykk på elementene som skal med. Shift + dra for mange på en gang.")) + "</span>" +
     '<span class="st-velg-ant">' + esc(t("{0} valgt", n)) + "</span>" +
-    '<button id="stVelgFerdig" class="primary"' + (n ? "" : " disabled") + ">" + esc(t("Ferdig")) + "</button>" +
+    '<button id="stVelgFerdig" class="primary"' + (n ? "" : " disabled") + ">" + esc(t("Lagre")) + "</button>" +
     '<button id="stVelgAvbryt">' + esc(t("Avbryt")) + "</button>";
   $("stVelgFerdig").onclick = () => avsluttVelg(true);
   $("stVelgAvbryt").onclick = () => avsluttVelg(false);

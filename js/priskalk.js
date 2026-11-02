@@ -431,7 +431,7 @@ function tegnVelgBar() {
     '<span class="st-velg-tekst"><b>' + esc(p ? t("Bytt objektene i «{0}»", p.tekst || postNr(p, 0)) : t("Marker objektene som skal prises")) + "</b><br>" +
       esc(t("Trykk på det som skal med — elementer, SW, takplater, blikk og materiell. Trykk igjen for å ta bort. Shift + dra for mange på en gang.")) + "</span>" +
     '<span class="st-velg-ant">' + esc(t("{0} valgt", n)) + "</span>" +
-    '<button id="pkVelgFerdig" class="primary"' + (n ? "" : " disabled") + ">" + esc(t("Ferdig")) + "</button>" +
+    '<button id="pkVelgFerdig" class="primary"' + (n ? "" : " disabled") + ">" + esc(t("Lagre")) + "</button>" +
     '<button id="pkVelgAvbryt">' + esc(t("Avbryt")) + "</button>";
   $("pkVelgFerdig").onclick = () => avsluttVelg(true);
   $("pkVelgAvbryt").onclick = () => avsluttVelg(false);

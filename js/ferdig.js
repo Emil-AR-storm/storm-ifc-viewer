@@ -278,7 +278,7 @@ export async function tegnRapport(el) {
     '<div class="prop-actions"><button id="frIntPdf">' + ikon("lastned") + " PDF</button><button id=\"frIntXlsx\">" + ikon("lastned") + " Excel</button></div>" +
     '<div class="set-hjelp"><b>' + esc(t("Status (til mottaker)")) + "</b> — " + esc(t("bare % ferdig per elementtype og totalt")) + "</div>" +
     '<div class="prop-actions"><button id="frStPdf">' + ikon("lastned") + " PDF</button><button id=\"frStXlsx\">" + ikon("lastned") + " Excel</button></div></div>" +
-    '<p class="set-hjelp">' + esc(t("Trykk «Ferdigmeld», trykk på det som er ferdig i modellen (shift + dra for mange) og trykk Ferdig. Telles i antall objekter. Plan i dag regnes jevnt over hvert trinn fra Fra- til Til-dato.")) + "</p>";
+    '<p class="set-hjelp">' + esc(t("Trykk «Ferdigmeld», trykk på det som er ferdig i modellen (shift + dra for mange) og trykk Lagre. Telles i antall objekter. Plan i dag regnes jevnt over hvert trinn fra Fra- til Til-dato.")) + "</p>";
   el.innerHTML = h;
   // Emil 02.11: «trykk Ferdigmeld → markeringsmodus → marker alt → Ferdig».
   // Er noe valgt fra før, er det med i utvalget når modusen starter.

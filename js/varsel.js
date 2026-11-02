@@ -9,8 +9,12 @@
 // Varselet her er en vanlig del av siden:
 //   · samme farger og ikoner som panelene (CSS-variabler, mørkt og lyst tema)
 //   · blokkerer ingenting — 3D-en og panelene lever videre bak
-//   · blir stående til den lukkes (OK, krysset eller Esc), slik alert() gjorde,
-//     så en feilmelding ikke forsvinner før den er lest
+//   · FEIL blir stående til den lukkes (OK eller Esc), så en feilmelding
+//     ikke forsvinner før den er lest
+//   · INFO forsvinner av seg selv etter ~4 s (lengre tekst får litt lengre
+//     tid, maks 10 s). Musa over kortet eller fokus i det holder det oppe.
+//     (Emil 02.11, forslag 4: «info-varsler blir stående og legger seg over
+//     verktøylinja»)
 //   · samme tekst to ganger på rad gir ×2 på det samme kortet i stedet for to
 //     like kort oppå hverandre
 //
@@ -42,8 +46,16 @@ function stabel() {
   return s;
 }
 
+// Hvor lenge et info-varsel står: 4 s, + 40 ms per tegn over 80, maks 10 s.
+export function infoTid(tekst) {
+  const n = String(tekst || "").length;
+  return Math.min(10000, 4000 + Math.max(0, n - 80) * 40);
+}
+
 function lukk(kort) {
-  if (!kort || !kort.parentNode) return;
+  if (!kort) return;
+  if (kort._tid) { clearTimeout(kort._tid); kort._tid = null; }
+  if (!kort.parentNode) return;
   const s = kort.parentNode;
   kort.remove();
   if (!s.children.length) s.classList.remove("har-varsel");
@@ -84,6 +96,7 @@ export function varsel(tekst, valg) {
     siste.dataset.antall = String(n);
     const t = siste.querySelector(".varsel-antall");
     if (t) { t.textContent = "×" + n; t.hidden = false; }
+    if (siste._start) siste._start();   // ny telling: klokka starter på nytt
     return siste;
   }
 
@@ -104,13 +117,41 @@ export function varsel(tekst, valg) {
   kort.querySelector(".varsel-ok").onclick = () => lukk(kort);
   s.appendChild(kort);
   s.classList.add("har-varsel");
-  while (s.children.length > MAKS_SYNLIGE) s.firstElementChild.remove();
-  // fokus på OK, så Enter lukker — slik alert() oppførte seg
-  try { kort.querySelector(".varsel-ok").focus({ preventScroll: true }); } catch (_) {}
+  while (s.children.length > MAKS_SYNLIGE) lukk(s.firstElementChild);
+  if (type === "feil") {
+    // fokus på OK, så Enter lukker — slik alert() oppførte seg. Bare for
+    // feil: et info-kort som tar fokus og så forsvinner, ville sendt fokus
+    // ut i løse lufta midt i arbeidet.
+    try { kort.querySelector(".varsel-ok").focus({ preventScroll: true }); } catch (_) {}
+  } else {
+    autoLukk(kort, melding);
+  }
   return kort;
+}
+
+// Info-kortet lukker seg selv. Musa over / fokus inni stopper klokka; når
+// musa går ut, får det hele tiden på nytt (så det ikke forsvinner idet man
+// flytter blikket tilbake).
+function autoLukk(kort, melding) {
+  const tid = infoTid(melding);
+  kort.dataset.auto = String(tid);
+  const stopp = () => { if (kort._tid) { clearTimeout(kort._tid); kort._tid = null; } };
+  const start = () => {
+    stopp();
+    if (kort.matches && (kort.matches(":hover") || kort.contains(document.activeElement))) return;
+    kort._tid = setTimeout(() => lukk(kort), tid);
+    // I Node (testene) skal ikke en ventende lukking holde prosessen i live.
+    if (kort._tid && typeof kort._tid.unref === "function") kort._tid.unref();
+  };
+  kort._start = start;
+  kort.addEventListener("mouseenter", stopp);
+  kort.addEventListener("focusin", stopp);
+  kort.addEventListener("mouseleave", start);
+  kort.addEventListener("focusout", () => setTimeout(() => { if (!kort.contains(document.activeElement)) start(); }, 0));
+  start();
 }
 
 export function lukkAlleVarsler() {
   const s = typeof document !== "undefined" && document.getElementById("varselStabel");
-  if (s) { s.innerHTML = ""; s.classList.remove("har-varsel"); }
+  if (s) { for (const k of [...s.children]) if (k._tid) clearTimeout(k._tid); s.innerHTML = ""; s.classList.remove("har-varsel"); }
 }

@@ -292,7 +292,7 @@ function tegnVelgBar() {
         ? t("Trykk på det som skal ut av trinnet. Bare det som ligger i trinnet kan velges; det som ligger i andre trinn er skjult. Shift + dra for mange på en gang.")
         : t("Trykk på det som skal med — elementer, SW, takplater, blikk, rigg, materiell og markeringer. Det som allerede ligger i et trinn, er skjult. Shift + dra for mange på en gang.")) + "</span>" +
     '<span class="st-velg-ant">' + esc(t("{0} valgt", n)) + "</span>" +
-    '<button id="fpVelgFerdig" class="primary"' + (n ? "" : " disabled") + ">" + esc(velger.fjern ? t("Ta ut") : t("Ferdig")) + "</button>" +
+    '<button id="fpVelgFerdig" class="primary"' + (n ? "" : " disabled") + ">" + esc(t("Lagre"))  /* forslag 9 (02.11): samme ord i alle markeringsmoduser */ + "</button>" +
     '<button id="fpVelgAvbryt">' + esc(t("Avbryt")) + "</button>";
   $("fpVelgFerdig").onclick = () => avsluttVelg(true);
   $("fpVelgAvbryt").onclick = () => avsluttVelg(false);
@@ -605,6 +605,15 @@ S.lastFramdrift = () => {
   hentFraSp();
 };
 S.ryddFramdrift = () => { if (velger) avsluttVelg(false); ryddFramdriftVis(); ryddFerdig(); S.framdrift = []; };
+
+// 🧭 «Alle verktøy» (forslag 7): gå rett til fanen Plan eller Rapport
+S.framdriftVisFane = (f) => {
+  if (velger) avsluttVelg(false);
+  S.fpFane = f === "rapport" ? "rapport" : "plan";
+  if (S.fpFane !== "rapport") ryddFerdigFarger();
+  tegnPanel();
+  oppdaterVis();
+};
 
 på("btnFramdrift", "click", () => {
   const panel = $("framdriftPanel");

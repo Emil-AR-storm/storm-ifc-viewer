@@ -2,7 +2,7 @@
 import * as THREE from "three";
 import { $, på, S, esc, ikon, loadingEl, loadingText, lukkPaneler } from "./state.js";
 import { t } from "./i18n.js";
-import { LETT } from "./lett.js";
+import { LETT, montorNavn, settMontorNavn } from "./lett.js";
 import { ANSATTE, FRISTER, PLANNER, TJENESTER } from "./config.js";
 import { HASTEGRAD, fristTekst, hastegrad, iDagISO, omDager, vaskGrenser } from "./frist.js";
 import { hentMedFrist, meldLagretKopi, meldNettfeil, tegnNettBanner } from "./nett.js";
@@ -248,7 +248,7 @@ async function lastLettMarkeringer() {
   S.comments.forEach(addMarkerSprite);
   merkUsendte();          // J5: det som ligger i køen finnes ikke hos Workeren ennå
   renderCommentList();
-  meldNettfeil(feil);       // tom streng fjerner linja igjen
+  meldNettfeil(feil, lastLettMarkeringer);  // tom streng fjerner linja igjen; «Prøv igjen» henter på nytt
   meldLagretKopi(lagretTid); // 0 fjerner «sist hentet»-merket
   toemKo();               // og prøv å få det av gårde med en gang
 }
@@ -419,13 +419,12 @@ export function nyId() {
 // Navnet på den innloggede, til «skrevet av» og «endret av».
 export function innloggetNavn() {
   if (LETT) {
-    // Montøren har ingen konto — navnet spørres én gang og huskes i nettleseren
-    let navn = "";
-    try { navn = localStorage.getItem("storm-bp-navn") || ""; } catch(_) {}
-    if (!navn) {
-      navn = (prompt(t("Navnet ditt (vises på markeringen):")) || "").trim().slice(0, 40);
-      if (navn) try { localStorage.setItem("storm-bp-navn", navn); } catch(_) {}
-    }
+    // Montøren har ingen konto — navnet skrives i kodeboksen (forslag 2,
+    // 02.11) og kan endres under Innstillinger. Spørsmålet her er bare en
+    // reserve for den sjeldne veien forbi kodeboksen (åpnet uten dekning før
+    // navnet noen gang ble skrevet).
+    let navn = montorNavn();
+    if (!navn) navn = settMontorNavn(prompt(t("Navnet ditt (vises på markeringen):")) || "");
     return navn || t("Byggeplass");
   }
   try {

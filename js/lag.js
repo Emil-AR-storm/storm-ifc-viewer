@@ -679,6 +679,15 @@ async function hentBibliotek() {
   tegn();
 }
 
+// 🧭 «Alle verktøy» (forslag 7): gå rett til en fane. Returnerer false når
+// fanen ikke finnes (Kollisjon krever minst ett lag).
+S.lagVisFane = (f) => {
+  if (f === "kollisjon" && (!lagene.length || !S.kollisjonFyll)) { tilstand.fane = "lag"; tegn(); return false; }
+  tilstand.fane = f === "kollisjon" ? "kollisjon" : "lag";
+  tegn();
+  return true;
+};
+
 på("btnLag", "click", () => {
   const p = $("lagPanel");
   if (p && p.classList.contains("open")) { p.classList.remove("open"); return; }

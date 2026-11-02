@@ -21,6 +21,7 @@ import { canvas, koteGroup, makeLabel, measureGroup } from "./scene.js";
 import { naermesteMaaleflate, registrerPeker } from "./pek-eier.js";
 import { MODELL_FRIST_MS, hentMedFrist } from "./nett.js";
 import { lagreApning, lesApning } from "./apning.js";
+import { montorNavn, settMontorNavn } from "./lett.js";
 
 // last inn resten av modulene (rekkefølgen bestemmer oppstart)
 // UTELATT i lettmodus: ./compare.js, ./recent.js, ./usersync.js
@@ -229,7 +230,15 @@ window.åpneFraUrl = åpneFraUrl;   // trinn 3 kaller denne
   const boks = $("kodeBoks");
   if (!boks) return;
   const prosjInp = $("prosjektInput"), inp = $("kodeInput"),
-        feilEl = $("kodeFeil"), knapp = $("kodeKnapp");
+        feilEl = $("kodeFeil"), knapp = $("kodeKnapp"), navnInp = $("navnInput");
+  // 👷 Forslag 2 (02.11): navnet skrives her, én gang, og huskes. Før kom det
+  // et grått prompt()-vindu midt i første markering eller ferdigmelding.
+  if (navnInp) {
+    navnInp.value = montorNavn();
+    navnInp.addEventListener("change", () => { navnInp.value = settMontorNavn(navnInp.value); });
+    // Navnet skrevet etter «Skriv navnet ditt først»: prøv koden med en gang
+    navnInp.addEventListener("change", () => { if (navnInp.value && inp.value.length === 6 && /^\d{5}$/.test(prosjInp.value)) prøv(); });
+  }
   const fraUrl = (location.pathname.match(/^\/(\d{5})$/) || [])[1] || "";
   if (fraUrl) { prosjInp.value = fraUrl; prosjInp.style.display = "none"; }
 
@@ -237,6 +246,11 @@ window.åpneFraUrl = åpneFraUrl;   // trinn 3 kaller denne
     const prosjekt = (prosjInp.value || "").trim();
     const kode = (inp.value || "").trim().toUpperCase();
     if (!/^\d{5}$/.test(prosjekt)) { feilEl.textContent = t("Prosjektnummeret må være 5 siffer."); return; }
+    if (navnInp) {
+      const navn = settMontorNavn(navnInp.value);
+      if (!navn) { feilEl.textContent = t("Skriv navnet ditt først — det står på markeringene og ferdigmeldingene dine."); navnInp.focus(); return; }
+      navnInp.value = navn;
+    }
     if (kode.length !== 6) { feilEl.textContent = ""; return; }
     feilEl.textContent = "";
     fjernFeilKnapp();

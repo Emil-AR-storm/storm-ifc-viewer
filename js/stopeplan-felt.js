@@ -599,7 +599,7 @@ function tegnVannBar() {
       esc(t("Trykk på kantene den skal gå langs.")) + "</span>" +
     '<span class="st-velg-ant">' + esc(t("{0} kanter · {1}", n, mTekst(vannValgtLengde()))) + "</span>" +
     '<button id="stVannAlle">' + esc(t("Hele omkretsen")) + "</button>" +
-    '<button id="stVannFerdig" class="primary"' + (n ? "" : " disabled") + ">" + esc(t("Ferdig")) + "</button>" +
+    '<button id="stVannFerdig" class="primary"' + (n ? "" : " disabled") + ">" + esc(t("Lagre")) + "</button>" +
     '<button id="stVannAvbryt">' + esc(t("Avbryt")) + "</button>";
   $("stVannAlle").onclick = () => {
     const v = finnFelt(S.stopeplan, vann.feltId);
