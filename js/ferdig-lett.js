@@ -27,6 +27,7 @@ const LOKAL = "storm-bp-ferdig";
 const DAGER = 21;
 const MAKS_PER_SENDING = 300;
 let publisert = new Set();            // ferdig ifølge kontoret
+let status = null;                     // kontorets tall { n, ferdig, pst, tid }
 let modus = null;                      // null | { ferdig: true|false }
 const valgt = new Set();               // nøkler valgt i modusen
 
@@ -57,14 +58,36 @@ function iPlanen() {
 }
 
 // ═══════════ PANELDELEN (framdrift-lett.js tegner den) ═══════════
+// Tallet: kontorets (samme grunnlag som Rapport-fanen) + det basen selv har
+// meldt etter at kontoret sist publiserte. Uten kontorets tall: objektene i trinnene.
+export function telling(status, publ, lok, plan) {
+  const f = ferdigNa(publ, lok);
+  if (status && status.n > 0) {
+    let d = 0;
+    for (const k of f) if (!publ.has(k)) d++;
+    for (const k of publ) if (!f.has(k)) d--;
+    const ferdigN = Math.max(0, Math.min(status.n, status.ferdig + d));
+    return { n: status.n, ferdig: ferdigN, pst: Math.round(ferdigN / status.n * 1000) / 10, fraKontoret: true };
+  }
+  let n = 0; for (const k of plan) if (f.has(k)) n++;
+  return { n: plan.size, ferdig: n, pst: plan.size ? Math.round(n / plan.size * 1000) / 10 : 0, fraKontoret: false };
+}
+// Egne meldinger som kontoret ikke har hentet ennå (nyere enn kontorets tall)
+function venter() {
+  const fra = status && status.tid ? String(status.tid) : "";
+  return lokale().filter(m => String(m.tid) > fra).length;
+}
 export function ferdigHtml() {
   const plan = iPlanen();
-  if (!plan.size) return "";
-  const f = ferdig();
-  let n = 0; for (const k of plan) if (f.has(k)) n++;
-  const pst = Math.round(n / plan.size * 100);
-  return '<div class="fr-tot fr-lett"><div class="fr-t"><span>📊 ' + esc(t("Ferdig i planen")) + "</span><span><b>" + pst + ' %</b> <span class="set-hjelp">' + n + "/" + plan.size + "</span></span></div>" +
+  if (!plan.size && !(status && status.n)) return "";
+  const c = telling(status, publisert, lokale(), plan);
+  const pst = c.pst, n = c.ferdig;
+  const nVent = venter();
+  const tidTekst = status && status.tid ? new Date(status.tid).toLocaleString("no-NO", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
+  return '<div class="fr-tot fr-lett"><div class="fr-t"><span>📊 ' + esc(c.fraKontoret ? t("Ferdig totalt") : t("Ferdig i planen")) + "</span><span><b>" + String(pst).replace(".", ",") + ' %</b> <span class="set-hjelp">' + n + "/" + c.n + "</span></span></div>" +
     '<div class="fr-bar"><i style="width:' + pst + '%;background:var(--ok)"></i></div>' +
+    '<p class="set-hjelp">' + esc(c.fraKontoret ? t("Kontorets tall {0}", tidTekst) : t("Kontoret har ikke sendt ut status ennå. Be prosjektlederen trykke Storm-Byggeplass.")) +
+      (nVent ? " · " + esc(tn(nVent, "{0} melding venter på at kontoret henter den", "{0} meldinger venter på at kontoret henter dem")) : "") + "</p>" +
     '<div class="prop-actions"><button id="flMeld" class="primary"' + (modus ? " disabled" : "") + ">✅ " + esc(t("Ferdigmeld")) + "</button>" +
     '<button id="flIkke"' + (modus ? " disabled" : "") + ">" + esc(t("Ikke ferdig")) + "</button></div>" +
     '<p class="set-hjelp">' + esc(t("Trykk Ferdigmeld, trykk på det som er montert (trykk igjen for å ta det ut) og trykk Lagre. Det sendes til prosjektlederen.")) + "</p></div>";
@@ -134,7 +157,8 @@ function send(nokler, erFerdig) {
   const meldinger = nokler.map(k => { const g = gidFor(k); return Object.assign({ k, ferdig: erFerdig, tid, av }, g ? { gid: g } : {}); });
   huskLokale(meldinger);
   for (let i = 0; i < meldinger.length; i += MAKS_PER_SENDING) {
-    sendHendelse({ type: "ferdig", av, meldinger: meldinger.slice(i, i + MAKS_PER_SENDING) });
+    // fil: hvilken modell meldingen gjelder (et prosjekt kan ha flere)
+    sendHendelse({ type: "ferdig", av, fil: S.fileName || "", meldinger: meldinger.slice(i, i + MAKS_PER_SENDING) });
   }
   varsel(erFerdig ? tn(nokler.length, "{0} objekt ferdigmeldt.", "{0} objekter ferdigmeldt.") : tn(nokler.length, "{0} objekt satt til ikke ferdig.", "{0} objekter satt til ikke ferdig."));
 }
@@ -154,7 +178,7 @@ function tegnFarger() {
   const f = ferdig();
   const lag = (nokler, farge, op) => {
     const ider = new Set([...nokler].filter(k => slagFor(k) === "id").map(k => Number(idFor(k))));
-    if (ider.size) {
+    if (ider.size && S.modelGroup) {
       const pos = [], v = new THREE.Vector3();
       forHverTrekant(ider, (pp, a, b, c, mtx) => { for (const i of [a, b, c]) { v.fromBufferAttribute(pp, i); if (mtx) v.applyMatrix4(mtx); pos.push(v.x, v.y, v.z); } });
       if (pos.length) {
@@ -182,7 +206,9 @@ function oppdater() { if (S.framdriftLettTegn) S.framdriftLettTegn(); else tegnF
 S.ferdigLettFarger = tegnFarger;
 
 // markers.js → feltet `ferdig` fra Workerens JSON (kontorets ferdigmeldinger)
-S.settFerdigFraLett = (liste) => {
+S.settFerdigFraLett = (liste, st) => {
   publisert = new Set((Array.isArray(liste) ? liste : []).filter(kanMeldes).map(String));
+  status = st && typeof st === "object" && Number(st.n) > 0
+    ? { n: Math.round(Number(st.n)), ferdig: Math.max(0, Math.round(Number(st.ferdig) || 0)), pst: Number(st.pst) || 0, tid: String(st.tid || "") } : null;
   if (panelApent()) oppdater();
 };

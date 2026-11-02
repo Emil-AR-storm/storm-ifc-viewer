@@ -159,7 +159,12 @@ export function meld(ferdig) {
 // Meldingene fra telefonen er { k, gid?, ferdig, tid, av }. Mangler GlobalId
 // for et IFC-element, slås den opp her — ellers ville en melding på «id:12»
 // og en eldre på «g:<GUID>» for samme element stått side om side.
-S.ferdigFlett = (meldinger) => {
+// Svarer { antall, endret }: endret = objekter som faktisk skiftet status
+// (melder basen noe som alt er ferdig på kontoret, endres ingenting).
+S.ferdigFlett = async (meldinger) => {
+  // GlobalId trengs for å treffe kontorets poster (g:<GUID>) — hent dem først
+  try { await univers(); } catch (_) {}
+  const foer = F.oppslag(S.ferdig);
   const nye = [];
   for (const m of meldinger || []) {
     if (!m || typeof m !== "object") continue;
@@ -168,10 +173,21 @@ S.ferdigFlett = (meldinger) => {
     const x = F.nyMelding(String(m.k || ""), gid, m.ferdig !== false, m.av, m.tid, "bygg");
     if (x) nye.push(x);
   }
-  if (!nye.length) return 0;
+  if (!nye.length) return { antall: 0, endret: 0 };
   S.ferdig = F.flettMeldinger(S.ferdig, nye);
+  const etter = F.oppslag(S.ferdig);
+  let endret = 0;
+  for (const x of nye) { const a = foer(x.k, x.gid), b = etter(x.k, x.gid); if (!!(a && a.ferdig) !== !!(b && b.ferdig)) endret++; }
   lagre(); oppdater();
-  return nye.length;
+  return { antall: nye.length, endret };
+};
+// 🏗 Til byggeplassen: kontorets tall (SAMME grunnlag som Rapport-fanen),
+// så telefonen viser det samme som kontoret — ikke bare det som ligger i trinn.
+S.ferdigStatusForByggeplass = async () => {
+  try {
+    const r = await beregn();
+    return { n: r.n, ferdig: r.ferdig, pst: r.pst, tid: new Date().toISOString() };
+  } catch (_) { return null; }
 };
 // 🏗 Til byggeplassen (Storm-Byggeplass): det som er ferdig nå, som nøkler.
 // Telefonen farger det grønt og teller «x av y i planen».

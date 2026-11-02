@@ -271,6 +271,8 @@ if (btn) btn.addEventListener("click", async () => {
         framdrift: framdriftForByggeplass(S.framdrift || []),
         // 📊 Det som er ferdigmeldt (runde 10b): telefonen farger det grønt
         ferdig: S.ferdigForByggeplass ? S.ferdigForByggeplass() : [],
+        // …og kontorets tall, så telefonen viser samme prosent som Rapport-fanen
+        ferdigStatus: S.ferdigStatusForByggeplass ? await S.ferdigStatusForByggeplass() : null,
         framdriftKilder,
         // 🗂 Prosjektinfo (navn, nummer, adresse og posisjonen) og 🌦 værvalgene:
         // bygg.html viser været i Framdriftsplan. Gamle lesere ser bort fra feltene.
@@ -496,6 +498,7 @@ async function hentInnboks(prosjekt, token) {
     //    📋 9b: sjekkliste-hendelsene samles og flettes inn i Støpeplan i
     //    tidsrekkefølge etterpå (siste tid vinner per punkt).
     const sjekk = [];
+    const ferdigInn = { antall: 0, endret: 0 };
     for (const navn of alle.filter(n => /^h-.*\.json$/.test(n))) {
       const hr = await hent(navn);
       if (!hr.ok) continue;
@@ -503,8 +506,16 @@ async function hentInnboks(prosjekt, token) {
       if (h.type === "sjekkliste") {
         sjekk.push({ navn, h });
       } else if (h.type === "ferdig") {
-        // 📊 10b: ferdigmelding fra telefonen → framdriftsrapporten (ferdig.js)
-        if (S.ferdigFlett && Array.isArray(h.meldinger)) { S.ferdigFlett(h.meldinger); inn++; await slett(navn); }
+        // 📊 10b: ferdigmelding fra telefonen → framdriftsrapporten (ferdig.js).
+        // Bare for DENNE modellen (feltet fil): et prosjekt kan ha flere modeller,
+        // og meldingene til en annen modell skal ligge til den åpnes (ryddes etter en uke).
+        const dennefil = lettNavn(S.fileName || "");
+        if (h.fil && h.fil !== dennefil) { if (gammel(h.mottatt)) await slett(navn); continue; }
+        if (S.ferdigFlett && Array.isArray(h.meldinger)) {
+          const r = await S.ferdigFlett(h.meldinger);
+          ferdigInn.antall += r.antall; ferdigInn.endret += r.endret;
+          inn++; await slett(navn);
+        }
       } else if (h.type === "ny-markering" && h.markering) {
         const c = vaskMarkering(h.markering);
         if (c && !(S.comments || []).some(k => String(k.id) === String(c.id))) {
@@ -612,6 +623,8 @@ async function hentInnboks(prosjekt, token) {
       inn++;
     }
 
+    // 📊 Si fra hva som kom inn — også når alt var ferdigmeldt fra før
+    if (ferdigInn.antall) varsel(t("Hentet {0} ferdigmeldinger fra byggeplassen — {1} endret status i framdriftsrapporten.", ferdigInn.antall, ferdigInn.endret));
     if (inn) lagreOgSynk();
   } catch (_) {}
   return inn;

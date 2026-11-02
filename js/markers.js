@@ -235,7 +235,7 @@ async function lastLettMarkeringer() {
       if (S.settFramdriftFraLett)
         S.settFramdriftFraLett(d && !Array.isArray(d) ? d.framdrift : null, d && !Array.isArray(d) ? d.framdriftKilder : null);
       // 📊 Det som er ferdigmeldt (runde 10b, ferdig-lett.js)
-      if (S.settFerdigFraLett) S.settFerdigFraLett(d && !Array.isArray(d) ? d.ferdig : null);
+      if (S.settFerdigFraLett) S.settFerdigFraLett(d && !Array.isArray(d) ? d.ferdig : null, d && !Array.isArray(d) ? d.ferdigStatus : null);
     }
   } catch (e) {
     feil = (e && e.tidsavbrudd)
