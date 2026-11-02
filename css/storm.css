@@ -2943,3 +2943,15 @@ html[data-tema="lys"] .lp-vekt { color-scheme: light; }
   #flVelgBar .st-velg-tekst { flex: 1; min-width: 0; font-size: 12.5px; }
   #flVelgBar button { padding: 8px 12px; }
 }
+/* 📱 Framdriftsplan på byggeplassen (Emils valg B 02.11): tre faner og fast
+   høyde, høyst 48 % av skjermen — modellen skal ha plassen */
+.fp-lett-faner { display: flex; gap: 4px; margin: 0 0 8px; position: sticky; top: 0; z-index: 2; background: var(--panel); padding-bottom: 2px; }
+.fp-lett-fane { flex: 1; padding: 6px 4px; font-size: 13px; }
+.fp-lett-fane.aktiv { background: var(--aktiv-bg); color: var(--aktiv-tekst); font-weight: 700; }
+.fp-trinn-na { margin: 0 0 6px; }
+[data-lett="1"] #framdriftPanel { max-height: 48vh; }
+[data-lett="1"] #framdriftPanel .body { overflow-y: auto; }
+/* Samme høyde på alle tre fanene (panelet hopper ikke), og innholdet ruller */
+@media (max-width: 700px) {
+  [data-lett="1"] #framdriftPanel:not(.fp-sammen) .body { height: 30vh; max-height: 30vh; }
+}
