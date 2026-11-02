@@ -269,6 +269,8 @@ if (btn) btn.addEventListener("click", async () => {
         // 📅 Framdriftsplanen (trinn 6): trinnene med objekter og datoer.
         // bygg.html viser glideren (framdrift-lett.js). Gamle lesere ser bort fra feltet.
         framdrift: framdriftForByggeplass(S.framdrift || []),
+        // 📊 Det som er ferdigmeldt (runde 10b): telefonen farger det grønt
+        ferdig: S.ferdigForByggeplass ? S.ferdigForByggeplass() : [],
         framdriftKilder,
         // 🗂 Prosjektinfo (navn, nummer, adresse og posisjonen) og 🌦 værvalgene:
         // bygg.html viser været i Framdriftsplan. Gamle lesere ser bort fra feltene.
@@ -500,6 +502,9 @@ async function hentInnboks(prosjekt, token) {
       let h; try { h = await hr.json(); } catch (_) { continue; }
       if (h.type === "sjekkliste") {
         sjekk.push({ navn, h });
+      } else if (h.type === "ferdig") {
+        // 📊 10b: ferdigmelding fra telefonen → framdriftsrapporten (ferdig.js)
+        if (S.ferdigFlett && Array.isArray(h.meldinger)) { S.ferdigFlett(h.meldinger); inn++; await slett(navn); }
       } else if (h.type === "ny-markering" && h.markering) {
         const c = vaskMarkering(h.markering);
         if (c && !(S.comments || []).some(k => String(k.id) === String(c.id))) {

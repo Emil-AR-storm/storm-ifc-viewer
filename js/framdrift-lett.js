@@ -13,9 +13,12 @@
 //   · et lite panel: «Vis framdriften», og trinnene med datoer og innhold.
 //     Trykk på et trinn: glideren går dit trinnet er ferdig.
 // Ingen «Legg til», «Fjern», PDF eller video her.
+//   · 📊 runde 10b: «Ferdigmeld» — basen melder det som er montert
+//     (ferdig-lett.js), og det som er ferdig vises grønt mens panelet er åpent.
 import { $, S, apnePanel, esc, på } from "./state.js";
 import { t, tn } from "./i18n.js";
 import { sortert, synlige, tellingPerSlag, trinnTid, vaskEtappeListe, vaskKilder } from "./framdrift-regn.js";
+import { ferdigHtml, koblFerdig } from "./ferdig-lett.js";
 import { begrensListe, forberedMobilPanel, framdriftPlanEndret, ryddFramdriftVis, settFramdriftTid, tegnFramdrift, tegnTidslinje } from "./framdrift-vis.js";
 
 const erApen = () => { const p = $("framdriftPanel"); return !!(p && p.classList.contains("open")); };
@@ -43,8 +46,12 @@ function oppdaterKnapp() {
   if (b) b.style.display = synlige(S.framdrift).length ? "" : "none";
 }
 
+// 📊 Ferdigmeld-modusen: glideren av, så hele bygget kan trykkes på
+let ferdigModus = false;
+S.framdriftLettModus = (paa) => { ferdigModus = !!paa; oppdaterVis(); };
+S.framdriftLettTegn = () => { if (erApen()) tegnPanel(); else if (S.ferdigLettFarger) S.ferdigLettFarger(); };
 function oppdaterVis() {
-  const paa = erApen() && S.framdriftVis !== false;
+  const paa = erApen() && S.framdriftVis !== false && !ferdigModus;
   tegnFramdrift(paa);
   tegnTidslinje(paa);
 }
@@ -60,6 +67,7 @@ export function tegnPanel() {
     // 🌦 Sier fra hvorfor været mangler, i stedet for at det bare ikke vises
     (S.vaerStatus && S.vaerStatus() ? '<p class="hint fp-vaer-status">🌦 ' + esc(S.vaerStatus()) + "</p>" : "");
   if (!liste.length) html += '<p class="hint">' + esc(t("Ingen trinn ennå.")) + "</p>";
+  html += ferdigHtml();
   html += '<div class="fp-liste" id="fpListe">';
   for (const e of liste) {
     html += '<div class="st-etappe st-lett fp-etappe" data-id="' + esc(e.id) + '" style="border-left:4px solid ' + esc(e.farge) + '">' +
@@ -69,6 +77,7 @@ export function tegnPanel() {
   }
   html += "</div>";
   body.innerHTML = html;
+  koblFerdig();
   begrensListe($("fpListe"));
   if ($("fpVis")) $("fpVis").onchange = (ev) => { S.framdriftVis = ev.target.checked; oppdaterVis(); };
   body.querySelectorAll(".fp-etappe").forEach(rad => rad.onclick = () => {
@@ -115,6 +124,7 @@ på("btnFramdrift", "click", () => {
     if (naa === varApen) return;
     varApen = naa;
     oppdaterVis();
+    if (S.ferdigLettFarger) S.ferdigLettFarger();   // grønt bare mens panelet er åpent
   }).observe(p, { attributes: true, attributeFilter: ["class"] });
 })();
 

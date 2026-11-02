@@ -279,6 +279,11 @@ export const KORT = [
   },
   {
     hvor: "bygg", ikonNavn: "framdrift",
+    tittel: "Ferdigmelding på byggeplassen",
+    tekst: "Har prosjektlederen laget en framdriftsplan, står «Ferdig i planen» øverst i Framdriftsplan-panelet. Trykk ✅ Ferdigmeld, trykk på det som er montert — elementer, SW-elementer og takplater blir blå (trykk igjen for å ta det ut) — og trykk Lagre. Det sendes til prosjektlederen; uten nett ligger det på telefonen og sendes når du har dekning. Det som er ferdig fra før, er grønt mens panelet er åpent. Ikke ferdig virker på samme måte og tar det tilbake."
+  },
+  {
+    hvor: "bygg", ikonNavn: "framdrift",
     tittel: "Framdriftsplanen",
     tekst: "Har prosjektlederen laget en framdriftsplan, står knappen Framdriftsplan i Planlegging. Panelet viser trinnene med datoer og hva som utføres i hvert. Dra glideren nederst for å se hva som er bygget en bestemt dag: det som kommer senere er skjult, det som er i arbeid tones inn, og materiellbunkene blir mindre etter hvert som det de er levert til monteres — antallet på navnelappen teller ned. Trykk på et trinn for å gå dit det er ferdig, Spill av for å se hele planen, og I dag for å komme tilbake."
   },

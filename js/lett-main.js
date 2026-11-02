@@ -92,6 +92,8 @@ canvas.addEventListener("pointerup", (e) => {
   // når draget er under 8 px. Høyre (2) gir innstillingsmenyen.
   if (e.button > 0) return;
   // 📐 Fra flate: neste trykk setter snittplanet (ignorer gjeldende snitt så flaten kan treffes)
+  // 📊 Ferdigmeld-modusen (ferdig-lett.js) eier trykket mens den er på
+  if (S.lettVelgKlikk && !S.mode && S.lettVelgKlikk(e.clientX, e.clientY)) return;
   if (S.clipPickFace) {
     const fh = pick(e.clientX, e.clientY, true);
     if (fh) setClipFromFace(fh);

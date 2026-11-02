@@ -156,12 +156,35 @@ export function meld(ferdig) {
   return nye.length;
 }
 // 10b: meldinger fra byggeplassen (byggeplass.js hentInnboks) — siste tid vinner
+// Meldingene fra telefonen er { k, gid?, ferdig, tid, av }. Mangler GlobalId
+// for et IFC-element, slås den opp her — ellers ville en melding på «id:12»
+// og en eldre på «g:<GUID>» for samme element stått side om side.
 S.ferdigFlett = (meldinger) => {
-  const nye = F.vaskMeldinger((meldinger || []).map(m => Object.assign({}, m, { kilde: "bygg" })));
+  const nye = [];
+  for (const m of meldinger || []) {
+    if (!m || typeof m !== "object") continue;
+    let gid = typeof m.gid === "string" ? m.gid : "";
+    if (!gid && slagFor(m.k) === "id") gid = (metaFor(Number(idFor(m.k))) || {}).globalId || "";
+    const x = F.nyMelding(String(m.k || ""), gid, m.ferdig !== false, m.av, m.tid, "bygg");
+    if (x) nye.push(x);
+  }
   if (!nye.length) return 0;
   S.ferdig = F.flettMeldinger(S.ferdig, nye);
   lagre(); oppdater();
   return nye.length;
+};
+// 🏗 Til byggeplassen (Storm-Byggeplass): det som er ferdig nå, som nøkler.
+// Telefonen farger det grønt og teller «x av y i planen».
+S.ferdigForByggeplass = () => {
+  const ut = [];
+  for (const m of F.vaskMeldinger(S.ferdig)) {
+    if (!m.ferdig) continue;
+    let k = m.k;
+    // Elementet kan ha fått ny ExpressID (ny revisjon): finn det på GlobalId
+    if (m.gid && slagFor(k) === "id" && universBuffer) { const u = universBuffer.find(x => x.gid === m.gid); if (u) k = u.k; }
+    ut.push(k);
+  }
+  return [...new Set(ut)].slice(0, 50000);
 };
 
 // ═══════════ PANELET (fanen «📊 Rapport») ═══════════
