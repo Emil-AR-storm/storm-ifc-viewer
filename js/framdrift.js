@@ -207,6 +207,8 @@ function valgteRaa() {
 }
 // Hva velgemodusen kan ta med akkurat nå
 function tillatt(k) {
+  // 📊 Ferdigmeld-modusen: alt som kan bygges (ikke materiell, rigg, markeringer)
+  if (velger && velger.ferdig != null) return /^(id|sw|tak|blikk):/.test(String(k || ""));
   if (velger && velger.fjern) { const e = etappeForNokkel(S.framdrift, k); return !!e && e.id === velger.etappeId; }
   return !tildelt(k);
 }
@@ -262,8 +264,24 @@ function velgBar() {
 function tegnVelgBar() {
   const el = velgBar();
   if (!velger) { el.style.display = "none"; el.innerHTML = ""; return; }
-  const e = synlige(S.framdrift).find(x => x.id === velger.etappeId);
   const n = valgteObjekter().length;
+  if (velger.ferdig != null) {
+    // 📊 Ferdigmeld / Ikke ferdig (Emil 02.11: «trykk Ferdigmeld → marker alt → Ferdig»)
+    el.style.display = "flex";
+    el.innerHTML =
+      '<span class="st-velg-farge" style="background:' + (velger.ferdig ? "var(--ok)" : "var(--muted)") + '"></span>' +
+      '<span class="st-velg-tekst"><b>' + esc(velger.ferdig ? t("Ferdigmeld") : t("Ikke ferdig")) + "</b><br>" +
+        esc(velger.ferdig ? t("Trykk på det som er ferdig — elementer, SW-elementer, takplater og blikk. Shift + dra for mange på en gang. Trykk Ferdig når du er ferdig.")
+          : t("Trykk på det som likevel ikke er ferdig. Shift + dra for mange på en gang. Trykk Ferdig når du er ferdig.")) + "</span>" +
+      '<span class="st-velg-ant">' + esc(t("{0} valgt", n)) + "</span>" +
+      '<button id="fpVelgFerdig" class="primary"' + (n ? "" : " disabled") + ">" + esc(t("Ferdig")) + "</button>" +
+      '<button id="fpVelgAvbryt">' + esc(t("Avbryt")) + "</button>";
+    $("fpVelgFerdig").onclick = () => avsluttVelg(true);
+    $("fpVelgAvbryt").onclick = () => avsluttVelg(false);
+    if (S.ferdigVelgEndret) S.ferdigVelgEndret();
+    return;
+  }
+  const e = synlige(S.framdrift).find(x => x.id === velger.etappeId);
   el.style.display = "flex";
   el.innerHTML =
     '<span class="st-velg-farge" style="background:' + esc(e ? e.farge : "#888") + '"></span>' +
@@ -277,10 +295,14 @@ function tegnVelgBar() {
   $("fpVelgFerdig").onclick = () => avsluttVelg(true);
   $("fpVelgAvbryt").onclick = () => avsluttVelg(false);
 }
-export function startVelg(etappeId, fjernModus) {
+// 📊 Rapport-fanen: «Ferdigmeld» (ferdig = true) eller «Ikke ferdig» (false)
+export function startFerdigVelg(ferdig) { startVelg(null, false, ferdig !== false); }
+S.startFerdigVelg = startFerdigVelg;
+S.ferdigVelgAktiv = () => !!(velger && velger.ferdig != null);
+export function startVelg(etappeId, fjernModus, ferdigModus) {
   if (velger) avsluttVelg(false);
   if (S.avsluttVelgModus && S.velgModusAktiv) S.avsluttVelgModus();     // støpeplanens modus
-  velger = { etappeId, fjern: !!fjernModus };
+  velger = { etappeId, fjern: !!fjernModus, ferdig: typeof ferdigModus === "boolean" ? ferdigModus : null };
   S.velgModusAktiv = true;
   riggUtvalg.clear();
   S.materiellIVelgModus = (id) => { if (!tillatt(nokkel("mat", id))) return; veksleMateriellIUtvalg(id); tegnVelgBar(); };
@@ -308,7 +330,9 @@ export function startVelg(etappeId, fjernModus) {
 export function avsluttVelg(medTil) {
   if (!velger) return 0;
   const id = velger.etappeId;
-  const n = !medTil ? 0 : velger.fjern ? fjernValgteFra(id) : leggValgteTil(id);
+  const ferdigModus = velger.ferdig;
+  const n = !medTil ? 0 : ferdigModus != null ? (S.ferdigMeld ? S.ferdigMeld(ferdigModus) : 0)
+    : velger.fjern ? fjernValgteFra(id) : leggValgteTil(id);
   velger = null;
   S.velgModusAktiv = false;
   S.riggIVelgModus = null;
@@ -504,6 +528,11 @@ export function tegnPanel() {
 function oppdaterVis() {
   // «Legg til»: alt som allerede ligger i et trinn skjules, så det ikke kan
   // markeres på nytt — glideren og tidslinja er av så lenge (Emil 01.10)
+  if (velger && erApen() && velger.ferdig != null) {
+    // 📊 Ferdigmeld: hele modellen synlig, ingen glider
+    stoppAvspilling(); settSkjulTildelte(false); tegnFramdrift(false); tegnTidslinje(false);
+    return;
+  }
   if (velger && erApen()) {
     stoppAvspilling();
     settSkjulTildelte(true, velger.fjern ? velger.etappeId : null);

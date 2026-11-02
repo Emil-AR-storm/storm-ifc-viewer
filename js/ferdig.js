@@ -212,17 +212,20 @@ export async function tegnRapport(el) {
     '<span style="--c:var(--danger)">' + esc(t("Forsinket")) + '</span><span style="--c:var(--text)">' + esc(t("Plan i dag")) + "</span></div>";
   h += kurveSvg(r);
   if (r.forsinket.length) h += '<p class="set-hjelp" style="color:var(--danger)">' + esc(tn(r.forsinket.length, "{0} objekt skulle vært ferdig etter planen.", "{0} objekter skulle vært ferdig etter planen.")) + "</p>";
-  h += '<div class="prop-actions fr-knapper"><button id="frMeld" class="primary"' + (nValgt ? "" : " disabled") + ">✅ " + esc(t("Ferdigmeld valgte ({0})", nValgt)) + "</button>" +
-    '<button id="frIkke"' + (nValgt ? "" : " disabled") + ">" + esc(t("Ikke ferdig")) + "</button></div>" +
+  const vm = velgerAktiv();
+  h += '<div class="prop-actions fr-knapper"><button id="frMeld" class="primary"' + (vm ? " disabled" : "") + ">✅ " + esc(vm ? t("Velger … ({0})", nValgt) : t("Ferdigmeld")) + "</button>" +
+    '<button id="frIkke"' + (vm ? " disabled" : "") + ">" + esc(t("Ikke ferdig")) + "</button></div>" +
     '<label class="set-hjelp fp-vis"><input type="checkbox" id="frFarg"' + (farger ? " checked" : "") + "> " + esc(t("Farg modellen etter framdrift")) + "</label>" +
     '<div class="fr-last"><div class="set-hjelp"><b>' + esc(t("Intern (plan mot faktisk)")) + "</b> — " + esc(t("alt: typer, trinn, forsinkede og hvert objekt")) + "</div>" +
     '<div class="prop-actions"><button id="frIntPdf">' + ikon("lastned") + " PDF</button><button id=\"frIntXlsx\">" + ikon("lastned") + " Excel</button></div>" +
     '<div class="set-hjelp"><b>' + esc(t("Status (til mottaker)")) + "</b> — " + esc(t("bare % ferdig per elementtype og totalt")) + "</div>" +
     '<div class="prop-actions"><button id="frStPdf">' + ikon("lastned") + " PDF</button><button id=\"frStXlsx\">" + ikon("lastned") + " Excel</button></div></div>" +
-    '<p class="set-hjelp">' + esc(t("Velg i modellen (trykk, eller shift + dra) og trykk «Ferdigmeld». Telles i antall objekter. Plan i dag regnes jevnt over hvert trinn fra Fra- til Til-dato.")) + "</p>";
+    '<p class="set-hjelp">' + esc(t("Trykk «Ferdigmeld», trykk på det som er ferdig i modellen (shift + dra for mange) og trykk Ferdig. Telles i antall objekter. Plan i dag regnes jevnt over hvert trinn fra Fra- til Til-dato.")) + "</p>";
   el.innerHTML = h;
-  $("frMeld").onclick = () => meld(true);
-  $("frIkke").onclick = () => meld(false);
+  // Emil 02.11: «trykk Ferdigmeld → markeringsmodus → marker alt → Ferdig».
+  // Er noe valgt fra før, er det med i utvalget når modusen starter.
+  $("frMeld").onclick = () => { if (velgerAktiv()) return; S.startFerdigVelg(true); };
+  $("frIkke").onclick = () => { if (velgerAktiv()) return; S.startFerdigVelg(false); };
   $("frFarg").onchange = (ev) => { farger = !!ev.target.checked; tegnFarger(); };
   $("frIntPdf").onclick = () => last("pdf", "intern");
   $("frIntXlsx").onclick = () => last("xlsx", "intern");
@@ -264,6 +267,8 @@ async function tegnFarger() {
   const v = new THREE.Vector3();
   for (const f of ["gronn", "gul", "rod", "gra"]) {
     const ider = new Set(sisteRapport.rader.filter(x => x.farge === f && slagFor(x.k) === "id").map(x => Number(idFor(x.k))));
+    // I Ferdigmeld-modusen skal det valgte synes blått — det får ingen farge oppå
+    if (velgerAktiv()) { for (const id of (S.multiSel ? S.multiSel.keys() : [])) ider.delete(Number(id)); if (S.currentPropID != null) ider.delete(Number(S.currentPropID)); }
     if (!ider.size) continue;
     const pos = [];
     E.forHverTrekant(ider, (pp, a, b, c, mtx) => { for (const i of [a, b, c]) { v.fromBufferAttribute(pp, i); if (mtx) v.applyMatrix4(mtx); pos.push(v.x, v.y, v.z); } });
@@ -277,17 +282,18 @@ async function tegnFarger() {
   }
 }
 
-// Telleren på «Ferdigmeld valgte (n)» følger utvalget
-if (typeof window !== "undefined") {
-  const tell = () => setTimeout(() => {
-    if (!aktiv()) return;
-    const n = valgte().length, b = $("frMeld"), b2 = $("frIkke");
-    if (b) { b.disabled = !n; b.textContent = "✅ " + t("Ferdigmeld valgte ({0})", n); }
-    if (b2) b2.disabled = !n;
-  }, 0);
-  window.addEventListener("pointerup", tell);
-  window.addEventListener("keyup", tell);
-}
+// Modusen (framdrift.js velgemodus) — knappen viser «Velger … (n)» så lenge den er på
+const velgerAktiv = () => !!(S.ferdigVelgAktiv && S.ferdigVelgAktiv());
+S.ferdigMeld = (ferdig) => meld(ferdig);
+// Utvalget endret i modusen: telleren på knappen, og fargene gjøres om så det
+// valgte (blått) ikke dekkes av den røde/grønne fargen oppå
+let utvalgTid = 0;
+S.ferdigVelgEndret = () => {
+  const b = $("frMeld");
+  if (b && velgerAktiv()) b.textContent = "✅ " + t("Velger … ({0})", valgte().length);
+  clearTimeout(utvalgTid);
+  utvalgTid = setTimeout(tegnFarger, 120);
+};
 
 // ═══════════ KROKER (kalles fra framdrift.js) ═══════════
 export function lastFerdig() {

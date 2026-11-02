@@ -285,7 +285,7 @@ export const KORT = [
   {
     hvor: "kontor", ikonNavn: "framdrift",
     tittel: "Framdriftsrapport: hvor langt har vi kommet?",
-    tekst: "Fanen 📊 Rapport i Framdriftsplan viser hvor mye som er ferdig — totalt og per elementtype. Velg i modellen (trykk, eller shift + dra) og trykk ✅ Ferdigmeld valgte; Ikke ferdig tar det tilbake. Den hvite streken på hver linje er der planen sier dere skal være i dag, regnet jevnt over hvert trinn fra Fra- til Til-dato. Farge: grønn i rute, gul litt bak, rød forsinket. Modellen farges likt: grønn ferdig, gul pågår, rød skulle vært ferdig, grå ikke startet. To nedlastinger: Intern (plan mot faktisk, trinn, forsinkede og hvert objekt i Excel) til dere selv, og Status (bare % ferdig per elementtype) til byggherre og andre mottakere. Telles i antall objekter, arbeidsdager er mandag–fredag."
+    tekst: "Fanen 📊 Rapport i Framdriftsplan viser hvor mye som er ferdig — totalt og per elementtype. Trykk ✅ Ferdigmeld, trykk på det som er ferdig i modellen (shift + dra for mange) og trykk Ferdig. Ikke ferdig virker på samme måte og tar det tilbake. Den hvite streken på hver linje er der planen sier dere skal være i dag, regnet jevnt over hvert trinn fra Fra- til Til-dato. Farge: grønn i rute, gul litt bak, rød forsinket. Modellen farges likt: grønn ferdig, gul pågår, rød skulle vært ferdig, grå ikke startet. To nedlastinger: Intern (plan mot faktisk, trinn, forsinkede og hvert objekt i Excel) til dere selv, og Status (bare % ferdig per elementtype) til byggherre og andre mottakere. Telles i antall objekter, arbeidsdager er mandag–fredag."
   },
   {
     hvor: "kontor", ikonNavn: "framdrift",
