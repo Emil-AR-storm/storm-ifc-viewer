@@ -392,6 +392,9 @@ export function tegnDelA() {
       const iso = boks("#e8e4da", 1);
       iso.scale.set(g.bredde, tilScene(o.isoMm), g.dybde);
       iso.position.set(g.x, g.topp - tilScene(o.betongMm) - tilScene(o.isoMm) / 2, g.z);
+      // 📊 Egen nøkkel for framdriften (sw:gulv-iso): kan ferdigmeldes og legges
+      // i et trinn (framdrift-plukk.js), men er fortsatt ikke et SW-element.
+      iso.userData.gulvIsoId = "gulv-iso";
       swGroup.add(iso);
     }
   }
