@@ -3009,3 +3009,37 @@ html[data-tema="lys"] .lp-vekt { color-scheme: light; }
 .spor-boks.flytende.fare { background: var(--panel); }
 .spor-boks.flytende .spor-knapper { justify-content: flex-end; }
 @media (prefers-reduced-motion: reduce) { .spor-boks { animation: none; } }
+
+/* ---------- 🔁 Bytt til de nye (js/ferdig.js, forslag 10A 03.11) ---------- */
+.fr-bytt { margin: 10px 0; padding: 10px; border: 1px solid var(--warn); border-radius: 10px; background: color-mix(in srgb, var(--warn) 8%, var(--panel2)); font-size: 12px; }
+.fr-bytt .prop-actions { margin-top: 8px; }
+.fr-bytt-liste { margin-top: 8px; display: flex; flex-direction: column; gap: 3px; max-height: 220px; overflow-y: auto; }
+.fr-bytt-rad { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; border-bottom: 1px dashed var(--border); }
+.fr-bytt-rad span:last-child { color: var(--muted); white-space: nowrap; }
+.fr-bytt-rad.ingen, .fr-bytt-rad.ingen span:last-child { color: var(--danger); }
+
+/* ---------- 🔎 Finn verktøy (js/alle-verktoy.js, forslag 6A 03.11) ---------- */
+.vsok { display: flex; align-items: center; gap: 6px; flex: 0 1 165px; min-width: 120px; height: 32px; padding: 0 8px;
+  border: 1px solid var(--border); border-radius: 9px; background: var(--panel2); color: var(--muted); cursor: text; }
+.vsok.apen { border-color: var(--accent); }
+.vsok .ikon { flex: none; width: 15px; height: 15px; }
+.vsok input { flex: 1; min-width: 0; width: 0; background: none; border: 0; outline: none; color: var(--text); font: inherit; font-size: 13px; padding: 0; }
+.vsok input::-webkit-search-cancel-button { display: none; }
+.vsok-tast { flex: none; font: 600 10px system-ui, sans-serif; border: 1px solid var(--border); border-radius: 5px; padding: 1px 5px; color: var(--muted); white-space: nowrap; }
+.vsok.apen .vsok-tast { display: none; }
+body:not(.har-modell) #vsok { display: none; }
+#topbar.topp-trang .vsok { flex-basis: 34px; min-width: 34px; }
+#topbar.topp-trang .vsok:not(.apen) input, #topbar.topp-trang .vsok:not(.apen) .vsok-tast { display: none; }
+#topbar.topp-trang .vsok.apen { flex-basis: 200px; }
+@media (max-width: 640px) { #vsok { display: none; } }
+.vsok-treff { position: fixed; z-index: 80; background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: var(--skygge); overflow: hidden; font-size: 13px; }
+.vsok-rad { display: flex; align-items: flex-start; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.vsok-rad.valgt, .vsok-rad:hover { background: color-mix(in srgb, var(--accent) 15%, transparent); }
+.vsok-rad .ikon { flex: none; width: 18px; height: 18px; color: var(--muted); margin-top: 1px; }
+.vsok-tekst { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.vsok-tekst small { color: var(--muted); font-size: 11px; margin-top: 2px; line-height: 1.3; }
+.vsok-treff mark { background: none; color: var(--accent); font-weight: 700; }
+.vsok-gruppe { flex: none; font-size: 11px; color: var(--muted); white-space: nowrap; }
+.vsok-tom { padding: 12px; color: var(--muted); }
+.vsok-hint { padding: 6px 12px; font-size: 10px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
