@@ -24,6 +24,7 @@ import { flettPaaId, spLes, spPaalogget, spSkriv } from "./sp-lager.js";
 import { metaFor, sikreMeta } from "./ifcrpc.js";
 import { idFor, nokkel, slagFor, synlige } from "./framdrift-regn.js";
 import * as F from "./ferdig-regn.js";
+import { finnBytter } from "./bytt-regn.js";
 
 const SP_MAPPE = "Framdriftsplan";
 let spStatus = "av", lagreTid = 0, endringNr = 0;
@@ -73,6 +74,9 @@ async function hentFraSp() {
 // som ligger i et trinn eller er ferdigmeldt.
 let universBuffer = null, universNokkel = "";
 let borte = 0;   // objekter i planen/meldingene som ikke finnes i modellen lenger
+let borteListe = [];   // [{ k, hvor }] — hvor = trinnavnet eller «Ferdigmelding» (forslag 10A)
+let finnesNaa = [];    // nøklene som står i modellen nå (SW, tak, blikk)
+let visBytter = false; // «Vis hvilke» er åpen
 export async function univers() {
   const n = (S.fileName || "") + "|" + (S.modelGroup ? S.modelGroup.uuid : "");
   const ut = [];
@@ -104,16 +108,20 @@ export async function univers() {
   try { objMap = (await import("./framdrift-vis.js")).finnObjekter(); } catch (_) { objMap = null; }
   const harSlag = new Set();
   if (objMap) for (const k of objMap.keys()) harSlag.add(slagFor(k));
-  borte = 0;
-  const leggTil = (k) => {
+  borte = 0; borteListe = [];
+  finnesNaa = objMap ? [...objMap.keys()] : [];
+  const erBorte = (k) => !!(objMap && harSlag.has(slagFor(k)) && !objMap.has(k));
+  const leggTil = (k, hvor) => {
     const g = F.gruppeForNokkel(k);
     if (!g || sett.has(k)) return;
     sett.add(k);
-    if (objMap && harSlag.has(slagFor(k)) && !objMap.has(k)) { borte++; return; }
+    if (erBorte(k)) { borte++; borteListe.push({ k, hvor }); return; }
     ut.push({ k, gruppe: g, navn: idFor(k) });
   };
-  for (const e of synlige(S.framdrift)) for (const o of e.objekter) leggTil(o.k);
-  for (const m of F.vaskMeldinger(S.ferdig)) leggTil(m.k);
+  for (const e of synlige(S.framdrift)) for (const o of e.objekter) leggTil(o.k, e.navn || "");
+  // En «ikke ferdig»-melding på noe som er borte, betyr ingenting lenger —
+  // den telles ikke (og «Bytt til de nye» setter de gamle til ikke ferdig).
+  for (const m of F.vaskMeldinger(S.ferdig)) if (m.ferdig || !erBorte(m.k)) leggTil(m.k, t("Ferdigmelding"));
   return ut;
 }
 S.ferdigTomBuffer = () => { universBuffer = null; };
@@ -240,6 +248,87 @@ function bakTekst(r) {
   return t("I rute");
 }
 
+// ═══════════ 🔁 BYTT TIL DE NYE (forslag 10A, Emil 03.11) ═══════════
+// Taket eller blikket er regnet på nytt → platene har nye id-er. Én knapp
+// bytter de gamle med de nye på samme sted (bytt-regn.js), i trinnene og i
+// ferdigmeldingene. «Vis hvilke» viser lista først (gammel → ny per trinn).
+export function bytter() {
+  const liste = finnBytter(borteListe.map(b => b.k), finnesNaa);
+  return liste.map(x => Object.assign({}, x, { hvor: (borteListe.find(b => b.k === x.fra) || {}).hvor || "" }));
+}
+const kortNavn = (k) => { const s = slagFor(k), id = idFor(k); return s === "tak" ? t("Plate") + " " + id.replace(/^t:/, "") : s === "blikk" ? t("Blikk") + " " + id : id; };
+function bytteBoks() {
+  const b = bytter();
+  const nye = b.filter(x => x.til).length;
+  let h = '<div class="fr-bytt"><div><b>' + esc(tn(borte, "{0} objekt finnes ikke lenger", "{0} objekter finnes ikke lenger")) + "</b> — " +
+    esc(t("taket, blikket eller SW er regnet på nytt. De er ikke telt.")) + "</div>" +
+    '<div class="prop-actions"><button id="frBytt" class="primary"' + (b.length ? "" : " disabled") + ">" + esc(t("Bytt til de nye ({0})", nye)) + "</button>" +
+    '<button id="frByttVis">' + esc(visBytter ? t("Skjul lista") : t("Vis hvilke")) + "</button></div>";
+  if (visBytter) {
+    h += '<div class="fr-bytt-liste">';
+    for (const x of b) {
+      h += '<div class="fr-bytt-rad' + (x.til ? "" : " ingen") + '"><span>' + esc(x.hvor) + " · <b>" + esc(kortNavn(x.fra)) + "</b> → " +
+        (x.til ? "<b>" + esc(kortNavn(x.til)) + "</b>" : esc(t("ingen"))) + "</span><span>" +
+        esc(x.til ? (x.mm < 20 ? t("samme sted") : t("{0} cm unna", Math.round(x.mm / 10))) : t("tas ut")) + "</span></div>";
+    }
+    h += "</div>";
+  }
+  if (b.some(x => !x.til)) h += '<p class="set-hjelp">' + esc(t("Det som ikke har noen ny plate i nærheten (eller er et SW-element), tas ut av planen. Legg de nye inn i trinnet i Plan-fanen.")) + "</p>";
+  return h + "</div>";
+}
+function koblBytteBoks(el) {
+  const v = el.querySelector("#frByttVis");
+  if (v) v.onclick = () => { visBytter = !visBytter; tegnRapport($("ferdigBody")); };
+  const b = el.querySelector("#frBytt");
+  if (b) b.onclick = () => byttTilDeNye();
+}
+// Gjør byttet: trinnene (framdrift.js) og ferdigmeldingene. Én angrepost.
+export function byttTilDeNye() {
+  const b = bytter();
+  if (!b.length) return null;
+  const kart = new Map(b.map(x => [x.fra, x.til]));
+  const naa = new Date().toISOString();
+  // Ferdigmeldingene: den gamle settes til «ikke ferdig» (telles ikke når den
+  // er borte), og den nye plata arver meldingen — med fersk «endret», så den
+  // vinner flettingen i SharePoint. Har den nye en egen melding, står den.
+  const foerM = F.vaskMeldinger(S.ferdig);
+  const finnes = new Map(foerM.map(m => [m.id, m]));
+  const ut = foerM.map(m => (kart.has(m.k) && m.ferdig) ? Object.assign({}, m, { ferdig: false, endret: naa }) : m);
+  let flyttetM = 0;
+  for (const m of foerM) {
+    const til = kart.get(m.k);
+    if (!til || !m.ferdig) continue;
+    const ny = F.nyMelding(til, "", true, m.av, m.tid, m.kilde);
+    if (!ny || finnes.has(ny.id)) continue;
+    ut.push(Object.assign(ny, { endret: naa }));
+    flyttetM++;
+  }
+  S.ferdig = F.vaskMeldinger(ut);
+  lagre();
+  const plan = S.framdriftByttObjekter ? S.framdriftByttObjekter(kart) : { n: 0 };
+  const etterM = F.vaskMeldinger(S.ferdig);
+  if (S.pushAngre) {
+    const settM = (liste) => {
+      const t2 = new Date().toISOString();
+      const mal = new Map(liste.map(m => [m.id, m]));
+      const ny = [];
+      for (const m of F.vaskMeldinger(S.ferdig)) { const x = mal.get(m.id); ny.push(x ? Object.assign({}, x, { endret: t2 }) : Object.assign({}, m, { ferdig: false, endret: t2 })); mal.delete(m.id); }
+      for (const m of mal.values()) ny.push(Object.assign({}, m, { endret: t2 }));
+      S.ferdig = F.vaskMeldinger(ny); lagre(); oppdater();
+    };
+    S.pushAngre({ tekst: "Byttet til de nye platene",
+      angre: () => { settM(foerM); if (plan.foer && S.framdriftSettTilbake) S.framdriftSettTilbake(plan.foer); },
+      gjenopprett: () => { settM(etterM); if (plan.etter && S.framdriftSettTilbake) S.framdriftSettTilbake(plan.etter); } });
+  }
+  const byttet = b.filter(x => x.til).length, ut2 = b.length - byttet;
+  visBytter = false;
+  varsel(t("Byttet {0} til de nye på samme sted", byttet) + (flyttetM ? " " + t("({0} ferdigmeldinger fulgte med)", flyttetM) : "") +
+    (ut2 ? ". " + t("{0} uten ny i nærheten er tatt ut av planen.", ut2) : ".") + " " + t("Kan angres med Ctrl+Z."));
+  oppdater();
+  return { byttet, ut: ut2, meldinger: flyttetM, trinn: plan.n || 0 };
+}
+S.ferdigByttTilDeNye = byttTilDeNye;
+
 export async function tegnRapport(el) {
   if (!el) return;
   const runde = ++malerRunde;
@@ -259,7 +348,7 @@ export async function tegnRapport(el) {
       // Streken og planstreken på samme grunnlag: bare det som ligger i et trinn
       bar(x.planN ? x.faktiskPlanPst : x.pst, STATUS_FARGE[x.status === "gra" ? (x.ferdig ? "gronn" : "gra") : x.status], x.planN ? x.planPst : null) + "</div>";
   }
-  if (borte) h += '<p class="set-hjelp">' + esc(t("{0} objekter i planen finnes ikke lenger i modellen (SW eller taket er regnet på nytt) og er ikke telt. Legg de nye inn i trinnet i Plan-fanen.", borte)) + "</p>";
+  if (borte) h += bytteBoks();
   if (r.uten.n && r.plan.n) h += '<p class="set-hjelp">' + esc(t("{0} objekter ligger ikke i noe trinn ({1} ferdig) — de er med i totalen, men har ingen plan.", r.uten.n, r.uten.ferdig)) + "</p>";
   h += '<div class="fr-leg"><span style="--c:var(--ok)">' + esc(t("I rute / ferdig")) + '</span><span style="--c:var(--warn)">' + esc(t("Litt bak / pågår")) + "</span>" +
     '<span style="--c:var(--danger)">' + esc(t("Forsinket")) + '</span><span style="--c:var(--text)">' + esc(t("Plan i dag")) + "</span></div>";
@@ -291,6 +380,7 @@ export async function tegnRapport(el) {
     b.classList.toggle("aktiv", VIS[k] !== false);
     tegnFarger();
   });
+  koblBytteBoks(el);
   $("frIntPdf").onclick = () => last("pdf", "intern");
   $("frIntXlsx").onclick = () => last("xlsx", "intern");
   $("frStPdf").onclick = () => last("pdf", "status");

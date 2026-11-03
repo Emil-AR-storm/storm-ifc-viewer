@@ -158,3 +158,156 @@ på("btnAlleVerktoy", "click", () => {
   if (erApen(PANEL)) { $(PANEL).classList.remove("open"); return; }
   apneOversikt();
 });
+
+// ═══════════ 🔎 FINN VERKTØY — søkefelt i toppbaren (forslag 6A, Emil 03.11) ═══════════
+// Alltid synlig når en modell er åpen. Ctrl+K (⌘K på Mac) hopper hit. Søker i
+// den samme lista som «Alle verktøy» over — også verktøy inni andre verktøy.
+// Bare på kontoret (Emils valg 03.11): byggeplass-siden har få verktøy.
+
+// Poeng: treff i starten av navnet > starten av et ord i navnet > i navnet >
+// i forklaringen / gruppa. Tomt søk gir ingen treff (lista viser hint).
+const norm = (s) => String(s || "").toLowerCase().normalize("NFC");
+export function sokVerktoy(sok, liste) {
+  const q = norm(sok).trim();
+  if (!q) return [];
+  const ord = q.split(/\s+/).filter(Boolean);
+  const ut = [], sett = new Set();
+  for (const v of liste || []) {
+    // Samme navn to steder (Løfteplan inni Rigg OG snarveien i Dokumentasjon)
+    // går til samme sted — vis det én gang, den første (den «gjemte») vinner.
+    if (sett.has(norm(v.navn))) continue;
+    sett.add(norm(v.navn));
+    const navn = norm(v.navn), rest = norm([v.hjelp, v.gruppeNavn, v.inni].join(" "));
+    let poeng = 0, alle = true;
+    for (const o of ord) {
+      if (navn.startsWith(o)) poeng += 100;
+      else if (new RegExp("(^|[\\s«(/-])" + o.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).test(navn)) poeng += 60;
+      else if (navn.includes(o)) poeng += 40;
+      else if (rest.includes(o)) poeng += 10;
+      else { alle = false; break; }
+    }
+    if (alle) ut.push({ v, poeng });
+  }
+  return ut.sort((a, b) => b.poeng - a.poeng || a.v.navn.localeCompare(b.v.navn, "no")).map(x => x.v);
+}
+
+// <mark> rundt det som er søkt på — teksten escapes FØRST
+export function merkTreff(tekst, sok) {
+  let h = esc(tekst);
+  const ord = norm(sok).trim().split(/\s+/).filter(o => o.length >= 2);
+  for (const o of ord) {
+    const e = esc(o).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    h = h.replace(new RegExp("(" + e + ")(?![^<]*>)", "ig"), "<mark>$1</mark>");
+  }
+  return h;
+}
+
+let sokListe = [], sokTreff = [], sokValgt = 0;
+
+function sokFelt() {
+  let f = $("vsok");
+  if (f) return f;
+  const topp = $("topbar");
+  if (!topp) return null;
+  f = document.createElement("div");
+  f.id = "vsok";
+  f.className = "vsok";
+  f.innerHTML = ikon("sok") + '<input id="vsokInput" type="search" autocomplete="off" spellcheck="false" aria-label="' + esc(t("Finn verktøy")) +
+    '" placeholder="' + esc(t("Finn verktøy …")) + '"><kbd class="vsok-tast">' + (/Mac|iPhone|iPad/.test(navigator.platform || "") ? "⌘K" : "Ctrl K") + "</kbd>";
+  const status = $("status");
+  topp.insertBefore(f, status || null);
+  const inp = f.querySelector("input");
+  inp.addEventListener("focus", () => { sokListe = VERKTOY(); f.classList.add("apen"); visTreff(); });
+  inp.addEventListener("input", () => { sokValgt = 0; visTreff(); });
+  inp.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown") { e.preventDefault(); sokValgt = Math.min(sokValgt + 1, Math.max(0, sokTreff.length - 1)); visTreff(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); sokValgt = Math.max(0, sokValgt - 1); visTreff(); }
+    else if (e.key === "Enter") { e.preventDefault(); const v = sokTreff[sokValgt]; if (v) velgTreff(v); }
+
+  });
+  inp.addEventListener("blur", () => setTimeout(() => { if (document.activeElement !== inp) lukkSok(false); }, 150));
+  f.addEventListener("pointerdown", (e) => { if (e.target !== inp) { e.preventDefault(); inp.focus(); } });
+  return f;
+}
+
+function resultatBoks() {
+  let r = $("vsokTreff");
+  if (r) return r;
+  r = document.createElement("div");
+  r.id = "vsokTreff";
+  r.className = "vsok-treff";
+  r.setAttribute("role", "listbox");
+  r.hidden = true;
+  // pointerdown + preventDefault: feltet mister ikke fokus før klikket er tatt
+  r.addEventListener("pointerdown", (e) => {
+    const rad = e.target.closest && e.target.closest("[data-vsok]");
+    e.preventDefault();
+    if (rad) { const v = sokTreff[Number(rad.dataset.vsok)]; if (v) velgTreff(v); }
+  });
+  document.body.appendChild(r);
+  return r;
+}
+
+function visTreff() {
+  const inp = $("vsokInput"), r = resultatBoks();
+  if (!inp) return;
+  const q = inp.value;
+  sokTreff = sokVerktoy(q, sokListe).slice(0, 8);
+  if (!q.trim()) { r.hidden = true; return; }
+  const f = $("vsok").getBoundingClientRect();
+  const bredde = Math.min(400, window.innerWidth - 16);
+  r.style.width = bredde + "px";
+  r.style.top = (f.bottom + 6) + "px";
+  r.style.left = Math.max(8, Math.min(f.left, window.innerWidth - bredde - 8)) + "px";
+  r.innerHTML = (sokTreff.length
+    ? sokTreff.map((v, i) => '<div class="vsok-rad' + (i === sokValgt ? " valgt" : "") + '" role="option" data-vsok="' + i + '"' + (i === sokValgt ? ' aria-selected="true"' : "") + ">" +
+        (v.ikon ? ikon(v.ikon) : "") + '<div class="vsok-tekst"><b>' + merkTreff(v.navn, q) + "</b>" + (v.hjelp ? "<small>" + merkTreff(v.hjelp, q) + "</small>" : "") + "</div>" +
+        '<span class="vsok-gruppe">' + esc(v.inni ? t("i {0}", v.inni) : v.gruppeNavn) + "</span></div>").join("")
+    : '<div class="vsok-tom">' + esc(t("Fant ingen verktøy for «{0}».", q.trim())) + "</div>") +
+    '<div class="vsok-hint">' + esc(t("↑↓ velg · Enter åpne · Esc lukk")) + "</div>";
+  r.hidden = false;
+}
+
+function lukkSok(tom) {
+  const r = $("vsokTreff"); if (r) r.hidden = true;
+  const f = $("vsok"); if (f) f.classList.remove("apen");
+  const inp = $("vsokInput");
+  if (inp && tom) { inp.value = ""; if (document.activeElement === inp) inp.blur(); }
+}
+
+function velgTreff(v) {
+  lukkSok(true);
+  gaaTil(v.id);
+}
+
+export function apneSok() {
+  const f = sokFelt();
+  if (!f) return false;
+  if (!S.modelGroup || getComputedStyle(f).display === "none") { varsel(t("Åpne en modell først.")); return false; }
+  const inp = f.querySelector("input");
+  inp.focus(); inp.select();
+  return true;
+}
+S.apneVerktoySok = apneSok;
+
+if (typeof document !== "undefined") {
+  sokFelt();
+  // Ctrl+K / ⌘K — også fra et annet tekstfelt. Fangstfasen på window, så
+  // nettleserens egen Ctrl+K (søk i adresselinja) ikke tar den først.
+  window.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === "k" || e.key === "K")) {
+      e.preventDefault(); e.stopPropagation();
+      apneSok();
+    }
+  }, true);
+  window.addEventListener("resize", () => lukkSok(false));
+  // Esc i søkefeltet: lukk søket. På window i fangstfasen — ellers tar
+  // varselboksen (document, fangst) Esc først når et varsel står fremme.
+  window.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    const inp = $("vsokInput");
+    if (!inp || document.activeElement !== inp) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    lukkSok(true);
+  }, true);
+}

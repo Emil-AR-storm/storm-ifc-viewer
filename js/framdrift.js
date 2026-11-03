@@ -35,6 +35,7 @@ import { lastFerdig, ryddFarger as ryddFerdigFarger, ryddFerdig, tegnRapport } f
 // Stempel-hjelperen for angre bor hos støpeplanen (samme listeform, samme fletting)
 import { settListeStemplet } from "./stopeplan-regn.js";
 import { bekreft } from "./sporsmal.js";
+import { byttIObjekter } from "./bytt-regn.js";
 
 const SP_MAPPE = "Framdriftsplan";
 let spStatus = "av", lagreTid = 0;
@@ -129,6 +130,27 @@ export function endreEtappe(id, endring) {
   lagre();
   medAngre("Trinn endret", foer);
 }
+// 🔁 «Bytt til de nye» (forslag 10A, 03.11): gamle takplate-/blikk-nøkler i
+// trinnene byttes med de nye på samme sted (kart: gammel → ny | null = ut).
+// Returnerer { n (trinn endret), foer, etter }. Angreposten lager ferdig.js —
+// én post for planen OG ferdigmeldingene (S.framdriftSettTilbake).
+export function byttObjekterIPlan(kart) {
+  const foer = vaskEtappeListe(S.framdrift);
+  const naa = new Date().toISOString();
+  let n = 0;
+  S.framdrift = vaskEtappeListe(S.framdrift).map(e => {
+    if (!e || e.slettet) return e;
+    const r = byttIObjekter(e.objekter, kart);
+    if (!r.endret) return e;
+    n++;
+    return vaskEtappe(Object.assign({}, e, { objekter: r.objekter, endret: naa, av: mittNavn() }));
+  });
+  if (n) { lagre(); tegnPanel(); }
+  return { n, foer, etter: vaskEtappeListe(S.framdrift) };
+}
+S.framdriftByttObjekter = byttObjekterIPlan;
+S.framdriftSettTilbake = (liste) => settTilbake(liste);
+
 export function leggTilEtappe() {
   const foer = vaskEtappeListe(S.framdrift);
   const e = nyEtappe(S.framdrift);
