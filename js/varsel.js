@@ -193,7 +193,9 @@ function leggTilVis(kort, vis, visTekst) {
       v.type = "button";
       v.className = "varsel-liste-vis";
       v.textContent = visTekst;
-      v.onclick = () => gaa(x);
+      // Emil 03.11 (valg A): «Vis» på en linje lukker ikke lista — kortet
+      // flyttes ut til et panel på siden med hele lista og ‹ Forrige / Neste ›
+      v.onclick = () => { const i = liste.indexOf(x); lukk(kort); apneVisPanel(liste, i, kort.dataset.tekst || ""); };
       rad.append(tx, v);
       ned.appendChild(rad);
     }
@@ -202,6 +204,79 @@ function leggTilVis(kort, vis, visTekst) {
     // Lista er åpen: kortet blir stående til man har valgt eller lukker
     if (kort._tid) { clearTimeout(kort._tid); kort._tid = null; }
   };
+}
+
+// ---------- 👁 «Vis»-panelet på siden (Emils valg A, 03.11) ----------
+// Hele lista står til høyre, den du ser på er markert, og ‹ Forrige / Neste ›
+// blar. Står til du lukker det (✕ eller Esc). Ett panel om gangen: et nytt
+// «Vis» erstatter det gamle.
+const tt = (s, ...a) => (typeof globalThis.__stormT === "function" ? globalThis.__stormT(s, ...a) : a.reduce((x, v, i) => x.split("{" + i + "}").join(v), s));
+let visPanel = null;   // { liste, nr, tittel }
+export function lukkVisPanel() {
+  const p = document.getElementById("visPanel");
+  if (p) p.remove();
+  visPanel = null;
+}
+export function apneVisPanel(liste, nr, tittel) {
+  if (typeof document === "undefined" || !document.body) return null;
+  visPanel = { liste, nr: Math.max(0, Math.min(liste.length - 1, nr || 0)), tittel: String(tittel || "") };
+  tegnVisPanel();
+  gaaTilNr(visPanel.nr);
+  return document.getElementById("visPanel");
+}
+function gaaTilNr(nr) {
+  if (!visPanel) return;
+  visPanel.nr = Math.max(0, Math.min(visPanel.liste.length - 1, nr));
+  tegnVisPanel();
+  try { visPanel.liste[visPanel.nr].gaa(); } catch (err) { console.error(err); }
+}
+function tegnVisPanel() {
+  if (!visPanel) return;
+  let p = document.getElementById("visPanel");
+  if (!p) {
+    p = document.createElement("div");
+    p.id = "visPanel";
+    p.className = "vis-panel";
+    p.setAttribute("role", "dialog");
+    document.body.appendChild(p);
+  }
+  const { liste, nr } = visPanel;
+  p.innerHTML =
+    '<header><span class="vis-panel-tittel"></span><button type="button" class="vis-lukk" aria-label="✕">✕</button></header>' +
+    '<div class="vis-panel-liste"></div>' +
+    '<div class="vis-panel-bunn"><button type="button" class="vis-forrige"></button><span class="vis-teller"></span><button type="button" class="vis-neste primary"></button></div>';
+  // textContent overalt: tekstene kan komme fra byggeplassen
+  p.querySelector(".vis-panel-tittel").textContent = (visPanel.tittel.length > 60 ? visPanel.tittel.slice(0, 60) + "…" : visPanel.tittel) || tt("Vis");
+  p.querySelector(".vis-teller").textContent = tt("{0} av {1}", nr + 1, liste.length);
+  const forrige = p.querySelector(".vis-forrige"), neste = p.querySelector(".vis-neste");
+  forrige.textContent = "‹ " + tt("Forrige");
+  neste.textContent = tt("Neste") + " ›";
+  forrige.disabled = nr <= 0;
+  neste.disabled = nr >= liste.length - 1;
+  forrige.onclick = () => gaaTilNr(nr - 1);
+  neste.onclick = () => gaaTilNr(nr + 1);
+  p.querySelector(".vis-lukk").onclick = lukkVisPanel;
+  const boks = p.querySelector(".vis-panel-liste");
+  liste.forEach((x, i) => {
+    const rad = document.createElement("button");
+    rad.type = "button";
+    rad.className = "vis-rad" + (i === nr ? " valgt" : "");
+    rad.textContent = x.tekst || "";
+    rad.onclick = () => gaaTilNr(i);
+    boks.appendChild(rad);
+  });
+  const valgt = boks.children[nr];
+  if (valgt && valgt.scrollIntoView) try { valgt.scrollIntoView({ block: "nearest" }); } catch (_) {}
+}
+if (typeof window !== "undefined" && window.addEventListener) {
+  window.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || !document.getElementById("visPanel")) return;
+    // Et åpent spørsmål eller varsel tar Esc først (de har egne lyttere)
+    const s = document.getElementById("varselStabel");
+    if (document.querySelector(".spor-boks") || (s && s.children.length)) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    lukkVisPanel();
+  }, true);
 }
 
 export function lukkAlleVarsler() {

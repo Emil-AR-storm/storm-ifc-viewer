@@ -37,6 +37,9 @@ export function t(nøkkel, ...args) {
   for (let i = 0; i < args.length; i++) s = s.split("{" + i + "}").join(args[i]);
   return s;
 }
+// varsel.js skal ikke importere noe (den lastes før alt annet), men trenger
+// noen få tekster i «Vis»-panelet. Den leser oversetteren herfra når den finnes.
+globalThis.__stormT = t;
 
 // 🔢 Tall + ord med riktig entall/flertall: tn(1, "{0} felt", "{0} felt").
 // Norsk: `ent` når n er 1, ellers `flere`. Andre språk følger språkets egne
