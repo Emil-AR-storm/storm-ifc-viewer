@@ -3043,3 +3043,32 @@ body:not(.har-modell) #vsok { display: none; }
 .vsok-gruppe { flex: none; font-size: 11px; color: var(--muted); white-space: nowrap; }
 .vsok-tom { padding: 12px; color: var(--muted); }
 .vsok-hint { padding: 6px 12px; font-size: 10px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.bp-ikke { cursor: pointer; }
+.bp-ikke:hover, .bp-ikke:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+.bp-merke { display: inline-block; border-radius: 9px; padding: 0 6px; font-size: 11px; font-weight: 700; margin-right: 4px; vertical-align: 1px; }
+.bp-innboks-liste.gul b { color: #d97706; }
+
+/* ---------- ☁ Lagringsstatus bak SharePoint-prikken (js/lagring-status.js, forslag 6C 03.11) ---------- */
+#innloggingInfo { flex-direction: column; min-width: 280px; }
+#innloggingInfo .innlogging-topp { display: flex; gap: 10px; align-items: flex-start; }
+#innloggingInfo .lagring-liste { width: 100%; }
+#innloggingInfo .lagring-liste ul { list-style: none; margin: 6px 0 8px; padding: 0; }
+#innloggingInfo .lagring-liste li { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; border-bottom: 1px dashed var(--border); font-size: 12px; }
+#innloggingInfo .lagring-liste .prop-actions { margin-top: 4px; }
+/* Ringen: grønn = alt lastet opp, gul = laster opp, rød = noe feilet */
+.innlogging-knapp[data-lagring="ok"] > .innlogging-prikk { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--ok); }
+.innlogging-knapp[data-lagring="lagrer"] > .innlogging-prikk { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px #f59e0b; animation: lagring-puls 1s ease-in-out infinite; }
+.innlogging-knapp[data-lagring="feil"] > .innlogging-prikk { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--danger); }
+@keyframes lagring-puls { 50% { box-shadow: 0 0 0 2px var(--panel), 0 0 0 5px #f59e0b; } }
+@media (prefers-reduced-motion: reduce) { .innlogging-knapp[data-lagring="lagrer"] > .innlogging-prikk { animation: none; } }
+
+/* ---------- ❔ «?» i panelhodet (js/panelhjelp.js, forslag 7A 03.11) ---------- */
+.panel > header .panel-hjelp { margin-left: auto; margin-right: 4px; width: 24px; height: 24px; padding: 0; border-radius: 50%;
+  font-weight: 700; font-size: 13px; line-height: 1; display: inline-flex; align-items: center; justify-content: center;
+  color: var(--muted); border: 1px solid var(--border); background: transparent; }
+.panel > header .panel-hjelp:hover, .panel > header .panel-hjelp:focus-visible { color: var(--accent); border-color: var(--accent); outline: none; }
+.panel-hjelp-boble { position: fixed; z-index: 85; background: var(--panel); color: var(--text); border: 1px solid var(--border);
+  border-radius: 12px; box-shadow: var(--skygge); padding: 12px 14px; font-size: 13px; line-height: 1.45; }
+.panel-hjelp-boble ul { margin: 6px 0 8px; padding-left: 18px; }
+.panel-hjelp-boble li { margin: 2px 0; }
+.panel-hjelp-mer { background: none; border: 0; padding: 0; color: var(--accent); font-size: 12px; cursor: pointer; }
