@@ -79,6 +79,13 @@ function leggEsc() {
 }
 
 // varsel("tekst") — samme bruk som alert(). valg.type: "feil" | "info".
+//
+// 👁 valg.vis (forslag 10A, Emil 03.11): beskjeder som handler om noe bestemt
+// får en «Vis»-knapp ved siden av OK.
+//   valg.vis = () => …                 → «Vis» går rett dit
+//   valg.vis = [{ tekst, gaa }, …]     → én ting: «Vis» går rett dit;
+//                                         flere: «Vis» åpner en nedtrekksliste
+//                                         med egen «Vis» per linje (som 10C)
 export function varsel(tekst, valg) {
   const melding = String(tekst == null ? "" : tekst);
   // Krok for testene i Node: der finnes ingen skjerm å se varselet på, så
@@ -115,6 +122,7 @@ export function varsel(tekst, valg) {
   // feiltekster utenfra, og linjeskift beholdes med CSS (pre-line)
   kort.querySelector(".varsel-tekst").textContent = melding;
   kort.querySelector(".varsel-ok").onclick = () => lukk(kort);
+  leggTilVis(kort, valg && valg.vis, (valg && valg.visTekst) || "Vis");
   s.appendChild(kort);
   s.classList.add("har-varsel");
   while (s.children.length > MAKS_SYNLIGE) lukk(s.firstElementChild);
@@ -133,12 +141,14 @@ export function varsel(tekst, valg) {
 // musa går ut, får det hele tiden på nytt (så det ikke forsvinner idet man
 // flytter blikket tilbake).
 function autoLukk(kort, melding) {
-  const tid = infoTid(melding);
+  // Et kort med «Vis» står litt lenger: man skal rekke å bestemme seg
+  const tid = kort.dataset.vis ? Math.max(8000, infoTid(melding)) : infoTid(melding);
   kort.dataset.auto = String(tid);
   const stopp = () => { if (kort._tid) { clearTimeout(kort._tid); kort._tid = null; } };
   const start = () => {
     stopp();
     if (kort.matches && (kort.matches(":hover") || kort.contains(document.activeElement))) return;
+    if (kort.querySelector(".varsel-liste")) return;   // nedtrekkslista er åpen
     kort._tid = setTimeout(() => lukk(kort), tid);
     // I Node (testene) skal ikke en ventende lukking holde prosessen i live.
     if (kort._tid && typeof kort._tid.unref === "function") kort._tid.unref();
@@ -149,6 +159,49 @@ function autoLukk(kort, melding) {
   kort.addEventListener("mouseleave", start);
   kort.addEventListener("focusout", () => setTimeout(() => { if (!kort.contains(document.activeElement)) start(); }, 0));
   start();
+}
+
+// ---------- 👁 «Vis» (forslag 10A + nedtrekksliste) ----------
+function vasketVis(vis) {
+  if (typeof vis === "function") return [{ tekst: "", gaa: vis }];
+  return (Array.isArray(vis) ? vis : []).filter(x => x && typeof x.gaa === "function").slice(0, 30);
+}
+function leggTilVis(kort, vis, visTekst) {
+  const liste = vasketVis(vis);
+  if (!liste.length) return;
+  const okKnapp = kort.querySelector(".varsel-ok");
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "varsel-vis";
+  b.textContent = visTekst + (liste.length > 1 ? " (" + liste.length + ") ▾" : "");
+  kort.insertBefore(b, okKnapp);
+  kort.dataset.vis = String(liste.length);
+  const gaa = (x) => { lukk(kort); try { x.gaa(); } catch (err) { console.error(err); } };
+  if (liste.length === 1) { b.onclick = () => gaa(liste[0]); return; }
+  b.setAttribute("aria-expanded", "false");
+  b.onclick = () => {
+    let ned = kort.querySelector(".varsel-liste");
+    if (ned) { ned.remove(); b.setAttribute("aria-expanded", "false"); if (kort._start) kort._start(); return; }
+    ned = document.createElement("div");
+    ned.className = "varsel-liste";
+    for (const x of liste) {
+      const rad = document.createElement("div");
+      rad.className = "varsel-liste-rad";
+      const tx = document.createElement("span");
+      tx.textContent = x.tekst || "";
+      const v = document.createElement("button");
+      v.type = "button";
+      v.className = "varsel-liste-vis";
+      v.textContent = visTekst;
+      v.onclick = () => gaa(x);
+      rad.append(tx, v);
+      ned.appendChild(rad);
+    }
+    kort.appendChild(ned);
+    b.setAttribute("aria-expanded", "true");
+    // Lista er åpen: kortet blir stående til man har valgt eller lukker
+    if (kort._tid) { clearTimeout(kort._tid); kort._tid = null; }
+  };
 }
 
 export function lukkAlleVarsler() {

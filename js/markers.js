@@ -2202,6 +2202,16 @@ function placePopup() {
 
 frameHooks.push(() => { if (popFor) placePopup(); });
 
+// 👁 «Vis» i beskjedene (forslag 10A): fly til markeringen og åpne boblen
+export function visMarkering(id) {
+  const c = (S.comments || []).find(x => String(x.id) === String(id));
+  if (!c) return false;
+  goToComment(c);
+  try { openMarkerPopup(c); } catch (_) {}
+  return true;
+}
+S.visMarkering = visMarkering;
+
 export function goToComment(c) {
   controls.target.set(c.x, c.y, c.z);
   const off = camera.position.clone().sub(controls.target).normalize().multiplyScalar(8);
@@ -2621,7 +2631,10 @@ S.omradeModeBar = (bar) => {
   const boks = document.createElement("span");
   boks.style.cssText = "display:inline-flex;gap:6px;align-items:center;margin-left:10px";
   boks.innerHTML =
-    '<span style="color:var(--muted);font-size:12px">' + t("eller marker område:") + '</span>' +
+    '<span style="color:var(--muted);font-size:12px">' + t("Område:") + '</span>' +
+    // «Ingen» (Emil 03.11): bare et punkt, uten boks eller sirkel — som før,
+    // men nå som et synlig valg i stedet for «ingen knapp trykket inn»
+    '<button id="mbOmrIngen" title="' + t("Bare en markering i punktet — ingen boks eller sirkel") + '">' + t("Ingen") + '</button>' +
     '<button id="mbOmrSirkel" title="' + t("Dra grunnflaten fra hjørne til hjørne — området blir en rund sirkel") + '">' + t("Sirkel") + '</button>' +
     '<button id="mbOmrFirkant" title="' + t("Dra grunnflaten fra hjørne til hjørne — området blir en boks") + '">' + t("Firkant") + '</button>' +
     '<select id="mbOmrNiva" title="' + t("Nivået området legges på — samme etasjer som minikartet") + '">' +
@@ -2629,12 +2642,14 @@ S.omradeModeBar = (bar) => {
   bar.appendChild(boks);
 
   const tegnKnapper = () => {
+    $("mbOmrIngen").classList.toggle("active", !omrForm);
     $("mbOmrSirkel").classList.toggle("active", omrForm === "sirkel");
     $("mbOmrFirkant").classList.toggle("active", omrForm === "firkant");
     if (lbl) lbl.textContent = omrForm
       ? t("Dra grunnflaten fra hjørne til hjørne, slipp — dra så opp/ned for høyden, og trykk for å skrive markeringen")
       : t("Trykk på modellen for å plassere markering");
   };
+  $("mbOmrIngen").onclick = () => { omrForm = null; tegnKnapper(); };
   $("mbOmrSirkel").onclick = () => { omrForm = omrForm === "sirkel" ? null : "sirkel"; tegnKnapper(); };
   $("mbOmrFirkant").onclick = () => { omrForm = omrForm === "firkant" ? null : "firkant"; tegnKnapper(); };
 

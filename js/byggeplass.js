@@ -218,6 +218,10 @@ function vaskMarkeringerForBygg() {
     // 🎨 Egen farge følger med: montøren skal se samme farge som kontoret.
     farge: c.farge || "",
     status: c.status || "Åpen", x: c.x, y: c.y, z: c.z,
+    // ⭕▭ Emil 03.11: «markeringsboksen/-sirkelen kommer opp på kontoret,
+    // men ikke på byggeplassen». Området ble holdt igjen her — uten grunn.
+    // Byggeplass-siden vasker og tegner det allerede (vaskMarkering/addOmradeMesh).
+    omrade: c.omrade || undefined,
     bilder: c.bilder || [], bilderEtter: c.bilderEtter || [], lyd: c.lyd || [],
     // kommentartråden og tegnings-HENVISNINGENE er med nå (trinn 5b) —
     // eier, frist og Planner-kobling holdes fortsatt igjen
@@ -686,7 +690,8 @@ export async function hentFraByggeplassen() {
     await lastOppMarkeringsfil(prosjekt, token, fil);
     varsel(antallInn
       ? t("Hentet {0} nye ting fra byggeplassen. Montørene ser dem nå.", antallInn)
-      : t("Sendt ut — byggeplassen har det samme som kontoret nå."));
+      : t("Sendt ut — byggeplassen har det samme som kontoret nå."),
+      antallInn ? { vis: sisteNye.slice(), visTekst: t("Vis") } : undefined);
     return antallInn;
   } catch (err) {
     console.error(err);
@@ -714,8 +719,13 @@ function gammel(iso) {
   return isFinite(t) && (Date.now() - t) > UKE_MS;
 }
 
+// 👁 Det som kom inn sist (forslag 10A): linjene bak «Vis» i beskjeden
+let sisteNye = [];
+const kortTekst = (s) => { const x = String(s || "").replace(/\s+/g, " ").trim(); return x.length > 40 ? x.slice(0, 40) + "…" : x; };
+const visM = (id) => () => { if (S.visMarkering) S.visMarkering(id); };
 async function hentInnboks(prosjekt, token) {
   let inn = 0;
+  sisteNye = [];
   const hent = (navn) => fetch(TJENESTER.worker + "/innboks/" + prosjekt + "/" + encodeURIComponent(navn), { headers: { "x-token": token } });
   const slett = (navn) => fetch(TJENESTER.worker + "/innboks/" + prosjekt + "/" + encodeURIComponent(navn), { method: "DELETE", headers: { "x-token": token } });
   try {
@@ -743,6 +753,8 @@ async function hentInnboks(prosjekt, token) {
         if (S.ferdigFlett && Array.isArray(h.meldinger)) {
           const r = await S.ferdigFlett(h.meldinger);
           ferdigInn.antall += r.antall; ferdigInn.endret += r.endret;
+          sisteNye.push({ tekst: t("Ferdigmeldinger ({0}) fra {1}", h.meldinger.length, h.av || t("byggeplassen")),
+            gaa: () => { if (S.gaaTilVerktoy) S.gaaTilVerktoy("gjemt:framdriftsrapport"); } });
           inn++; await slett(navn);
         }
       } else if (h.type === "ny-markering" && h.markering) {
@@ -751,6 +763,7 @@ async function hentInnboks(prosjekt, token) {
           c.status = "Åpen"; c.owner = ""; c.due = "";   // status og ansvar settes HER, ikke på plassen
           leggTilImportertMarkering(c);
           inn++;
+          sisteNye.push({ tekst: t("Markering «{0}»", kortTekst(c.text)), gaa: visM(c.id) });
         }
         await slett(navn);
       } else if (h.type === "svar" && h.svar) {
@@ -765,6 +778,7 @@ async function hentInnboks(prosjekt, token) {
           if (rene.id && rene.tekst && !(c.svar || []).some(x => String(x.id) === rene.id)) {
             c.svar = (c.svar || []).concat([rene]);
             inn++;
+            sisteNye.push({ tekst: t("Kommentar fra {0} på «{1}»", rene.forfatter || "?", kortTekst(c.text)), gaa: visM(c.id) });
           }
           await slett(navn);
         } else if (gammel(h.mottatt)) {
@@ -785,7 +799,7 @@ async function hentInnboks(prosjekt, token) {
         .localeCompare(String(b.h.tid || (b.h.signert && b.h.signert.tid) || b.h.mottatt || "")));
       const brukt = S.stopeFlettSjekk(sjekk.map(x => x.h));
       for (let i = 0; i < sjekk.length; i++) {
-        if (brukt.has(i)) { await slett(sjekk[i].navn); inn++; }
+        if (brukt.has(i)) { await slett(sjekk[i].navn); inn++; if (!sisteNye.some(x => x.sjekk)) sisteNye.push({ sjekk: true, tekst: t("Sjekkliste før støp"), gaa: () => { if (S.gaaTilVerktoy) S.gaaTilVerktoy("gjemt:sjekkliste"); } }); }
         else if (gammel(sjekk[i].h.mottatt)) await slett(sjekk[i].navn);   // annen modell / slettet etappe
       }
     }
@@ -850,10 +864,12 @@ async function hentInnboks(prosjekt, token) {
       await slett(navn);
       await slett(navn + ".json");
       inn++;
+      sisteNye.push({ tekst: (erLyd ? t("Talemelding til «{0}»", kortTekst(c.text)) : t("Bilde til «{0}»", kortTekst(c.text))), gaa: visM(c.id) });
     }
 
     // 📊 Si fra hva som kom inn — også når alt var ferdigmeldt fra før
-    if (ferdigInn.antall) varsel(t("Hentet {0} ferdigmeldinger fra byggeplassen — {1} endret status i framdriftsrapporten.", ferdigInn.antall, ferdigInn.endret));
+    if (ferdigInn.antall) varsel(t("Hentet {0} ferdigmeldinger fra byggeplassen — {1} endret status i framdriftsrapporten.", ferdigInn.antall, ferdigInn.endret),
+      { vis: () => { if (S.gaaTilVerktoy) S.gaaTilVerktoy("gjemt:framdriftsrapport"); }, visTekst: t("Vis") });
     if (inn) lagreOgSynk();
   } catch (_) {}
   return inn;

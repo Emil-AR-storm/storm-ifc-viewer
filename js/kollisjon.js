@@ -195,7 +195,8 @@ export async function kjor() {
     if (s.nyLost.length) lagreStatus(s.nyLost);
     tilstand.filter = "ny"; tilstand.nr = 0;
     const tl = K.telling(tilstand.funn);
-    varsel(t("Kollisjonskontroll ferdig: {0} nye, {1} godkjent, {2} løst.", tl.ny, tl.godkjent, tl.lost));
+    varsel(t("Kollisjonskontroll ferdig: {0} nye, {1} godkjent, {2} løst.", tl.ny, tl.godkjent, tl.lost),
+      tl.ny ? { visTekst: t("Vis"), vis: () => { if (S.gaaTilVerktoy) S.gaaTilVerktoy("gjemt:kollisjon"); } } : undefined);
     return tilstand.funn;
   } catch (err) {
     console.error(err);

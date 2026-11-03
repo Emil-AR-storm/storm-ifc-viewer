@@ -238,7 +238,9 @@ export async function importer(plan) {
   });
 
   varsel(t("BCF-import: {0} nye markeringer, {1} oppdatert.", nye.length, oppd.length) +
-    (bildeFeil ? " " + t("{0} bilder ble ikke lastet opp (logg inn for å dele bilder).", bildeFeil) : ""));
+    (bildeFeil ? " " + t("{0} bilder ble ikke lastet opp (logg inn for å dele bilder).", bildeFeil) : ""),
+    // 👁 «Vis» (forslag 10A): de nye og oppdaterte markeringene
+    { visTekst: t("Vis"), vis: nye.concat(oppd).map(({ c }) => ({ tekst: String(c.text || "").replace(/\s+/g, " ").slice(0, 40), gaa: () => { if (S.visMarkering) S.visMarkering(c.id); } })) });
   return { nye: nye.length, oppdatert: oppd.length, bilder };
 }
 

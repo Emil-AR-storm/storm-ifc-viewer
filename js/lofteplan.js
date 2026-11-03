@@ -295,5 +295,6 @@ export async function lagMarkeringer(o) {
   if (S.pushAngre && laget.length) S.pushAngre({ tekst: t("Markeringer fra kransjekk"),
     angre: () => { laget.forEach(m => M.fjernImportertMarkering(m.id)); M.lagreOgSynk(); },
     gjenopprett: () => { laget.forEach(m => M.leggTilImportertMarkering(m)); M.lagreOgSynk(); } });
-  varsel(t("{0} markeringer laget fra kransjekken.", laget.length));
+  varsel(t("{0} markeringer laget fra kransjekken.", laget.length),
+    { visTekst: t("Vis"), vis: laget.map(m => ({ tekst: String(m.text || "").split("\n")[0].slice(0, 50), gaa: () => { if (S.visMarkering) S.visMarkering(m.id); } })) });
 }
