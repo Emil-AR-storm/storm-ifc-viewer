@@ -1,41 +1,559 @@
 <!DOCTYPE html>
-<html lang="nb">
+<html lang="no">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#23272E">
-<title>Storm Prosjekter</title>
+<!-- 🛡 SIKKERHETSPOLICY (CSP, sikkerhetsrunden 19.10). Står så tidlig som mulig:
+     den gjelder bare for det som kommer ETTER den i fila.
+     Poenget: HTML som sniker seg inn (modellnavn, markeringstekst, en fil —
+     f.eks. <img src=x onerror=…>) skal IKKE kunne kjøre kode. Derfor:
+       · ingen onclick="…" eller andre on…-attributter i HTML-en — bruk
+         data-lukk / data-kall (js/html-lyttere.js) eller addEventListener
+       · ingen inline-<script> — legg koden i js/ og last den med src
+       · det ENESTE inline-skriptet er importmap-en nederst. Den er sluppet
+         gjennom med en sha256-hash i script-src.
+     ENDRER DU IMPORTMAP-EN (ett tegn, også mellomrom/linjeskift), MÅ HASHEN
+     I script-src OPPDATERES — ellers nekter nettleseren den og hele appen
+     dør («three» finnes ikke). _test/test-csp.mjs regner hashene ut på nytt,
+     sammenligner med denne linja og skriver riktig verdi hvis den har drevet.
+     Ny vert siden henter data fra (fetch)? Legg den i connect-src.
+     frame-ancestors virker ikke i <meta> — bygg.html får X-Frame-Options fra
+     Workeren.
+     MSAL: frame-src/connect-src login.microsoftonline.com (stille fornyelse
+     i skjult iframe), Graph + *.sharepoint.com (nedlastingslenkene),
+     *.logic.azure.com (@-varsler), geonorge (terreng, adresse, kommune),
+     Workeren. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-F14x9yxveexCNTa0iCPH6z0xZ6i2BdPQ7H+6J/hypHU='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' data: blob: https://storm-byggeplass.emil-46a.workers.dev https://graph.microsoft.com https://login.microsoftonline.com https://*.sharepoint.com https://ws.geonorge.no https://wcs.geonorge.no https://wms.geonorge.no https://*.logic.azure.com; worker-src 'self'; frame-src 'self' https://login.microsoftonline.com; child-src 'self' https://login.microsoftonline.com; object-src 'none'; base-uri 'none'; form-action 'self'">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Storm IFC-Viewer</title>
+<!-- Storm-merket i nettleserfanen og som app-ikon (Emil 11.09: samme som på
+     Bemanningsoversikt). SVG-en er merket fra <defs> under med fargene inne i
+     fila; PNG-ene er for nettlesere og hjemskjermer som ikke tar SVG. -->
+<link rel="icon" type="image/svg+xml" href="img/favicon.svg">
 <link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png">
-<link rel="apple-touch-icon" href="img/favicon-180.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600&display=swap">
+<link rel="apple-touch-icon" sizes="180x180" href="img/apple-touch-icon.png">
+<meta name="theme-color" content="#11161d">
 <link rel="stylesheet" href="css/storm.css">
-<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.18.0/lib/msal-browser.min.js"></script>
+<!-- 🔒 Hengelåsene, kodeboksen og adminpanelet (post 11). Egen fil så
+     css/storm.css — som også ligger i byggeplassens service worker — er uendret. -->
+<link rel="stylesheet" href="css/tilgang.css">
+<!-- Temaet settes FØR stilarket rekker å male (se fila). Vanlig skript, ikke
+     modul/async/defer — ellers blinker det. -->
+<script src="js/tema-tidlig.js"></script>
 </head>
 <body>
-<header class="topp">
-  <a class="topp-logo" href="#/" aria-label="Til prosjektlista"><img src="img/storm-logo-negativ.png" alt="Storm" width="1000" height="367"></a>
-  <span class="topp-tittel">Prosjekter</span>
-  <button type="button" class="qr-knapp" id="qr-knapp" aria-label="Vis QR-kode for å åpne siden på telefon">QR</button>
-  <span class="topp-bruker" id="topp-bruker"></span>
-</header>
-<div class="qr-bakgrunn" id="qr-dialog" hidden>
-  <div class="qr-boks" role="dialog" aria-modal="true" aria-labelledby="qr-tittel">
-    <h2 id="qr-tittel">Åpne på telefon</h2>
-    <img src="img/qr-storm-prosjekter.svg" alt="QR-kode til Storm Prosjekter" width="240" height="240">
-    <p class="muted liten">Skann med kameraet på telefonen.<br><span id="qr-url"></span></p>
-    <div class="qr-knapper">
-      <button type="button" class="knapp primar" id="qr-kopier">Kopier lenke</button>
-      <button type="button" class="knapp" id="qr-lukk">Lukk</button>
+
+<!-- Ikonsettet: Lucide (ISC-lisens), lagt inn som én sprite så alt virker uten
+     byggesteg og uten ekstra nedlastinger. Ikonene tegnes med currentColor og
+     følger dermed tekstfargen. Brukes med <svg class="ikon"><use href="#i-…"/></svg>
+     i HTML, og via ikon("…") fra js/state.js i dynamisk bygd HTML. -->
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+  <!-- ============ STORM-LOGOEN ============
+       Målt ut av Design/Storm-Entreprenor.png, ikke tegnet på frihånd.
+       «Storm» er vektorisert rett fra logofila – samme bokstavformer som
+       hovedlogoen, ikke en font som ligner.
+
+       MERK viewBox-ene: de MÅ starte i «0 0». Gjør du dem til f.eks.
+       «29 21 244 244» og bruker samme verdi på <svg>-en utenpå, blir
+       forskyvningen brukt to ganger (én gang av <symbol>, én gang av <svg>),
+       og venstre side av ringen klippes bort. Forskyvningen ligger derfor
+       i translate() inne i symbolet. ============ -->
+  <defs>
+    <g id="storm-ringer">
+      <circle class="sr-tykk" cx="150.9" cy="142.8" r="83.06"/>
+      <circle class="sr-mork" cx="151.3" cy="132.2" r="99.1"/>
+      <circle class="sr-mork" cx="123.4" cy="148" r="88.7"/>
+      <circle class="sr-lys"  cx="176.4" cy="126.7" r="89.9"/>
+    </g>
+    <g id="storm-kube" class="sr-kube">
+      <path d="M150.9 108.8 L180.3 125.8 L180.3 159.8 L150.9 176.8 L121.5 159.8 L121.5 125.8 Z"/>
+      <path d="M150.9 108.8 L150.9 142.8 L180.3 159.8 M150.9 142.8 L121.5 159.8"/>
+    </g>
+    <path id="storm-ord" class="sr-ord" fill-rule="evenodd" d="M301.0 181.5C236.7 168.6 229.5 76.4 291.0 53.9C351.4 31.9 405.0 90.5 376.8 147.9C364.2 173.8 332.4 187.8 301.0 181.5ZM46.9 178.0C25.6 172.6 0.0 151.4 0.0 139.1C0.0 138.4 10.8 131.9 21.1 126.4C21.5 126.2 23.0 128.5 24.5 131.5C42.6 168.6 116.5 161.2 105.9 123.3C102.9 112.5 96.0 108.7 65.0 101.0C19.5 89.6 2.8 70.8 10.1 39.1C20.9 -7.9 105.7 -13.4 128.2 31.5C133.0 40.9 133.3 40.1 121.8 46.1C108.7 53.0 109.8 52.9 107.1 47.1C91.3 12.0 25.9 20.1 36.5 55.8C39.7 66.5 45.4 69.5 76.5 77.0C115.1 86.3 129.1 97.2 133.2 120.9C140.0 160.4 95.0 190.2 46.9 178.0ZM171.0 124.5L171.0 71.0L159.5 71.0L148.0 71.0L148.0 60.0L148.0 49.0L160.0 49.0L172.0 49.0L172.0 32.5L172.0 16.0L184.0 16.0L196.0 16.0L196.0 32.5L196.0 49.0L213.0 49.0L230.0 49.0L230.0 60.0L230.0 71.0L213.0 71.0L196.0 71.0L196.0 112.5L196.0 154.0L213.0 154.0L230.0 154.0L230.0 166.0L230.0 178.0L200.5 178.0L171.0 178.0L171.0 124.5ZM406.0 113.5L406.0 49.0L418.5 49.0L431.0 49.0L431.0 60.0C431.0 73.4 428.4 73.5 455.9 59.0C468.4 52.4 478.9 47.0 479.3 47.0C479.7 47.0 480.0 53.0 480.0 60.3L480.0 73.5L455.5 85.8L431.0 98.0L431.0 138.0L431.0 178.0L418.5 178.0L406.0 178.0L406.0 113.5ZM491.0 113.5L491.0 49.0L504.0 49.0L517.0 49.0L517.0 56.8L517.0 64.5L519.1 61.3C531.0 42.6 568.2 42.5 586.5 61.0L591.3 65.9L597.0 60.7C626.0 33.9 674.7 47.7 682.6 84.9C683.6 90.0 684.0 101.5 684.0 134.8L684.0 178.0L671.6 178.0L659.2 178.0L658.8 135.8C658.4 98.4 658.2 93.0 656.6 88.8C647.6 64.9 613.5 64.4 602.6 87.9L600.5 92.5L600.2 135.2L599.9 178.0L587.5 178.0L575.1 178.0L574.8 135.2L574.5 92.5L572.1 87.2C561.5 63.8 527.1 65.5 518.5 89.9C517.2 93.5 517.0 101.0 517.0 136.1L517.0 178.0L504.0 178.0L491.0 178.0L491.0 113.5ZM325.2 158.9C365.4 150.4 371.5 94.4 334.2 76.7L327.5 73.5L316.5 73.5L305.5 73.5L298.8 76.7C253.1 98.3 275.9 169.3 325.2 158.9Z"/>
+  </defs>
+  <!-- Bare merket – favicon, app-ikon, vannmerke -->
+  <symbol id="storm-merke" viewBox="0 0 244 244">
+    <g transform="translate(-29,-21)"><use href="#storm-ringer"/><use href="#storm-kube"/></g>
+  </symbol>
+  <!-- Merke + «Storm» – toppbaren -->
+  <symbol id="storm-lockup" viewBox="0 0 948 224">
+    <g transform="translate(-28,-26)">
+      <use href="#storm-ringer"/><use href="#storm-kube"/>
+      <g transform="translate(286,52)"><use href="#storm-ord"/></g>
+    </g>
+  </symbol>
+  <!-- Full logo med IFC-VIEWER – startskjermen -->
+  <symbol id="storm-full" viewBox="0 0 948 322">
+    <g transform="translate(-28,-26)">
+      <use href="#storm-ringer"/><use href="#storm-kube"/>
+      <g transform="translate(286,52)"><use href="#storm-ord"/></g>
+      <text class="sr-tag" x="292" y="326">IFC-VIEWER</text>
+    </g>
+  </symbol>
+  <symbol id="i-apne" viewBox="0 0 24 24"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2" /></symbol>
+  <symbol id="i-bibliotek" viewBox="0 0 24 24"><rect width="8" height="18" x="3" y="3" rx="1" /><path d="M7 3v18" /><path d="M20.4 18.9c.2.5-.1 1.1-.6 1.3l-1.9.7c-.5.2-1.1-.1-1.3-.6L11.1 5.1c-.2-.5.1-1.1.6-1.3l1.9-.7c.5-.2 1.1.1 1.3.6Z" /></symbol>
+  <symbol id="i-lav" viewBox="0 0 24 24"><path d="M14.086 18.412A2 2 0 0112.67 19H5v-7.672a2 2 0 01.586-1.414L11.75 3.75a6 6 0 118.49 8.49z" /><path d="M16 8 2 22" /><path d="M17.488 15H9" /></symbol>
+  <symbol id="i-markeringer" viewBox="0 0 24 24"><path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z" /></symbol>
+  <symbol id="i-kollisjon" viewBox="0 0 24 24"><path d="M4 4h9v9H4z" /><path d="M11 11h9v9h-9z" /><path d="M11 11h2v2h-2z" fill="currentColor" /></symbol>
+  <symbol id="i-fdv" viewBox="0 0 24 24"><path d="M4 20h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-7.9a1 1 0 0 1-.8-.4L10 5H4a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1Z" /><path d="m9 13 2 2 4-4" /></symbol>
+  <symbol id="i-lag" viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5Z" /><path d="m2 17 10 5 10-5" /><path d="m2 12 10 5 10-5" /></symbol>
+  <symbol id="i-fokus" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><line x1="22" x2="18" y1="12" y2="12" /><line x1="6" x2="2" y1="12" y2="12" /><line x1="12" x2="12" y1="6" y2="2" /><line x1="12" x2="12" y1="22" y2="18" /></symbol>
+  <symbol id="i-markering" viewBox="0 0 24 24"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0" /><circle cx="12" cy="10" r="3" /></symbol>
+  <symbol id="i-maal" viewBox="0 0 24 24"><path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z" /><path d="m14.5 12.5 2-2" /><path d="m11.5 9.5 2-2" /><path d="m8.5 6.5 2-2" /><path d="m17.5 15.5 2-2" /></symbol>
+  <symbol id="i-kjede" viewBox="0 0 24 24"><path d="M2 8h20" /><path d="M2 5v6M9 5v6M15 5v6M22 5v6" /><path d="M1 9.5 3 6.5M8 9.5l2-3M14 9.5l2-3M21 9.5l2-3" /><path d="M5 16h2M11 16h2M17 16h2" /></symbol>
+  <symbol id="i-vinkel" viewBox="0 0 24 24"><path d="M3 20h18" /><path d="M3 20 15 5" /><path d="M10 20a7 7 0 0 0-2.2-5.1" /></symbol>
+  <symbol id="i-vaer" viewBox="0 0 24 24"><circle cx="8" cy="8" r="3" /><path d="M8 2v1.5M2 8h1.5M3.8 3.8l1 1M12.2 3.8l-1 1" /><path d="M7 20h10a4 4 0 0 0 0-8 5.5 5.5 0 0 0-10.4 1.6A3.2 3.2 0 0 0 7 20z" /></symbol>
+  <symbol id="i-laster" viewBox="0 0 24 24"><path d="M12 2v8M8.5 4 12 6.5 15.5 4M8.5 9.5 12 7" /><path d="M2 14h12a3 3 0 1 0-3-3" /><path d="M2 18h16a3 3 0 1 1-3 3" /><path d="M2 22h6" /></symbol>
+  <symbol id="i-kote" viewBox="0 0 24 24"><path d="m8 3 4 8 5-5 5 15H2L8 3z" /></symbol>
+  <symbol id="i-akser" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2" /><path d="M3 9h18" /><path d="M3 15h18" /><path d="M9 3v18" /><path d="M15 3v18" /></symbol>
+  <symbol id="i-snitt" viewBox="0 0 24 24"><circle cx="6" cy="6" r="3" /><path d="M8.12 8.12 12 12" /><path d="M20 4 8.12 15.88" /><circle cx="6" cy="18" r="3" /><path d="M14.8 14.8 20 20" /></symbol>
+  <symbol id="i-etasjer" viewBox="0 0 24 24"><path d="M10 12h4" /><path d="M10 8h4" /><path d="M14 21v-3a2 2 0 0 0-4 0v3" /><path d="M6 10H4a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-2" /><path d="M6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16" /></symbol>
+  <symbol id="i-sok" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></symbol>
+  <symbol id="i-transparent" viewBox="0 0 24 24"><path d="M9 10h.01" /><path d="M15 10h.01" /><path d="M12 2a8 8 0 0 0-8 8v12l3-3 2.5 2.5L12 19l2.5 2.5L17 19l3 3V10a8 8 0 0 0-8-8z" /></symbol>
+  <symbol id="i-mengder" viewBox="0 0 24 24"><path d="M3 3v16a2 2 0 0 0 2 2h16" /><path d="M18 17V9" /><path d="M13 17V5" /><path d="M8 17v-3" /></symbol>
+  <symbol id="i-pris" viewBox="0 0 24 24"><rect width="16" height="20" x="4" y="2" rx="2" /><line x1="8" x2="16" y1="6" y2="6" /><line x1="16" x2="16" y1="14" y2="18" /><path d="M16 10h.01" /><path d="M12 10h.01" /><path d="M8 10h.01" /><path d="M12 14h.01" /><path d="M8 14h.01" /><path d="M12 18h.01" /><path d="M8 18h.01" /></symbol>
+  <symbol id="i-utseende" viewBox="0 0 24 24"><path d="M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z" /><circle cx="13.5" cy="6.5" r=".5" fill="currentColor" /><circle cx="17.5" cy="10.5" r=".5" fill="currentColor" /><circle cx="6.5" cy="12.5" r=".5" fill="currentColor" /><circle cx="8.5" cy="7.5" r=".5" fill="currentColor" /></symbol>
+  <symbol id="i-sammenlign" viewBox="0 0 24 24"><circle cx="5" cy="6" r="3" /><path d="M12 6h5a2 2 0 0 1 2 2v7" /><path d="m15 9-3-3 3-3" /><circle cx="19" cy="18" r="3" /><path d="M12 18H7a2 2 0 0 1-2-2V9" /><path d="m9 15 3 3-3 3" /></symbol>
+  <symbol id="i-del" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></symbol>
+  <symbol id="i-lagre" viewBox="0 0 24 24"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" /><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7" /><path d="M7 3v4a1 1 0 0 0 1 1h7" /></symbol>
+  <symbol id="i-innstillinger" viewBox="0 0 24 24"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" /><circle cx="12" cy="12" r="3" /></symbol>
+  <symbol id="i-vis" viewBox="0 0 24 24"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" /><circle cx="12" cy="12" r="3" /></symbol>
+  <symbol id="i-skjul" viewBox="0 0 24 24"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49" /><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242" /><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143" /><path d="m2 2 20 20" /></symbol>
+  <symbol id="i-kamera" viewBox="0 0 24 24"><path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z" /><circle cx="12" cy="13" r="3" /></symbol>
+  <symbol id="i-tegning" viewBox="0 0 24 24"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z" /><path d="M14 2v5a1 1 0 0 0 1 1h5" /><path d="M10 9H8" /><path d="M16 13H8" /><path d="M16 17H8" /></symbol>
+  <symbol id="i-rediger" viewBox="0 0 24 24"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" /><path d="m15 5 4 4" /></symbol>
+  <symbol id="i-svar" viewBox="0 0 24 24"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22z" /></symbol>
+  <symbol id="i-materiell" viewBox="0 0 24 24"><path d="M12 3 3 7.5l9 4.5 9-4.5z" /><path d="M3 7.5V16l9 4.5V12" /><path d="M21 7.5V16l-9 4.5" /><path d="M7.5 5.25l9 4.5" /></symbol>
+  <symbol id="i-kran" viewBox="0 0 24 24"><path d="M6 22V5M3 22h7M6 5h15M6 5l-3 3M6 5l4-3 11 3M17 5v6" /><path d="M15.5 11h3v2.5h-3z" /></symbol>
+  <symbol id="i-rigg" viewBox="0 0 24 24"><rect x="2" y="9" width="13" height="9" rx="1" /><path d="M5 9v9M8.5 9v9M12 9v9" /><path d="M15 12h4l3 3v3h-7" /><circle cx="6" cy="19.5" r="1.5" /><circle cx="18" cy="19.5" r="1.5" /></symbol>
+  <symbol id="i-lastned" viewBox="0 0 24 24"><path d="M12 15V3" /><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m7 10 5 5 5-5" /></symbol>
+  <symbol id="i-planner" viewBox="0 0 24 24"><rect width="8" height="4" x="8" y="2" rx="1" ry="1" /><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" /><path d="M12 11h4" /><path d="M12 16h4" /><path d="M8 11h.01" /><path d="M8 16h.01" /></symbol>
+  <symbol id="i-kopier" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></symbol>
+  <symbol id="i-slett" viewBox="0 0 24 24"><path d="M10 11v6" /><path d="M14 11v6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M3 6h18" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></symbol>
+  <symbol id="i-tema" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" /><path d="M12 2v2" /><path d="M12 20v2" /><path d="m4.93 4.93 1.41 1.41" /><path d="m17.66 17.66 1.41 1.41" /><path d="M2 12h2" /><path d="M20 12h2" /><path d="m6.34 17.66-1.41 1.41" /><path d="m19.07 4.93-1.41 1.41" /></symbol>
+  <symbol id="i-tema-mork" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" /></symbol>
+  <symbol id="i-mikrofon" viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><path d="M12 19v3" /></symbol>
+  <symbol id="i-stopp" viewBox="0 0 24 24"><rect width="12" height="12" x="6" y="6" rx="2" /></symbol>
+  <symbol id="i-hjul" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="3" /><path d="M12 3v3M12 18v3M3 12h3M18 12h3" /></symbol>
+  <symbol id="i-hjul-orbit" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.6" /><ellipse cx="12" cy="12" rx="10" ry="4.4" transform="rotate(-28 12 12)" /></symbol>
+  <symbol id="i-hjul-zoom" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.5" cy="10.5" r="6.5" /><path d="M21 21l-4.4-4.4M8 10.5h5M10.5 8v5" /></symbol>
+  <symbol id="i-hjul-pan" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M3 12h18" /><path d="m12 3-2.5 2.5M12 3l2.5 2.5M12 21l-2.5-2.5M12 21l2.5-2.5M3 12l2.5-2.5M3 12l2.5 2.5M21 12l-2.5-2.5M21 12l-2.5 2.5" /></symbol>
+  <symbol id="i-hjul-angre" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 4v5h5" /></symbol>
+  <symbol id="i-hjul-sentrer" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7" /><circle cx="12" cy="12" r="1.6" fill="currentColor" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3" /></symbol>
+  <symbol id="i-lukk" viewBox="0 0 24 24"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></symbol>
+  <!-- 🧱 SW-generator: egne symboler (Emil 09.09 — «egen logo slik som alt annet»).
+       i-sw: en vegg av liggende sandwich-elementer med skjøt — verktøyets logo.
+       i-fasade / i-dor / i-juster: seksjonene i panelet som hadde emoji. -->
+  <symbol id="i-sw" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="1" /><path d="M3 9.33h18" /><path d="M3 14.67h18" /><path d="M9 4v5.33" /><path d="M15 9.33v5.34" /><path d="M9 14.67V20" /></symbol>
+  <symbol id="i-fasade" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="m16.24 7.76-2.12 6.36-6.36 2.12 2.12-6.36z" /></symbol>
+  <symbol id="i-dor" viewBox="0 0 24 24"><path d="M13 4h3a2 2 0 0 1 2 2v14" /><path d="M2 20h3" /><path d="M13 20h9" /><path d="M10 12v.01" /><path d="M13 4.562v16.157a1 1 0 0 1-1.242.97L5 20V5.562a2 2 0 0 1 1.515-1.94l4-1A2 2 0 0 1 13 4.561Z" /></symbol>
+  <symbol id="i-juster" viewBox="0 0 24 24"><path d="M12 2v20" /><path d="m15 19-3 3-3-3" /><path d="m19 9 3 3-3 3" /><path d="M2 12h20" /><path d="m5 9-3 3 3 3" /><path d="m9 5 3-3 3 3" /></symbol>
+  <symbol id="i-boks" viewBox="0 0 24 24"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" /></symbol>
+  <symbol id="i-flate" viewBox="0 0 24 24"><path d="M13.73 4a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" /></symbol>
+  <symbol id="i-fortsett" viewBox="0 0 24 24"><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z" /></symbol>
+  <symbol id="i-hjelp" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><path d="M12 17h.01" /></symbol>
+  <symbol id="i-advarsel" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /><path d="M12 9v4" /><path d="M12 17h.01" /></symbol>
+  <symbol id="i-stope" viewBox="0 0 24 24"><rect x="3" y="14" width="18" height="6" rx="1" /><path d="M9 14v6M15 14v6" /><path d="M7 10h10l-2-6H9z" /></symbol>
+  <symbol id="i-framdrift" viewBox="0 0 24 24"><path d="M3 3v16a2 2 0 0 0 2 2h16" /><path d="M7 7h8" /><path d="M11 12h7" /><path d="M9 17h5" /></symbol>
+  <symbol id="i-hake" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5" /></symbol>
+  <symbol id="i-snu" viewBox="0 0 24 24"><path d="M8 3 4 7l4 4" /><path d="M4 7h16" /><path d="m16 21 4-4-4-4" /><path d="M20 17H4" /></symbol>
+  <symbol id="i-mer" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /><circle cx="5" cy="12" r="1" /></symbol>
+  <symbol id="i-laas" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></symbol>
+  <symbol id="i-forrige" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6" /></symbol>
+  <symbol id="i-neste" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></symbol>
+  <symbol id="i-pluss" viewBox="0 0 24 24"><path d="M5 12h14" /><path d="M12 5v14" /></symbol>
+  <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14" /></symbol>
+  <symbol id="i-fullskjerm" viewBox="0 0 24 24"><path d="M15 3h6v6" /><path d="m21 3-7 7" /><path d="m3 21 7-7" /><path d="M9 21H3v-6" /></symbol>
+  <symbol id="i-angre" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11" /></symbol>
+  <symbol id="i-gjenopprett" viewBox="0 0 24 24"><path d="m15 14 5-5-5-5" /><path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5v0A5.5 5.5 0 0 0 9.5 20H13" /></symbol>
+  <symbol id="i-nullstill" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></symbol>
+</svg>
+
+<canvas id="viewer"></canvas>
+
+<div id="topbar">
+  <svg class="storm-logo" viewBox="0 0 948 224" role="img" aria-label="Storm IFC-Viewer"><use href="#storm-lockup"/></svg>
+  <button class="btn" id="btnOpen" title="Åpne en IFC- eller GLB-fil fra maskinen din" data-i18n-title><svg class="ikon"><use href="#i-apne"/></svg><span class="btn-t" data-i18n>Åpne</span></button>
+  <input type="file" id="fileInput" accept=".ifc,.IFC,.glb,.GLB">
+  <button id="btnLib" title="Åpne en modell fra SharePoint-biblioteket" data-i18n-title><svg class="ikon"><use href="#i-bibliotek"/></svg><span class="btn-t" data-i18n>Bibliotek</span></button>
+  <button id="btnLight" title="Forenklet lasting for mobil og store modeller" data-i18n-title><svg class="ikon"><use href="#i-lav"/></svg><span class="btn-t" data-i18n>Lav kvalitet</span></button>
+  <button id="btnComments" title="Markeringene i modellen – trykk for å se lista" data-i18n-title><svg class="ikon"><use href="#i-markeringer"/></svg> <span id="commentCount">0</span></button>
+  <button id="btnFit" title="Vis hele modellen" data-i18n-title><svg class="ikon"><use href="#i-fokus"/></svg></button>
+  <button id="btnHjelp" title="Kom i gang – bla gjennom hjelpekortene" data-i18n-title><svg class="ikon"><use href="#i-hjelp"/></svg><span class="btn-t" data-i18n>Hjelp</span></button>
+  <button id="btnTema" title="Bytt mellom lyst og mørkt tema" data-i18n-title><svg class="ikon"><use href="#i-tema"/></svg></button>
+  <div id="status"></div>
+  <!-- 🟢/🔴 Innlogget mot SharePoint? Tilstand, title og klikk: js/sharepoint.js.
+       INGEN data-i18n-title: teksten har navnet på brukeren i seg og bygges i
+       JS. oversettDom ville skrevet den norske standardteksten tilbake over. -->
+  <button id="btnInnlogging" class="innlogging-knapp" data-tilstand="sjekker" title="Sjekker innloggingen …" aria-label="Sjekker innloggingen …"><span class="innlogging-prikk"></span></button>
+</div>
+<!-- Boksen med hvem som er logget inn. Står UTENFOR #topbar: på telefon har
+     toppbaren overflow-x: auto, og da ville en absolutt boks inni den blitt
+     klippet bort. -->
+<div id="innloggingInfo" role="status"></div>
+
+<div id="toolbar">
+  <button id="btnMarker" title="Sett en markering i modellen – avvik, spørsmål eller beskjed" data-i18n-title><svg class="ikon"><use href="#i-markering"/></svg><span class="btn-t" data-i18n>Markering</span></button>
+  <button id="btnMeasure" title="Mål avstanden mellom to punkt i modellen" data-i18n-title><svg class="ikon"><use href="#i-maal"/></svg><span class="btn-t" data-i18n>Mål</span></button>
+  <button id="btnKjede" title="Kjedemål: flere punkter etter hverandre, med avstanden mellom hvert" data-i18n-title><svg class="ikon"><use href="#i-kjede"/></svg><span class="btn-t" data-i18n>Kjedemål</span></button>
+  <button id="btnVinkel" title="Vinkel, fall og lodd mellom punkter" data-i18n-title><svg class="ikon"><use href="#i-vinkel"/></svg><span class="btn-t" data-i18n>Vinkel og fall</span></button>
+  <button id="btnKote" title="Les av høyden (kote) på et punkt" data-i18n-title><svg class="ikon"><use href="#i-kote"/></svg><span class="btn-t" data-i18n>Kote</span></button>
+  <button id="btnAxes" title="Vis akse- og rutenettet fra modellen" data-i18n-title><svg class="ikon"><use href="#i-akser"/></svg><span class="btn-t" data-i18n>Akser</span></button>
+  <button id="btnClip" title="Skjær bort deler av modellen for å se innenfor" data-i18n-title><svg class="ikon"><use href="#i-snitt"/></svg><span class="btn-t" data-i18n>Snitt</span></button>
+  <button id="btnStorey" title="Vis én etasje om gangen" data-i18n-title><svg class="ikon"><use href="#i-etasjer"/></svg><span class="btn-t" data-i18n>Etasjer</span></button>
+  <button id="btnSearch" title="Søk etter element på navn, type eller merking" data-i18n-title><svg class="ikon"><use href="#i-sok"/></svg><span class="btn-t" data-i18n>Søk</span></button>
+  <button id="btnGhost" title="Gjør alt gjennomsiktig så det som ligger bak synes" data-i18n-title><svg class="ikon"><use href="#i-transparent"/></svg><span class="btn-t" data-i18n>Gjennomsiktig</span></button>
+  <button id="btnQty" title="Mengder: antall, lengde, volum og vekt per elementtype" data-i18n-title><svg class="ikon"><use href="#i-mengder"/></svg><span class="btn-t" data-i18n>Mengder</span></button>
+  <button id="btnPris" title="Priskalkulasjon: mengder fra modellen × dine priser — Excel med formler" data-i18n-title><svg class="ikon"><use href="#i-pris"/></svg><span class="btn-t" data-i18n>Priskalkulasjon</span></button>
+  <button id="btnColors" title="Farge, skjul og vis elementtyper – og kantlinjer" data-i18n-title><svg class="ikon"><use href="#i-utseende"/></svg><span class="btn-t" data-i18n>Utseende</span></button>
+  <button id="btnCompare" title="Sammenlign med en annen versjon av modellen" data-i18n-title><svg class="ikon"><use href="#i-sammenlign"/></svg><span class="btn-t" data-i18n>Sammenlign</span></button>
+  <button id="btnEm" title="Endringsmelding fra modellen: mengdeendring, prisanslag og EM-utkast" data-i18n-title><svg class="ikon"><use href="#i-rediger"/></svg><span class="btn-t" data-i18n>Endringsmelding</span></button>
+  <button id="btnLag" title="Lag: legg armering, stål eller andre fagmodeller oppå hovedmodellen" data-i18n-title><svg class="ikon"><use href="#i-lag"/></svg><span class="btn-t" data-i18n>Lag</span></button>
+  <button id="btnShare" title="Lag en lenke som gjenskaper denne visningen hos andre" data-i18n-title><svg class="ikon"><use href="#i-del"/></svg><span class="btn-t" data-i18n>Del visning</span></button>
+  <button id="btnGrupper" title="Objektgrupper: lagre et utvalg med navn og hent det fram igjen" data-i18n-title><svg class="ikon"><use href="#i-fokus"/></svg><span class="btn-t" data-i18n>Grupper</span></button>
+  <button id="btnTerreng" title="Terreng: hent landskapet rundt byggeplassen og sett modellen ned i det" data-i18n-title><svg class="ikon"><use href="#i-kote"/></svg><span class="btn-t" data-i18n>Terreng</span></button>
+  <button id="btnRigg" title="Rigg: brakker, toalett, container og annen rigg på tomta" data-i18n-title><svg class="ikon"><use href="#i-rigg"/></svg><span class="btn-t" data-i18n>Rigg</span></button>
+  <button id="btnStopeplan" title="Støpeplan: del støpene i etapper med dato, felt på plata og elementer" data-i18n-title><svg class="ikon"><use href="#i-stope"/></svg><span class="btn-t" data-i18n>Støpeplan</span></button>
+  <button id="btnFramdrift" title="Framdriftsplan: trinn med dato for alt som skal utføres — elementer, SW, takplater, rigg og materiell" data-i18n-title><svg class="ikon"><use href="#i-framdrift"/></svg><span class="btn-t" data-i18n>Framdriftsplan</span></button>
+  <button id="btnVaer" title="Vis vær: været på byggeplassen time for time — tårnkran, støp og frost" data-i18n-title><svg class="ikon"><use href="#i-vaer"/></svg><span class="btn-t" data-i18n>Vis vær</span></button>
+  <button id="btnLaster" title="Snø &amp; Last: veiledende snølast på taket og vindlast på fasadene" data-i18n-title><svg class="ikon"><use href="#i-laster"/></svg><span class="btn-t" data-i18n>Snø &amp; Last</span></button>
+  <button id="btnMateriell" title="Materiell: legg inn vareleveranser i modellen så alle ser hvor de skal ligge" data-i18n-title><svg class="ikon"><use href="#i-materiell"/></svg><span class="btn-t" data-i18n>Materiell</span></button>
+  <button id="btnSW" title="SW-generator: automatiske veggelementer på stålmodeller" data-i18n-title><svg class="ikon"><use href="#i-sw"/></svg><span class="btn-t" data-i18n>SW-generator</span></button>
+  <button id="btnTak" title="Tak: TRP-plater lagt på de øverste bjelkene — virker med og uten veggelementer" data-i18n-title><svg class="ikon"><use href="#i-flate"/></svg><span class="btn-t" data-i18n>Tak</span></button>
+  <button id="btnRapport" title="Last ned statusrapport som PDF" data-i18n-title><svg class="ikon"><use href="#i-tegning"/></svg><span class="btn-t" data-i18n>Rapport</span></button>
+  <!-- 📄 Snarveier i gruppa Dokumentasjon (js/dokumentasjon.js). De åpner
+       panelet sitt og trykker samme knapp der — knappene i panelene står igjen. -->
+  <button id="btnDokStope" title="Last ned støpeplanen som PDF (åpner Støpeplan-panelet)" data-i18n-title><svg class="ikon"><use href="#i-stope"/></svg><span class="btn-t" data-i18n>Støpeplan (PDF)</span></button>
+  <button id="btnDokRigg" title="Last ned riggplanen som PDF (åpner Rigg-panelet)" data-i18n-title><svg class="ikon"><use href="#i-rigg"/></svg><span class="btn-t" data-i18n>Riggplan (PDF)</span></button>
+  <button id="btnDokLofte" title="Løfteplan: kransjekk av løftene (åpner kranen i Rigg)" data-i18n-title><svg class="ikon"><use href="#i-kran"/></svg><span class="btn-t" data-i18n>Løfteplan</span></button>
+  <button id="btnDokSW" title="Last ned instruksjonstegningen for SW-elementene (åpner SW-generator)" data-i18n-title><svg class="ikon"><use href="#i-sw"/></svg><span class="btn-t" data-i18n>SW-tegning (PDF)</span></button>
+  <button id="btnDokBcf" title="Markeringene som BCF-fil til Solibri, Dalux eller BIMcollab" data-i18n-title><svg class="ikon"><use href="#i-markeringer"/></svg><span class="btn-t" data-i18n>BCF-eksport</span></button>
+  <button id="btnDokBcfImport" title="Les inn saker fra RIB eller ARK (.bcfzip) som markeringer" data-i18n-title><svg class="ikon"><use href="#i-markeringer"/></svg><span class="btn-t" data-i18n>BCF-import</span></button>
+  <button id="btnFdv" title="FDV: koble FDV-dokumenter til objektene og lag overleveringspakken" data-i18n-title><svg class="ikon"><use href="#i-fdv"/></svg><span class="btn-t" data-i18n>FDV</span></button>
+  <button id="btnAlleVerktoy" title="Alle verktøy: oversikt med snarveier — også de som ligger inni andre verktøy" data-i18n-title><svg class="ikon"><use href="#i-sok"/></svg><span class="btn-t" data-i18n>Alle verktøy</span></button>
+  <button id="btnSaveLite" title="Eksporter forenklet modell (.glb) som funker på mobil" data-i18n-title><svg class="ikon"><use href="#i-lagre"/></svg><span class="btn-t" data-i18n>Lett kopi</span></button>
+  <button id="btnByggeplass" title="Last opp lett kopi til byggeplass-lenka (Cloudflare)" data-i18n-title><svg class="ikon"><use href="#i-lastned"/></svg><span class="btn-t" data-i18n>Publiser Byggeplass</span></button>
+  <button id="btnHjul" title="Navigasjonshjul – naviger uten mus" data-i18n-title><svg class="ikon"><use href="#i-hjul"/></svg><span class="btn-t" data-i18n>Navigasjon</span></button>
+  <button id="btnSettings" title="Innstillinger og hurtigtaster (høyreklikk i modellen)" data-i18n-title><svg class="ikon"><use href="#i-innstillinger"/></svg><span class="btn-t" data-i18n>Innstillinger</span></button>
+  <button id="btnAngre" style="display:none" title="Angre siste handling (Ctrl+Z)" data-i18n-title><svg class="ikon"><use href="#i-angre"/></svg><span class="btn-t" data-i18n>Angre</span></button>
+  <button id="btnGjenopprett" style="display:none" title="Gjenopprett handlingen du angret (Ctrl+Y)" data-i18n-title><svg class="ikon"><use href="#i-gjenopprett"/></svg><span class="btn-t" data-i18n>Gjenopprett</span></button>
+  <button id="btnShowAll" title="Vis alt som er skjult igjen" data-i18n-title style="display:none"><svg class="ikon"><use href="#i-vis"/></svg><span class="btn-t" data-i18n>Vis alle</span></button>
+</div>
+
+<canvas id="miniMap" width="256" height="256" title="Trykk for å flytte deg dit" data-i18n-title
+  style="position:fixed; left:12px; bottom:12px; width:180px; height:180px; border:1px solid var(--border); border-radius:10px; background:var(--panel); display:none; z-index:5; cursor:crosshair; opacity:.92"></canvas>
+
+<div id="modeBar"></div>
+
+<div id="splash">
+  <label id="sprakBoks" title="Språk / Language / Język / Kalba">
+    <select id="sprakVelg">
+      <option value="no">Norsk</option>
+      <option value="en">English</option>
+      <option value="pl">Polski</option>
+      <option value="lt">Lietuvių</option>
+    </select>
+  </label>
+
+  <!-- Slippsonen: dra-og-slipp fantes fra før (js/ifc.js), men sto bare som en
+       tekstlinje. Rammen gjør flaten synlig. Innholdet er uendret. -->
+  <div id="splashSone">
+  <h1 class="skjult-tekst">Storm IFC-Viewer</h1>
+  <svg class="storm-logo-full" viewBox="0 0 948 322" role="img" aria-label="Storm IFC-Viewer"><use href="#storm-full"/></svg>
+  <p data-i18n>Åpne en IFC-modell (BIM) direkte i nettleseren – på mobil eller PC.
+     Naviger i 3D, trykk på elementer for info, mål, snitt og legg inn markeringer.</p>
+  <div id="crashBanner" style="display:none"></div>
+  <div id="shareBanner" style="display:none"></div>
+  <div id="resumeBox" style="display:none"></div>
+  <div class="splash-knapper">
+    <button class="btn" id="btnOpenSplash"><svg class="ikon"><use href="#i-apne"/></svg><span class="btn-t" data-i18n>Velg IFC-fil</span></button>
+    <button id="btnLibSplash"><svg class="ikon"><use href="#i-bibliotek"/></svg><span class="btn-t" data-i18n>Åpne fra biblioteket</span></button>
+  </div>
+  <div class="slipp-linje"><svg class="ikon"><use href="#i-lastned"/></svg><span data-i18n>Slipp IFC- eller .glb-fila her</span></div>
+  <p class="liten" data-i18n>… eller dra fila rett inn i vinduet. Ligger modellen i OneDrive med skyikon (bare på nett),
+     bruk Biblioteket – eller høyreklikk fila i Utforsker → «Behold alltid på denne enheten».</p>
+  </div><!-- /#splashSone -->
+
+  <p class="liten" data-i18n>Filen behandles kun lokalt i nettleseren din – ingenting lastes opp.</p>
+  <p id="jsCheck" data-i18n>JavaScript kjører ikke. Åpner du fila i forhåndsvisning (Filer/mail)? Åpne den i Safari eller Chrome i stedet.</p>
+</div>
+
+<div id="loading">
+  <svg class="storm-spinner" viewBox="29 21 244 244" aria-hidden="true">
+    <circle class="sr-tykk pu"  cx="150.9" cy="142.8" r="83.06"/>
+    <circle class="sr-mork sn1" cx="151.3" cy="132.2" r="99.1"/>
+    <circle class="sr-mork sn2" cx="123.4" cy="148" r="88.7"/>
+    <circle class="sr-lys  sn3" cx="176.4" cy="126.7" r="89.9"/>
+  </svg>
+  <div id="loadingText" data-i18n>Laster modell …</div>
+</div>
+
+<div class="panel" id="propPanel">
+  <!-- 📋 propNavn/propUtvid brukes bare på byggeplass-siden (js/prop-kompakt.js) — skjult her, fjernes ikke -->
+  <header><span class="prop-hode"><span id="propTitle">Egenskaper</span><span id="propNavn" style="display:none"></span></span><button id="propUtvid" class="prop-utvid" style="display:none" aria-expanded="false"><svg class="ikon"><use href="#i-neste"/></svg></button><button data-lukk="propPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <div class="body" id="propBody"></div>
+</div>
+
+<div class="panel" id="commentPanel">
+  <header><span data-i18n>Markeringer</span><button data-lukk="commentPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <div class="body" id="commentBody"></div>
+</div>
+
+<!-- 🧱 Støpeplan (js/stopeplan.js) -->
+<!-- 📅 Framdriftsplan (js/framdrift.js) -->
+<!-- 🌦 Skru av været i 3D med ett trykk (js/vaer-3d.js) — vises bare når det står på -->
+<button id="vaer3dAv" class="vaer3d-av" style="display:none" title="Skru av været i 3D (himmel, regn og snø). Slås på igjen i Vis vær." data-i18n-title><svg class="ikon"><use href="#i-vaer"/></svg><span data-i18n>Skjul været i 3D</span></button>
+
+<!-- 🌦 Vis vær (js/vaer.js) -->
+<div class="panel" id="vaerPanel">
+  <header><span data-i18n>Vær på byggeplassen</span><button data-lukk="vaerPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <div class="body" id="vaerBody"></div>
+</div>
+
+<div class="panel" id="lasterPanel">
+  <header><span data-i18n>Snø &amp; Last</span><button data-lukk="lasterPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <div class="body" id="lasterBody"></div>
+</div>
+
+<div class="panel" id="framdriftPanel">
+  <header><span data-i18n>Framdriftsplan</span><button data-lukk="framdriftPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <div class="body" id="framdriftBody"></div>
+</div>
+
+<div class="panel" id="stopePanel">
+  <header><span data-i18n>Støpeplan</span><button data-lukk="stopePanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <div class="body" id="stopeBody"></div>
+</div>
+<div class="panel" id="grupperPanel">
+  <header><span data-i18n>Grupper</span><button data-lukk="grupperPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <div class="body" id="grupperBody"></div>
+</div>
+
+<div class="panel" id="terrengPanel">
+  <header><span data-i18n>Terreng</span><button data-lukk="terrengPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <div class="body" id="terrengBody"></div>
+</div>
+
+<div class="panel" id="riggPanel">
+  <header><span id="riggTittel" data-i18n>Rigg</span><button id="riggPanelLukk" data-lukk="riggPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <div class="body" id="riggBody"></div>
+</div>
+<!-- 🏕 Rigg-katalogen (runde 15b, Emils valg B): objekttypene i en egen
+     stripe til VENSTRE, som står åpen hele tiden i rigg-modus. Skjemaet og
+     listene er i #riggPanel til høyre — da er det aldri to vinduer oppå
+     hverandre. Ikke klassen .panel: apnePanel() lukker alle .panel, og
+     katalogen skal stå selv om høyrepanelet byttes. -->
+<div id="riggKatalog" class="rigg-katalog">
+  <header><span data-i18n title="Trykk på en type, så der den skal stå." data-i18n-title>Legg til</span><button id="riggKatalogLukk" title="Avslutt rigg" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <div class="body" id="riggKatalogBody"></div>
+</div>
+
+<div class="panel" id="swPanel">
+  <header><span data-i18n>SW-generator</span><button data-lukk="swPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <div class="body" id="swBody"></div>
+</div>
+
+<div class="panel" id="takPanel">
+  <header><span data-i18n>Tak</span><button data-lukk="takPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <div class="body" id="takBody"></div>
+</div>
+
+<div class="panel" id="materiellPanel">
+  <header><span data-i18n>Materiell</span><button data-lukk="materiellPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <div class="body" id="materiellBody"></div>
+</div>
+
+<!-- 💰 Priskalkulasjon (js/priskalk.js) — kun kontoret. Prisene lagres bare i SharePoint. -->
+<div class="panel pk-panel" id="prisPanel">
+  <header><span data-i18n>Priskalkulasjon</span><button data-lukk="prisPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <div class="body" id="prisBody"></div>
+</div>
+
+<div class="panel" id="qtyPanel">
+  <header><span data-i18n>Mengder</span><button data-lukk="qtyPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <div class="body" id="qtyBody"></div>
+</div>
+
+<div class="panel" id="libPanel">
+  <header><span data-i18n>Modellbibliotek</span><button data-lukk="libPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <div class="body" id="libBody"></div>
+</div>
+
+<div class="panel" id="colorPanel">
+  <header><span data-i18n>Utseende</span><button data-lukk="colorPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <div class="body" id="colorBody"></div>
+</div>
+
+<div class="panel" id="axesPanel">
+  <header><span data-i18n>Aksesystem</span><button data-lukk="axesPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <div class="body" id="axesBody"></div>
+</div>
+
+<!-- 📝 Endringsmelding fra modellen (js/em.js, 26.10.2026) -->
+<!-- 🧅 Lag (runde 5, 28.10.2026): kortene tegnes av js/lag.js. Står til
+     VENSTRE, så egenskapsboksen (til høyre) kan åpnes ved siden av. -->
+<!-- 📁 FDV (runde 7, 29.10.2026): FDV-grupper og overlevering (js/fdv.js) -->
+<div class="panel fdv-panel" id="fdvPanel">
+  <header><span data-i18n>FDV</span><button data-lukk="fdvPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <div class="body" id="fdvBody"></div>
+</div>
+<div class="panel lag-panel" id="lagPanel">
+  <header><span data-i18n>Lag</span><button data-lukk="lagPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <div class="body" id="lagBody"></div>
+</div>
+
+<div class="panel em-panel" id="emPanel">
+  <header><span data-i18n>Endringsmelding</span><button data-lukk="emPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <div class="body" id="emBody"></div>
+  <div class="em-fot">
+    <span class="em-fot-hjelp em-kun-ny" data-i18n>Lagres internt i Endringsmeldinger (SharePoint). Følger aldri med ut til byggeplassen.</span>
+    <button id="emExcel" class="em-kun-ny"><svg class="ikon"><use href="#i-lastned"/></svg> Excel</button>
+    <button id="emLag" class="primary em-kun-ny" data-i18n>Lag EM-utkast</button>
+    <span id="emSumApne" class="em-fot-hjelp em-kun-liste"></span>
+    <button id="emOversikt" class="em-kun-liste"><svg class="ikon"><use href="#i-lastned"/></svg> <span data-i18n>Last ned oversikt (Excel)</span></button>
+  </div>
+</div>
+
+<div class="panel" id="comparePanel">
+  <header><span data-i18n>Sammenlign versjoner</span><button data-lukk="comparePanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <div class="body" id="compareBody"></div>
+</div>
+
+<div class="panel" id="sharePanel">
+  <header><span data-i18n>Del visning</span><button data-lukk="sharePanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <div class="body" id="shareBody"></div>
+</div>
+
+<div class="panel" id="clipPanel">
+  <header><span data-i18n>Snitt-boks</span><button data-lukk="clipPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <div class="body" id="clipBody"></div>
+</div>
+
+<div class="panel" id="searchPanel">
+  <header><span data-i18n>Elementsøk</span><button data-lukk="searchPanel" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <div class="body" id="searchBody"></div>
+</div>
+
+<div id="setMenu">
+  <header><span data-i18n>Innstillinger</span><button data-lukk="setMenu" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <div class="body" id="setBody"></div>
+</div>
+
+<!-- Nedlastingsmenyen for statusrapporten. Ligger i BEGGE HTML-filene og
+     skjules med CSS i bygg.html — rapporten er et kontorverktøy. -->
+<div id="rapMeny">
+  <header><span data-i18n>Last ned PDF</span><button data-lukk="rapMeny" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button></header>
+  <div class="body">
+    <button class="rap-valg" data-utgave="full">
+      <b data-i18n>Fullstendig</b><span data-i18n>hele kommentartråden – til arkiv og analyse</span>
+    </button>
+    <button class="rap-valg" data-utgave="mote">
+      <b data-i18n>Byggemøte</b><span data-i18n>første og de tre siste innleggene – til utdeling</span>
+    </button>
+    <button class="rap-valg" id="rapDag">
+      <b data-i18n>Dagsrapport</b><span data-i18n>skriv dagens rapport eller se tidligere dager</span>
+    </button>
+    <label class="rap-rad" for="rapLogo"><span data-i18n>Logo</span>
+      <select id="rapLogo"></select></label>
+    <label class="rap-avkryss"><input type="checkbox" id="rapCsv">
+      <span data-i18n>Ta med CSV med samme data</span></label>
+    <button class="rap-valg" id="rapBcf">
+      <b data-i18n>BCF-eksport</b><span data-i18n>markeringene inn i Solibri, Dalux eller BIMcollab</span>
+    </button>
+    <button class="rap-valg" id="rapBcfImport">
+      <b data-i18n>BCF-import</b><span data-i18n>saker fra RIB eller ARK inn som markeringer</span>
+    </button>
+  </div>
+</div>
+
+<div id="commentDialog">
+  <h3 data-i18n>Ny markering</h3>
+  <textarea id="commentText" placeholder="Skriv en kommentar …" data-i18n-ph></textarea>
+  <div class="cd-bilder">
+    <label class="cd-bildeknapp"><svg class="ikon"><use href="#i-kamera"/></svg> <span data-i18n>Legg ved bilde (før)</span>
+      <input type="file" id="commentFiles" accept="image/*" capture="environment" multiple hidden>
+    </label>
+    <span id="commentFileInfo"></span>
+  </div>
+  <!-- Frist. Forhåndsutfylt med i dag + 14 dager, redigerbart, og med en
+       avkryssing for den som bevisst ikke vil sette en. Skjult i lettmodus
+       ([data-lett="1"] .cd-frist i bygg.html) — montøren kjenner ikke
+       framdriftsplanen, og frist er noe kontoret eier. -->
+  <div class="cd-frist">
+    <label for="commentDue" data-i18n>Frist</label>
+    <input type="date" id="commentDue">
+    <label class="cd-ingenfrist"><input type="checkbox" id="commentNoDue"> <span data-i18n>ingen frist</span></label>
+  </div>
+  <div class="actions">
+    <button data-kall="cancelComment" data-i18n>Avbryt</button>
+    <button class="primary" data-kall="saveComment" data-i18n>Lagre</button>
+  </div>
+</div>
+
+<div id="hint" data-i18n>Dra: roter · Midtklikk / to fingre: panorer · Rullehjul: zoom · Høyreklikk: innstillinger · Trykk på element: info</div>
+
+<!-- ❓ Hjelp: kort du blar gjennom. Teksten fylles av js/hjelp.js — knappene
+     nederst bytter navn («Neste» → «Ferdig»), og en data-i18n der ville blitt
+     overskrevet av oversettDom() ved språkbytte. -->
+<div id="hjelpKort">
+  <div class="hk-boks">
+    <div class="hk-topp">
+      <button id="hkInnhold" class="hk-innhold" type="button"></button>
+      <span class="hk-teller" id="hkTeller"></span>
+      <button id="hkLukk" title="Lukk" data-i18n-title><svg class="ikon"><use href="#i-lukk"/></svg></button>
+    </div>
+    <div class="hk-ikon" id="hkIkon"></div>
+    <h3 id="hkTittel"></h3>
+    <p id="hkTekst"></p>
+    <div class="hk-katalog" id="hkKatalog"></div>
+    <div class="hk-prikker" id="hkPrikker"></div>
+    <div class="hk-knapper">
+      <button id="hkForrige"></button>
+      <button id="hkNeste" class="primary"></button>
     </div>
   </div>
 </div>
-<main id="app"><p class="laster">Logger inn …</p></main>
-<div id="melding" class="melding" role="status" aria-live="polite"></div>
 
-<script src="js/config.js"></script>
-<script src="js/graph.js"></script>
-<script src="js/app.js"></script>
+<!-- Fanger feil og viser dem på skjermen (nyttig på mobil uten konsoll). -->
+<script src="js/feilfanger.js"></script>
+<!-- integrity: nettleseren nekter å kjøre fila hvis innholdet er endret på CDN-en.
+     Hashen er regnet ut fra npm-pakken @azure/msal-browser@3.30.0, som jsDelivr
+     serverer uendret. Bytter du versjon MÅ hashen regnes ut på nytt, ellers
+     laster ikke MSAL og innloggingen dør:
+       npm pack @azure/msal-browser@<ver> && tar xf *.tgz
+       openssl dgst -sha384 -binary package/lib/msal-browser.min.js | openssl base64 -A
+     Merk: three.js, web-ifc og pdf.js lastes som ES-modul-import, og
+     import-URL-er kan ikke ha integrity. Eneste egentlige løsning der er å
+     selvhoste dem under vendor/ – Workeren slipper alt gjennom den stien alt. -->
+<script src="vendor/msal-browser-3.30.0/msal-browser.min.js"
+        integrity="sha384-YnOjsoOxSYo65h1BXWnSq24bFbqW8HfzMWSEQxYEMRmjW9Vl1J3HZI3iZxqNYvIi"
+        crossorigin="anonymous"></script>
+<!-- 3D-motoren ligger i vårt eget repo, ikke på et CDN.
+     Grunnen: import maps kan ikke ha integrity-hash, så en fil hentet fra
+     jsDelivr her ville vært den ENESTE avhengigheten uten noen sperre — MSAL
+     rett over har hash. Selvhostet slipper vi å stole på noen, får ett færre
+     TLS-håndtrykk på mobil, og — viktigst — en service worker kan bare
+     pålitelig forhåndslagre filer fra eget domene. Uten dette steget kan
+     bygg.html aldri åpnes uten dekning.
+
+     PRIKKEN FORAN «./vendor» ER IKKE PYNT. Import maps krever at en adresse
+     begynner med /, ./ eller ../ — ellers klarer ikke nettleseren å tolke den
+     som en URL, setter verdien til null, og hele siden dør med «matches with
+     "three" but is blocked by a null value». Den feilen så vi i drift.
+
+     ADRESSEN STÅR BARE HER. Modulene importerer «three», ikke en URL.
+     Versjonen ligger i mappenavnet, så en oppgradering blir en ny mappe og
+     Workerens cache-regel (ett år, immutable) er trygg.
+
+     Minifisert build med vilje: 655 kB mot 1243 kB. Ingen feilsøker inne i
+     three, og montøren betaler forskjellen på dårlig dekning. -->
+<!-- 🛡 Hashen av innholdet under står i Content-Security-Policy øverst i
+     <head>. Endrer du ett tegn her, må den regnes ut på nytt (_test/test-csp.mjs). -->
+<script type="importmap">
+{"imports":{
+  "three": "./vendor/three-0.160.0/three.module.min.js",
+  "three/addons/": "./vendor/three-0.160.0/addons/"
+}}
+</script>
+<script type="module" src="js/main.js"></script>
 </body>
 </html>
