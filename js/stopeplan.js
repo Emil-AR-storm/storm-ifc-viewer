@@ -28,6 +28,7 @@ import { metaFor } from "./ifcrpc.js";
 import { varsel } from "./varsel.js";
 import { koblSjekk, sjekkHtml } from "./stopesjekk.js";
 import { flettHendelse } from "./stopesjekk-regn.js";
+import { bekreft } from "./sporsmal.js";
 
 const SP_MAPPE = "Stopeplan";
 let spStatus = "av";          // "av" | "ok" | "feil" — vises nederst i panelet
@@ -545,11 +546,11 @@ export function tegnPanel() {
     });
     rad.querySelectorAll(".st-vann-slett").forEach(b => b.onclick = () => SF && SF.slettVann(b.dataset.vann));
     const tom = rad.querySelector(".st-tom");
-    if (tom) tom.onclick = () => { if (confirm(t("Ta alle elementene ut av etappen?"))) tomElementer(id); };
+    if (tom) tom.onclick = async () => { if (await bekreft(t("Ta alle elementene ut av etappen?"))) tomElementer(id); };
     koblSjekk(rad, synlige(S.stopeplan).find(x => x.id === id), endreMedTekst, tegnPanel);
-    rad.querySelector(".st-slett").onclick = () => {
+    rad.querySelector(".st-slett").onclick = async () => {
       const e = synlige(S.stopeplan).find(x => x.id === id);
-      if (e && confirm(t("Slette {0}?", e.navn))) slettEtappe(id);
+      if (e && await bekreft(t("Slette {0}?", e.navn))) slettEtappe(id);
     };
   });
 }

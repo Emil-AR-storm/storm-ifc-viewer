@@ -24,6 +24,7 @@
 import { $, S, esc } from "./state.js";
 import { TJENESTER } from "./config.js";
 import { varsel } from "./varsel.js";
+import { bekreft } from "./sporsmal.js";
 
 // Tekstene her er bare på norsk foreløpig. Ordbøkene i js/sprak/ ligger i
 // byggeplassens service worker; endres de, får montørene «ny versjon»-varsel.
@@ -445,8 +446,8 @@ function tilgangHtml() {
 
 function koblTilgang() {
   if ($("tgLasOpp")) $("tgLasOpp").onclick = () => { if (tilstand === "vilkar") visVilkarBoks(); else visKodeboks(); };
-  if ($("tgFjern")) $("tgFjern").onclick = () => {
-    if (!confirm(norsk("Fjerne kortet fra denne PC-en? Du trenger en ny kode for å låse opp igjen."))) return;
+  if ($("tgFjern")) $("tgFjern").onclick = async () => {
+    if (!await bekreft(norsk("Fjerne kortet fra denne PC-en? Du trenger en ny kode for å låse opp igjen."))) return;
     fjernKort();
     location.reload();
   };

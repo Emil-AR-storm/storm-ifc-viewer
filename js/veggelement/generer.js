@@ -27,6 +27,7 @@ import { butikkFor } from "./juster.js";
 import { INNER_STD, innerData, lagretInner, tegnPanel } from "./panel.js";
 import { innerBaseY, nummererInner } from "./innervegg.js";
 import { varsel } from "../varsel.js";
+import { bekreft } from "../sporsmal.js";
 
 // ---------- Selve genereringen ----------
 export async function generer() {
@@ -844,13 +845,13 @@ function beholdTakOgOppsett() {
   return ut;
 }
 
-export function fjernAltGenerert() {
+export async function fjernAltGenerert() {
   // 🗑 Spør først (19.10): ett feiltrykk tok alle veggene, gulvet, ringmuren
   // og blikket med bunkene — uten et ord. Det kan angres nå, men den som ikke
   // vet om Ctrl+Z skal ikke måtte oppdage det for å få bygget sitt tilbake.
   const noe = lagret && ((lagret.vegger || []).length || lagret.gulv || (lagret.ringmur || []).length ||
     (lagret.blikk && lagret.blikk.pa));
-  if (noe && !confirm(t("Fjerne alle genererte veggelementer, gulv, ringmur og blikk? Taket blir stående. Du kan angre med Ctrl+Z."))) return;
+  if (noe && !await bekreft(t("Fjerne alle genererte veggelementer, gulv, ringmur og blikk? Taket blir stående. Du kan angre med Ctrl+Z."))) return;
   const foer = swBilde();
   fjernGenerertMateriell();
   // 19.10: blikket nullstilles under — da må blikkets bunker (BLK-…) også bort,

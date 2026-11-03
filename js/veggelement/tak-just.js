@@ -22,6 +22,7 @@ import { tegnAlt } from "./tegning.js";
 import { snapKandidater, snapVerdi } from "../sw-tak.js";
 import { flettPaaNavn, spLes, spPaalogget, spSkriv } from "../sp-lager.js";
 import { varsel } from "../varsel.js";
+import { bekreft } from "../sporsmal.js";
 
 export let takJust = null;   // { valgt: Set<id>, drar, markorer } når aktiv
 export function settTakJust(v) { takJust = v; }
@@ -131,8 +132,8 @@ export function tegnTakJustBar(paaNytt) {
     }
     lagreOgTegn(paaNytt, "Takplatebredde endret", foer);
   };
-  $("tjNull").onclick = () => {
-    if (!confirm(t("Nullstille alle håndjusteringene av takplatene?"))) return;
+  $("tjNull").onclick = async () => {
+    if (!await bekreft(t("Nullstille alle håndjusteringene av takplatene?"))) return;
     const foer = swBilde();
     b.just = {}; b.ekstra = [];
     takJust.valgt.clear();
@@ -376,7 +377,7 @@ function mittNavn() {
   } catch (_) { return ""; }
 }
 
-export function lagreTakResultat(navn, etterpa) {
+export async function lagreTakResultat(navn, etterpa) {
   const rent = String(navn || "").trim().slice(0, 60);
   if (!rent) { varsel(t("Gi resultatet et navn før du lagrer det.")); return; }
   const b = tilstand();
@@ -384,7 +385,7 @@ export function lagreTakResultat(navn, etterpa) {
   const liste = lesTakLagredeRaa();
   const fraFor = liste.findIndex(p => p.navn === rent);
   if (fraFor >= 0 && !liste[fraFor].slettet
-      && !confirm(t("«{0}» finnes allerede. Skal den skrives over?", rent))) return;
+      && !await bekreft(t("«{0}» finnes allerede. Skal den skrives over?", rent))) return;
   const naa = new Date();
   const post = { navn: rent, dato: naa.toISOString().slice(0, 10),
     endret: naa.toISOString(), av: mittNavn(),
@@ -419,8 +420,8 @@ export function lastInnTakResultat(navn, etterpa) {
   if (etterpa) etterpa();
 }
 
-export function slettTakResultat(navn, etterpa) {
-  if (!confirm(t("Slette «{0}»?", navn))) return;
+export async function slettTakResultat(navn, etterpa) {
+  if (!await bekreft(t("Slette «{0}»?", navn))) return;
   const liste = lesTakLagredeRaa().map(p => p.navn === navn
     ? { navn: p.navn, slettet: true, endret: new Date().toISOString() } : p);
   lagreTakBeggeSteder(liste, etterpa);

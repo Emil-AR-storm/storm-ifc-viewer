@@ -20,6 +20,7 @@ import { saveSettings } from "./prefs.js";
 import { spLes, spSkriv } from "./sp-lager.js";
 import { MAKS_SELSKAPER, PDF_ROLLER, PDF_STANDARD, erStandard, likeUtseender, pdfUtseende,
          selskapTekst, vaskUtseende } from "./pdf-utseende.js";
+import { bekreft } from "./sporsmal.js";
 
 export const SP_MAPPE = "PDF-utseende";
 export const SP_FIL = "oppsett.json";
@@ -206,7 +207,7 @@ export async function lagreSom(navn) {
   if (!n) { varsel(t("Skriv et navn på oppsettet først.")); return false; }
   const u = pdfUtseende();
   const finnes = (lagrede || []).find(p => p.navn.toLowerCase() === n.toLowerCase());
-  if (finnes && !confirm(t("«{0}» finnes fra før. Skrive over det?", n))) return false;
+  if (finnes && !await bekreft(t("«{0}» finnes fra før. Skrive over det?", n))) return false;
   const nå = new Date();
   const post = { id: finnes ? finnes.id : "pu-" + nå.getTime().toString(36) + Math.random().toString(36).slice(2, 6),
     navn: n, farger: u.farger, selskaper: u.selskaper, av: (S.innloggetNavn ? S.innloggetNavn() : "") || "",
@@ -286,7 +287,7 @@ export function koblPdfUtseende() {
     if (b) b.onclick = () => { if (bruk(id)) tegnPaNytt(); };
     rad.querySelector(".pu-slett").onclick = async () => {
       const p = (lagrede || []).find(x => x.id === id);
-      if (!p || !confirm(t("Slette «{0}» for alle i firmaet?", p.navn))) return;
+      if (!p || !await bekreft(t("Slette «{0}» for alle i firmaet?", p.navn))) return;
       if (await slett(id)) tegnPaNytt();
     };
   });

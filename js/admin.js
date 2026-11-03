@@ -21,6 +21,7 @@ import { varsel } from "./varsel.js";
 import { csvTrygg } from "./csv.js";
 import { adminNøkkel, loggUtAdmin, oppdaterAdminKnapp, VILKAR_VERSJON } from "./tilgang.js";
 import { qrDataUrl } from "./qr.js";
+import { bekreft, spor } from "./sporsmal.js";
 
 // Tekstene her er bare på norsk foreløpig. Ordbøkene i js/sprak/ ligger i
 // byggeplassens service worker; endres de, får montørene «ny versjon»-varsel.
@@ -372,8 +373,8 @@ async function hentVenter() {
     boks.querySelectorAll(".ap-venter").forEach(kort => {
       const prosjekt = kort.dataset.prosjekt;
       kort.querySelector("[data-godkjenn]").onclick = () => avgjør(prosjekt, true);
-      kort.querySelector("[data-avvis]").onclick = () => {
-        if (confirm(norsk("Avvise prosjekt {0}? Personen får ikke lage montørkode for det.", prosjekt))) avgjør(prosjekt, false);
+      kort.querySelector("[data-avvis]").onclick = async () => {
+        if (await bekreft(norsk("Avvise prosjekt {0}? Personen får ikke lage montørkode for det.", prosjekt))) avgjør(prosjekt, false);
       };
     });
   } catch (err) {
@@ -618,7 +619,7 @@ function kobleBrukere(kropp) {
   kropp.querySelectorAll("button[data-id]").forEach(b => {
     b.onclick = async () => {
       const sperr = b.dataset.sperr === "1";
-      if (sperr && !confirm(norsk("Sperre kortet? Personen mister tilgangen med en gang."))) return;
+      if (sperr && !await bekreft(norsk("Sperre kortet? Personen mister tilgangen med en gang."))) return;
       b.disabled = true;
       try {
         await kall(sperr ? "/kort/sperr" : "/kort/gjenapne", { json: { id: b.dataset.id } });
@@ -629,7 +630,7 @@ function kobleBrukere(kropp) {
   kropp.querySelectorAll("button[data-slett]").forEach(b => {
     b.onclick = async () => {
       const k = brukerListe.find(x => x.id === b.dataset.slett) || {};
-      if (!confirm(norsk("Slette kortet til {0} for godt? Det kan ikke angres. Prosjektene personen eier, blir liggende.", k.navn || ""))) return;
+      if (!await bekreft(norsk("Slette kortet til {0} for godt? Det kan ikke angres. Prosjektene personen eier, blir liggende.", k.navn || ""))) return;
       b.disabled = true;
       try {
         await kall("/kort/slett", { json: { id: b.dataset.slett } });
@@ -684,7 +685,7 @@ async function lagreBruker(k) {
 // overtar det nye kortet eierskapet (kontrakt/runde2.md punkt 2).
 async function nyKodeSamme(k, knapp) {
   if (!k) return;
-  if (!confirm(norsk("Lage ny kode til {0}? Det gamle kortet sperres med en gang. Eierskapet flyttes over når den nye koden løses inn.", k.navn))) return;
+  if (!await bekreft(norsk("Lage ny kode til {0}? Det gamle kortet sperres med en gang. Eierskapet flyttes over når den nye koden løses inn.", k.navn))) return;
   if (knapp) knapp.disabled = true;
   try {
     const j = await (await kall("/kort/ny-kode-samme", { json: { id: k.id } })).json();
@@ -726,7 +727,7 @@ function visKodeUt(ut, navn, kode) {
     '<button type="button" data-kopier="melding">✉ ' + esc(norsk("Kopier som melding")) + '</button></div>';
   const kopier = async (tekst, b) => {
     try { await navigator.clipboard.writeText(tekst); b.textContent = "✓ " + norsk("Kopiert"); }
-    catch (_) { prompt(norsk("Kopier teksten:"), tekst); }
+    catch (_) { await spor(norsk("Kopier teksten:"), tekst); }
   };
   ut.querySelectorAll("button[data-kopier]").forEach(b => {
     b.onclick = () => kopier(b.dataset.kopier === "kode" ? kode : melding, b);
@@ -824,7 +825,7 @@ function tegnVilkår() {
 }
 
 async function krevVilkår() {
-  if (!confirm(norsk("Kreve at alle godtar vilkårene på nytt? Alle kort får vilkårene opp igjen ved neste åpning. Ingen mister tilgang til data."))) return;
+  if (!await bekreft(norsk("Kreve at alle godtar vilkårene på nytt? Alle kort får vilkårene opp igjen ved neste åpning. Ingen mister tilgang til data."))) return;
   const b = $("apVilkarKrav");
   b.disabled = true;
   try { await kall("/admin/vilkar-krav", { json: {} }); await hentVilkar(); varsel(norsk("Alle må godta vilkårene på nytt.")); }
@@ -896,7 +897,7 @@ function tegnProsjekter() {
   kropp.querySelectorAll("button[data-navn]").forEach(b => {
     b.onclick = async () => {
       const nr = b.dataset.navn, p = prosjektListe.find(x => x.prosjekt === nr) || {};
-      const navn = prompt(norsk("Navn på prosjekt {0}:", nr), p.navn || "");
+      const navn = await spor(norsk("Navn på prosjekt {0}:", nr), p.navn || "");
       if (navn === null || !navn.trim()) return;
       try {
         await kall("/admin/prosjekt-navn", { json: { prosjekt: nr, navn: navn.trim() } });
@@ -907,7 +908,7 @@ function tegnProsjekter() {
   kropp.querySelectorAll("button[data-nr]").forEach(b => {
     b.onclick = async () => {
       const aktiv = b.dataset.aktiv === "1", nr = b.dataset.nr;
-      if (!aktiv && !confirm(norsk("Avslutte prosjekt {0}? Montørene kommer ikke inn lenger, heller ikke de som har siden åpen. Ingenting slettes, og du kan aktivere det igjen.", nr))) return;
+      if (!aktiv && !await bekreft(norsk("Avslutte prosjekt {0}? Montørene kommer ikke inn lenger, heller ikke de som har siden åpen. Ingenting slettes, og du kan aktivere det igjen.", nr))) return;
       b.disabled = true;
       try {
         await kall("/admin/prosjekt-aktiv", { json: { prosjekt: nr, aktiv } });
@@ -939,7 +940,7 @@ function kobleEiere(kropp) {
       const nr = b.dataset.p, p = prosjektListe.find(x => x.prosjekt === nr) || {};
       const e = (p.eiere || []).find(x => x.kortId === b.dataset.fjern) || {};
       const sist = (p.eiere || []).length === 1;
-      if (!confirm(norsk("Fjerne {0} som eier av {1}?", e.navn || "", nr) + (sist ? " " + norsk("Da blir Admin (Emil) eier.") : ""))) return;
+      if (!await bekreft(norsk("Fjerne {0} som eier av {1}?", e.navn || "", nr) + (sist ? " " + norsk("Da blir Admin (Emil) eier.") : ""))) return;
       b.disabled = true;
       try { await kall("/admin/prosjekt-eier", { json: { prosjekt: nr, kortId: b.dataset.fjern, fjern: true } }); await hentProsjekter(); }
       catch (err) { b.disabled = false; if (err.message !== "403") varsel(norsk("Klarte ikke: ") + err.message); }
@@ -1081,7 +1082,7 @@ function kobleDetalj(p) {
       norsk("Åpne {0} (eller skann QR-en på brakka) og skriv koden: {1}", adresseFor(nr), nyKode.kode) + "\n";
     const kopier = async (tekst, b) => {
       try { await navigator.clipboard.writeText(tekst); b.textContent = "✓ " + norsk("Kopiert"); }
-      catch (_) { prompt(norsk("Kopier teksten:"), tekst); }
+      catch (_) { await spor(norsk("Kopier teksten:"), tekst); }
     };
     $("apMkKopier").onclick = (e) => kopier(nyKode.kode, e.currentTarget);
     $("apMkMelding").onclick = (e) => kopier(melding, e.currentTarget);
@@ -1094,7 +1095,7 @@ function kobleDetalj(p) {
 
 async function lagMontørkode(p, knapp) {
   const nr = p.prosjekt;
-  if (p.harKode && !confirm(norsk("Lage ny montørkode for prosjekt {0}? Den gamle koden slutter å virke med en gang, og alle montører må skrive den nye. QR-en er den samme.", nr))) return;
+  if (p.harKode && !await bekreft(norsk("Lage ny montørkode for prosjekt {0}? Den gamle koden slutter å virke med en gang, og alle montører må skrive den nye. QR-en er den samme.", nr))) return;
   knapp.disabled = true;
   try {
     const j = await (await kall("/ny-kode", { json: { prosjekt: nr, navn: p.navn || "" } })).json();
@@ -1337,11 +1338,11 @@ function tegnFiler(nr) {
   oppdaterKnapp();
 }
 
-function slettValgte(nr, rader) {
+async function slettValgte(nr, rader) {
   const nøkler = rader.flatMap(r => r.nøkler);
   if (!nøkler.length) return;
   const bytes = rader.reduce((s, r) => s + r.bytes, 0);
-  if (!confirm(norsk("Slette {0} fra prosjekt {1} ({2})? Det kan ikke angres.", flertall(nøkler.length, norsk("fil"), norsk("filer")), nr, str(bytes)))) return;
+  if (!await bekreft(norsk("Slette {0} fra prosjekt {1} ({2})? Det kan ikke angres.", flertall(nøkler.length, norsk("fil"), norsk("filer")), nr, str(bytes)))) return;
   if (slettNøkkel) utførSletting(nr, nøkler);
   else spørOmSlettNøkkel(nr, nøkler, "");
 }

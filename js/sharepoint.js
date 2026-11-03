@@ -4,6 +4,7 @@ import { t } from "./i18n.js";
 import { LETT } from "./lett.js";
 import { afterLoad, clearLoadFlag, ifcReady, loadGlb, loadModel, offerLightRetry, setLoadFlag } from "./ifc.js";
 import { varsel } from "./varsel.js";
+import { bekreft } from "./sporsmal.js";
 
 // ---------- SharePoint-bibliotek (Microsoft Graph) ----------
 export const SP = {
@@ -119,7 +120,7 @@ async function loggInn(scopes, o, metode) {
     }
   }
   // Omdirigering: her forlater vi siden, så nå er advarselen på sin plass
-  if (o.confirmFirst && !confirm(typeof o.confirmFirst === "function" ? o.confirmFirst() : o.confirmFirst)) return null;
+  if (o.confirmFirst && !await bekreft(typeof o.confirmFirst === "function" ? o.confirmFirst() : o.confirmFirst)) return null;
   sessionStorage.setItem("storm-ifc-open-lib", o.after || "lib");
   if (metode === "login") await S.msalApp.loginRedirect({ scopes });
   else await S.msalApp.acquireTokenRedirect({ scopes });

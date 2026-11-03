@@ -53,6 +53,7 @@ import {
 } from "./rigg-vis.js";
 import { varsel } from "./varsel.js";
 import { lofteplanHtml, koblLofteplan, oppdaterLofteplan, etterRiggPanel, ryddFarger as ryddLofteFarger } from "./lofteplan.js";
+import { bekreft } from "./sporsmal.js";
 
 // ═══════════════════════ TILSTAND ═══════════════════════
 let plasserer = null;   // { o, gruppe } — objektet som henger på pekeren
@@ -328,13 +329,13 @@ async function hentPlanerFraSp() {
   }
 }
 
-function lagrePlan(navn) {
+async function lagrePlan(navn) {
   const rent = String(navn || "").trim().slice(0, RIGGPLAN_NAVN_MAKS);
   if (!rent) { varsel(t("Gi riggplanen et navn før du lagrer den.")); return; }
   if (!riggObjekter(S.rigg || []).length) { varsel(t("Plasser noe på tomta før du lagrer riggplanen.")); return; }
   const liste = lesPlanerRaa();
   const i = liste.findIndex(p => p && p.navn === rent);
-  if (i >= 0 && !liste[i].slettet && !confirm(t("«{0}» finnes allerede. Skal den skrives over?", rent))) return;
+  if (i >= 0 && !liste[i].slettet && !await bekreft(t("«{0}» finnes allerede. Skal den skrives over?", rent))) return;
   const naa = new Date();
   const data = riggOyeblikk(S.rigg || []);
   const post = { navn: rent, dato: naa.toISOString().slice(0, 10), endret: naa.toISOString(),
@@ -365,10 +366,10 @@ function settRiggFraPlan(data, angreTekst) {
 // er SAMME vei som å hente en tom plan: objektene blir gravsteiner (ellers
 // kom de tilbake fra SharePoint), referansen blir stående, og alt kan angres.
 // Spør først — riggen er delt, og en kollega kan ha brukt timer på den.
-function fjernAllRigg() {
+async function fjernAllRigg() {
   const n = riggObjekter(S.rigg || []).length;
   if (!n) return;
-  if (!confirm(t("Fjerne alle {0} rigg-objektene fra tomta? Det kan angres med Ctrl+Z.", n))) return;
+  if (!await bekreft(t("Fjerne alle {0} rigg-objektene fra tomta? Det kan angres med Ctrl+Z.", n))) return;
   settRiggFraPlan({ objekter: [], ref: null }, "Rigg fjernet");
 }
 function lastInnPlan(navn) {
@@ -376,8 +377,8 @@ function lastInnPlan(navn) {
   if (!p || !p.data) return;
   settRiggFraPlan(JSON.parse(JSON.stringify(p.data)), "Riggplan hentet");
 }
-function slettPlan(navn) {
-  if (!confirm(t("Slette «{0}»?", navn))) return;
+async function slettPlan(navn) {
+  if (!await bekreft(t("Slette «{0}»?", navn))) return;
   const liste = lesPlanerRaa().map(p => p && p.navn === navn
     ? { navn: p.navn, slettet: true, endret: new Date().toISOString() } : p);
   lagrePlanerBeggeSteder(liste);

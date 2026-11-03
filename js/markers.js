@@ -24,6 +24,7 @@ import { ADVAR_MB, antallSider, apneHtmlTegning, apneHtmlVedlegg, erHtml, gyldig
 import { MAKS_SKJEMA_PER_MARKERING, apneMalVelger, apneSkjema, gjeldendeSkjema,
          hentMaler, sjekklisteI, sjekklisteStripeHtml, vaskSkjema } from "./sjekkliste.js";
 import { varsel } from "./varsel.js";
+import { bekreft, spor } from "./sporsmal.js";
 // ⛓-lenka til en markering hentes via S.markerLink (settes av share.js).
 // Direkte import ville gitt sirkel: markers → share → display → ifc → markers.
 
@@ -417,6 +418,7 @@ export function nyId() {
 }
 
 // Navnet på den innloggede, til «skrevet av» og «endret av».
+let navnSpurt = false;
 export function innloggetNavn() {
   if (LETT) {
     // Montøren har ingen konto — navnet skrives i kodeboksen (forslag 2,
@@ -424,7 +426,12 @@ export function innloggetNavn() {
     // reserve for den sjeldne veien forbi kodeboksen (åpnet uten dekning før
     // navnet noen gang ble skrevet).
     let navn = montorNavn();
-    if (!navn) navn = settMontorNavn(prompt(t("Navnet ditt (vises på markeringen):")) || "");
+    // Ingen grå prompt() lenger (forslag 1): denne gangen står «Byggeplass»,
+    // og spørsmålet kommer som kort øverst så navnet er med fra neste gang.
+    if (!navn && !navnSpurt) {
+      navnSpurt = true;
+      spor(t("Navnet ditt (vises på markeringen):"), "").then(n => { if (n) settMontorNavn(n); });
+    }
     return navn || t("Byggeplass");
   }
   try {
@@ -1995,8 +2002,8 @@ function koblSvarSeksjon(el, c) {
   seksjon.querySelectorAll(".mp-svar").forEach(rad => {
     const id = rad.dataset.svar;
     rad.querySelector(".mp-svar-rediger").onclick = () => { redigerer = id; openMarkerPopup(c); };
-    rad.querySelector(".mp-svar-slett").onclick = () => {
-      if (!confirm(t("Slette denne kommentaren?"))) return;
+    rad.querySelector(".mp-svar-slett").onclick = async () => {
+      if (!await bekreft(t("Slette denne kommentaren?"))) return;
       slettSvar(c, id);
     };
     if (redigerer === id) koblRedigering(rad, (tekst) => endreSvar(c, id, tekst));
@@ -2162,9 +2169,9 @@ export function openMarkerPopup(c) {
   el.querySelectorAll(".mp-lyd[data-lyd]").forEach(rad => {
     const slettKnapp = rad.querySelector(".mp-lyd-slett");
     if (!slettKnapp) return;
-    slettKnapp.onclick = (e) => {
+    slettKnapp.onclick = async (e) => {
       e.stopPropagation();                       // ikke start avspilling
-      if (!confirm(t("Slette denne talemeldingen?"))) return;
+      if (!await bekreft(t("Slette denne talemeldingen?"))) return;
       slettLyd(c, rad.dataset.lyd);
     };
   });
@@ -2772,12 +2779,12 @@ async function sendTilPlanner(list) {
     return;
   }
   const utenEier = list.filter(c => !c.owner);
-  if (utenEier.length && !confirm(utenEier.length === 1
+  if (utenEier.length && !await bekreft(utenEier.length === 1
       ? t("Markeringen har ingen ansvarlig. Oppgaven blir liggende i Planner uten mottaker. Fortsette?")
       : t("{0} markeringer har ingen ansvarlig. Oppgavene blir liggende i Planner uten mottaker. Fortsette?", utenEier.length))) return;
 
   const alt = list.filter(c => c.taskId);
-  if (alt.length && !confirm(alt.length === 1
+  if (alt.length && !await bekreft(alt.length === 1
       ? t("Denne markeringen har allerede en Planner-oppgave. Lage en ny?")
       : t("{0} av markeringene har allerede oppgaver. Lage nye for alle?", alt.length))) return;
 
@@ -2809,7 +2816,7 @@ async function sendTilPlanner(list) {
     renderCommentList();
     if (popFor) openMarkerPopup(popFor);
     loadingEl.classList.remove("open");
-    if (confirm(t("{0} opprettet i Planner.\n\nÅpne Planner-tavla nå?",
+    if (await bekreft(t("{0} opprettet i Planner.\n\nÅpne Planner-tavla nå?",
         laget + " " + (laget === 1 ? t("oppgave") : t("oppgaver"))))) aapnePlanner();
   } catch (err) {
     loadingEl.classList.remove("open");

@@ -14,6 +14,7 @@ import { S, loadingEl, loadingText } from "./state.js";
 import { LETT } from "./lett.js";
 import { t } from "./i18n.js";
 import { GRAPH, SP, authHeaders, graphGet, spTokenSilent } from "./sharepoint.js";
+import { bekreft } from "./sporsmal.js";
 
 // Selvhostet (sikkerhetsrunden 19.10): dynamisk import() kan ikke ha integrity-hash,
 // og pdf.js kjører i hovedtråden der innloggingene ligger. Byte-identisk med
@@ -172,7 +173,7 @@ export function tegningNavn(itemId, html) {
 
 export async function pdfDokument(vedlegg, spor) {
   if (dokBuffer.has(vedlegg.itemId)) return dokBuffer.get(vedlegg.itemId);
-  if (mb(vedlegg.storrelse) > ADVAR_MB && !confirm(
+  if (mb(vedlegg.storrelse) > ADVAR_MB && !await bekreft(
       t("{0} er {1} MB. Over mobilnett kan nedlastingen ta et minutt. Åpne likevel?",
         vedlegg.fil, mb(vedlegg.storrelse).toFixed(0)))) {
     return null;

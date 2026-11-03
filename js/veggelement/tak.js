@@ -37,6 +37,7 @@ import { STAL_TYPER } from "./stal.js";
 import { bunkePlass, lesStabelPosisjonerAlle, settStabelTilbakeAlle } from "./bunker.js";
 import { lagreMateriellLokalt, tegnMateriell, vaskMateriell } from "../materiell-vis.js";
 import { varsel } from "../varsel.js";
+import { bekreft } from "../sporsmal.js";
 
 // ───────────────────── oppsettet ─────────────────────
 
@@ -1111,10 +1112,10 @@ export function koblTakPanel(paaNytt) {
     }
     swPost("Tak generert", foer);
   };
-  if ($("takFjern")) $("takFjern").onclick = () => {
+  if ($("takFjern")) $("takFjern").onclick = async () => {
     const tt = takTilstand();
     const antJust = Object.keys(tt.just || {}).length + (tt.ekstra || []).length;
-    if (antJust && !confirm(t("Fjerne taket? De {0} håndjusteringene forsvinner også.", antJust)))
+    if (antJust && !await bekreft(t("Fjerne taket? De {0} håndjusteringene forsvinner også.", antJust)))
       return;
     if (takJust) { /* juster-modus står åpen */ }
     const foer = swBilde();
@@ -1129,11 +1130,11 @@ export function koblTakPanel(paaNytt) {
   if ($("takJusterBtn")) $("takJusterBtn").onclick = () => startTakJuster(paaNytt);
   // Justeringene alene — taket blir stående. Å måtte fjerne hele taket for å
   // bli kvitt åtte drag er ikke et valg noen skal måtte ta.
-  if ($("takNullstillJust")) $("takNullstillJust").onclick = () => {
+  if ($("takNullstillJust")) $("takNullstillJust").onclick = async () => {
     const tt = takTilstand();
     const ant = Object.keys(tt.just || {}).length + (tt.ekstra || []).length;
     if (!ant) return;
-    if (!confirm(t("Nullstille de {0} håndjusteringene? Taket blir stående.", ant))) return;
+    if (!await bekreft(t("Nullstille de {0} håndjusteringene? Taket blir stående.", ant))) return;
     const foer = swBilde();
     tt.just = {};
     tt.ekstra = [];

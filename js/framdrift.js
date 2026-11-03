@@ -34,6 +34,7 @@ import { varsel } from "./varsel.js";
 import { lastFerdig, ryddFarger as ryddFerdigFarger, ryddFerdig, tegnRapport } from "./ferdig.js";
 // Stempel-hjelperen for angre bor hos støpeplanen (samme listeform, samme fletting)
 import { settListeStemplet } from "./stopeplan-regn.js";
+import { bekreft } from "./sporsmal.js";
 
 const SP_MAPPE = "Framdriftsplan";
 let spStatus = "av", lagreTid = 0;
@@ -514,10 +515,10 @@ export function tegnPanel() {
     const fj = rad.querySelector(".st-fjern");
     if (fj) fj.onclick = () => { if (velgerEtappe() === id && velgerFjerner()) avsluttVelg(true); else startVelg(id, true); };
     const tom = rad.querySelector(".st-tom");
-    if (tom) tom.onclick = () => { if (confirm(t("Ta alt ut av trinnet?"))) tomEtappe(id); };
-    rad.querySelector(".st-slett").onclick = () => {
+    if (tom) tom.onclick = async () => { if (await bekreft(t("Ta alt ut av trinnet?"))) tomEtappe(id); };
+    rad.querySelector(".st-slett").onclick = async () => {
       const e = synlige(S.framdrift).find(x => x.id === id);
-      if (e && confirm(t("Slette {0}?", e.navn))) slettEtappe(id);
+      if (e && await bekreft(t("Slette {0}?", e.navn))) slettEtappe(id);
     };
   });
   begrensListe($("fpListe"));

@@ -13,6 +13,7 @@ import { scene, flyTil } from "./scene.js";
 import { t } from "./i18n.js";
 import { varsel } from "./varsel.js";
 import * as K from "./kran-regn.js";
+import { bekreft } from "./sporsmal.js";
 
 const tilstand = { farger: true, svar: null, nokkel: "", kranId: "", regner: false, elementer: null, elementNokkel: "" };
 export const _tilstand = tilstand;
@@ -274,7 +275,7 @@ export async function lagMarkeringer(o) {
   if (!svar) return;
   const rode = svar.rader.filter(r => r.farge === "rod");
   if (!rode.length) { varsel(t("Ingen elementer over kapasitet.")); return; }
-  if (rode.length > 30 && !confirm(t("Lage {0} markeringer?", rode.length))) return;
+  if (rode.length > 30 && !await bekreft(t("Lage {0} markeringer?", rode.length))) return;
   const M = await import("./markers.js");
   const E = await import("./elements.js");
   const boxes = E.allElementBoxes();

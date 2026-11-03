@@ -25,6 +25,7 @@ import { forByggeplass } from "./prosjektinfo-regn.js";
 import { varsel } from "./varsel.js";
 // 🔒 Post 11: kortet (eller Emils admin-nøkkel) erstatter «Opplastingsnøkkel:»-spørsmålet
 import { erAdmin, glemAdminNøkkel, krevKort, tilgangsNøkkel } from "./tilgang.js";
+import { bekreft, spor } from "./sporsmal.js";
 // De nye tekstene fra post 11 er bare på norsk foreløpig (se js/tilgang.js).
 const norsk = (s, ...a) => a.reduce((r, v, i) => r.split("{" + i + "}").join(v), s);
 
@@ -69,7 +70,7 @@ if (btn) btn.addEventListener("click", async () => {
   let fraInfo = "";
   try { fraInfo = String((S.prosjektInfo && S.prosjektInfo() || {}).nummer || "").replace(/\s+/g, ""); } catch (_) { fraInfo = ""; }
   const prosjekt = /^\d{5}$/.test(fraInfo) ? fraInfo
-    : (prompt(t("Prosjektnummer (5 siffer):"),
+    : (await spor(t("Prosjektnummer (5 siffer):"),
         fraInfo || localStorage.getItem("storm-bp-prosjekt") || "") || "").trim();
   if (!prosjekt) return;
   if (!/^\d{5}$/.test(prosjekt)) { varsel(t("Prosjektnummeret må være 5 siffer.")); return; }
@@ -92,7 +93,7 @@ if (btn) btn.addEventListener("click", async () => {
     prosjektnavn = String(husket[prosjekt] || "").trim();
     if (!prosjektnavn) {
       const forslag = String(S.fileName || "").replace(/\.(ifc|glb)$/i, "").replace(/[_]+/g, " ").trim().slice(0, 80);
-      const svar = prompt(norsk("Prosjektnavn for {0} (vises i adminpanelet og i varslene). Tips: fyll inn navnet under Innstillinger → Prosjektinfo, så slipper du dette spørsmålet:", prosjekt), forslag);
+      const svar = await spor(norsk("Prosjektnavn for {0} (vises i adminpanelet og i varslene). Tips: fyll inn navnet under Innstillinger → Prosjektinfo, så slipper du dette spørsmålet:", prosjekt), forslag);
       if (svar === null) return;   // Avbryt = ingen opplasting
       prosjektnavn = svar.trim().slice(0, 80);
       if (!prosjektnavn) { varsel(norsk("Prosjektet må ha et navn.")); return; }
@@ -141,7 +142,7 @@ if (btn) btn.addEventListener("click", async () => {
     // lagres, modellen lastes om og kopien bygges på nytt i samme trykk.
     const GRENSE = 95 * 1048576;
     if (bytes.byteLength > GRENSE && modus !== "stor" &&
-        confirm(t("Kopien ble {0} MB — for stor til å laste opp (taket er ~100 MB). Bytte prosjektet til «Stort prosjekt» og bygge på nytt nå?", (bytes.byteLength / 1048576).toFixed(0)))) {
+        await bekreft(t("Kopien ble {0} MB — for stor til å laste opp (taket er ~100 MB). Bytte prosjektet til «Stort prosjekt» og bygge på nytt nå?", (bytes.byteLength / 1048576).toFixed(0)))) {
       modus = "stor";
       await lagreModus(prosjekt, token, "stor");
       ({ bytes, ids, utelatt } = await byggMedModus("stor"));
@@ -171,134 +172,8 @@ if (btn) btn.addEventListener("click", async () => {
     const uendret = (await r.text()).startsWith("UENDRET");
     huskProsjektFor(fil, prosjekt);   // den røde telleren vet nå hvilket prosjekt modellen hører til
 
-    // 3) Markeringene, VASKET: eier, frist, Planner-kobling, svar og tegninger
-    //    holdes igjen med vilje — montøren skal se hva som skal gjøres, ikke
-    //    hvem som har ansvaret internt eller hva som ligger i Teams
-    loadingText.textContent = t("Laster opp markeringene …");
-    const vaskede = (S.comments || []).map(c => ({
-      id: c.id, text: c.text || "", author: c.author || "", date: c.date || "",
-      // J4: endret/endretAv MÅ være med. Uten dem leser montøren en omskrevet
-      // avvikstekst under opprinnelig forfatter og dato, og tror han leser det
-      // som ble skrevet i går. (Til forskjell fra eier og frist er dette ikke
-      // noe vi holder igjen med vilje – det manglet.)
-      endret: c.endret || "", endretAv: c.endretAv || "",
-      // FRIST er nå med. Eier og Planner-kobling holdes fortsatt igjen med
-      // vilje — montøren skal ikke se hvem som har ansvaret internt. Men
-      // fristen er den ene opplysningen som avgjør hva han gjør NÅ, og den lå
-      // ferdig utfylt og ble stoppet på veien ut. Uten den ser byggeplassen
-      // grå ringer på alt.
-      due: c.due || "",
-      // 🎨 Egen farge følger med: montøren skal se samme farge som kontoret.
-      farge: c.farge || "",
-      status: c.status || "Åpen", x: c.x, y: c.y, z: c.z,
-      bilder: c.bilder || [], bilderEtter: c.bilderEtter || [], lyd: c.lyd || [],
-      // kommentartråden og tegnings-HENVISNINGENE er med nå (trinn 5b) —
-      // eier, frist og Planner-kobling holdes fortsatt igjen
-      svar: (c.svar || []).map(s => ({ id: s.id, tekst: s.tekst, forfatter: s.forfatter, dato: s.dato, endret: s.endret || "" })),
-      // html-flagget MÅ med: uten det prøver mobilen å åpne tegningskatalogen
-      // som PDF (.pdf-navnet i R2) og får «ikke lastet opp» (Emils bilde 25.08)
-      tegninger: (c.tegninger || []).map(v => ({ fil: v.fil, itemId: v.itemId, side: v.side, storrelse: v.storrelse, html: v.html === true }))
-    }));
-    // FORMAT 2: fila var tidligere en naken array. Nå er den et objekt, fordi
-    // fristgrensene må følge med ut til byggeplassen (ringen rundt markeringen
-    // trenger dem) — og fordi Workerens morgenvarsel skal lese SAMME fil og
-    // SAMME grenser. Ett regnestykke, ett sted, ingen drift mellom modell og
-    // varsel.
-    //
-    // All lesing tåler begge former (se lastLettMarkeringer i markers.js).
-    // Rull ALLTID ut lesingen før skrivingen — ellers står byggeplassen med en
-    // fil den ikke forstår til neste push.
-    // ⛰ Terrenget (Emil 30.09): krympet grid i JSON-en, kartet som eget bilde.
-    // Kartet får et navn etter innholdet (SHA-256), så en uendret tomt gir
-    // samme navn — telefonen har det allerede i hurtigbufferen og henter
-    // ingenting. Feiler noe her, publiseres alt annet likevel.
-    let terrengUt = null;
-    try {
-      const ter = S.terrengForByggeplass ? await S.terrengForByggeplass() : null;
-      if (ter && ter.data) {
-        terrengUt = ter.data;
-        if (ter.kartBlob) {
-          const bytes = await ter.kartBlob.arrayBuffer();
-          const h = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)))
-            .slice(0, 8).map(b => b.toString(16).padStart(2, "0")).join("");
-          const kartNavn = "terreng-" + h + ".jpg";
-          const kr = await fetch(TJENESTER.worker + "/last-opp?fil=" + encodeURIComponent(kartNavn) + "&mappe=bilder", {
-            method: "PUT",
-            headers: { "content-type": "image/jpeg", "x-prosjekt": prosjekt, "x-token": token },
-            body: ter.kartBlob
-          });
-          if (kr.ok) terrengUt.kart = kartNavn;
-        }
-      }
-    } catch (err) {
-      console.warn("Terrenget ble ikke med ut:", err);
-      terrengUt = null;
-    }
-
-    // 📅 Framdriftsplanen (trinn 6) og hvilke monterte objekter bunkene er
-    // levert til — bygg.html har ikke SW-generatoren som vet det.
-    let framdriftKilder = {};
-    try { framdriftKilder = await kilderForByggeplass(S.framdrift || []); }
-    catch (err) { console.warn("Bunkenes koblinger ble ikke med ut:", err); }
-
-    await fetch(TJENESTER.worker + "/last-opp?fil=" + encodeURIComponent(fil + ".markeringer.json"), {
-      method: "PUT",
-      headers: { "content-type": "application/json", "x-prosjekt": prosjekt, "x-token": token },
-      body: JSON.stringify({
-        versjon: 2,
-        grenser: { gul: FRISTER.gul, rod: FRISTER.rod },
-        markeringer: vaskede,
-        // 📦 materiell-objektene følger med ut, vasket. Gamle lesere ser bort
-        // fra feltet; nye tegner leveransene der de skal ligge.
-        materiell: materiellForEksport(),
-        grupper: grupperForEksport(),
-        // 🏗 SW-oppsettet: hvor hvert veggelement skal stå, med SW-nummeret.
-        // Gamle lesere ser bort fra feltet; bygg.html tegner det (js/sw-lett.js).
-        sw: swForByggeplass(),
-        // 🏠 Takplatene fra tak-generatoren, som omriss (tak-lett.js tegner dem)
-        tak: (() => { try { return takForByggeplass(); } catch (err) { console.warn("Takplatene ble ikke med ut:", err); return null; } })(),
-        // 🏕 Riggen: objektene og hvor bygget sto på tomta sist (referansen),
-        // så bygg.html kan tegne dem rundt bygget uten terrenget.
-        rigg: riggForByggeplass(),
-        // ⛰ Terrenget: null når det ikke er hentet (eller er skjult) på
-        // kontoret. Gamle lesere ser bort fra feltet.
-        terreng: terrengUt,
-        // 🧱 Støpeplanen (trinn 5): etappene med elementer, felt og datoer.
-        // bygg.html farger betongen og viser tidslinjen (stopeplan-lett.js).
-        stopeplan: stopeplanForByggeplass(S.stopeplan || []),
-        // 📅 Framdriftsplanen (trinn 6): trinnene med objekter og datoer.
-        // bygg.html viser glideren (framdrift-lett.js). Gamle lesere ser bort fra feltet.
-        framdrift: framdriftForByggeplass(S.framdrift || []),
-        // 📊 Det som er ferdigmeldt (runde 10b): telefonen farger det grønt
-        ferdig: S.ferdigForByggeplass ? S.ferdigForByggeplass() : [],
-        // …og kontorets tall, så telefonen viser samme prosent som Rapport-fanen
-        ferdigStatus: S.ferdigStatusForByggeplass ? await S.ferdigStatusForByggeplass() : null,
-        framdriftKilder,
-        // 🗂 Prosjektinfo (navn, nummer, adresse og posisjonen) og 🌦 værvalgene:
-        // bygg.html viser været i Framdriftsplan. Gamle lesere ser bort fra feltene.
-        prosjektInfo: forByggeplass(S.prosjektInfo ? S.prosjektInfo() : null),
-        vaer: S.vaerForByggeplass ? S.vaerForByggeplass() : null
-      })
-    });
-
-    // 4) Bildene på markeringene, så montøren ser dem (hentes fra SharePoint her,
-    //    hvor vi ER innlogget, og legges i R2). Feiler ett bilde, fortsetter resten.
-    let bildeteller = 0;
-    for (const c of vaskede) {
-      for (const navn of [...c.bilder, ...c.bilderEtter]) {
-        try {
-          const url = await bildeUrl(navn);
-          if (!url) continue;
-          const blob = await (await fetch(url)).blob();
-          const br = await fetch(TJENESTER.worker + "/last-opp?fil=" + encodeURIComponent(navn) + "&mappe=bilder", {
-            method: "PUT",
-            headers: { "content-type": "image/jpeg", "x-prosjekt": prosjekt, "x-token": token },
-            body: blob
-          });
-          if (br.ok) bildeteller++;
-        } catch (_) {}
-      }
-    }
+    // 3) + 4) Markeringsfila og bildene (felles med «Hent nå», se lastOppMarkeringsfil)
+    const { vaskede, bildeteller } = await lastOppMarkeringsfil(prosjekt, token, fil);
 
     loadingText.textContent = t("Laster opp arbeidstegningene …");
     const antTegninger = await lastOppTegninger(prosjekt, token);
@@ -322,6 +197,151 @@ if (btn) btn.addEventListener("click", async () => {
   }
 });
 
+
+// ---------- Markeringsfila ut (delt mellom Publiser og «Hent nå») ----------
+// Alt montørene leser utenom selve modellen: markeringene (vasket), materiell,
+// SW, tak, rigg, terreng, støpeplan, framdrift, ferdigmeldinger, prosjektinfo
+// og vær — pluss bildene på markeringene. Skilt ut fra Publiser 03.11
+// (forslag 3A): «Hent nå» henter innboksen og skriver denne fila på nytt UTEN
+// å bygge og laste opp modellen, så montørens nye markering ikke forsvinner
+// fra telefonen når kontoret har tatt den inn.
+async function lastOppMarkeringsfil(prosjekt, token, fil) {
+  // 3) Markeringene, VASKET: eier, frist, Planner-kobling, svar og tegninger
+  //    holdes igjen med vilje — montøren skal se hva som skal gjøres, ikke
+  //    hvem som har ansvaret internt eller hva som ligger i Teams
+  loadingText.textContent = t("Laster opp markeringene …");
+  const vaskede = (S.comments || []).map(c => ({
+    id: c.id, text: c.text || "", author: c.author || "", date: c.date || "",
+    // J4: endret/endretAv MÅ være med. Uten dem leser montøren en omskrevet
+    // avvikstekst under opprinnelig forfatter og dato, og tror han leser det
+    // som ble skrevet i går. (Til forskjell fra eier og frist er dette ikke
+    // noe vi holder igjen med vilje – det manglet.)
+    endret: c.endret || "", endretAv: c.endretAv || "",
+    // FRIST er nå med. Eier og Planner-kobling holdes fortsatt igjen med
+    // vilje — montøren skal ikke se hvem som har ansvaret internt. Men
+    // fristen er den ene opplysningen som avgjør hva han gjør NÅ, og den lå
+    // ferdig utfylt og ble stoppet på veien ut. Uten den ser byggeplassen
+    // grå ringer på alt.
+    due: c.due || "",
+    // 🎨 Egen farge følger med: montøren skal se samme farge som kontoret.
+    farge: c.farge || "",
+    status: c.status || "Åpen", x: c.x, y: c.y, z: c.z,
+    bilder: c.bilder || [], bilderEtter: c.bilderEtter || [], lyd: c.lyd || [],
+    // kommentartråden og tegnings-HENVISNINGENE er med nå (trinn 5b) —
+    // eier, frist og Planner-kobling holdes fortsatt igjen
+    svar: (c.svar || []).map(s => ({ id: s.id, tekst: s.tekst, forfatter: s.forfatter, dato: s.dato, endret: s.endret || "" })),
+    // html-flagget MÅ med: uten det prøver mobilen å åpne tegningskatalogen
+    // som PDF (.pdf-navnet i R2) og får «ikke lastet opp» (Emils bilde 25.08)
+    tegninger: (c.tegninger || []).map(v => ({ fil: v.fil, itemId: v.itemId, side: v.side, storrelse: v.storrelse, html: v.html === true }))
+  }));
+  // FORMAT 2: fila var tidligere en naken array. Nå er den et objekt, fordi
+  // fristgrensene må følge med ut til byggeplassen (ringen rundt markeringen
+  // trenger dem) — og fordi Workerens morgenvarsel skal lese SAMME fil og
+  // SAMME grenser. Ett regnestykke, ett sted, ingen drift mellom modell og
+  // varsel.
+  //
+  // All lesing tåler begge former (se lastLettMarkeringer i markers.js).
+  // Rull ALLTID ut lesingen før skrivingen — ellers står byggeplassen med en
+  // fil den ikke forstår til neste push.
+  // ⛰ Terrenget (Emil 30.09): krympet grid i JSON-en, kartet som eget bilde.
+  // Kartet får et navn etter innholdet (SHA-256), så en uendret tomt gir
+  // samme navn — telefonen har det allerede i hurtigbufferen og henter
+  // ingenting. Feiler noe her, publiseres alt annet likevel.
+  let terrengUt = null;
+  try {
+    const ter = S.terrengForByggeplass ? await S.terrengForByggeplass() : null;
+    if (ter && ter.data) {
+      terrengUt = ter.data;
+      if (ter.kartBlob) {
+        const bytes = await ter.kartBlob.arrayBuffer();
+        const h = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)))
+          .slice(0, 8).map(b => b.toString(16).padStart(2, "0")).join("");
+        const kartNavn = "terreng-" + h + ".jpg";
+        const kr = await fetch(TJENESTER.worker + "/last-opp?fil=" + encodeURIComponent(kartNavn) + "&mappe=bilder", {
+          method: "PUT",
+          headers: { "content-type": "image/jpeg", "x-prosjekt": prosjekt, "x-token": token },
+          body: ter.kartBlob
+        });
+        if (kr.ok) terrengUt.kart = kartNavn;
+      }
+    }
+  } catch (err) {
+    console.warn("Terrenget ble ikke med ut:", err);
+    terrengUt = null;
+  }
+
+  // 📅 Framdriftsplanen (trinn 6) og hvilke monterte objekter bunkene er
+  // levert til — bygg.html har ikke SW-generatoren som vet det.
+  let framdriftKilder = {};
+  try { framdriftKilder = await kilderForByggeplass(S.framdrift || []); }
+  catch (err) { console.warn("Bunkenes koblinger ble ikke med ut:", err); }
+
+  const mr = await fetch(TJENESTER.worker + "/last-opp?fil=" + encodeURIComponent(fil + ".markeringer.json"), {
+    method: "PUT",
+    headers: { "content-type": "application/json", "x-prosjekt": prosjekt, "x-token": token },
+    body: JSON.stringify({
+      versjon: 2,
+      grenser: { gul: FRISTER.gul, rod: FRISTER.rod },
+      markeringer: vaskede,
+      // 📦 materiell-objektene følger med ut, vasket. Gamle lesere ser bort
+      // fra feltet; nye tegner leveransene der de skal ligge.
+      materiell: materiellForEksport(),
+      grupper: grupperForEksport(),
+      // 🏗 SW-oppsettet: hvor hvert veggelement skal stå, med SW-nummeret.
+      // Gamle lesere ser bort fra feltet; bygg.html tegner det (js/sw-lett.js).
+      sw: swForByggeplass(),
+      // 🏠 Takplatene fra tak-generatoren, som omriss (tak-lett.js tegner dem)
+      tak: (() => { try { return takForByggeplass(); } catch (err) { console.warn("Takplatene ble ikke med ut:", err); return null; } })(),
+      // 🏕 Riggen: objektene og hvor bygget sto på tomta sist (referansen),
+      // så bygg.html kan tegne dem rundt bygget uten terrenget.
+      rigg: riggForByggeplass(),
+      // ⛰ Terrenget: null når det ikke er hentet (eller er skjult) på
+      // kontoret. Gamle lesere ser bort fra feltet.
+      terreng: terrengUt,
+      // 🧱 Støpeplanen (trinn 5): etappene med elementer, felt og datoer.
+      // bygg.html farger betongen og viser tidslinjen (stopeplan-lett.js).
+      stopeplan: stopeplanForByggeplass(S.stopeplan || []),
+      // 📅 Framdriftsplanen (trinn 6): trinnene med objekter og datoer.
+      // bygg.html viser glideren (framdrift-lett.js). Gamle lesere ser bort fra feltet.
+      framdrift: framdriftForByggeplass(S.framdrift || []),
+      // 📊 Det som er ferdigmeldt (runde 10b): telefonen farger det grønt
+      ferdig: S.ferdigForByggeplass ? S.ferdigForByggeplass() : [],
+      // …og kontorets tall, så telefonen viser samme prosent som Rapport-fanen
+      ferdigStatus: S.ferdigStatusForByggeplass ? await S.ferdigStatusForByggeplass() : null,
+      framdriftKilder,
+      // 🗂 Prosjektinfo (navn, nummer, adresse og posisjonen) og 🌦 værvalgene:
+      // bygg.html viser været i Framdriftsplan. Gamle lesere ser bort fra feltene.
+      prosjektInfo: forByggeplass(S.prosjektInfo ? S.prosjektInfo() : null),
+      vaer: S.vaerForByggeplass ? S.vaerForByggeplass() : null
+    })
+  });
+  // Kom ikke fila fram, er det ingen vits i å si «hentet» — montøren ser
+  // fortsatt det gamle. (Før ble svaret ikke sjekket i det hele tatt.)
+  if (mr && mr.ok === false) {
+    if (mr.status === 403 || mr.status === 429) throw new Error(await nektetTekst(mr));
+    throw new Error(t("Markeringene kom ikke fram (HTTP {0}).", mr.status));
+  }
+
+  // 4) Bildene på markeringene, så montøren ser dem (hentes fra SharePoint her,
+  //    hvor vi ER innlogget, og legges i R2). Feiler ett bilde, fortsetter resten.
+  let bildeteller = 0;
+  for (const c of vaskede) {
+    for (const navn of [...c.bilder, ...c.bilderEtter]) {
+      try {
+        const url = await bildeUrl(navn);
+        if (!url) continue;
+        const blob = await (await fetch(url)).blob();
+        const br = await fetch(TJENESTER.worker + "/last-opp?fil=" + encodeURIComponent(navn) + "&mappe=bilder", {
+          method: "PUT",
+          headers: { "content-type": "image/jpeg", "x-prosjekt": prosjekt, "x-token": token },
+          body: blob
+        });
+        if (br.ok) bildeteller++;
+      } catch (_) {}
+    }
+  }
+  return { vaskede, bildeteller };
+}
 
 // ---------- 🏗 Normalt / stort prosjekt ----------
 
@@ -467,8 +487,137 @@ async function oppdaterBadge() {
     btn.appendChild(b);
   }
   b.textContent = antall;
-  btn.title = antall + " " + t("nye ting fra byggeplassen – trykk Byggeplass for å hente dem inn");
+  b.title = t("Se hva som har kommet, og hent det inn");
+  btn.title = antall + " " + t("nye ting fra byggeplassen – trykk på den røde telleren for å hente dem inn");
+  // 🔴 Forslag 3A (Emil 03.11): telleren er sin egen knapp. Trykk åpner en
+  // liten boks med hva som har kommet og «Hent nå» — uten å bygge modellen.
+  if (!b.dataset.koblet) {
+    b.dataset.koblet = "1";
+    b.setAttribute("role", "button");
+    b.tabIndex = 0;
+    const apne = (e) => { e.stopPropagation(); e.preventDefault(); visInnboksBoks(); };
+    b.addEventListener("click", apne);
+    b.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") apne(e); });
+  }
 }
+
+// ---------- 🔴 «Nytt fra byggeplassen» (forslag 3A, 03.11) ----------
+// Hva ligger i innboksen? Bilder og talemeldinger telles på navnet; hendelsene
+// (h-….json) må leses for å vite om de er markeringer, kommentarer,
+// ferdigmeldinger eller sjekklister. De er små, og vi leser maks 40.
+export function tellInnboks(navn, hendelser) {
+  const ut = { bilder: 0, lyd: 0, markeringer: 0, kommentarer: 0, ferdig: 0, sjekk: 0, annet: 0 };
+  for (const n of navn || []) {
+    if (/\.json$/i.test(n) && !/^h-/.test(n)) continue;          // sidekort
+    if (/\.jpg$/i.test(n)) ut.bilder++;
+    else if (/\.(m4a|webm)$/i.test(n)) ut.lyd++;
+  }
+  for (const h of hendelser || []) {
+    const ty = h && h.type;
+    if (ty === "ny-markering") ut.markeringer++;
+    else if (ty === "svar") ut.kommentarer++;
+    else if (ty === "ferdig") ut.ferdig += Array.isArray(h.meldinger) ? Math.max(1, h.meldinger.length) : 1;
+    else if (ty === "sjekkliste") ut.sjekk++;
+    else ut.annet++;
+  }
+  return ut;
+}
+export const INNBOKS_RADER = [
+  ["bilder", "Bilder"], ["lyd", "Talemeldinger"], ["markeringer", "Nye markeringer"],
+  ["kommentarer", "Kommentarer"], ["ferdig", "Ferdigmeldinger"], ["sjekk", "Sjekklister før støp"], ["annet", "Annet"]
+];
+
+function lukkInnboksBoks() {
+  const g = $("bpInnboks");
+  if (g) g.remove();
+  document.removeEventListener("pointerdown", utenforInnboks, true);
+}
+function utenforInnboks(e) {
+  const g = $("bpInnboks");
+  if (g && !g.contains(e.target) && !(e.target.closest && e.target.closest(".bp-badge"))) lukkInnboksBoks();
+}
+
+async function visInnboksBoks() {
+  if ($("bpInnboks")) { lukkInnboksBoks(); return; }
+  const prosjekt = prosjektFor(lettNavn(S.fileName || ""));
+  const token = tilgangsNøkkel();
+  if (!prosjekt || !token) return;
+  const boks = document.createElement("div");
+  boks.id = "bpInnboks";
+  boks.className = "bp-innboks";
+  boks.setAttribute("role", "dialog");
+  boks.innerHTML = '<b class="bp-innboks-tittel">' + esc(t("Nytt fra byggeplassen")) + '</b><p class="bp-innboks-hjelp">' + esc(t("Leser innboksen …")) + "</p>";
+  document.body.appendChild(boks);
+  plasserInnboksBoks(boks);
+  document.addEventListener("pointerdown", utenforInnboks, true);
+
+  let navn = [], hendelser = [];
+  try {
+    const r = await fetch(TJENESTER.worker + "/innboks/" + prosjekt, { headers: { "x-token": token } });
+    if (r.ok) navn = await r.json();
+    for (const n of navn.filter(x => /^h-.*\.json$/.test(x)).slice(0, 40)) {
+      try {
+        const hr = await fetch(TJENESTER.worker + "/innboks/" + prosjekt + "/" + encodeURIComponent(n), { headers: { "x-token": token } });
+        if (hr.ok) hendelser.push(await hr.json());
+      } catch (_) {}
+    }
+  } catch (_) {}
+  if (!boks.isConnected) return;
+  const tall = tellInnboks(navn, hendelser);
+  const rader = INNBOKS_RADER.filter(([k]) => tall[k]);
+  boks.innerHTML =
+    '<b class="bp-innboks-tittel">' + esc(t("Nytt fra byggeplassen")) + "</b>" +
+    (rader.length
+      ? '<ul class="bp-innboks-liste">' + rader.map(([k, n]) => "<li><span>" + esc(t(n)) + "</span><b>" + tall[k] + "</b></li>").join("") + "</ul>"
+      : '<p class="bp-innboks-hjelp">' + esc(t("Innboksen er tom.")) + "</p>") +
+    '<div class="bp-innboks-knapper"><button type="button" data-bp="publiser">' + esc(t("Publiser alt på nytt …")) + "</button>" +
+    '<button type="button" class="primary" data-bp="hent"' + (rader.length ? "" : " disabled") + ">" + esc(t("Hent nå")) + "</button></div>" +
+    '<p class="bp-innboks-hjelp">' + esc(t("Henter uten å bygge modellen på nytt. Det du har endret på kontoret siden sist (planer, rigg, markeringer) går ut sammen med det, akkurat som ved Publiser.")) + "</p>";
+  plasserInnboksBoks(boks);
+  boks.querySelector('[data-bp="publiser"]').onclick = () => { lukkInnboksBoks(); if (btn) btn.click(); };
+  boks.querySelector('[data-bp="hent"]').onclick = () => { lukkInnboksBoks(); hentFraByggeplassen(); };
+  const hentKnapp = boks.querySelector('[data-bp="hent"]');
+  try { (hentKnapp.disabled ? boks.querySelector('[data-bp="publiser"]') : hentKnapp).focus({ preventScroll: true }); } catch (_) {}
+}
+
+function plasserInnboksBoks(boks) {
+  const b = btn && btn.querySelector(".bp-badge");
+  const r = (b || btn) ? (b || btn).getBoundingClientRect() : { left: 20, bottom: 60 };
+  const bredde = Math.min(320, (window.innerWidth || 400) - 16);
+  boks.style.width = bredde + "px";
+  boks.style.left = Math.max(8, Math.min(r.left - 30, (window.innerWidth || 400) - bredde - 8)) + "px";
+  boks.style.top = (r.bottom + 10) + "px";
+}
+
+// Hent nå: innboksen inn, markeringsfila ut — modellen røres ikke.
+export async function hentFraByggeplassen() {
+  if (!S.modelGroup) { varsel(t("Åpne en modell først.")); return null; }
+  if (S.glbActive) { varsel(t("Denne modellen er allerede en lett kopi – åpne originalen (IFC) og prøv igjen.")); return null; }
+  const fil = lettNavn(S.fileName || "");
+  const prosjekt = prosjektFor(fil);
+  const token = tilgangsNøkkel();
+  if (!prosjekt) { varsel(t("Modellen er ikke publisert til byggeplassen fra denne PC-en ennå. Trykk Publiser Byggeplass først.")); return null; }
+  if (!token) { krevKort(); return null; }
+  loadingEl.classList.add("open");
+  try {
+    loadingText.textContent = t("Henter fra byggeplassen …");
+    const antallInn = await hentInnboks(prosjekt, token);
+    loadingText.textContent = t("Laster opp markeringene …");
+    await lastOppMarkeringsfil(prosjekt, token, fil);
+    varsel(antallInn
+      ? t("Hentet {0} nye ting fra byggeplassen. Montørene ser dem nå.", antallInn)
+      : t("Ingenting nytt å hente — markeringene på byggeplassen er oppdatert."));
+    return antallInn;
+  } catch (err) {
+    console.error(err);
+    varsel(t("Hentingen feilet: ") + err.message);
+    return null;
+  } finally {
+    loadingEl.classList.remove("open");
+    oppdaterBadge();
+  }
+}
+S.hentFraByggeplassen = hentFraByggeplassen;
 setTimeout(oppdaterBadge, 4000);      // like etter oppstart (modellen kan alt være åpen)
 setInterval(oppdaterBadge, 60000);    // og hvert minutt
 
@@ -717,7 +866,7 @@ async function visQr(prosjekt, fil, antall, antMark, antBilder, antInn, antTegni
   nyK.className = "btn"; nyK.textContent = norsk("Ny montørkode");
   nyK.style.cssText = "margin-right:8px";
   nyK.onclick = async () => {
-    if (!confirm(norsk("Lage ny montørkode for prosjekt {0}? Den gamle koden slutter å virke med en gang, og alle montører må skrive den nye.", prosjekt))) return;
+    if (!await bekreft(norsk("Lage ny montørkode for prosjekt {0}? Den gamle koden slutter å virke med en gang, og alle montører må skrive den nye.", prosjekt))) return;
     try {
       const svar = await nyMontørkode(prosjekt, "", tilgangsNøkkel());
       if (svar.kode) kort.querySelector("#qrKode").innerHTML = montørkodeHtml(svar.kode);

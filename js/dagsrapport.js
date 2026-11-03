@@ -27,6 +27,7 @@ import { dagData, posisjon } from "./vaer-felles.js";
 import { dagnavn, datoLang, iDagISO, leggTilDager, lokal } from "./vaer-regn.js";
 import { tegnDagsrapport } from "./dagsrapport-pdf.js";
 import * as R from "./dagsrapport-regn.js";
+import { bekreft } from "./sporsmal.js";
 
 export const DR_MAPPE = "Dagsrapporter";
 const MAKS_BILDE_BYTES = 1.5e6;
@@ -114,9 +115,9 @@ function harEndringer() {
   const r = tilstand.rapport;
   return !!(r && !R.erLaast(r) && !R.likeRapporter(r, tilstand.lagret));
 }
-function velgDag(d, tving) {
+async function velgDag(d, tving) {
   if (!tving && d !== tilstand.valgt && harEndringer() &&
-      !confirm(t("Du har endringer som ikke er lagret. Bytte dag likevel?"))) return;
+      !await bekreft(t("Du har endringer som ikke er lagret. Bytte dag likevel?"))) return;
   tilstand.valgt = d;
   tilstand.mandag = R.mandagFor(d);
   const g = R.gjeldende(tilstand.liste).get(d);
@@ -291,10 +292,10 @@ function kobleLyttere(el) {
   const idag = q(".dr-idag"); if (idag) idag.onclick = () => velgDag(iDagISO());
   qa(".dr-dag").forEach(b => b.onclick = () => velgDag(b.dataset.dato));
   const vsel = q("#drVersjon");
-  if (vsel) vsel.onchange = () => {
+  if (vsel) vsel.onchange = async () => {
     const v = tilstand.liste.find(x => x.id === vsel.value);
     if (!v) return;
-    if (harEndringer() && !confirm(t("Du har endringer som ikke er lagret. Bytte dag likevel?"))) { vsel.value = r.id; return; }
+    if (harEndringer() && !await bekreft(t("Du har endringer som ikke er lagret. Bytte dag likevel?"))) { vsel.value = r.id; return; }
     tilstand.rapport = R.vaskRapport(JSON.parse(JSON.stringify(v)));
     tilstand.lagret = R.vaskRapport(JSON.parse(JSON.stringify(v)));
     for (const b of tilstand.rapport.bilder) if (!tilstand.bildeData.has(b.fil)) hentBilde(b.fil).then(() => tegn());
@@ -324,10 +325,10 @@ function kobleLyttere(el) {
       const inp = el.querySelector('[data-bm="' + (r.bemanning.length - 1) + '"][data-k="firma"]'); if (inp) inp.focus();
     };
     const igaar = q(".dr-bm-igaar");
-    if (igaar) igaar.onclick = () => {
+    if (igaar) igaar.onclick = async () => {
       const f = R.forrigeBemanning(tilstand.liste, r.dato);
       if (!f) return;
-      if (r.bemanning.length && !confirm(t("Erstatte bemanningen med den fra {0}?", dagLang(f.dato)))) return;
+      if (r.bemanning.length && !await bekreft(t("Erstatte bemanningen med den fra {0}?", dagLang(f.dato)))) return;
       r.bemanning = f.rader; tegn();
     };
     qa("[data-tekst]").forEach(ta => ta.oninput = () => { r[ta.dataset.tekst] = ta.value.slice(0, R.MAKS_TEKST); });
@@ -393,7 +394,7 @@ async function lagre(stille) {
 async function signer() {
   const r = tilstand.rapport;
   if (!String(r.utfort || "").trim() && !r.bemanning.length &&
-      !confirm(t("Rapporten har verken bemanning eller utført arbeid. Signere likevel?"))) return;
+      !await bekreft(t("Rapporten har verken bemanning eller utført arbeid. Signere likevel?"))) return;
   const sign = await bePåSignatur(innloggetNavn());
   if (!sign) return;
   oppdaterMarkeringer();
@@ -447,8 +448,8 @@ async function lagUkePdf() {
 }
 
 // ---------- Åpne og lukke ----------
-function lukk() {
-  if (harEndringer() && !confirm(t("Du har endringer som ikke er lagret. Lukke likevel?"))) return;
+async function lukk() {
+  if (harEndringer() && !await bekreft(t("Du har endringer som ikke er lagret. Lukke likevel?"))) return;
   const el = $("dagsrapport"); if (el) el.remove();
   document.removeEventListener("keydown", tast);
 }

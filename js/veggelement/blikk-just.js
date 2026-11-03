@@ -31,6 +31,7 @@ import { tilMm, tilScene } from "./regler.js";
 import { lagret, skrivLagret, swBilde, swGroup, swPost } from "./tilstand.js";
 import { tegnAlt } from "./tegning.js";
 import { varsel } from "../varsel.js";
+import { bekreft } from "../sporsmal.js";
 
 // ───────────────────── på/av og hjemmet for justeringene ─────────────────────
 
@@ -92,11 +93,11 @@ export function genererBlikk() {
 // «Fjern genererte». Blikket forsvinner fra 3D, panelet og arket — og
 // justeringene med det, for de hører til et blikk som ikke finnes lenger.
 // Spør først når det er noe å miste.
-export function fjernBlikk() {
+export async function fjernBlikk() {
   const b = lagret && lagret.blikk;
   if (!b || !b.pa) return false;
   const harJust = Object.keys(b.just || {}).length + (b.ekstra || []).length;
-  if (harJust && !confirm(t("Fjerne blikket? De {0} håndjusteringene forsvinner også.", harJust)))
+  if (harJust && !await bekreft(t("Fjerne blikket? De {0} håndjusteringene forsvinner også.", harJust)))
     return false;
   if (blikkJust) avsluttBlikkJuster();
   lagret.blikk = { ...BLIKK_STD_TILSTAND };
@@ -177,14 +178,14 @@ export function blikkOyeblikksbilde(oppsettForSett) {
   }));
 }
 
-export function lagreBlikkResultat(navn, oppsettForSett, etterpa) {
+export async function lagreBlikkResultat(navn, oppsettForSett, etterpa) {
   const rent = String(navn || "").trim().slice(0, 60);
   if (!rent) { varsel(t("Gi resultatet et navn før du lagrer det.")); return; }
   if (!blikkPa()) { varsel(t("Trykk «Generer blikk» først.")); return; }
   const liste = lesBlikkLagredeRaa();
   const fra_for = liste.findIndex(p => p.navn === rent);
   if (fra_for >= 0 && !liste[fra_for].slettet
-      && !confirm(t("«{0}» finnes allerede. Skal den skrives over?", rent))) return;
+      && !await bekreft(t("«{0}» finnes allerede. Skal den skrives over?", rent))) return;
   const naa = new Date();
   const b = blikkTilstand();
   const post = { navn: rent, dato: naa.toISOString().slice(0, 10),
@@ -214,8 +215,8 @@ export function lastInnBlikkResultat(navn, settOppsett, etterpa) {
   if (etterpa) etterpa();
 }
 
-export function slettBlikkResultat(navn, etterpa) {
-  if (!confirm(t("Slette «{0}»?", navn))) return;
+export async function slettBlikkResultat(navn, etterpa) {
+  if (!await bekreft(t("Slette «{0}»?", navn))) return;
   const liste = lesBlikkLagredeRaa().map(p => p.navn === navn
     ? { navn: p.navn, slettet: true, endret: new Date().toISOString() } : p);
   lagreBlikkBeggeSteder(liste, etterpa);
@@ -318,8 +319,8 @@ export function tegnBlikkJustBar(tegnPanelFn) {
     blikkJust.legger = blikkJust.legger ? null : { punkter: [] };
     tegnBlikkJustBar(tegnPanelFn);
   };
-  $("bjNull").onclick = () => {
-    if (!confirm(t("Nullstille alle håndjusteringene av blikket?"))) return;
+  $("bjNull").onclick = async () => {
+    if (!await bekreft(t("Nullstille alle håndjusteringene av blikket?"))) return;
     const foer = swBilde();
     b.just = {}; b.ekstra = [];
     blikkJust.valgt.clear();

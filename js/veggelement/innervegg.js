@@ -24,6 +24,7 @@ import { akseNavnFor, pdfFelt, stalPaFasader } from "./stal.js";
 import { avsluttJuster, avsluttUtspMark, startUtspMark, utspListeHtml, utspMark } from "./juster.js";
 import { INNER_STD, innerData, innerOppsettForListe, lagretInner, skrivInner, tegnPanel } from "./panel.js";
 import { varsel } from "../varsel.js";
+import { bekreft } from "../sporsmal.js";
 
 // ---------- Byggingen av én innervegg ----------
 // `perId` er id → søylestabel fra hentSoyler(). Serien lagrer element-IDENE,
@@ -520,7 +521,7 @@ export async function slettManuellFasade(idx) {
   const alle = idx === null || idx === undefined;
   if (alle) {
     if (!liste.length) return;
-    if (!confirm(t("Slette alle manuelle fasader og la automatikken finne fasadene igjen?"))) return;
+    if (!await bekreft(t("Slette alle manuelle fasader og la automatikken finne fasadene igjen?"))) return;
   }
   // ↩ Bildet tas etter spørsmålet (et «nei» skal ikke bli en tom post) og før
   // lista endres. Bygget genereres på nytt under, så hele bildet trengs.
@@ -557,7 +558,7 @@ export async function slettInnervegg(idx) {
   const d = innerData();
   const s = d.serier[idx];
   if (!s) return;
-  if (!confirm(t("Slette «{0}»?", s.navn || "?"))) return;
+  if (!await bekreft(t("Slette «{0}»?", s.navn || "?"))) return;
   const foer = swBilde();
   d.serier.splice(idx, 1);
   await byggAlleInnervegger();

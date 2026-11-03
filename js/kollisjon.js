@@ -20,6 +20,7 @@ import { varsel } from "./varsel.js";
 import { _lagene as lagene, _tilstand as lagTilstand, tegn as tegnLag } from "./lag.js";
 import { spLes, spPaalogget, spSkriv } from "./sp-lager.js";
 import * as K from "./kollisjon-regn.js";
+import { spor } from "./sporsmal.js";
 
 export const KOLL_MAPPE = "Kollisjoner";
 const TOL_M = 0.002;          // 2 mm: å ligge an mot er ikke en kollisjon
@@ -365,9 +366,9 @@ function tegnNav() {
   $("kollForr").onclick = () => gaaTil(tilstand.nr - 1);
   $("kollNeste").onclick = () => gaaTil(tilstand.nr + 1);
   const g = $("kollGodkjenn");
-  if (g) g.onclick = () => {
+  if (g) g.onclick = async () => {
     if (g.dataset.status === "godkjent") {
-      const k = prompt(t("Hvorfor er dette i orden? (f.eks. «oppstikk til neste støp»)"), f.kommentar || "");
+      const k = await spor(t("Hvorfor er dette i orden? (f.eks. «oppstikk til neste støp»)"), f.kommentar || "");
       if (k === null) return;
       settStatus(f, "godkjent", k.trim());
     } else settStatus(f, "ny");

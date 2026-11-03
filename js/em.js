@@ -35,6 +35,7 @@ import * as R from "./em-regn.js";
 import { erKoordinering, forslagNokkel, revitNr } from "./em-paring.js";
 import { detaljerFor } from "./em-detalj.js";
 import * as K from "./em-kontrakt.js";
+import { bekreft } from "./sporsmal.js";
 
 // v2 har «Kontrakt og varsel» (1.4–1.10, runde 2). Finnes den ikke i
 // SharePoint ennå, brukes v1 — med en melding om at v2 må lastes opp.
@@ -635,7 +636,7 @@ export async function settStatus(id, ny) {
 
 export async function slett(id) {
   const em = finn(id); if (!em) return null;
-  if (!confirm(t("Slette {0} «{1}»? Du kan angre med Ctrl+Z.", em.nr || "EM", em.tittel))) return null;
+  if (!await bekreft(t("Slette {0} «{1}»? Du kan angre med Ctrl+Z.", em.nr || "EM", em.tittel))) return null;
   const r = await slettEm(em);
   if (!r.ok) { varsel(t("Klarte ikke å slette i SharePoint. Prøv igjen.")); return null; }
   tilstand.liste = r.liste; tegn();

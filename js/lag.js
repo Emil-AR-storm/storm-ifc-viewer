@@ -27,6 +27,7 @@ import { varsel } from "./varsel.js";
 import { clearSelection, elementBoxById, hitID, pick } from "./elements.js";
 import { spLastOpp, spLes, spLesBin, spPaalogget, spSkriv } from "./sp-lager.js";
 import * as R from "./lag-regn.js";
+import { bekreft } from "./sporsmal.js";
 
 export const LAG_MAPPE = "Lag";
 // 6 = koten (flyttingen til origo) er lest ETTER geometrien (28.10). Lag-GLB-er
@@ -459,7 +460,7 @@ function bareDetteLaget(lag) {
 }
 
 async function apneSomHoved(lag) {
-  if (!confirm(t("Åpne «{0}» som hovedmodell? Lagene lukkes, og alle verktøy jobber da på denne fila.", lag.navn))) return;
+  if (!await bekreft(t("Åpne «{0}» som hovedmodell? Lagene lukkes, og alle verktøy jobber da på denne fila.", lag.navn))) return;
   const k = lag.kildeRef;
   if (k.art === "bibliotek") (await import("./sharepoint.js")).spOpenFile(k.item);
   else if (k.art === "gruppe") { if (k.item) (await import("./sharepoint.js")).spOpenFile(k.item); else varsel(t("«{0}» ligger ikke i biblioteket og kan ikke åpnes som hovedmodell herfra.", lag.navn)); }
@@ -806,7 +807,7 @@ export async function apneGruppe(g) {
   stoppModuser(null);
   if (S.fileName !== g.hoved.navn) {
     if (!g.hoved.libId) { varsel(t("Åpne «{0}» først — den ligger ikke i biblioteket. Velg så gruppen på nytt.", g.hoved.navn)); return; }
-    if (S.modelGroup && !confirm(t("Åpne gruppen «{0}»? «{1}» lukkes, og «{2}» åpnes med lagene.", g.navn, S.fileName, g.hoved.navn))) return;
+    if (S.modelGroup && !await bekreft(t("Åpne gruppen «{0}»? «{1}» lukkes, og «{2}» åpnes med lagene.", g.navn, S.fileName, g.hoved.navn))) return;
     tilstand.grJobber = t("Åpner {0} …", g.hoved.navn); tegn();
     try { await (await import("./sharepoint.js")).spOpenFile({ id: g.hoved.libId, name: g.hoved.navn, size: g.hoved.size }); } catch (_) {}
     if (S.fileName !== g.hoved.navn || !S.modelGroup) { tilstand.grJobber = ""; tegn(); varsel(t("Klarte ikke å åpne «{0}».", g.hoved.navn)); return; }
@@ -1186,13 +1187,22 @@ function midtKlikk(x, y) {
   // Mer enn 25 cm? Da er det trolig ikke samme søyle/pæl (en vegg foran
   // søyla gir fort en meter feil — funnet i testen 28.10). Spør først.
   const lengde = Math.round(Math.hypot(d.ost, d.nord));
-  if (lengde > 250 && !confirm(t("Midtpunktene ligger {0} mm fra hverandre. Er det samme søyle eller pæl i begge? Flytt likevel?", R.heltall(lengde)))) { tegn(); return true; }
+  // Klikket er «brukt» med en gang (main.js venter på true/false synkront);
+  // selve flyttingen skjer når svaret på spørsmålet kommer.
+  if (lengde > 250) {
+    bekreft(t("Midtpunktene ligger {0} mm fra hverandre. Er det samme søyle eller pæl i begge? Flytt likevel?", R.heltall(lengde)))
+      .then(ja => { if (ja) flyttMidt(lag, d); else tegn(); });
+    return true;
+  }
+  flyttMidt(lag, d);
+  return true;
+}
+function flyttMidt(lag, d) {
   const j = R.vaskJustering(lag.justering);
   j.ost = Math.round((j.ost + d.ost) * 10) / 10; j.nord = Math.round((j.nord + d.nord) * 10) / 10;
   if (!j.kilde.includes("midtpunkt")) j.kilde.push("midtpunkt");
   endreJustering(lag, j, t("Laget flyttet etter midtpunkt"));
   varsel(t("Midtpunktene lagt oppå hverandre: Øst {0} mm, Nord {1} mm.", R.mmFortegn(d.ost), R.mmFortegn(d.nord)));
-  return true;
 }
 
 // ----- Flytt med tastene -----

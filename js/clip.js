@@ -8,6 +8,7 @@ import { kall } from "./ifcrpc.js";
 import { modeBar, modeButtons, updateModeBar } from "./modes.js";
 import { renderer } from "./scene.js";
 import { varsel } from "./varsel.js";
+import { spor } from "./sporsmal.js";
 
 // ---------- Snitt (clipping) ----------
 
@@ -363,9 +364,9 @@ function currentClipState() {
   };
 }
 
-function saveCurrentClip() {
+async function saveCurrentClip() {
   if (!S.fileName) { varsel(t("Åpne en modell først.")); return; }
-  const name = (prompt(t("Navn på snittet:"), t("Snitt") + " " + (clipList().length + 1)) || "").trim();
+  const name = (await spor(t("Navn på snittet:"), t("Snitt") + " " + (clipList().length + 1)) || "").trim();
   if (!name) return;
   const list = clipList().filter(c => c.name !== name);
   list.unshift(Object.assign({ name }, currentClipState()));

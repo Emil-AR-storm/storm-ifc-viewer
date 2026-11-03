@@ -14,6 +14,7 @@ import { axesGroup, fitToModel, koteGroup, markerGroup, measureGroup, renderer, 
 import { SP, spOpenFile } from "./sharepoint.js";
 import { tomTegningsbuffer } from "./tegninger.js";
 import { varsel } from "./varsel.js";
+import { bekreft } from "./sporsmal.js";
 
 // ---------- IFC ----------
 // Selve IFC-motoren (web-ifc + wasm) lever nå i js/ifc-worker.js. Hovedtråden
@@ -546,7 +547,7 @@ setLight(S.lightMode);
 på("btnLight", "click", async () => {
   setLight(!S.lightMode);
   if (S.modelGroup && (S.lastBuffer || S.bufferITråd) && S.lightMode !== S.lightLoaded &&
-      confirm(t("Laste modellen på nytt i {0} kvalitet?", S.lightMode ? t("lav") : t("full")))) {
+      await bekreft(t("Laste modellen på nytt i {0} kvalitet?", S.lightMode ? t("lav") : t("full")))) {
     loadingEl.classList.add("open");
     loadingText.textContent = t("Laster på nytt …");
     await new Promise(r => setTimeout(r, 30));
@@ -569,7 +570,7 @@ på("btnLight", "click", async () => {
 // Tilbud om nytt forsøk i lav kvalitet når lasting feiler
 export async function offerLightRetry(err) {
   if (S.lightMode || !(S.lastBuffer || S.bufferITråd)) return false;
-  if (!confirm(t("Klarte ikke å laste modellen ({0}).\n\nPrøve på nytt i lav kvalitet?", (err && err.message) || err))) return false;
+  if (!await bekreft(t("Klarte ikke å laste modellen ({0}).\n\nPrøve på nytt i lav kvalitet?", (err && err.message) || err))) return false;
   setLight(true);
   loadingEl.classList.add("open");
   loadingText.textContent = t("Prøver i lav kvalitet …");

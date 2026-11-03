@@ -18,6 +18,7 @@ import { varsel } from "./varsel.js";
 import { _lagene as lagene } from "./lag.js";
 import { spLastOpp, spLes, spLesBin, spPaalogget, spSkriv } from "./sp-lager.js";
 import * as F from "./fdv-regn.js";
+import { bekreft } from "./sporsmal.js";
 
 const tilstand = {
   grupper: [],               // alle (også gravsteiner), som i SharePoint
@@ -445,9 +446,9 @@ function endreLinjer(gruppeId, gjor, tekst) {
   const g = finn(gruppeId); if (!g) return;
   bytt(tilstand.grupper.map(x => (x && x.id === g.id ? Object.assign({}, x, { uten3d: gjor(g.uten3d), endret: naa() }) : x)), tekst, [g.id]);
 }
-function slettVare(id) {
+async function slettVare(id) {
   const v = finnVare(id);
-  if (!v || !confirm(t("Slette «{0}» fra FDV-biblioteket? Prosjektene som bruker varen beholder gruppa si. PDF-ene blir liggende i SharePoint.", v.navn))) return;
+  if (!v || !await bekreft(t("Slette «{0}» fra FDV-biblioteket? Prosjektene som bruker varen beholder gruppa si. PDF-ene blir liggende i SharePoint.", v.navn))) return;
   lagreBib([{ id: v.id, slettet: true, endret: naa() }]);
   tegn();
 }
@@ -615,8 +616,8 @@ function koble(body) {
     if (!g) return; const i = Number(inp.dataset.fdvU3mengde);
     endreLinjer(g.id, (ls) => ls.map((l, j) => (j === i ? F.vaskLinje(Object.assign({}, l, { mengde: inp.value })) : l)), t("Mengde endret"));
   });
-  body.querySelectorAll("[data-fdv-slett]").forEach(b => b.onclick = () => {
-    if (!g || !confirm(t("Slette FDV-gruppa «{0}»? Objektene blir røde igjen. PDF-ene blir liggende i SharePoint.", g.navn))) return;
+  body.querySelectorAll("[data-fdv-slett]").forEach(b => b.onclick = async () => {
+    if (!g || !await bekreft(t("Slette FDV-gruppa «{0}»? Objektene blir røde igjen. PDF-ene blir liggende i SharePoint.", g.navn))) return;
     const id = g.id; stoppRedigering();
     bytt(tilstand.grupper.map(x => (x && x.id === id ? { id, slettet: true, endret: naa() } : x)), t("FDV-gruppe slettet"), [id]);
   });

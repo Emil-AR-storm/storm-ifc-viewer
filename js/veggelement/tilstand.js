@@ -31,6 +31,7 @@ import { lagreMateriellLokalt, tegnMateriell } from "../materiell-vis.js";
 import { BESLAG_FORM, BESLAG_FORM_NAVN } from "../sw-blikk.js";
 import { gruppeFlate, registrerMaaleflate } from "../pek-eier.js";
 import { varsel } from "../varsel.js";
+import { bekreft } from "../sporsmal.js";
 
 // per modellfil — da kan det tegnes opp igjen uten å regne på nytt.
 export const swGroup = new THREE.Group();
@@ -1046,7 +1047,7 @@ export function swOyeblikksbilde() {
   return b;
 }
 
-export function lagreResultat(navn) {
+export async function lagreResultat(navn) {
   const rent = String(navn || "").trim().slice(0, 60);
   if (!rent) { varsel(t("Gi resultatet et navn før du lagrer det.")); return; }
   if (!lagret || !(lagret.vegger || []).length) {
@@ -1057,7 +1058,7 @@ export function lagreResultat(navn) {
   // En gravstein er ikke «finnes allerede» — den er et slettet navn som blir
   // ledig igjen. Spør vi om overskriving der, spør vi om noe som ikke er der.
   if (fra_for >= 0 && !liste[fra_for].slettet
-      && !confirm(t("«{0}» finnes allerede. Skal den skrives over?", rent))) return;
+      && !await bekreft(t("«{0}» finnes allerede. Skal den skrives over?", rent))) return;
   const naa = new Date();
   const post = { navn: rent, dato: naa.toISOString().slice(0, 10),
     endret: naa.toISOString(), av: swMittNavn(),
@@ -1113,8 +1114,8 @@ export function swLagringsTekst() {
   return t("Lagres bare på denne maskinen. Trykk på den røde prikken øverst til høyre og logg inn for å dele med de andre.");
 }
 
-export function slettResultat(navn) {
-  if (!confirm(t("Slette «{0}»?", navn))) return;
+export async function slettResultat(navn) {
+  if (!await bekreft(t("Slette «{0}»?", navn))) return;
   const forrige = lesLagredeRaa().find(p => p.navn === navn && !p.slettet);
   settLagretPost(navn, null);
   // ↩ Den lagrede lista er ikke en del av swBilde() — den er delt i

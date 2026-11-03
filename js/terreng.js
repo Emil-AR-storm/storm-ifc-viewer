@@ -41,6 +41,7 @@ import { lastNedXlsx, pick } from "./elements.js";
 import { snapPoint } from "./measure.js";
 import { varsel } from "./varsel.js";
 import { byggPlate3D, ryddPlate3D } from "./terreng-plate3d.js";
+import { bekreft } from "./sporsmal.js";
 
 // ═══════════════════════ TILSTAND ═══════════════════════
 // Alt om det lastede terrenget. null = ingen terreng.
@@ -2087,7 +2088,7 @@ async function velgLagret(id) {
 async function slettLagret(id) {
   const post = synligKatalog().find(p => p.id === id);
   if (!post) return;
-  if (!confirm(t("Slette «{0}» fra lista over lagrede terreng?", post.navn))) return;
+  if (!await bekreft(t("Slette «{0}» fra lista over lagrede terreng?", post.navn))) return;
   // Gravstein (se sp-lager.js): uten den kommer terrenget tilbake ved neste
   // fletting fra SharePoint.
   await skrivKatalog([{ id, navn: post.navn, slettet: true, endret: new Date().toISOString() }]);
@@ -2662,7 +2663,7 @@ function koblPadSkjema() {
     if (ny) { settPad(ny, true); tegnPanel(); }
   });
   const form = $("trPadForm");
-  if (form) form.onchange = () => {
+  if (form) form.onchange = async () => {
     if (!terreng) return;
     const p = terreng.pad;
     if (form.value === "egen") {
@@ -2673,7 +2674,7 @@ function koblPadSkjema() {
     }
     if (padTegner) { avbrytPadTegning(); return; }
     if (!erEgenPad(p)) return;
-    if (!confirm(t("Bytte til firkant? Den egendefinerte formen forsvinner (Ctrl+Z tar den tilbake)."))) { tegnPanel(); return; }
+    if (!await bekreft(t("Bytte til firkant? Den egendefinerte formen forsvinner (Ctrl+Z tar den tilbake)."))) { tegnPanel(); return; }
     const fp = modellRef().fp, rm = { x0: p.x0, x1: p.x1, z0: p.z0, z1: p.z1 };
     // Firkanten rundt formen, men aldri mindre enn bygget + 2 m
     const st = padStandard(fp);

@@ -28,6 +28,7 @@ import { GRAPH, SP, authHeaders, graphGet, spTokenSilent } from "./sharepoint.js
 import { hentLogo, hentLogoer, lesMappe } from "./tegninger.js";
 import { varsel } from "./varsel.js";
 import { oppdaterBegrunnelse } from "./em-regn.js";
+import { bekreft } from "./sporsmal.js";
 
 export const sjekklisteMappe = () => SP.folder + "/Sjekklister";
 export const erJson = (navn) => /\.json$/i.test(String(navn || ""));
@@ -1219,10 +1220,10 @@ export function bePåSignatur(standardNavn) {
       return navn;
     };
 
-    el.querySelector(".sg-uten").onclick = () => {
+    el.querySelector(".sg-uten").onclick = async () => {
       const navn = navnEllerStopp();
       if (!navn) return;
-      if (!confirm(t("Låse skjemaet uten tegnet signatur? Det blir stående i dokumentet at signatur ikke var påkrevd."))) return;
+      if (!await bekreft(t("Låse skjemaet uten tegnet signatur? Det blir stående i dokumentet at signatur ikke var påkrevd."))) return;
       svar({ navn, signatur: "" });
     };
 

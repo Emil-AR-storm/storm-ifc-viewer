@@ -22,6 +22,7 @@ import {
   elementArk, flettLastet, kontrollArk, lesTall, linjesum, mengdeDesimaler, nyId, postNr, prislisteNokkel, raderForPost, vaskOppsett, vaskPost
 } from "./priskalk-regn.js";
 import { likUtenStempel } from "./stopeplan-regn.js";
+import { bekreft } from "./sporsmal.js";
 
 const SP_MAPPE = "Priskalkulasjon";
 let poster = [];                  // vaskede poster, i rekkefølge
@@ -550,12 +551,12 @@ function kobl(body) {
         postAngre("Post endret", foer);
       });
     });
-    tr.querySelectorAll("[data-pk-gjor]").forEach(b => b.addEventListener("click", () => {
+    tr.querySelectorAll("[data-pk-gjor]").forEach(b => b.addEventListener("click", async () => {
       const p = post(); if (!p) return;
       const gjor = b.dataset.pkGjor;
       if (gjor === "slett") {
         // Spør først, som de andre verktøyene — og Ctrl+Z angrer likevel
-        if (!confirm(t("Slette posten «{0}»?", p.tekst || postNr(p, poster.indexOf(p))))) return;
+        if (!await bekreft(t("Slette posten «{0}»?", p.tekst || postNr(p, poster.indexOf(p))))) return;
         const foer = bilde();
         poster = poster.filter(x => x.id !== id);
         skitne.delete(id); gravsteiner.push(id);

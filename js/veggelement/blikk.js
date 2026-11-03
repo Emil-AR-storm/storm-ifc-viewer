@@ -738,11 +738,11 @@ export function koblBlikkHandlinger(body) {
   };
   if ($("blikkJusterBtn")) $("blikkJusterBtn").onclick = () => startBlikkJuster(paa_nytt);
   if ($("blikkListe")) $("blikkListe").onclick = lastNedBlikkListe;
-  if ($("blikkFjern")) $("blikkFjern").onclick = () => {
+  if ($("blikkFjern")) $("blikkFjern").onclick = async () => {
     // Bunkene ryddes FØR tilstanden nullstilles: id-ene bor der.
     const ider = [...blikkBunkeIderAlle(S.materiell)];
     const foer = swBilde();
-    if (!fjernBlikk()) return;
+    if (!(await fjernBlikk())) return;
     if (ider.length) {
       S.materiell = (S.materiell || []).filter(p => ider.indexOf(p.id) === -1);
       tegnMateriell(); lagreMateriellLokalt(); S.qtyCache = null;
