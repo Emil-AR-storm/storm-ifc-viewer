@@ -2974,3 +2974,38 @@ html[data-tema="lys"] .lp-vekt { color-scheme: light; }
 .av-inni { font-size: 11px; color: var(--accent); font-weight: 600; }
 .sj-boks.blink { animation: av-blink .5s ease 3; }
 @keyframes av-blink { 50% { box-shadow: 0 0 0 2px var(--accent); } }
+
+/* ---------- 🔴 Nytt fra byggeplassen (js/byggeplass.js, forslag 3A 03.11) ---------- */
+.bp-badge { cursor: pointer; }
+.bp-badge:hover, .bp-badge:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+.bp-innboks { position: fixed; z-index: 60; background: var(--panel); color: var(--text); border: 1px solid var(--border);
+  border-radius: 12px; box-shadow: var(--skygge); padding: 14px; font-size: 13px; }
+.bp-innboks::before { content: ""; position: absolute; top: -7px; left: 36px; width: 12px; height: 12px; background: var(--panel);
+  border-left: 1px solid var(--border); border-top: 1px solid var(--border); transform: rotate(45deg); }
+.bp-innboks-tittel { font-size: 14px; display: block; }
+.bp-innboks-liste { list-style: none; margin: 8px 0 12px; padding: 0; }
+.bp-innboks-liste li { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dashed var(--border); }
+.bp-innboks-liste b { color: var(--accent); }
+.bp-innboks-knapper { display: flex; justify-content: space-between; gap: 8px; }
+.bp-innboks-knapper .primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.bp-innboks-hjelp { margin: 10px 0 0; color: var(--muted); font-size: 11px; line-height: 1.4; }
+
+/* ---------- ❓ Spørsmålet der du trykket (js/sporsmal.js, forslag 1C 03.11) ---------- */
+.spor-boks { margin: 8px 0; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--panel2)); color: var(--text); font-size: 13px;
+  animation: varsel-inn .15s ease-out; }
+.spor-boks.fare { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, var(--panel2)); }
+.spor-tekst { white-space: pre-line; overflow-wrap: anywhere; line-height: 1.4; font-weight: 600; }
+.spor-felt { display: block; width: 100%; box-sizing: border-box; margin: 8px 0 0; padding: 7px 9px; border-radius: 8px;
+  border: 1px solid var(--accent); background: var(--panel); color: var(--text); font-size: 14px; }
+.spor-knapper { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.spor-knapper button { padding: 6px 12px; border-radius: 8px; font-weight: 600; }
+.spor-ja.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.spor-ja.fare { background: var(--danger); border-color: var(--danger); color: #fff; }
+/* Kort øverst når spørsmålet ikke kom fra et panel */
+.spor-stabel { position: fixed; z-index: 70; left: 50%; translate: -50% 0; top: 64px; width: min(460px, calc(100vw - 24px));
+  display: flex; flex-direction: column; gap: 8px; }
+.spor-boks.flytende { margin: 0; padding: 14px 16px; background: var(--panel); border-left-width: 4px; box-shadow: var(--skygge); font-size: 14px; }
+.spor-boks.flytende.fare { background: var(--panel); }
+.spor-boks.flytende .spor-knapper { justify-content: flex-end; }
+@media (prefers-reduced-motion: reduce) { .spor-boks { animation: none; } }
