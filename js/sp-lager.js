@@ -21,6 +21,7 @@ import { GRAPH, SP, authHeaders, graphGet, spTokenSilent } from "./sharepoint.js
 // tallfunksjoner uten nett og uten nettleser — de bor i sin egen fil og
 // prøves i _test/test-splager.mjs.
 import { flett, ryddGravsteiner } from "./sp-flett.js";
+import { navnFor, sporet } from "./lagring-status.js";
 
 export function spPaalogget() {
   try { return !!(S.msalApp && S.msalApp.getActiveAccount()); } catch (_) { return false; }
@@ -93,7 +94,7 @@ async function lesEtag(token, sid, mappe, fil) {
 // eTag + If-Match fanger den siste lille sprekken: rakk noen å skrive MELLOM
 // lesingen og skrivingen vår, svarer Graph 412, og vi går én runde til. Én
 // gang, ikke i evig løkke — går det galt to ganger, skal brukeren få vite det.
-export async function spSkriv(mappe, fil, poster, nokkel) {
+async function spSkrivIntern(mappe, fil, poster, nokkel) {
   const token = await spTokenSilent();
   if (!token) return { ok: false, grunn: "av" };
   try {
@@ -139,7 +140,7 @@ export async function spSkriv(mappe, fil, poster, nokkel) {
 // Står HER og ikke i terreng.js: byggeplanen advarte mot en tredje lagringsvei.
 // Mappe, område og innlogging er de samme som for lista, og de skal bare
 // finnes ett sted.
-export async function spSkrivBin(mappe, fil, data, type) {
+async function spSkrivBinIntern(mappe, fil, data, type) {
   const token = await spTokenSilent();
   if (!token) return { ok: false, grunn: "av" };
   try {
@@ -183,7 +184,7 @@ export async function spLesBin(mappe, fil) {
 // SharePoint selv viser fila på, den QR-koden på PDF-en peker til.
 // Enkel opplasting tåler filer opp til 250 MB i Graph; en video på et par
 // minutter i 720p er 20–60 MB.
-export async function spLastOpp(mappe, fil, data, type) {
+async function spLastOppIntern(mappe, fil, data, type) {
   const token = await spTokenSilent();
   if (!token) return { ok: false, grunn: "av" };
   try {
@@ -221,3 +222,16 @@ export async function spFilInfo(mappe, fil) {
 }
 
 export { flett, flettPaaId, flettPaaNavn, ryddGravsteiner } from "./sp-flett.js";
+
+// ☁ Forslag 6C (03.11): hver skriving melder seg i lagringsstatusen, så ringen
+// rundt SharePoint-prikken og lista bak den viser hva som lagres, er lagret
+// og har feilet — for alle verktøyene på én gang.
+export function spSkriv(mappe, fil, poster, nokkel) {
+  return sporet(navnFor(mappe, fil), () => spSkrivIntern(mappe, fil, poster, nokkel));
+}
+export function spSkrivBin(mappe, fil, data, type) {
+  return sporet(navnFor(mappe, fil), () => spSkrivBinIntern(mappe, fil, data, type));
+}
+export function spLastOpp(mappe, fil, data, type) {
+  return sporet(navnFor(mappe, fil), () => spLastOppIntern(mappe, fil, data, type));
+}

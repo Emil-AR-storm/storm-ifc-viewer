@@ -5,6 +5,7 @@ import { LETT } from "./lett.js";
 import { afterLoad, clearLoadFlag, ifcReady, loadGlb, loadModel, offerLightRetry, setLoadFlag } from "./ifc.js";
 import { varsel } from "./varsel.js";
 import { bekreft } from "./sporsmal.js";
+import * as LS from "./lagring-status.js";
 
 // ---------- SharePoint-bibliotek (Microsoft Graph) ----------
 export const SP = {
@@ -254,9 +255,34 @@ export async function sjekkInnlogging() {
 function tegnInfo() {
   const info = $("innloggingInfo");
   if (!info) return;
-  info.innerHTML = '<span class="innlogging-prikk" data-tilstand="' + esc(innNå) + '"></span>' +
-    '<span>' + esc(innloggingTekst(innNå, innKonto)) + '</span>';
+  // ☁ 6C (Emil 03.11): under hvem som er logget inn — lagringen per verktøy
+  const liste = LS.liste();
+  const farge = { ok: "var(--ok)", lagrer: "#d97706", feil: "var(--danger)", lokal: "#d97706" };
+  info.innerHTML = '<div class="innlogging-topp"><span class="innlogging-prikk" data-tilstand="' + esc(innNå) + '"></span>' +
+    '<span>' + esc(innloggingTekst(innNå, innKonto)) + '</span></div>' +
+    '<div class="lagring-liste"><b>' + esc(t("Lagring i SharePoint")) + '</b>' +
+    (liste.length
+      ? "<ul>" + liste.map(s => '<li><span>' + esc(t(s.navn)) + '</span><span style="color:' + (farge[s.tilstand] || "inherit") + '">' +
+          (s.tilstand === "ok" ? "✓ " : s.tilstand === "feil" ? "✕ " : "") + esc(LS.tilstandTekst(s)) + "</span></li>").join("") + "</ul>"
+      : '<p class="set-hjelp">' + esc(t("Ingenting er lagret i denne økta ennå.")) + "</p>") +
+    '<div class="prop-actions"><button type="button" id="lagreAltNa" class="primary">' + esc(t("Lagre alt nå")) + "</button></div></div>";
+  const knapp = info.querySelector("#lagreAltNa");
+  if (knapp) knapp.onclick = (e) => {
+    e.stopPropagation();
+    const n = LS.lagreAltNa();
+    varsel(n ? t("Prøver å lagre {0} på nytt …", n) : t("Alt er allerede lagret i SharePoint."));
+  };
 }
+
+// ☁ Ringen rundt prikken: grønn = alt lastet opp, gul = laster opp nå,
+// rød = noe feilet. Ingen ring før noe er lagret i økta.
+function visLagringsring() {
+  const k = $("btnInnlogging");
+  if (k) k.dataset.lagring = LS.samlet();
+  const info = $("innloggingInfo");
+  if (info && info.classList.contains("open")) tegnInfo();
+}
+if (!LETT) LS.vedEndring(visLagringsring);
 
 function lukkInfo() {
   const info = $("innloggingInfo");

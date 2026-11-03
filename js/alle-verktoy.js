@@ -212,8 +212,7 @@ function sokFelt() {
   f = document.createElement("div");
   f.id = "vsok";
   f.className = "vsok";
-  f.innerHTML = ikon("sok") + '<input id="vsokInput" type="search" autocomplete="off" spellcheck="false" aria-label="' + esc(t("Finn verktøy")) +
-    '" placeholder="' + esc(t("Finn verktøy …")) + '"><kbd class="vsok-tast">' + (/Mac|iPhone|iPad/.test(navigator.platform || "") ? "⌘K" : "Ctrl K") + "</kbd>";
+  f.innerHTML = ikon("sok") + '<input id="vsokInput" type="search" autocomplete="off" spellcheck="false" aria-label="Finn verktøy" placeholder="Finn verktøy …" data-i18n-ph><kbd class="vsok-tast">' + (/Mac|iPhone|iPad/.test(navigator.platform || "") ? "⌘K" : "Ctrl K") + "</kbd>";
   const status = $("status");
   topp.insertBefore(f, status || null);
   const inp = f.querySelector("input");

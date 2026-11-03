@@ -54,6 +54,7 @@ const MODULER = [
   ["./laster.js", true],           // ❄🌬 snø og vind (kun kontor)
   ["./dokumentasjon.js", true],    // 📄 snarveiene i gruppa Dokumentasjon (kun kontor)
   ["./alle-verktoy.js", true],     // 🧭 «Alle verktøy»-oversikten (forslag 7, kun kontor)
+  ["./panelhjelp.js", true],       // ❔ «?» i hvert panelhode (forslag 7A 03.11, kun kontor)
   ["./pdf-utseende-ui.js", true],  // 🎨 Innstillinger → Utseende PDF (kun kontor)
   ["./markers.js"],
   ["./minimap.js"],

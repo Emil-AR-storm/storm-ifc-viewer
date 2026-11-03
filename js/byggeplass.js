@@ -23,6 +23,7 @@ import { framdriftForByggeplass } from "./framdrift-regn.js";
 import { kilderForByggeplass } from "./framdrift-kilde.js";
 import { forByggeplass } from "./prosjektinfo-regn.js";
 import { varsel } from "./varsel.js";
+import * as P from "./publisert-regn.js";
 // 🔒 Post 11: kortet (eller Emils admin-nøkkel) erstatter «Opplastingsnøkkel:»-spørsmålet
 import { erAdmin, glemAdminNøkkel, krevKort, tilgangsNøkkel } from "./tilgang.js";
 import { bekreft, spor } from "./sporsmal.js";
@@ -198,19 +199,10 @@ if (btn) btn.addEventListener("click", async () => {
 });
 
 
-// ---------- Markeringsfila ut (delt mellom Publiser og «Hent nå») ----------
-// Alt montørene leser utenom selve modellen: markeringene (vasket), materiell,
-// SW, tak, rigg, terreng, støpeplan, framdrift, ferdigmeldinger, prosjektinfo
-// og vær — pluss bildene på markeringene. Skilt ut fra Publiser 03.11
-// (forslag 3A): «Hent nå» henter innboksen og skriver denne fila på nytt UTEN
-// å bygge og laste opp modellen, så montørens nye markering ikke forsvinner
-// fra telefonen når kontoret har tatt den inn.
-async function lastOppMarkeringsfil(prosjekt, token, fil) {
-  // 3) Markeringene, VASKET: eier, frist, Planner-kobling, svar og tegninger
-  //    holdes igjen med vilje — montøren skal se hva som skal gjøres, ikke
-  //    hvem som har ansvaret internt eller hva som ligger i Teams
-  loadingText.textContent = t("Laster opp markeringene …");
-  const vaskede = (S.comments || []).map(c => ({
+// Markeringene slik montøren ser dem (vasket). Egen funksjon, så «ikke
+// publisert»-tellingen (forslag 2A) regner på nøyaktig det samme.
+function vaskMarkeringerForBygg() {
+  return (S.comments || []).map(c => ({
     id: c.id, text: c.text || "", author: c.author || "", date: c.date || "",
     // J4: endret/endretAv MÅ være med. Uten dem leser montøren en omskrevet
     // avvikstekst under opprinnelig forfatter og dato, og tror han leser det
@@ -234,6 +226,21 @@ async function lastOppMarkeringsfil(prosjekt, token, fil) {
     // som PDF (.pdf-navnet i R2) og får «ikke lastet opp» (Emils bilde 25.08)
     tegninger: (c.tegninger || []).map(v => ({ fil: v.fil, itemId: v.itemId, side: v.side, storrelse: v.storrelse, html: v.html === true }))
   }));
+}
+
+// ---------- Markeringsfila ut (delt mellom Publiser og «Hent nå») ----------
+// Alt montørene leser utenom selve modellen: markeringene (vasket), materiell,
+// SW, tak, rigg, terreng, støpeplan, framdrift, ferdigmeldinger, prosjektinfo
+// og vær — pluss bildene på markeringene. Skilt ut fra Publiser 03.11
+// (forslag 3A): «Hent nå» henter innboksen og skriver denne fila på nytt UTEN
+// å bygge og laste opp modellen, så montørens nye markering ikke forsvinner
+// fra telefonen når kontoret har tatt den inn.
+async function lastOppMarkeringsfil(prosjekt, token, fil) {
+  // 3) Markeringene, VASKET: eier, frist, Planner-kobling, svar og tegninger
+  //    holdes igjen med vilje — montøren skal se hva som skal gjøres, ikke
+  //    hvem som har ansvaret internt eller hva som ligger i Teams
+  loadingText.textContent = t("Laster opp markeringene …");
+  const vaskede = vaskMarkeringerForBygg();
   // FORMAT 2: fila var tidligere en naken array. Nå er den et objekt, fordi
   // fristgrensene må følge med ut til byggeplassen (ringen rundt markeringen
   // trenger dem) — og fordi Workerens morgenvarsel skal lese SAMME fil og
@@ -321,6 +328,9 @@ async function lastOppMarkeringsfil(prosjekt, token, fil) {
     if (mr.status === 403 || mr.status === 429) throw new Error(await nektetTekst(mr));
     throw new Error(t("Markeringene kom ikke fram (HTTP {0}).", mr.status));
   }
+  // 🟡 2A: dette har montørene nå — den gule telleren regner fra her
+  lagrePublisert(fil);
+  tegnTellere();
 
   // 4) Bildene på markeringene, så montøren ser dem (hentes fra SharePoint her,
   //    hvor vi ER innlogget, og legges i R2). Feiler ett bilde, fortsetter resten.
@@ -478,28 +488,85 @@ async function oppdaterBadge() {
       if (r.ok) antall = (await r.json()).filter(n => /\.(jpg|m4a|webm)$/i.test(n) || /^h-.*\.json$/.test(n)).length;
     } catch (_) {}
   }
-  let b = btn.querySelector(".bp-badge");
-  if (!antall) { if (b) b.remove(); return; }
+  sisteRodt = antall;
+  tegnTellere();
+}
+
+// 🔴 + 🟡 Tellerne på Publiser Byggeplass (forslag 3A og 2A, Emil 03.11).
+// Rødt = nytt FRA byggeplassen (innboksen). Gult = endret på kontoret og
+// ikke sendt UT ennå. Begge åpner SAMME boks (visInnboksBoks), så det aldri
+// står to bokser oppå hverandre — Emils krav 03.11.
+let sisteRodt = 0;
+function teller(klasse, tall, farge, tekstfarge, tittel) {
+  let b = btn.querySelector("." + klasse);
+  if (!tall) { if (b) b.remove(); return; }
   if (!b) {
     b = document.createElement("span");
-    b.className = "bp-badge";
-    b.style.cssText = "background:#ef4444;color:#fff;border-radius:9px;padding:0 6px;font-size:11px;margin-left:6px;font-weight:700";
-    btn.appendChild(b);
-  }
-  b.textContent = antall;
-  b.title = t("Se hva som har kommet, og hent det inn");
-  btn.title = antall + " " + t("nye ting fra byggeplassen – trykk på den røde telleren for å hente dem inn");
-  // 🔴 Forslag 3A (Emil 03.11): telleren er sin egen knapp. Trykk åpner en
-  // liten boks med hva som har kommet og «Hent nå» — uten å bygge modellen.
-  if (!b.dataset.koblet) {
-    b.dataset.koblet = "1";
+    b.className = klasse + " bp-teller";
+    b.style.cssText = "background:" + farge + ";color:" + tekstfarge + ";border-radius:9px;padding:0 6px;font-size:11px;margin-left:" + (klasse === "bp-badge" ? 6 : 4) + "px;font-weight:700";
     b.setAttribute("role", "button");
     b.tabIndex = 0;
     const apne = (e) => { e.stopPropagation(); e.preventDefault(); visInnboksBoks(); };
     b.addEventListener("click", apne);
     b.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") apne(e); });
+    // rød først, gul etter
+    if (klasse === "bp-badge") btn.insertBefore(b, btn.querySelector(".bp-ikke")); else btn.appendChild(b);
   }
+  b.textContent = tall;
+  b.title = tittel;
 }
+function tegnTellere() {
+  if (!btn) return;
+  const ip = ikkePublisert();
+  teller("bp-badge", sisteRodt, "#ef4444", "#fff", t("Se hva som har kommet, og hent det inn"));
+  teller("bp-ikke", ip ? ip.sum : 0, "#f59e0b", "#111", ip ? t("{0} endringer på kontoret er ikke sendt ut til byggeplassen", ip.sum) : "");
+  const deler = [];
+  if (sisteRodt) deler.push(sisteRodt + " " + t("nye ting fra byggeplassen – trykk på den røde telleren for å hente dem inn"));
+  if (ip && ip.sum) deler.push(t("{0} endringer på kontoret er ikke sendt ut til byggeplassen", ip.sum));
+  if (!btn.dataset.stdTittel) btn.dataset.stdTittel = btn.dataset.noTitle || btn.getAttribute("title") || "";
+  btn.title = deler.join(" · ") || t(btn.dataset.stdTittel);
+}
+
+// ---------- 🟡 Ikke publisert (forslag 2A) ----------
+// Det montørene leser utenom selve modellen, per kategori — samme funksjoner
+// som markeringsfila bygges av. Terreng og vær er ikke med: terrenget lager
+// et kartbilde for å bli regnet ut, og været hentes fra nett.
+function kategorierNaa() {
+  const prov = (f) => { try { return f(); } catch (_) { return null; } };
+  return {
+    "Markeringer": prov(vaskMarkeringerForBygg),
+    "Materiell": prov(materiellForEksport),
+    "Grupper": prov(grupperForEksport),
+    "SW-elementer": prov(swForByggeplass),
+    "Takplater": prov(takForByggeplass),
+    "Rigg": prov(() => riggForByggeplass().objekter),
+    "Støpeplan": prov(() => stopeplanForByggeplass(S.stopeplan || [])),
+    "Framdriftsplan": prov(() => framdriftForByggeplass(S.framdrift || [])),
+    "Ferdigmeldinger": prov(() => (S.ferdigForByggeplass ? S.ferdigForByggeplass() : [])),
+    "Prosjektinfo": prov(() => forByggeplass(S.prosjektInfo ? S.prosjektInfo() : null))
+  };
+}
+const pubNokkel = (fil) => "storm-bp-publisert::" + fil;
+function lagrePublisert(fil) {
+  try {
+    localStorage.setItem(pubNokkel(fil), JSON.stringify({ tid: new Date().toISOString(), av: ((S.innloggetNavn && S.innloggetNavn()) || ""), avtrykk: P.avtrykk(kategorierNaa()) }));
+  } catch (_) {}
+}
+// → { sum, per: { kategori: antall }, tid, av } — eller null når modellen
+// aldri er publisert fra denne PC-en (da vet vi ikke hva montørene har).
+export function ikkePublisert() {
+  if (!S.modelGroup) return null;
+  const fil = lettNavn(S.fileName || "");
+  let lagret = null;
+  try { lagret = JSON.parse(localStorage.getItem(pubNokkel(fil)) || "null"); } catch (_) { lagret = null; }
+  if (!lagret || !lagret.avtrykk) return null;
+  const per = P.forskjell(lagret.avtrykk, P.avtrykk(kategorierNaa()));
+  return { sum: P.sum(per), per, tid: lagret.tid || "", av: lagret.av || "" };
+}
+S.byggeplassIkkePublisert = ikkePublisert;
+// Gul teller: hvert 15. sekund, og når fanen kommer fram igjen
+setInterval(tegnTellere, 15000);
+if (typeof document !== "undefined") document.addEventListener("visibilitychange", () => { if (!document.hidden) tegnTellere(); });
 
 // ---------- 🔴 «Nytt fra byggeplassen» (forslag 3A, 03.11) ----------
 // Hva ligger i innboksen? Bilder og talemeldinger telles på navnet; hendelsene
@@ -534,14 +601,14 @@ function lukkInnboksBoks() {
 }
 function utenforInnboks(e) {
   const g = $("bpInnboks");
-  if (g && !g.contains(e.target) && !(e.target.closest && e.target.closest(".bp-badge"))) lukkInnboksBoks();
+  if (g && !g.contains(e.target) && !(e.target.closest && e.target.closest(".bp-teller"))) lukkInnboksBoks();
 }
 
 async function visInnboksBoks() {
   if ($("bpInnboks")) { lukkInnboksBoks(); return; }
   const prosjekt = prosjektFor(lettNavn(S.fileName || ""));
   const token = tilgangsNøkkel();
-  if (!prosjekt || !token) return;
+  if (!prosjekt) return;
   const boks = document.createElement("div");
   boks.id = "bpInnboks";
   boks.className = "bp-innboks";
@@ -552,7 +619,7 @@ async function visInnboksBoks() {
   document.addEventListener("pointerdown", utenforInnboks, true);
 
   let navn = [], hendelser = [];
-  try {
+  if (token) try {
     const r = await fetch(TJENESTER.worker + "/innboks/" + prosjekt, { headers: { "x-token": token } });
     if (r.ok) navn = await r.json();
     for (const n of navn.filter(x => /^h-.*\.json$/.test(x)).slice(0, 40)) {
@@ -565,14 +632,27 @@ async function visInnboksBoks() {
   if (!boks.isConnected) return;
   const tall = tellInnboks(navn, hendelser);
   const rader = INNBOKS_RADER.filter(([k]) => tall[k]);
-  boks.innerHTML =
-    '<b class="bp-innboks-tittel">' + esc(t("Nytt fra byggeplassen")) + "</b>" +
+  const rodt = rader.reduce((s2, [k]) => s2 + tall[k], 0);
+  // Telleren på knappen viser samme tall som boksen
+  if (token && rodt !== sisteRodt) { sisteRodt = rodt; tegnTellere(); }
+  const ip = ikkePublisert();
+  const gult = ip ? ip.sum : 0;
+  const merke = (n, farge, tekst) => '<span class="bp-merke" style="background:' + farge + ";color:" + tekst + '">' + n + "</span>";
+  let h = '<b class="bp-innboks-tittel">' + (rodt ? merke(rodt, "#ef4444", "#fff") + " " : "") + esc(t("Nytt fra byggeplassen")) + "</b>" +
     (rader.length
       ? '<ul class="bp-innboks-liste">' + rader.map(([k, n]) => "<li><span>" + esc(t(n)) + "</span><b>" + tall[k] + "</b></li>").join("") + "</ul>"
-      : '<p class="bp-innboks-hjelp">' + esc(t("Innboksen er tom.")) + "</p>") +
-    '<div class="bp-innboks-knapper"><button type="button" data-bp="publiser">' + esc(t("Publiser alt på nytt …")) + "</button>" +
-    '<button type="button" class="primary" data-bp="hent"' + (rader.length ? "" : " disabled") + ">" + esc(t("Hent nå")) + "</button></div>" +
-    '<p class="bp-innboks-hjelp">' + esc(t("Henter uten å bygge modellen på nytt. Det du har endret på kontoret siden sist (planer, rigg, markeringer) går ut sammen med det, akkurat som ved Publiser.")) + "</p>";
+      : '<p class="bp-innboks-hjelp">' + esc(t("Innboksen er tom.")) + "</p>");
+  // 🟡 2A: det kontoret ikke har sendt ut
+  h += '<b class="bp-innboks-tittel" style="margin-top:10px">' + (gult ? merke(gult, "#f59e0b", "#111") + " " : "") + esc(t("Ikke sendt ut fra kontoret")) + "</b>";
+  if (!ip) h += '<p class="bp-innboks-hjelp">' + esc(t("Ikke publisert fra denne PC-en ennå — tellingen starter etter neste publisering.")) + "</p>";
+  else if (!gult) h += '<p class="bp-innboks-hjelp">' + esc(t("Alt er sendt ut.")) + "</p>";
+  else h += '<ul class="bp-innboks-liste gul">' + Object.entries(ip.per).map(([k, n]) => "<li><span>" + esc(t(k)) + "</span><b>" + n + "</b></li>").join("") + "</ul>";
+  const hovedTekst = rodt && gult ? t("Hent og send ({0})", rodt + gult) : rodt ? t("Hent nå") : t("Send ut ({0})", gult);
+  h += '<div class="bp-innboks-knapper"><button type="button" data-bp="publiser">' + esc(t("Publiser alt (ny modell) …")) + "</button>" +
+    '<button type="button" class="primary" data-bp="hent"' + (rodt || gult ? "" : " disabled") + ">" + esc(hovedTekst) + "</button></div>" +
+    '<p class="bp-innboks-hjelp">' + esc(t("Tar inn det nye fra byggeplassen og sender kontorets endringer ut — uten å bygge modellen på nytt.")) +
+    (ip && ip.tid ? " " + esc(t("Sist publisert {0}.", new Date(ip.tid).toLocaleString("no-NO", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }))) : "") + "</p>";
+  boks.innerHTML = h;
   plasserInnboksBoks(boks);
   boks.querySelector('[data-bp="publiser"]').onclick = () => { lukkInnboksBoks(); if (btn) btn.click(); };
   boks.querySelector('[data-bp="hent"]').onclick = () => { lukkInnboksBoks(); hentFraByggeplassen(); };
@@ -581,7 +661,7 @@ async function visInnboksBoks() {
 }
 
 function plasserInnboksBoks(boks) {
-  const b = btn && btn.querySelector(".bp-badge");
+  const b = btn && (btn.querySelector(".bp-badge") || btn.querySelector(".bp-ikke"));
   const r = (b || btn) ? (b || btn).getBoundingClientRect() : { left: 20, bottom: 60 };
   const bredde = Math.min(320, (window.innerWidth || 400) - 16);
   boks.style.width = bredde + "px";
@@ -606,7 +686,7 @@ export async function hentFraByggeplassen() {
     await lastOppMarkeringsfil(prosjekt, token, fil);
     varsel(antallInn
       ? t("Hentet {0} nye ting fra byggeplassen. Montørene ser dem nå.", antallInn)
-      : t("Ingenting nytt å hente — markeringene på byggeplassen er oppdatert."));
+      : t("Sendt ut — byggeplassen har det samme som kontoret nå."));
     return antallInn;
   } catch (err) {
     console.error(err);

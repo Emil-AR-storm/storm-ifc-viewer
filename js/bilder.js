@@ -15,6 +15,7 @@ import { MAKS_I_KO, fraBlob, koAlle, koAntall, koLegg, koSlett, koTelleForsok, t
 import { t } from "./i18n.js";
 import { GRAPH, SP, authHeaders, graphGet, spTokenSilent } from "./sharepoint.js";
 import { varsel } from "./varsel.js";
+import { start as startLagring } from "./lagring-status.js";
 
 export const MAKS_PX = 1600;      // lengste side etter nedskalering
 export const JPEG_KVALITET = 0.72;
@@ -230,17 +231,25 @@ export async function lastOpp(blob, navn, av) {
       }
     }
   }
-  const token = await spTokenSilent();
-  if (!token) throw new Error("IKKE_INNLOGGET");
-  const sid = await siteId(token);
-  await sikreMappe(token, sid);
-  const r = await fetch(GRAPH + "/sites/" + sid + bildeSti(navn) + ":/content", {
-    method: "PUT",
-    headers: authHeaders(token, { "Content-Type": mime }, "bilde-opplasting"),
-    body: blob
-  });
-  if (!r.ok) throw new Error("Opplasting feilet (Graph " + r.status + ")");
-  return { navn, koet: false };
+  // ☁ 6C: bildene melder seg i lagringsstatusen
+  const ferdig = startLagring("Bilder", () => lastOpp(blob, navn, av));
+  try {
+    const token = await spTokenSilent();
+    if (!token) { ferdig(false, "av"); throw new Error("IKKE_INNLOGGET"); }
+    const sid = await siteId(token);
+    await sikreMappe(token, sid);
+    const r = await fetch(GRAPH + "/sites/" + sid + bildeSti(navn) + ":/content", {
+      method: "PUT",
+      headers: authHeaders(token, { "Content-Type": mime }, "bilde-opplasting"),
+      body: blob
+    });
+    if (!r.ok) throw new Error("Opplasting feilet (Graph " + r.status + ")");
+    ferdig(true);
+    return { navn, koet: false };
+  } catch (err) {
+    if (err && err.message !== "IKKE_INNLOGGET") ferdig(false, "feil");
+    throw err;
+  }
 }
 
 // Hentede bilder holdes i en URL-buffer, så samme bilde ikke lastes ned på nytt

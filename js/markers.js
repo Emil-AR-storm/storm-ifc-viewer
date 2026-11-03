@@ -25,6 +25,7 @@ import { MAKS_SKJEMA_PER_MARKERING, apneMalVelger, apneSkjema, gjeldendeSkjema,
          hentMaler, sjekklisteI, sjekklisteStripeHtml, vaskSkjema } from "./sjekkliste.js";
 import { varsel } from "./varsel.js";
 import { bekreft, spor } from "./sporsmal.js";
+import { sporet } from "./lagring-status.js";
 // ⛓-lenka til en markering hentes via S.markerLink (settes av share.js).
 // Direkte import ville gitt sirkel: markers → share → display → ifc → markers.
 
@@ -599,18 +600,24 @@ export function pushSharedComments() {
   clearTimeout(pushTimer);
   return new Promise((ferdig) => {
     pushTimer = setTimeout(() => {
-      pushKø = pushKø.then(() => doPush(0)).catch(() => {}).then(ferdig);
+      // ☁ 6C: markeringene melder seg i lagringsstatusen (ringen rundt SharePoint-prikken)
+      pushKø = pushKø.then(() => sporet("Markeringer", async () => {
+        sistPushGrunn = "";
+        await doPush(0);
+        return { ok: !!S.sharedOK, grunn: sistPushGrunn || (S.sharedOK ? "" : "feil") };
+      })).catch(() => {}).then(ferdig);
     }, 400);
   });
 }
 
+let sistPushGrunn = "";
 async function doPush(forsøk) {
   if (LETT) return; // lettmodus skriver aldri markeringer — kvitteringer går via innboksen
   const forFile = syncedFile();
   if (!forFile) return;
   try {
     const token = await spTokenSilent();
-    if (!token) { S.sharedOK = false; renderCommentList(); return; }
+    if (!token) { S.sharedOK = false; sistPushGrunn = "av"; renderCommentList(); return; }
     const sid = await sharedSiteId(token);
     const eTag = await sharedETag(token, sid);
     if (syncedFile() !== forFile) return;
