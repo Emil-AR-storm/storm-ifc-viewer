@@ -3072,3 +3072,12 @@ body:not(.har-modell) #vsok { display: none; }
 .panel-hjelp-boble ul { margin: 6px 0 8px; padding-left: 18px; }
 .panel-hjelp-boble li { margin: 2px 0; }
 .panel-hjelp-mer { background: none; border: 0; padding: 0; color: var(--accent); font-size: 12px; cursor: pointer; }
+
+/* ---------- 👁 «Vis» i beskjedene (js/varsel.js, forslag 10A 03.11) ---------- */
+.varsel-kort { flex-wrap: wrap; }
+.varsel-vis { flex: none; padding: 4px 12px; border-radius: 7px; font-weight: 600; font-size: 12px;
+  background: var(--accent); border: 1px solid var(--accent); color: #fff; cursor: pointer; }
+.varsel-liste { flex-basis: 100%; margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--border); max-height: 40vh; overflow-y: auto; }
+.varsel-liste-rad { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 4px 0; border-bottom: 1px dashed var(--border); font-size: 13px; }
+.varsel-liste-rad span { min-width: 0; overflow-wrap: anywhere; }
+.varsel-liste-vis { flex: none; background: none; border: 0; padding: 2px 4px; color: var(--accent); font-weight: 700; cursor: pointer; }
