@@ -1289,9 +1289,10 @@ body:not(.har-modell) #btnFit { display: none !important; }
    nøyaktig den typen feil som ser ut som «CSS-en virker ikke».
    !important på #miniMap fordi bunnverdien der står som INLINE stil i
    bygg.html, og inline slår alt annet enn !important. */
-#modeBar { bottom: calc(14px + var(--nett-hoyde, 0px)); }
-#hint    { bottom: calc(12px + var(--nett-hoyde, 0px)); }
-#miniMap { bottom: calc(12px + var(--nett-hoyde, 0px)) !important; }
+#modeBar { bottom: calc(14px + var(--nett-hoyde, 0px) + var(--enkel-h, 0px)); }
+#hint    { bottom: calc(12px + var(--nett-hoyde, 0px) + var(--enkel-h, 0px)); }
+#miniMap { bottom: calc(12px + var(--nett-hoyde, 0px) + var(--enkel-h, 0px)) !important; }
+/* --enkel-h: høyden på verktøylinja nederst i byggeplassens Enkel (js/bp-modus.js), 0 ellers */
 
 /* ---------- 📋 Sjekklister ----------
    Skjemaene i markeringsbobla, og overlayet der de fylles ut.
@@ -3096,3 +3097,53 @@ body:not(.har-modell) #vsok { display: none; }
 .vis-panel-bunn { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 14px; }
 .vis-teller { color: var(--muted); font-size: 12px; }
 .vis-panel-bunn .primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* ---------- ◐ Byggeplass: Enkel | Full (js/bp-modus.js, Emils valg E 04.11) ----------
+   Enkel skjuler verktøylinja og toppbar-knappene som ikke hører til «bare se
+   på modellen». Knappene SKJULES, aldri fjernes — de nederste knappene trykker
+   på dem. */
+html[data-bp-modus="enkel"] #toolbar,
+html[data-bp-modus="enkel"] #verktoygrupper,
+html[data-bp-modus="enkel"] #btnLight,
+html[data-bp-modus="enkel"] #btnComments,
+html[data-bp-modus="enkel"] #btnMore,
+html[data-bp-modus="enkel"] #moreMenu,
+html[data-bp-modus="enkel"] #status { display: none !important; }
+.bpm-info { margin-left: auto; background: none; border: 0; padding: 4px 6px; color: var(--muted); font-size: 12px; white-space: nowrap; cursor: pointer; }
+.bpm-info:hover { color: var(--text); }
+.bpm-bryter { display: flex; flex: none; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; background: var(--panel2); }
+.bpm-bryter button { border: 0; border-radius: 0; background: none; padding: 6px 12px; color: var(--muted); font-weight: 600; font-size: 13px; }
+.bpm-bryter button.akt { background: var(--accent); color: #fff; }
+.bpm-boble { position: fixed; z-index: 60; background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--skygge); padding: 8px; font-size: 13px; }
+.bpm-kort { border: 1px solid var(--border); border-radius: 10px; padding: 9px 11px; margin: 4px 0; cursor: pointer; }
+.bpm-kort.akt { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.bpm-kort small { display: block; color: var(--muted); margin-top: 3px; line-height: 1.4; }
+#bpEnkel { display: none; position: fixed; z-index: 11; left: 50%; transform: translateX(-50%); bottom: calc(10px + var(--nett-hoyde, 0px));
+  width: min(620px, calc(100vw - 16px)); flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }
+html[data-bp-modus="enkel"] body.har-modell #bpEnkel { display: flex; }
+.bpe-hjelp { pointer-events: auto; background: rgba(17,17,17,.86); color: #fff; border-radius: 10px; padding: 6px 12px; font-size: 13px; text-align: center; max-width: 100%; }
+.bpe-rad { pointer-events: auto; display: flex; width: 100%; justify-content: space-around; align-items: stretch; background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 6px 4px; box-shadow: var(--skygge); }
+.bpe-rad button { flex: 1 1 0; min-width: 0; position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px; background: none; border: 0; padding: 4px 2px; color: var(--text); font-size: 11px; border-radius: 10px; }
+.bpe-rad button .ikon { width: 22px; height: 22px; }
+.bpe-rad button span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.bpe-rad button.akt { color: var(--accent); font-weight: 700; }
+.bpe-skille { flex: none; width: 1px; background: var(--border); margin: 2px 4px; }
+.bpe-merk { color: var(--muted) !important; }
+.bpe-merk.pa { color: var(--text) !important; }
+.bpe-merk-t { display: inline-flex; align-items: center; gap: 6px; }
+.bpe-sw { flex: none; display: inline-block; width: 30px; height: 17px; border-radius: 9px; background: var(--border); position: relative; transition: background .15s; }
+.bpe-sw::after { content: ""; position: absolute; left: 2px; top: 2px; width: 13px; height: 13px; border-radius: 50%; background: #fff; transition: left .15s; }
+.bpe-merk.pa .bpe-sw { background: var(--accent); }
+.bpe-merk.pa .bpe-sw::after { left: 15px; }
+.bpe-antall { position: absolute; top: -4px; right: 12%; background: #dc2626; color: #fff; border-radius: 9px; font-size: 10px; font-weight: 700; padding: 1px 5px; line-height: 1.3; }
+body:not(.har-modell) .bpm-info, body:not(.har-modell) .bpm-bryter { display: none; }   /* først når modellen er åpen */
+@media (max-width: 640px) {
+  .bpe-merk-navn { display: none; }   /* telefon: bryteren står under ikonet */
+  .bpe-rad { padding: 6px 2px; }
+  .bpe-rad button { font-size: 10px; padding: 4px 0; }
+  /* Full på telefon: toppbaren er full av knapper — teksten viker, bryteren står */
+  html[data-bp-modus="full"] .bpm-info { display: none; }
+  .bpm-bryter { position: sticky; right: 0; }
+  .bpm-info { font-size: 10.5px; padding: 4px 0; }
+  .bpm-bryter button { padding: 6px 7px; font-size: 12px; }
+}
