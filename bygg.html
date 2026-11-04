@@ -55,12 +55,21 @@
 [data-lett="1"] #splash .liten { display: none !important; }
 /* Kodefeltet (trinn 4): store tegn, god treffflate for hansker */
 #kodeBoks { margin: 18px auto 8px; max-width: 320px; }
-#navnInput, #prosjektInput, #kodeInput {
+#prosjektInput, #kodeInput {
   display: block; width: 100%; box-sizing: border-box; margin: 8px 0;
   font-size: 26px; text-align: center; padding: 12px 8px; border-radius: 10px;
   border: 1px solid var(--border); background: var(--panel2); color: var(--text);
 }
-#navnInput { font-size: 20px; padding: 10px 8px; }
+/* 🌐 Språkboksen nederst på kodeskjermen */
+[data-lett="1"] #splash { padding-bottom: 130px; }
+#sprakKnapper { position: fixed; left: 12px; right: 12px; bottom: 14px; max-width: 420px; margin: 0 auto;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 10px 12px;
+  box-shadow: var(--skygge); z-index: 2; text-align: left; }
+#sprakKnapper .sk-tittel { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+#sprakKnapper .sk-rad { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+#sprakKnapper button { padding: 10px 0; border-radius: 9px; border: 1px solid var(--border);
+  background: var(--panel2); color: var(--text); font-weight: 600; font-size: 15px; font-family: inherit; cursor: pointer; }
+#sprakKnapper button.valgt { background: var(--accent); border-color: var(--accent); color: #fff; }
 #kodeInput { letter-spacing: 10px; text-transform: uppercase; font-weight: 700; }
 #kodeKnapp { width: 100%; font-size: 18px; padding: 14px 0; margin-top: 4px; justify-content: center; }
 #kodeFeil { color: var(--danger); min-height: 20px; font-size: 14px; margin-top: 4px; }
@@ -274,14 +283,6 @@
 <div id="modeBar"></div>
 
 <div id="splash">
-  <label id="sprakBoks" title="Språk / Language / Język / Kalba">
-    <select id="sprakVelg">
-      <option value="no">Norsk</option>
-      <option value="en">English</option>
-      <option value="pl">Polski</option>
-      <option value="lt">Lietuvių</option>
-    </select>
-  </label>
   <h1 class="skjult-tekst">Storm IFC-Viewer</h1>
   <svg class="storm-logo-full" viewBox="0 0 948 322" role="img" aria-label="Storm IFC-Viewer"><use href="#storm-full"/></svg>
   <p data-i18n>Åpne en IFC-modell (BIM) direkte i nettleseren – på mobil eller PC.
@@ -290,7 +291,6 @@
   <div id="shareBanner" style="display:none"></div>
   <div id="resumeBox" style="display:none"></div>
   <div id="kodeBoks" style="display:block !important">
-    <input id="navnInput" autocomplete="name" autocapitalize="words" maxlength="40" placeholder="Navnet ditt" data-i18n-ph>
     <input id="prosjektInput" inputmode="numeric" maxlength="5" placeholder="Prosjektnummer" data-i18n-ph>
     <input id="kodeInput" inputmode="text" autocapitalize="characters" autocomplete="one-time-code" spellcheck="false" maxlength="6" placeholder="KODE">
     <div id="kodeFeil"></div>
@@ -302,6 +302,16 @@
      bruk Biblioteket – eller høyreklikk fila i Utforsker → «Behold alltid på denne enheten».</p>
   <button id="btnLibSplash"><svg class="ikon"><use href="#i-bibliotek"/></svg><span class="btn-t" data-i18n>Åpne fra biblioteket</span></button>
   <p class="liten" data-i18n>Filen behandles kun lokalt i nettleseren din – ingenting lastes opp.</p>
+  <!-- 🌐 Språk nederst på kodeskjermen (Emil 04.11): velg før modellen lastes. Norsk som standard. -->
+  <div id="sprakKnapper" role="group" aria-label="Språk / Language / Język / Kalba">
+    <div class="sk-tittel">Språk / Language / Język / Kalba</div>
+    <div class="sk-rad">
+      <button type="button" data-sprak="no" lang="no">Norsk</button>
+      <button type="button" data-sprak="en" lang="en">English</button>
+      <button type="button" data-sprak="pl" lang="pl">Polski</button>
+      <button type="button" data-sprak="lt" lang="lt">Lietuvių</button>
+    </div>
+  </div>
   <p id="jsCheck" data-i18n>JavaScript kjører ikke. Åpner du fila i forhåndsvisning (Filer/mail)? Åpne den i Safari eller Chrome i stedet.</p>
 </div>
 
