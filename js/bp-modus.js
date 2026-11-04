@@ -14,6 +14,9 @@
 // Kun byggeplassen (importeres fra lett-main.js).
 import { $, S, ikon } from "./state.js";
 import { t } from "./i18n.js";
+import { axesGroup, grid, koteGroup, markerGroup, measureGroup, omradeGroup, scene, selGroup } from "./scene.js";
+import { maalGroup } from "./maal.js";
+import { skjulStoy, visStoy } from "./cmp-skjul.js";
 
 // [knapp-id i Enkel, ekte knapp, ikon, tekst, hjelpelinje]
 const VERKTOY = [
@@ -67,6 +70,36 @@ function lagLinje() {
   document.body.appendChild(l);
   for (const [id, ekte] of VERKTOY) $(id).onclick = () => { const k = $(ekte); if (k) k.click(); oppdater(); };
   $("bpeMerk").onclick = () => { markeringerPa = !markeringerPa; brukMarkeringer(); oppdater(); };
+}
+
+// 🙈 BARE IFC-MODELLEN I ENKEL (Emil 04.11: «den skal kun vise IFC modellen +
+// markeringer hvis du skrur det på»). Rigg, terreng, materiell, SW-elementer,
+// TRP-plater, blikk, ringmur, betonggulv, støpeplan, framdrift, vær …
+// ligger hver i sin gruppe rett i scenen. Samme grep som sammenligningen
+// (cmp-skjul.js): rett før hvert bilde skjules alt som ikke står i lista
+// under, så et lag som slår seg på igjen selv også holdes skjult. Gruppene
+// huskes og settes tilbake i Full. Markeringene styres av bryteren nederst.
+const stoyHoldt = new Map();
+const beholdes = (ch) => ch.isLight || ch.isCamera || ch === S.modelGroup || ch === grid ||
+  ch === markerGroup || ch === omradeGroup || ch === measureGroup || ch === koteGroup ||
+  ch === selGroup || ch === axesGroup || ch === maalGroup ||
+  !!(ch.userData && ch.userData.sammenlign);   // målepekeren o.l. (merket for sammenligningen)
+export function oppdaterStoy() {
+  if (modus === "enkel" && S.modelGroup) {
+    skjulStoy(scene, beholdes, stoyHoldt);
+    for (const g of stoyHoldt.keys()) if (g.userData) g.userData.enkelSkjult = true;
+  } else if (stoyHoldt.size) {
+    for (const g of stoyHoldt.keys()) if (g.userData) delete g.userData.enkelSkjult;
+    visStoy(stoyHoldt);
+  }
+}
+function kobleStoy() {
+  // compare.js har allerede sin egen krok her — vi legger oss etter, ikke over
+  const forrige = scene.onBeforeRender;
+  scene.onBeforeRender = function (...a) {
+    if (typeof forrige === "function") forrige.apply(this, a);
+    oppdaterStoy();
+  };
 }
 
 // Markeringene av/på i 3D (markers.js eier gruppene)
@@ -128,6 +161,8 @@ export function settModus(ny) {
   }
   lukkInfo();
   brukMarkeringer();
+  oppdaterStoy();
+  S.miniSkitten = true;
   oppdater();
 }
 
@@ -177,6 +212,7 @@ export function start() {
   lagBryter();
   lagLinje();
   folg();
+  kobleStoy();
   settModus("enkel");
 }
 S.bpModus = { settModus, oppdater, modusNa };

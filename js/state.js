@@ -474,7 +474,9 @@ export function avregistrerEkstraGruppe(g) {
 // Lagene som melder at de kan `evne`. Alltid en liste — også når den er tom,
 // så kallstedet kan løkke uten å sjekke.
 export function ekstraLagSom(evne) {
-  return EKSTRA_LAG.filter(l => typeof l[evne] === "function");
+  return EKSTRA_LAG.filter(l => typeof l[evne] === "function" &&
+    // ◐ Skjult av byggeplassens Enkel (bp-modus.js): kan ikke trykkes eller måles på
+    !((evne === "plukk" || evne === "flate") && l.gruppe && l.gruppe.userData && l.gruppe.userData.enkelSkjult));
 }
 
 // ---------- Panelregister ----------
