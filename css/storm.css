@@ -3111,6 +3111,11 @@ html[data-bp-modus="enkel"] #moreMenu,
 html[data-bp-modus="enkel"] #status { display: none !important; }
 .bpm-info { margin-left: auto; background: none; border: 0; padding: 4px 6px; color: var(--muted); font-size: 12px; white-space: nowrap; cursor: pointer; }
 .bpm-info:hover { color: var(--text); }
+.bpm-info.to-linjer { white-space: normal; line-height: 1.05; text-align: right; max-width: 5.6em; min-width: min-content; flex: 0 1 auto; }
+#topbar.bpm-trang { gap: 3px; padding-left: 6px; padding-right: 6px; }
+#topbar.bpm-trang > button:not(.bpm-info) { padding-left: 6px; padding-right: 6px; }
+#topbar.bpm-trang .storm-logo { height: 17px; }
+#topbar.bpm-trang .bpm-bryter button { padding: 5px 6px; font-size: 11px; }
 .bpm-bryter { display: flex; flex: none; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; background: var(--panel2); }
 .bpm-bryter button { border: 0; border-radius: 0; background: none; padding: 6px 12px; color: var(--muted); font-weight: 600; font-size: 13px; }
 .bpm-bryter button.akt { background: var(--accent); color: #fff; }
