@@ -72,6 +72,17 @@ export const markeringSkjult = (id) => skjulteMark.has(String(id));
 export function skjulteMarkeringerAntall() {
   return (S.comments || []).filter(c => markeringSkjult(c.id)).length;
 }
+S.skjulteMarkeringerAntall = skjulteMarkeringerAntall;
+
+// ◐ Byggeplass Enkel (js/bp-modus.js): ALLE markeringene av/på på én gang.
+// Gruppene skjules som helhet; skjulingen per markering over står urørt, så
+// den kommer tilbake slik den var når de slås på igjen.
+S.settMarkeringerSynlig = (pa) => {
+  markerGroup.visible = !!pa;
+  omradeGroup.visible = !!pa;
+  if (!pa) closeMarkerPopup();
+  S.miniSkitten = true;
+};
 
 // Setter .visible på boblene OG områdene fra samme sett. Ett sted, så de to
 // aldri kan si forskjellige ting om samme markering.
@@ -419,21 +430,12 @@ export function nyId() {
 }
 
 // Navnet på den innloggede, til «skrevet av» og «endret av».
-let navnSpurt = false;
 export function innloggetNavn() {
   if (LETT) {
-    // Montøren har ingen konto — navnet skrives i kodeboksen (forslag 2,
-    // 02.11) og kan endres under Innstillinger. Spørsmålet her er bare en
-    // reserve for den sjeldne veien forbi kodeboksen (åpnet uten dekning før
-    // navnet noen gang ble skrevet).
-    let navn = montorNavn();
-    // Ingen grå prompt() lenger (forslag 1): denne gangen står «Byggeplass»,
-    // og spørsmålet kommer som kort øverst så navnet er med fra neste gang.
-    if (!navn && !navnSpurt) {
-      navnSpurt = true;
-      spor(t("Navnet ditt (vises på markeringen):"), "").then(n => { if (n) settMontorNavn(n); });
-    }
-    return navn || t("Byggeplass");
+    // Montøren har ingen konto. Navnet spørres først når han lagrer noe
+    // (sikreNavn under, Emil 04.11) og kan endres under Innstillinger.
+    // Her spørres det aldri: denne kalles også når bobler tegnes.
+    return montorNavn() || t("Byggeplass");
   }
   try {
     const a = S.msalApp && S.msalApp.getActiveAccount();
@@ -445,6 +447,20 @@ export function innloggetNavn() {
 // fila – markers.js importerer sjekkliste.js, og motsatt vei ville gitt en
 // sirkel. Samme grep som S.markerLink og S.hastegradFarge bruker.
 S.innloggetNavn = innloggetNavn;
+
+// 👷 Byggeplass: navnet spørres FØRST når noe lagres (markering, svar,
+// talemelding, ferdigmelding, sjekkliste), ikke på kodeskjermen (Emil 04.11:
+// «en ekstra ting å fylle ut som ikke alle trenger»). Spørres én gang og
+// huskes. Svarer han ikke, lagres det likevel — under «Byggeplass».
+let navnSpor = null;
+export async function sikreNavn() {
+  if (LETT && !montorNavn()) {
+    if (!navnSpor) navnSpor = spor(t("Navnet ditt (vises på det du lagrer):"), "").then(n => { if (n) settMontorNavn(n); }).finally(() => { navnSpor = null; });
+    await navnSpor;
+  }
+  return innloggetNavn();
+}
+S.sikreNavn = sikreNavn;
 
 export function naaTekst() {
   return new Date().toLocaleString("no-NO",
@@ -752,7 +768,7 @@ function skalerMarkeringer() {
     s.scale.set(k, k, 1);
     // 🏷 Står bobler tett, krymper de i stedet for å legge seg oppå hverandre
     // (Emil 02.10) — men aldri under MARKER_MIN_PX, og de skjules aldri.
-    if (s.visible && meldLapp) meldLapp(s, 0, MARKER_MIN_PX, false);
+    if (s.visible && markerGroup.visible && meldLapp) meldLapp(s, 0, MARKER_MIN_PX, false);
   }
 }
 export const MARKER_MIN_PX = 12;
@@ -1385,7 +1401,7 @@ async function taOppTil(c, knapp) {
     loadingEl.classList.add("open");
     try {
       const navn = lydNavn(c.id, alleBilder(c).length + lydI(c).length + 1, res.endelse);
-      const av = innloggetNavn();
+      const av = await sikreNavn();
       // Navnet sendes MED opplastingen. På byggeplassen går fila til Workerens
       // innboks, og der er det ingen innlogging å hente et navn fra senere —
       // rekker vi det ikke her, er avsenderen tapt for godt.
@@ -1979,8 +1995,9 @@ function koblRedigering(rot, lagre) {
   const felt = boks.querySelector(".mp-rediger-tekst");
   const ferdig = () => { redigerer = null; };
   boks.querySelector(".mp-avbryt").onclick = () => { ferdig(); openMarkerPopup(popFor); };
-  boks.querySelector(".mp-lagre").onclick = () => {
+  boks.querySelector(".mp-lagre").onclick = async () => {
     const tekst = felt.value;
+    if (LETT && tekst.trim()) await sikreNavn();
     ferdig();
     // lagre() kaller updateComment, som tegner bobla på nytt. Endret den
     // ingenting (tom tekst, eller helt lik den gamle), tegner vi selv.
@@ -2025,7 +2042,7 @@ const mPt = new THREE.Vector2();
 
 // Returnerer markeringen under punktet, eller null
 export function pickMarker(clientX, clientY) {
-  if (!markerGroup.children.length) return null;
+  if (!markerGroup.children.length || !markerGroup.visible) return null;   // ◐ av i Enkel
   mPt.x = (clientX / innerWidth) * 2 - 1;
   mPt.y = -(clientY / innerHeight) * 2 + 1;
   mRay.setFromCamera(mPt, camera);
@@ -2674,11 +2691,12 @@ S.omradeModeBar = (bar) => {
   tegnKnapper();
 };
 
-window.saveComment = function() {
+window.saveComment = async function() {
   const text = $("commentText").value.trim();
   $("commentDialog").classList.remove("open");
   fjernOmrForhandsvisning();   // den ekte tegnes av addMarkerSprite med fristfarge
   if (!text || !S.pendingPoint) { S.pendingPoint = null; S.pendingOmrade = null; nullstillNyeBilder(); return; }
+  if (LETT) await sikreNavn();   // første lagring på byggeplassen: spør om navnet
   const c = {
     // klokkeslett + tilfeldig hale: to som lager markering i samme millisekund
     // (delt fil, hele Storm) skal ikke få samme ID

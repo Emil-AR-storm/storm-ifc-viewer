@@ -19,7 +19,7 @@ import { scene } from "./scene.js";
 import { t, tn } from "./i18n.js";
 import { varsel } from "./varsel.js";
 import { idFor, slagFor, synlige } from "./framdrift-regn.js";
-import { innloggetNavn, sendHendelse } from "./markers.js";
+import { sikreNavn, sendHendelse } from "./markers.js";
 import { forHverTrekant, hitID, pick, pickEkstra } from "./elements.js";
 import { finnObjekter } from "./framdrift-vis.js";
 
@@ -152,8 +152,8 @@ function gidFor(k) {
   const p = S.glbProps && S.glbProps.get(Number(idFor(k)));
   return (p && p[4]) ? String(p[4]).slice(0, 40) : "";
 }
-function send(nokler, erFerdig) {
-  const av = innloggetNavn(), tid = new Date().toISOString();
+async function send(nokler, erFerdig) {
+  const av = await sikreNavn(), tid = new Date().toISOString();
   const meldinger = nokler.map(k => { const g = gidFor(k); return Object.assign({ k, ferdig: erFerdig, tid, av }, g ? { gid: g } : {}); });
   huskLokale(meldinger);
   for (let i = 0; i < meldinger.length; i += MAKS_PER_SENDING) {

@@ -23,7 +23,7 @@ import { CEMFLEX_OMLEGG_M, cemflexPlan, vannLengde, vannSummer, STATUS_TEKST, fe
 import { settVisEtappeplan, settVisVanntetting, stopeGroup, tegnStopeplan, visEtappeplan, visVanntetting } from "./stopeplan-vis.js";
 import { antallElementer, antallFelt, datoKort, datoLang, tegnTidslinje } from "./stopeplan-tid.js";
 import * as J from "./stopesjekk-regn.js";
-import { innloggetNavn, sendHendelse } from "./markers.js";
+import { sikreNavn, sendHendelse } from "./markers.js";
 import { erBildefil, komprimer, lastOpp } from "./bilder.js";
 import { varsel } from "./varsel.js";
 
@@ -144,13 +144,14 @@ function koblSjekkLett(body) {
     const e = synlige(S.stopeplan).find(x => x.id === boks.dataset.sjEtappe);
     if (!e) return;
     const q = (s) => boks.querySelector(s);
-    if (q(".sj-start")) q(".sj-start").onclick = () => {
+    if (q(".sj-start")) q(".sj-start").onclick = async () => {
+      const av = await sikreNavn();
       apneSjekk.add(e.id);
-      sendSjekk(e, { punkter: J.STD_PUNKTER, tid: new Date().toISOString(), av: innloggetNavn() });
+      sendSjekk(e, { punkter: J.STD_PUNKTER, tid: new Date().toISOString(), av });
     };
     if (q(".sj-apne")) q(".sj-apne").onclick = () => { if (apneSjekk.has(e.id)) apneSjekk.delete(e.id); else apneSjekk.add(e.id); tegnPanel(); };
-    boks.querySelectorAll("[data-sj-punkt]").forEach(c => c.onchange = () =>
-      sendSjekk(e, { punkt: c.dataset.sjPunkt, ok: c.checked, av: innloggetNavn(), tid: new Date().toISOString() }));
+    boks.querySelectorAll("[data-sj-punkt]").forEach(c => c.onchange = async () =>
+      sendSjekk(e, { punkt: c.dataset.sjPunkt, ok: c.checked, av: await sikreNavn(), tid: new Date().toISOString() }));
     const fil = q(".sj-fil");
     boks.querySelectorAll("[data-sj-foto]").forEach(b => b.onclick = () => {
       if (!fil) return;
@@ -162,7 +163,7 @@ function koblSjekkLett(body) {
       const f = fil.files && fil.files[0];
       const punkt = fil.dataset.punkt;
       if (!f || !punkt || !erBildefil(f)) return;
-      const av = innloggetNavn();
+      const av = await sikreNavn();
       const navn = J.sjekkBildeNavn(e.id, punkt);
       try {
         const r = await lastOpp(await komprimer(f), navn, av);
@@ -173,7 +174,7 @@ function koblSjekkLett(body) {
     };
     if (q(".sj-signer")) q(".sj-signer").onclick = async () => {
       const { bePåSignatur } = await import("./sjekkliste.js");
-      const s = await bePåSignatur(innloggetNavn());
+      const s = await bePåSignatur(await sikreNavn());
       if (!s || !String(s.navn || "").trim()) return;
       sendSjekk(e, { signert: { av: String(s.navn).trim().slice(0, 60), tid: new Date().toISOString(), signatur: s.signatur || "" } });
     };

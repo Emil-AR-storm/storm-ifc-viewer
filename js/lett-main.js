@@ -21,7 +21,6 @@ import { canvas, koteGroup, makeLabel, measureGroup } from "./scene.js";
 import { naermesteMaaleflate, registrerPeker } from "./pek-eier.js";
 import { MODELL_FRIST_MS, hentMedFrist } from "./nett.js";
 import { lagreApning, lesApning } from "./apning.js";
-import { montorNavn, settMontorNavn } from "./lett.js";
 
 // last inn resten av modulene (rekkefølgen bestemmer oppstart)
 // UTELATT i lettmodus: ./compare.js, ./recent.js, ./usersync.js
@@ -54,6 +53,7 @@ import "./tema.js";   // lyst/mørkt tema – trenger knappen i toppbaren
 import "./hjul.js";   // navigasjonshjul – trenger knappen i verktøylinja
 import "./share.js";
 import "./mobile.js";   // må lastes etter at alle knapper har fått lyttere
+import "./bp-modus.js";   // ◐ Enkel | Full (Emil 04.11) — etter mobile.js: trykker på de ekte knappene
 import "./rull-fall.js";   // 📜 rulling med fall nederst i alle vinduer (Emil 02.10)
 import "./oppsett.js";   // ansattliste og Planner-plan fra SharePoint
 import { varsel } from "./varsel.js";
@@ -73,11 +73,25 @@ if (jsCheck) jsCheck.style.display = "none";
 // Er språket norsk, løser lastSprak() seg med en gang og ingenting hentes.
 await lastSprak(S.lang);
 oversettDom();
-const sprakVelg = $("sprakVelg");
-if (sprakVelg) {
-  sprakVelg.value = S.lang;
-  sprakVelg.onchange = () => setLang(sprakVelg.value);
+// 🌐 Språkboksen nederst på kodeskjermen (Emil 04.11). Norsk er standard;
+// et språk valgt før (her eller i Innstillinger) huskes.
+const sprakKnapper = $("sprakKnapper");
+export function merkSprak() {
+  if (!sprakKnapper) return;
+  sprakKnapper.querySelectorAll("[data-sprak]").forEach(b => {
+    const p = b.dataset.sprak === (S.lang || "no");
+    b.classList.toggle("valgt", p);
+    b.setAttribute("aria-pressed", p ? "true" : "false");
+  });
 }
+if (sprakKnapper) {
+  merkSprak();
+  sprakKnapper.querySelectorAll("[data-sprak]").forEach(b => b.onclick = async () => {
+    await setLang(b.dataset.sprak);
+    merkSprak();
+  });
+}
+S.merkSprak = merkSprak;
 
 // ---------- Klikk / trykk ----------
 
@@ -230,15 +244,9 @@ window.åpneFraUrl = åpneFraUrl;   // trinn 3 kaller denne
   const boks = $("kodeBoks");
   if (!boks) return;
   const prosjInp = $("prosjektInput"), inp = $("kodeInput"),
-        feilEl = $("kodeFeil"), knapp = $("kodeKnapp"), navnInp = $("navnInput");
-  // 👷 Forslag 2 (02.11): navnet skrives her, én gang, og huskes. Før kom det
-  // et grått prompt()-vindu midt i første markering eller ferdigmelding.
-  if (navnInp) {
-    navnInp.value = montorNavn();
-    navnInp.addEventListener("change", () => { navnInp.value = settMontorNavn(navnInp.value); });
-    // Navnet skrevet etter «Skriv navnet ditt først»: prøv koden med en gang
-    navnInp.addEventListener("change", () => { if (navnInp.value && inp.value.length === 6 && /^\d{5}$/.test(prosjInp.value)) prøv(); });
-  }
+        feilEl = $("kodeFeil"), knapp = $("kodeKnapp");
+  // Navnet spørres ikke her lenger — først når montøren lagrer noe
+  // (sikreNavn i markers.js, Emil 04.11).
   const fraUrl = (location.pathname.match(/^\/(\d{5})$/) || [])[1] || "";
   if (fraUrl) { prosjInp.value = fraUrl; prosjInp.style.display = "none"; }
 
@@ -246,11 +254,6 @@ window.åpneFraUrl = åpneFraUrl;   // trinn 3 kaller denne
     const prosjekt = (prosjInp.value || "").trim();
     const kode = (inp.value || "").trim().toUpperCase();
     if (!/^\d{5}$/.test(prosjekt)) { feilEl.textContent = t("Prosjektnummeret må være 5 siffer."); return; }
-    if (navnInp) {
-      const navn = settMontorNavn(navnInp.value);
-      if (!navn) { feilEl.textContent = t("Skriv navnet ditt først — det står på markeringene og ferdigmeldingene dine."); navnInp.focus(); return; }
-      navnInp.value = navn;
-    }
     if (kode.length !== 6) { feilEl.textContent = ""; return; }
     feilEl.textContent = "";
     fjernFeilKnapp();

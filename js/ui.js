@@ -311,6 +311,7 @@ function renderSettings() {
     await setLang(e.target.value);
     const sv = $("sprakVelg");
     if (sv) sv.value = S.lang;   // hold startskjerm-velgeren i takt
+    if (S.merkSprak) S.merkSprak();   // byggeplass: språkknappene på kodeskjermen
     renderSettings();
   };
   $("stRot").oninput = (e) => { S.settings.rotSpeed = Number(e.target.value); saveSettings(); };

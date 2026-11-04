@@ -4,9 +4,9 @@
 // av av den som besøker siden.
 export const LETT = document.documentElement.dataset.lett === "1";
 
-// 👷 Montørens navn (forslag 2, 02.11). Spørres ÉN gang i kodeboksen og kan
-// endres under Innstillinger — ikke via et grått prompt()-vindu midt i første
-// markering eller ferdigmelding. Huskes i nettleseren.
+// 👷 Montørens navn. Spørres ÉN gang, første gang han lagrer noe (sikreNavn i
+// markers.js — Emil 04.11: ikke på kodeskjermen), og kan endres under
+// Innstillinger. Huskes i nettleseren.
 // NB: kontorsiden (byggeplass.js) bruker samme nøkkel til et JSON-kart over
 // prosjektnavn. En verdi som starter med «{» er derfor ikke et navn.
 const NAVN_NOKKEL = "storm-bp-navn";
