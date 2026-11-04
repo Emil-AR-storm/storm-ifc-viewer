@@ -138,11 +138,15 @@ export function oppdater() {
   const n = antallMarkeringer(), a = $("bpeAntall");
   if (a) { a.textContent = n > 99 ? "99+" : String(n); a.style.display = n ? "" : "none"; }
   if (m) m.title = t("Markeringer: {0}", n) + " — " + (markeringerPa ? t("vises") : t("skjult"));
-  // Plass nederst: kontrollinja, minikartet og hinten flyttes over linja
-  const l = $("bpEnkel");
-  const hoyde = enkel && l && l.offsetHeight ? l.offsetHeight + 8 : 0;
-  rot.style.setProperty("--enkel-h", hoyde + "px");
+  // Linja står ØVERST (Emil 04.11, valg A): nederst dekket den objektinfoen.
+  // Den legges rett under toppbaren, og kuben (Topp/Front) flyttes under linja.
   tilpassInfo();
+  const l = $("bpEnkel"), topp = $("topbar");
+  const start = Math.round((topp ? topp.getBoundingClientRect().bottom : 50) + 6);
+  rot.style.setProperty("--enkel-start", start + "px");
+  rot.style.setProperty("--enkel-h", "0px");   // ingenting nederst trenger å flyttes lenger
+  if (enkel && l && l.offsetHeight) rot.style.setProperty("--enkel-topp", (start + l.offsetHeight + 8) + "px");
+  else rot.style.removeProperty("--enkel-topp");
 }
 
 // «mer info her →» skal alltid synes helt (Emil 04.11: «hvis den ikke får plass
@@ -235,6 +239,9 @@ function folg() {
   if (i) mo2.observe(i, { childList: true, characterData: true, subtree: true });
   if (document.body) mo2.observe(document.body, { attributes: true, attributeFilter: ["class"] });
   window.addEventListener("resize", () => oppdater());
+  // Hjelpelinja under linja kommer og går — kuben skal følge med
+  const l = $("bpEnkel");
+  if (l && window.ResizeObserver) new window.ResizeObserver(() => oppdater()).observe(l);
 }
 
 export function start() {
