@@ -142,6 +142,30 @@ export function oppdater() {
   const l = $("bpEnkel");
   const hoyde = enkel && l && l.offsetHeight ? l.offsetHeight + 8 : 0;
   rot.style.setProperty("--enkel-h", hoyde + "px");
+  tilpassInfo();
+}
+
+// «mer info her →» skal alltid synes helt (Emil 04.11: «hvis den ikke får plass
+// så krymper tekststørrelsen»). Toppbaren ruller sidelengs på telefon når den
+// er for bred; da krympes teksten et halvt punkt om gangen til alt får plass
+// (ned til 7 px). Kjøres når siden endrer bredde, språk eller modus.
+export function tilpassInfo() {
+  const topp = $("topbar"), i = $("bpmInfo");
+  if (!topp || !i) return;
+  i.style.fontSize = "";
+  i.classList.remove("to-linjer");
+  topp.classList.remove("bpm-trang");
+  if (!i.offsetWidth) return;   // skjult (før modellen er åpen, eller Full på telefon)
+  const forBred = () => topp.scrollWidth > topp.clientWidth + 1;
+  const krymp = (fra, til) => {
+    let px = fra;
+    while (forBred() && px > til) { px -= 0.5; i.style.fontSize = px + "px"; }
+  };
+  // 1) mindre tekst, ned til 9 px  2) to linjer («mer info / her →»), ned til 7 px
+  krymp(parseFloat(window.getComputedStyle(i).fontSize) || 12, 9);
+  if (forBred()) { i.classList.add("to-linjer"); i.style.fontSize = "11px"; krymp(11, 7); }
+  // 3) fortsatt for trangt (smal telefon, langt språk): tettere toppbar
+  if (forBred()) { topp.classList.add("bpm-trang"); i.style.fontSize = "10px"; krymp(10, 7); }
 }
 
 const erTelefon = () => typeof window !== "undefined" && window.innerWidth <= 640;
@@ -205,6 +229,11 @@ function folg() {
   for (const [, ekte] of VERKTOY) { const k = $(ekte); if (k) mo.observe(k, { attributes: true, attributeFilter: ["class"] }); }
   const c = $("commentCount");
   if (c) mo.observe(c, { childList: true, characterData: true, subtree: true });
+  // Teksten byttes ved språkbytte, og toppbaren vises når modellen er åpen
+  const mo2 = new MO(() => tilpassInfo());
+  const i = $("bpmInfo");
+  if (i) mo2.observe(i, { childList: true, characterData: true, subtree: true });
+  if (document.body) mo2.observe(document.body, { attributes: true, attributeFilter: ["class"] });
   window.addEventListener("resize", () => oppdater());
 }
 
