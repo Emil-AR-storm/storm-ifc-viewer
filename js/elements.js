@@ -5,7 +5,7 @@ import { $, ekstraLagSom, på, S, apnePanel, dec, esc, ikon, loadingEl, loadingT
 import { t } from "./i18n.js";
 import { TETTHET } from "./config.js";
 import { kolBokstav, sumFormel } from "./regneark.js";
-import { profilKgPerM } from "./profiler.js";
+import { profilKgPerM, profilLengde } from "./profiler.js";
 import { hiddenIDs, hideElement, hideElements, settVisning, typeSkjultLett, visningsAvtrykk } from "./display.js";
 import { alleElementIder, lightElementBoxes } from "./ifc.js";
 import { kall, metaFor, sikreMeta } from "./ifcrpc.js";
@@ -981,7 +981,9 @@ async function showMultiSummary() {
       if (meta) { name = meta.name || ""; objType = meta.objectType || ""; typeName = meta.typeName || ""; material = meta.material || ""; }
     }
     const key = (objType || name.replace(/:\d+$/, "") || typeName || "Ukjent") + (material ? " · " + material : "");
-    const len = q.len || (q.dims ? q.dims[0] : 0) || 0;
+    // Samme lengde som Mengder: kjent stålprofil rettes for tverrsnittet.
+    const profV = materialGruppe(material) === "Stål" ? (profilKgPerM(objType) || profilKgPerM(name)) : null;
+    const len = profilLengde(q.len || (q.dims ? q.dims[0] : 0) || 0, profV);
     // Samme areal som Mengder og egenskapspanelet: største flate.
     const vol = q.vol || 0, area = q.storsteFlate || 0;
     totVol += vol; totLen += len; totArea += area;
@@ -1490,7 +1492,10 @@ function computeQuantities() {
       // det ene feltet, hos andre i det andre.
       const prof = deler.length === 1 && materialGruppe(material) === "Stål"
         ? (profilKgPerM(objType) || profilKgPerM(name)) : null;
-      const kgNom = prof && len > 0 ? prof.kgPerM * len : 0;
+      // Kjent profil: lengden rettes for tverrsnittets diagonal (se
+      // profilLengde i profiler.js). Uten det fikk en 50 mm knagg 218 mm.
+      const lenE = prof ? profilLengde(len, prof) : len;
+      const kgNom = prof && lenE > 0 ? prof.kgPerM * lenE : 0;
       // Nominell vinner. Merk at den også redder et element med ØDELAGT mesh:
       // volumet er ubrukelig, men lengden og profilnavnet er det ikke.
       const kg = kgNom || kgGeo;
@@ -1507,7 +1512,7 @@ function computeQuantities() {
           umulige: 0, nominelle: 0, type: typeName, material });
       const g = groups.get(gkey);
       g.count++;
-      g.length += len;
+      g.length += lenE;
       g.vol += vDel;
       g.area += q.area;
       g.flate += q.storsteFlate || 0;
@@ -1520,7 +1525,7 @@ function computeQuantities() {
       rows.push({
         id, key: gkey, name, objType, type: typeName, material,
         ...(deler.length > 1 ? { lagAndel: andel, lagHele: materialHele } : {}),
-        L: q.dims[0], B: q.dims[1], H: q.dims[2], len, vol: vDel, area: q.area,
+        L: q.dims[0], B: q.dims[1], H: q.dims[2], len: lenE, vol: vDel, area: q.area,
         flate: q.storsteFlate || 0,
         forskaling, kg, kgGeo, kjentVekt, umuligVolum, vektKilde,
         profil: prof ? prof.profil : "", nomKgPerM: prof ? prof.kgPerM : 0, avvik

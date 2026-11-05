@@ -90,13 +90,30 @@ export function hulprofilKgPerM(b_mm, h_mm, t_mm) {
   return A > 0 ? A * STÅL : 0;
 }
 
-// ---------- Vinkel: formel ----------
-// Uten hjørne- og kantradier. Ligger 0,5–1,2 % LAVT mot tabell, og det er
-// bevisst: heller litt under enn å late som vi kjenner radiene.
+// ---------- Vinkel: formel med radier (EN 10056-1) ----------
+//
+//   A = t(2b − t) + (1 − π/4)·(r1² − 2·r2²),   r2 = r1/2
+//
+// r1 er rotradien (innerhjørnet), r2 kantradien ytterst på flensene. Første
+// versjon regnet uten radier og lå 1 % LAVT mot Revit og tabellen:
+//
+//     L150x10   22,76 mot 23,0     L100x10   14,92 mot 15,0
+//
+// Med radiene treffer de tre Storm-vinklene vi har fasit for (Geithus, Valle,
+// Arendal, Norsjø) innenfor 0,2 %. Radien avhenger av vingebredden og står i
+// tabellen under; mellomstørrelser får radien til nærmeste mindre bredde.
+const VINKEL_R1 = [[20, 3.5], [30, 5], [40, 6], [45, 7], [60, 8], [65, 9], [80, 10],
+  [90, 11], [100, 12], [120, 13], [130, 14], [150, 16], [160, 17], [180, 18]];
+function vinkelR1(b_mm) {
+  let r = 3.5;
+  for (const [b, r1] of VINKEL_R1) if (b_mm >= b) r = r1;
+  return r;
+}
 export function vinkelKgPerM(b_mm, t_mm) {
   const b = b_mm / 1000, t = t_mm / 1000;
   if (!(b > 0 && t > 0) || t >= b) return 0;
-  return t * (2 * b - t) * STÅL;
+  const r1 = vinkelR1(b_mm) / 1000, r2 = r1 / 2;
+  return (t * (2 * b - t) + (1 - Math.PI / 4) * (r1 * r1 - 2 * r2 * r2)) * STÅL;
 }
 
 // ---------- Flattstål ----------
@@ -223,4 +240,91 @@ function ettLedd(s) {
   }
 
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// 📏 LENGDEN PÅ EN STÅLPROFIL — RETTET FOR TVERRSNITTET.
+//
+// Mengder måler lengden som den lengste avstanden mellom to punkter på
+// elementet (se quantitiesForSet i elements.js). For en stav er det
+// DIAGONALEN: fra et hjørne i den ene enden til motsatt hjørne i den andre.
+//
+//     D² = L² + d²        d = tverrsnittets egen diagonal
+//
+// På en lang bjelke er forskjellen små millimeter. På en kort knagg er den
+// ALT: en L150x10 som er 50 mm lang fikk lengden 218 mm, fordi diagonalen
+// over vingene (212 mm) er større enn selve lengden. Målt mot Revit
+// (05.11): L100x10 +79 %, T100 +39 % på Arendal, L150x10 +336 % på Norsjø.
+//
+// Profilen kjennes igjen fra navnet, og da kjenner vi d. Lengden blir
+//
+//     L = √(D² − d²)
+//
+// Mot Revit på fire bygg (Geithus, Valle, Arendal, Norsjø) traff dette alle
+// gruppene med likt antall innenfor 0,05 % — knaggene inkludert.
+//
+// KJENNER VI IKKE PROFILEN, RØRER VI IKKE LENGDEN.
+// ---------------------------------------------------------------------------
+const IPE_B = { 80: 46, 100: 55, 120: 64, 140: 73, 160: 82, 180: 91, 200: 100,
+  220: 110, 240: 120, 270: 135, 300: 150, 330: 160, 360: 170, 400: 180, 450: 190,
+  500: 200, 550: 210, 600: 220 };
+const HEA_H = { 100: 96, 120: 114, 140: 133, 160: 152, 180: 171, 200: 190, 220: 210,
+  240: 230, 260: 250, 280: 270, 300: 290, 320: 310, 340: 330, 360: 350, 400: 390,
+  450: 440, 500: 490, 550: 540, 600: 590, 650: 640, 700: 690, 800: 790, 900: 890, 1000: 990 };
+const HEM_HB = { 100: [120, 106], 120: [140, 126], 140: [160, 146], 160: [180, 166],
+  180: [200, 186], 200: [220, 206], 220: [240, 226], 240: [270, 248], 260: [290, 268],
+  280: [310, 288], 300: [340, 310], 320: [359, 309], 340: [377, 309], 360: [395, 308], 400: [432, 307] };
+// T-stål etter EN 10055: steget er like tykt som flensen.
+const T_TW = { 30: 4, 35: 4.5, 40: 5, 50: 6, 60: 7, 70: 8, 80: 9, 100: 11, 120: 13, 140: 15 };
+
+// Ytre radius på hulprofil etter EN 10219-2 — samme regel som vekten over.
+const hulRo = (t) => (t <= 6 ? 2.0 : (t <= 10 ? 2.5 : 3.0)) * t;
+// Største avstand over et rektangel med avrundede hjørner.
+const rundRektDiag = (b, h, ro) => 2 * Math.hypot(b / 2 - ro, h / 2 - ro) + 2 * ro;
+
+// Tverrsnittets diagonal i mm, eller null. Leser det normaliserte profilnavnet
+// fra profilKgPerM («HEA160», «IPE330», «SHS100x6», «RHS200x100x6»,
+// «HUP…», «Flattstål 120x8», «L100x10») — og egne profiler som «T120».
+export function profilDiagonalMm(prof) {
+  const s = String((prof && prof.profil) || prof || "").trim();
+  let m;
+  if ((m = s.match(/^HE([ABM])(\d+)$/i))) {
+    const n = Number(m[2]), k = m[1].toUpperCase();
+    if (k === "A") return HEA_H[n] ? Math.hypot(HEA_H[n], Math.min(n, 300)) : null;
+    if (k === "B") return Math.hypot(n, Math.min(n, 300));
+    return HEM_HB[n] ? Math.hypot(HEM_HB[n][0], HEM_HB[n][1]) : null;
+  }
+  if ((m = s.match(/^IPE(\d+)$/i))) {
+    const n = Number(m[1]);
+    return IPE_B[n] ? Math.hypot(n, IPE_B[n]) : null;
+  }
+  if ((m = s.match(/^(?:RHS|HUP)(\d+)x(\d+)x(\d+(?:[.,]\d)?)$/i))) {
+    const h = tall(m[1]), b = tall(m[2]), t = tall(m[3]);
+    return rundRektDiag(b, h, hulRo(t));
+  }
+  if ((m = s.match(/^(?:SHS|HUP)(\d+)x(\d+(?:[.,]\d)?)$/i))) {
+    const b = tall(m[1]), t = tall(m[2]);
+    return rundRektDiag(b, b, hulRo(t));
+  }
+  if ((m = s.match(/^Flattstål\s*(\d+)x(\d+(?:[.,]\d)?)$/i))) return Math.hypot(tall(m[1]), tall(m[2]));
+  if ((m = s.match(/^L(\d+)x(\d+(?:[.,]\d)?)$/i))) return tall(m[1]) * Math.SQRT2;
+  // T: lengste avstand går fra en flensspiss til motsatt side av stegfoten.
+  // Kvarte stegtykkelsen (ikke halve) fordi foten er avrundet — målt på
+  // T120 og T100 i Storms modeller.
+  if ((m = s.match(/^T(\d+)$/i))) {
+    const n = Number(m[1]), tw = T_TW[n];
+    return tw ? Math.hypot(n / 2 + tw / 4, n) : null;
+  }
+  return null;
+}
+
+// Målt «lengste avstand» (meter) → stavens lengde (meter). Uendret når
+// profilen er ukjent, eller når målingen er kortere enn tverrsnittet selv
+// (da er geometrien noe annet enn en rett stav, og vi gjetter ikke).
+export function profilLengde(lenM, prof) {
+  const d = profilDiagonalMm(prof);
+  if (!d || !(lenM > 0)) return lenM;
+  const dM = d / 1000;
+  if (lenM <= dM) return lenM;
+  return Math.sqrt(lenM * lenM - dM * dM);
 }

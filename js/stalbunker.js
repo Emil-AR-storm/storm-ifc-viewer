@@ -12,7 +12,7 @@ import { t } from "./i18n.js";
 import { allElementBoxes, forHverTrekant, lastNedXlsx, quantitiesForSet } from "./elements.js";
 import { alleElementIder } from "./ifc.js";
 import { metaFor, sikreMeta } from "./ifcrpc.js";
-import { profilKgPerM } from "./profiler.js";
+import { profilKgPerM, profilLengde } from "./profiler.js";
 import { lagreMateriellLokalt, tegnMateriell, vaskMateriell } from "./materiell-vis.js";
 import { fagverkNokkel, fagverkProfiler, finnFagverk, grupperFagverk, grupperStal, plasserBunker, profilNavn, stalMengder, stalNokkel, stalSum } from "./stalbunker-regn.js";
 import { varsel } from "./varsel.js";
@@ -113,8 +113,9 @@ export async function lesStal() {
     const i = info.get(id), b = bokser.get(id);
     b.getSize(v);
     const mal = [v.x, v.y, v.z].map(x => x * toM * 1000).sort((a, c) => a - c);
-    const lengdeMm = ((q.get(id) || {}).len || 0) * 1000 || mal[2];
     const prof = profilKgPerM(i.objType) || profilKgPerM(i.navn);
+    // Samme lengde som Mengder: rettet for tverrsnittets diagonal.
+    const lengdeMm = profilLengde((q.get(id) || {}).len || 0, prof) * 1000 || mal[2];
     const en = ender.get(id);
     ut.push({ id, del: i.type === "Column" ? "soyle" : "bjelke", profil: profilNavn(i.navn, i.objType),
       lengdeMm, kgPerM: prof ? prof.kgPerM : 0, b: mal[0], h: mal[1], bMm: mal[0], a: en && en.a, bp: en && en.b });
