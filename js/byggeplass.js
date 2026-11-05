@@ -761,6 +761,7 @@ async function hentInnboks(prosjekt, token) {
         const c = vaskMarkering(h.markering);
         if (c && !(S.comments || []).some(k => String(k.id) === String(c.id))) {
           c.status = "Åpen"; c.owner = ""; c.due = "";   // status og ansvar settes HER, ikke på plassen
+          c.kilde = "bygg";   // 🔎 alt som kommer gjennom innboksen ER fra byggeplassen (filteret «Fra byggeplassen»)
           leggTilImportertMarkering(c);
           inn++;
           sisteNye.push({ tekst: t("Markering «{0}»", kortTekst(c.text)), gaa: visM(c.id) });

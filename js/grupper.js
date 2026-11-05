@@ -13,7 +13,7 @@
 // materiellet. Vasking: alt som kommer utenfra (Worker-JSON) går gjennom
 // vaskGruppe — ukjente felter slipper aldri inn.
 import * as THREE from "three";
-import { $, S, apnePanel, esc, ikon, på } from "./state.js";
+import { $, S, apnePanel, esc, ikon, på, tomPanelHtml } from "./state.js";
 import { t } from "./i18n.js";
 import { camera, controls } from "./scene.js";
 import { allElementBoxes } from "./elements.js";
@@ -290,8 +290,9 @@ function tegnPanel() {
   html += '<h4 style="margin:12px 0 4px">' + t("Lagrede grupper") +
     ' <span style="color:var(--muted);font-size:11px">(' + liste.length + ')</span></h4>';
   if (!liste.length) {
-    html += '<p style="color:var(--muted);font-size:12px">' + t("Ingen grupper lagret ennå.") +
-      (LETT ? " " + t("Grupper laget på kontoret kommer hit når Byggeplass-knappen trykkes på nytt.") : "") + "</p>";
+    html += tomPanelHtml("fokus", t("Ingen grupper ennå"), LETT
+      ? t("Grupper laget på kontoret kommer hit når Byggeplass-knappen trykkes på nytt.")
+      : t("Velg elementer med shift + trykk, skriv et navn over og trykk «Lagre»."));
   } else {
     html += liste.map(g =>
       '<div class="qty-row"><div class="n" data-gr-vis="' + esc(g.id) + '" style="cursor:pointer">' +

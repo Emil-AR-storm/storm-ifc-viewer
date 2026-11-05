@@ -18,7 +18,7 @@
 //
 // Importeres BARE fra main.js.
 import { PROSJEKT_LOGO, erStandardLogo, fraLogoValg } from "./prosjektinfo-regn.js";
-import { $, S, apnePanel, ekstraLagSom, esc, ikon, på, writePrefs } from "./state.js";
+import { $, S, apnePanel, ekstraLagSom, esc, ikon, på, tomPanelHtml, writePrefs } from "./state.js";
 import { markerGroup } from "./scene.js";
 import { hentLogoer } from "./tegninger.js";
 import { ryddLogonavn } from "./rapport.js";
@@ -478,7 +478,7 @@ export function tegnPanel() {
     (S.settings && S.settings.vaerPaa ? '<label class="set-hjelp fp-vis"><input type="checkbox" id="fpVaer3D"' + (S.settings.vaer3D !== false ? " checked" : "") + "> " +
       esc(t("Vis været i 3D (himmel, skyer, regn og snø)")) + "</label>" : "") +
     (tidsSpenn(liste) ? "" : '<p class="hint">' + esc(t("Sett «Fra»-dato på trinnene for å få glideren.")) + "</p>");
-  if (!liste.length) html += '<p class="hint">' + esc(t("Ingen trinn ennå.")) + "</p>";
+  if (!liste.length) html += tomPanelHtml("framdrift", t("Ingen trinn ennå"), t("Lag det første trinnet og gi det Fra–Til-datoer."), { tekst: t("Nytt trinn"), klikk: "#fpNy" });
   html += '<div class="fp-liste" id="fpListe">';
   for (const e of liste) {
     const velgerHer = velgerEtappe() === e.id;

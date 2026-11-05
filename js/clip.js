@@ -492,6 +492,35 @@ S.sikreEtasjeliste = async () => {
   return S.storeyList || [];
 };
 
+// 🏢 Etasjebrikkene i byggeplassens Enkel (bp-modus.js, Emils valg 1B 05.11):
+// velg én etasje med ett trykk, eller «Alle» (-1). Samme regler som
+// Etasjer-knappen: et enkelt snittplan slås av (boksen får stå), og valget
+// går i angre-historikken.
+S.velgEtasje = async (i) => {
+  if (!S.modelGroup) return;
+  const før = snittAvtrykk();
+  if (!S.storeyList) await buildStoreyList();
+  if (typeof i !== "number" || i < 0 || !S.storeyList || !S.storeyList[i]) {
+    if (!S.storeyOn) return;
+    S.storeyOn = false; S.storeyIdx = -1;
+    $("btnStorey").classList.remove("active");
+    applyClip();
+    if (!S.clipOn && modeBar.querySelector("button[data-st]")) { modeBar.classList.remove("open"); modeBar.innerHTML = ""; }
+    meldSnittAngre(før, "Etasjefilter av");
+    return;
+  }
+  if (S.clipOn && S.clipMode !== "box") {
+    S.clipOn = false; stopFacePick();
+    $("btnClip").classList.remove("active");
+    $("clipPanel").classList.remove("open");
+    modeBar.classList.remove("open"); modeBar.innerHTML = "";
+  }
+  S.storeyOn = true;
+  $("btnStorey").classList.add("active");
+  applyStorey(i);
+  meldSnittAngre(før, "Etasje valgt");
+};
+
 function storeyPlanes(i) {
   if (i < 0 || !S.storeyList || !S.storeyList[i] || !S.modelBox) return [];
   const eps = S.modelSize * 0.002;

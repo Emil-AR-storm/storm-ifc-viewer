@@ -1,6 +1,6 @@
 // 💬 Markeringer: lagring lokalt og deling via SharePoint.
 import * as THREE from "three";
-import { $, på, S, esc, ikon, loadingEl, loadingText, lukkPaneler } from "./state.js";
+import { $, på, S, esc, ikon, loadingEl, loadingText, lukkPaneler, tomPanelHtml } from "./state.js";
 import { t } from "./i18n.js";
 import { LETT, montorNavn, settMontorNavn } from "./lett.js";
 import { ANSATTE, FRISTER, PLANNER, TJENESTER } from "./config.js";
@@ -415,6 +415,9 @@ async function sharedSiteId(token) {
 // de skal ikke gjettes i ettertid.
 const MARKERING_TEKSTFELT = ["text", "author", "status", "owner", "due", "date", "taskId", "taskUrl",
   "endret", "endretAv", "elementId", "globalId",
+  // 🔎 Hvor markeringen ble laget («bygg» = byggeplassen) — filteret
+  // «Fra byggeplassen» (valg 8A 05.11). Ukjent verdi kastes i vaskMarkering.
+  "kilde",
   // 📋 Planner-status tilbake (21.10.2026) — se js/planner-regn.js. Står de
   // ikke her, vasker vaskMarkering dem bort ved neste synk, og merket i bobla
   // forsvinner uten et ord.
@@ -496,6 +499,7 @@ export function vaskMarkering(r) {
   for (const k of ["x", "y", "z"]) c[k] = Number(r[k]) || 0;
   // frist skal være en ren dato – alt annet forkastes
   if (c.due && !/^\d{4}-\d{2}-\d{2}$/.test(c.due)) c.due = "";
+  if (c.kilde && c.kilde !== "bygg" && c.kilde !== "kontor") delete c.kilde;
   // 🎨 egen farge: bare en gyldig #rrggbb slipper gjennom (se vaskFarge)
   { const f = vaskFarge(r.farge); if (f) c.farge = f; }
   // oppgavelenka åpnes med window.open – slipp bare gjennom https-lenker til
@@ -2703,6 +2707,7 @@ window.saveComment = async function() {
     id: nyId(),
     text,
     author: innloggetNavn(),
+    kilde: LETT ? "bygg" : "kontor",   // 🔎 «Fra byggeplassen»-filteret
     status: "Åpen",
     // J1: INGEN automatisk ansvarlig. Sto det ANSATTE[0] her, ble den som
     // tilfeldigvis står øverst i oppsett.json stille eier av alt som opprettes –
@@ -2870,7 +2875,28 @@ async function sendTilPlanner(list) {
   }
 }
 
-let listFilter = "alle";
+// 🔎 FILTER I MARKERINGSLISTA (Emils valg 8A 05.11): brikker med antall —
+// Alle · Mine · Åpne · Frist denne uka · Fra byggeplassen. Flere kan stå på
+// samtidig (Mine + Åpne = mine som ikke er løst). Tomt sett = Alle.
+const listFiltre = new Set();
+export const MARK_FILTRE = ["mine", "apne", "uke", "bygg"];
+
+// Søndag i denne uka som ÅÅÅÅ-MM-DD (uka går mandag–søndag)
+export function ukeslutt(naa) {
+  const d = new Date(naa || Date.now());
+  const igjen = (7 - ((d.getDay() + 6) % 7) - 1);   // dager til søndag
+  d.setDate(d.getDate() + igjen);
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+
+// Passer markeringen ett filter? navn = den innloggede (kontor) / montøren (bygg)
+export function passerFilter(c, f, navn, sondag) {
+  if (f === "mine") return !!navn && (c.author === navn || c.owner === navn);
+  if (f === "apne") return statusOf(c) !== "Løst";
+  if (f === "uke") return statusOf(c) !== "Løst" && !!c.due && c.due <= sondag;   // forfalte er med
+  if (f === "bygg") return c.kilde === "bygg";
+  return true;
+}
 
 export function renderCommentList() {
   $("commentCount").textContent = S.comments.length;
@@ -2879,37 +2905,26 @@ export function renderCommentList() {
     ? '<p style="color:var(--ok); font-size:11px; margin:0 0 8px">' + ikon("hake") + ' ' + t("Delt via SharePoint – alle med tilgang ser disse") + '</p>'
     : '<p style="color:var(--muted); font-size:11px; margin:0 0 8px">' + ikon("laas") + ' ' + t("Kun lagret på denne enheten – trykk på den røde prikken øverst til høyre og logg inn for å dele") + '</p>';
   if (!S.comments.length) {
-    body.innerHTML = status + '<p style="color:var(--muted)">' + t("Ingen markeringer ennå. Trykk på Markering og deretter på modellen.") + '</p>';
+    body.innerHTML = status + tomPanelHtml("markeringer", t("Ingen markeringer ennå"),
+      t("Trykk «Markering» og så i modellen der det gjelder."), LETT ? null : { tekst: t("Markering"), klikk: "#btnMarker" });
     return;
   }
 
-  // teller per status + filterknapper
-  const antall = { alle: S.comments.length };
-  Object.keys(STATUS).forEach(k => antall[k] = S.comments.filter(c => statusOf(c) === k).length);
-  // To fristfiltre i tillegg til statusfiltrene. Prefikset «h:» skiller dem fra
-  // statusnøklene, som er de lagrede verdiene «Åpen»/«Pågår»/«Løst».
-  antall["h:forfalt"] = S.comments.filter(c => hastegradFor(c) === "forfalt").length;
-  antall["h:rod"] = S.comments.filter(c => hastegradFor(c) === "rod").length;
-
-  const knapp = (key, tekst, farge) => '<button data-flt="' + key + '"' +
-    (listFilter === key ? ' class="active"' : "") + '>' +
-    (farge ? '<span style="color:' + farge + '">●</span> ' : "") +
-    tekst + ' ' + (antall[key] || 0) + '</button>';
+  // Hvilke brikker som vises: «Mine» krever et navn (montøren uten navn har
+  // ingen «mine»), og «Fra byggeplassen» gir bare mening på kontoret.
+  const navn = LETT ? montorNavn() : innloggetNavn();
+  const sondag = ukeslutt();
+  const tilgjengelige = MARK_FILTRE.filter(f => (f !== "mine" || navn) && (f !== "bygg" || !LETT));
+  for (const f of [...listFiltre]) if (!tilgjengelige.includes(f)) listFiltre.delete(f);
+  const NAVN = { mine: t("Mine"), apne: t("Ikke løst"), uke: t("Frist denne uka"), bygg: t("Fra byggeplassen") };
+  const antall = (f) => S.comments.filter(c => passerFilter(c, f, navn, sondag)).length;
+  const brikke = (key, tekst, n, aktiv) => '<button type="button" class="mf-brikke' + (aktiv ? " akt" : "") + '" data-flt="' + key + '" aria-pressed="' + (aktiv ? "true" : "false") + '">' +
+    esc(tekst) + ' <b>' + n + '</b></button>';
   let html = status +
-    '<div class="prop-actions">' + knapp("alle", t("Alle")) +
-      Object.keys(STATUS).map(k => knapp(k, t(k))).join("") + '</div>' +
-    // Egen rad: fristfiltrene svarer på et annet spørsmål enn statusfiltrene,
-    // og de skal ikke se ut som om de hører til samme gruppe.
-    ((antall["h:forfalt"] || antall["h:rod"])
-      ? '<div class="prop-actions">' +
-          (antall["h:forfalt"] ? knapp("h:forfalt", t("Forfalt"), HASTEGRAD.forfalt.ring) : "") +
-          (antall["h:rod"] ? knapp("h:rod", t("Haster"), HASTEGRAD.rod.ring) : "") + '</div>'
-      : "");
+    '<div class="mf-rad">' + brikke("alle", t("Alle"), S.comments.length, !listFiltre.size) +
+      tilgjengelige.map(f => brikke(f, NAVN[f], antall(f), listFiltre.has(f))).join("") + '</div>';
 
-  const vis = S.comments.filter(c =>
-    listFilter === "alle" ? true
-    : listFilter.startsWith("h:") ? hastegradFor(c) === listFilter.slice(2)
-    : statusOf(c) === listFilter);
+  const vis = S.comments.filter(c => [...listFiltre].every(f => passerFilter(c, f, navn, sondag)));
   // uløste med frist, som ikke alt har fått en oppgave
   const apne = S.comments.filter(c => statusOf(c) !== "Løst" && c.due && !c.taskId);
   if (apne.length > 1) {
@@ -2969,16 +2984,17 @@ export function renderCommentList() {
           : "") +
       '</span></div></div>';
   }).join("") ||
-    // «h:forfalt» er en intern nøkkel og skal aldri vises. Oversett den til
-    // hastegradens navn før den settes inn i setningen.
-    '<p style="color:var(--muted)">' + t("Ingen markeringer med status «{0}».",
-      esc(listFilter.startsWith("h:")
-        ? t((HASTEGRAD[listFilter.slice(2)] || { navn: listFilter }).navn)
-        : t(listFilter))) + '</p>';
+    '<p style="color:var(--muted)">' + esc(t("Ingen markeringer passer filteret.")) + '</p>';
 
   body.innerHTML = html;
   body.querySelectorAll("button[data-flt]").forEach(b => {
-    b.onclick = () => { listFilter = b.dataset.flt; renderCommentList(); };
+    b.onclick = () => {
+      const f = b.dataset.flt;
+      if (f === "alle") listFiltre.clear();
+      else if (listFiltre.has(f)) listFiltre.delete(f);
+      else listFiltre.add(f);
+      renderCommentList();
+    };
   });
   if ($("cmAllTasks")) $("cmAllTasks").onclick = () => sendTilPlanner(apne);
   body.querySelectorAll(".comment").forEach(el => {

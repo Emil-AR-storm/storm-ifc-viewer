@@ -19,7 +19,7 @@
 //  · Et DRAG som ikke starter på et materiell-objekt skal ALDRI røres — det
 //    er kameraet sitt.
 import * as THREE from "three";
-import { $, S, apnePanel, esc, ikon, på } from "./state.js";
+import { $, S, apnePanel, esc, ikon, på, tomPanelHtml } from "./state.js";
 import { t } from "./i18n.js";
 import { camera, canvas, grid, raycaster } from "./scene.js";
 import { eierPunktet, iPunktModus, registrerPeker } from "./pek-eier.js";
@@ -473,7 +473,7 @@ function tegnPanel() {
   html += '<h4 style="margin:12px 0 4px">' + t("Plassert i modellen") +
     ' <span style="color:var(--muted);font-size:11px">(' + liste.length + ')</span></h4>';
   if (!liste.length) {
-    html += '<p style="color:var(--muted);font-size:12px">' + t("Ingen materiell-objekter plassert ennå.") + "</p>";
+    html += tomPanelHtml("materiell", t("Ingen materiell ennå"), t("Trykk «Nytt materiell» over og plasser leveransen i modellen."));
   } else {
     html += liste.map(p =>
       '<div class="qty-row"' + (p.skjult ? ' style="opacity:.55"' : "") + '><div class="n" data-mat-velg="' + esc(p.id) + '" style="cursor:pointer">' +

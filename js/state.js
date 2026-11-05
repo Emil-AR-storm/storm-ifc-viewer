@@ -523,6 +523,29 @@ export function ikon(navn) {
   return '<svg class="ikon" aria-hidden="true"><use href="#i-' + navn + '"/></svg>';
 }
 
+// 📭 TOMME PANELER (Emils valg 9A 05.11): ikon, én tittel, én setning — og en
+// knapp som starter, når verktøyet har en. Samme oppskrift i alle panelene.
+// knapp = { tekst, klikk } der klikk er en CSS-velger for knappen som allerede
+// finnes i panelet/verktøylinja (f.eks. "#stNy"). Knappen her trykker på den,
+// så det finnes fortsatt bare ÉN vei inn i hvert verktøy.
+export function tomPanelHtml(ikonNavn, tittel, tekst, knapp) {
+  return '<div class="tom-panel">' + ikon(ikonNavn) +
+    '<b>' + esc(tittel) + '</b>' +
+    (tekst ? '<p>' + esc(tekst) + '</p>' : "") +
+    (knapp && knapp.tekst && knapp.klikk
+      ? '<button type="button" class="primary" data-tom-klikk="' + esc(knapp.klikk) + '">' + ikon("pluss") + ' ' + esc(knapp.tekst) + '</button>'
+      : "") +
+    '</div>';
+}
+if (typeof document !== "undefined" && document.addEventListener) {
+  document.addEventListener("click", (e) => {
+    const b = e.target && e.target.closest ? e.target.closest("[data-tom-klikk]") : null;
+    if (!b) return;
+    const mal = document.querySelector(b.getAttribute("data-tom-klikk"));
+    if (mal && mal !== b) mal.click();
+  });
+}
+
 // Tåler også tall, null og undefined: en markering fra SharePoint som mangler et
 // felt skal ikke kunne velte hele panelet. Escaper også anførselstegn, siden
 // esc() brukes inne i HTML-attributter (title="…", value="…", data-id="…") –

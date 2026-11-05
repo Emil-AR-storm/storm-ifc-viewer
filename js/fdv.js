@@ -10,7 +10,7 @@
 // PDF-ene i samme mappe. Uten innlogging: rødt varsel, og PDF-ene holdes i
 // minnet til du logger inn (da lastes de opp av seg selv).
 import * as THREE from "three";
-import { $, S, apnePanel, esc, på } from "./state.js";
+import { $, S, apnePanel, esc, på, tomPanelHtml } from "./state.js";
 import { scene } from "./scene.js";
 import { setMode } from "./modes.js";
 import { t } from "./i18n.js";
@@ -488,7 +488,7 @@ export async function tegn() {
     '<div class="lag-knapper"><button data-fdv-tom>' + esc(t("＋ Ny vare uten PDF (skriv inn)")) + '</button></div>';
   if (tilstand.jobber) h += '<div class="koll-jobb">' + esc(tilstand.jobber) + '</div>';
   h += '<div class="koll-lbl">' + esc(t("FDV-GRUPPER · {0}", grupper.length)) + '</div>';
-  if (!grupper.length) h += '<p class="lag-tom">' + esc(t("Ingen FDV-grupper ennå. Slipp PDF-ene for en vare i ruta over, og klikk objektene i 3D som hører til.")) + '</p>';
+  if (!grupper.length) h += tomPanelHtml("fdv", t("Ingen FDV-grupper ennå"), t("Slipp PDF-ene for en vare i ruta over, og klikk objektene i 3D som hører til."));
   for (const g of grupper) {
     const st = F.gruppeStatus(g), aktiv = g.id === tilstand.aktiv;
     h += '<div class="fdv-gruppe' + (aktiv ? " aktiv" : "") + '" data-fdv-gruppe="' + esc(g.id) + '">' +

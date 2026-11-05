@@ -18,7 +18,7 @@
 // liggende sider bakerst i PDF-en (em-pdf.js).
 //
 // Regningen ligger i js/em-regn.js.
-import { $, på, S, apnePanel, esc, ikon, loadingEl, loadingText } from "./state.js";
+import { $, på, S, apnePanel, esc, ikon, loadingEl, loadingText, tomPanelHtml } from "./state.js";
 import { t } from "./i18n.js";
 import { varsel } from "./varsel.js";
 import { sammenligningForEm } from "./compare.js";
@@ -425,7 +425,9 @@ function listeRader() {
   if (tilstand.listeStatus === "henter" && !tilstand.liste.length) return '<p class="em-hjelp">' + esc(t("Henter endringsmeldingene fra SharePoint …")) + '</p>';
   if (tilstand.listeStatus === "av") return '<p class="em-hjelp">' + esc(t("Logg inn for å se endringsmeldingene. De ligger bare i SharePoint.")) + '</p>';
   if (tilstand.listeStatus === "feil") return '<p class="em-hjelp em-mangler">' + esc(t("Klarte ikke å hente endringsmeldingene fra SharePoint. Prøv igjen om litt.")) + '</p>';
-  if (!vis.length) return '<p class="em-hjelp">' + esc(tilstand.liste.some(e => !e.slettet) ? t("Ingen endringsmeldinger passer søket.") : t("Ingen endringsmeldinger for prosjektet ennå. Lag den første i fanen «Ny endringsmelding».")) + '</p>';
+  if (!vis.length) return tilstand.liste.some(e => !e.slettet)
+    ? '<p class="em-hjelp">' + esc(t("Ingen endringsmeldinger passer søket.")) + '</p>'
+    : tomPanelHtml("rediger", t("Ingen endringsmeldinger ennå"), t("Lag den første i fanen «Ny endringsmelding»."));
   return vis.map(kortHtml).join("");
 }
 

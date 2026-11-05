@@ -16,7 +16,7 @@
 //     tar bilde og signerer med fingeren. Det er det ENESTE montøren kan
 //     endre her — og bare som tillegg via innboksen (/hendelse og /kvitter),
 //     som markeringene. Kontoret fletter det inn (siste tid vinner per punkt).
-import { $, EKSTRA_LAG, S, apnePanel, esc, på } from "./state.js";
+import { $, EKSTRA_LAG, S, apnePanel, esc, på, tomPanelHtml } from "./state.js";
 import { t } from "./i18n.js";
 import { iDagISO } from "./frist.js";
 import { CEMFLEX_OMLEGG_M, cemflexPlan, vannLengde, vannSummer, STATUS_TEKST, feltAreal, feltSummer, feltVolum, finnFelt, sortert, statusFor, synlige, vaskEtappeListe } from "./stopeplan-regn.js";
@@ -45,7 +45,7 @@ export function tegnPanel() {
     esc(t("Vis etappeplan")) + '<span class="set-hjelp"> — ' + esc(t("farger betongen etter støpeplanen")) + "</span></label>" +
     '<label class="st-vis"><input type="checkbox" id="stVisVann"' + (visVanntetting() ? " checked" : "") + "> " + esc(t("Vis vanntetting")) + "</label>";
   const liste = sortert(S.stopeplan);
-  if (!liste.length) html += '<p class="hint">' + esc(t("Ingen etapper ennå.")) + "</p>";
+  if (!liste.length) html += tomPanelHtml("stope", t("Ingen støp ennå"), t("Kontoret har ikke lagt inn støpeplanen ennå."));
   for (const e of liste) {
     const st = statusFor(e, iDag);
     const fs = feltSummer(e);

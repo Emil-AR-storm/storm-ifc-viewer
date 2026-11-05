@@ -15,7 +15,7 @@
 // Ingen «Legg til», «Fjern», PDF eller video her.
 //   · 📊 runde 10b: «Ferdigmeld» — basen melder det som er montert
 //     (ferdig-lett.js), og det som er ferdig vises grønt mens panelet er åpent.
-import { $, S, apnePanel, esc, på } from "./state.js";
+import { $, S, apnePanel, esc, på, tomPanelHtml } from "./state.js";
 import { t, tn } from "./i18n.js";
 import { sortert, synlige, tellingPerSlag, trinnTid, vaskEtappeListe, vaskKilder } from "./framdrift-regn.js";
 import { ferdigHtml, koblFerdig } from "./ferdig-lett.js";
@@ -83,7 +83,7 @@ export function tegnPanel() {
     if (n) html += '<p class="set-hjelp fp-trinn-na">' + esc(n.naa ? t("Trinn nå:") : t("Neste trinn:")) + " <b>" + n.e.nr + " · " + esc(n.e.navn) + "</b> (" + esc(datoTekst(n.e)) + ")</p>";
     html += status;
   } else if (fane === "trinn") {
-    if (!liste.length) html += '<p class="hint">' + esc(t("Ingen trinn ennå.")) + "</p>";
+    if (!liste.length) html += tomPanelHtml("framdrift", t("Ingen trinn ennå"), t("Kontoret har ikke lagt inn framdriftsplanen ennå."));
     html += '<div class="fp-liste" id="fpListe">';
     for (const e of liste) {
       html += '<div class="st-etappe st-lett fp-etappe" data-id="' + esc(e.id) + '" style="border-left:4px solid ' + esc(e.farge) + '">' +

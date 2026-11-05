@@ -20,7 +20,7 @@
 //
 // Modellgruppe (lagre/åpne et sett lag) og «Mengder per lag» kommer i runde 5b.
 import * as THREE from "three";
-import { $, S, apnePanel, avregistrerEkstraGruppe, esc, ikon, på, registrerEkstraGruppe } from "./state.js";
+import { $, S, apnePanel, avregistrerEkstraGruppe, esc, ikon, på, registrerEkstraGruppe, tomPanelHtml } from "./state.js";
 import { camera, canvas, flyTil, pointer, raycaster, renderer, scene } from "./scene.js";
 import { t } from "./i18n.js";
 import { varsel } from "./varsel.js";
@@ -564,7 +564,7 @@ export function tegn() {
     S.kollisjonFyll(body);
   } else {
     body.innerHTML = faner + gruppeHtml() + hoved +
-      (lagene.length ? lagene.map(kortHtml).join("") : '<p class="lag-tom">' + esc(t("Ingen lag ennå. Legg til armering, stål eller en annen fagmodell oppå hovedmodellen.")) + '</p>') +
+      (lagene.length ? lagene.map(kortHtml).join("") : tomPanelHtml("lag", t("Ingen lag ennå"), t("Slipp en IFC i ruta over for å legge armering, stål eller en annen fagmodell oppå hovedmodellen."))) +
       mengderHtml() + leggTilHtml();
     koble(body);
   }

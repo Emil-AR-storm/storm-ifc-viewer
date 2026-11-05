@@ -12,7 +12,7 @@
 //
 // Importeres BARE fra main.js. Byggeplass-siden får egen visning (trinn 5).
 import { PROSJEKT_LOGO, erStandardLogo, fraLogoValg } from "./prosjektinfo-regn.js";
-import { $, S, apnePanel, ekstraLagSom, esc, ikon, på, writePrefs } from "./state.js";
+import { $, S, apnePanel, ekstraLagSom, esc, ikon, på, tomPanelHtml, writePrefs } from "./state.js";
 import { hentLogoer } from "./tegninger.js";
 import { ryddLogonavn } from "./rapport.js";
 import { t, tn } from "./i18n.js";
@@ -445,7 +445,7 @@ export function tegnPanel() {
     '<p class="set-hjelp" style="margin-top:0">' +
     esc(t("Del støpene i etapper. Gi hver etappe en dato, og merk den som støpt når den er ferdig. Trykk «Legg til» på etappen og velg elementene i modellen — også generert betonggulv og ringmur. Trykk «Ferdig» når du er ferdig. «+ Felt» tegner et felt på plata.")) + "</p>" +
     (sisteMelding ? '<p class="set-hjelp" style="color:var(--text)">' + esc(sisteMelding) + "</p>" : "");
-  if (!liste.length) html += '<p class="hint">' + esc(t("Ingen etapper ennå.")) + "</p>";
+  if (!liste.length) html += tomPanelHtml("stope", t("Ingen støp ennå"), t("Lag den første etappen og velg elementene som skal støpes."), { tekst: t("Ny etappe"), klikk: "#stNy" });
   const SF = S.stopeFelt;
   const valgtF = SF ? SF.valgt() : null, tegnerI = SF ? SF.tegner() : null;
   for (const e of liste) {

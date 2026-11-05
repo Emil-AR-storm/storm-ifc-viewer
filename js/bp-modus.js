@@ -12,7 +12,7 @@
 //
 // Valget huskes IKKE: hver åpning starter i Enkel (Emils ønske).
 // Kun byggeplassen (importeres fra lett-main.js).
-import { $, S, ikon } from "./state.js";
+import { $, S, esc, ikon } from "./state.js";
 import { t } from "./i18n.js";
 import { axesGroup, grid, koteGroup, markerGroup, measureGroup, omradeGroup, scene, selGroup } from "./scene.js";
 import { maalGroup } from "./maal.js";
@@ -60,6 +60,7 @@ function lagLinje() {
   const l = document.createElement("div");
   l.id = "bpEnkel";
   l.innerHTML = '<div id="bpeHjelp" class="bpe-hjelp" style="display:none"></div>' +
+    '<div id="bpeEtasjer" class="bpe-etasjer" style="display:none"></div>' +
     '<div class="bpe-rad">' +
     VERKTOY.map(([id, , ik, tekst]) => '<button type="button" id="' + id + '">' + ikon(ik) + '<span data-i18n>' + tekst + '</span></button>').join("") +
     '<span class="bpe-skille"></span>' +
@@ -102,6 +103,42 @@ function kobleStoy() {
   };
 }
 
+// 🏢 ETASJER (Emils valg 1B 05.11): brikker rett under linja — «Alle» og én
+// per etasje i modellen. Ett trykk velger (clip.js S.velgEtasje). Har modellen
+// færre enn to etasjer, vises ingen brikker. Lista bygges når modellen er åpen.
+let etasjeFor = null, etasjeHentes = false;
+async function lagEtasjer() {
+  const boks = $("bpeEtasjer");
+  if (!boks || !S.modelGroup || !S.sikreEtasjeliste) return;
+  if (etasjeHentes) return;
+  etasjeHentes = true;
+  etasjeFor = S.modelGroup;
+  let liste = [];
+  try { liste = await S.sikreEtasjeliste(); } catch (_) { liste = []; }
+  etasjeHentes = false;
+  if (!liste || liste.length < 2) { boks.innerHTML = ""; boks.style.display = "none"; return; }
+  boks.innerHTML = '<button type="button" data-etasje="-1" data-i18n>Alle</button>' +
+    liste.map((e, i) => '<button type="button" data-etasje="' + i + '">' + esc(e.name || "") + "</button>").join("");
+  boks.querySelectorAll("[data-etasje]").forEach(b => b.onclick = async () => {
+    if (S.velgEtasje) await S.velgEtasje(Number(b.dataset.etasje));
+    oppdater();
+  });
+  boks.style.display = "";
+  oppdater();
+}
+function merkEtasjer() {
+  const boks = $("bpeEtasjer");
+  if (!boks) return;
+  // Ny modell: lista i clip.js er nullstilt — bygg brikkene på nytt
+  if (S.modelGroup && S.modelGroup !== etasjeFor && !etasjeHentes) { lagEtasjer(); return; }
+  const valgt = S.storeyOn ? S.storeyIdx : -1;
+  boks.querySelectorAll("[data-etasje]").forEach(b => {
+    const p = Number(b.dataset.etasje) === valgt;
+    b.classList.toggle("akt", p);
+    b.setAttribute("aria-pressed", p ? "true" : "false");
+  });
+}
+
 // Markeringene av/på i 3D (markers.js eier gruppene)
 function brukMarkeringer() {
   const pa = markeringerSynlige();
@@ -131,6 +168,7 @@ export function oppdater() {
     // Mål/kjedemål går foran snitt og gjennomsiktig: det er der du holder på
     if (pa && (!hjelp || ESC.has(ekte))) hjelp = t(linje) + (ESC.has(ekte) && !erTelefon() ? " · " + t("Esc avbryter") : "");
   }
+  merkEtasjer();
   const h = $("bpeHjelp");
   if (h) { h.textContent = hjelp; h.style.display = hjelp ? "" : "none"; }
   const m = $("bpeMerk");
@@ -231,10 +269,13 @@ function folg() {
   if (!MO) return;
   const mo = new MO(() => oppdater());
   for (const [, ekte] of VERKTOY) { const k = $(ekte); if (k) mo.observe(k, { attributes: true, attributeFilter: ["class"] }); }
+  // Etasjer-knappen i Full (og snittet, som slår etasjen av) — brikkene følger med
+  const st = $("btnStorey");
+  if (st) mo.observe(st, { attributes: true, attributeFilter: ["class"] });
   const c = $("commentCount");
   if (c) mo.observe(c, { childList: true, characterData: true, subtree: true });
   // Teksten byttes ved språkbytte, og toppbaren vises når modellen er åpen
-  const mo2 = new MO(() => tilpassInfo());
+  const mo2 = new MO(() => oppdater());
   const i = $("bpmInfo");
   if (i) mo2.observe(i, { childList: true, characterData: true, subtree: true });
   if (document.body) mo2.observe(document.body, { attributes: true, attributeFilter: ["class"] });

@@ -54,6 +54,8 @@ import "./hjul.js";   // navigasjonshjul – trenger knappen i verktøylinja
 import "./share.js";
 import "./mobile.js";   // må lastes etter at alle knapper har fått lyttere
 import "./bp-modus.js";   // ◐ Enkel | Full (Emil 04.11) — etter mobile.js: trykker på de ekte knappene
+import "./nordpil.js";   // 🧭 nordpil under kuben når kontoret har plassert bygget (valg 5A 05.11)
+import "./nytt.js";      // ✨ «Nytt i Storm IFC» én gang etter en oppdatering (valg 10A 05.11)
 import "./rull-fall.js";   // 📜 rulling med fall nederst i alle vinduer (Emil 02.10)
 import "./oppsett.js";   // ansattliste og Planner-plan fra SharePoint
 import { varsel } from "./varsel.js";
