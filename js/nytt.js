@@ -22,13 +22,11 @@ export const NYHETER = [
     dato: "05.11.2026",
     kontor: [
       "Filter i markeringslista: Mine, Ikke løst, Frist denne uka og Fra byggeplassen",
-      "Tomme verktøy forklarer hvordan du kommer i gang",
-      "Nordpil under kuben når bygget er plassert i Terreng"
+      "Tomme verktøy forklarer hvordan du kommer i gang"
     ],
     bygg: [
       "Modellen åpnes i Enkel: bare modellen og de viktigste verktøyene. «Full» gir alt",
-      "Velg etasje rett under verktøylinja",
-      "Nordpil under kuben når kontoret har plassert bygget"
+      "Velg etasje rett under verktøylinja"
     ]
   }
 ];

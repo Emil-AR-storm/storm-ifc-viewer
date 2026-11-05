@@ -55,7 +55,6 @@ const MODULER = [
   ["./dokumentasjon.js", true],    // 📄 snarveiene i gruppa Dokumentasjon (kun kontor)
   ["./alle-verktoy.js", true],     // 🧭 «Alle verktøy»-oversikten (forslag 7, kun kontor)
   ["./panelhjelp.js", true],       // ❔ «?» i hvert panelhode (forslag 7A 03.11, kun kontor)
-  ["./nordpil.js"],                // 🧭 nordpil under kuben når bygget er plassert i Terreng (valg 5A 05.11)
   ["./nytt.js"],                   // ✨ «Nytt i Storm IFC» én gang etter en oppdatering (valg 10A 05.11)
   ["./pdf-utseende-ui.js", true],  // 🎨 Innstillinger → Utseende PDF (kun kontor)
   ["./markers.js"],
