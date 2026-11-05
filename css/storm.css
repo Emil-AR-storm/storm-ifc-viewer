@@ -3162,13 +3162,6 @@ body:not(.har-modell) .bpm-info, body:not(.har-modell) .bpm-bryter { display: no
   .bpm-bryter button { padding: 6px 7px; font-size: 12px; }
 }
 
-/* ---------- 🧭 Nordpil under kuben (js/nordpil.js, valg 5A 05.11) ---------- */
-.nord-pil { position: fixed; z-index: 6; width: 34px; text-align: center; pointer-events: none; }
-.nord-pil svg { width: 34px; height: 34px; display: block; filter: drop-shadow(0 1px 2px rgba(0,0,0,.35)); }
-.nord-pil .np-ring { fill: var(--panel); stroke: var(--border); }
-.nord-pil .np-sor { fill: var(--muted); }
-.nord-pil .np-n { display: block; margin-top: -1px; font-size: 11px; font-weight: 700; color: var(--text); text-shadow: 0 1px 2px var(--panel); }
-
 /* ---------- ✨ «Nytt i Storm IFC» (js/nytt.js, valg 10A 05.11) ---------- */
 .nytt-slor { position: fixed; inset: 0; z-index: 80; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; padding: 16px; }
 .nytt-kort { width: min(420px, 100%); background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--skygge); padding: 20px 22px; }
