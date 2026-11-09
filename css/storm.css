@@ -3110,11 +3110,13 @@ body:not(.har-modell) #vsok { display: none; }
    på dem. */
 html[data-bp-modus="enkel"] #toolbar,
 html[data-bp-modus="enkel"] #verktoygrupper,
-html[data-bp-modus="enkel"] #btnLight,
 html[data-bp-modus="enkel"] #btnComments,
 html[data-bp-modus="enkel"] #btnMore,
 html[data-bp-modus="enkel"] #moreMenu,
 html[data-bp-modus="enkel"] #status { display: none !important; }
+/* «Lav kvalitet» har ingen funksjon på byggeplassen – den laster alltid den
+   lette kopien (Emil 09.11). Skjult i både Enkel og Full. */
+html[data-lett="1"] #btnLight { display: none !important; }
 .bpm-info { margin-left: auto; background: none; border: 0; padding: 4px 6px; color: var(--muted); font-size: 12px; white-space: nowrap; cursor: pointer; }
 .bpm-info:hover { color: var(--text); }
 .bpm-info.to-linjer { white-space: normal; line-height: 1.05; text-align: right; max-width: 5.6em; min-width: min-content; flex: 0 1 auto; }
@@ -3163,7 +3165,11 @@ body:not(.har-modell) .bpm-info, body:not(.har-modell) .bpm-bryter { display: no
   .bpe-rad button { font-size: 9px; padding: 2px 0; }
   /* Full på telefon: toppbaren er full av knapper — teksten viker, bryteren står */
   html[data-bp-modus="full"] .bpm-info { display: none; }
-  .bpm-bryter { position: sticky; right: 0; }
+  /* Bryteren står FAST oppe til høyre, UTENFOR rullefeltet (Emil 09.11: i Full
+     lå den over et av verktøyene). Toppbaren slutter der bryteren begynner –
+     bp-modus.js måler bredden (--bpm-plass) og høyden (--bpm-topp). */
+  html[data-lett="1"] body.har-modell #topbar { right: var(--bpm-plass, 0px); }
+  .bpm-bryter { position: fixed; right: 6px; top: var(--bpm-topp, 6px); z-index: 11; box-shadow: var(--skygge); }
   .bpm-info { font-size: 10.5px; padding: 4px 0; }
   .bpm-bryter button { padding: 6px 7px; font-size: 12px; }
 }
