@@ -102,6 +102,7 @@ const BRUKT_FOR = typeof localStorage !== "undefined" ? harBruktFor() : false;
 let sjekket = false;
 export function sjekkNytt() {
   if (sjekket || !document.body.classList.contains("har-modell")) return;
+  if (document.documentElement.dataset.innebygd === "1") return;   // 🖼 ikke i Storm Prosjekter
   sjekket = true;
   const sett = les(NOKKEL), brukt = BRUKT_FOR;
   const post = nyttAVise(NYHETER, sett, brukt, side());

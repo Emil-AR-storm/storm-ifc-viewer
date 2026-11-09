@@ -676,6 +676,8 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Åpen flate": "Powierzchnia otwarta",
   "volum × {0} kg/m³": "objętość × {0} kg/m³",
   "egne profiler": "własne profile",
+  "Lagre forsidebilde": "Zapisz obraz okładki",
+  "Lagre et bilde av modellen som forsidebilde i Storm Prosjekter (Dashbord)": "Zapisz obraz modelu jako obraz okładki w Storm Prosjekter (pulpit)",
   "Merk": "Oznaczenie",
   "Merk: ": "Oznaczenie: ",
   "{0} elementer valgt": "Wybrano elementów: {0}",

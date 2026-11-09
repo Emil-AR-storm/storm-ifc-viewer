@@ -676,6 +676,8 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Åpen flate": "Open surface",
   "volum × {0} kg/m³": "volume × {0} kg/m³",
   "egne profiler": "own profiles",
+  "Lagre forsidebilde": "Save cover image",
+  "Lagre et bilde av modellen som forsidebilde i Storm Prosjekter (Dashbord)": "Save an image of the model as the cover image in Storm Prosjekter (Dashboard)",
   "Merk": "Mark",
   "Merk: ": "Mark: ",
   "{0} elementer valgt": "{0} elements selected",

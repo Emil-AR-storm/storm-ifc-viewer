@@ -159,6 +159,35 @@ export async function graphToken(scopes, opts) {
 // i hele kodebasen som starter MSAL av seg selv – den gates, ikke fjernes.
 if (!LETT && !SP.clientId.startsWith("FYLL")) msalInit().catch(() => { visInnlogging("feil"); });
 
+// 🖼 Microsoft ID-token til /kort/ms-inn (innebygd modus, v21). Workeren
+// sjekker det mot Storm IFC sin app-registrering og kortlista.
+//   stille: true → aldri vindu; null hvis ingen er logget inn
+//   velgKonto: true → Microsoft spør hvilken konto (etter «ikke tilgang»)
+// fersk henting (forceRefresh): et ID-token lever en time, og et gammelt fra
+// hurtigbufferen ville blitt avvist av Workeren.
+export async function msIdToken(o) {
+  const v = o || {};
+  await msalInit();
+  const konto = S.msalApp.getActiveAccount();
+  if (konto && !v.velgKonto) {
+    try {
+      const r = await S.msalApp.acquireTokenSilent({ scopes: SP_SCOPES, account: konto, forceRefresh: true });
+      if (r && r.idToken) { visInnlogging("inne", konto); return r.idToken; }
+    } catch (_) { /* må logge inn på nytt */ }
+  }
+  if (v.stille) return null;
+  if (brukPopup() || v.popup) {
+    const r = await S.msalApp.loginPopup({ scopes: SP_SCOPES, prompt: v.velgKonto ? "select_account" : undefined });
+    if (r && r.account) { S.msalApp.setActiveAccount(r.account); visInnlogging("inne", r.account); }
+    return (r && r.idToken) || null;
+  }
+  // Telefon i egen fane: omdirigering. Siden lastes på nytt, og den stille
+  // veien over henter tokenet. «ingen»: ikke åpne Biblioteket etterpå.
+  sessionStorage.setItem("storm-ifc-open-lib", "ingen");
+  await S.msalApp.loginRedirect({ scopes: SP_SCOPES });
+  return null;
+}
+
 export async function spToken() {
   return graphToken(SP_SCOPES, { after: "lib" });
 }

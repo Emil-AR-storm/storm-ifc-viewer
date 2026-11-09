@@ -805,12 +805,14 @@ export async function lagreGruppe(navn) {
 export async function apneGruppe(g) {
   if (!g || tilstand.grJobber || tilstand.jobber) return;
   stoppModuser(null);
-  if (S.fileName !== g.hoved.navn) {
+  // 🖼 Innebygd modus åpner hovedmodellen som lett kopi: da står IFC-navnet i S.kildeIfc
+  const hovedÅpen = () => S.fileName === g.hoved.navn || !!(S.kildeIfc && S.kildeIfc.fil === S.fileName && S.kildeIfc.ifc === g.hoved.navn);
+  if (!hovedÅpen()) {
     if (!g.hoved.libId) { varsel(t("Åpne «{0}» først — den ligger ikke i biblioteket. Velg så gruppen på nytt.", g.hoved.navn)); return; }
     if (S.modelGroup && !await bekreft(t("Åpne gruppen «{0}»? «{1}» lukkes, og «{2}» åpnes med lagene.", g.navn, S.fileName, g.hoved.navn))) return;
     tilstand.grJobber = t("Åpner {0} …", g.hoved.navn); tegn();
     try { await (await import("./sharepoint.js")).spOpenFile({ id: g.hoved.libId, name: g.hoved.navn, size: g.hoved.size }); } catch (_) {}
-    if (S.fileName !== g.hoved.navn || !S.modelGroup) { tilstand.grJobber = ""; tegn(); varsel(t("Klarte ikke å åpne «{0}».", g.hoved.navn)); return; }
+    if (!hovedÅpen() || !S.modelGroup) { tilstand.grJobber = ""; tegn(); varsel(t("Klarte ikke å åpne «{0}».", g.hoved.navn)); return; }
     apnePanel("lagPanel");
   }
   const mangler = [];

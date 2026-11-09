@@ -318,7 +318,7 @@ renderer.setAnimationLoop(() => {
 // HVER eneste frame, hele tiden, for en knapp som brukes én gang i uka.
 //
 // Radene må snus: WebGL leser nedenfra og opp, canvas tegner ovenfra og ned.
-export function fangstBilde(bredde, høyde) {
+export function fangstBilde(bredde, høyde, valg) {
   const b = Math.max(64, Math.round(bredde || 1400));
   const h = Math.max(64, Math.round(høyde || 900));
   let rt = null;
@@ -358,7 +358,9 @@ export function fangstBilde(bredde, høyde) {
     // dette ene bildet. En 3D-visning er fotolignende, så JPEG komprimerer den
     // ned til noen hundre kilobyte uten at noen ser forskjell — og en rapport
     // som skal sendes på e-post før et møte må kunne sendes på e-post.
-    return { data: c.toDataURL("image/jpeg", 0.86), b, h, format: "JPEG" };
+    // 🖼 Forsidebildet til Storm Prosjekter er PNG (valg.type)
+    const png = valg && valg.type === "image/png";
+    return { data: c.toDataURL(png ? "image/png" : "image/jpeg", 0.86), b, h, format: png ? "PNG" : "JPEG" };
   } catch (err) {
     // Bildet er en pynt, ikke en forutsetning — rapporten skal komme uansett.
     console.warn("Klarte ikke å fange modellbildet:", err);

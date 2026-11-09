@@ -75,7 +75,12 @@ function synligeGrupper() { return vaskGruppeListe(S.grupper).filter(g => !g.sle
 function lagringsNokkel() { return "storm-ifc-grupper::" + S.fileName; }
 
 const GR_SP_MAPPE = "Grupper";
-function grSpFil() { return S.fileName + ".grupper.json"; }
+// 🖼 Lett kopi åpnet fra innebygd modus: gruppene hører til IFC-navnet, så de
+// er de samme som når IFC-en åpnes (ExpressID-ene er de samme i den lette kopien).
+function grSpFil() {
+  const k = S.kildeIfc;
+  return (k && k.fil === S.fileName ? k.ifc : S.fileName) + ".grupper.json";
+}
 
 // "av" | "ok" | "feil" — vises i panelet, så brukeren vet om gruppa havner
 // hos kollegaene eller bare på denne maskinen.

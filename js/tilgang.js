@@ -23,6 +23,7 @@
 // STORM-BYGGEPLASS (bygg.html) LASTER ALDRI DENNE FILA. Montørene merker ingenting.
 import { $, S, esc } from "./state.js";
 import { TJENESTER } from "./config.js";
+import { lesInnebygd } from "./innebygd-regn.js";
 import { varsel } from "./varsel.js";
 import { bekreft } from "./sporsmal.js";
 
@@ -52,7 +53,7 @@ export const LÅSTE_KNAPPER = [
   // Storm-Byggeplass
   "btnByggeplass", "btnMateriell", "btnSW", "btnTak", "btnShare", "btnHistorikk",
   // Dokumentasjon
-  "btnRapport", "btnDokStope", "btnDokRigg", "btnDokLofte", "btnDokSW", "btnDokBcf", "btnDokBcfImport", "btnSaveLite",
+  "btnRapport", "btnDokStope", "btnDokRigg", "btnDokLofte", "btnDokSW", "btnDokBcf", "btnDokBcfImport", "btnSaveLite", "btnForsidebilde",
   // Biblioteket (SharePoint) — kort + Microsoft-innlogging som i dag
   "btnLib", "btnLibSplash"
 ];
@@ -77,15 +78,38 @@ try {
   if (gml) { settSS(ADMIN_KEY, gml); localStorage.removeItem(ADMIN_KEY); }
 } catch (_) {}
 
+// 🖼 INNEBYGD MODUS (Storm Prosjekter, v21): Microsoft-innloggingen gir et
+// økt-bevis «ms1.…» fra /kort/ms-inn. Det lagres for seg (ikke i KORT_KEY), så
+// et ekte kort i samme nettleser aldri overskrives, og brukes bare i innebygd
+// modus. Det virker i 12 timer; Workeren sjekker «Sperret» ved hvert kall.
+const MS_KEY = "storm-kort-ms";
+const erInnebygd = () => { try { return lesInnebygd(location.search).innebygd; } catch (_) { return false; } };
+export function lagreMsKort(k) {
+  try { localStorage.setItem(MS_KEY, JSON.stringify(k)); } catch (_) {}
+  fjernSS(SJEKK_KEY);
+}
+function lesMsKort() {
+  if (!erInnebygd()) return null;
+  try {
+    const k = JSON.parse(lesLS(MS_KEY) || "null");
+    // Ett minutt slingring: et bevis som går ut midt i en lasting gir bare
+    // en ny innlogging, ikke en halvveis åpnet modell.
+    if (!k || !/^ms1\./.test(k.nøkkel || "") || !(Number(k.utløper) > Date.now() + 60000)) return null;
+    return k;
+  } catch (_) { return null; }
+}
+
 export function lesKort() {
   try {
     const k = JSON.parse(lesLS(KORT_KEY) || "null");
-    return k && /^[0-9a-f]{64}$/.test(k.nøkkel || "") ? k : null;
-  } catch (_) { return null; }
+    if (k && /^[0-9a-f]{64}$/.test(k.nøkkel || "")) return k;
+  } catch (_) { /* faller til Microsoft-beviset */ }
+  return lesMsKort();
 }
 function lagreKort(k) { try { localStorage.setItem(KORT_KEY, JSON.stringify(k)); } catch (_) {} }
 export function fjernKort() {
   try { localStorage.removeItem(KORT_KEY); } catch (_) {}
+  try { localStorage.removeItem(MS_KEY); } catch (_) {}
   fjernSS(SJEKK_KEY);
 }
 

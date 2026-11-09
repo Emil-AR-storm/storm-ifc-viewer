@@ -12,7 +12,8 @@ import { addMeasure, koteValue, rettPunkt, snapPoint } from "./measure.js";
 import { canvas, koteGroup, makeLabel, measureGroup } from "./scene.js";
 import { naermesteMaaleflate, registrerPeker } from "./pek-eier.js";
 
-import { sjekkKort, startTilgang } from "./tilgang.js";   // 🔒 gratisdel og enhetskort (post 11)
+import { sjekkKort, startTilgang } from "./tilgang.js";
+import { erInnebygd, forberedInnebygd, startForsidebilde, startInnebygd } from "./innebygd.js";   // 🖼 Storm IFC inne i Storm Prosjekter (fase B)   // 🔒 gratisdel og enhetskort (post 11)
 import { varsel } from "./varsel.js";
 
 // ---------- Resten av modulene (rekkefølgen bestemmer oppstart) ----------
@@ -82,6 +83,9 @@ const MODULER = [
   ["./usersync.js"]                // personlig oppsett fra SharePoint – må lastes sist
 ];
 
+// 🖼 Innebygd i Storm Prosjekter: rammesjekk og Microsoft-innlogging FØR
+// kortsjekken, så de låste modulene (Grupper) lastes med det nye beviset.
+if (erInnebygd()) await forberedInnebygd();
 const medKort = await sjekkKort();
 // 🔁 Emil 14.10: «noen ganger laster ikke rigg inn» — feilen var «Failed to
 // fetch dynamically imported module …/rigg.js». Det er NETTET (eller GitHub
@@ -120,6 +124,8 @@ for (const [sti, låst] of MODULER) {
 if (feilet.length) varsel("Klarte ikke å laste " + feilet.join(", ") + " (nettet eller GitHub svarte ikke). Last siden på nytt (F5).");
 // Hengelåsene, «Gratisversjon» og Admin-knappen — når alle knapper finnes
 startTilgang();
+startForsidebilde();
+if (erInnebygd()) startInnebygd();
 
 // JavaScript kjører – skjul advarselen
 const jsCheck = document.getElementById("jsCheck");

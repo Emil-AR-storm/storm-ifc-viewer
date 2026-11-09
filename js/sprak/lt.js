@@ -676,6 +676,8 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Åpen flate": "Atviras paviršius",
   "volum × {0} kg/m³": "tūris × {0} kg/m³",
   "egne profiler": "savi profiliai",
+  "Lagre forsidebilde": "Išsaugoti viršelio vaizdą",
+  "Lagre et bilde av modellen som forsidebilde i Storm Prosjekter (Dashbord)": "Išsaugoti modelio vaizdą kaip viršelio vaizdą Storm Prosjekter (skydelis)",
   "Merk": "Žymuo",
   "Merk: ": "Žymuo: ",
   "{0} elementer valgt": "Pasirinkta elementų: {0}",

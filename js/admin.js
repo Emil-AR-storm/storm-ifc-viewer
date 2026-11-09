@@ -190,9 +190,9 @@ export function visAdmin() {
           '<div id="apKodeUt" class="ap-kodeut"></div>' +
         '</div>' +
         '<div class="ap-tabell-boks"><table class="ap-tabell"><thead><tr>' +
-          '<th>' + esc(norsk("Navn")) + '</th><th>' + esc(norsk("Firma")) + '</th><th>' + esc(norsk("Type")) + '</th>' +
+          '<th>' + esc(norsk("Navn")) + '</th><th>' + esc(norsk("Firma")) + '</th><th>' + esc(norsk("Microsoft-konto")) + '</th><th>' + esc(norsk("Type")) + '</th>' +
           '<th>' + esc(norsk("Vilkår")) + '</th><th>' + esc(norsk("Sist brukt")) + '</th><th>' + esc(norsk("Eier prosjekter")) + '</th><th></th>' +
-        '</tr></thead><tbody id="apBrukere"><tr><td colspan="7" class="ap-tom">' + esc(norsk("Henter …")) + '</td></tr></tbody></table></div>' +
+        '</tr></thead><tbody id="apBrukere"><tr><td colspan="8" class="ap-tom">' + esc(norsk("Henter …")) + '</td></tr></tbody></table></div>' +
       '</section>' +
     '</section>' +
 
@@ -397,7 +397,7 @@ async function hentBrukere() {
   } catch (err) {
     if (err.message === "403") return;
     const k = $("apBrukere");
-    if (k) k.innerHTML = '<tr><td colspan="7" class="kb-feil">' + esc(err.message) + '</td></tr>';
+    if (k) k.innerHTML = '<tr><td colspan="8" class="kb-feil">' + esc(err.message) + '</td></tr>';
     return;
   }
   tegnBrukere(); tegnTrenger(); oppdaterMerker();
@@ -550,6 +550,17 @@ function eierChips(id) {
     '<button type="button" class="ap-chip ap-chip-nr" data-gaa="' + esc(p.prosjekt) + '" title="' + esc(p.navn || p.prosjekt) + '">' + esc(p.prosjekt) + '</button>').join("") + '</span>';
 }
 
+// 🔗 Microsoft-konto (v21, 3D i Storm Prosjekter): e-posten på kortet ER kontoen
+// personen logger inn med i den innebygde visningen. «✓ bekreftet» = hun har
+// logget inn med den minst én gang, og kontoen er da låst til kortet.
+function msKonto(k) {
+  const konto = k.msKonto || k.epost || "";
+  if (!konto) return '<span class="ap-dempet" title="' + esc(norsk("Ingen e-post – kan ikke logge inn med Microsoft")) + '">–</span>';
+  return esc(konto) + (k.msBekreftet
+    ? ' <span class="ap-type ap-storm" title="' + esc(norsk("Har logget inn med Microsoft")) + '">✓ ' + esc(norsk("bekreftet")) + '</span>'
+    : "");
+}
+
 function tegnBrukere() {
   const kropp = $("apBrukere");
   if (!kropp || !D.kort) return;
@@ -576,16 +587,16 @@ function tegnBrukere() {
         '<button type="button" data-id="' + esc(k.id) + '" data-sperr="1">' + esc(norsk("Sperr")) + '</button>';
     return '<tr class="' + (k.sperret ? "ap-rad-sperret" : "") + (åpen ? " ap-rad-apen" : "") + '" title="' +
         esc((k.epost || "") + (k.opplastinger ? " · " + k.opplastinger + " " + norsk("opplastinger") : "")) + '">' +
-      '<td><b>' + esc(k.navn) + '</b></td><td>' + esc(k.firma) + '</td><td>' + type + '</td>' +
+      '<td><b>' + esc(k.navn) + '</b></td><td>' + esc(k.firma) + '</td><td>' + msKonto(k) + '</td><td>' + type + '</td>' +
       '<td>' + vilkår + '</td><td>' + esc(når(k.sistBrukt)) + '</td><td>' + eierChips(k.id) + '</td>' +
       '<td class="ap-handling"><span class="ap-radknapper">' + knapper + '</span></td></tr>' +
       (åpen ? brukerDetalj(k) : "");
   };
-  const admin = '<tr><td><b>Emil (admin)</b></td><td>Storm</td><td><span class="ap-type ap-storm">Storm</span></td><td>–</td><td>' +
+  const admin = '<tr><td><b>Emil (admin)</b></td><td>Storm</td><td class="ap-dempet">–</td><td><span class="ap-type ap-storm">Storm</span></td><td>–</td><td>' +
     esc(norsk("i dag")) + '</td><td>' + eierChips("admin") + '</td><td class="ap-handling ap-dempet">admin</td></tr>';
   const ventende = vent.map(v => {
     const snart = v.utløper && Date.parse(v.utløper) < Date.now() + 24 * 3600000;
-    return '<tr class="ap-rad-ventende"><td>' + esc(v.navn) + '</td><td>' + esc(v.firma) + '</td><td><span class="ap-type">' +
+    return '<tr class="ap-rad-ventende"><td>' + esc(v.navn) + '</td><td>' + esc(v.firma) + '</td><td>' + (v.epost ? esc(v.epost) : '<span class="ap-dempet">–</span>') + '</td><td><span class="ap-type">' +
       esc(norsk("Kode sendt")) + '</span></td><td>–</td><td' + (snart ? ' class="ap-oransje"' : "") + '>' + esc(norsk("går ut {0}", når(v.utløper, true))) +
       '</td><td></td><td></td></tr>';
   }).join("");
@@ -595,10 +606,10 @@ function tegnBrukere() {
 
 function brukerDetalj(k) {
   const visKode = sammeKode && sammeKode.id === k.id;
-  return '<tr class="ap-detalj"><td colspan="7"><div class="ap-bruker-grid">' +
+  return '<tr class="ap-detalj"><td colspan="8"><div class="ap-bruker-grid">' +
     '<section class="ap-kol"><label>' + esc(norsk("Navn")) + '<input id="apEndreNavn" maxlength="60" autocomplete="off" value="' + esc(k.navn) + '"></label>' +
       '<label>' + esc(norsk("Firma")) + '<input id="apEndreFirma" maxlength="80" autocomplete="off" value="' + esc(k.firma) + '"></label>' +
-      '<label>' + esc(norsk("E-post")) + '<input id="apEndreEpost" type="email" maxlength="120" autocomplete="off" value="' + esc(k.epost) + '"></label>' +
+      '<label>' + esc(norsk("E-post (Microsoft-konto)")) + '<input id="apEndreEpost" type="email" maxlength="120" autocomplete="off" value="' + esc(k.epost) + '"></label>' +
       '<div class="ap-knapper"><button type="button" class="primary" id="apEndreLagre">' + esc(norsk("Lagre")) + '</button>' +
         '<button type="button" id="apEndreAvbryt">' + esc(norsk("Avbryt")) + '</button></div>' +
       '<p class="kb-feil" id="apEndreFeil"></p></section>' +
