@@ -295,6 +295,9 @@ button.active { background: var(--aktiv-bg); border-color: var(--aktiv-bg); colo
 /* A3 (09.11): varsel over målene når tallene bare er tilnærmet (runde/åpne flater) */
 .prop-varsel { margin: 8px 0; padding: 8px 10px; border: 1px solid var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); border-radius: 8px; font-size: 12px; line-height: 1.4; }
 .prop-varsel b { color: var(--warn); }
+/* V3 (09.11): regnestykket under vekten, og hvor kg/m kommer fra */
+.prop-under { color: var(--muted); }
+.prop-merke { border: 1px solid var(--border); border-radius: 6px; padding: 0 5px; margin-left: 2px; white-space: nowrap; }
 
 /* Egenskapssettene fra IFC-fila. Settnavnet står som overskrift ÉN gang,
    i stedet for foran hver eneste rad. */
