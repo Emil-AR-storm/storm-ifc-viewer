@@ -195,8 +195,8 @@ function visGulvEgenskaper(skjul) {
     '<div class="prop-actions"><button id="paSkjulSw">' + ikon("skjul") + ' ' +
     t("Skjul dette elementet") + '</button></div>' +
     rad(t("Type"), t("Betonggulv")) +
-    rad(t("Mål L×B×H (ca)"), m.L + " × " + m.B + " × " + m.T + " mm") +
-    rad(t("Volum (ca)"), (Math.round(m.volM3 * 10) / 10).toLocaleString("no-NO") + " m³") +
+    rad(t("Mål L×B×H"), m.L + " × " + m.B + " × " + m.T + " mm") +
+    rad(t("Volum"), (Math.round(m.volM3 * 10) / 10).toLocaleString("no-NO") + " m³") +
     (m.isoMm ? rad(t("Isolasjon under"), m.isoMm + " mm") : "") +
     '<p style="color:var(--muted); font-size:11px; margin-top:8px">' +
     t("Skjulte SW-elementer hentes fram igjen med «Vis alle».") + '</p>';
