@@ -194,6 +194,10 @@ export async function showProperties(expressID) {
       $("propTitle").textContent = (p.typeName ? "Ifc" + p.typeName : t("Element"));
       rows.push(["ExpressID", expressID]);
       p.felt.forEach(([k, v]) => rows.push([k, v]));
+      // Materialet trengs til ⚖ vekten (bare stål) og Materiale-raden. Er
+      // metadataene ikke hentet ennå (første trykk etter åpning), hentes de
+      // her én gang for hele modellen – samme henting som Søk og Mengder bruker.
+      if (!metaFor(expressID)) { try { await sikreMeta(alleElementIder); } catch (_) {} }
       const mMeta = metaFor(expressID);
       if (mMeta && mMeta.material) rows.push([t("Materiale"), mMeta.material]);
       const felt = Object.fromEntries(p.felt);
@@ -211,6 +215,8 @@ export async function showProperties(expressID) {
     '</div>' +
     rows.map(r => r.boks
       ? `<div class="prop-varsel"><b>⚠ ${esc(r.tittel)}</b><br>${esc(r.tekst)}</div>`
+      : r.vHtml   // ferdig escapet i vektRad
+      ? `<div class="prop-row"><div class="k">${esc(String(r.k))}</div><div class="v">${r.vHtml}</div></div>`
       : `<div class="prop-row"><div class="k">${esc(String(r[0]))}</div><div class="v">${esc(String(r[1]))}</div></div>`).join("") +
     psetHtml(psets);
   $("paHide").onclick = () => hideElement(expressID);   // virker nå også i 🪶 (synkMergedSkjuling)
@@ -317,6 +323,43 @@ function hoydeY(id) {
   return hi > lo ? (hi - lo) * (S.enhetSkala || 1) : null;
 }
 
+// ---------------------------------------------------------------------------
+// ⚖ VEKT I EGENSKAPSPANELET (Emil 09.11, valg V3): én rad med vekten i fet
+// skrift og regnestykket under i grått, pluss hvor kg/m kommer fra.
+//
+// SAMME REGEL SOM MENGDER (computeQuantities): bare stål; kjent profil gir
+// nominell kg/m × lengde rettet for tverrsnittet (profilLengde); ukjent
+// profil gir volum × 7850 og merkes «geometri», så du vet at akkurat det
+// tallet må sjekkes. Åpen flate uten volum gir ingen vekt – ikke 0 kg.
+// ---------------------------------------------------------------------------
+function vektRad(id, q) {
+  let name = "", objType = "", material = "";
+  if (S.glbActive) {
+    const p = S.glbProps ? S.glbProps.get(id) : null;
+    if (p) { name = p[0] || ""; objType = p[1] || ""; material = p[3] || ""; }
+  } else {
+    const meta = metaFor(id);
+    if (meta) { name = meta.name || ""; objType = meta.objectType || ""; material = meta.material || ""; }
+  }
+  if (materialGruppe(material) !== "Stål") return null;
+  const prof = profilKgPerM(objType) || profilKgPerM(name);
+  let kg = 0, regne = "", kilde = "";
+  if (prof && q.len > 0) {
+    const L = profilLengde(q.len, prof);
+    kg = prof.kgPerM * L;
+    regne = prof.kgPerM.toFixed(2) + " kg/m × " + L.toFixed(3) + " m · " + prof.profil;
+    kilde = prof.kilde === "tabell" ? "tabell" : prof.kilde === "egen" ? "egne profiler" : "formel";
+  } else if (q.vol > 0 && q.lukket !== false) {
+    kg = q.vol * (TETTHET["Stål"] || 7850);
+    regne = t("volum × {0} kg/m³", TETTHET["Stål"] || 7850);
+    kilde = "geometri";
+  }
+  if (!(kg > 0)) return null;
+  const d = Math.max(1, Math.min(dec(), 2));
+  return { k: t("Vekt"), vHtml: '<b>' + esc(kg.toFixed(d) + " kg") + '</b><br><small class="prop-under">' +
+    esc(regne) + ' <span class="prop-merke">' + esc(t(kilde)) + '</span></small>' };
+}
+
 function maalRader(id) {
   const rows = [];
   const q = elementQuantities(id);
@@ -347,6 +390,8 @@ function maalRader(id) {
   }
   rows.push([t("Overflate i alt"), fmtArea(q.overflate)]);
   rows.push([t("Volum"), fmtVol(q.vol)]);
+  const vekt = vektRad(id, q);
+  if (vekt) rows.push(vekt);
   return rows;
 }
 

@@ -674,6 +674,8 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Runde flater": "Okrągłe powierzchnie",
   "Areal og volum under er tilnærmet – litt for små, fordi runde flater er tegnet som mange små rette flater.": "Powierzchnia i objętość poniżej są przybliżone – nieco za małe, ponieważ okrągłe powierzchnie są narysowane jako wiele małych płaskich ścian.",
   "Åpen flate": "Powierzchnia otwarta",
+  "volum × {0} kg/m³": "objętość × {0} kg/m³",
+  "egne profiler": "własne profile",
   "Merk": "Oznaczenie",
   "Merk: ": "Oznaczenie: ",
   "{0} elementer valgt": "Wybrano elementów: {0}",

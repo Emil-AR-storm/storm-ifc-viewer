@@ -12,7 +12,7 @@
 // Tegningen er enklere enn på kontoret med vilje: ingen bølgeprofil i blikket.
 // Den er til pynt, og koster rammer på en telefon.
 import * as THREE from "three";
-import { $, S, apnePanel, esc, ikon, registrerEkstraGruppe } from "./state.js";
+import { $, S, apnePanel, dec, esc, ikon, registrerEkstraGruppe } from "./state.js";
 import { t } from "./i18n.js";
 import { camera, canvas, flyTil, raycaster, scene } from "./scene.js";
 import { BESLAG_FORM, BESLAG_FORM_NAVN, BLIKK_TYPE_NAVN } from "./sw-blikk.js";
@@ -519,11 +519,12 @@ registrerEkstraGruppe(swLettGroup, {
         '<div class="prop-actions"><button id="paSkjulSwLett">' + ikon("skjul") + ' ' + t("Skjul dette elementet") + '</button></div>' +
         rad(t("Type"), t("Betonggulv")) +
         rad(t("Mål L×B×H"), Math.max(e.l, e.t) + " × " + Math.min(e.l, e.t) + " × " + e.h + " mm") +
-        rad(t("Volum"), (Math.round(e.l * e.t * e.h / 1e8) / 10).toLocaleString("no-NO") + " m³");
+        rad(t("Volum"), (e.l * e.t * e.h / 1e9).toFixed(dec()) + " m³");
       $("paSkjulSwLett").onclick = () => this.skjul([id]);
       apnePanel("propPanel");
       return;
     }
+    const hSnitt = e.hv !== undefined ? Math.round((e.hv + e.hh) / 2) : e.h;
     $("propTitle").textContent = erRm ? t("Ringmur") : (e.sw || t("Veggelement"));
     $("propBody").innerHTML =
       '<div class="prop-actions"><button id="paSkjulSwLett">' + ikon("skjul") + ' ' +
@@ -533,6 +534,10 @@ registrerEkstraGruppe(swLettGroup, {
       rad(t("Lengde"), e.l + " mm") +
       rad(t("Høyde"), (e.hv !== undefined ? e.hv + "/" + e.hh : e.h) + " mm") +
       rad(t("Tykkelse"), e.t + " mm") +
+      // m² og m³ (Emil 09.11) — samme regel som swMengdeRad på kontoret:
+      // skrått element regnes med snitthøyden.
+      rad(t("Areal, største flate"), (e.l * hSnitt / 1e6).toFixed(dec()) + " m²") +
+      rad(t("Volum"), (e.l * hSnitt * e.t / 1e9).toFixed(dec()) + " m³") +
       '<p style="color:var(--muted); font-size:11px; margin-top:8px">' +
       t("Skjulte SW-elementer hentes fram igjen med «Vis alle».") + '</p>';
     $("paSkjulSwLett").onclick = () => this.skjul([id]);

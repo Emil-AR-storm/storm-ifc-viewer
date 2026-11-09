@@ -674,6 +674,8 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Runde flater": "Round surfaces",
   "Areal og volum under er tilnærmet – litt for små, fordi runde flater er tegnet som mange små rette flater.": "Area and volume below are approximate – slightly too small, because round surfaces are drawn as many small flat faces.",
   "Åpen flate": "Open surface",
+  "volum × {0} kg/m³": "volume × {0} kg/m³",
+  "egne profiler": "own profiles",
   "Merk": "Mark",
   "Merk: ": "Mark: ",
   "{0} elementer valgt": "{0} elements selected",

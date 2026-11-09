@@ -674,6 +674,8 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Runde flater": "Apvalūs paviršiai",
   "Areal og volum under er tilnærmet – litt for små, fordi runde flater er tegnet som mange små rette flater.": "Toliau nurodytas plotas ir tūris yra apytiksliai – šiek tiek per maži, nes apvalūs paviršiai nubraižyti kaip daug mažų plokščių sienelių.",
   "Åpen flate": "Atviras paviršius",
+  "volum × {0} kg/m³": "tūris × {0} kg/m³",
+  "egne profiler": "savi profiliai",
   "Merk": "Žymuo",
   "Merk: ": "Žymuo: ",
   "{0} elementer valgt": "Pasirinkta elementų: {0}",
