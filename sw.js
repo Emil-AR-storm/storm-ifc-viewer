@@ -36,7 +36,7 @@
 
 // ---- GENERERT BLOKK START (verktoy/lag-sw-liste.mjs) ----
 // IKKE REDIGER FOR HÅND. Kjør: node "verktoy/lag-sw-liste.mjs"
-const SW_VERSJON = "47ece8307d7d";
+const SW_VERSJON = "62aca6417068";
 const SKALL = [
   "/bygg.html",
   "/css/storm.css",
