@@ -216,6 +216,12 @@ export function tilpassInfo() {
 function plasserBryter() {
   const br = $("bpmBryter"), topp = $("topbar");
   if (!br || !topp) return;
+  // PÅ TELEFON BOR BRYTEREN I <body>, IKKE I TOPPBAREN (Emil 09.11, iPhone):
+  // Safari klipper et fast (fixed) element som ligger inne i en boks som
+  // ruller sidelengs – toppbaren ble kortere, men bryteren forsvant, og det
+  // fantes ingen vei tilbake til Enkel. På PC står den i toppbaren som før.
+  if (erTelefon()) { if (br.parentNode !== document.body) document.body.appendChild(br); }
+  else if (br.parentNode !== topp) topp.insertBefore(br, $("btnInnlogging") || null);
   const fast = br.offsetWidth > 0 && window.getComputedStyle(br).position === "fixed";
   if (!fast) { rot.style.removeProperty("--bpm-plass"); rot.style.removeProperty("--bpm-topp"); return; }
   rot.style.setProperty("--bpm-plass", (br.offsetWidth + 12) + "px");
