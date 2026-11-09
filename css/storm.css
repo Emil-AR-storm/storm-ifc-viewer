@@ -292,6 +292,9 @@ button.active { background: var(--aktiv-bg); border-color: var(--aktiv-bg); colo
 .prop-row { display: flex; padding: 5px 0; border-bottom: 1px solid var(--border); gap: 10px; }
 .prop-row .k { color: var(--muted); flex: 0 1 auto; min-width: 110px; max-width: 50%; overflow-wrap: anywhere; }
 .prop-row .v { flex: 1 1 auto; min-width: 0; word-break: break-word; overflow-wrap: anywhere; }
+/* A3 (09.11): varsel over målene når tallene bare er tilnærmet (runde/åpne flater) */
+.prop-varsel { margin: 8px 0; padding: 8px 10px; border: 1px solid var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); border-radius: 8px; font-size: 12px; line-height: 1.4; }
+.prop-varsel b { color: var(--warn); }
 
 /* Egenskapssettene fra IFC-fila. Settnavnet står som overskrift ÉN gang,
    i stedet for foran hver eneste rad. */
