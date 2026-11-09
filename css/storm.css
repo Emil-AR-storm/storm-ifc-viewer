@@ -3197,3 +3197,34 @@ body:not(.har-modell) .bpm-info, body:not(.har-modell) .bpm-bryter { display: no
 .tom-panel b { display: block; font-size: 14px; margin-bottom: 4px; }
 .tom-panel p { margin: 0 auto 12px; color: var(--muted); font-size: 12.5px; line-height: 1.45; max-width: 280px; }
 .tom-panel .primary { background: var(--accent); border-color: var(--accent); color: #fff; padding: 8px 14px; font-weight: 600; }
+
+/* ---------- 🖼 Innebygd i Storm Prosjekter (js/innebygd.js, Emils valg E1 09.11) ----------
+   Storm IFC sin egen topplinje og verktøylinje skjules; de EKTE knappene for
+   Mål, Kjedemål, Vinkel og fall, Akser, Snitt, Gjennomsiktig, Grupper,
+   Navigasjon og Vis alle flyttes inn i #innebygdBar. */
+html[data-innebygd] #topbar,
+html[data-innebygd] #toolbar,
+html[data-innebygd] #verktoygrupper,
+html[data-innebygd] #splash { display: none !important; }
+#innebygdBar { position: fixed; top: 0; left: 0; right: 0; z-index: 10; display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; background: linear-gradient(to bottom, var(--flate-95), var(--flate-72)); border-bottom: 1px solid var(--border); }
+#innebygdBar .storm-logo { height: 24px; width: auto; flex: none; }
+.ib-venstre, .ib-hoyre { display: flex; align-items: center; gap: 8px; flex: none; min-width: 0; }
+.ib-venstre b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 26vw; }
+.ib-venstre small, .ib-hoyre small { color: var(--muted); white-space: nowrap; }
+.ib-skille { width: 1px; height: 22px; background: var(--border); margin: 0 4px; }
+.ib-verktoy { flex: 1 1 auto; min-width: 0; display: flex; justify-content: safe center; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.ib-verktoy::-webkit-scrollbar { display: none; }
+.ib-verktoy > button { flex: none; white-space: nowrap; }
+/* Får ikke knappene plass med tekst, viser innebygd.js bare ikonene (tittelen står i verktøytipset) */
+#innebygdBar.ib-ikoner .btn-t { display: none; }
+@media (max-width: 760px) { .ib-venstre small, #ibBruker, .ib-skille, #innebygdBar .storm-logo { display: none; } .ib-venstre b { max-width: 30vw; } }
+.ib-kort-bak { position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.ib-kort { width: min(380px, 100%); background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--skygge); padding: 22px 24px; }
+.ib-kort .ib-logo { height: 26px; width: auto; }
+.ib-kort h2 { font-size: 17px; font-weight: 800; margin: 14px 0 6px; }
+.ib-kort p { color: var(--muted); font-size: 13px; line-height: 1.5; margin: 6px 0; }
+.ib-kort p b { color: var(--text); }
+.ib-kort .ib-liten { font-size: 12px; }
+.ib-knapp { margin-top: 14px; width: 100%; justify-content: center; padding: 10px; background: var(--accent); border-color: var(--accent); color: #fff; }
+.ib-knapp.ib-graa { background: var(--panel2); border-color: var(--border); color: var(--text); }
