@@ -209,8 +209,9 @@ export async function showProperties(expressID) {
       '<button id="paHide">' + ikon("skjul") + ' ' + t("Skjul element") + '</button>' +
       '<button id="paMaal">' + ikon("maal") + ' ' + t("Vis mål") + '</button>' +
     '</div>' +
-    rows.map(([k,v]) =>
-    `<div class="prop-row"><div class="k">${esc(String(k))}</div><div class="v">${esc(String(v))}</div></div>`).join("") +
+    rows.map(r => r.boks
+      ? `<div class="prop-varsel"><b>⚠ ${esc(r.tittel)}</b><br>${esc(r.tekst)}</div>`
+      : `<div class="prop-row"><div class="k">${esc(String(r[0]))}</div><div class="v">${esc(String(r[1]))}</div></div>`).join("") +
     psetHtml(psets);
   $("paHide").onclick = () => hideElement(expressID);   // virker nå også i 🪶 (synkMergedSkjuling)
   // 📐 Vis mål. Vanlig import og ikke import(): en dynamisk import ville falt
@@ -319,28 +320,33 @@ function hoydeY(id) {
 function maalRader(id) {
   const rows = [];
   const q = elementQuantities(id);
+  // A3 (Emil 09.11): varselboks OVER målene når tallene bare er tilnærmet.
+  if (q.buet)
+    rows.push({ boks: true, tittel: t("Runde flater"),
+      tekst: t("Areal og volum under er tilnærmet – litt for små, fordi runde flater er tegnet som mange små rette flater.") });
+  if (q.lukket === false)
+    rows.push({ boks: true, tittel: t("Åpen flate"),
+      tekst: t("Åpen flate uten tykkelse – volumet er ikke et ekte volum") });
   let r = null;
   try { r = retteMaal(id); } catch (_) {}
   let hy = null;
   try { hy = hoydeY(id); } catch (_) {}
   if (r) {
-    rows.push([t("Mål L×B×H (ca)"), lbh([r.lengde, r.bredde, r.tykkelse], hy).map(fmtDim).join(" × ") + " m"]);
+    rows.push([t("Mål L×B×H"), lbh([r.lengde, r.bredde, r.tykkelse], hy).map(fmtDim).join(" × ") + " m"]);
     // Arealet tas fra mengdeuttaket (q.storsteFlate), ikke fra retteMaal, slik
     // at panelet og Mengder-tabellen ALLTID viser samme tall for samme element.
     // retteMaal gjør sin egen gjennomgang for å kunne tegne flata, og to
     // uavhengige utregninger av samme størrelse ender før eller siden i strid.
-    rows.push([t("Areal, største flate (ca)"), fmtArea(q.storsteFlate)]);
+    rows.push([t("Areal, største flate"), fmtArea(q.storsteFlate)]);
     // 2 % – under det er forskjellen avrunding i geometrien, ikke en ekte forskjell.
     if (Math.abs(q.storsteFlate - q.area) > Math.max(q.storsteFlate, q.area) * 0.02)
-      rows.push([t("Areal, fotavtrykk (ca)"), fmtArea(q.area)]);
+      rows.push([t("Areal, fotavtrykk"), fmtArea(q.area)]);
   } else {
-    rows.push([t("Mål L×B×H (ca)"), lbh(q.dims, hy).map(fmtDim).join(" × ") + " m"]);
-    rows.push([t("Areal, fotavtrykk (ca)"), fmtArea(q.area)]);
+    rows.push([t("Mål L×B×H"), lbh(q.dims, hy).map(fmtDim).join(" × ") + " m"]);
+    rows.push([t("Areal, fotavtrykk"), fmtArea(q.area)]);
   }
-  rows.push([t("Overflate i alt (ca)"), fmtArea(q.overflate)]);
-  rows.push([t("Volum (ca)"), fmtVol(q.vol)]);
-  if (q.lukket === false)
-    rows.push([t("Merk"), t("Åpen flate uten tykkelse – volumet er ikke et ekte volum")]);
+  rows.push([t("Overflate i alt"), fmtArea(q.overflate)]);
+  rows.push([t("Volum"), fmtVol(q.vol)]);
   return rows;
 }
 
@@ -716,13 +722,7 @@ export function quantitiesForSet(idSet) {
       const d = nx * _qa.x + ny * _qa.y + nz * _qa.z;
       let pa = planAkk.get(id);
       if (!pa) { pa = []; planAkk.set(id, pa); }
-      let traff = false;
-      for (let k = 0; k < pa.length; k += 5) {
-        if (pa[k] * nx + pa[k+1] * ny + pa[k+2] * nz > PLAN_VINKEL && Math.abs(pa[k+3] - d) < dTol) {
-          pa[k+4] += t.area2; traff = true; break;
-        }
-      }
-      if (!traff && pa.length < PLAN_MAKS * 5) pa.push(nx, ny, nz, d, t.area2);
+      planLegg(pa, nx, ny, nz, d, t.area2, dTol);
     }
     sePunkt(id, _qa.x, _qa.y, _qa.z);
     sePunkt(id, _qb.x, _qb.y, _qb.z);
@@ -764,6 +764,9 @@ export function quantitiesForSet(idSet) {
       // et dekke. Se planFlater for hele begrunnelsen.
       storsteFlate: storst / 2 * m2,
       dims, vol: m.vol, area: m.area, lukket: m.lukket,
+      // Runde flater (sylinder, bue) – se erBuet. Panelet varsler da om at
+      // areal og volum er tilnærmet.
+      buet: erBuet(pa),
       // hele overflata (m²) – summen av de tre retningene under
       overflate: (f.topp + f.under + f.side) / 2 * m2,
       // area2 er 2 × arealet — derfor /2 her, i tillegg til enhetsskalaen
@@ -807,6 +810,56 @@ export const PLAN_AVSTAND_M = 0.005;      // 5 mm, målt i meter
 // SAMME taket brukes i mengdeuttaket og i panelet – ellers kunne de to vist
 // forskjellig areal for samme element, og da er begge tall verdiløse.
 export const PLAN_MAKS = 64;
+
+// Legger én trekant i riktig plangruppe (eller en ny). pa er det flate
+// tall-arrayet [nx,ny,nz,d,area2, …] for ett element.
+export function planLegg(pa, nx, ny, nz, d, area2, dTol) {
+  for (let k = 0; k < pa.length; k += 5) {
+    if (pa[k] * nx + pa[k+1] * ny + pa[k+2] * nz > PLAN_VINKEL && Math.abs(pa[k+3] - d) < dTol) {
+      pa[k+4] += area2; return;
+    }
+  }
+  if (pa.length < PLAN_MAKS * 5) pa.push(nx, ny, nz, d, area2);
+}
+
+// ---------------------------------------------------------------------------
+// 🔵 HAR ELEMENTET RUNDE FLATER?
+//
+// Emil 09.11 (valg A3): «(ca)» er fjernet fra målene, fordi de er kontrollert
+// mot Revit og stemmer eksakt for rette, lukkede elementer. Men en sylinder
+// kommer fra IFC-fila som et MANGEKANTET prisme – nullpunktsøylen i
+// testbetong.ifc har 10 sider. Areal og volum blir da litt for små, og det
+// skal stå i panelet i stedet for å late som tallet er eksakt.
+//
+// KJENNETEGNET: mange flateretninger som ligger tett inntil hverandre, som
+// vifta av sider rundt en sylinder (36° mellom hver på 10 sider). En vegg med
+// vinduer har mange PLAN, men bare tre RETNINGER. Et skrått dekke eller en
+// knekk i en vegg gir én eller to tette retninger – ikke en vifte.
+//
+//   buet = minst 6 retninger, og minst 4 av dem har en nabo innenfor 36,5°
+//
+// Retninger med fortegn slått sammen (topp og bunn er samme retning). Små
+// biter (< 0,1 % av største plan) teller ikke, så en fas eller avrunding i
+// et hjørne ikke gjør en vegg «rund».
+// ---------------------------------------------------------------------------
+const BUET_NABO = Math.cos(36.5 * Math.PI / 180);
+export function erBuet(pa) {
+  if (!pa || pa.length < 30) return false;
+  let størst = 0;
+  for (let k = 4; k < pa.length; k += 5) if (pa[k] > størst) størst = pa[k];
+  const ret = [];
+  for (let k = 0; k < pa.length; k += 5) {
+    if (pa[k + 4] < størst * 0.001) continue;
+    const n = [pa[k], pa[k + 1], pa[k + 2]];
+    if (!ret.some(r => Math.abs(r[0] * n[0] + r[1] * n[1] + r[2] * n[2]) > 0.999)) ret.push(n);
+  }
+  if (ret.length < 6) return false;
+  let medNabo = 0;
+  for (const a of ret) {
+    if (ret.some(b => b !== a && Math.abs(a[0] * b[0] + a[1] * b[1] + a[2] * b[2]) >= BUET_NABO)) medNabo++;
+  }
+  return medNabo >= 4;
+}
 
 // Deler ett elements geometri i plan. Returnerer planene sortert på areal,
 // største først. Koordinatene er i MODELLENS enheter; arealet er i m².

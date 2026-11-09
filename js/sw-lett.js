@@ -391,6 +391,10 @@ function skrivSkjulte() {
 
 function oppdaterKnapp() {
   swLettGroup.visible = !skjult;
+  // 🏠 «Alt på bygget» gjelder også TRP-takplatene (Emil 03.11: «skjul alt på
+  // bygget skjuler ikke takplatene»). De tegnes i et eget lag (tak-lett.js),
+  // slik som på kontoret der «Alt på bygget» tar tak og blikk med.
+  if (S.takLettAltSkjult) S.takLettAltSkjult(skjult);
   if (S.oppdaterVisAlle) S.oppdaterVisAlle();
 }
 
@@ -514,8 +518,8 @@ registrerEkstraGruppe(swLettGroup, {
       $("propBody").innerHTML =
         '<div class="prop-actions"><button id="paSkjulSwLett">' + ikon("skjul") + ' ' + t("Skjul dette elementet") + '</button></div>' +
         rad(t("Type"), t("Betonggulv")) +
-        rad(t("Mål L×B×H (ca)"), Math.max(e.l, e.t) + " × " + Math.min(e.l, e.t) + " × " + e.h + " mm") +
-        rad(t("Volum (ca)"), (Math.round(e.l * e.t * e.h / 1e8) / 10).toLocaleString("no-NO") + " m³");
+        rad(t("Mål L×B×H"), Math.max(e.l, e.t) + " × " + Math.min(e.l, e.t) + " × " + e.h + " mm") +
+        rad(t("Volum"), (Math.round(e.l * e.t * e.h / 1e8) / 10).toLocaleString("no-NO") + " m³");
       $("paSkjulSwLett").onclick = () => this.skjul([id]);
       apnePanel("propPanel");
       return;
@@ -539,13 +543,14 @@ registrerEkstraGruppe(swLettGroup, {
   // det bare øyeknappen — og antallet, så montøren ser at noe er skjult
   // enkeltvis selv om laget står på.
   utseendeRader(body) {
-    if (!body || !tegnede.length) return;
+    const antTak = S.takLettAntall ? S.takLettAntall() : 0;
+    if (!body || (!tegnede.length && !antTak)) return;
     const boks = document.createElement("div");
     boks.innerHTML =
       '<div class="qty-row" style="margin-top:10px"><div class="n" style="font-weight:700">' +
       t("SW-elementer") + '</div><div class="c"></div></div>' +
       '<div class="qty-row"><div class="n">' + t("Alt på bygget") +
-      ' <span style="color:var(--muted);font-size:11px">(' + tegnede.length + ')</span></div>' +
+      ' <span style="color:var(--muted);font-size:11px">(' + (tegnede.length + antTak) + ')</span></div>' +
       '<div class="c"><button data-sw-lett-skjul="1" title="' + t("Skjul/vis") +
       '" style="padding:3px 8px">' + ikon(skjult ? "skjul" : "vis") + '</button></div></div>' +
       (skjultId.size
