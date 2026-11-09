@@ -12,7 +12,7 @@
 // konstant fra en annen del.
 
 import * as THREE from "three";
-import { $, S, apnePanel, esc, ikon, registrerEkstraGruppe } from "../state.js";
+import { $, S, apnePanel, dec, esc, ikon, registrerEkstraGruppe } from "../state.js";
 import { t } from "../i18n.js";
 import { allElementBoxes } from "../elements.js";
 import { camera, flyTil, scene } from "../scene.js";
@@ -135,6 +135,7 @@ registrerEkstraGruppe(swGroup, {
     const rad = (k, val) => '<div class="prop-row"><div class="k">' + esc(k) +
       '</div><div class="v">' + esc(String(val)) + '</div></div>';
     const erRm = !!v.ringmur;
+    const mq = swMengdeRad(v, erRm, t);
     $("propTitle").textContent = erRm ? t("Ringmur") : (v.sw || t("Veggelement"));
     $("propBody").innerHTML =
       '<div class="prop-actions"><button id="paSkjulSw">' + ikon("skjul") + ' ' +
@@ -144,6 +145,10 @@ registrerEkstraGruppe(swGroup, {
       rad(t("Lengde"), (v.lengdeMm || 0) + " mm") +
       rad(t("Høyde"), v.skra ? (v.hVMm + "/" + v.hHMm + " mm") : ((v.hoydeMm || 0) + " mm")) +
       rad(t("Tykkelse"), (v.tMm || 0) + " mm") +
+      // m² og m³ (Emil 09.11): samme tall som raden i Mengder (swMengdeRad),
+      // med antall desimaler fra Innstillinger.
+      rad(t("Areal, største flate"), mq.area.toFixed(dec()) + " m²") +
+      rad(t("Volum"), mq.vol.toFixed(dec()) + " m³") +
       '<p style="color:var(--muted); font-size:11px; margin-top:8px">' +
       t("Skjulte SW-elementer hentes fram igjen med «Vis alle».") + '</p>';
     $("paSkjulSw").onclick = () => this.skjul([id]);
@@ -196,7 +201,7 @@ function visGulvEgenskaper(skjul) {
     t("Skjul dette elementet") + '</button></div>' +
     rad(t("Type"), t("Betonggulv")) +
     rad(t("Mål L×B×H"), m.L + " × " + m.B + " × " + m.T + " mm") +
-    rad(t("Volum"), (Math.round(m.volM3 * 10) / 10).toLocaleString("no-NO") + " m³") +
+    rad(t("Volum"), m.volM3.toFixed(dec()) + " m³") +
     (m.isoMm ? rad(t("Isolasjon under"), m.isoMm + " mm") : "") +
     '<p style="color:var(--muted); font-size:11px; margin-top:8px">' +
     t("Skjulte SW-elementer hentes fram igjen med «Vis alle».") + '</p>';
