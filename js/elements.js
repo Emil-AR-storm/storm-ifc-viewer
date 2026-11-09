@@ -766,7 +766,7 @@ export function quantitiesForSet(idSet) {
       dims, vol: m.vol, area: m.area, lukket: m.lukket,
       // Runde flater (sylinder, bue) – se erBuet. Panelet varsler da om at
       // areal og volum er tilnærmet.
-      buet: erBuet(pa),
+      buet: erBuet(pa, area2S.get(id) || 0),
       // hele overflata (m²) – summen av de tre retningene under
       overflate: (f.topp + f.under + f.side) / 2 * m2,
       // area2 er 2 × arealet — derfor /2 her, i tillegg til enhetsskalaen
@@ -836,29 +836,41 @@ export function planLegg(pa, nx, ny, nz, d, area2, dTol) {
 // vinduer har mange PLAN, men bare tre RETNINGER. Et skrått dekke eller en
 // knekk i en vegg gir én eller to tette retninger – ikke en vifte.
 //
-//   buet = minst 6 retninger, og minst 4 av dem har en nabo innenfor 36,5°
+//   buet = minst 6 retninger, minst 4 av dem har en nabo innenfor 36,5°,
+//          OG vifta dekker minst 25 % av overflata (se BUET_ANDEL)
 //
 // Retninger med fortegn slått sammen (topp og bunn er samme retning). Små
 // biter (< 0,1 % av største plan) teller ikke, så en fas eller avrunding i
 // et hjørne ikke gjør en vegg «rund».
 // ---------------------------------------------------------------------------
 const BUET_NABO = Math.cos(36.5 * Math.PI / 180);
-export function erBuet(pa) {
+// Andelen av overflata vifta må dekke. Bolthull i en plate, rotradius i en
+// HEA/HD eller hjørneradius i et hulprofil gir også en liten vifte – men den
+// er noen få prosent av overflata, og feilen i areal og volum er da
+// promiller. Funnet 09.11 på Tørdal (L60X6, knutepunktplate «Gusset») og
+// Sundland (HD 320, fotplater med hull). En ekte sylinder: ~65 %.
+const BUET_ANDEL = 0.25;
+export function erBuet(pa, area2Tot) {
   if (!pa || pa.length < 30) return false;
-  let størst = 0;
-  for (let k = 4; k < pa.length; k += 5) if (pa[k] > størst) størst = pa[k];
-  const ret = [];
+  let størst = 0, sum = 0;
+  for (let k = 4; k < pa.length; k += 5) { sum += pa[k]; if (pa[k] > størst) størst = pa[k]; }
+  const ret = [];   // [nx, ny, nz, areal]
   for (let k = 0; k < pa.length; k += 5) {
     if (pa[k + 4] < størst * 0.001) continue;
     const n = [pa[k], pa[k + 1], pa[k + 2]];
-    if (!ret.some(r => Math.abs(r[0] * n[0] + r[1] * n[1] + r[2] * n[2]) > 0.999)) ret.push(n);
+    const r = ret.find(r => Math.abs(r[0] * n[0] + r[1] * n[1] + r[2] * n[2]) > 0.999);
+    if (r) r[3] += pa[k + 4]; else ret.push([n[0], n[1], n[2], pa[k + 4]]);
   }
   if (ret.length < 6) return false;
-  let medNabo = 0;
+  let medNabo = 0, vifteAreal = 0;
   for (const a of ret) {
-    if (ret.some(b => b !== a && Math.abs(a[0] * b[0] + a[1] * b[1] + a[2] * b[2]) >= BUET_NABO)) medNabo++;
+    // Naboen må også være omtrent like stor: sidene rundt en sylinder er like
+    // brede. En skrå søyle med skråkappede ender har også retninger som ligger
+    // tett – men endeflatene er bittesmå mot sidene (Norsjø CFSHS100x6, 09.11).
+    if (ret.some(b => b !== a && Math.abs(a[0] * b[0] + a[1] * b[1] + a[2] * b[2]) >= BUET_NABO &&
+        Math.max(a[3], b[3]) <= 3 * Math.min(a[3], b[3]))) { medNabo++; vifteAreal += a[3]; }
   }
-  return medNabo >= 4;
+  return medNabo >= 4 && vifteAreal >= BUET_ANDEL * (area2Tot > 0 ? area2Tot : sum);
 }
 
 // Deler ett elements geometri i plan. Returnerer planene sortert på areal,
