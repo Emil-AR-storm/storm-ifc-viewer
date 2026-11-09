@@ -178,6 +178,7 @@ export function oppdater() {
   if (m) m.title = t("Markeringer: {0}", n) + " — " + (markeringerPa ? t("vises") : t("skjult"));
   // Linja står ØVERST (Emil 04.11, valg A): nederst dekket den objektinfoen.
   // Den legges rett under toppbaren, og kuben (Topp/Front) flyttes under linja.
+  plasserBryter();
   tilpassInfo();
   const l = $("bpEnkel"), topp = $("topbar");
   const start = Math.round((topp ? topp.getBoundingClientRect().bottom : 50) + 6);
@@ -208,6 +209,18 @@ export function tilpassInfo() {
   if (forBred()) { i.classList.add("to-linjer"); i.style.fontSize = "11px"; krymp(11, 7); }
   // 3) fortsatt for trangt (smal telefon, langt språk): tettere toppbar
   if (forBred()) { topp.classList.add("bpm-trang"); i.style.fontSize = "10px"; krymp(10, 7); }
+}
+
+// Telefon: bryteren står fast oppe til høyre (CSS), og toppbaren skal slutte
+// der bryteren begynner, så ingen knapp kan gjemme seg bak den (Emil 09.11).
+function plasserBryter() {
+  const br = $("bpmBryter"), topp = $("topbar");
+  if (!br || !topp) return;
+  const fast = br.offsetWidth > 0 && window.getComputedStyle(br).position === "fixed";
+  if (!fast) { rot.style.removeProperty("--bpm-plass"); rot.style.removeProperty("--bpm-topp"); return; }
+  rot.style.setProperty("--bpm-plass", (br.offsetWidth + 12) + "px");
+  const r = topp.getBoundingClientRect();
+  rot.style.setProperty("--bpm-topp", Math.round(r.top + (r.height - br.offsetHeight) / 2) + "px");
 }
 
 const erTelefon = () => typeof window !== "undefined" && window.innerWidth <= 640;
