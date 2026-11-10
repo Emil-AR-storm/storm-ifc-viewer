@@ -329,7 +329,20 @@ export function fangstBilde(bredde, høyde, valg) {
   // tilbake i finally — også hvis noe kaster underveis.
   const gammelBg = scene.background ? scene.background.clone() : null;
   const gammeltRutenett = grid.visible;
+  // 🖼 valg.standard (B2, forsidebildet): hele modellen skrått ovenfra, uten
+  // markeringer, mål og utvalg. Kameraet og gruppene settes tilbake i finally.
+  const std = !!(valg && valg.standard && S.modelGroup);
+  const kam = std ? { pos: camera.position.clone(), mål: controls.target.clone(), near: camera.near, far: camera.far,
+    nb: S.naerBasis, fb: S.farBasis, gy: grid.position.y } : null;
+  const pynt = std ? [markerGroup, measureGroup, koteGroup, axesGroup, selGroup, omradeGroup].map(g => [g, g.visible]) : [];
   try {
+    if (std) {
+      // «Vis hele modellen» står litt tett for et bilde i 16:9 — gå 40 % lenger ut.
+      fitToModel();
+      camera.position.sub(controls.target).multiplyScalar(1.4).add(controls.target);
+      camera.lookAt(controls.target);
+      for (const [g] of pynt) g.visible = false;
+    }
     if (S.skjulVaer3D) S.skjulVaer3D(true);   // 🌦 himmel og regn hører ikke hjemme i rapporten
     if (scene.background) scene.background.set(0xffffff);
     grid.visible = false;
@@ -368,6 +381,13 @@ export function fangstBilde(bredde, høyde, valg) {
   } finally {
     if (gammelBg && scene.background) scene.background.copy(gammelBg);
     if (S.skjulVaer3D) S.skjulVaer3D(false);
+    for (const [g, v] of pynt) g.visible = v;
+    if (kam) {
+      camera.position.copy(kam.pos); controls.target.copy(kam.mål);
+      camera.near = kam.near; camera.far = kam.far; camera.updateProjectionMatrix();
+      S.naerBasis = kam.nb; S.farBasis = kam.fb; grid.position.y = kam.gy;
+      controls.update();
+    }
     grid.visible = gammeltRutenett;
     renderer.setRenderTarget(gammelt);
     if (rt) rt.dispose();

@@ -559,6 +559,7 @@ export async function spOpenFile(item) {
     afterLoad();
     clearLoadFlag();
     if (S.rememberModel) S.rememberModel({ kind: "lib", name: item.name, size: item.size, id: item.id });
+    if (S.etterSpModell) S.etterSpModell(item, meta);  // 🖼 B2: forsidebilde automatisk (innebygd.js)
   } catch (err) {
     console.error(err);
     clearLoadFlag();

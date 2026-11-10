@@ -235,3 +235,8 @@ export function spSkrivBin(mappe, fil, data, type) {
 export function spLastOpp(mappe, fil, data, type) {
   return sporet(navnFor(mappe, fil), () => spLastOppIntern(mappe, fil, data, type));
 }
+// 🖼 B2: det automatiske forsidebildet lastes opp i det stille — det skal
+// ikke vises i lagringsstatusen, og en feil står bare i konsollen.
+export function spLastOppStille(mappe, fil, data, type) {
+  return spLastOppIntern(mappe, fil, data, type);
+}

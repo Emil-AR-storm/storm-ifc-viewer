@@ -44,7 +44,9 @@ function visKort(html) {
   return bak;
 }
 function lukkKort() { const b = $("ibKort"); if (b) b.remove(); }
-const tittel = () => ADR.modell ? norsk("3D-modellen: {0}", R.modellTittel(ADR.modell)) : norsk("3D-modellen");
+// Navnet som vises: IFC-navnet (modell=) eller glb-navnet (lett=, B1).
+const visNavn = () => R.modellTittel(ADR.modell || ADR.lett);
+const tittel = () => visNavn() ? norsk("3D-modellen: {0}", visNavn()) : norsk("3D-modellen");
 
 // Promise som aldri løser seg: resten av siden skal ikke lastes.
 const stopp = () => new Promise(() => {});
@@ -145,7 +147,7 @@ function byggLinje(art) {
   linje.id = "innebygdBar";
   linje.innerHTML =
     '<div class="ib-venstre"><svg class="storm-logo" viewBox="0 0 948 224" role="img" aria-label="Storm IFC-Viewer"><use href="#storm-lockup"/></svg>' +
-      '<span class="ib-skille"></span><b id="ibTittel">' + esc(R.modellTittel(ADR.modell) || norsk("Modellgruppe")) + '</b><small id="ibArt">' + esc(art || "") + '</small></div>' +
+      '<span class="ib-skille"></span><b id="ibTittel">' + esc(visNavn() || norsk("Modellgruppe")) + '</b><small id="ibArt">' + esc(art || "") + '</small></div>' +
     '<div class="ib-verktoy" id="ibVerktoy"></div>' +
     '<div class="ib-hoyre"><small id="ibBruker">' + esc(kortNavn()) + '</small>' +
       (innrammet ? '<button type="button" id="ibFullskjerm" title="' + esc(norsk("Åpne i full skjerm")) + '">' + ikon("fullskjerm") + '</button>' : "") +
@@ -174,7 +176,7 @@ function settArt(art) {
 
 function visMelding(tekst) {
   const v = $("ibVerktoy");
-  visKort('<h2>' + esc(R.modellTittel(ADR.modell) || norsk("3D-modellen")) + '</h2><p>' + esc(tekst) + '</p>');
+  visKort('<h2>' + esc(visNavn() || norsk("3D-modellen")) + '</h2><p>' + esc(tekst) + '</p>');
   if (v) v.style.visibility = "hidden";
 }
 
@@ -215,6 +217,33 @@ async function åpneModell(ifcNavn) {
   return S.fileName === valg.fil.name;
 }
 
+// lett=<glb-navn> (B1): akkurat den fila i Lette kopier. Gruppene og
+// markeringene hører til IFC-en som eier fila; uten eier brukes glb-navnet.
+async function åpneLett(glbNavn) {
+  const sp = await import("./sharepoint.js");
+  loadingEl.classList.add("open");
+  loadingText.textContent = norsk("Finner {0} …", R.modellTittel(glbNavn));
+  let fil = null, eier = null;
+  try {
+    const [full, lett] = await Promise.all([sp.spFetchList("full"), sp.spFetchList("lett")]);
+    fil = (lett || []).find(f => f.name === glbNavn) || null;
+    eier = R.eierIfc(glbNavn, full || []);
+  } catch (err) {
+    loadingEl.classList.remove("open");
+    visMelding(norsk("Fikk ikke lest modellene fra SharePoint: {0}", err.message));
+    return false;
+  }
+  if (!fil) {
+    loadingEl.classList.remove("open");
+    visMelding(norsk("Fant ikke «{0}» i Lette kopier på SharePoint.", glbNavn));
+    return false;
+  }
+  S.kildeIfc = eier ? { fil: fil.name, ifc: eier } : null;
+  settArt(R.erEkstraLett(fil.name) ? "ekstra" : "lett");
+  await sp.spOpenFile(fil);
+  return S.fileName === fil.name;
+}
+
 async function åpneGruppe(id) {
   const { spLes } = await import("./sp-lager.js");
   const R2 = await import("./lag-regn.js");
@@ -237,6 +266,7 @@ export async function startInnebygd() {
   }
   byggLinje("");
   if (ADR.gruppe) await åpneGruppe(ADR.gruppe);
+  else if (ADR.lett) await åpneLett(ADR.lett);
   else if (ADR.modell) await åpneModell(ADR.modell);
   else visMelding(norsk("Ingen modell er koblet til prosjektet ennå."));
 }
@@ -249,19 +279,61 @@ const kanForside = () => erAdmin() || !!(kortInfo() || {}).storm;
 async function lagreForsidebilde() {
   if (!S.modelGroup || !S.fileName) { varsel(norsk("Åpne en modell først.")); return; }
   if (!kanForside()) { varsel(norsk("Bare Storm og admin kan lagre forsidebilde.")); return; }
-  const kilde = S.kildeIfc && S.kildeIfc.fil === S.fileName ? S.kildeIfc.ifc : S.fileName;
-  const navn = R.forsidebildeNavn(kilde);
+  const navn = R.forsideNavn(S.fileName, await finnEier(S.fileName));
   const { fangstBilde } = await import("./scene.js");
-  const bilde = fangstBilde(800, 450, { type: "image/png" });
+  const bilde = fangstBilde(1280, 720, { type: "image/png" });   // vinkelen du står i nå
   if (!bilde) { varsel(norsk("Klarte ikke å ta bildet.")); return; }
-  const b64 = bilde.data.split(",")[1] || "";
-  const bin = atob(b64), bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   const { spLastOpp } = await import("./sp-lager.js");
-  const r = await spLastOpp(R.FORSIDE_MAPPE, navn, bytes, "image/png");
+  const r = await spLastOpp(R.FORSIDE_MAPPE, navn, tilBytes(bilde.data), "image/png");
   if (r && r.ok) varsel(norsk("Forsidebildet er lagret: {0}. Storm Prosjekter viser det på Dashbord.", R.FORSIDE_MAPPE + "/" + navn));
   else varsel(r && r.grunn === "av" ? norsk("Logg inn på SharePoint for å lagre forsidebildet.") : norsk("Klarte ikke å lagre forsidebildet."));
 }
+
+// ---------- 🖼 B2: forsidebilde automatisk ----------
+// Når en modell fra SharePoint er ferdig vist (innebygd eller fra biblioteket):
+// finnes ikke Forsidebilder/<IFC-navn>.png, eller er det eldre enn modellfila,
+// tas et bilde fra standardvisningen (1280×720) og lastes opp. Alt skjer i det
+// stille; feil står bare i konsollen.
+const sov = (ms) => new Promise(r => setTimeout(r, ms));
+const toRammer = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+function tilBytes(dataUrl) {
+  const bin = atob(String(dataUrl).split(",")[1] || ""), bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+// IFC-en som eier den åpne fila: innebygd modus vet det (S.kildeIfc); en lett
+// kopi fra biblioteket slås opp med navneregelen fra B1; uten eier → null.
+async function finnEier(filNavn) {
+  if (S.kildeIfc && S.kildeIfc.fil === filNavn) return S.kildeIfc.ifc;
+  if (/\.ifc$/i.test(filNavn)) return filNavn;
+  if (!/\.glb$/i.test(filNavn)) return null;
+  try {
+    const sp = await import("./sharepoint.js");
+    return R.eierIfc(filNavn, (await sp.spFetchList("full")) || []);
+  } catch (_) { return null; }
+}
+async function autoForside(item, meta) {
+  try {
+    if (!item || !item.name) return;
+    const endret = (meta && meta.lastModifiedDateTime) || item.lastModifiedDateTime || "";
+    const navn = R.forsideNavn(item.name, await finnEier(item.name));
+    const lager = await import("./sp-lager.js");
+    const info = await lager.spFilInfo(R.FORSIDE_MAPPE, navn);
+    if (!R.trengerForside(info, endret)) return;
+    // La lagene, fargene og skjulingen fra afterLoad bli tegnet først.
+    await sov(1500); await toRammer();
+    if (S.fileName !== item.name || !S.modelGroup) return;   // en annen modell er åpnet
+    const { fangstBilde } = await import("./scene.js");
+    const bilde = fangstBilde(1280, 720, { type: "image/png", standard: true });
+    if (!bilde) { console.warn("Forsidebilde: klarte ikke å ta bildet"); return; }
+    const r = await lager.spLastOppStille(R.FORSIDE_MAPPE, navn, tilBytes(bilde.data), "image/png");
+    if (r && r.ok) console.info("Forsidebilde lagret: " + R.FORSIDE_MAPPE + "/" + navn);
+    else console.warn("Forsidebilde ble ikke lagret (" + ((r && r.grunn) || "ukjent") + "): " + navn);
+  } catch (err) {
+    console.warn("Forsidebilde feilet:", err && err.message);
+  }
+}
+S.etterSpModell = (item, meta) => { autoForside(item, meta); };
 
 export function startForsidebilde() {
   const b = $("btnForsidebilde");

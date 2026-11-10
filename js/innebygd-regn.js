@@ -5,6 +5,7 @@
 // Storm Prosjekter viser Storm IFC i et stort vindu (iframe) på Dashbord:
 //   index.html?innebygd=1&modell=<IFC-navn>      én modell
 //   index.html?innebygd=1&gruppe=<modellgruppe-id> en modellgruppe (flere fag)
+//   index.html?innebygd=1&lett=<glb-navn>          akkurat den fila i Lette kopier (B1)
 
 // Den ENESTE siden som får ramme inn Storm IFC i innebygd modus.
 export const STORM_PROSJEKTER = "https://wonderful-tree-047b03e03.5.azurestaticapps.net";
@@ -20,7 +21,8 @@ export const INNEBYGD_KNAPPER = ["btnMeasure", "btnKjede", "btnVinkel", "btnAxes
 export function lesInnebygd(search) {
   const p = new URLSearchParams(String(search || ""));
   const på = p.get("innebygd") === "1";
-  return { innebygd: på, modell: på ? (p.get("modell") || "").trim() : "", gruppe: på ? (p.get("gruppe") || "").trim() : "" };
+  const hent = (k) => på ? (p.get(k) || "").trim() : "";
+  return { innebygd: på, modell: hent("modell"), gruppe: hent("gruppe"), lett: hent("lett") };
 }
 
 // Får siden vises her? Ikke innrammet (egen fane) → ja: da er det bare Storm
@@ -48,55 +50,94 @@ export function ifcNavnFra(filnavn) {
 
 export function modellTittel(navn) { return String(navn || "").replace(/\.(ifc|glb)$/i, "").trim(); }
 
-const norm = (s) => String(s || "").toLowerCase().replace(/\.(ifc|glb)$/i, "").replace(/\s*\(\d+\)\s*$/, "")
-  .replace(/[._-]+/g, " ").replace(/\s+/g, " ").trim();
+// ---------------------------------------------------------------------------
+// HVILKEN LETT KOPI HØRER TIL EN IFC? (BYGGEPLAN-3D-innebygd-tillegg, B1)
+// Storm Prosjekter bruker NØYAKTIG samme regel og viser brukeren hvilken fil
+// som blir brukt — de to sidene må derfor være like:
+//   - fila hører til «X.ifc» når navnet (små bokstaver) starter med «x»
+//     fulgt av «.», mellomrom, «_» eller «-»
+//     (X.lett.glb, X.lett (1).glb, X LETT (1).glb, X.ekstra_lett (1).glb)
+//   - EKSTRA LETT har «ekstra lett», «ekstra_lett» eller «ekstra-lett» i
+//     navnet; flere → den nyeste (lastModifiedDateTime)
+//   - LETT er de andre; _index.json sitt «fil» vinner hvis den er blant dem,
+//     ellers den nyeste
+// ---------------------------------------------------------------------------
+export function hørerTil(glbNavn, ifcNavn) {
+  const x = String(ifcNavn || "").replace(/\.ifc$/i, "").toLowerCase();
+  const n = String(glbNavn || "").toLowerCase();
+  if (!x || n.length <= x.length || !n.startsWith(x)) return false;
+  return /[. _-]/.test(n.charAt(x.length));
+}
+export const erEkstraLett = (navn) => /ekstra[ _-]lett/i.test(String(navn || ""));
+const nyest = (a, b) => String(b.lastModifiedDateTime || "").localeCompare(String(a.lastModifiedDateTime || ""));
 
-// Hvilken fil skal åpnes for IFC-navnet? Emil 09.11: «ekstra lett» hvis den
-// finnes, ellers lett kopi, ellers IFC-en. Svar: { fil, art: "ekstra"|"lett"|"ifc" } eller null.
-//   ifcFiler / lettFiler: lister fra SharePoint ({ id, name, size, lastModifiedDateTime })
-//   indeks: Lette kopier/_index.json hvis den finnes. Begge former godtas:
-//     { "<IFC-navn>": "<glb>" }  eller  { "<IFC-navn>": { lett, ekstra } }
-//     eller [ { ifc, lett, ekstra } ]
+// _index.json: { "<IFC>": "<glb>" | { fil } } eller [ { ifc, fil } ]
+function indeksFil(indeks, ifcNavn) {
+  const navn = String(ifcNavn || "").toLowerCase();
+  if (Array.isArray(indeks)) {
+    const p = indeks.find(x => x && String(x.ifc || "").toLowerCase() === navn);
+    return p ? String(p.fil || p.lett || "") : "";
+  }
+  if (indeks && typeof indeks === "object") {
+    const k = Object.keys(indeks).find(x => x.toLowerCase() === navn);
+    const p = k ? indeks[k] : null;
+    return typeof p === "string" ? p : p ? String(p.fil || p.lett || "") : "";
+  }
+  return "";
+}
+
+// Hvilken fil skal åpnes for IFC-navnet? Emil 09.11: ekstra lett → lett → IFC.
+// Svar: { fil, art: "ekstra"|"lett"|"ifc" } eller null.
 export function velgModellfil(ifcNavn, ifcFiler, lettFiler, indeks) {
   const navn = String(ifcNavn || "").trim();
   if (!navn) return null;
-  const lett = lettFiler || [];
-  const finn = (n) => n ? lett.find(f => f.name === n) || null : null;
-  // 1) indeksen
-  let post = null;
-  if (Array.isArray(indeks)) post = indeks.find(x => x && String(x.ifc || "").toLowerCase() === navn.toLowerCase()) || null;
-  else if (indeks && typeof indeks === "object") {
-    const nøkkel = Object.keys(indeks).find(k => k.toLowerCase() === navn.toLowerCase());
-    post = nøkkel ? indeks[nøkkel] : null;
-    if (typeof post === "string") post = { lett: post };
+  // Unntak: «X 2.lett.glb» passer også for «X.ifc» etter regelen, men finnes
+  // «X 2.ifc», er det den som eier fila (lengste navn vinner, se eierIfc).
+  const mine = (lettFiler || []).filter(f => hørerTil(f.name, navn) &&
+    !(ifcFiler || []).some(i => i.name.length > navn.length && hørerTil(f.name, i.name)));
+  const ekstra = mine.filter(f => erEkstraLett(f.name)).sort(nyest);
+  if (ekstra.length) return { fil: ekstra[0], art: "ekstra" };
+  const lett = mine.filter(f => !erEkstraLett(f.name)).sort(nyest);
+  if (lett.length) {
+    const fraIndeks = indeksFil(indeks, navn);
+    return { fil: lett.find(f => f.name === fraIndeks) || lett[0], art: "lett" };
   }
-  if (post) {
-    const e = finn(post.ekstra), l = finn(post.lett);
-    if (e) return { fil: e, art: "ekstra" };
-    if (l) return { fil: l, art: "lett" };
-  }
-  // 2) navneregelen
-  const base = norm(navn);
-  const nyest = (a, b) => String(b.lastModifiedDateTime || "").localeCompare(String(a.lastModifiedDateTime || ""));
-  const ekstra = [], vanlig = [];
-  for (const f of lett) {
-    const n = norm(f.name);
-    if (n !== base && !n.startsWith(base + " ")) continue;
-    const rest = n.slice(base.length).trim();
-    if (/^ekstra ?lett$|^ekstra$/.test(rest)) ekstra.push(f);
-    else if (rest === "lett" || rest === "") vanlig.push(f);
-  }
-  if (ekstra.length) return { fil: ekstra.sort(nyest)[0], art: "ekstra" };
-  if (vanlig.length) return { fil: vanlig.sort(nyest)[0], art: "lett" };
-  // 3) IFC-en selv
   const ifc = (ifcFiler || []).find(f => f.name.toLowerCase() === navn.toLowerCase());
   return ifc ? { fil: ifc, art: "ifc" } : null;
 }
 
+// lett=<glb-navn>: hvilken IFC eier fila? Den lengste IFC-en som passer vinner
+// («X.ifc» og «X 2.ifc» — «X 2.lett.glb» hører til «X 2.ifc»). null = ingen eier;
+// da brukes glb-navnet for gruppene.
+export function eierIfc(glbNavn, ifcFiler) {
+  const kand = (ifcFiler || []).filter(f => hørerTil(glbNavn, f.name)).sort((a, b) => b.name.length - a.name.length);
+  return kand.length ? kand[0].name : null;
+}
+
 // Forsidebildet Storm Prosjekter viser på Dashbord:
-// IFC-modeller/Forsidebilder/<IFC-navn>.png (med .ifc i navnet).
+// IFC-modeller/Forsidebilder/<IFC-navn>.png (med .ifc i navnet). Er det en
+// lett kopi uten IFC som eier den, heter bildet <glb-navn>.png (B2).
 export const FORSIDE_MAPPE = "Forsidebilder";
 export function forsidebildeNavn(filnavn) { const n = ifcNavnFra(filnavn); return n ? n + ".png" : ""; }
+export function forsideNavn(filNavn, eierIfc) {
+  const n = String(eierIfc || filNavn || "").trim();
+  return n ? n + ".png" : "";
+}
+
+// B2: skal det tas et nytt forsidebilde? info er svaret fra spFilInfo:
+//   «tom» (finnes ikke)          → ja
+//   «ok», eldre enn modellfila   → ja
+//   «ok», like nytt eller nyere  → nei
+//   «av»/«feil» (ingen innlogging eller nettfeil) → nei, prøv neste gang
+export function trengerForside(info, modellEndret) {
+  if (!info) return false;
+  if (info.status === "tom") return true;
+  if (info.status !== "ok") return false;
+  const bilde = Date.parse(info.endret || ""), modell = Date.parse(modellEndret || "");
+  if (!isFinite(bilde)) return true;
+  if (!isFinite(modell)) return false;
+  return bilde < modell;
+}
 
 // Microsoft ID-tokenets e-post (bare til visning i «ikke tilgang» — Workeren
 // sjekker selve tokenet).
