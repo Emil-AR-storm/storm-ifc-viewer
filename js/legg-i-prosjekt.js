@@ -24,7 +24,10 @@ export const REGISTER = [
   { sel: ".rap-valg[data-utgave]", type: "byggemote" },
   { sel: '.em-kort [data-handling="pdf"], .em-kort [data-handling="excel"], #emExcel, #emOversikt', type: "em" },
   { sel: "#pkExcel", type: "priskalk" },
-  { sel: "#fdvPakke", type: "fdv" }
+  { sel: "#fdvPakke", type: "fdv" },
+  { sel: "#rapBcf", type: "bcf" },
+  { sel: "#qtyCsvG, #qtyCsvE", type: "mengder" },
+  { sel: "#kollBcf, #kollXlsx", type: "kollisjon" }
 ];
 const ALLE = REGISTER.map(r => r.sel).join(", ");
 const typeFor = (knapp) => { for (const r of REGISTER) if (knapp.matches(r.sel)) return r.type; return null; };

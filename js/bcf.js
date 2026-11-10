@@ -23,6 +23,7 @@
 //    Å dra inn et komprimeringsbibliotek for det ville lagt 100 kB og en ny
 //    tredjepart på en side som allerede er streng med avhengigheter. ZIP med
 //    lagring (metode 0) er gyldig ZIP, og det er 60 linjer.
+import { lever } from "./lever.js";
 import { S } from "./state.js";
 import { t } from "./i18n.js";
 import { STANDARD_GRENSER, hastegrad, iDagISO as fristIDag } from "./frist.js";
@@ -361,14 +362,8 @@ export function bcfFilnavn(prosjekt, modell, iDag) {
 
 // ═══════════════════════ NETTLESER ═══════════════════════
 
-function lastNedFil(bytes, navn) {
-  const blob = new Blob([bytes], { type: "application/octet-stream" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url; a.download = navn;
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 4000);
-}
+// 📁 Går gjennom lever.js («Last ned ▾ → Legg i prosjekt»)
+function lastNedFil(bytes, navn) { lever(new Blob([bytes], { type: "application/octet-stream" }), navn); }
 
 export function iDagISO(naa) {
   const d = naa instanceof Date ? naa : new Date();

@@ -25,6 +25,10 @@ export const TYPER = {
   em:          { navn: "Endringsmelding", mappe: "06 Endringer", selskap: "SE" },
   fdv:         { navn: "FDV", mappe: "09 FDV og sluttdokumentasjon", selskap: "SE" },
   priskalk:    { navn: "Priskalkulasjon", mappe: "01 Kontrakt/Kalkyle", selskap: "SE" },
+  // Emil 10.11 (tillegg): BCF-eksport og mengdelister i ny mappe, kollisjon i Beskrivelser
+  bcf:         { navn: "BCF-eksport", mappe: "12 Kalkulasjoner", selskap: "SE" },
+  mengder:     { navn: "Mengdeliste", mappe: "12 Kalkulasjoner", selskap: "SE" },
+  kollisjon:   { navn: "Kollisjonsrapport", mappe: "03 Beskrivelser", selskap: "SE" },
   annet:       { navn: "Annet", mappe: "00 Prosjektprofil", selskap: "SE" }
 };
 export const typeInfo = (type) => TYPER[type] || TYPER.annet;
