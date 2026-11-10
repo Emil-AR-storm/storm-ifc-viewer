@@ -75,6 +75,7 @@ function lyttEtterHint() {
     const h = R.lesHintMelding(e, window.parent);
     if (!h) return;
     sistHint = h;
+    S.msHint = h;   // sharepoint.js: ssoSilent og popup med kontoen ferdig valgt
     hintLyttere.splice(0).forEach(f => f(h));
   });
   try { window.parent.postMessage({ type: R.KLAR_MELDING }, R.STORM_PROSJEKTER); } catch (_) { /* ingen forelder */ }
@@ -469,6 +470,39 @@ async function åpneGruppe(id) {
   catch (err) { varsel(norsk("Klarte ikke å legge på lagene: {0}", err.message)); }
 }
 
+// SharePoint-innlogging før modellen hentes. Beviset (12 t) slipper deg inn i
+// Storm IFC uten Microsoft-innlogging i denne økta – men modellfilene leses med
+// DINE SharePoint-rettigheter, så Graph må ha et token. Rekkefølge: stille →
+// ssoSilent med e-posten fra Storm Prosjekter → kontokortet med «Fortsett»
+// (popup fra et klikk – nettleseren blokkerer popup uten klikk, og MSAL nekter
+// omdirigering i en ramme). Telefon i ramme: åpne i egen fane.
+async function sikreSharePoint() {
+  const sp = await import("./sharepoint.js");
+  if (await sp.spTokenSilent()) return true;
+  const hint = await ventPåHint(2500);
+  if (hint && await sp.spTokenSilent()) return true;   // graphToken prøver ssoSilent med hintet
+  return new Promise((løs) => {
+    const tlf = innrammet && !sp.brukPopup();
+    const navn = hint ? R.navnFraEpost(hint) : "";
+    visKort('<h2>' + esc(tittel()) + '</h2>' +
+      '<p>' + esc(tlf ? norsk("På telefon åpnes modellen i en egen fane.") : norsk("Logg inn på SharePoint for å hente modellen. Nettleseren ba om ett klikk.")) + '</p>' +
+      (hint ? '<div class="ib-konto"><span class="ib-sirkel" aria-hidden="true">' + esc(R.initialer(navn)) + '</span>' +
+        '<span class="ib-konto-tekst"><b>' + esc(navn) + '</b><small>' + esc(hint) + '</small></span></div>' : "") +
+      '<p class="kb-feil" id="ibSpFeil"></p>' +
+      '<button type="button" class="ib-knapp" id="ibSpFortsett">' + esc(tlf ? norsk("Åpne i full skjerm") : norsk("Fortsett")) + '</button>' +
+      (hint && !tlf ? '<button type="button" class="ib-lenke" id="ibSpAnnen">' + esc(norsk("Ikke deg? Bruk en annen konto")) + '</button>' : ""));
+    const prøv = async (velgKonto) => {
+      if (tlf) { window.open(location.href, "_blank", "noopener"); return; }
+      try { await sp.msIdToken({ popup: true, velgKonto, loginHint: velgKonto ? undefined : hint }); }
+      catch (err) { if (!sp.avbruttAvBruker(err)) { $("ibSpFeil").textContent = norsk("Innloggingen gikk ikke: {0}", (err && err.message) || err); } return; }
+      if (await sp.spTokenSilent()) { lukkKort(); løs(true); }
+      else $("ibSpFeil").textContent = norsk("Fikk ikke tilgang til SharePoint. Prøv igjen.");
+    };
+    $("ibSpFortsett").onclick = () => prøv(false);
+    const a = $("ibSpAnnen"); if (a) a.onclick = () => prøv(true);
+  });
+}
+
 // Kjøres av main.js etter startTilgang().
 export async function startInnebygd() {
   if (!ADR.innebygd) return;
@@ -481,6 +515,7 @@ export async function startInnebygd() {
   // 📋 Egenskapspanelet som på byggeplassen (Emil 10.11: «infoboksen tar 60 %
   // av skjermen»): navnet og tre rader med rulling, maks 45 % av høyden.
   try { await import("./prop-kompakt.js"); } catch (_) { /* panelet virker som før */ }
+  if (ADR.gruppe || ADR.lett || ADR.modell) await sikreSharePoint();
   if (ADR.gruppe) await åpneGruppe(ADR.gruppe);
   else if (ADR.lett) await åpneLett(ADR.lett);
   else if (ADR.modell) await åpneModell(ADR.modell);

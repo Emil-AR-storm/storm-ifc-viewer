@@ -104,7 +104,24 @@ export function avbruttAvBruker(err) {
 
 // Henter token med popup, og faller tilbake til omdirigering hvis popup ikke
 // går. `metode` er "login" (ingen konto ennå) eller "token" (ny tillatelse).
+// 🖼 Inne i en ramme (Storm Prosjekter) nekter MSAL omdirigering
+// («redirect_in_iframe», Emil 10.11). Der prøves bare popup, og går ikke det,
+// gir vi null – innebygd.js viser da en knapp, så popupen kommer fra et klikk.
+const iRamme = (() => { try { return window.top !== window.self; } catch (_) { return true; } })();
 async function loggInn(scopes, o, metode) {
+  if (iRamme) {
+    try {
+      const r = metode === "login" || !S.msalApp.getActiveAccount()
+        ? await S.msalApp.loginPopup({ scopes, loginHint: S.msHint || undefined })
+        : await S.msalApp.acquireTokenPopup({ scopes, account: S.msalApp.getActiveAccount() });
+      if (r && r.account) { S.msalApp.setActiveAccount(r.account); visInnlogging("inne", r.account); }
+      const tk = r && r.accessToken;
+      if (tk && String(tk).trim()) return tk;
+    } catch (err) {
+      console.warn("Innlogging i rammen gikk ikke (trenger et klikk):", (err && (err.errorCode || err.message)) || err);
+    }
+    return null;   // aldri omdirigering i en ramme
+  }
   if (brukPopup()) {
     try {
       const r = metode === "login"
@@ -136,7 +153,17 @@ async function loggInn(scopes, o, metode) {
 export async function graphToken(scopes, opts) {
   const o = opts || {};
   await msalInit();
-  const account = S.msalApp.getActiveAccount();
+  let account = S.msalApp.getActiveAccount();
+  // 🖼 Innebygd: e-posten fra Storm Prosjekter gir stille innlogging (ssoSilent)
+  // også når beviset fra en tidligere økt slapp oss forbi selve innloggingen.
+  // Prøves én gang per hint – et mislykket ssoSilent kan ta sekunder.
+  if (!account && S.msHint && S.msHintPrøvd !== S.msHint) {
+    S.msHintPrøvd = S.msHint;
+    try {
+      const r = await S.msalApp.ssoSilent({ scopes, loginHint: S.msHint });
+      if (r && r.account) { S.msalApp.setActiveAccount(r.account); visInnlogging("inne", r.account); account = r.account; }
+    } catch (err) { console.info("ssoSilent mot SharePoint gikk ikke (" + ((err && (err.errorCode || err.message)) || err) + ")"); }
+  }
   if (!account) {
     if (o.silent) return null;
     return loggInn(scopes, o, "login");
@@ -591,6 +618,7 @@ export async function spOpenFile(item) {
       // så ut som om modellen ble lastet to ganger.
       const r = await L.lesStrøm(resp, total, (pst) => {
         loadingText.textContent = t("Laster ned {0} … {1} %", item.name, pst);
+        if (S.lasteFremdrift) S.lasteFremdrift(pst, total);   // 🖼 B4 valg C (innebygd.js)
       }, pakket);
       buf = r.buf;
       måling.nedBytes = r.nedBytes;
