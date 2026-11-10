@@ -254,6 +254,7 @@ function byggVerktøy() {
   }, true);
   velgKat(aktivKat);
   infoOgVerktøy();
+  utseendeKompakt();
   plasser();
   window.addEventListener("resize", plasser);
   // Også når tittelen eller «lastet på …» endrer bredden på verktøydelen.
@@ -292,6 +293,32 @@ function infoOgVerktøy() {
     if (!erTelefon() || !e.target.closest("button") || e.target.closest(".ib-mer")) return;
     if (panel.classList.contains("open")) { const x = panel.querySelector("[data-lukk]"); if (x) x.click(); }
   }, true);
+}
+
+// 🎨 Telefon (Emil 10.11): Utseende-boksen viser tre typer om gangen og ruller
+// resten, som infoboksen – ellers dekket den 80–90 % av skjermen. Høyden
+// regnes av de faktiske radene: knappene, Bakgrunn og tre typer.
+const UTSEENDE_RADER = 3;
+function utseendeKompakt() {
+  const body = $("colorBody");
+  if (!body || typeof MutationObserver === "undefined") return;
+  const tilpass = () => {
+    body.style.maxHeight = "";
+    body.classList.remove("kan-rulle");
+    if (!erTelefon()) return;
+    const knapper = body.querySelector(".prop-actions");
+    const rader = [...body.querySelectorAll(".qty-row")];
+    if (!rader.length) return;
+    let h = 0;
+    if (knapper) h += knapper.offsetHeight + (parseFloat(getComputedStyle(knapper).marginBottom) || 0);
+    for (const r of rader.slice(0, 1 + UTSEENDE_RADER)) h += r.offsetHeight;   // Bakgrunn + tre typer
+    if (!h) return;
+    const cs = getComputedStyle(body);
+    body.style.maxHeight = Math.ceil(h + (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0)) + "px";
+    body.classList.toggle("kan-rulle", rader.length > 1 + UTSEENDE_RADER);
+  };
+  new MutationObserver(() => requestAnimationFrame(tilpass)).observe(body, { childList: true });
+  window.addEventListener("resize", tilpass);
 }
 
 function velgKat(id) {
@@ -432,6 +459,12 @@ export function ryddLasting() {
 // Målingen i topplinja etter lasting: «ekstra lett kopi · lastet på 4,1 s»
 S.etterMåling = async (m) => {
   if (!ADR.innebygd) return;
+  // Utseende uten typer viser bare «UKJENT» – da skjules knappen (Emil 10.11).
+  try {
+    const { antallKjenteTyper } = await import("./display.js");
+    const b = $("btnColors");
+    if (b) { b.classList.toggle("ib-ingen-typer", antallKjenteTyper() === 0); plasser(); }
+  } catch (_) { /* knappen står */ }
   try {
     const LR = await import("./modell-lager-regn.js");
     const a = $("ibArt");

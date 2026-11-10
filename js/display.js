@@ -355,7 +355,8 @@ const TYPE_LABELS = {
   STAIRFLIGHT: "Trappeløp", RAILING: "Rekkverk", FOOTING: "Fundamenter",
   PILE: "Peler", COVERING: "Kledning", CURTAINWALL: "Glassfasader",
   MECHANICALFASTENER: "Festemidler", FASTENER: "Festemidler",
-  FLOWSEGMENT: "Rør/kanaler", BUILDINGELEMENTPROXY: "Annet"
+  FLOWSEGMENT: "Rør/kanaler", BUILDINGELEMENTPROXY: "Annet",
+  REINFORCINGBAR: "Armering"
 };
 
 const PALETTE = ["#e6194b","#3cb44b","#ffe119","#4363d8","#f58231","#911eb4",
@@ -450,6 +451,19 @@ function lettTypeKey(id) {
     tn = typeFor(id) || "";
   }
   return (tn || "UKJENT").toUpperCase().replace(/^IFC/, "");
+}
+
+// 🖼 Har modellen elementtyper i det hele tatt? En lett kopi laget utenfor
+// Storm IFC (Storms manuelle forenkling) har ingen stormLite-egenskaper, og da
+// blir alt «UKJENT» i Utseende (Emil 10.11). Svar: antall typer som ikke er UKJENT.
+export function antallKjenteTyper() {
+  const typer = new Set();
+  if (S.glbActive) {
+    if (!S.glbProps || !S.glbProps.size) return 0;
+    for (const p of S.glbProps.values()) { const tn = p && p[2]; if (tn) typer.add(String(tn).toUpperCase()); }
+    return typer.size;
+  }
+  return 1;   // IFC: typene kommer fra IFC-tråden
 }
 
 async function byggTypeInfoLett() {
