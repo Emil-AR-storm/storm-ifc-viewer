@@ -3228,6 +3228,48 @@ html[data-innebygd] #splash { display: none !important; }
 .ib-kort .ib-liten { font-size: 12px; }
 .ib-knapp { margin-top: 14px; width: 100%; justify-content: center; padding: 10px; background: var(--accent); border-color: var(--accent); color: #fff; }
 .ib-knapp.ib-graa { background: var(--panel2); border-color: var(--border); color: var(--text); }
+/* 🧰 Innebygd verktøylinje (Emil 10.11: C på PC, C2 på telefon) – js/innebygd.js */
+html[data-innebygd] #innebygdBar .storm-logo { display: block; }
+#ibVerktoy .ib-kat, #ibVerktoy > button, #ibRad > button, .ib-mer { flex: none; white-space: nowrap; height: 36px; }
+#ibVerktoy .ib-kat.paa { background: var(--accent); border-color: var(--accent); color: #fff; }
+.ib-skille2 { width: 1px; height: 24px; background: var(--border); margin: 0 4px; flex: none; }
+.ib-mer.paa { box-shadow: inset 0 0 0 2px var(--accent); }
+.ib-mer[hidden] { display: none !important; }
+/* PC: nederst på midten, verktøyene i en rad over */
+#ibVerktoy.ib-bunn { position: fixed; left: 50%; transform: translateX(-50%); bottom: 14px; z-index: 20; max-width: calc(100% - 24px);
+  overflow: hidden; padding: 6px; background: var(--panel); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--skygge); justify-content: flex-start; flex: none; }
+#ibRad { position: fixed; left: 50%; transform: translateX(-50%); bottom: 70px; z-index: 20; display: flex; gap: 6px; max-width: calc(100% - 24px);
+  overflow: hidden; padding: 6px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--skygge); }
+#ibRad[hidden] { display: none; }
+html[data-innebygd] .panel, html[data-innebygd] #setMenu { bottom: var(--ib-bunn, 0px); }
+html[data-innebygd] .panel { max-height: calc(100vh - var(--ib-topp, 52px) - var(--ib-bunn, 0px) - 12px); }
+/* Telefon (C2): kategoriene i topplinja ved logoen, verktøyene rett under */
+@media (max-width: 640px) {
+  #innebygdBar .storm-logo { display: block !important; height: 21px; }
+  html[data-innebygd] #ibTittel, html[data-innebygd] #ibArt, html[data-innebygd] #ibBruker, html[data-innebygd] .ib-venstre .ib-skille { display: none !important; }
+  #innebygdBar #ibApne .btn-t, #ibVerktoy .btn-t { display: none; }
+  #ibVerktoy { justify-content: flex-end; gap: 4px; }
+  #ibVerktoy .ib-kat, #ibVerktoy > button, .ib-mer { width: 36px; padding: 0; justify-content: center; }
+  #ibRad { top: calc(var(--ib-topp, 52px) + 8px); bottom: auto; }
+  #ibRad .btn-t { display: none; }
+  #ibRad > button { width: 44px; padding: 0; justify-content: center; }
+}
+#ibMerListe { position: fixed; z-index: 40; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--skygge);
+  padding: 6px; min-width: 210px; display: flex; flex-direction: column; gap: 2px; }
+#ibMerListe[hidden], #ibLager { display: none !important; }
+#ibMerListe > button { width: 100%; justify-content: flex-start; gap: 10px; padding: 9px 10px; height: auto; border: 0; background: none; }
+#ibMerListe > button:hover { background: var(--panel2); }
+#ibMerListe .btn-t { display: inline !important; }
+/* Innebygd: hjelpeteksten nederst tok plass i et lite vindu (som på byggeplassen) */
+html[data-innebygd] #hint, html[data-innebygd] #miniMap { display: none !important; }
+/* ⚡ B4 valg C: forsidebildet som kort mens modellen lastes (js/innebygd.js) */
+#loading.ib-last { gap: 12px; }
+#loading.ib-med-bilde .storm-spinner { display: none; }
+#ibLasteBilde { width: 360px; max-width: 80vw; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 12px; border: 1px solid var(--border); box-shadow: var(--skygge); background: #fff; }
+#ibLasteNavn { font-size: 14px; max-width: 80vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#loading .ib-stolpe { width: 360px; max-width: 80vw; height: 6px; border-radius: 3px; background: var(--panel2); overflow: hidden; }
+#loading .ib-stolpe i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+#loading.ib-last #loadingText { color: var(--muted); font-size: 12.5px; }
 /* 🖼 B3 valg B: kontokortet «Fortsett» */
 .ib-konto { display: flex; align-items: center; gap: 12px; margin: 14px 0 4px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel2); }
 .ib-sirkel { width: 40px; height: 40px; border-radius: 50%; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 16px; flex: none; }
