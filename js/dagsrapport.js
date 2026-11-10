@@ -431,7 +431,9 @@ async function lagPdf(rapporter, uke) {
     const d = tegnDagsrapport(jsPDF, rapporter, { logo, bilder, uke, prosjekt: p.nr, prosjektNavn: p.navn, modell: p.modell,
       nrFor: (dato) => R.lopenr(tilstand.liste, dato) });
     const blob = d.output("blob");
-    lastNedFil(blob, uke ? R.ukePdfNavn(p.nr, uke.mandag) : R.pdfNavn(p.nr, rapporter[0].dato, rapporter[0].versjon));
+    // 📁 dato: dagen rapporten gjelder – Storm Prosjekter viser den på den dagen
+    lastNedFil(blob, uke ? R.ukePdfNavn(p.nr, uke.mandag) : R.pdfNavn(p.nr, rapporter[0].dato, rapporter[0].versjon),
+      { dato: String((uke ? uke.mandag : rapporter[0].dato) || "").slice(0, 10) });
     return blob;
   } catch (err) {
     varsel(t("Klarte ikke å lage PDF-en: {0}", err.message));

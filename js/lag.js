@@ -815,6 +815,8 @@ export async function apneGruppe(g) {
     if (!hovedÅpen() || !S.modelGroup) { tilstand.grJobber = ""; tegn(); varsel(t("Klarte ikke å åpne «{0}».", g.hoved.navn)); return; }
     apnePanel("lagPanel");
   }
+  // 📁 «Legg i prosjekt» finner prosjektet på gruppe-id-en (legg-i-prosjekt.js)
+  S.aktivModellgruppe = { id: g.id, fil: S.fileName };
   const mangler = [];
   try {
     for (let i = 0; i < g.lag.length; i++) {

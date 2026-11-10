@@ -12,6 +12,7 @@
 // og står den ved siden av totalen kan mottakeren regne seg til påslaget
 // (1 500 / 1,25 = 1 200 mot 10 × 100 = 1 000). Dokumentet viser derfor
 // SALGSPRIS per enhet. Da går tallene opp, og kostnaden er ikke med.
+import { lever } from "./lever.js";
 import { t } from "./i18n.js";
 import { hentJsPDF } from "./rapport.js";
 import { alleFelt, kr, linjeSum, ordreBasis, ordreSum, tomtSvar } from "./sjekkliste.js";
@@ -444,13 +445,7 @@ export function tegn(jsPDF, m, logo, ekstra) {
   return P.d;
 }
 
-function lastNedFil(blob, navn) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url; a.download = navn;
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 4000);
-}
+function lastNedFil(blob, navn) { lever(blob, navn); }   // 📁 lever.js
 
 // opts: { mal, skjema, prosjekt, markering, iDag, hentLogo }
 export async function lastNedSkjema(opts) {

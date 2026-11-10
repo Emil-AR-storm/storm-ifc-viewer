@@ -75,6 +75,7 @@ const MODULER = [
   ["./lag.js", true],              // 🧅 Lag: fagmodeller oppå hovedmodellen (kun kontor, runde 5)
   ["./kollisjon.js", true],        // 💥 Kollisjon: lagene mot hovedmodellen (kun kontor, runde 6)
   ["./fdv.js", true],              // 📁 FDV: FDV-grupper og overlevering (kun kontor, runde 7)
+  ["./legg-i-prosjekt.js", true],  // 📁 «Last ned ▾ → Legg i prosjekt» (kun kontor, Emil 10.11 valg C)
   ["./recent.js"],
   ["./share.js", true],
   ["./byggeplass.js", true],

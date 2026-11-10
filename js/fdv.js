@@ -382,10 +382,8 @@ export async function lastNedPakke() {
       if (b) filer.push({ navn: F.zipSti(g, d), data: new Uint8Array(b) }); else mangler++;
     }
     const zip = lagZip(filer);
-    const url = URL.createObjectURL(new Blob([zip], { type: "application/zip" }));
-    const a = document.createElement("a"); a.href = url; a.download = nokkel() + " FDV.zip";
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    const { lever } = await import("./lever.js");   // 📁 Legg i prosjekt
+    lever(new Blob([zip], { type: "application/zip" }), nokkel() + " FDV.zip");
     varsel(mangler ? t("FDV-pakken er lastet ned, men {0} PDF-er fantes ikke.", mangler) : t("FDV-pakken er lastet ned ({0} PDF-er + register).", filer.length - 1));
   } catch (err) {
     varsel(t("Klarte ikke å lage FDV-pakken: {0}", err.message));

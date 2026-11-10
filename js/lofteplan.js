@@ -263,10 +263,8 @@ export async function lastNedExcel(o) {
     [t("Materialgrupper"), p.grupper.map(g => t(g)).join(", ")]];
   const data = X.lagXlsxFlere([{ navn: t("Kransjekk"), rader: K.excelRader(svar.rader, t), stil: K.excelStil(svar.rader), bredder: [22, 40, 30, 16, 11, 14, 11, 13, 13] }, { navn: t("Kran"), rader: kurve }], await excelToppfelt());
   const base = String(S.fileName || "modell").replace(/\.(ifc|glb)$/i, "").replace(/[\\/:*?"<>|]/g, "-");
-  const url = URL.createObjectURL(new Blob([data], { type: X.XLSX_MIME }));
-  const a = document.createElement("a"); a.href = url; a.download = base + " kransjekk " + (o.navn || t("Tårnkran")).replace(/[\\/:*?"<>|]/g, "-") + ".xlsx";
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  const { lever } = await import("./lever.js");   // 📁 Legg i prosjekt
+  lever(new Blob([data], { type: X.XLSX_MIME }), base + " kransjekk " + (o.navn || t("Tårnkran")).replace(/[\\/:*?"<>|]/g, "-") + ".xlsx");
   varsel(t("Kransjekken er lastet ned ({0} elementer).", svar.rader.length));
 }
 

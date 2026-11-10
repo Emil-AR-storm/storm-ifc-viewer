@@ -1607,6 +1607,7 @@ export async function lastNedTegning(opts) {
   const d = await tegn(jsPDF, modell, opts.felt || {}, logo);
   const navn = ((opts.felt && opts.felt.nr) || "SW-01") + " " +
     ((opts.felt && opts.felt.prosjekt) || "instruksjonstegning");
-  d.save(navn.replace(/[\\/:*?"<>|]+/g, "-").trim() + ".pdf");
+  const { lever } = await import("./lever.js");   // 📁 Legg i prosjekt
+  lever(d.output("blob"), navn.replace(/[\\/:*?"<>|]+/g, "-").trim() + ".pdf");
   return modell;
 }

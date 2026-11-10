@@ -15,6 +15,7 @@
 // kjører på samme side som Graph-tokenet skal ikke hentes fra en tredjepart vi
 // ikke kontrollerer. Se worker.js: /vendor/ har egen cache-regel (ett år,
 // immutable) fordi filnavnet bærer versjonen.
+import { lever } from "./lever.js";
 import { S, loadingEl, loadingText } from "./state.js";
 import { t } from "./i18n.js";
 import { HASTEGRAD, HASTEGRAD_REKKE, dagerTil, hastegrad, iDagISO } from "./frist.js";
@@ -816,15 +817,9 @@ export async function tegn(jsPDF, m, bilde, logo) {
 
 // ---------- Nedlasting ----------
 
-export function lastNedFil(blob, navn) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url; a.download = navn;
-  document.body.appendChild(a); a.click(); a.remove();
-  // Nettleseren trenger noen sekunder på å faktisk lagre fila. Frigjør vi
-  // adressen med en gang, kan nedlastingen bli tom på trege maskiner.
-  setTimeout(() => URL.revokeObjectURL(url), 20000);
-}
+// 📁 Går gjennom lever.js: «Last ned ▾» kan sende dokumentet til prosjektet
+// i Storm Prosjekter i stedet for (eller i tillegg til) å laste det ned.
+export function lastNedFil(blob, navn, info) { lever(blob, navn, info); }
 
 // Hovedinngangen. Kalles fra menyen i ui.js.
 //

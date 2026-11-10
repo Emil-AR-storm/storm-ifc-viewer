@@ -1,4 +1,5 @@
 // Valg, egenskaper, søk, mengder og markeringsboks.
+import { lever } from "./lever.js";
 import * as THREE from "three";
 import { LETT } from "./lett.js";
 import { $, ekstraLagSom, på, S, apnePanel, dec, esc, ikon, loadingEl, loadingText } from "./state.js";
@@ -1782,13 +1783,7 @@ function download(name, text, mime) {
 }
 
 // Blob → fil på disk. Samme trikset for CSV og .xlsx.
-function lastNed(name, blob) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url; a.download = name;
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
-}
+function lastNed(name, blob) { lever(blob, name); }   // 📁 lever.js
 
 // 📊 EKTE EXCEL-FIL, ikke CSV (Emil 03.09).
 // CSV-en var riktig på PC-en og feil i mailen: skrivebords-Excel leser «;»
