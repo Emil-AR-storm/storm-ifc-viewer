@@ -139,6 +139,50 @@ export function trengerForside(info, modellEndret) {
   return bilde < modell;
 }
 
+// ---------------------------------------------------------------------------
+// B3: INNLOGGINGSHINT FRA STORM PROSJEKTER
+// Storm IFC sier «storm-ifc-klar» (bare til STORM_PROSJEKTER), og Storm
+// Prosjekter svarer med e-posten til den som er innlogget. Ingen tokens eller
+// nøkler — e-posten brukes bare til å velge kontoen i Microsoft-innloggingen.
+// Kortlista i Workeren avgjør fortsatt om du kommer inn.
+// ---------------------------------------------------------------------------
+export const KLAR_MELDING = "storm-ifc-klar";
+export const HINT_MELDING = "storm-prosjekter-hint";
+export const STORM_DOMENER = ["stormentreprenor.no", "stormbetong.no", "stormstal.no"];
+
+// Gyldig hint: en enkel e-postadresse, maks 120 tegn, på et Storm-domene.
+// Svar: e-posten med små bokstaver, eller "" (ignoreres).
+export function gyldigHint(h) {
+  if (typeof h !== "string") return "";
+  const e = h.trim().toLowerCase();
+  if (!e || e.length > 120) return "";
+  const m = /^[a-z0-9._%+-]+@([a-z0-9-]+(?:\.[a-z0-9-]+)+)$/.exec(e);
+  if (!m || !STORM_DOMENER.includes(m[1])) return "";
+  return e;
+}
+
+// Godtar bare en melding fra Storm Prosjekter (riktig origin OG vinduet som
+// rammer oss inn) med riktig type og et gyldig hint. Svar: e-posten eller "".
+export function lesHintMelding(e, forelder) {
+  if (!e || e.origin !== STORM_PROSJEKTER) return "";
+  if (!forelder || e.source !== forelder) return "";
+  const d = e.data;
+  if (!d || typeof d !== "object" || d.type !== HINT_MELDING) return "";
+  return gyldigHint(d.loginHint);
+}
+
+// «ola.nordmann@…» → «Ola Nordmann» (hintet har bare e-posten).
+export function navnFraEpost(e) {
+  const lokal = String(e || "").split("@")[0] || "";
+  return lokal.split(/[._-]+/).filter(Boolean)
+    .map(d => d.charAt(0).toUpperCase() + d.slice(1)).join(" ");
+}
+export function initialer(navn) {
+  const d = String(navn || "").trim().split(/\s+/).filter(Boolean);
+  if (!d.length) return "?";
+  return ((d[0][0] || "") + (d.length > 1 ? d[d.length - 1][0] : "")).toUpperCase();
+}
+
 // Microsoft ID-tokenets e-post (bare til visning i «ikke tilgang» — Workeren
 // sjekker selve tokenet).
 export function tokenEpost(idToken) {

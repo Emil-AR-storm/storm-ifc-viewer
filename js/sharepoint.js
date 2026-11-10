@@ -177,7 +177,9 @@ export async function msIdToken(o) {
   }
   if (v.stille) return null;
   if (brukPopup() || v.popup) {
-    const r = await S.msalApp.loginPopup({ scopes: SP_SCOPES, prompt: v.velgKonto ? "select_account" : undefined });
+    // 🖼 B3: loginHint = e-posten fra Storm Prosjekter, så kontoen er ferdig valgt.
+    const r = await S.msalApp.loginPopup({ scopes: SP_SCOPES, prompt: v.velgKonto ? "select_account" : undefined,
+      loginHint: v.velgKonto ? undefined : (v.loginHint || undefined) });
     if (r && r.account) { S.msalApp.setActiveAccount(r.account); visInnlogging("inne", r.account); }
     return (r && r.idToken) || null;
   }
@@ -186,6 +188,22 @@ export async function msIdToken(o) {
   sessionStorage.setItem("storm-ifc-open-lib", "ingen");
   await S.msalApp.loginRedirect({ scopes: SP_SCOPES });
   return null;
+}
+
+// 🖼 B3: stille innlogging med hint (ssoSilent) — ingen vinduer. Virker når
+// nettleseren slipper Microsoft-informasjonskapselen gjennom i rammen (Edge og
+// Chrome som regel). Gir ID-tokenet, eller null når det trengs et klikk.
+export async function msSsoStille(loginHint) {
+  if (!loginHint) return null;
+  await msalInit();
+  try {
+    const r = await S.msalApp.ssoSilent({ scopes: SP_SCOPES, loginHint });
+    if (r && r.account) { S.msalApp.setActiveAccount(r.account); visInnlogging("inne", r.account); }
+    return (r && r.idToken) || null;
+  } catch (err) {
+    console.info("ssoSilent gikk ikke (" + ((err && (err.errorCode || err.message)) || err) + ") – viser «Fortsett».");
+    return null;
+  }
 }
 
 export async function spToken() {

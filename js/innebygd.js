@@ -63,6 +63,31 @@ async function godtaVilkår(bevis) {
   if (!r.ok) throw new Error("HTTP " + r.status);
 }
 
+// ---------- 🖼 B3: hint fra Storm Prosjekter ----------
+// Sier «klar» til Storm Prosjekter (aldri «*») og venter litt på svaret med
+// e-posten til den innloggede. Gir e-posten, eller "" etter ventetiden.
+let sistHint = "";
+const hintLyttere = [];
+function lyttEtterHint() {
+  if (!innrammet || lyttEtterHint.på) return;
+  lyttEtterHint.på = true;
+  window.addEventListener("message", (e) => {
+    const h = R.lesHintMelding(e, window.parent);
+    if (!h) return;
+    sistHint = h;
+    hintLyttere.splice(0).forEach(f => f(h));
+  });
+  try { window.parent.postMessage({ type: R.KLAR_MELDING }, R.STORM_PROSJEKTER); } catch (_) { /* ingen forelder */ }
+}
+function ventPåHint(ms) {
+  if (!innrammet) return Promise.resolve("");
+  if (sistHint) return Promise.resolve(sistHint);
+  return new Promise((løs) => {
+    const t = setTimeout(() => løs(""), ms);
+    hintLyttere.push((h) => { clearTimeout(t); løs(h); });
+  });
+}
+
 // Kjøres av main.js før sjekkKort(). Løser seg når et gyldig bevis er lagret.
 export async function forberedInnebygd() {
   if (!ADR.innebygd) return;
@@ -72,6 +97,7 @@ export async function forberedInnebygd() {
       '<p><a href="' + esc(vanligAdresse()) + '" target="_blank" rel="noopener">' + esc(norsk("Åpne Storm IFC vanlig →")) + '</a></p>');
     return stopp();
   }
+  lyttEtterHint();         // B3: «klar» → Storm Prosjekter svarer med e-posten
   if (lesKort()) return;   // gyldig kort eller bevis i denne nettleseren
   const sp = await import("./sharepoint.js");
   // Logget inn mot Microsoft fra før (eller rett tilbake fra omdirigering)? Prøv stille.
@@ -116,7 +142,7 @@ export async function forberedInnebygd() {
         catch (err) { $("ibFeil").textContent = norsk("Klarte ikke å lagre: ") + err.message; }
       };
     };
-    const loggInn = async (velgKonto) => {
+    const loggInn = async (velgKonto, loginHint) => {
       // Telefon i ramme: innloggingsvinduer blokkeres der (iOS). Da åpnes
       // samme adresse i en egen fane, der omdirigering virker.
       if (innrammet && !sp.brukPopup()) {
@@ -124,9 +150,33 @@ export async function forberedInnebygd() {
         return;
       }
       let idToken = null;
-      try { idToken = await sp.msIdToken({ velgKonto, popup: innrammet }); }
+      try { idToken = await sp.msIdToken({ velgKonto, popup: innrammet, loginHint }); }
       catch (err) { if (!sp.avbruttAvBruker(err)) return visFeil(norsk("Innloggingen gikk ikke: {0}", (err && err.message) || err)); }
-      if (idToken) prøv(idToken); else visStart();
+      if (idToken) prøv(idToken); else if (loginHint) visKonto(loginHint); else visStart();
+    };
+    // B3, valg B (Emil 10.11): kontokort som hos Microsoft — initialer, navn og
+    // e-post, knappen «Fortsett» og «Ikke deg? Bruk en annen konto».
+    const visKonto = (epost) => {
+      const tlf = innrammet && !sp.brukPopup();
+      const navn = R.navnFraEpost(epost);
+      visKort('<h2>' + esc(tittel()) + '</h2>' +
+        '<p>' + esc(tlf ? norsk("På telefon åpnes modellen i en egen fane.") : norsk("Nettleseren ba om ett klikk før du logges inn.")) + '</p>' +
+        '<div class="ib-konto"><span class="ib-sirkel" aria-hidden="true">' + esc(R.initialer(navn)) + '</span>' +
+          '<span class="ib-konto-tekst"><b>' + esc(navn) + '</b><small>' + esc(epost) + '</small></span></div>' +
+        '<button type="button" class="ib-knapp" id="ibFortsett">' + esc(tlf ? norsk("Åpne i full skjerm") : norsk("Fortsett")) + '</button>' +
+        '<button type="button" class="ib-lenke" id="ibAnnenKonto">' + esc(norsk("Ikke deg? Bruk en annen konto")) + '</button>');
+      $("ibFortsett").onclick = () => loggInn(false, epost);
+      $("ibAnnenKonto").onclick = () => loggInn(true);
+    };
+    // Ingen stille innlogging: vent kort på hintet, prøv ssoSilent med det,
+    // og vis kontokortet bare hvis nettleseren krever et klikk.
+    const utenToken = async () => {
+      visKort('<h2>' + esc(tittel()) + '</h2><p>' + esc(norsk("Logger inn …")) + '</p>');
+      const hint = await ventPåHint(2500);
+      if (!hint) return visStart();
+      const t = await sp.msSsoStille(hint);
+      if (t) return prøv(t);
+      visKonto(hint);
     };
     const visStart = () => {
       const tlf = innrammet && !sp.brukPopup();
@@ -136,7 +186,7 @@ export async function forberedInnebygd() {
         '<button type="button" class="ib-knapp" id="ibLoggInn">' + esc(tlf ? norsk("Åpne i full skjerm") : norsk("Logg inn med Microsoft")) + '</button>');
       $("ibLoggInn").onclick = () => loggInn(false);
     };
-    if (id) prøv(id); else visStart();
+    if (id) prøv(id); else utenToken();
   });
 }
 
