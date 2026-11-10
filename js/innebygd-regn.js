@@ -15,17 +15,19 @@ export const STORM_PROSJEKTER = "https://wonderful-tree-047b03e03.5.azurestatica
 // Vis alle. Objektinfo og «Skjul element» kommer når du trykker på et element.
 // Knappene er de EKTE knappene, flyttet inn i linja — ingen kopier.
 export const INNEBYGD_KNAPPER = ["btnMeasure", "btnKjede", "btnVinkel", "btnAxes",
-  "btnClip", "btnGhost", "btnGrupper", "btnHjul", "btnShowAll", "btnSettings"];
+  "btnClip", "btnGhost", "btnColors", "btnGrupper", "btnHjul", "btnShowAll", "btnSettings"];
 
 // Verktøylinja (Emil 10.11, valg C / C2): to kategorier og tre faste knapper.
 // Navnene som i kontoret («Måleverktøy» og «Visning», Emil 31.08) – Mål- og
 // Utseende-verktøyene inne i gruppene heter det samme.
-// PC: linja nederst på midten, verktøyene i en rad over.
-// Telefon: kategoriene i topplinja ved logoen, verktøyene i en rad rett under.
+// Kategoriene står i topplinja og verktøyene i en rad rett under – på PC som i
+// vanlig Storm IFC (Emil 10.11: linja nederst dekket målelinja med «Rett
+// strek» og «Tøm mål»), på telefon som ikoner (C2).
 // Det som ikke får plass, havner i «Mer» – som i Storm-Byggeplass.
 export const INNEBYGD_KATEGORIER = [
   { id: "mal", navn: "Måleverktøy", ikon: "maal", knapper: ["btnMeasure", "btnKjede", "btnVinkel", "btnAxes"] },
-  { id: "vis", navn: "Visning", ikon: "utseende", knapper: ["btnClip", "btnGhost", "btnGrupper"] }
+  // Utseende (farger, skjul/vis typer) lagt til i Visning (Emil 10.11)
+  { id: "vis", navn: "Visning", ikon: "utseende", knapper: ["btnClip", "btnGhost", "btnColors", "btnGrupper"] }
 ];
 export const INNEBYGD_FASTE = ["btnHjul", "btnShowAll", "btnSettings"];
 export const TELEFON_BREDDE = 640;

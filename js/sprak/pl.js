@@ -3850,4 +3850,15 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "FDV: koble FDV-dokumenter til objektene og lag overleveringspakken": "DTR: połącz dokumenty DTR z obiektami i utwórz pakiet przekazania",
   "FDV: én gruppe per vare, med PDF-ene og objektene": "DTR: jedna grupa na produkt, z plikami PDF i obiektami",
   "FDV (i Dokumentasjon) samler FDV-dokumentene. Slipp PDF-ene for en vare (FDV, produktdatablad, ytelseserklæring, samsvarserklæring) i ruta, så blir det en FDV-gruppe. Klikk så objektene i 3D som hører til — de blir blå. Et nytt klikk tar et objekt ut igjen, så det er lett å rette en feil. «Marker alle like» tar med alle av samme Revit-type. Samme vare kan ha mange navn i modellen; det er derfor objektene, ikke navnene, kobles til gruppa. Modellen fargelegges: grønn = gruppa har alle dokumentene, gul = noe mangler, rød = objektet er ikke i noen gruppe. FDV-pakke laster ned Excel-register og en ZIP med PDF-ene sortert per gruppe. Gruppene og PDF-ene lagres i SharePoint (FDV), så du må være logget inn.": "DTR (w Dokumentacji) zbiera dokumenty DTR. Upuść pliki PDF produktu (DTR, karta produktu, deklaracja właściwości użytkowych, deklaracja zgodności) w polu, a powstanie grupa DTR. Następnie kliknij obiekty 3D, które do niej należą — staną się niebieskie. Kolejne kliknięcie usuwa obiekt, więc łatwo poprawić błąd. «Zaznacz wszystkie takie same» dodaje wszystkie tego samego typu Revit. Ten sam produkt może mieć w modelu wiele nazw; dlatego z grupą łączone są obiekty, a nie nazwy. Model jest kolorowany: zielony = grupa ma wszystkie dokumenty, żółty = czegoś brakuje, czerwony = obiekt nie jest w żadnej grupie. Pakiet DTR pobiera rejestr Excel i ZIP z plikami PDF posortowanymi wg grup. Grupy i pliki PDF są zapisywane w SharePoint (FDV), więc musisz być zalogowany.",
+// ---------- 🖼 Storm IFC i Storm Prosjekter (innebygd modus) ----------
+  "Åpne i Storm IFC": "Otwórz w Storm IFC",
+  "Åpne Storm IFC i en egen fane": "Otwórz Storm IFC w nowej karcie",
+  "Åpne i full skjerm": "Otwórz na pełnym ekranie",
+  "Flere verktøy": "Więcej narzędzi",
+  "lett kopi": "lekka kopia",
+  "ekstra lett kopi": "bardzo lekka kopia",
+  "full modell": "pełny model",
+  "lastet på {0}": "wczytano w {0}",
+  "(lokal kopi)": "(kopia lokalna)",
+  "(komprimert)": "(skompresowany)",
 };

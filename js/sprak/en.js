@@ -3850,4 +3850,15 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "FDV: koble FDV-dokumenter til objektene og lag overleveringspakken": "O&M: link O&M documents to the objects and create the handover package",
   "FDV: én gruppe per vare, med PDF-ene og objektene": "O&M: one group per product, with the PDFs and the objects",
   "FDV (i Dokumentasjon) samler FDV-dokumentene. Slipp PDF-ene for en vare (FDV, produktdatablad, ytelseserklæring, samsvarserklæring) i ruta, så blir det en FDV-gruppe. Klikk så objektene i 3D som hører til — de blir blå. Et nytt klikk tar et objekt ut igjen, så det er lett å rette en feil. «Marker alle like» tar med alle av samme Revit-type. Samme vare kan ha mange navn i modellen; det er derfor objektene, ikke navnene, kobles til gruppa. Modellen fargelegges: grønn = gruppa har alle dokumentene, gul = noe mangler, rød = objektet er ikke i noen gruppe. FDV-pakke laster ned Excel-register og en ZIP med PDF-ene sortert per gruppe. Gruppene og PDF-ene lagres i SharePoint (FDV), så du må være logget inn.": "O&M (in Documentation) collects the O&M documents. Drop the PDFs for a product (O&M, product data sheet, declaration of performance, declaration of conformity) in the box, and it becomes an O&M group. Then click the objects in 3D that belong to it — they turn blue. Another click removes an object again, so a mistake is easy to fix. «Select all alike» adds all of the same Revit type. The same product can have many names in the model; that is why objects, not names, are linked to the group. The model is coloured: green = the group has all documents, yellow = something is missing, red = the object is not in any group. O&M package downloads an Excel register and a ZIP with the PDFs sorted per group. Groups and PDFs are saved in SharePoint (FDV), so you must be signed in.",
+// ---------- 🖼 Storm IFC i Storm Prosjekter (innebygd modus) ----------
+  "Åpne i Storm IFC": "Open in Storm IFC",
+  "Åpne Storm IFC i en egen fane": "Open Storm IFC in a new tab",
+  "Åpne i full skjerm": "Open full screen",
+  "Flere verktøy": "More tools",
+  "lett kopi": "light copy",
+  "ekstra lett kopi": "extra light copy",
+  "full modell": "full model",
+  "lastet på {0}": "loaded in {0}",
+  "(lokal kopi)": "(local copy)",
+  "(komprimert)": "(compressed)",
 };

@@ -3850,4 +3850,15 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "FDV: koble FDV-dokumenter til objektene og lag overleveringspakken": "Eksploatacija: susiekite dokumentus su objektais ir sukurkite perdavimo paketą",
   "FDV: én gruppe per vare, med PDF-ene og objektene": "Eksploatacija: viena grupė produktui, su PDF ir objektais",
   "FDV (i Dokumentasjon) samler FDV-dokumentene. Slipp PDF-ene for en vare (FDV, produktdatablad, ytelseserklæring, samsvarserklæring) i ruta, så blir det en FDV-gruppe. Klikk så objektene i 3D som hører til — de blir blå. Et nytt klikk tar et objekt ut igjen, så det er lett å rette en feil. «Marker alle like» tar med alle av samme Revit-type. Samme vare kan ha mange navn i modellen; det er derfor objektene, ikke navnene, kobles til gruppa. Modellen fargelegges: grønn = gruppa har alle dokumentene, gul = noe mangler, rød = objektet er ikke i noen gruppe. FDV-pakke laster ned Excel-register og en ZIP med PDF-ene sortert per gruppe. Gruppene og PDF-ene lagres i SharePoint (FDV), så du må være logget inn.": "Eksploatacija (Dokumentacijoje) surenka eksploatacijos dokumentus. Numeskite produkto PDF (eksploatacijos, duomenų lapą, eksploatacinių savybių deklaraciją, atitikties deklaraciją) į laukelį, ir susidarys grupė. Tada spustelėkite jai priklausančius 3D objektus — jie taps mėlyni. Dar vienas spustelėjimas objektą pašalina, todėl klaidą lengva ištaisyti. «Pažymėti visus vienodus» prideda visus to paties Revit tipo. Tas pats produktas modelyje gali turėti daug pavadinimų; todėl su grupe susiejami objektai, o ne pavadinimai. Modelis nuspalvinamas: žalia = grupė turi visus dokumentus, geltona = kažko trūksta, raudona = objektas nėra jokioje grupėje. Eksploatacijos paketas atsisiunčia Excel registrą ir ZIP su PDF, surūšiuotais pagal grupes. Grupės ir PDF išsaugomi SharePoint (FDV), todėl turite būti prisijungę.",
+// ---------- 🖼 Storm IFC i Storm Prosjekter (innebygd modus) ----------
+  "Åpne i Storm IFC": "Atidaryti Storm IFC",
+  "Åpne Storm IFC i en egen fane": "Atidaryti Storm IFC naujame skirtuke",
+  "Åpne i full skjerm": "Atidaryti visame ekrane",
+  "Flere verktøy": "Daugiau įrankių",
+  "lett kopi": "lengva kopija",
+  "ekstra lett kopi": "itin lengva kopija",
+  "full modell": "pilnas modelis",
+  "lastet på {0}": "įkelta per {0}",
+  "(lokal kopi)": "(vietinė kopija)",
+  "(komprimert)": "(suspaustas)",
 };
