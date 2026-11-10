@@ -383,7 +383,35 @@ async function autoForside(item, meta) {
     console.warn("Forsidebilde feilet:", err && err.message);
   }
 }
-S.etterSpModell = (item, meta) => { autoForside(item, meta); };
+// ---------- ⚡ B4: komprimert kopi (.glb.gz) automatisk ----------
+// Ble en lett kopi lastet ned ukomprimert fordi det ikke fantes en fersk
+// «<navn>.glb.gz», lager Storm IFC den i bakgrunnen og legger den ved siden
+// av (bare Storm/admin, ikke på telefon). Neste åpning henter da 2–4 ganger
+// mindre. Tapsfritt: gzip endrer ingen byte i selve modellen.
+const svakEnhet = () => window.innerWidth <= 640 || (window.matchMedia && !window.matchMedia("(pointer: fine)").matches);
+async function autoGz(item, meta) {
+  try {
+    const m = S.sistLasting || {};
+    if (!/\.glb$/i.test(item.name) || m.navn !== item.name || m.kilde !== "nett") return;
+    if (typeof DecompressionStream === "undefined" || !kanForside() || svakEnhet()) return;
+    await sov(5000);                                   // la modellen og brukeren få ro først
+    if (S.fileName !== item.name || !S.lastBuffer) return;
+    const L = await import("./modell-lager.js");
+    const LR = await import("./modell-lager-regn.js");
+    const rå = S.lastBuffer;
+    const pakket = await L.gzip(rå);
+    if (!pakket) return;
+    console.info("⚡ gzip " + item.name + ": " + LR.mb(rå.byteLength) + " → " + LR.mb(pakket.byteLength) +
+      " (" + Math.round(pakket.byteLength / rå.byteLength * 100) + " %)");
+    if (!LR.verdtGz(rå.byteLength, pakket.byteLength)) return;
+    const { spLastOppVed } = await import("./sharepoint.js");
+    const r = await spLastOppVed(meta, LR.gzNavn(item.name), pakket, "application/gzip");
+    if (r.ok) console.info("⚡ Komprimert kopi lagret: " + LR.gzNavn(item.name));
+    else console.warn("⚡ Komprimert kopi ble ikke lagret (" + r.grunn + ")");
+  } catch (err) { console.warn("⚡ Komprimert kopi feilet:", err && err.message); }
+}
+
+S.etterSpModell = (item, meta) => { autoForside(item, meta); autoGz(item, meta); };
 
 export function startForsidebilde() {
   const b = $("btnForsidebilde");

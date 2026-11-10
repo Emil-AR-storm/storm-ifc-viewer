@@ -527,6 +527,32 @@ function renderLibList(filter) {
   });
 }
 
+// ⚡ B4: «<navn>.gz» i samme mappe som fila (ett lite kall). null = finnes ikke.
+async function finnGz(meta, token) {
+  try {
+    const p = meta.parentReference || {};
+    if (!p.driveId || !p.id) return null;
+    return await graphGet("/drives/" + p.driveId + "/items/" + p.id + ":/" + encodeURIComponent(meta.name + ".gz"), token);
+  } catch (_) { return null; }
+}
+
+// ⚡ B4: legger en fil ved siden av en annen (samme mappe), i det stille.
+// Brukes til «<navn>.glb.gz». Enkel PUT tåler opptil 250 MB.
+export async function spLastOppVed(meta, navn, data, type) {
+  try {
+    const p = (meta && meta.parentReference) || {};
+    if (!p.driveId || !p.id) return { ok: false, grunn: "mappe" };
+    if (data.byteLength > 250e6) return { ok: false, grunn: "for stor" };
+    const token = await spTokenSilent();
+    if (!token) return { ok: false, grunn: "av" };
+    const r = await fetch(GRAPH + "/drives/" + p.driveId + "/items/" + p.id + ":/" + encodeURIComponent(navn) +
+      ":/content?@microsoft.graph.conflictBehavior=replace", {
+      method: "PUT", headers: authHeaders(token, { "Content-Type": type || "application/octet-stream" }, "lett-gz"), body: data
+    });
+    return r.ok ? { ok: true } : { ok: false, grunn: "Graph " + r.status };
+  } catch (err) { return { ok: false, grunn: (err && err.message) || "feil" }; }
+}
+
 export async function spOpenFile(item) {
   $("libPanel").classList.remove("open");
   loadingEl.classList.add("open");
@@ -539,33 +565,39 @@ export async function spOpenFile(item) {
       S.spSiteId = site.id;
     }
     const meta = await graphGet("/sites/" + S.spSiteId + "/drive/items/" + item.id, token);
-    const url = meta["@microsoft.graph.downloadUrl"];
-    if (!url) throw new Error(t("Fikk ingen nedlastingslenke fra SharePoint"));
-    const resp = await fetch(url);
-    if (!resp.ok) throw new Error(t("Nedlasting feilet ({0})", resp.status));
-    let buf;
-    const total = Number(resp.headers.get("Content-Length")) || item.size || 0;
-    if (resp.body && total) {
-      const reader = resp.body.getReader();
-      const chunks = [];
-      let got = 0;
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value);
-        got += value.length;
-        // «Laster ned» sier tydelig at dette er nedlastingen fra SharePoint, og
-        // ikke selve lesingen av modellen. To prosentvisninger etter hverandre
-        // så ut som om modellen ble lastet to ganger.
-        loadingText.textContent = t("Laster ned {0} … {1} %", item.name,
-          Math.min(100, Math.round(got / total * 100)));
-      }
-      buf = new Uint8Array(got);
-      let o = 0;
-      for (const c of chunks) { buf.set(c, o); o += c.length; }
+    // ⚡ B4: lokal kopi (samme cTag) → komprimert .gz → vanlig nedlasting.
+    // Målingen står i konsollen og i S.sistLasting (innebygd modus viser den).
+    const L = await import("./modell-lager.js");
+    const LR = await import("./modell-lager-regn.js");
+    const tag = LR.versjon(meta);
+    const måling = { kilde: "nett", bytes: 0, nedBytes: 0, nedMs: 0, tolkMs: 0, tegnMs: 0, gzFersk: false };
+    const t0 = performance.now();
+    let buf = await L.lesLokal(item.id, tag);
+    if (buf) {
+      måling.kilde = "lokal";
     } else {
-      buf = new Uint8Array(await resp.arrayBuffer());
+      let fil = meta, pakket = false;
+      if (/\.glb$/i.test(item.name) && typeof DecompressionStream !== "undefined" && meta.parentReference) {
+        const gz = await finnGz(meta, token);
+        if (gz && LR.brukGz(meta, gz)) { fil = gz; pakket = true; måling.gzFersk = true; }
+      }
+      const url = fil["@microsoft.graph.downloadUrl"];
+      if (!url) throw new Error(t("Fikk ingen nedlastingslenke fra SharePoint"));
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(t("Nedlasting feilet ({0})", resp.status));
+      const total = Number(resp.headers.get("Content-Length")) || fil.size || (pakket ? 0 : item.size) || 0;
+      // «Laster ned» sier tydelig at dette er nedlastingen fra SharePoint, og
+      // ikke selve lesingen av modellen. To prosentvisninger etter hverandre
+      // så ut som om modellen ble lastet to ganger.
+      const r = await L.lesStrøm(resp, total, (pst) => {
+        loadingText.textContent = t("Laster ned {0} … {1} %", item.name, pst);
+      }, pakket);
+      buf = r.buf;
+      måling.nedBytes = r.nedBytes;
+      måling.kilde = pakket ? "gz" : "nett";
     }
+    måling.nedMs = performance.now() - t0;
+    måling.bytes = buf.byteLength;
     const isGlb = /\.glb$/i.test(item.name);
     loadingText.textContent = t("Leser {0} …", item.name);
     if (!isGlb) await ifcReady;
@@ -573,9 +605,20 @@ export async function spOpenFile(item) {
     S.fileName = item.name;
     S.lastBuffer = buf;
     setLoadFlag({ name: item.name, size: item.size, light: S.lightMode, libId: item.id });
+    const t1 = performance.now();
     if (isGlb) await loadGlb(buf); else await loadModel(buf);
+    måling.tolkMs = performance.now() - t1;
     afterLoad();
     clearLoadFlag();
+    // Første bilde: to rammer etter at modellen er lagt i scenen.
+    const t2 = performance.now();
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    måling.tegnMs = performance.now() - t2;
+    S.sistLasting = Object.assign({ navn: item.name }, måling);
+    console.info("⏱ " + item.name + ": " + LR.måleLinje(måling));
+    if (S.etterMåling) S.etterMåling(S.sistLasting);
+    // Lagres lokalt etter at modellen vises – brukeren venter ikke på det.
+    if (måling.kilde !== "lokal") L.lagreLokal(item.id, tag, item.name, buf);
     if (S.rememberModel) S.rememberModel({ kind: "lib", name: item.name, size: item.size, id: item.id });
     if (S.etterSpModell) S.etterSpModell(item, meta);  // 🖼 B2: forsidebilde automatisk (innebygd.js)
   } catch (err) {
