@@ -3228,3 +3228,11 @@ html[data-innebygd] #splash { display: none !important; }
 .ib-kort .ib-liten { font-size: 12px; }
 .ib-knapp { margin-top: 14px; width: 100%; justify-content: center; padding: 10px; background: var(--accent); border-color: var(--accent); color: #fff; }
 .ib-knapp.ib-graa { background: var(--panel2); border-color: var(--border); color: var(--text); }
+/* 🖼 B3 valg B: kontokortet «Fortsett» */
+.ib-konto { display: flex; align-items: center; gap: 12px; margin: 14px 0 4px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel2); }
+.ib-sirkel { width: 40px; height: 40px; border-radius: 50%; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 16px; flex: none; }
+.ib-konto-tekst { min-width: 0; }
+.ib-konto-tekst b { display: block; font-size: 14px; }
+.ib-konto-tekst small { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.ib-lenke { display: block; width: 100%; margin-top: 10px; padding: 4px; background: none; border: 0; color: var(--muted); font-size: 12.5px; text-decoration: underline; justify-content: center; cursor: pointer; }
+.ib-lenke:hover { color: var(--text); background: none; }
