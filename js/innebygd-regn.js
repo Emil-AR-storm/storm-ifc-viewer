@@ -15,7 +15,32 @@ export const STORM_PROSJEKTER = "https://wonderful-tree-047b03e03.5.azurestatica
 // Vis alle. Objektinfo og «Skjul element» kommer når du trykker på et element.
 // Knappene er de EKTE knappene, flyttet inn i linja — ingen kopier.
 export const INNEBYGD_KNAPPER = ["btnMeasure", "btnKjede", "btnVinkel", "btnAxes",
-  "btnClip", "btnGhost", "btnGrupper", "btnHjul", "btnShowAll"];
+  "btnClip", "btnGhost", "btnGrupper", "btnHjul", "btnShowAll", "btnSettings"];
+
+// Verktøylinja (Emil 10.11, valg C / C2): to kategorier og tre faste knapper.
+// Navnene som i kontoret («Måleverktøy» og «Visning», Emil 31.08) – Mål- og
+// Utseende-verktøyene inne i gruppene heter det samme.
+// PC: linja nederst på midten, verktøyene i en rad over.
+// Telefon: kategoriene i topplinja ved logoen, verktøyene i en rad rett under.
+// Det som ikke får plass, havner i «Mer» – som i Storm-Byggeplass.
+export const INNEBYGD_KATEGORIER = [
+  { id: "mal", navn: "Måleverktøy", ikon: "maal", knapper: ["btnMeasure", "btnKjede", "btnVinkel", "btnAxes"] },
+  { id: "vis", navn: "Visning", ikon: "utseende", knapper: ["btnClip", "btnGhost", "btnGrupper"] }
+];
+export const INNEBYGD_FASTE = ["btnHjul", "btnShowAll", "btnSettings"];
+export const TELEFON_BREDDE = 640;
+
+// Hvor mange av elementene får plass? bredder = [px], plass = px, merBredde =
+// plassen «Mer» tar. Alt får plass → alle; ellers så mange som får plass
+// SAMMEN MED «Mer». (Rekkefølgen beholdes – det siste går i «Mer» først.)
+export function antallSomFårPlass(bredder, plass, merBredde, mellomrom = 6) {
+  const b = (bredder || []).map(x => Math.max(0, x || 0));
+  const sum = (n) => b.slice(0, n).reduce((s, x) => s + x, 0) + Math.max(0, n - 1) * mellomrom;
+  if (sum(b.length) <= plass) return b.length;
+  let n = b.length;
+  while (n > 0 && sum(n) + mellomrom + merBredde > plass) n--;
+  return n;
+}
 
 // URLSearchParams gjør «+» om til mellomrom, som Storm Prosjekter forventer.
 export function lesInnebygd(search) {

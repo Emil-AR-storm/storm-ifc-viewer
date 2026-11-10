@@ -198,29 +198,146 @@ function byggLinje(art) {
   linje.innerHTML =
     '<div class="ib-venstre"><svg class="storm-logo" viewBox="0 0 948 224" role="img" aria-label="Storm IFC-Viewer"><use href="#storm-lockup"/></svg>' +
       '<span class="ib-skille"></span><b id="ibTittel">' + esc(visNavn() || norsk("Modellgruppe")) + '</b><small id="ibArt">' + esc(art || "") + '</small></div>' +
-    '<div class="ib-verktoy" id="ibVerktoy"></div>' +
+    '<div class="ib-verktoy" id="ibVerktoy" role="toolbar"></div>' +
     '<div class="ib-hoyre"><small id="ibBruker">' + esc(kortNavn()) + '</small>' +
       (innrammet ? '<button type="button" id="ibFullskjerm" title="' + esc(norsk("Åpne i full skjerm")) + '">' + ikon("fullskjerm") + '</button>' : "") +
       '<button type="button" id="ibApne" title="' + esc(norsk("Åpne Storm IFC i en egen fane")) + '">' + ikon("apne") + '<span class="btn-t">' + esc(norsk("Åpne i Storm IFC")) + '</span></button></div>';
   document.body.appendChild(linje);
-  const v = $("ibVerktoy");
-  for (const id of R.INNEBYGD_KNAPPER) { const b = $(id); if (b) v.appendChild(b); }
+  byggVerktøy();
   $("ibApne").onclick = () => window.open(vanligAdresse(), "_blank", "noopener");
-  // Bare ikoner når tekstene ikke får plass (smalt vindu, langt språk) –
-  // målt, ikke gjettet med en fast skjermbredde.
-  const tilpass = () => {
-    linje.classList.remove("ib-ikoner");
-    if (v.scrollWidth > v.clientWidth + 1) linje.classList.add("ib-ikoner");
-  };
-  tilpass();
-  window.addEventListener("resize", tilpass);
-  if (typeof ResizeObserver !== "undefined") new ResizeObserver(tilpass).observe(v);
   const fs = $("ibFullskjerm");
   if (fs) fs.onclick = () => window.open(location.href, "_blank", "noopener");
 }
 
+// ---------- 🧰 Verktøylinja (Emil 10.11: C på PC, C2 på telefon) ----------
+// #ibVerktoy: kategoriene + de faste knappene. #ibRad: verktøyene i valgt
+// kategori. Knappene er de EKTE knappene, flyttet inn — ingen kopier.
+let aktivKat = "mal";
+const erTelefon = () => window.innerWidth <= R.TELEFON_BREDDE;
+function lagMer(id) {
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "ib-mer"; b.id = id; b.hidden = true;
+  b.title = norsk("Flere verktøy");
+  b.innerHTML = ikon("mer") + '<span class="btn-t">' + esc(norsk("Mer")) + '</span>';
+  return b;
+}
+function byggVerktøy() {
+  const v = $("ibVerktoy");
+  const rad = document.createElement("div"); rad.id = "ibRad"; rad.setAttribute("role", "toolbar");
+  document.body.appendChild(rad);
+  const liste = document.createElement("div"); liste.id = "ibMerListe"; liste.hidden = true;
+  document.body.appendChild(liste);
+  let n = 0;
+  for (const k of R.INNEBYGD_KATEGORIER) {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "ib-kat"; b.dataset.kat = k.id; b.dataset.ibRekke = String(n++);
+    b.title = norsk(k.navn);
+    b.innerHTML = ikon(k.ikon) + '<span class="btn-t">' + esc(norsk(k.navn)) + '</span>';
+    b.onclick = () => velgKat(aktivKat === k.id && !rad.hidden ? "" : k.id);
+    v.appendChild(b);
+  }
+  const skille = document.createElement("span"); skille.className = "ib-skille2"; skille.dataset.ibRekke = String(n++);
+  v.appendChild(skille);
+  for (const id of R.INNEBYGD_FASTE) { const b = $(id); if (b) { b.dataset.ibRekke = String(n++); v.appendChild(b); } }
+  v.appendChild(lagMer("ibMerKat"));
+  rad.appendChild(lagMer("ibMerRad"));
+  $("ibMerKat").onclick = (e) => { e.stopPropagation(); visMer(v, $("ibMerKat")); };
+  $("ibMerRad").onclick = (e) => { e.stopPropagation(); visMer(rad, $("ibMerRad")); };
+  // Et trykk på et verktøy i «Mer» bruker verktøyet og lukker lista.
+  liste.addEventListener("click", (e) => { if (e.target.closest("button")) setTimeout(lukkMer, 0); });
+  document.addEventListener("pointerdown", (e) => {
+    if (liste.hidden || liste.contains(e.target) || (e.target.closest && e.target.closest(".ib-mer"))) return;
+    lukkMer();
+  }, true);
+  velgKat(aktivKat);
+  plasser();
+  window.addEventListener("resize", plasser);
+  if (typeof ResizeObserver !== "undefined") new ResizeObserver(() => plasser()).observe(document.body);
+  // «Vis alle» vises og skjules av kontorkoden (inline display) – da må
+  // plassen regnes ut på nytt.
+  if (typeof MutationObserver !== "undefined") {
+    const mo = new MutationObserver(() => requestAnimationFrame(plasser));
+    for (const id of R.INNEBYGD_FASTE) { const b = $(id); if (b) mo.observe(b, { attributes: true, attributeFilter: ["style", "hidden"] }); }
+  }
+}
+function velgKat(id) {
+  aktivKat = id || aktivKat;
+  const rad = $("ibRad");
+  lukkMer();
+  // Verktøyene i de andre kategoriene parkeres i et skjult lager – de må
+  // ALDRI tas ut av dokumentet: resten av koden slår dem opp med id (clearModel
+  // m.fl.) og krasjer på null.
+  let lager = $("ibLager");
+  if (!lager) { lager = document.createElement("div"); lager.id = "ibLager"; lager.hidden = true; document.body.appendChild(lager); }
+  for (const k of R.INNEBYGD_KATEGORIER) for (const kid of k.knapper) { const b = $(kid); if (b) { delete b.dataset.ibFra; lager.appendChild(b); } }
+  const k = R.INNEBYGD_KATEGORIER.find(x => x.id === aktivKat);
+  let n = 0;
+  if (id && k) for (const kid of k.knapper) { const b = $(kid); if (b) { b.dataset.ibRekke = String(n++); rad.insertBefore(b, $("ibMerRad")); } }
+  rad.hidden = !id;
+  document.querySelectorAll("#ibVerktoy .ib-kat, #ibMerListe .ib-kat").forEach(b => b.classList.toggle("paa", !!id && b.dataset.kat === aktivKat));
+  plasser();
+}
+// Legger det som ikke får plass i «Mer» (målt, ikke gjettet).
+function fordel(boks, mer) {
+  const liste = $("ibMerListe");
+  // alt tilbake i boksen, i opprinnelig rekkefølge
+  const egne = Array.from(liste.children).filter(e => e.dataset.ibFra === boks.id);
+  egne.forEach(e => { delete e.dataset.ibFra; boks.insertBefore(e, mer); });
+  const elementer = Array.from(boks.children).filter(e => e !== mer)
+    .sort((a, b) => Number(a.dataset.ibRekke) - Number(b.dataset.ibRekke));
+  elementer.forEach(e => boks.insertBefore(e, mer));
+  mer.hidden = false;
+  const merB = mer.offsetWidth;
+  mer.hidden = true;
+  const synlige = elementer.filter(e => e.offsetWidth > 0 || e.classList.contains("ib-skille2"));
+  const stil = getComputedStyle(boks);
+  const plass = boks.clientWidth - (parseFloat(stil.paddingLeft) || 0) - (parseFloat(stil.paddingRight) || 0);
+  const får = R.antallSomFårPlass(synlige.map(e => e.offsetWidth), plass, merB, parseFloat(stil.columnGap) || 6);
+  if (får >= synlige.length) return;
+  mer.hidden = false;
+  synlige.slice(får).forEach(e => {
+    if (e.classList.contains("ib-skille2")) return;   // skillestreken hører ikke hjemme i en liste
+    e.dataset.ibFra = boks.id; liste.appendChild(e);
+  });
+}
+function plasser() {
+  const linje = $("innebygdBar"), v = $("ibVerktoy"), rad = $("ibRad");
+  if (!linje || !v || !rad) return;
+  const tlf = erTelefon();
+  rot.dataset.ibTelefon = tlf ? "1" : "";
+  if (tlf && v.parentNode !== linje) linje.insertBefore(v, linje.querySelector(".ib-hoyre"));
+  if (!tlf && v.parentNode === linje) document.body.appendChild(v);
+  v.classList.toggle("ib-bunn", !tlf);
+  const topp = linje.getBoundingClientRect().height;
+  rot.style.setProperty("--ib-topp", topp + "px");
+  fordel(v, $("ibMerKat"));
+  if (!rad.hidden) fordel(rad, $("ibMerRad"));
+  // PC: panelene (Element, Innstillinger …) skal ikke ligge over linja nederst.
+  const bunn = tlf ? 0 : (window.innerHeight - Math.min(v.getBoundingClientRect().top, rad.hidden ? Infinity : rad.getBoundingClientRect().top)) + 8;
+  rot.style.setProperty("--ib-bunn", Math.max(0, bunn) + "px");
+}
+function visMer(boks, mer) {
+  const liste = $("ibMerListe");
+  const åpen = !liste.hidden && liste.dataset.fra === boks.id;
+  lukkMer();
+  if (åpen) return;
+  Array.from(liste.children).forEach(e => { e.style.display = e.dataset.ibFra === boks.id ? "" : "none"; });
+  liste.dataset.fra = boks.id;
+  liste.hidden = false;
+  mer.classList.add("paa");
+  const r = mer.getBoundingClientRect(), l = liste.getBoundingClientRect();
+  liste.style.left = Math.max(8, Math.min(r.right - l.width, window.innerWidth - l.width - 8)) + "px";
+  liste.style.top = (r.top > window.innerHeight / 2 ? r.top - l.height - 6 : r.bottom + 6) + "px";
+}
+function lukkMer() {
+  const liste = $("ibMerListe");
+  if (liste) { liste.hidden = true; Array.from(liste.children).forEach(e => { e.style.display = ""; }); }
+  document.querySelectorAll(".ib-mer.paa").forEach(b => b.classList.remove("paa"));
+}
+
 function settArt(art) {
   const a = $("ibArt");
+  if (a) delete a.dataset.art;
   if (a) a.textContent = art === "ekstra" ? norsk("ekstra lett kopi") : art === "lett" ? norsk("lett kopi") : art === "ifc" ? norsk("full modell") : "";
 }
 
@@ -228,6 +345,7 @@ function visMelding(tekst) {
   const v = $("ibVerktoy");
   visKort('<h2>' + esc(visNavn() || norsk("3D-modellen")) + '</h2><p>' + esc(tekst) + '</p>');
   if (v) v.style.visibility = "hidden";
+  const rad = $("ibRad"); if (rad) rad.hidden = true;
 }
 
 // Leser Lette kopier/_index.json hvis den finnes (Storm Prosjekter kan legge
@@ -240,6 +358,49 @@ async function lesIndeks() {
     return JSON.parse(new TextDecoder().decode(r.data));
   } catch (_) { return null; }
 }
+
+// ---------- ⚡ B4 valg C (Emil 10.11): forsidebildet mens modellen lastes ----------
+// Mørk bakgrunn som før, forsidebildet som et kort i midten, modellnavnet og
+// en fremdriftsstolpe under. Finnes ikke bildet, står spinneren som før.
+let lasteUrl = "";
+export function visLasting(forsideNavn) {
+  const l = loadingEl;
+  if (!l || $("ibLasteBilde")) return;
+  l.classList.add("ib-last");
+  const navn = document.createElement("b"); navn.id = "ibLasteNavn"; navn.textContent = visNavn() || "";
+  const stolpe = document.createElement("div"); stolpe.className = "ib-stolpe"; stolpe.innerHTML = '<i id="ibLasteStolpe"></i>';
+  const tekst = $("loadingText");
+  l.insertBefore(navn, tekst); l.insertBefore(stolpe, tekst);
+  S.lasteFremdrift = (pst) => { const s = $("ibLasteStolpe"); if (s) s.style.width = Math.max(0, Math.min(100, pst)) + "%"; };
+  // Bildet hentes ved siden av nedlastingen — modellen venter aldri på det.
+  (async () => {
+    try {
+      const { spLesBin } = await import("./sp-lager.js");
+      const r = await spLesBin(R.FORSIDE_MAPPE, forsideNavn);
+      if (r.status !== "ok" || !r.data || !l.classList.contains("open")) return;
+      lasteUrl = URL.createObjectURL(new Blob([r.data], { type: "image/png" }));
+      const img = document.createElement("img"); img.id = "ibLasteBilde"; img.alt = ""; img.src = lasteUrl;
+      l.insertBefore(img, navn);
+      l.classList.add("ib-med-bilde");
+    } catch (_) { /* uten bilde: spinneren står */ }
+  })();
+}
+export function ryddLasting() {
+  ["ibLasteBilde", "ibLasteNavn"].forEach(id => { const e = $(id); if (e) e.remove(); });
+  const s = loadingEl && loadingEl.querySelector(".ib-stolpe"); if (s) s.remove();
+  if (loadingEl) loadingEl.classList.remove("ib-last", "ib-med-bilde");
+  if (lasteUrl) { URL.revokeObjectURL(lasteUrl); lasteUrl = ""; }
+  S.lasteFremdrift = null;
+}
+// Målingen i topplinja etter lasting: «ekstra lett kopi · lastet på 4,1 s»
+S.etterMåling = async (m) => {
+  if (!ADR.innebygd) return;
+  try {
+    const LR = await import("./modell-lager-regn.js");
+    const a = $("ibArt");
+    if (a) { a.dataset.art = a.dataset.art || a.textContent; a.textContent = (a.dataset.art ? a.dataset.art + " · " : "") + LR.kortMåling(m); a.title = LR.måleLinje(m); }
+  } catch (_) { /* bare pynt */ }
+};
 
 async function åpneModell(ifcNavn) {
   const sp = await import("./sharepoint.js");
@@ -263,7 +424,8 @@ async function åpneModell(ifcNavn) {
   // kopi er åpen (se grSpFil i grupper.js og apneGruppe i lag.js).
   S.kildeIfc = { fil: valg.fil.name, ifc: ifcNavn };
   settArt(valg.art);
-  await sp.spOpenFile(valg.fil);
+  visLasting(R.forsideNavn(valg.fil.name, ifcNavn));
+  try { await sp.spOpenFile(valg.fil); } finally { ryddLasting(); }
   return S.fileName === valg.fil.name;
 }
 
@@ -290,7 +452,8 @@ async function åpneLett(glbNavn) {
   }
   S.kildeIfc = eier ? { fil: fil.name, ifc: eier } : null;
   settArt(R.erEkstraLett(fil.name) ? "ekstra" : "lett");
-  await sp.spOpenFile(fil);
+  visLasting(R.forsideNavn(fil.name, eier));
+  try { await sp.spOpenFile(fil); } finally { ryddLasting(); }
   return S.fileName === fil.name;
 }
 
@@ -315,6 +478,9 @@ export async function startInnebygd() {
     return;
   }
   byggLinje("");
+  // 📋 Egenskapspanelet som på byggeplassen (Emil 10.11: «infoboksen tar 60 %
+  // av skjermen»): navnet og tre rader med rulling, maks 45 % av høyden.
+  try { await import("./prop-kompakt.js"); } catch (_) { /* panelet virker som før */ }
   if (ADR.gruppe) await åpneGruppe(ADR.gruppe);
   else if (ADR.lett) await åpneLett(ADR.lett);
   else if (ADR.modell) await åpneModell(ADR.modell);
