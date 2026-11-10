@@ -3238,6 +3238,11 @@ html[data-innebygd] #innebygdBar .storm-logo { display: block; }
 /* Verktøyraden rett under topplinja – PC som i vanlig Storm IFC (Emil 10.11:
    linja nederst dekket målelinja), telefon som ikoner (C2). */
 #ibVerktoy { justify-content: flex-start; }
+html[data-innebygd] #colorBody { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+html[data-innebygd] #colorBody.kan-rulle {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent);
+          mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent); }
+html[data-innebygd] #btnColors.ib-ingen-typer { display: none !important; }
 #ibVerktoy.ib-tett > button:not(.ib-kat):not(.ib-mer) .btn-t { display: none; }
 #ibRad { position: fixed; left: 12px; top: calc(var(--ib-topp, 52px) + 8px); z-index: 20; display: flex; gap: 6px; max-width: calc(100% - 24px);
   overflow: hidden; padding: 6px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--skygge); }
