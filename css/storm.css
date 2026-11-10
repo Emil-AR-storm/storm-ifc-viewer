@@ -3235,14 +3235,15 @@ html[data-innebygd] #innebygdBar .storm-logo { display: block; }
 .ib-skille2 { width: 1px; height: 24px; background: var(--border); margin: 0 4px; flex: none; }
 .ib-mer.paa { box-shadow: inset 0 0 0 2px var(--accent); }
 .ib-mer[hidden] { display: none !important; }
-/* PC: nederst på midten, verktøyene i en rad over */
-#ibVerktoy.ib-bunn { position: fixed; left: 50%; transform: translateX(-50%); bottom: 14px; z-index: 20; max-width: calc(100% - 24px);
-  overflow: hidden; padding: 6px; background: var(--panel); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--skygge); justify-content: flex-start; flex: none; }
-#ibRad { position: fixed; left: 50%; transform: translateX(-50%); bottom: 70px; z-index: 20; display: flex; gap: 6px; max-width: calc(100% - 24px);
+/* Verktøyraden rett under topplinja – PC som i vanlig Storm IFC (Emil 10.11:
+   linja nederst dekket målelinja), telefon som ikoner (C2). */
+#ibVerktoy { justify-content: flex-start; }
+#ibVerktoy.ib-tett > button:not(.ib-kat):not(.ib-mer) .btn-t { display: none; }
+#ibRad { position: fixed; left: 12px; top: calc(var(--ib-topp, 52px) + 8px); z-index: 20; display: flex; gap: 6px; max-width: calc(100% - 24px);
   overflow: hidden; padding: 6px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--skygge); }
 #ibRad[hidden] { display: none; }
-html[data-innebygd] .panel, html[data-innebygd] #setMenu { bottom: var(--ib-bunn, 0px); }
-html[data-innebygd] .panel { max-height: calc(100vh - var(--ib-topp, 52px) - var(--ib-bunn, 0px) - 12px); }
+html[data-innebygd] .panel { max-height: calc(100vh - var(--ib-topp, 52px) - 12px); }
+html[data-innebygd] body.har-modell #viewCube { margin-top: var(--ib-rad, 0px); }
 /* Telefon (C2): kategoriene i topplinja ved logoen, verktøyene rett under */
 @media (max-width: 640px) {
   #innebygdBar .storm-logo { display: block !important; height: 21px; }
@@ -3250,7 +3251,7 @@ html[data-innebygd] .panel { max-height: calc(100vh - var(--ib-topp, 52px) - var
   #innebygdBar #ibApne .btn-t, #ibVerktoy .btn-t { display: none; }
   #ibVerktoy { justify-content: flex-end; gap: 4px; }
   #ibVerktoy .ib-kat, #ibVerktoy > button, .ib-mer { width: 36px; padding: 0; justify-content: center; }
-  #ibRad { top: calc(var(--ib-topp, 52px) + 8px); bottom: auto; }
+  #ibRad { left: 50%; transform: translateX(-50%); }
   #ibRad .btn-t { display: none; }
   #ibRad > button { width: 44px; padding: 0; justify-content: center; }
 }
