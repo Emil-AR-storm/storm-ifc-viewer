@@ -39,7 +39,7 @@ export async function stedOgBibliotek(token) {
 export async function hentProsjekter(token) {
   const g = lag(token);
   const { siteId: s } = await stedOgBibliotek(token);
-  const felt = "Nokkel,Arbeidsomrade,ProsjektNr,Title,ForelderNokkel,JobbNr,Modell,Prosjekttype";
+  const felt = "Nokkel,Arbeidsomrade,ProsjektNr,Title,ForelderNokkel,JobbNr,Modell,Prosjekttype,ProsjektmappeId,Prosjektmappe";
   let url = "/sites/" + s + "/lists/" + R.PROSJEKT_LISTE + "/items?$expand=fields($select=" + felt + ")&$top=999";
   const ut = [];
   for (let i = 0; url && i < 50; i++) {
@@ -50,16 +50,40 @@ export async function hentProsjekter(token) {
   return ut;
 }
 
-// Prosjektmappa (navnet) – eller IngenMappe. Storm IFC lager den ALDRI.
-export async function prosjektmappe(token, rad) {
+// Mappe på ID (felles mappe, Storm Prosjekter 4.26). null ved 404 eller når
+// det ikke er en mappe.
+async function mappePåId(g, d, id) {
+  if (!id) return null;
+  const r = await g.hent("/drives/" + d + "/items/" + encodeURIComponent(id) + "?$select=id,name,webUrl,folder,parentReference");
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error("Graph " + r.status);
+  const j = await r.json();
+  return j && j.folder ? j : null;
+}
+
+// Prosjektmappa – samme rekkefølge som finnProsjektmappe i Storm Prosjekter:
+//   1. prosjektets egen ProsjektmappeId (felles mappe)
+//   2. egen gammel mappe i rota, «<Arbeidsomrade> <ProsjektNr> » (ikke felles)
+//   3. jobbens felles mappe: et annet hovedprosjekt i jobben med ProsjektmappeId
+//   4. IngenMappe – Storm IFC lager den ALDRI.
+// Svar: { sti, navn, id, felles }
+export async function prosjektmappe(token, rad, rader) {
   const g = lag(token);
   const { driveId: d } = await stedOgBibliotek(token);
+  const f = (rad && (rad.fields || rad)) || {};
+  const somFelles = (m) => ({ sti: R.stiFraItem(m), navn: m.name, id: m.id, felles: true });
+  const egen = await mappePåId(g, d, f.ProsjektmappeId);
+  if (egen) return somFelles(egen);
   let url = "/drives/" + d + "/root/children?$select=name,folder&$top=999";
   for (let i = 0; url && i < 50; i++) {
     const j = await g.json(url);
     const navn = R.finnProsjektmappe(j.value || [], rad);
-    if (navn) return navn;
+    if (navn) return { sti: navn, navn, id: "", felles: false };
     url = j["@odata.nextLink"] || null;
+  }
+  for (const annen of R.jobbMappeKandidater(rader || [], rad)) {
+    const m = await mappePåId(g, d, (annen.fields || annen).ProsjektmappeId);
+    if (m) return somFelles(m);
   }
   throw new IngenMappe(R.prosjektPrefiks(rad));
 }

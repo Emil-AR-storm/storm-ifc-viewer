@@ -3879,4 +3879,6 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Prosjektet har ingen mappe ennå – åpne det i Storm Prosjekter og trykk Mappe først.": "Projekt nie ma jeszcze folderu – otwórz go w Storm Prosjekter i najpierw naciśnij Folder.",
   "Du har ikke tilgang til prosjektmappa i Storm Prosjekter.": "Nie masz dostępu do folderu projektu w Storm Prosjekter.",
   "Klarte ikke å legge fila i prosjektet: {0}": "Nie udało się dodać pliku do projektu: {0}",
+  "Finner mappa …": "Szukanie folderu …",
+  "(felles mappe for {0})": "(wspólny folder dla {0})",
 };

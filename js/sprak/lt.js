@@ -3879,4 +3879,6 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Prosjektet har ingen mappe ennå – åpne det i Storm Prosjekter og trykk Mappe først.": "Projektas dar neturi aplanko – atidarykite jį Storm Prosjekter ir pirmiausia paspauskite Aplankas.",
   "Du har ikke tilgang til prosjektmappa i Storm Prosjekter.": "Neturite prieigos prie projekto aplanko Storm Prosjekter.",
   "Klarte ikke å legge fila i prosjektet: {0}": "Nepavyko įdėti failo į projektą: {0}",
+  "Finner mappa …": "Ieškomas aplankas …",
+  "(felles mappe for {0})": "(bendras aplankas: {0})",
 };

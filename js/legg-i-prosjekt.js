@@ -133,20 +133,48 @@ export async function dialog(type, blob, filnavn, dato) {
   const innhold = $("lipInnhold");
   let valgt = R.foreslåProsjekt(jobb, type);
   let underMappe = info.mappe;
+  let endret = false;          // har brukeren skrevet sin egen undermappe?
+  let mappa = null;            // { sti, navn, id, felles } for valgt prosjekt
+  let mappeFeil = null;
+  let teller = 0;
 
-  const tegnMappe = () => {
-    const m = $("lipMappe");
-    if (m) m.textContent = "📁 " + (valgt ? R.prosjektTekst(valgt) : "…") + " / " + underMappe;
-    $("lipOk").disabled = !valgt;
+  // Prosjektmappa slås opp når prosjektet velges (felles mappe på ID, 4.26),
+  // så brukeren ser hvor fila havner FØR hun trykker.
+  const tegnMappe = async () => {
+    const m = $("lipMappe"), notat = $("lipFelles");
+    $("lipOk").disabled = true;
+    mappa = null; mappeFeil = null;
+    if (!valgt) { if (m) m.textContent = "📁 …"; if (notat) notat.textContent = ""; return; }
+    if (m) m.textContent = "📁 " + t("Finner mappa …");
+    const mitt = ++teller;
+    try {
+      const svar = await G.prosjektmappe(token, valgt, rader);
+      if (mitt !== teller) return;
+      mappa = svar;
+      if (!endret) underMappe = R.mappeFor(type, svar.felles, valgt.fields.Arbeidsomrade);
+      if (m) m.textContent = "📁 " + svar.navn + " / " + underMappe;
+      const deler = svar.felles ? R.delerMappe(jobb.length ? jobb : rader, svar.id) : [];
+      if (notat) notat.textContent = deler.length > 1 ? t("(felles mappe for {0})", deler.join(", ")) : "";
+      $("lipOk").disabled = false;
+    } catch (err) {
+      if (mitt !== teller) return;
+      mappeFeil = err;
+      if (m) m.textContent = "📁 " + R.prosjektTekst(valgt) + " / " + underMappe;
+      if (notat) notat.textContent = "";
+      feil(err instanceof G.IngenMappe ? t("Prosjektet har ingen mappe ennå – åpne det i Storm Prosjekter og trykk Mappe først.")
+        : err instanceof G.IngenTilgang ? t("Du har ikke tilgang til prosjektmappa i Storm Prosjekter.")
+        : t("Klarte ikke å legge fila i prosjektet: {0}", err.message));
+    }
   };
   const mappeHtml = '<label>' + esc(t("Mappe")) + '</label><div class="lip-mappe"><span id="lipMappe"></span>' +
-    '<button type="button" class="lip-lenke" id="lipEndre">' + esc(t("Endre")) + '</button></div>';
+    '<button type="button" class="lip-lenke" id="lipEndre">' + esc(t("Endre")) + '</button></div>' +
+    '<p class="lip-liten" id="lipFelles"></p>';
 
   if (jobb.length) {
     innhold.innerHTML = '<label for="lipProsjekt">' + esc(t("Prosjekt")) + '</label><select id="lipProsjekt">' +
       jobb.map(r => '<option value="' + esc(r.fields.Nokkel) + '"' + (r === valgt ? " selected" : "") + '>' + esc(R.prosjektTekst(r)) + '</option>').join("") +
       '</select>' + mappeHtml;
-    $("lipProsjekt").onchange = (e) => { valgt = jobb.find(r => r.fields.Nokkel === e.target.value) || null; tegnMappe(); };
+    $("lipProsjekt").onchange = (e) => { valgt = jobb.find(r => r.fields.Nokkel === e.target.value) || null; feil(""); tegnMappe(); };
   } else {
     // Ingen kobling: brukeren velger selv. Vi gjetter aldri.
     valgt = null;
@@ -162,7 +190,7 @@ export async function dialog(type, blob, filnavn, dato) {
     $("lipSok").oninput = vis;
     $("lipTreff").onclick = (e) => {
       const b = e.target.closest("[data-nokkel]"); if (!b) return;
-      valgt = rader.find(r => r.fields && r.fields.Nokkel === b.dataset.nokkel) || null; vis(); tegnMappe();
+      valgt = rader.find(r => r.fields && r.fields.Nokkel === b.dataset.nokkel) || null; vis(); feil(""); tegnMappe();
     };
     vis();
   }
@@ -170,22 +198,23 @@ export async function dialog(type, blob, filnavn, dato) {
     const inn = document.createElement("input");
     inn.type = "text"; inn.value = underMappe; inn.className = "lip-mappe-inn";
     const m = $("lipMappe").parentNode; m.replaceWith(inn); inn.focus();
-    inn.oninput = () => { underMappe = inn.value.split("/").map(x => x.trim()).filter(Boolean).join("/") || info.mappe; $("lipOk").disabled = !valgt; };
+    inn.oninput = () => { endret = true; underMappe = inn.value.split("/").map(x => x.trim()).filter(Boolean).join("/") || info.mappe; $("lipOk").disabled = !mappa; };
   };
   tegnMappe();
 
   $("lipOk").onclick = async () => {
-    if (!valgt) return;
+    if (!valgt || !mappa) return;
     const ok = $("lipOk"); ok.disabled = true; feil("");
     ok.textContent = t("Laster opp …");
     try {
-      const mappe = await G.prosjektmappe(token, valgt);
+      const mappe = mappa.sti;
       const opp = await G.lastOpp(token, mappe, underMappe, navn, blob, (p) => { ok.textContent = t("Laster opp … {0} %", p); });
       const konto = (sp.innloggingNå().konto || {});
       await G.oppdaterOversikt(token, mappe, R.oversiktPost({
         id: opp && opp.id, navn, type: R.TYPER[type] ? type : "annet", dato: dato || R.isoDato(),
         av: konto.name || konto.username || "", modell: modellNavn(å), mappe: underMappe,
-        url: (opp && opp.webUrl) || "", storrelse: (opp && opp.size) || blob.size
+        url: (opp && opp.webUrl) || "", storrelse: (opp && opp.size) || blob.size,
+        prosjekt: valgt.fields.Nokkel
       }));
       const lenke = R.stormProsjekterLenke(valgt.fields.Nokkel);
       $("lipInnhold").innerHTML = '<p class="lip-ok">' + ikon("hake") + ' ' + esc(t("Lagt i {0} → {1}", R.prosjektTekst(valgt).split(" ").slice(0, 2).join(" "), underMappe)) + '</p>' +

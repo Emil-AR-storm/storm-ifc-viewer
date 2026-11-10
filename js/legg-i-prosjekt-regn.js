@@ -20,15 +20,17 @@ export const TYPER = {
   montasje:    { navn: "Montasjeplan", mappe: "04 Fremdrift/Montasjeplaner", selskap: "SS" },
   riggplan:    { navn: "Riggplan", mappe: "05 HMS og SHA", selskap: "SE" },
   lofteplan:   { navn: "Løfteplan", mappe: "05 HMS og SHA", selskap: "SE" },
-  dagsrapport: { navn: "Dagsrapport", mappe: "11 Dagsrapporter", selskap: "SE" },
+  // Mappenumre 12–14 (BYGGEPLAN-Storm-IFC-mappenummer-12-14, Storm Prosjekter 4.25):
+  // «11 Dagsrapporter» kolliderte med «11 Underprosjekter».
+  dagsrapport: { navn: "Dagsrapport", mappe: "12 Dagsrapporter", selskap: "SE" },
   byggemote:   { navn: "Rapport til byggemøte", mappe: "08 Møtereferater", selskap: "SE" },
   em:          { navn: "Endringsmelding", mappe: "06 Endringer", selskap: "SE" },
   fdv:         { navn: "FDV", mappe: "09 FDV og sluttdokumentasjon", selskap: "SE" },
-  priskalk:    { navn: "Priskalkulasjon", mappe: "01 Kontrakt/Kalkyle", selskap: "SE" },
+  priskalk:    { navn: "Priskalkulasjon", mappe: "13 Kalkulasjoner", selskap: "SE" },
   // Emil 10.11 (tillegg): BCF-eksport og mengdelister i ny mappe, kollisjon i Beskrivelser
-  bcf:         { navn: "BCF-eksport", mappe: "12 Kalkulasjoner", selskap: "SE" },
-  mengder:     { navn: "Mengdeliste", mappe: "12 Kalkulasjoner", selskap: "SE" },
-  kollisjon:   { navn: "Kollisjonsrapport", mappe: "03 Beskrivelser", selskap: "SE" },
+  bcf:         { navn: "BCF-eksport", mappe: "14 BIM og koordinering", selskap: "SE" },
+  mengder:     { navn: "Mengdeliste", mappe: "13 Kalkulasjoner", selskap: "SE" },
+  kollisjon:   { navn: "Kollisjonsrapport", mappe: "14 BIM og koordinering", selskap: "SE" },
   annet:       { navn: "Annet", mappe: "00 Prosjektprofil", selskap: "SE" }
 };
 export const typeInfo = (type) => TYPER[type] || TYPER.annet;
@@ -128,6 +130,46 @@ export function finnProsjektmappe(barn, r) {
 }
 
 // Sti for Graph: hver del URL-kodet, skråstrekene beholdt.
+// ---------- Felles prosjektmappe (Storm Prosjekter 4.26) ----------
+// BYGGEPLAN-Storm-IFC-felles-prosjektmappe-2026-11-10.md. Mappa finnes på ID
+// (ProsjektmappeId), fordi den kan få nytt navn når et selskap kommer til.
+// Undermappa for typen: i en FELLES mappe er «06 Endringer» delt per selskap
+// («06 Endringer/SB»). Alt annet som før.
+export function mappeFor(type, felles, arbeidsomrade) {
+  const m = typeInfo(type).mappe;
+  if (felles && type === "em") {
+    const ao = String(arbeidsomrade || "").trim().toUpperCase();
+    return ao ? m + "/" + ao : m;
+  }
+  return m;
+}
+// Stien til en mappe (driveItem) relativt til roten av biblioteket:
+// parentReference.path «/drives/x/root:/A/B» + name → «A/B/<name>».
+export function stiFraItem(item) {
+  if (!item || !item.name) return "";
+  const p = String((item.parentReference && item.parentReference.path) || "");
+  const i = p.indexOf("root:");
+  let forelder = i >= 0 ? p.slice(i + 5) : "";
+  try { forelder = decodeURIComponent(forelder); } catch (_) { /* allerede dekodet */ }
+  forelder = forelder.replace(/^\/+|\/+$/g, "");
+  return forelder ? forelder + "/" + item.name : item.name;
+}
+// Hovedprosjektene i jobben som deler samme felles mappe (samme ID) – til
+// «(felles mappe for SE 20653, SB 292, SS 53)» i dialogen.
+export function delerMappe(jobb, id) {
+  if (!id) return [];
+  return sorterProsjekter((jobb || []).filter(r => String(felt(r).ProsjektmappeId || "") === String(id)))
+    .map(r => [felt(r).Arbeidsomrade, felt(r).ProsjektNr].filter(Boolean).join(" "));
+}
+// Kandidatene for jobbens felles mappe (steg 3): andre hovedprosjekter i samme
+// jobb med ProsjektmappeId, i SE → SB → SS-rekkefølge.
+export function jobbMappeKandidater(rader, p) {
+  const jnr = String(felt(p).JobbNr || "");
+  if (!jnr) return [];
+  return sorterProsjekter((rader || []).filter(r => erHovedprosjekt(r) && r !== p &&
+    String(felt(r).JobbNr || "") === jnr && felt(r).ProsjektmappeId));
+}
+
 export const graphSti = (...deler) => deler.join("/").split("/").filter(Boolean).map(encodeURIComponent).join("/");
 
 export const stormProsjekterLenke = (nokkel) =>
@@ -145,6 +187,8 @@ export function oversiktPost(o) {
     id: String(o.id || ""), navn: String(o.navn || ""), type: TYPER[o.type] ? o.type : "annet",
     dato: /^\d{4}-\d{2}-\d{2}$/.test(o.dato || "") ? o.dato : isoDato(),
     lagt: o.lagt || new Date().toISOString(), av: String(o.av || ""), modell: String(o.modell || ""),
-    mappe: String(o.mappe || ""), url: String(o.url || ""), storrelse: Number(o.storrelse) || 0
+    mappe: String(o.mappe || ""), url: String(o.url || ""), storrelse: Number(o.storrelse) || 0,
+    // 4.26: prosjektet som ble valgt (en felles mappe har flere selskaper)
+    ...(o.prosjekt ? { prosjekt: String(o.prosjekt) } : {})
   };
 }
