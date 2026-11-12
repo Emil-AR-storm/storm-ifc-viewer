@@ -14,7 +14,7 @@
 import { t } from "./i18n.js";
 import { malBunn, malTopp, pdfFarger } from "./pdf-utseende.js";
 import { tilLatin1 } from "./skjema-pdf.js";
-import { bemanningSum, dagOgDato, vaerMerker, vaerTekst } from "./dagsrapport-regn.js";
+import { bemanningSum, dagOgDato, kjoretoyTekst, mannskapGrupper, vaerMerker, vaerTekst } from "./dagsrapport-regn.js";
 import { datoLang } from "./vaer-regn.js";
 
 const A4 = { b: 210, h: 297, marg: 15 };
@@ -109,7 +109,8 @@ function tabell(P, kol, rader, sum) {
     P.y += 5;
   };
   hode();
-  const rad = (celler, fet) => {
+  const rad = (celler, fetRad) => {
+    const fet = fetRad || celler.some(c => c && c.fet);
     d.setFont(undefined, fet ? "bold" : "normal"); d.setFontSize(8.5);
     const deler = celler.map((c, i) => d.splitTextToSize(L(c == null ? "" : c), bredder[i] - 3));
     const h = Math.max(1, ...deler.map(x => x.length)) * 3.8 + 1.4;
@@ -196,16 +197,42 @@ function tegnDagSide(P, r, o) {
     merker(P, vaerMerker(v));
     P.y += 2;
   } else avsnitt(P, "", t("Ingen værdata for denne dagen (posisjon mangler i Prosjektinfo, eller værtjenesten svarte ikke)."));
+  if (r.vaerMerknad && r.vaerMerknad.trim()) {
+    d.setFont(undefined, "italic"); d.setFontSize(8.5); d.setTextColor(...rgb(F.tekst));
+    for (const l of d.splitTextToSize(L(t("Merknad") + ": " + r.vaerMerknad.trim()), P.bredde)) { P.sorgFor(5); d.text(l, P.x, P.y); P.y += 4; }
+    d.setFont(undefined, "normal");
+    P.y += 3;
+  }
 
-  // Bemanning
-  const sum = bemanningSum(r.bemanning);
+  const sum = bemanningSum(r);
+  const tall1 = (n) => n == null ? "" : String(n).replace(".", ",");
+  const mannskap = (r.mannskap || []).length ? r.mannskap : null;
+  if (mannskap) {
+    // Mannskap gruppert per firma: «Firma · fag», så «Navn — stilling — timer»
+    overskrift(P, t("Mannskap"), "– " + t("{0} personer", sum.antall) + " · " + t("{0} timer", tall1(sum.timer)));
+    const grupper = mannskapGrupper(mannskap);
+    const rader = [];
+    for (const g of grupper) {
+      rader.push([{ toString: () => [g.firma || t("Uten firma"), g.fag ? t(g.fag) || g.fag : ""].filter(Boolean).join(" · "), fet: true }, "",
+        { toString: () => tall1(g.timer), fet: true }]);
+      for (const { p } of g.personer) rader.push(["   " + (p.navn || "–"), p.stilling || "", tall1(p.timer)]);
+    }
+    tabell(P, [{ t: t("Navn"), b: 0.5 }, { t: t("Stilling"), b: 0.32 }, { t: t("Timer"), b: 0.18, h: true }], rader,
+      [t("Sum") + " – " + t("{0} personer", sum.antall), "", tall1(sum.timer)]);
+  }
+  if (!mannskap) {
+  // Bemanning (gamle rapporter: firma · fag · antall · timer)
   overskrift(P, t("Bemanning"), sum.antall ? "– " + t("{0} personer", sum.antall) : "");
   if (r.bemanning.length) {
-    const tall1 = (n) => n == null ? "" : String(n).replace(".", ",");
     tabell(P, [{ t: t("Firma"), b: 0.38 }, { t: t("Fag"), b: 0.32 }, { t: t("Antall"), b: 0.14, h: true }, { t: t("Timer"), b: 0.16, h: true }],
       r.bemanning.map(b => [b.firma, t(b.fag) || b.fag, tall1(b.antall), tall1(b.timer)]),
       [t("Sum"), "", tall1(sum.antall), tall1(sum.timer)]);
   } else avsnitt(P, "", t("Ikke fylt ut."));
+  }
+  if ((r.kjoretoy || []).length) {
+    overskrift(P, t("Kjøretøy"));
+    avsnitt(P, kjoretoyTekst(r.kjoretoy), "");
+  }
 
   overskrift(P, t("Utført arbeid"));
   avsnitt(P, r.utfort, t("Ikke fylt ut."));

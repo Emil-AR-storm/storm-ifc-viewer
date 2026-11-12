@@ -37,7 +37,8 @@ const tilstand = {
   mandag: "", valgt: "", liste: [], status: "", rapport: null, lagret: null,
   bildeData: new Map(),        // fil → data-URL (hentet eller nettopp lagt til)
   ulagredeBilder: new Set(),   // fil-navn som ikke er lastet opp ennå
-  vaerStatus: "", o: {}
+  vaerStatus: "", o: {},
+  nyPerson: false              // «+ Legg til person» er åpen
 };
 export const _tilstand = tilstand;   // testene
 
@@ -59,10 +60,14 @@ async function lesListe() {
   tilstand.status = r.status;
   tilstand.liste = (r.liste || []).map(R.vaskRapport).filter(Boolean);
 }
+// Felles med Storm Prosjekter: fletting på id (nyeste `endret` vinner), men en
+// SIGNERT post i SharePoint erstattes aldri av en usignert (R.beholdSignert).
+// Svar: som spSkriv, pluss signertIMellomtiden når det skjedde.
 async function lagrePost(post) {
   const p = R.vaskRapport(post);
-  const r = await spSkriv(DR_MAPPE, fil(), [p], (x) => String(x && x.id || ""));
+  const r = await spSkriv(DR_MAPPE, fil(), [p], (x) => String(x && x.id || ""), { behold: R.beholdSignert });
   if (r.ok) tilstand.liste = (r.liste || []).map(R.vaskRapport).filter(Boolean);
+  if (r.ok && (r.beholdt || []).includes(p.id)) r.signertIMellomtiden = true;
   return r;
 }
 function dataUrlTilBytes(u) {
@@ -126,6 +131,7 @@ async function velgDag(d, tving) {
     : R.nyRapport(d, { prosjekt: p.nr, prosjektNavn: p.navn, modell: p.modell });
   tilstand.lagret = g ? R.vaskRapport(JSON.parse(JSON.stringify(g))) : R.vaskRapport(JSON.parse(JSON.stringify(tilstand.rapport)));
   tilstand.vaerStatus = "";
+  tilstand.nyPerson = false;
   if (!R.erLaast(tilstand.rapport)) {
     oppdaterMarkeringer();
     if (!tilstand.rapport.vaer) hentVaer(tilstand.rapport);
@@ -177,9 +183,12 @@ function vaerHtml(r) {
     innhold = '<span class="dr-gra">' + esc(tekst) + '</span>';
   }
   const kilde = v && v.kilde === "maalt" ? t("målt") : v ? t("varsel") : "";
+  const laast = R.erLaast(r);
+  const merknad = laast ? (r.vaerMerknad ? '<div class="dr-les dr-vaer-merknad">' + esc(r.vaerMerknad) + '</div>' : "")
+    : '<input class="dr-vaer-merknad" data-vm="1" maxlength="' + R.MAKS_VAER_MERKNAD + '" value="' + esc(r.vaerMerknad) + '" placeholder="' + esc(t("Merknad om været (valgfritt), f.eks. «Regn fra kl. 13, støp utsatt»")) + '">';
   return '<div class="dr-felt"><div class="dr-lbl">' + esc(t("Vær")) + '<span class="dr-auto">● ' + esc(t("hentet automatisk")) + (kilde ? " · " + esc(kilde) : "") + '</span>' +
-    (!R.erLaast(r) && posisjon() ? '<button class="dr-lenke dr-vaer-ny">' + esc(t("Hent på nytt")) + '</button>' : "") + '</div>' +
-    '<div class="dr-vaer">' + innhold + '</div></div>';
+    (!laast && posisjon() ? '<button class="dr-lenke dr-vaer-ny">' + esc(t("Hent på nytt")) + '</button>' : "") + '</div>' +
+    '<div class="dr-vaer">' + innhold + '</div>' + merknad + '</div>';
 }
 
 function bemanningHtml(r, laast) {
@@ -198,6 +207,57 @@ function bemanningHtml(r, laast) {
     '<table class="dr-bm"><thead><tr><th>' + esc(t("Firma")) + '</th><th>' + esc(t("Fag")) + '</th><th class="tall">' + esc(t("Antall")) + '</th><th class="tall">' + esc(t("Timer")) + '</th><th></th></tr></thead><tbody>' +
     (r.bemanning.length ? r.bemanning.map(rad).join("") : '<tr><td colspan="5" class="dr-gra">' + esc(t("Ingen rader ennå.")) + '</td></tr>') +
     '</tbody>' + (r.bemanning.length ? '<tfoot><tr><td>' + esc(t("Sum")) + '</td><td></td><td class="tall">' + sum.antall + '</td><td class="tall">' + String(sum.timer).replace(".", ",") + '</td><td></td></tr></tfoot>' : "") + '</table></div>';
+}
+
+// ---------- Mannskap (prøvebilde B): én boks per firma, ett fag per firma,
+// én linje per person med avkrysning og timer. Ikke avkryssede lagres ikke.
+const tim = (n) => String(n).replace(".", ",");
+function mannskapSumTekst(r) {
+  const med = r.mannskap.filter(p => !p.ute);
+  const s = R.bemanningSum({ mannskap: med });
+  return t("{0} personer", s.antall) + " · " + t("{0} timer", tim(s.timer));
+}
+function mannskapHtml(r, laast) {
+  const grupper = R.mannskapGrupper(r.mannskap);
+  const forrige = laast ? null : R.forrigeBemanning(tilstand.liste, r.dato);
+  const gammel = !laast && r.bemanning.length && !r.mannskap.length;
+  const boks = (g, gi) => '<div class="dr-ms-firma">' +
+    '<div class="dr-ms-hode"><b>' + esc(g.firma || t("Uten firma")) + '</b>' +
+      (laast ? (g.fag ? '<span class="dr-ms-fagtekst">' + esc(t(g.fag) || g.fag) + '</span>' : "")
+        : '<input class="dr-ms-fag" data-ms-fag="' + gi + '" list="drFag" value="' + esc(g.fag ? (t(g.fag) || g.fag) : "") + '" placeholder="' + esc(t("Fag")) + '">') +
+      '<span class="dr-gra dr-ms-gsum">' + esc(t("{0} timer", tim(g.timer))) + '</span></div>' +
+    g.personer.map(({ p, i }) => '<div class="dr-ms-rad' + (p.ute ? " ute" : "") + '">' +
+      (laast ? "" : '<input type="checkbox" data-ms-med="' + i + '"' + (p.ute ? "" : " checked") + ' title="' + esc(t("Var på jobb i dag")) + '">') +
+      '<span class="dr-ms-navn">' + esc(p.navn || "–") + (p.stilling ? '<small>' + esc(p.stilling) + '</small>' : "") + '</span>' +
+      (laast ? '<span class="dr-ms-t">' + esc(p.timer == null ? "" : tim(p.timer)) + ' t</span>'
+        : '<input class="dr-ms-timer" type="number" min="0" step="0.5" inputmode="decimal" data-ms-timer="' + i + '" value="' + esc(p.timer == null ? "" : p.timer) + '" aria-label="' + esc(t("Timer")) + '">' +
+          '<button class="dr-x" data-ms-fjern="' + i + '" title="' + esc(t("Fjern personen")) + '">' + ikon("lukk") + '</button>') +
+      '</div>').join("") + '</div>';
+  const ny = !laast && tilstand.nyPerson ? '<div class="dr-ms-ny">' +
+      '<input id="drNyNavn" list="drPers" maxlength="80" placeholder="' + esc(t("Navn")) + '">' +
+      '<input id="drNyFirma" list="drFirma" maxlength="80" placeholder="' + esc(t("Firma")) + '">' +
+      '<input id="drNyStilling" maxlength="60" placeholder="' + esc(t("Stilling")) + '">' +
+      '<span class="dr-ms-ny-kn"><button class="dr-ny-avbryt">' + esc(t("Avbryt")) + '</button><button class="primary dr-ny-ok">' + esc(t("Legg til")) + '</button></span></div>' : "";
+  const knapper = laast ? "" : '<span class="dr-knapper">' +
+    (forrige && forrige.mannskap ? '<button class="dr-lenke dr-ms-igaar" title="' + esc(dagLang(forrige.dato)) + '">↺ ' + esc(t("samme som sist ({0})", dagKort(forrige.dato))) + '</button>' : "") +
+    (gammel ? '<button class="dr-lenke dr-ms-gammel">↺ ' + esc(t("Hent fra gammel bemanning")) + '</button>' : "") +
+    (r.mannskap.length < R.MAKS_MANNSKAP ? '<button class="dr-lenke dr-ms-ny-knapp">+ ' + esc(t("Legg til person")) + '</button>' : "") + '</span>';
+  return '<div class="dr-felt"><div class="dr-lbl">' + esc(t("Mannskap")) + knapper + '</div>' +
+    (gammel ? '<div class="dr-info dr-liten">' + esc(t("Den forrige versjonen har bemanning med antall: {0}. Den beholdes, men nye rapporter fører mannskap per person.",
+      r.bemanning.map(b => [b.firma, b.antall != null ? b.antall + " " + t("pers.") : ""].filter(Boolean).join(" ")).join(", "))) + '</div>' : "") +
+    (grupper.length ? '<div class="dr-ms">' + grupper.map(boks).join("") + '</div>' : (ny ? "" : '<div class="dr-gra dr-liten">' + esc(t("Ingen personer ennå.")) + '</div>')) +
+    ny + (r.mannskap.length ? '<div class="dr-ms-sum">' + esc(mannskapSumTekst(r)) + '</div>' : "") + '</div>';
+}
+
+function kjoretoyHtml(r, laast) {
+  if (laast) return r.kjoretoy.length ? '<div class="dr-felt"><div class="dr-lbl">' + esc(t("Kjøretøy")) + '</div><div class="dr-les">' + esc(R.kjoretoyTekst(r.kjoretoy)) + '</div></div>' : "";
+  return '<div class="dr-felt"><div class="dr-lbl">' + esc(t("Kjøretøy")) +
+    (r.kjoretoy.length < R.MAKS_KJORETOY ? '<button class="dr-lenke dr-kj-ny">+ ' + esc(t("legg til kjøretøy")) + '</button>' : "") + '</div>' +
+    (r.kjoretoy.length ? '<div class="dr-kj">' + r.kjoretoy.map((k, i) => '<div class="dr-kj-rad">' +
+      '<input data-kj="' + i + '" data-k="navn" maxlength="60" value="' + esc(k.navn) + '" placeholder="' + esc(t("Kjøretøy, f.eks. Vito 2020")) + '">' +
+      '<input data-kj="' + i + '" data-k="skilt" maxlength="20" class="dr-kj-skilt" value="' + esc(k.skilt) + '" placeholder="' + esc(t("Skilt")) + '">' +
+      '<button class="dr-x" data-kj-fjern="' + i + '" title="' + esc(t("Fjern raden")) + '">' + ikon("lukk") + '</button></div>').join("") + '</div>'
+      : '<div class="dr-gra dr-liten">' + esc(t("Ingen kjøretøy.")) + '</div>') + '</div>';
 }
 
 function tekstfelt(r, k, navn, plass, laast) {
@@ -249,13 +309,17 @@ function dialogHtml() {
     '<div class="dr-bd">' + stripeHtml() +
       '<div class="dr-dagtittel"><b>' + esc(dagLang(r.dato).replace(/^./, (c) => c.toUpperCase())) + '</b>' +
         '<span class="dr-gra">' + esc(t("nr. {0}", R.lopenr(tilstand.liste, r.dato))) + '</span>' + versjonsvalg + '</div>' +
-      banner + vaerHtml(r) + bemanningHtml(r, laast) +
+      banner + vaerHtml(r) +
+      // Gamle låste rapporter med antall vises som før; ellers Mannskap (B)
+      (laast && !r.mannskap.length && r.bemanning.length ? bemanningHtml(r, laast) : mannskapHtml(r, laast)) +
+      kjoretoyHtml(r, laast) +
       tekstfelt(r, "utfort", t("Utført arbeid"), t("Hva ble gjort i dag? F.eks. «Støpt dekke akse C–D, 42 m³»"), laast) +
       tekstfelt(r, "hindringer", t("Hindringer og avvik"), t("Hva stoppet eller forsinket arbeidet? Skriv «Ingen» hvis alt gikk som planlagt."), laast) +
       bilderHtml(r, laast) + markeringerHtml(r, laast) +
       '<datalist id="drFirma">' + R.tidligereFirma(tilstand.liste).concat(["Storm Betong AS", "Storm Stål AS", "Storm Entreprenør AS"])
         .filter((x, i, a) => a.indexOf(x) === i).map(f => '<option value="' + esc(f) + '">').join("") + '</datalist>' +
       '<datalist id="drFag">' + R.FAG_FORSLAG.map(f => '<option value="' + esc(t(f)) + '">').join("") + '</datalist>' +
+      '<datalist id="drPers">' + R.tidligerePersoner(tilstand.liste).map(p => '<option value="' + esc(p.navn) + '">' + esc([p.firma, p.stilling].filter(Boolean).join(" · ")) + '</option>').join("") + '</datalist>' +
     '</div><footer><span class="dr-inf">' + esc(lagringTekst) + '</span>' +
       '<button class="dr-uke-pdf">' + ikon("lastned") + ' ' + esc(t("Hele uka som PDF")) + '</button>' +
       (laast ? '<button class="dr-nyversjon">' + esc(t("Ny versjon")) + '</button><button class="primary dr-pdf">' + ikon("lastned") + ' ' + esc(t("Last ned PDF")) + '</button>'
@@ -272,7 +336,10 @@ function tegn() {
   const bd = el.querySelector(".dr-bd"), rull = bd ? bd.scrollTop : 0;
   const fokus = document.activeElement && el.contains(document.activeElement) ? document.activeElement : null;
   const fokusSel = fokus ? (fokus.dataset.bm != null ? '[data-bm="' + fokus.dataset.bm + '"][data-k="' + fokus.dataset.k + '"]'
-    : fokus.dataset.tekst ? '[data-tekst="' + fokus.dataset.tekst + '"]' : fokus.dataset.bt != null ? '[data-bt="' + fokus.dataset.bt + '"]' : "") : "";
+    : fokus.dataset.tekst ? '[data-tekst="' + fokus.dataset.tekst + '"]' : fokus.dataset.bt != null ? '[data-bt="' + fokus.dataset.bt + '"]'
+    : fokus.dataset.kj != null ? '[data-kj="' + fokus.dataset.kj + '"][data-k="' + fokus.dataset.k + '"]'
+    : fokus.dataset.msTimer != null ? '[data-ms-timer="' + fokus.dataset.msTimer + '"]' : fokus.dataset.msFag != null ? '[data-ms-fag="' + fokus.dataset.msFag + '"]'
+    : fokus.dataset.vm ? '[data-vm]' : fokus.id ? "#" + fokus.id : "") : "";
   el.innerHTML = dialogHtml();
   const nyBd = el.querySelector(".dr-bd"); if (nyBd) nyBd.scrollTop = rull;
   if (fokusSel) { const f = el.querySelector(fokusSel); if (f) { f.focus(); try { const n = f.value.length; f.setSelectionRange && f.type !== "number" && f.setSelectionRange(n, n); } catch (_) {} } }
@@ -310,7 +377,71 @@ function kobleLyttere(el) {
     };
     q(".dr-pdf").onclick = () => lagPdf([tilstand.rapport], null);
   } else {
-    // Bemanning
+    // Mannskap (B)
+    const sumEl = () => el.querySelector(".dr-ms-sum");
+    qa("[data-ms-timer]").forEach(inp => inp.oninput = () => {
+      const p = r.mannskap[Number(inp.dataset.msTimer)]; if (!p) return;
+      p.timer = inp.value === "" ? null : Math.round(Math.max(0, Number(inp.value) || 0) * 10) / 10;
+      const s = sumEl(); if (s) s.textContent = mannskapSumTekst(r);
+      const g = R.mannskapGrupper(r.mannskap).find(x => x.personer.some(y => y.p === p));
+      const gs = inp.closest(".dr-ms-firma") && inp.closest(".dr-ms-firma").querySelector(".dr-ms-gsum");
+      if (g && gs) gs.textContent = t("{0} timer", tim(g.timer));
+    });
+    qa("[data-ms-med]").forEach(c => c.onchange = () => {
+      const p = r.mannskap[Number(c.dataset.msMed)]; if (!p) return;
+      if (c.checked) delete p.ute; else p.ute = true;
+      tegn();
+    });
+    qa("[data-ms-fag]").forEach(inp => inp.oninput = () => {
+      const g = R.mannskapGrupper(r.mannskap)[Number(inp.dataset.msFag)]; if (!g) return;
+      for (const { p } of g.personer) p.fag = inp.value.slice(0, 40);
+    });
+    qa("[data-ms-fjern]").forEach(b => b.onclick = () => { r.mannskap.splice(Number(b.dataset.msFjern), 1); tegn(); });
+    const nyKn = q(".dr-ms-ny-knapp");
+    if (nyKn) nyKn.onclick = () => { tilstand.nyPerson = true; tegn(); const n = q("#drNyNavn"); if (n) n.focus(); };
+    const nyNavn = q("#drNyNavn");
+    if (nyNavn) {
+      // Kjent navn fra før: fyll firma og stilling
+      nyNavn.oninput = () => {
+        const kjent = R.tidligerePersoner(tilstand.liste).find(p => p.navn.toLowerCase() === nyNavn.value.trim().toLowerCase());
+        if (kjent) { if (!q("#drNyFirma").value) q("#drNyFirma").value = kjent.firma || ""; if (!q("#drNyStilling").value) q("#drNyStilling").value = kjent.stilling || ""; }
+      };
+      const leggTil = () => {
+        const navn = nyNavn.value.trim(), firma = q("#drNyFirma").value.trim();
+        if (!navn) { nyNavn.focus(); return; }
+        const kjent = R.tidligerePersoner(tilstand.liste).find(p => p.navn.toLowerCase() === navn.toLowerCase());
+        const gruppe = R.mannskapGrupper(r.mannskap).find(g => g.firma.toLowerCase() === firma.toLowerCase());
+        const p = R.vaskPerson({ navn, firma, stilling: q("#drNyStilling").value, fag: (gruppe && gruppe.fag) || (kjent && kjent.fag) || "", timer: null });
+        if (p && r.mannskap.length < R.MAKS_MANNSKAP) r.mannskap.push(p);
+        tilstand.nyPerson = false; tegn();
+        const sist = el.querySelector('[data-ms-timer="' + (r.mannskap.length - 1) + '"]'); if (sist) sist.focus();
+      };
+      q(".dr-ny-ok").onclick = leggTil;
+      q(".dr-ms-ny").onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); leggTil(); } };
+      q(".dr-ny-avbryt").onclick = () => { tilstand.nyPerson = false; tegn(); };
+    }
+    const msIgaar = q(".dr-ms-igaar");
+    if (msIgaar) msIgaar.onclick = async () => {
+      const f = R.forrigeBemanning(tilstand.liste, r.dato);
+      if (!f || !f.mannskap) return;
+      if (r.mannskap.length && !await bekreft(t("Erstatte mannskapet med det fra {0}?", dagLang(f.dato)))) return;
+      r.mannskap = f.mannskap; tegn();
+    };
+    const msGammel = q(".dr-ms-gammel");
+    if (msGammel) msGammel.onclick = () => { r.mannskap = R.fraGammelBemanning(r.bemanning); tegn(); };
+    // Kjøretøy
+    qa("[data-kj]").forEach(inp => inp.oninput = () => {
+      const k = r.kjoretoy[Number(inp.dataset.kj)]; if (!k) return;
+      k[inp.dataset.k] = inp.value.slice(0, inp.dataset.k === "skilt" ? 20 : 60);
+    });
+    qa("[data-kj-fjern]").forEach(b => b.onclick = () => { r.kjoretoy.splice(Number(b.dataset.kjFjern), 1); tegn(); });
+    const kjNy = q(".dr-kj-ny");
+    if (kjNy) kjNy.onclick = () => {
+      r.kjoretoy.push({ navn: "", skilt: "" }); tegn();
+      const inp = el.querySelector('[data-kj="' + (r.kjoretoy.length - 1) + '"][data-k="navn"]'); if (inp) inp.focus();
+    };
+    const vm = q("[data-vm]"); if (vm) vm.oninput = () => { r.vaerMerknad = vm.value.slice(0, R.MAKS_VAER_MERKNAD); };
+    // Bemanning (gammel tabell – vises ikke lenger for redigering, men lytterne er ufarlige)
     qa("[data-bm]").forEach(inp => inp.oninput = () => {
       const b = r.bemanning[Number(inp.dataset.bm)]; if (!b) return;
       const k = inp.dataset.k;
@@ -319,7 +450,8 @@ function kobleLyttere(el) {
       if (fot) fot.innerHTML = '<tr><td>' + esc(t("Sum")) + '</td><td></td><td class="tall">' + sum.antall + '</td><td class="tall">' + String(sum.timer).replace(".", ",") + '</td><td></td></tr>';
     });
     qa("[data-bm-fjern]").forEach(b => b.onclick = () => { r.bemanning.splice(Number(b.dataset.bmFjern), 1); tegn(); });
-    q(".dr-bm-ny").onclick = () => {
+    const bmNy = q(".dr-bm-ny");
+    if (bmNy) bmNy.onclick = () => {
       if (r.bemanning.length >= R.MAKS_BEMANNING) return;
       r.bemanning.push({ firma: "", fag: "", antall: null, timer: null }); tegn();
       const inp = el.querySelector('[data-bm="' + (r.bemanning.length - 1) + '"][data-k="firma"]'); if (inp) inp.focus();
@@ -383,8 +515,20 @@ async function lagre(stille) {
     const naa = new Date().toISOString();
     if (!r.laget) { r.laget = naa; r.lagetAv = navn; }
     r.endret = naa; r.endretAv = navn;
+    r.kilde = "storm-ifc";
+    // Ikke avkryssede personer lagres ikke; tomme kjøretøyrader heller ikke
+    r.mannskap = r.mannskap.filter(p => !p.ute);
+    r.kjoretoy = r.kjoretoy.filter(k => (k.navn || "").trim() || (k.skilt || "").trim());
     const res = await lagrePost(r);
     if (!res.ok) { varsel(t("Klarte ikke å lagre dagsrapporten ({0}).", res.grunn || "?")); return false; }
+    if (res.signertIMellomtiden) {
+      // Signert i Storm Prosjekter (eller av en kollega) mens vi skrev: den
+      // signerte står. Vis den, så brukeren kan lage ny versjon.
+      varsel(t("Rapporten ble signert i mellomtiden. Lag ny versjon."));
+      const signert = tilstand.liste.find(x => x.id === r.id);
+      if (signert) { tilstand.rapport = R.vaskRapport(JSON.parse(JSON.stringify(signert))); tilstand.lagret = R.vaskRapport(JSON.parse(JSON.stringify(signert))); }
+      return false;
+    }
     tilstand.lagret = R.vaskRapport(JSON.parse(JSON.stringify(r)));
     if (!stille) varsel(t("Dagsrapporten er lagret."));
     return true;
@@ -393,7 +537,7 @@ async function lagre(stille) {
 
 async function signer() {
   const r = tilstand.rapport;
-  if (!String(r.utfort || "").trim() && !r.bemanning.length &&
+  if (!String(r.utfort || "").trim() && !r.bemanning.length && !r.mannskap.some(p => !p.ute) &&
       !await bekreft(t("Rapporten har verken bemanning eller utført arbeid. Signere likevel?"))) return;
   const sign = await bePåSignatur(innloggetNavn());
   if (!sign) return;
@@ -406,9 +550,22 @@ async function signer() {
   } else varsel(t("Ikke lagret i SharePoint — PDF-en lastes ned, men rapporten finnes bare her."));
   const blob = await lagPdf([r], null);
   if (blob && kanLagre) {
-    const up = await spLastOpp(DR_MAPPE, R.pdfNavn(r.prosjekt || prosjekt().nr, r.dato, r.versjon), blob, "application/pdf");
-    varsel(up.ok ? t("Signert og lagret. PDF-en er lastet ned og ligger også i SharePoint (Dagsrapporter).")
-      : t("Signert og lagret, men PDF-en kom ikke opp i SharePoint. Den er lastet ned her."));
+    const pdf = R.pdfNavn(r.prosjekt || prosjekt().nr, r.dato, r.versjon);
+    const up = await spLastOpp(DR_MAPPE, pdf, blob, "application/pdf");
+    // Felles dagsrapport: også i jobbens prosjektmappe under 12 Dagsrapporter,
+    // registrert i storm-ifc-dokumenter.json. Overskriver aldri.
+    let lip = null;
+    try {
+      const m = await import("./legg-i-prosjekt.js");
+      lip = await m.leggAutomatisk("dagsrapport", blob, pdf, r.dato, { nummer: r.prosjekt || prosjekt().nr });
+    } catch (err) { lip = { ok: false, grunn: "feil", melding: err && err.message }; }
+    const prosjektTekst = lip && lip.ok ? " " + t("Lagt i {0} → {1}.", lip.prosjekt, lip.mappe)
+      : lip && lip.grunn === "ingen-prosjekt" ? " " + t("Fant ikke jobben i Storm Prosjekter – bruk «Legg i prosjekt» på PDF-en.")
+      : lip && lip.grunn === "ingen-mappe" ? " " + t("Prosjektet har ingen mappe ennå – åpne det i Storm Prosjekter og trykk Mappe først.")
+      : lip && lip.grunn === "ingen-tilgang" ? " " + t("Du har ikke tilgang til prosjektmappa i Storm Prosjekter.")
+      : lip && lip.grunn === "feil" ? " " + t("Klarte ikke å legge fila i prosjektet: {0}", lip.melding || "?") : "";
+    varsel((up.ok ? t("Signert og lagret. PDF-en er lastet ned og ligger også i SharePoint (Dagsrapporter).")
+      : t("Signert og lagret, men PDF-en kom ikke opp i SharePoint. Den er lastet ned her.")) + prosjektTekst);
   }
   tegn();
 }

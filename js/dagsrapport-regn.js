@@ -17,6 +17,13 @@
 import { dagnavn, datoLang, leggTilDager } from "./vaer-regn.js";
 
 export const MAKS_BEMANNING = 30;
+// Felles dagsrapport med Storm Prosjekter (BYGGEPLAN-Storm-IFC-felles-dagsrapport-2026-11-12):
+// mannskap per person i stedet for antall. FAST AVTALE med Storm Prosjekter –
+// endres feltene her, må de endres der også.
+export const MAKS_MANNSKAP = 60;
+export const MAKS_KJORETOY = 20;
+export const MAKS_VAER_MERKNAD = 300;
+export const KILDER = ["storm-ifc", "storm-prosjekter"];
 export const MAKS_BILDER = 12;
 export const MAKS_MARKERINGER = 40;
 export const MAKS_TEKST = 4000;
@@ -62,6 +69,21 @@ export function vaskBemanning(r) {
   return (ut.firma || ut.fag || ut.antall || ut.timer) ? ut : null;
 }
 
+// Én person: { navn, firma, fag, stilling, timer }. timer ≥ 0 med én desimal, eller null.
+// «ute» (ikke avkrysset) er bare skjemaets tilstand og lagres aldri.
+export function vaskPerson(p) {
+  if (!p || typeof p !== "object") return null;
+  const timer = ikkeNeg(p.timer);
+  const ut = { navn: tekst(p.navn, 80).trim(), firma: tekst(p.firma, 80).trim(), fag: tekst(p.fag, 40).trim(),
+    stilling: tekst(p.stilling, 60).trim(), timer: timer == null ? null : Math.round(timer * 10) / 10 };
+  return (ut.navn || ut.firma) ? ut : null;
+}
+export function vaskKjoretoy(k) {
+  if (!k || typeof k !== "object") return null;
+  const ut = { navn: tekst(k.navn, 60).trim(), skilt: tekst(k.skilt, 20).trim() };
+  return (ut.navn || ut.skilt) ? ut : null;
+}
+
 export function vaskVaer(v) {
   if (!v || typeof v !== "object" || !v.harData) return null;
   const st = (x) => ["ja", "delvis", "nei"].includes(x) ? x : "";
@@ -98,6 +120,9 @@ export function vaskRapport(r) {
     prosjekt: tekst(r.prosjekt, 30), prosjektNavn: tekst(r.prosjektNavn, 120), modell: tekst(r.modell, 160),
     vaer: vaskVaer(r.vaer),
     bemanning: (Array.isArray(r.bemanning) ? r.bemanning : []).map(vaskBemanning).filter(Boolean).slice(0, MAKS_BEMANNING),
+    mannskap: (Array.isArray(r.mannskap) ? r.mannskap : []).map(vaskPerson).filter(Boolean).slice(0, MAKS_MANNSKAP),
+    kjoretoy: (Array.isArray(r.kjoretoy) ? r.kjoretoy : []).map(vaskKjoretoy).filter(Boolean).slice(0, MAKS_KJORETOY),
+    vaerMerknad: tekst(r.vaerMerknad, MAKS_VAER_MERKNAD),
     utfort: tekst(r.utfort, MAKS_TEKST), hindringer: tekst(r.hindringer, MAKS_TEKST),
     medMarkeringer: r.medMarkeringer !== false,
     markeringer: (Array.isArray(r.markeringer) ? r.markeringer : []).map(vaskMerk).filter(Boolean).slice(0, MAKS_MARKERINGER),
@@ -106,7 +131,8 @@ export function vaskRapport(r) {
       .map(b => ({ fil: String(b.fil), tekst: tekst(b.tekst, 160) })).slice(0, MAKS_BILDER),
     laget: tekst(r.laget, 30), lagetAv: tekst(r.lagetAv, 80),
     endret: tekst(r.endret, 30), endretAv: tekst(r.endretAv, 80),
-    signert: s, forrige: tekst(r.forrige, 30)
+    signert: s, forrige: tekst(r.forrige, 30),
+    kilde: KILDER.includes(r.kilde) ? r.kilde : ""
   };
 }
 
@@ -117,7 +143,7 @@ export const erLaast = (r) => !!(r && r.signert);
 export function nyRapport(d, o) {
   const k = o || {};
   return vaskRapport({ dato: d, versjon: 1, prosjekt: k.prosjekt, prosjektNavn: k.prosjektNavn, modell: k.modell,
-    bemanning: [], medMarkeringer: true });
+    bemanning: [], mannskap: [], kjoretoy: [], medMarkeringer: true });
 }
 
 // «Ny versjon» av en låst rapport: samme innhold, neste nummer, ikke signert.
@@ -193,38 +219,95 @@ export function ukeTelling(status) {
 }
 
 // ---------- Bemanning ----------
-export function bemanningSum(rader) {
+// bemanningSum(rapport) eller bemanningSum(rader):
+//   rapport med mannskap → antall = personer, timer = summen av timer
+//   ellers den gamle bemanning-lista (firma · fag · antall · timer)
+export function bemanningSum(x) {
+  if (x && !Array.isArray(x) && typeof x === "object") {
+    if (Array.isArray(x.mannskap) && x.mannskap.length) {
+      const timer = x.mannskap.reduce((s, p) => s + (Number(p && p.timer) || 0), 0);
+      return { antall: x.mannskap.length, timer: Math.round(timer * 10) / 10 };
+    }
+    return bemanningSum(x.bemanning);
+  }
   let antall = 0, timer = 0;
-  for (const r of rader || []) { antall += Number(r && r.antall) || 0; timer += Number(r && r.timer) || 0; }
+  for (const r of x || []) { antall += Number(r && r.antall) || 0; timer += Number(r && r.timer) || 0; }
   return { antall, timer: Math.round(timer * 10) / 10 };
 }
-// «Samme som i går»: bemanningen fra siste rapport FØR denne dagen.
+const harFolk = (r) => (r.mannskap && r.mannskap.length) || r.bemanning.length;
+// «Samme som i går»: fra siste rapport FØR denne dagen.
+//   { dato, mannskap: [...] }  hvis den rapporten har mannskap
+//   { dato, rader: [...] }     hvis den bare har den gamle bemanningen
 export function forrigeBemanning(liste, d) {
-  const g = [...gjeldende(liste).values()].filter(r => r.dato < d && r.bemanning.length).sort((a, b) => b.dato.localeCompare(a.dato));
-  return g.length ? { dato: g[0].dato, rader: g[0].bemanning.map(x => Object.assign({}, x)) } : null;
+  const g = [...gjeldende(liste).values()].filter(r => r.dato < d && harFolk(r)).sort((a, b) => b.dato.localeCompare(a.dato));
+  if (!g.length) return null;
+  const r = g[0];
+  if (r.mannskap && r.mannskap.length) return { dato: r.dato, mannskap: r.mannskap.map(x => Object.assign({}, x)), rader: [] };
+  return { dato: r.dato, rader: r.bemanning.map(x => Object.assign({}, x)) };
 }
 // Firmanavn brukt før på prosjektet — forslag i firmafeltet.
 export function tidligereFirma(liste) {
   const s = new Set();
-  for (const r of liste || []) for (const b of (r && r.bemanning) || []) if (b.firma) s.add(b.firma);
+  for (const r of liste || []) {
+    for (const b of (r && r.bemanning) || []) if (b.firma) s.add(b.firma);
+    for (const p of (r && r.mannskap) || []) if (p.firma) s.add(p.firma);
+  }
   return [...s].sort((a, b) => a.localeCompare(b, "no"));
 }
+// Personer brukt før (nyeste først) — forslag i «+ Legg til person».
+export function tidligerePersoner(liste) {
+  const ut = new Map();
+  const nyest = [...(liste || [])].filter(Boolean).sort((a, b) => String(b.dato).localeCompare(String(a.dato)));
+  for (const r of nyest) for (const p of r.mannskap || []) {
+    const k = String(p.navn || "").toLowerCase();
+    if (k && !ut.has(k)) ut.set(k, { navn: p.navn, firma: p.firma, fag: p.fag, stilling: p.stilling });
+  }
+  return [...ut.values()];
+}
+// Mannskapet gruppert per firma, i rekkefølgen firmaene først dukker opp.
+// Fag: gruppas fag er det første personen i gruppa har.
+// Svar: [{ firma, fag, personer: [{ p, i }], timer }] — i = plassen i mannskap.
+export function mannskapGrupper(mannskap) {
+  const ut = new Map();
+  (mannskap || []).forEach((p, i) => {
+    if (!p) return;
+    const k = String(p.firma || "").trim().toLowerCase();
+    if (!ut.has(k)) ut.set(k, { firma: p.firma || "", fag: p.fag || "", personer: [], timer: 0 });
+    const g = ut.get(k);
+    if (!g.fag && p.fag) g.fag = p.fag;
+    g.personer.push({ p, i });
+    if (!p.ute) g.timer += Number(p.timer) || 0;
+  });
+  return [...ut.values()].map(g => Object.assign(g, { timer: Math.round(g.timer * 10) / 10 }));
+}
+// «Hent fra gammel bemanning»: én linje per firma, uten navn. Timene følger med.
+export function fraGammelBemanning(rader) {
+  return (rader || []).filter(b => b && b.firma).map(b => vaskPerson({ navn: "", firma: b.firma, fag: b.fag, stilling: "", timer: b.timer }))
+    .filter(Boolean).slice(0, MAKS_MANNSKAP);
+}
+// Kjøretøy på én linje: «Vito 2020 (NF 97443), Transporter El (ER 94955)»
+export function kjoretoyTekst(liste) {
+  return (liste || []).map(k => (k.navn || "") + (k.skilt ? (k.navn ? " (" + k.skilt + ")" : k.skilt) : "")).filter(Boolean).join(", ");
+}
+// Signert vinner: en signert post erstattes aldri av en usignert med samme id
+// (begge programmene). Brukes av spSkriv: true = behold den i SharePoint.
+export const beholdSignert = (lokal, ekstern) => !!(ekstern && ekstern.signert && !(lokal && lokal.signert));
 
 // ---------- Ukesummen (forsiden i ukes-PDF-en) ----------
 export function ukeSum(liste, mandag, iDag) {
   const status = ukeStatus(liste, mandag, iDag || "9999-12-31");
   const dager = status.filter(s => s.rapport).map(s => s.rapport);
-  const folk = dager.map(r => bemanningSum(r.bemanning)).filter(b => b.antall > 0);
+  const folk = dager.map(r => bemanningSum(r)).filter(b => b.antall > 0);
   const tell = ukeTelling(status);
   return {
     mandag, sondag: leggTilDager(mandag, 6), ...ukeNr(mandag),
     antall: dager.length, levert: tell.levert, utkast: tell.utkast, mangler: tell.mangler, arbeidsdager: tell.arbeidsdager,
     mannskapSnitt: folk.length ? Math.round(folk.reduce((s, b) => s + b.antall, 0) / folk.length * 10) / 10 : 0,
-    timerSum: Math.round(dager.reduce((s, r) => s + bemanningSum(r.bemanning).timer, 0) * 10) / 10,
+    timerSum: Math.round(dager.reduce((s, r) => s + bemanningSum(r).timer, 0) * 10) / 10,
     frostDager: dager.filter(r => r.vaer && r.vaer.frost === "nei").length,
     rader: status.filter(s => s.rapport || s.status === "mangler").map(s => ({
       dato: s.dato, dag: s.dag, status: s.status, rapport: s.rapport,
-      folk: s.rapport ? bemanningSum(s.rapport.bemanning).antall : 0,
+      folk: s.rapport ? bemanningSum(s.rapport).antall : 0,
       kort: s.rapport ? kortTekst(s.rapport.utfort, 60) : "",
       avvik: s.rapport ? avvikLinjer(s.rapport.hindringer).length : 0
     })),
@@ -320,6 +403,7 @@ export const dagOgDato = (d) => DAG_LANG[dagnavn(d)] + " " + datoLang(d);
 // Ble noe endret siden siste lagring? Sammenligner bare det brukeren skriver.
 export function likeRapporter(a, b) {
   if (!a || !b) return !a && !b;
-  const kjerne = (r) => JSON.stringify([r.bemanning, r.utfort, r.hindringer, r.medMarkeringer, r.bilder]);
+  const kjerne = (r) => JSON.stringify([r.bemanning, r.utfort, r.hindringer, r.medMarkeringer, r.bilder,
+    r.mannskap || [], r.kjoretoy || [], r.vaerMerknad || ""]);
   return kjerne(a) === kjerne(b);
 }

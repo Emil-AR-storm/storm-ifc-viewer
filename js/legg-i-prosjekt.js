@@ -230,4 +230,46 @@ export async function dialog(type, blob, filnavn, dato) {
   };
 }
 
+// ---------- Automatisk, uten dialog (felles dagsrapport, 12.11) ----------
+// Etter «Signer og lag PDF» legges PDF-en i jobbens prosjektmappe under
+// «12 Dagsrapporter» og registreres i storm-ifc-dokumenter.json. Jobben
+// finnes på byggeplassnummeret (ProsjektNr/JobbNr), ellers på modellen.
+// Overskriver ALDRI: ligger fila der fra før (Storm Prosjekter signerte),
+// røres den ikke. Svar:
+//   { ok: true, prosjekt, mappe, finnes }  lagt (eller lå der fra før)
+//   { ok: false, grunn: "ingen-prosjekt" | "ingen-mappe" | "ingen-tilgang" | "av" | "feil", melding }
+export async function leggAutomatisk(type, blob, filnavn, dato, o) {
+  const opt = o || {};
+  const sp = await import("./sharepoint.js");
+  const G = await import("./legg-i-prosjekt-graph.js");
+  try {
+    const token = await sp.spTokenSilent();
+    if (!token) return { ok: false, grunn: "av" };
+    const rader = await G.hentProsjekter(token);
+    const å = åpenModell();
+    let jobb = R.jobbForNummer(rader, opt.nummer);
+    if (!jobb.length) jobb = R.finnJobb(rader, å);
+    const valgt = R.foreslåProsjekt(jobb, type);
+    if (!valgt) return { ok: false, grunn: "ingen-prosjekt" };
+    const mappa = await G.prosjektmappe(token, valgt, rader);
+    const under = R.mappeFor(type, mappa.felles, valgt.fields.Arbeidsomrade);
+    const navn = R.vaskFilnavn(filnavn);
+    const { item, finnes } = await G.lastOppNy(token, mappa.sti, under, navn, blob);
+    const konto = (sp.innloggingNå().konto || {});
+    await G.oppdaterOversikt(token, mappa.sti, R.oversiktPost({
+      id: item && item.id, navn, type, dato: dato || R.isoDato(),
+      av: konto.name || konto.username || "", modell: modellNavn(å), mappe: under,
+      url: (item && item.webUrl) || "", storrelse: (item && item.size) || blob.size,
+      prosjekt: valgt.fields.Nokkel,
+      // Lå fila der fra før, beholdes den første oppføringens tid
+      ...(finnes && item && item.createdDateTime ? { lagt: item.createdDateTime } : {})
+    }));
+    return { ok: true, prosjekt: R.prosjektTekst(valgt).split(" ").slice(0, 2).join(" "), nokkel: valgt.fields.Nokkel, mappe: under, finnes };
+  } catch (err) {
+    if (err instanceof G.IngenMappe) return { ok: false, grunn: "ingen-mappe" };
+    if (err instanceof G.IngenTilgang) return { ok: false, grunn: "ingen-tilgang" };
+    return { ok: false, grunn: "feil", melding: err && err.message };
+  }
+}
+
 start();

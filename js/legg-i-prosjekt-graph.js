@@ -122,6 +122,40 @@ export async function lastOpp(token, mappe, underMappe, filnavn, blob, påFremdr
   return svar;
 }
 
+// Last opp UTEN å overskrive (felles dagsrapport, 12.11): finnes fila fra før
+// (lagt der av Storm Prosjekter eller et tidligere forsøk), røres den ikke.
+// Svar: { item, finnes } – item er driveItem-en som ligger der nå.
+export async function lastOppNy(token, mappe, underMappe, filnavn, blob) {
+  const g = lag(token);
+  const { driveId: d } = await stedOgBibliotek(token);
+  const sti = "/drives/" + d + "/root:/" + R.graphSti(mappe, underMappe, R.vaskFilnavn(filnavn));
+  const fra = await g.hent(sti);
+  if (fra.ok) return { item: await fra.json(), finnes: true };
+  if (fra.status !== 404) throw new Error("Graph " + fra.status);
+  if (blob.size > R.ENKEL_GRENSE) {
+    // Store PDF-er: samme økt som lastOpp, men conflictBehavior=fail
+    const ses = await g.hent(sti + ":/createUploadSession", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ item: { "@microsoft.graph.conflictBehavior": "fail" } }) });
+    if (ses.status === 409) { const n = await g.hent(sti); if (n.ok) return { item: await n.json(), finnes: true }; }
+    if (!ses.ok) throw new Error("Graph " + ses.status);
+    const { uploadUrl } = await ses.json();
+    const BIT = 320 * 1024 * 10;
+    let svar = null;
+    for (let fra2 = 0; fra2 < blob.size; fra2 += BIT) {
+      const til = Math.min(blob.size, fra2 + BIT);
+      const r = await fetch(uploadUrl, { method: "PUT", headers: { "Content-Range": "bytes " + fra2 + "-" + (til - 1) + "/" + blob.size }, body: blob.slice(fra2, til) });
+      if (!r.ok && r.status !== 202) throw new Error("Opplasting " + r.status);
+      if (r.status === 200 || r.status === 201) svar = await r.json();
+    }
+    return { item: svar, finnes: false };
+  }
+  const r = await g.hent(sti + ":/content?@microsoft.graph.conflictBehavior=fail",
+    { method: "PUT", headers: { "Content-Type": blob.type || "application/octet-stream" }, body: blob });
+  if (r.status === 409) { const n = await g.hent(sti); if (n.ok) return { item: await n.json(), finnes: true }; }
+  if (!r.ok) throw new Error("Graph " + r.status);
+  return { item: await r.json(), finnes: false };
+}
+
 // Oversiktsfila {prosjektmappe}/00 Prosjektprofil/storm-ifc-dokumenter.json.
 // Les (404 = tom), flett, skriv med If-Match; 412 → les på nytt, maks 3 ganger.
 export async function oppdaterOversikt(token, mappe, post) {

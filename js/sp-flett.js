@@ -30,13 +30,17 @@ export function ryddGravsteiner(liste, naa) {
 // er navnet du skriver i feltet, og to like navn ER samme resultat. Grupper
 // har en egen id, og to personer kan godt lage hver sin gruppe som heter
 // «Søyler akse 3»; flettet vi dem på navn, ville den ene forsvunnet.
-export function flett(lokale, eksterne, nokkel) {
+// behold(lokal, ekstern) (valgfri): true = den i SharePoint vinner uansett
+// `endret` (dagsrapporten: en signert post erstattes aldri av en usignert).
+// beholdt (valgfri liste) får nøklene som ble holdt igjen slik.
+export function flett(lokale, eksterne, nokkel, behold, beholdt) {
   const k = nokkel || ((p) => String(p && p.navn || ""));
   const ut = new Map();
   for (const p of (eksterne || [])) if (p && k(p)) ut.set(k(p), p);
   for (const p of (lokale || [])) {
     if (!p || !k(p)) continue;
     const finnes = ut.get(k(p));
+    if (finnes && typeof behold === "function" && behold(p, finnes)) { if (beholdt) beholdt.push(k(p)); continue; }
     if (!finnes || String(p.endret || "") > String(finnes.endret || "")) ut.set(k(p), p);
   }
   return [...ut.values()];

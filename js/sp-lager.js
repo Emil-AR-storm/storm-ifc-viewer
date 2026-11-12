@@ -94,7 +94,8 @@ async function lesEtag(token, sid, mappe, fil) {
 // eTag + If-Match fanger den siste lille sprekken: rakk noen å skrive MELLOM
 // lesingen og skrivingen vår, svarer Graph 412, og vi går én runde til. Én
 // gang, ikke i evig løkke — går det galt to ganger, skal brukeren få vite det.
-async function spSkrivIntern(mappe, fil, poster, nokkel) {
+// opt.behold(lokal, ekstern): se flett(). Svaret har da beholdt: [nøkler].
+async function spSkrivIntern(mappe, fil, poster, nokkel, opt) {
   const token = await spTokenSilent();
   if (!token) return { ok: false, grunn: "av" };
   try {
@@ -102,7 +103,8 @@ async function spSkrivIntern(mappe, fil, poster, nokkel) {
     for (let forsok = 0; forsok < 2; forsok++) {
       const fra = await spLes(mappe, fil);
       if (fra.status === "feil") return { ok: false, grunn: "feil" };
-      const samlet = ryddGravsteiner(flett(poster, fra.liste, nokkel));
+      const beholdt = [];
+      const samlet = ryddGravsteiner(flett(poster, fra.liste, nokkel, opt && opt.behold, beholdt));
       const etag = fra.status === "ok" ? await lesEtag(token, sid, mappe, fil) : null;
       const hoder = { "Content-Type": "application/json" };
       if (etag) hoder["If-Match"] = etag;
@@ -121,7 +123,7 @@ async function spSkrivIntern(mappe, fil, poster, nokkel) {
       }
       if (r.status === 412) continue;             // noen kom oss i forkjøpet – les på nytt
       if (!r.ok) throw new Error("Graph " + r.status);
-      return { ok: true, liste: samlet };
+      return { ok: true, liste: samlet, beholdt };
     }
     return { ok: false, grunn: "opptatt" };
   } catch (err) {
@@ -226,8 +228,8 @@ export { flett, flettPaaId, flettPaaNavn, ryddGravsteiner } from "./sp-flett.js"
 // ☁ Forslag 6C (03.11): hver skriving melder seg i lagringsstatusen, så ringen
 // rundt SharePoint-prikken og lista bak den viser hva som lagres, er lagret
 // og har feilet — for alle verktøyene på én gang.
-export function spSkriv(mappe, fil, poster, nokkel) {
-  return sporet(navnFor(mappe, fil), () => spSkrivIntern(mappe, fil, poster, nokkel));
+export function spSkriv(mappe, fil, poster, nokkel, opt) {
+  return sporet(navnFor(mappe, fil), () => spSkrivIntern(mappe, fil, poster, nokkel, opt));
 }
 export function spSkrivBin(mappe, fil, data, type) {
   return sporet(navnFor(mappe, fil), () => spSkrivBinIntern(mappe, fil, data, type));

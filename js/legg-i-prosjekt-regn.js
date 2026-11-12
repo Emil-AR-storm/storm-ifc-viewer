@@ -102,6 +102,22 @@ export function sorterProsjekter(liste) {
     String(felt(a).ProsjektNr || "").localeCompare(String(felt(b).ProsjektNr || ""), "no", { numeric: true }));
 }
 
+// Jobben til et byggeplassnummer (felles dagsrapport, 12.11): byggeplassen
+// kobles på prosjektnummeret (5 siffer). Treff = hovedprosjekt med samme
+// ProsjektNr eller JobbNr; så hele jobben (samme JobbNr). [] = ingen treff.
+export function jobbForNummer(rader, nr) {
+  const n = String(nr || "").trim();
+  if (!/^\d{5}$/.test(n)) return [];
+  const hoved = (rader || []).filter(erHovedprosjekt);
+  const treff = hoved.filter(r => String(felt(r).ProsjektNr || "").trim() === n || String(felt(r).JobbNr || "").trim() === n);
+  if (!treff.length) return [];
+  const jobbNr = new Set(treff.map(r => String(felt(r).JobbNr || "")).filter(Boolean));
+  const ut = new Map();
+  for (const r of treff) ut.set(felt(r).Nokkel, r);
+  for (const r of hoved) if (jobbNr.has(String(felt(r).JobbNr || ""))) ut.set(felt(r).Nokkel, r);
+  return sorterProsjekter([...ut.values()]);
+}
+
 // Forslaget i nedtrekkslista: selskapet typen hører til, ellers det første.
 export function foreslåProsjekt(jobb, type) {
   if (!jobb || !jobb.length) return null;
