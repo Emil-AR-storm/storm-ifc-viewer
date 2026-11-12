@@ -49,7 +49,31 @@ export function lesInnebygd(search) {
   const p = new URLSearchParams(String(search || ""));
   const på = p.get("innebygd") === "1";
   const hent = (k) => på ? (p.get(k) || "").trim() : "";
-  return { innebygd: på, modell: hent("modell"), gruppe: hent("gruppe"), lett: hent("lett") };
+  return Object.assign({ innebygd: på, modell: hent("modell"), gruppe: hent("gruppe"), lett: hent("lett") }, lesMål(search));
+}
+
+// 🎯 «Vis i modellen» fra Storm Prosjekter (runde G, 12.11):
+//   &markering=<id>&modellfil=<fila markeringen ligger på>
+//   &kollisjon=<funnId>&element=<GlobalId A>
+//   &element=<GlobalId>                       (sammenligning)
+// Leses også UTEN innebygd=1, så «Åpne i Storm IFC» lander på samme sted.
+// Vask: id-er høyst 400 tegn, GlobalId bare [0-9A-Za-z_$]{22}.
+export const GID_RE = /^[0-9A-Za-z_$]{22}$/;
+export function lesMål(search) {
+  const p = new URLSearchParams(String(search || ""));
+  const id = (k) => String(p.get(k) || "").trim().slice(0, 400);
+  const gid = String(p.get("element") || "").trim();
+  return { markering: id("markering"), kollisjon: id("kollisjon"), element: GID_RE.test(gid) ? gid : "",
+    modellfil: id("modellfil").replace(/[\\/]/g, "") };
+}
+export const harMål = (a) => !!(a && (a.markering || a.kollisjon || a.element));
+
+// Adressen til vanlig Storm IFC med samme modell og mål («Åpne i Storm IFC»).
+export function vanligMedMål(base, a) {
+  const p = new URLSearchParams();
+  for (const k of ["modell", "lett", "gruppe", "markering", "modellfil", "kollisjon", "element"]) if (a && a[k]) p.set(k, a[k]);
+  const q = p.toString();
+  return base + (q ? "?" + q : "");
 }
 
 // Får siden vises her? Ikke innrammet (egen fane) → ja: da er det bare Storm

@@ -13,7 +13,7 @@ import { canvas, koteGroup, makeLabel, measureGroup } from "./scene.js";
 import { naermesteMaaleflate, registrerPeker } from "./pek-eier.js";
 
 import { sjekkKort, startTilgang } from "./tilgang.js";
-import { erInnebygd, forberedInnebygd, startForsidebilde, startInnebygd } from "./innebygd.js";   // 🖼 Storm IFC inne i Storm Prosjekter (fase B)   // 🔒 gratisdel og enhetskort (post 11)
+import { erInnebygd, forberedInnebygd, startForsidebilde, startInnebygd, startVanligMål } from "./innebygd.js";   // 🖼 Storm IFC inne i Storm Prosjekter (fase B)   // 🔒 gratisdel og enhetskort (post 11)
 import { varsel } from "./varsel.js";
 
 // ---------- Resten av modulene (rekkefølgen bestemmer oppstart) ----------
@@ -127,6 +127,7 @@ if (feilet.length) varsel("Klarte ikke å laste " + feilet.join(", ") + " (nette
 startTilgang();
 startForsidebilde();
 if (erInnebygd()) startInnebygd();
+else startVanligMål();   // 🎯 ?modell=…&markering=… i vanlig modus (runde G)
 
 // JavaScript kjører – skjul advarselen
 const jsCheck = document.getElementById("jsCheck");

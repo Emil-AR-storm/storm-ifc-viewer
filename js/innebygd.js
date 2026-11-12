@@ -207,7 +207,8 @@ function byggLinje(art) {
         '<span class="btn-t" data-i18n data-no="Åpne i Storm IFC">' + esc(t("Åpne i Storm IFC")) + '</span></button></div>';
   document.body.appendChild(linje);
   byggVerktøy();
-  $("ibApne").onclick = () => window.open(vanligAdresse(), "_blank", "noopener");
+  // 🎯 Runde G: samme modell og samme mål (markering, kollisjon, element)
+  $("ibApne").onclick = () => window.open(R.vanligMedMål(vanligAdresse(), ADR), "_blank", "noopener");
   const fs = $("ibFullskjerm");
   if (fs) fs.onclick = () => window.open(location.href, "_blank", "noopener");
 }
@@ -406,6 +407,7 @@ function settArt(art) {
 }
 
 function visMelding(tekst) {
+  if (!ADR.innebygd) { varsel(tekst); return; }   // vanlig modus (åpnet med ?modell=)
   const v = $("ibVerktoy");
   visKort('<h2>' + esc(visNavn() || norsk("3D-modellen")) + '</h2><p>' + esc(tekst) + '</p>');
   if (v) v.style.visibility = "hidden";
@@ -587,10 +589,32 @@ export async function startInnebygd() {
   // av skjermen»): navnet og tre rader med rulling, maks 45 % av høyden.
   try { await import("./prop-kompakt.js"); } catch (_) { /* panelet virker som før */ }
   if (ADR.gruppe || ADR.lett || ADR.modell) await sikreSharePoint();
-  if (ADR.gruppe) await åpneGruppe(ADR.gruppe);
-  else if (ADR.lett) await åpneLett(ADR.lett);
-  else if (ADR.modell) await åpneModell(ADR.modell);
+  let åpnet = false;
+  if (ADR.gruppe) { await åpneGruppe(ADR.gruppe); åpnet = !!S.modelGroup; }
+  else if (ADR.lett) åpnet = await åpneLett(ADR.lett);
+  else if (ADR.modell) åpnet = await åpneModell(ADR.modell);
   else visMelding(norsk("Ingen modell er koblet til prosjektet ennå."));
+  if (åpnet && R.harMål(ADR)) await (await import("./vis-mal.js")).gåTilMål(ADR);
+}
+
+// 🎯 Vanlig modus med ?modell=…&markering=… («Åpne i Storm IFC» fra 3D-vinduet,
+// runde G). Bare stille innlogging: er du ikke logget inn, åpnes Storm IFC
+// som før, og du får beskjed om hvilken modell lenken gjaldt.
+export async function startVanligMål() {
+  if (ADR.innebygd) return;
+  let p; try { p = new URLSearchParams(location.search); } catch (_) { return; }
+  const modell = (p.get("modell") || "").trim(), lett = (p.get("lett") || "").trim(), gruppe = (p.get("gruppe") || "").trim();
+  if (!modell && !lett && !gruppe) return;
+  const mål = R.lesMål(location.search);
+  const sp = await import("./sharepoint.js");
+  let token = null;
+  for (let i = 0; i < 20 && !token; i++) { try { token = await sp.spTokenSilent(); } catch (_) { token = null; } if (!token) await new Promise(r => setTimeout(r, 500)); }
+  if (!token) { varsel(norsk("Logg inn på SharePoint og åpne «{0}» fra Biblioteket.", R.modellTittel(modell || lett || gruppe))); return; }
+  let åpnet = false;
+  if (gruppe) { await åpneGruppe(gruppe); åpnet = !!S.modelGroup; }
+  else if (lett) åpnet = await åpneLett(lett);
+  else åpnet = await åpneModell(modell);
+  if (åpnet && R.harMål(mål)) await (await import("./vis-mal.js")).gåTilMål(mål);
 }
 
 // ---------- 📸 Lagre forsidebilde (vanlig modus, Dokumentasjon) ----------

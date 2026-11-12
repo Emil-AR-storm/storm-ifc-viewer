@@ -26,6 +26,7 @@ import { MAKS_SKJEMA_PER_MARKERING, apneMalVelger, apneSkjema, gjeldendeSkjema,
 import { varsel } from "./varsel.js";
 import { bekreft, spor } from "./sporsmal.js";
 import { sporet } from "./lagring-status.js";
+import { flettMarkeringer } from "./markering-flett.js";
 // ⛓-lenka til en markering hentes via S.markerLink (settes av share.js).
 // Direkte import ville gitt sirkel: markers → share → display → ifc → markers.
 
@@ -548,49 +549,66 @@ export function vaskMarkering(r) {
   return c;
 }
 
+// 🔀 Runde G (12.11): Storm Prosjekter skriver også i fila. Grunnlinjen (slik
+// hver markering så ut sist vi leste eller skrev fila) og eTag-en fra SAMME
+// lesing huskes, så doPush kan flette FØR den skriver – se markering-flett.js.
+let grunnlinje = new Map(), grunnlinjeFil = "", lestETag = null, lestFil = "";
+const somJson = (c) => { try { return JSON.stringify(vaskMarkering(c)); } catch (_) { return ""; } };
+function settGrunnlinje(fil, liste) {
+  grunnlinje = new Map((liste || []).filter(Boolean).map(c => [String(c.id), somJson(c)]));
+  grunnlinjeFil = fil;
+}
+
+// Svar: true = lest og flettet, false = ikke (offline, feil, byttet modell).
 async function syncSharedComments(stille) {
   const forFile = syncedFile();
-  if (!forFile) return;
+  if (!forFile) return false;
   try {
     // spTokenSilent kan kaste hvis MSAL ikke lastet – da er vi bare offline
     const token = await spTokenSilent();
-    if (!token) { S.sharedOK = false; renderCommentList(); return; }
+    if (!token) { S.sharedOK = false; renderCommentList(); return false; }
     const sid = await sharedSiteId(token);
+    // eTag FØR innholdet: skriver noen mellom de to kallene, er eTag-en vi
+    // sender i If-Match allerede gammel, og PUT-en får 412 i stedet for å
+    // skrive over noe vi ikke har sett.
+    const eTag = await sharedETag(token, sid);
     const r = await fetch(GRAPH + "/sites/" + sid + sharedFilePath() + ":/content",
       { headers: authHeaders(token, null, "markeringer") });
     let remote = [];
     if (r.ok) { const d = await r.json(); if (Array.isArray(d)) remote = d.map(vaskMarkering).filter(Boolean); }
     else if (r.status !== 404) throw new Error("Graph " + r.status);
-    if (syncedFile() !== forFile) return; // brukeren byttet modell underveis
-    const have = new Set(remote.map(c => c.id));
-    const localOnly = S.comments.filter(c => !have.has(c.id));
-    // Den delte fila vinner på markeringen, men svar går aldri tapt: skrev to
-    // personer hvert sitt svar før noen rakk å synke, beholdes begge.
-    const lokaleSvar = new Map(S.comments.map(c => [String(c.id), svarI(c)]));
-    remote.forEach(c => {
-      const mine = lokaleSvar.get(String(c.id));
-      if (!mine || !mine.length) return;
-      const kjent = new Set(svarI(c).map(s => String(s.id)));
-      const nye = mine.filter(s => !kjent.has(String(s.id)));
-      if (nye.length) c.svar = svarI(c).concat(nye);
+    if (syncedFile() !== forFile) return false; // brukeren byttet modell underveis
+    if (grunnlinjeFil !== forFile) { grunnlinje = new Map(); grunnlinjeFil = forFile; }
+    const før = JSON.stringify(S.comments.map(somJson));
+    const f = flettMarkeringer(S.comments, remote, grunnlinje, vaskMarkering);
+    // Samme objekt beholdes der markeringen fantes lokalt: bobla som står
+    // åpen (popFor) og angre-postene peker på det.
+    S.comments = f.liste.map(({ vinner, lokal }) => {
+      if (!lokal || vinner === lokal) return vinner;
+      for (const k of Object.keys(lokal)) delete lokal[k];
+      return Object.assign(lokal, vinner);
     });
-    S.comments = remote.concat(localOnly);
-    markerGroup.clear();
-    ryddOmrader();
-    S.comments.forEach(addMarkerSprite);
+    settGrunnlinje(forFile, remote);
+    lestETag = r.ok ? eTag : null; lestFil = forFile;
+    if (JSON.stringify(S.comments.map(somJson)) !== før) {
+      markerGroup.clear();
+      ryddOmrader();
+      S.comments.forEach(addMarkerSprite);
+    }
     persist();
     S.sharedOK = true;
+    S.markeringerLest = { fil: forFile, tid: Date.now() };
     renderCommentList();
     // 📋 Planner-status tilbake: først NÅ er S.comments fasit (den delte fila).
-    // Ikke i en 412-runde (stille) — da skriver vi selv straks etterpå.
+    // Ikke i en skrive-runde (stille) — da skriver vi selv straks etterpå.
     if (!stille) synkPlannerStatus();
     // ↩ Filer til markeringer som ble slettet i en tidligere økt, der siden ble
     // lukket før angre-posten rakk å forkastes. Først NÅ vet vi hva som finnes.
     if (ryddVedNesteSynk) { ryddVedNesteSynk = false; ryddVentendeSlettinger(); }
-    // stille = vi er midt i en 412-runde og skal skrive selv straks etterpå.
-    // Uten den ville vi startet en ny push inni den som allerede pågår.
-    if (localOnly.length && !stille) pushSharedComments(); // last opp det som bare fantes lokalt
-  } catch(_) { S.sharedOK = false; renderCommentList(); }
+    // stille = vi er midt i en skriving og skriver selv straks etterpå.
+    if (f.lokaleVant.length && !stille) pushSharedComments(); // last opp det fila mangler
+    return true;
+  } catch(_) { S.sharedOK = false; renderCommentList(); return false; }
 }
 
 // eTag-en ligger på selve elementet i SharePoint, ikke på innholdet, så den må
@@ -639,24 +657,26 @@ async function doPush(forsøk) {
     const token = await spTokenSilent();
     if (!token) { S.sharedOK = false; sistPushGrunn = "av"; renderCommentList(); return; }
     const sid = await sharedSiteId(token);
-    const eTag = await sharedETag(token, sid);
-    if (syncedFile() !== forFile) return;
+    // 🔀 Runde G: les og flett FØR skrivingen, og bruk eTag-en fra den samme
+    // lesingen. Før: fersk eTag + gammelt innhold fra minnet = det Storm
+    // Prosjekter (eller en annen Storm IFC) skrev i mellomtiden forsvant.
+    if (!(await syncSharedComments(true))) { S.sharedOK = false; renderCommentList(); return; }
+    if (syncedFile() !== forFile || lestFil !== forFile) return;
+    const eTag = lestETag;
 
     const h = authHeaders(token, { "Content-Type": "application/json" }, "markeringer");
     // Ingen eTag = fila skal ikke finnes. If-None-Match: * hindrer at vi skriver
     // over en fil noen andre rakk å opprette i mellomtiden.
     if (eTag) h["If-Match"] = eTag; else h["If-None-Match"] = "*";
 
+    const skrevet = S.comments.slice();
     const r = await fetch(GRAPH + "/sites/" + sid + sharedFilePath() + ":/content", {
-      method: "PUT", headers: h, body: JSON.stringify(S.comments)
+      method: "PUT", headers: h, body: JSON.stringify(skrevet)
     });
 
     if (r.status === 412 || r.status === 409) {
       // Noen andre skrev først. Hent deres versjon, flett inn vårt, prøv igjen.
-      if (forsøk < 3) {
-        await syncSharedComments(true);
-        return doPush(forsøk + 1);
-      }
+      if (forsøk < 3) return doPush(forsøk + 1);   // leser og fletter på nytt først
       // Ga vi oss stille her, ville brukeren trodd at markeringen var delt.
       // Det lokale ligger trygt i localStorage – ingenting er tapt.
       S.sharedOK = false;
@@ -665,6 +685,7 @@ async function doPush(forsøk) {
       return;
     }
     S.sharedOK = r.ok;
+    if (r.ok) { settGrunnlinje(forFile, skrevet); lestETag = null; }   // neste skriving leser på nytt uansett
   } catch(_) { S.sharedOK = false; }
   renderCommentList();
 }
@@ -979,7 +1000,12 @@ function tegnBoblePaNytt(c) {
 }
 
 // Endrer et felt på en markering og oppdaterer alt som viser den
+// Felt brukeren endrer → endret/endretAv settes (runde G: «nyeste endret
+// vinner» når Storm Prosjekter har endret den samme markeringen).
+const STEMPLES = ["status", "owner", "due", "text", "farge"];
 function updateComment(c, patch) {
+  if (!("endret" in patch) && STEMPLES.some(k => k in patch && patch[k] !== c[k]))
+    patch = Object.assign({}, patch, { endret: naaTekst(), endretAv: innloggetNavn() });
   Object.assign(c, patch);
 
   if (TEGNEFELT.some(f => patch[f] !== undefined)) tegnBoblePaNytt(c);

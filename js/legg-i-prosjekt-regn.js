@@ -31,6 +31,9 @@ export const TYPER = {
   bcf:         { navn: "BCF-eksport", mappe: "14 BIM og koordinering", selskap: "SE" },
   mengder:     { navn: "Mengdeliste", mappe: "13 Kalkulasjoner", selskap: "SE" },
   kollisjon:   { navn: "Kollisjonsrapport", mappe: "14 BIM og koordinering", selskap: "SE" },
+  // Runde G (12.11): «Send til Storm Prosjekter» fra Sammenlign. PDF-en ligger i
+  // 14 BIM og koordinering/Sammenligninger/<id>/, oversikten sier mappe «14 BIM og koordinering».
+  sammenligning: { navn: "Sammenligning", mappe: "14 BIM og koordinering", selskap: "SE" },
   annet:       { navn: "Annet", mappe: "00 Prosjektprofil", selskap: "SE" }
 };
 export const typeInfo = (type) => TYPER[type] || TYPER.annet;

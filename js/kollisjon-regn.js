@@ -331,10 +331,43 @@ export function elementArt(navn, materiale, type) {
 // id er stabil mellom kjøringer: kontroll · lag-fil · GlobalId (· GlobalId).
 export const funnId = (art, lagFil, gidA, gidB) => [art, lagFil, gidA || "", gidB || ""].join("|");
 export const STATUSER = ["ny", "godkjent", "lost"];
+// Runde G (12.11): Storm Prosjekter viser funnene i «Avvik og oppgaver», så
+// hvert funn lagres også med hva det gjelder. Feltene MÅ stå her, ellers
+// vasker vaskStatus dem bort ved neste lagring. Et funn som er «lost» beholder
+// dem, så historikken kan leses.
+const DETALJ_TEKST = { art: 20, lagFil: 200, gidA: 22, gidB: 22, navnA: 160, navnB: 160, typeA: 80, typeB: 80,
+  tittel: 300, beskrivelse: 300, modell: 200 };
+const GID = /^[0-9A-Za-z_$]{22}$/;
 export function vaskStatus(p) {
   if (!p || typeof p !== "object" || !p.id) return null;
-  return { id: String(p.id).slice(0, 400), status: STATUSER.includes(p.status) ? p.status : "ny",
+  const ut = { id: String(p.id).slice(0, 400), status: STATUSER.includes(p.status) ? p.status : "ny",
     kommentar: String(p.kommentar || "").slice(0, 300), endret: String(p.endret || "").slice(0, 40), av: String(p.av || "").slice(0, 80) };
+  for (const [k, n] of Object.entries(DETALJ_TEKST)) if (p[k] != null && p[k] !== "") ut[k] = String(p[k]).slice(0, n);
+  if (ut.gidA && !GID.test(ut.gidA)) delete ut.gidA;
+  if (ut.gidB && !GID.test(ut.gidB)) delete ut.gidB;
+  for (const k of ["overlappMm", "x", "y", "z"]) if (p[k] != null && p[k] !== "" && isFinite(Number(p[k]))) ut[k] = Number(p[k]);
+  return ut;
+}
+// Detaljene til et funn fra kontrollen (kollisjon.js kjor), til lagring.
+// f: { id, art, lagFil, mm, krav, andel, punkt, a: { navn, typ, gid }, b }
+const ART_NAVN = { hard: "Hard kollisjon", utenfor: "Armering utenfor betongen", overdekning: "For liten overdekning" };
+export function funnDetaljer(f, modell) {
+  if (!f || !f.id) return {};
+  const a = f.a || {}, b = f.b || {};
+  const mmT = (x) => Math.round(Number(x) || 0) + " mm";
+  let beskrivelse = ART_NAVN[f.art] || "Kollisjon";
+  if (f.art === "hard") beskrivelse += " · " + mmT(f.mm) + " overlapp";
+  else if (f.art === "utenfor") beskrivelse += " · " + mmT(f.mm) + (f.andel != null ? " (" + f.andel + " % av stanga)" : "");
+  else if (f.art === "overdekning") beskrivelse += " · " + mmT(f.mm) + (f.krav ? " (krav " + f.krav + " mm)" : "");
+  const p = Array.isArray(f.punkt) ? f.punkt : null;
+  return {
+    art: f.art || "", lagFil: f.lagFil || "", gidA: a.gid || "", gidB: b.gid || "",
+    navnA: a.navn || "", navnB: b.navn || "", typeA: a.typ || "", typeB: b.typ || "",
+    overlappMm: Math.round(Number(f.mm) || 0),
+    ...(p ? { x: Math.round(p[0] * 1e4) / 1e4, y: Math.round(p[1] * 1e4) / 1e4, z: Math.round(p[2] * 1e4) / 1e4 } : {}),
+    tittel: (a.navn || "—") + (b.navn ? " mot " + b.navn : ""),
+    beskrivelse, modell: modell || ""
+  };
 }
 // Nye funn + lagrede statuser → lista som vises. Funn som var Ny/Godkjent og
 // ikke kommer igjen, er LØST (RIB har rettet modellen).

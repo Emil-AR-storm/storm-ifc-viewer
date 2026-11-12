@@ -162,14 +162,14 @@ export async function kjor() {
             const tall = k.retning === "lag" ? lag.tall[r.id] : null;
             const navn = (tall && tall.d ? "Ø" + tall.d + (tall.form ? " " + tall.form.replace(/_RNO$/, "") : "") + " · " : "") + (s.navn || "#" + r.id);
             const felles = { lagId: lag.id, lagFil: lag.fil, lagNavn: lag.navn, retning: k.retning,
-              a: { kilde: k.retning === "lag" ? "lag" : "hoved", id: r.id, navn, gid: s.gid } };
+              a: { kilde: k.retning === "lag" ? "lag" : "hoved", id: r.id, navn, gid: s.gid, typ: s.type } };
             if (r.ute_) funn.push(Object.assign({}, felles, { id: K.funnId("utenfor", lag.fil, s.gid || r.id), art: "utenfor",
               mm: K.mm(r.maksUte, toM()), andel: Math.round(r.ute / Math.max(1, r.total) * 100), punkt: r.punkt,
-              b: b ? { kilde: k.retning === "lag" ? "hoved" : "lag", id: r.ved, navn: b.objType || b.navn, gid: b.gid } : null }));
+              b: b ? { kilde: k.retning === "lag" ? "hoved" : "lag", id: r.ved, navn: b.objType || b.navn, gid: b.gid, typ: b.type } : null }));
             if (r.od_) { const b2 = infoBetong(r.ved2);
               funn.push(Object.assign({}, felles, { id: K.funnId("overdekning", lag.fil, s.gid || r.id), art: "overdekning",
                 mm: K.mm(r.minOverdekning, toM()), krav: Number(tilstand.overdekning[lag.id]) || 0, punkt: r.overdekningPunkt,
-                b: { kilde: k.retning === "lag" ? "hoved" : "lag", id: r.ved2, navn: b2.objType || b2.navn, gid: b2.gid } })); }
+                b: { kilde: k.retning === "lag" ? "hoved" : "lag", id: r.ved2, navn: b2.objType || b2.navn, gid: b2.gid, typ: b2.type } })); }
           }
         }
       } else {
@@ -181,7 +181,7 @@ export async function kjor() {
             const a = li(r.a), b = hInfo(r.b);
             funn.push({ id: K.funnId("hard", lag.fil, a.gid || r.a, b.gid || r.b), art: "hard", lagId: lag.id, lagFil: lag.fil, lagNavn: lag.navn,
               mm: K.mm(r.dybde, toM()), punkt: r.punkt,
-              a: { kilde: "lag", id: r.a, navn: a.objType || a.navn || "#" + r.a, gid: a.gid }, b: { kilde: "hoved", id: r.b, navn: b.objType || b.navn || "#" + r.b, gid: b.gid } });
+              a: { kilde: "lag", id: r.a, navn: a.objType || a.navn || "#" + r.a, gid: a.gid, typ: a.type }, b: { kilde: "hoved", id: r.b, navn: b.objType || b.navn || "#" + r.b, gid: b.gid, typ: b.type } });
           }
         }
       }
@@ -192,7 +192,13 @@ export async function kjor() {
     tilstand.funn = s.funn.concat(s.nyLost.map(p => ({ id: p.id, art: p.id.split("|")[0], lagFil: p.id.split("|")[1], status: "lost", kommentar: p.kommentar, gammel: true })));
     tilstand.fil = S.fileName;
     tilstand.grove = grove;
-    if (s.nyLost.length) lagreStatus(s.nyLost);
+    // Runde G: ALLE funn lagres med hva de gjelder (navn, posisjon, overlapp),
+    // så Storm Prosjekter kan vise dem. Statusen er den vi nettopp leste.
+    // Løste funn beholder detaljene de hadde.
+    const modell = (S.kildeIfc && S.kildeIfc.fil === S.fileName && S.kildeIfc.ifc) || S.fileName || "";
+    const gml = new Map(tilstand.lagret.map(p => [p.id, p]));
+    lagreStatus(s.funn.map(f => Object.assign({}, K.funnDetaljer(f, modell), { id: f.id, status: f.status, kommentar: f.kommentar || "" }))
+      .concat(s.nyLost.map(p => Object.assign({}, gml.get(p.id) || {}, p, { status: "lost" }))));
     tilstand.filter = "ny"; tilstand.nr = 0;
     const tl = K.telling(tilstand.funn);
     varsel(t("Kollisjonskontroll ferdig: {0} nye, {1} godkjent, {2} løst.", tl.ny, tl.godkjent, tl.lost),
@@ -225,7 +231,9 @@ function flettLokalt(lokal, ekstern) {
 function lagreStatus(poster) {
   const av = (S.innloggetNavn ? S.innloggetNavn() : "") || "";
   const nå = new Date().toISOString();
-  const nye = poster.map(p => K.vaskStatus(Object.assign({}, p, { endret: nå, av })));
+  const gml = new Map(tilstand.lagret.map(p => [p.id, p]));
+  // Detaljene (navn, posisjon …) følger med når bare statusen endres
+  const nye = poster.map(p => K.vaskStatus(Object.assign({}, gml.get(p.id) || {}, p, { endret: nå, av })));
   const m = new Map(tilstand.lagret.map(p => [p.id, p]));
   for (const p of nye) m.set(p.id, p);
   tilstand.lagret = [...m.values()];

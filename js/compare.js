@@ -488,6 +488,11 @@ function renderPanel() {
     '<button id="cmpBareModell"' + (bareModellen ? ' class="active"' : '') + ' title="' + esc(t("Skjuler rigg, SW-vegger, tak og blikk, terreng, materiell og markeringer mens du sammenligner")) + '">' +
     ikon("vis") + ' ' + t("Bare modellen") + '</button>' +
     '<button id="cmpStopp">' + ikon("lukk") + ' ' + t("Avslutt") + '</button></div>' +
+    // 🔄 Runde G (12.11): sammenligningen vurderes og lagres i Storm Prosjekter.
+    // Bare på kontoret, og bare når sammenligningen er ferdig (vi står i resultatet).
+    (document.documentElement.dataset.lett !== "1" ? '<div class="prop-actions" style="margin-top:6px"><button id="cmpSend" class="primary" title="' +
+      esc(t("Bilder, PDF og lista over endringene legges i prosjektmappa (14 BIM og koordinering). Vurderingene gjøres i Storm Prosjekter.")) + '">' +
+      ikon("bibliotek") + ' ' + t("Send til Storm Prosjekter") + '</button></div>' : '') +
     '<p style="font-size:12px; color:var(--muted); margin-bottom:8px">' +
     esc(S.compareBase.file) + ' → ' + esc(S.fileName) +
     // metode kan komme fra en delt lenke – escapes selv om share.js har vasket den
@@ -541,6 +546,11 @@ function renderPanel() {
 
   $("compareBody").innerHTML = html;
   $("cmpStopp").onclick = stopCompare;
+  if ($("cmpSend")) $("cmpSend").onclick = async () => {
+    const b = $("cmpSend"); b.disabled = true;
+    try { await (await import("./sammenligning-send.js")).sendTilStormProsjekter(); }
+    finally { const b2 = $("cmpSend"); if (b2) b2.disabled = false; }
+  };
   $("cmpBareModell").onclick = () => {
     bareModellen = !bareModellen;
     $("cmpBareModell").classList.toggle("active", bareModellen);
