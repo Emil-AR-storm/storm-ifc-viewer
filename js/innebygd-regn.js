@@ -49,7 +49,9 @@ export function lesInnebygd(search) {
   const p = new URLSearchParams(String(search || ""));
   const på = p.get("innebygd") === "1";
   const hent = (k) => på ? (p.get(k) || "").trim() : "";
-  return Object.assign({ innebygd: på, modell: hent("modell"), gruppe: hent("gruppe"), lett: hent("lett") }, lesMål(search));
+  return Object.assign({ innebygd: på, modell: hent("modell"), gruppe: hent("gruppe"), lett: hent("lett"),
+    // full=1 (bare fra «Avvik og oppgaver», Storm Prosjekter 4.40): åpne den originale IFC-en
+    full: på && p.get("full") === "1" }, lesMål(search));
 }
 
 // 🎯 «Vis i modellen» fra Storm Prosjekter (runde G, 12.11):
@@ -72,6 +74,7 @@ export const harMål = (a) => !!(a && (a.markering || a.kollisjon || a.element))
 export function vanligMedMål(base, a) {
   const p = new URLSearchParams();
   for (const k of ["modell", "lett", "gruppe", "markering", "modellfil", "kollisjon", "element"]) if (a && a[k]) p.set(k, a[k]);
+  if (a && a.full) p.set("full", "1");
   const q = p.toString();
   return base + (q ? "?" + q : "");
 }
@@ -139,9 +142,18 @@ function indeksFil(indeks, ifcNavn) {
 
 // Hvilken fil skal åpnes for IFC-navnet? Emil 09.11: ekstra lett → lett → IFC.
 // Svar: { fil, art: "ekstra"|"lett"|"ifc" } eller null.
-export function velgModellfil(ifcNavn, ifcFiler, lettFiler, indeks) {
+// o.full (12.11, «Vis i modellen» fra Avvik og oppgaver): den originale
+// IFC-en når den finnes – markeringene ligger på IFC-navnet. Finnes den
+// ikke, velges lett kopi som vanlig, merket reserve: true.
+export function velgModellfil(ifcNavn, ifcFiler, lettFiler, indeks, o) {
   const navn = String(ifcNavn || "").trim();
   if (!navn) return null;
+  if (o && o.full) {
+    const ifc = (ifcFiler || []).find(f => f.name.toLowerCase() === navn.toLowerCase());
+    if (ifc) return { fil: ifc, art: "ifc" };
+    const r = velgModellfil(navn, ifcFiler, lettFiler, indeks);
+    return r ? Object.assign({}, r, { reserve: r.art !== "ifc" }) : null;
+  }
   // Unntak: «X 2.lett.glb» passer også for «X.ifc» etter regelen, men finnes
   // «X 2.ifc», er det den som eier fila (lengste navn vinner, se eierIfc).
   const mine = (lettFiler || []).filter(f => hørerTil(f.name, navn) &&

@@ -476,14 +476,14 @@ S.etterMåling = async (m) => {
   } catch (_) { /* bare pynt */ }
 };
 
-async function åpneModell(ifcNavn) {
+async function åpneModell(ifcNavn, fullModell) {
   const sp = await import("./sharepoint.js");
   loadingEl.classList.add("open");
   loadingText.textContent = norsk("Finner {0} …", R.modellTittel(ifcNavn));
   let valg = null;
   try {
     const [full, lett, indeks] = await Promise.all([sp.spFetchList("full"), sp.spFetchList("lett"), lesIndeks()]);
-    valg = R.velgModellfil(ifcNavn, full || [], lett || [], indeks);
+    valg = R.velgModellfil(ifcNavn, full || [], lett || [], indeks, { full: fullModell });
   } catch (err) {
     loadingEl.classList.remove("open");
     visMelding(norsk("Fikk ikke lest modellene fra SharePoint: {0}", err.message));
@@ -498,6 +498,8 @@ async function åpneModell(ifcNavn) {
   // kopi er åpen (se grSpFil i grupper.js og apneGruppe i lag.js).
   S.kildeIfc = { fil: valg.fil.name, ifc: ifcNavn };
   settArt(valg.art);
+  // full=1, men IFC-en finnes ikke: lett kopi, og brukeren får vite hvorfor
+  if (valg.reserve) varsel(norsk("Fant ikke den fulle modellen «{0}». Den lette kopien åpnes – markeringer og kollisjoner på den fulle modellen vises kanskje ikke.", ifcNavn));
   visLasting(R.forsideNavn(valg.fil.name, ifcNavn));
   try { await sp.spOpenFile(valg.fil); } finally { ryddLasting(); }
   return S.fileName === valg.fil.name;
@@ -592,7 +594,7 @@ export async function startInnebygd() {
   let åpnet = false;
   if (ADR.gruppe) { await åpneGruppe(ADR.gruppe); åpnet = !!S.modelGroup; }
   else if (ADR.lett) åpnet = await åpneLett(ADR.lett);
-  else if (ADR.modell) åpnet = await åpneModell(ADR.modell);
+  else if (ADR.modell) åpnet = await åpneModell(ADR.modell, !!ADR.full);
   else visMelding(norsk("Ingen modell er koblet til prosjektet ennå."));
   if (åpnet && R.harMål(ADR)) await (await import("./vis-mal.js")).gåTilMål(ADR);
 }
@@ -613,7 +615,7 @@ export async function startVanligMål() {
   let åpnet = false;
   if (gruppe) { await åpneGruppe(gruppe); åpnet = !!S.modelGroup; }
   else if (lett) åpnet = await åpneLett(lett);
-  else åpnet = await åpneModell(modell);
+  else åpnet = await åpneModell(modell, p.get("full") === "1");
   if (åpnet && R.harMål(mål)) await (await import("./vis-mal.js")).gåTilMål(mål);
 }
 
