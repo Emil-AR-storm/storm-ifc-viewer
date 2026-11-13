@@ -76,6 +76,12 @@ export function vaskPerson(p) {
   const timer = ikkeNeg(p.timer);
   const ut = { navn: tekst(p.navn, 80).trim(), firma: tekst(p.firma, 80).trim(), fag: tekst(p.fag, 40).trim(),
     stilling: tekst(p.stilling, 60).trim(), timer: timer == null ? null : Math.round(timer * 10) / 10 };
+  // Runde J (13.11): kom/gikk fra «Sjekk inn på jobb». Storm Prosjekter fyller
+  // dem; Storm IFC skal BEHOLDE dem når fila skrives (ellers forsvinner de).
+  const kl = (v) => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(v || "")) ? String(v) : "";
+  if (kl(p.inn)) ut.inn = kl(p.inn);
+  if (kl(p.ut)) ut.ut = kl(p.ut);
+  if (["inn/ut", "standard", "manuell"].includes(p.timerKilde)) ut.timerKilde = p.timerKilde;
   return (ut.navn || ut.firma) ? ut : null;
 }
 export function vaskKjoretoy(k) {
@@ -284,6 +290,12 @@ export function mannskapGrupper(mannskap) {
 export function fraGammelBemanning(rader) {
   return (rader || []).filter(b => b && b.firma).map(b => vaskPerson({ navn: "", firma: b.firma, fag: b.fag, stilling: "", timer: b.timer }))
     .filter(Boolean).slice(0, MAKS_MANNSKAP);
+}
+// «07:02–15:30», «fra 07:02» eller "" (runde J)
+export function komGikk(p) {
+  if (!p || (!p.inn && !p.ut)) return "";
+  if (p.inn && p.ut) return p.inn + "–" + p.ut;
+  return p.inn ? "fra " + p.inn : "til " + p.ut;
 }
 // Kjøretøy på én linje: «Vito 2020 (NF 97443), Transporter El (ER 94955)»
 export function kjoretoyTekst(liste) {

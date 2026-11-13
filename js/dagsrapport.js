@@ -228,7 +228,7 @@ function mannskapHtml(r, laast) {
       '<span class="dr-gra dr-ms-gsum">' + esc(t("{0} timer", tim(g.timer))) + '</span></div>' +
     g.personer.map(({ p, i }) => '<div class="dr-ms-rad' + (p.ute ? " ute" : "") + '">' +
       (laast ? "" : '<input type="checkbox" data-ms-med="' + i + '"' + (p.ute ? "" : " checked") + ' title="' + esc(t("Var på jobb i dag")) + '">') +
-      '<span class="dr-ms-navn">' + esc(p.navn || "–") + (p.stilling ? '<small>' + esc(p.stilling) + '</small>' : "") + '</span>' +
+      '<span class="dr-ms-navn">' + esc(p.navn || "–") + ((p.stilling || R.komGikk(p)) ? '<small>' + esc([p.stilling, R.komGikk(p) ? t("kom/gikk {0}", R.komGikk(p)) : ""].filter(Boolean).join(" · ")) + '</small>' : "") + '</span>' +
       (laast ? '<span class="dr-ms-t">' + esc(p.timer == null ? "" : tim(p.timer)) + ' t</span>'
         : '<input class="dr-ms-timer" type="number" min="0" step="0.5" inputmode="decimal" data-ms-timer="' + i + '" value="' + esc(p.timer == null ? "" : p.timer) + '" aria-label="' + esc(t("Timer")) + '">' +
           '<button class="dr-x" data-ms-fjern="' + i + '" title="' + esc(t("Fjern personen")) + '">' + ikon("lukk") + '</button>') +
@@ -382,6 +382,7 @@ function kobleLyttere(el) {
     qa("[data-ms-timer]").forEach(inp => inp.oninput = () => {
       const p = r.mannskap[Number(inp.dataset.msTimer)]; if (!p) return;
       p.timer = inp.value === "" ? null : Math.round(Math.max(0, Number(inp.value) || 0) * 10) / 10;
+      if (p.inn || p.ut || p.timerKilde) p.timerKilde = "manuell";   // runde J: timene er rettet for hånd
       const s = sumEl(); if (s) s.textContent = mannskapSumTekst(r);
       const g = R.mannskapGrupper(r.mannskap).find(x => x.personer.some(y => y.p === p));
       const gs = inp.closest(".dr-ms-firma") && inp.closest(".dr-ms-firma").querySelector(".dr-ms-gsum");

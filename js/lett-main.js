@@ -281,6 +281,14 @@ window.åpneFraUrl = åpneFraUrl;   // trinn 3 kaller denne
       S.lettProsjekt = prosjekt;   // trinn 5: markeringer og bilder hentes per prosjekt
       if (!svar.modeller || !svar.modeller.length) { feilEl.textContent = t("Ingen modeller i prosjektet ennå."); visFeilKnapp(feilEl.textContent); return; }
       lagreApning(prosjekt, svar.modeller);   // så neste åpning virker uten dekning
+      // 🕘 Runde J: ansattkoden gir valget «Sjekk inn på jobb» / «Åpne modellen».
+      // Montørkoden går rett til modellen som før.
+      try { (await import("./bp-oppmote.js")).huskRolle(prosjekt, svar.rolle || "montor"); } catch (_) { /* husker ikke */ }
+      if (svar.rolle === "ansatt") {
+        const O = await import("./bp-oppmote.js");
+        O.visValg(prosjekt, () => visModeller(svar.modeller));
+        return;
+      }
       visModeller(svar.modeller);
     } catch (e) {
       feilEl.textContent = (e && e.tidsavbrudd)
@@ -341,11 +349,22 @@ window.åpneFraUrl = åpneFraUrl;   // trinn 3 kaller denne
     boks.appendChild(b);
   }
 
+  // 🕘 Runde J: ansattkaka gjelder fortsatt → valget uten å skrive koden igjen
+  if (fraUrl && navigator.onLine) {
+    import("./bp-oppmote.js").then(O => O.prøvGjenåpne(fraUrl, () => {
+      const lagret = lesApning(fraUrl);
+      if (lagret) apneLagret(lagret); else { const i = $("kodeInput"); if (i) i.focus(); }
+    })).catch(() => {});
+  }
+
   // Uten dekning i det hele tatt: hopp over kodeboksen. Å be en montør skrive
   // en kode som umulig kan sjekkes er å be ham gjøre noe vi VET ikke virker.
   if (!navigator.onLine) {
     const lagret = lesApning(fraUrl);
-    if (lagret) apneLagret(lagret);
+    // 🕘 Ansatt uten nett: valget står, og innsjekken legges i kø
+    if (lagret) import("./bp-oppmote.js").then(O => {
+      if (O.rolleFor(fraUrl) === "ansatt") O.visValg(fraUrl, () => apneLagret(lagret)); else apneLagret(lagret);
+    }).catch(() => apneLagret(lagret));
   }
 
   // Ingen Enter-knapp nødvendig: seks tegn skrevet → prøv med en gang

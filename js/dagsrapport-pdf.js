@@ -14,7 +14,7 @@
 import { t } from "./i18n.js";
 import { malBunn, malTopp, pdfFarger } from "./pdf-utseende.js";
 import { tilLatin1 } from "./skjema-pdf.js";
-import { bemanningSum, dagOgDato, kjoretoyTekst, mannskapGrupper, vaerMerker, vaerTekst } from "./dagsrapport-regn.js";
+import { bemanningSum, dagOgDato, kjoretoyTekst, komGikk, mannskapGrupper, vaerMerker, vaerTekst } from "./dagsrapport-regn.js";
 import { datoLang } from "./vaer-regn.js";
 
 const A4 = { b: 210, h: 297, marg: 15 };
@@ -215,9 +215,9 @@ function tegnDagSide(P, r, o) {
     for (const g of grupper) {
       rader.push([{ toString: () => [g.firma || t("Uten firma"), g.fag ? t(g.fag) || g.fag : ""].filter(Boolean).join(" · "), fet: true }, "",
         { toString: () => tall1(g.timer), fet: true }]);
-      for (const { p } of g.personer) rader.push(["   " + (p.navn || "–"), p.stilling || "", tall1(p.timer)]);
+      for (const { p } of g.personer) rader.push(["   " + (p.navn || "–"), [p.stilling, komGikk(p)].filter(Boolean).join(" · "), tall1(p.timer)]);
     }
-    tabell(P, [{ t: t("Navn"), b: 0.5 }, { t: t("Stilling"), b: 0.32 }, { t: t("Timer"), b: 0.18, h: true }], rader,
+    tabell(P, [{ t: t("Navn"), b: 0.44 }, { t: t("Stilling · kom/gikk"), b: 0.4 }, { t: t("Timer"), b: 0.16, h: true }], rader,
       [t("Sum") + " – " + t("{0} personer", sum.antall), "", tall1(sum.timer)]);
   }
   if (!mannskap) {
