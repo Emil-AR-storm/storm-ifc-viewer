@@ -223,10 +223,16 @@ function plasserBryter() {
   if (erTelefon()) { if (br.parentNode !== document.body) document.body.appendChild(br); }
   else if (br.parentNode !== topp) topp.insertBefore(br, $("btnInnlogging") || null);
   const fast = br.offsetWidth > 0 && window.getComputedStyle(br).position === "fixed";
-  if (!fast) { rot.style.removeProperty("--bpm-plass"); rot.style.removeProperty("--bpm-topp"); return; }
+  // 16.11 (Emil, iPhone): toppbaren slutter der bryteren begynner, så bak
+  // bryteren sto modellen og ikke linjas bakgrunn. #bpmBak fyller den biten.
+  let bak = $("bpmBak");
+  if (!fast) { rot.style.removeProperty("--bpm-plass"); rot.style.removeProperty("--bpm-topp"); rot.style.removeProperty("--bpm-hoyde"); if (bak) bak.hidden = true; return; }
   rot.style.setProperty("--bpm-plass", (br.offsetWidth + 12) + "px");
   const r = topp.getBoundingClientRect();
   rot.style.setProperty("--bpm-topp", Math.round(r.top + (r.height - br.offsetHeight) / 2) + "px");
+  rot.style.setProperty("--bpm-hoyde", Math.round(r.bottom) + "px");
+  if (!bak) { bak = document.createElement("div"); bak.id = "bpmBak"; bak.setAttribute("aria-hidden", "true"); document.body.insertBefore(bak, br); }
+  bak.hidden = false;
 }
 
 const erTelefon = () => typeof window !== "undefined" && window.innerWidth <= 640;
