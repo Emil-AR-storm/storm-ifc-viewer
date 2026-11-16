@@ -3387,3 +3387,25 @@ html[data-tema="lys"] .op-knapp.ut { background: #1f2329; border-color: #1f2329;
 .op-avkryss input { width: 20px; height: 20px; accent-color: var(--accent); }
 .op-kn { display: flex; gap: 8px; justify-content: flex-end; }
 .op-kn .op-knapp:disabled { opacity: .45; }
+
+/* ---------- Forslag 1A runde 4 (16.11): navn + status på første skjerm ---------- */
+.op-meg { display: flex; flex-direction: column; gap: 3px; padding: 12px 14px; border: 2px solid var(--accent); border-radius: 12px; background: var(--panel2); overflow-wrap: anywhere; }
+.op-meg b { font-size: 17px; }
+.op-meg-status { font-size: 14px; color: var(--muted); }
+.op-meg-status.inne { color: var(--ok); font-weight: 700; }
+.op-stor.op-ut { background: #2b2f36; border-color: #3a404a; color: #fff; }
+html[data-tema="lys"] .op-stor.op-ut { background: #1f2329; border-color: #1f2329; }
+.op-stor:disabled { opacity: .55; }
+
+/* ---------- Forslag 5B runde 4 (16.11): «Venter på nett»-stripe under toppbaren ---------- */
+#venteStripe { position: fixed; left: 0; right: 0; top: 52px; z-index: 25; background: #3a2f0b; border-bottom: 1px solid #c99a16; color: #ffd35a; font-size: 13.5px; font-weight: 700; padding: 0 12px; box-sizing: border-box; }
+html[data-tema="lys"] #venteStripe { background: #fff4cf; color: #6b4e00; border-bottom-color: #d9a400; }
+#venteStripe .vs-rad { display: flex; align-items: center; gap: 10px; min-height: 36px; }
+#venteStripe .vs-tekst { flex: 1; min-width: 0; text-align: left; background: none; border: 0; color: inherit; font: inherit; padding: 6px 0; cursor: pointer; overflow-wrap: anywhere; }
+#venteStripe .vs-send { flex: none; background: none; border: 0; color: inherit; font: inherit; text-decoration: underline; padding: 6px 2px; cursor: pointer; }
+#venteStripe .vs-send:disabled { opacity: .6; text-decoration: none; }
+#venteStripe .vs-detalj { font-weight: 400; font-size: 12.5px; padding: 0 0 8px; }
+
+/* ---------- Forslag 7C runde 4 (16.11): «Mest brukt» / «Andre» i «Mer» ---------- */
+.vg-mer-overskrift { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); padding: 4px 8px 0; }
+.vg-mer-overskrift + button { margin-top: 0; }
