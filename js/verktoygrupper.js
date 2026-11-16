@@ -306,9 +306,10 @@ function byggMer() {
   m.hidden = true;
   m.addEventListener("click", (e) => {
     const x = e.target.closest && e.target.closest("[data-mer-x]");
-    if (x) { const o = $(x.dataset.merX); lukkMer(true); if (o) o.click(); return; }
+    if (x) { tellBruk("x:" + x.dataset.merX); const o = $(x.dataset.merX); lukkMer(true); if (o) o.click(); return; }
     const p = e.target.closest && e.target.closest("[data-mer-velg]");
     if (!p) return;
+    tellBruk("g:" + p.dataset.merVelg);
     const orig = document.querySelector('#verktoygrupper button[data-velg="' + p.dataset.merVelg + '"]');
     lukkMer(true);
     if (orig) orig.click();          // samme vei som et vanlig trykk (låsen også)
@@ -327,6 +328,26 @@ function byggMer() {
   document.body.appendChild(m);
 }
 
+// 🧠 Forslag 7 runde 4, valg C (Emil 16.11): «linja står, menyen lærer».
+// Toppbaren endrer seg aldri. Inne i «Mer» står det du oftest velger der øverst
+// under «Mest brukt» (maks 3), resten under «Andre» i vanlig rekkefølge.
+// Telles bare på denne telefonen/PC-en (localStorage), aldri sendt noe sted.
+const BRUK_NOKKEL = "vg_mer_bruk";
+export const MAKS_MEST_BRUKT = 3;
+function lesBruk() { try { const o = JSON.parse(localStorage.getItem(BRUK_NOKKEL) || "{}"); return o && typeof o === "object" ? o : {}; } catch (_) { return {}; } }
+export function tellBruk(nøkkel) {
+  const o = lesBruk();
+  o[nøkkel] = Math.min(9999, (Number(o[nøkkel]) || 0) + 1);
+  try { localStorage.setItem(BRUK_NOKKEL, JSON.stringify(o)); } catch (_) { /* privat modus */ }
+}
+// Ren regel (testes): hvilke punkter er «mest brukt»? Bare de som er valgt
+// minst 2 ganger, flest først; likt antall → vanlig rekkefølge.
+export function mestBrukt(nøkler, bruk) {
+  return nøkler.map((k, i) => ({ k, i, n: Number(bruk[k]) || 0 }))
+    .filter(x => x.n >= 2).sort((a, b) => b.n - a.n || a.i - b.i)
+    .slice(0, MAKS_MEST_BRUKT).map(x => x.k);
+}
+
 // Punktene bygges hver gang menyen åpnes: da er teksten alltid den samme som
 // på originalknappen (språk), og «valgt» og låsen er alltid riktig.
 function fyllMeny() {
@@ -340,20 +361,27 @@ function fyllMeny() {
     let tekst = ((orig.querySelector(".btn-t") || {}).textContent || orig.title || orig.getAttribute("aria-label") || orig.id).trim();
     // Markeringslista viser bare antallet på knappen («0») – i menyen trengs navnet
     if (orig.id === "btnComments") tekst = t("Markeringer") + " (" + (orig.textContent.trim() || "0") + ")";
-    return '<button type="button" role="menuitem" tabindex="-1" data-mer-x="' + esc(orig.id) + '">' +
-      (svg ? svg.outerHTML : "") + '<span class="btn-t">' + esc(tekst) + '</span></button>';
-  }).join("");
-  m.innerHTML = ute.map(orig => {
+    return { k: "x:" + orig.id, html: '<button type="button" role="menuitem" tabindex="-1" data-mer-x="' + esc(orig.id) + '">' +
+      (svg ? svg.outerHTML : "") + '<span class="btn-t">' + esc(tekst) + '</span></button>' };
+  });
+  const gHtml = ute.map(orig => {
     const g = GRUPPER.find(x => x.id === orig.dataset.velg);
     const tekst = (orig.querySelector(".btn-t") || orig).textContent.trim();
     const aktiv = orig.classList.contains("active");
-    return '<button type="button" role="menuitem" tabindex="-1" data-mer-velg="' + esc(orig.dataset.velg) + '"' +
+    return { k: "g:" + orig.dataset.velg, html: '<button type="button" role="menuitem" tabindex="-1" data-mer-velg="' + esc(orig.dataset.velg) + '"' +
       (aktiv ? ' class="active" aria-current="true"' : '') +
       (orig.title ? ' title="' + esc(orig.title) + '"' : '') + '>' +
       ikon(g ? g.ikonNavn : "mer") + '<span class="btn-t">' + esc(tekst) + '</span>' +
       (orig.classList.contains("laast") ? '<span class="laas-ikon" aria-hidden="true">🔒</span>' : '') +
-      '</button>';
-  }).join("") + xHtml;
+      '</button>' };
+  });
+  const alle = gHtml.concat(xHtml);
+  const topp = mestBrukt(alle.map(x => x.k), lesBruk());
+  const overskrift = (tekst) => '<div class="vg-mer-overskrift" role="presentation">' + esc(tekst) + '</div>';
+  m.innerHTML = topp.length && alle.length > topp.length
+    ? overskrift(t("Mest brukt")) + topp.map(k => alle.find(x => x.k === k).html).join("") +
+      overskrift(t("Andre")) + alle.filter(x => !topp.includes(x.k)).map(x => x.html).join("")
+    : alle.map(x => x.html).join("");
   return [...m.querySelectorAll("[role=menuitem]")];
 }
 

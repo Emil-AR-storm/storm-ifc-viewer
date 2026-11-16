@@ -137,16 +137,20 @@ export async function tegnNettBanner() {
   // (markers → nett → markers).
   let hendelser = 0;
   try { hendelser = (S.tellUsendteHendelser && S.tellUsendteHendelser()) || 0; } catch (_) {}
-  const usendt = vedlegg + hendelser;
+  let oppmote = 0;
+  try { oppmote = (S.tellOppmoteKo && S.tellOppmoteKo()) || 0; } catch (_) {}
+  const usendt = vedlegg + hendelser + oppmote;
   const avNett = typeof navigator !== "undefined" && navigator.onLine === false;
+
+  // Forslag 5 runde 4, valg B: «uten nett» og «N ting venter» står i stripa
+  // under toppbaren, ikke lenger her nede.
+  tegnVenteStripe({ hendelser, vedlegg, oppmote, avNett });
 
   const deler = [];
   let farge = "var(--warn)";
 
   if (sisteFeil) farge = "var(--danger)";
   if (lagretKopiTid) deler.push(t("Markeringer sist hentet {0}", klokkeslett(lagretKopiTid)));
-  if (avNett) deler.push(t("Ingen nett – det du gjør lagres og sendes når du får dekning."));
-  if (usendt) deler.push(t("{0} ikke sendt", usendt));
 
   if (!sisteFeil && !deler.length && !nyVersjonHandling) {
     el.style.display = "none";
@@ -207,6 +211,72 @@ export async function tegnNettBanner() {
   settHoyde(el, el.offsetHeight);
 }
 
+// ---------- «Venter på nett»-stripa (forslag 5 runde 4, valg B, Emil 16.11) ----------
+// Gul stripe over hele bredden rett under toppbaren så lenge noe venter på å
+// bli sendt (markeringer, vedlegg, inn-/utsjekk) eller telefonen er uten nett.
+// Trykk på teksten → hva som venter. «Send nå» → prøver alle køene med en gang.
+// Køene eies fortsatt av markers.js, bilder.js og bp-oppmote.js – de setter
+// krokene S.toemHendelser, S.toemVedlegg og S.sendOppmoteKo (ingen sirkel).
+let stripeDetaljer = false, stripeMelding = "";
+export function venteTekst(o) {
+  const n = (o.hendelser || 0) + (o.vedlegg || 0) + (o.oppmote || 0);
+  if (!n && !o.avNett) return "";
+  if (!n) return t("Uten nett – det du gjør lagres og sendes når du får dekning.");
+  const ting = n === 1 ? t("1 ting venter") : t("{0} ting venter", n);
+  return o.avNett ? t("Uten nett – {0}", ting) : t("{0} på å bli sendt", ting);
+}
+export function venteDetaljer(o) {
+  const d = [];
+  if (o.oppmote) d.push(o.oppmote === 1 ? t("1 inn-/utsjekk") : t("{0} inn-/utsjekk", o.oppmote));
+  if (o.hendelser) d.push(o.hendelser === 1 ? t("1 endring på markeringer") : t("{0} endringer på markeringer", o.hendelser));
+  if (o.vedlegg) d.push(o.vedlegg === 1 ? t("1 bilde/vedlegg") : t("{0} bilder/vedlegg", o.vedlegg));
+  return d.join(" · ");
+}
+function plasserStripe(el) {
+  const topp = document.getElementById("topbar");
+  const r = topp && topp.getBoundingClientRect ? topp.getBoundingClientRect() : null;
+  el.style.top = Math.max(0, Math.round(r && r.height ? r.bottom : 0)) + "px";
+}
+function tegnVenteStripe(o) {
+  if (typeof document === "undefined" || !document.body) return;
+  let el = document.getElementById("venteStripe");
+  const tekst = venteTekst(o);
+  if (!tekst) { if (el) el.remove(); stripeDetaljer = false; stripeMelding = ""; return; }
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "venteStripe"; el.setAttribute("role", "status");
+    document.body.appendChild(el);
+  }
+  const n = (o.hendelser || 0) + (o.vedlegg || 0) + (o.oppmote || 0);
+  el.innerHTML = "";
+  const rad = document.createElement("div"); rad.className = "vs-rad";
+  const tx = document.createElement("button");
+  tx.type = "button"; tx.className = "vs-tekst"; tx.textContent = tekst;
+  tx.setAttribute("aria-expanded", stripeDetaljer ? "true" : "false");
+  tx.onclick = () => { stripeDetaljer = !stripeDetaljer; tegnNettBanner(); };
+  rad.appendChild(tx);
+  if (n) {
+    const send = document.createElement("button");
+    send.type = "button"; send.className = "vs-send"; send.id = "venteSendNa";
+    send.textContent = t("Send nå");
+    send.onclick = async () => {
+      send.disabled = true; send.textContent = t("Sender …");
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        stripeMelding = t("Fortsatt uten nett – sendes av seg selv når dekningen kommer.");
+      } else {
+        stripeMelding = "";
+        for (const f of [S.sendOppmoteKo, S.toemHendelser, S.toemVedlegg]) { try { if (f) await f(); } catch (_) {} }
+      }
+      tegnNettBanner();
+    };
+    rad.appendChild(send);
+  }
+  el.appendChild(rad);
+  const ekstra = [stripeDetaljer && n ? venteDetaljer(o) : "", stripeMelding].filter(Boolean);
+  if (ekstra.length) { const d = document.createElement("div"); d.className = "vs-detalj"; d.textContent = ekstra.join(" — "); el.appendChild(d); }
+  plasserStripe(el);
+}
+
 // Minikartet, snitt-/målelinja og hintet bor også nederst. De flyttes opp av
 // --nett-hoyde i css/storm.css. Høyden MÅLES i stedet for å gjettes, fordi
 // teksten kan bli tre linjer på en smal telefon — og en gjettet høyde ville
@@ -230,6 +300,8 @@ function settHoyde(el, px) {
 if (LETT && typeof addEventListener === "function") {
   addEventListener("online", () => meldNettfeil(""));
   addEventListener("offline", tegnNettBanner);
+  addEventListener("online", tegnNettBanner);
+  addEventListener("resize", () => { const el = document.getElementById("venteStripe"); if (el) plasserStripe(el); });
   setInterval(tegnNettBanner, 30000);
   // Første tegning etter at resten av modulene har rukket å sette krokene sine.
   setTimeout(tegnNettBanner, 0);

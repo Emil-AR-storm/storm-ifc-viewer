@@ -202,6 +202,7 @@ export async function toemVedleggKo(stille) {
 // bare fordi han åpnet modellen.
 if (LETT) {
   addEventListener("online", () => toemVedleggKo());
+  S.toemVedlegg = () => toemVedleggKo();   // «Send nå» i venter-stripa (nett.js, 16.11)
   setInterval(() => toemVedleggKo(), 60000);
   setTimeout(() => toemVedleggKo(true), 2500);
 }

@@ -2,7 +2,9 @@
 //
 // BYGGEPLAN-Storm-IFC-oppmote-ansattkode-2026-11-13.md, punkt 5.
 //   • Montørkoden: rett til modellen som før – ingen oppmøte.
-//   • Ansattkoden: valgskjerm «Sjekk inn på jobb» / «Åpne modellen».
+//   • Ansattkoden: valgskjerm «Sjekk inn på jobb» / «Åpne modellen». Husker
+//     telefonen navnet: navn + status øverst og «Sjekk ut»/«Sjekk inn som …»
+//     rett på første skjerm (forslag 1A, 16.11).
 //   • Sjekk inn-skjermen: lista fra GET /oppmote. Navnet telefonen husker
 //     (bp_navn_<nr>) står øverst med rød ramme, og bare den knappen er aktiv.
 //     Knappen veksler Sjekk inn (rød) ↔ Sjekk ut (mørk).
@@ -12,9 +14,9 @@
 //     må krysses av før «Sjekk inn» blir aktiv. «Avbryt» lagrer ingenting.
 //   • Uten nett: trykket legges i kø (localStorage) med telefonens tid og
 //     sendes når nettet er tilbake (Workeren merker det fraKo).
-import { $, esc } from "./state.js";
+import { $, esc, S } from "./state.js";
 import { t } from "./i18n.js";
-import { hentMedFrist } from "./nett.js";
+import { hentMedFrist, tegnNettBanner } from "./nett.js";
 
 const KO = "bp_oppmote_ko";
 const les = (k, std) => { try { const v = localStorage.getItem(k); return v == null ? std : JSON.parse(v); } catch (_) { return std; } };
@@ -52,7 +54,7 @@ export function posisjon(frist) {
 
 // ---------- Køen (uten nett) ----------
 export const kø = () => les(KO, []);
-function leggIKo(post) { const k = kø(); k.push(post); skriv(KO, k.slice(-50)); }
+function leggIKo(post) { const k = kø(); k.push(post); skriv(KO, k.slice(-50)); try { tegnNettBanner(); } catch (_) {} }
 // Sender det som ligger i køen. 409 (tilstanden stemmer ikke lenger) og 4xx
 // kastes; 428 (må lese informasjonen) og nettfeil blir liggende.
 export async function sendKo() {
@@ -66,12 +68,16 @@ export async function sendKo() {
     } catch (_) { igjen.push(p); }
   }
   skriv(KO, igjen);
+  try { tegnNettBanner(); } catch (_) {}
   return { sendt, igjen: igjen.length };
 }
+// Krokene venter-stripa i nett.js bruker (forslag 5B, 16.11)
+S.tellOppmoteKo = () => kø().length;
+S.sendOppmoteKo = () => sendKo().then(r => { if (r.sendt && tilstand.nr && $("bpOppmote")) last(); return r; });
 if (typeof window !== "undefined") window.addEventListener("online", () => { sendKo().then(r => { if (r.sendt && tilstand.nr) last(); }); });
 
 // ---------- Skjermene ----------
-const tilstand = { nr: "", liste: [], dato: "", kvittering: "", feil: "", åpneModell: null, opptatt: false, nyttNavn: false };
+const tilstand = { skjerm: "valg", lastet: false, nr: "", liste: [], dato: "", kvittering: "", feil: "", åpneModell: null, opptatt: false, nyttNavn: false };
 export const _tilstand = tilstand;
 
 function rot() {
@@ -82,23 +88,60 @@ function rot() {
 export function lukk() { const el = $("bpOppmote"); if (el) el.remove(); const d = $("opInfo"); if (d) d.remove(); }
 
 // Skjerm 1: valget
+// Forslag 1 runde 4, valg A (16.11): husker telefonen navnet, står navn og
+// status øverst med rød ramme, og én stor knapp sjekker inn/ut direkte –
+// uten å gå via lista. «Se hele lista / ikke meg» åpner lista som før.
 export function visValg(nr, åpneModell) {
   tilstand.nr = nr; tilstand.åpneModell = åpneModell;
-  sendKo().catch(() => {});
-  const el = rot();
-  el.innerHTML = '<div class="op-kort op-valg">' +
-    '<div class="op-topp"><b>' + esc(t("Byggeplass {0}", nr)) + '</b><span>' + esc(t("Storm-ansatt")) + '</span></div>' +
-    '<button class="op-stor primary" id="opSjekkInn">' + esc(t("Sjekk inn på jobb")) + '<small>' + esc(t("Registrer når du kommer og går")) + '</small></button>' +
-    '<button class="op-stor" id="opModell">' + esc(t("Åpne modellen")) + '<small>' + esc(t("3D-modellen, markeringer og tegninger")) + '</small></button>' +
-    (mittNavn(nr) ? '<p class="op-liten">' + esc(t("Denne telefonen: {0}", mittNavn(nr))) + '</p>' : "") + '</div>';
-  $("opSjekkInn").onclick = () => visListe();
+  tilstand.skjerm = "valg"; tilstand.lastet = false; tilstand.kvittering = ""; tilstand.feil = "";
+  const meg = mittNavn(nr);
+  // Sender køen først, så statusen som hentes etterpå er riktig
+  sendKo().catch(() => {}).finally(() => { if (meg && tilstand.skjerm === "valg" && tilstand.nr === nr) last(); });
+  tegn();
+}
+
+function valgStatus(p) {
+  if (p.venter) return p.inne ? t("Inne (venter på nett)") : t("Ute (venter på nett)");
+  if (p.inne) return t("Inne siden {0}", p.inn);
+  if (p.ut) return t("Gikk {0}", p.ut);
+  return t("Ikke sjekket inn i dag");
+}
+function tegnValg() {
+  const el = rot(), nr = tilstand.nr, meg = mittNavn(nr), åpneModell = tilstand.åpneModell;
+  const topp = '<div class="op-topp"><b>' + esc(t("Byggeplass {0}", nr)) + '</b><span>' + esc(t("Storm-ansatt")) + '</span></div>';
+  const modellKnapp = '<button class="op-stor" id="opModell">' + esc(t("Åpne modellen")) + '<small>' + esc(t("3D-modellen, markeringer og tegninger")) + '</small></button>';
+  if (!meg) {
+    // Telefonen vet ikke hvem du er ennå: velg navn i lista først
+    el.innerHTML = '<div class="op-kort op-valg">' + topp +
+      '<button class="op-stor primary" id="opSjekkInn">' + esc(t("Sjekk inn på jobb")) + '<small>' + esc(t("Registrer når du kommer og går")) + '</small></button>' +
+      modellKnapp + '</div>';
+    $("opSjekkInn").onclick = () => visListe();
+  } else {
+    const p = tilstand.liste.find(x => nk(x.navn) === nk(meg)) || { navn: meg, inne: false, inn: "", ut: "" };
+    const klar = tilstand.lastet && !tilstand.opptatt;
+    const knapp = !tilstand.lastet
+      ? (tilstand.feil ? "" : '<button class="op-stor" id="opDirekte" disabled>' + esc(t("Henter status …")) + '</button>')
+      : p.inne
+        ? '<button class="op-stor op-ut" id="opDirekte"' + (klar ? "" : " disabled") + '>' + esc(t("Sjekk ut")) + '<small>' + esc(t("Registrer at du går for dagen")) + '</small></button>'
+        : '<button class="op-stor primary" id="opDirekte"' + (klar ? "" : " disabled") + '>' + esc(t("Sjekk inn som {0}", meg)) + '<small>' + esc(t("Registrer at du er på jobb")) + '</small></button>';
+    el.innerHTML = '<div class="op-kort op-valg">' + topp +
+      '<div class="op-meg"><b>' + esc(meg) + '</b>' +
+      (tilstand.lastet ? '<span class="op-meg-status' + (p.inne ? " inne" : "") + '">' + (p.inne ? "● " : "") + esc(valgStatus(p)) + '</span>' : "") + '</div>' +
+      (tilstand.kvittering ? '<div class="op-kvittering">✓ ' + esc(tilstand.kvittering) + '</div>' : "") +
+      (tilstand.feil ? '<div class="op-feil">' + esc(tilstand.feil) + '</div>' : "") +
+      knapp + modellKnapp +
+      '<button class="op-lenke" id="opHeleLista">' + esc(t("Se hele lista / ikke meg")) + '</button></div>';
+    const d = $("opDirekte"); if (d) d.onclick = () => trykk(meg);
+    $("opHeleLista").onclick = () => visListe();
+  }
   $("opModell").onclick = () => { lukk(); if (åpneModell) åpneModell(); };
 }
+function tegn() { if (tilstand.skjerm === "valg") tegnValg(); else tegnListe(); }
 
 async function last() {
   try {
     const r = await hentMedFrist("/oppmote?prosjekt=" + encodeURIComponent(tilstand.nr), { cache: "no-store" });
-    if (r.status === 403) { tilstand.feil = t("Ansattkoden gjelder ikke lenger. Skriv koden på nytt."); tegn(); return; }
+    if (r.status === 403) { tilstand.feil = t("Ansattkoden gjelder ikke lenger. Skriv koden på nytt."); tilstand.lastet = false; tegn(); return; }
     if (!r.ok) throw new Error("HTTP " + r.status);
     const j = await r.json();
     tilstand.liste = j.personer || []; tilstand.dato = j.dato || ""; tilstand.feil = "";
@@ -108,6 +151,7 @@ async function last() {
     if (lagret) { tilstand.liste = lagret.personer || []; tilstand.dato = lagret.dato || ""; }
     tilstand.feil = t("Ingen nett – trykket lagres på telefonen og sendes når nettet er tilbake.");
   }
+  tilstand.lastet = true;
   // Ventende trykk i køen vises som utført
   for (const p of kø().filter(x => x.prosjekt === tilstand.nr)) {
     const x = tilstand.liste.find(y => nk(y.navn) === nk(p.navn));
@@ -118,7 +162,7 @@ async function last() {
 
 // Skjerm 2: lista
 export async function visListe() {
-  tilstand.kvittering = ""; tilstand.nyttNavn = false;
+  tilstand.skjerm = "liste"; tilstand.kvittering = ""; tilstand.nyttNavn = false;
   tegn();
   await last();
 }
@@ -129,7 +173,7 @@ function statusTekst(p) {
   if (p.ut) return t("Gikk {0}", p.ut);
   return "—";
 }
-function tegn() {
+function tegnListe() {
   const el = rot(), nr = tilstand.nr, meg = mittNavn(nr);
   const liste = tilstand.liste.slice();
   if (meg && !liste.some(p => nk(p.navn) === nk(meg))) liste.unshift({ navn: meg, inne: false, inn: "", ut: "", ukjent: true });
@@ -184,7 +228,7 @@ async function send(post, p) {
     const r = await hentMedFrist("/oppmote", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(post) });
     const j = await r.json().catch(() => ({}));
     if (r.status === 428 && j.trengerBekreftelse) { tilstand.opptatt = false; tilstand.kvittering = ""; tegn(); visInfo(j, post, p); return; }
-    if (r.status === 409) { tilstand.kvittering = ""; tilstand.feil = j.inne ? t("Du var allerede sjekket inn.") : t("Du var allerede sjekket ut."); await last(); return; }
+    if (r.status === 409) { tilstand.kvittering = ""; const f = j.inne ? t("Du var allerede sjekket inn.") : t("Du var allerede sjekket ut."); await last(); tilstand.feil = f; return; }
     if (!r.ok) throw Object.assign(new Error(j.feil || ("HTTP " + r.status)), { http: true });
     tilstand.feil = "";
     tilstand.kvittering = (j.hva === "inn" ? t("Sjekket inn {0}", j.tid) : t("Sjekket ut {0}", j.tid)) +

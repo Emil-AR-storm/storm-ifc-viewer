@@ -386,6 +386,7 @@ if (LETT) {
   // Kroken nett.js teller med. Køen ligger her og skal fortsette å ligge her —
   // nett.js skal bare kunne SE den, ikke eie den. Samme mønster som S.pushAngre.
   S.tellUsendteHendelser = () => koLes().length;
+  S.toemHendelser = toemKo;   // «Send nå» i venter-stripa (nett.js, 16.11)
 }
 
 // ---- Delte markeringer (lagres som JSON i SharePoint: IFC-modeller/Markeringer) ----
