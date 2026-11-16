@@ -3213,6 +3213,8 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Fjern raden": "Pašalinti eilutę",
   "Bemanning": "Darbuotojai",
   "samme som sist ({0})": "kaip praėjusį kartą ({0})",
+  "Hold skjermen våken": "Neužgesinti ekrano",
+  "Skjermen slukker ikke mens modellen er åpen. Etter 10 minutter uten berøring får den slukke igjen, så batteriet spares.": "Kol modelis atidarytas, ekranas neužgęsta. Po 10 minučių be prisilietimo jis vėl gali užgesti, kad būtų taupoma baterija.",
   "Byggeplass {0}": "Statybvietė {0}",
   "Storm-ansatt": "Storm darbuotojas",
   "Sjekk inn på jobb": "Registruotis darbe",

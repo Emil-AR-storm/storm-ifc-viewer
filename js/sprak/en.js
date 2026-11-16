@@ -3213,6 +3213,8 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Fjern raden": "Remove row",
   "Bemanning": "Manning",
   "samme som sist ({0})": "same as last time ({0})",
+  "Hold skjermen våken": "Keep the screen on",
+  "Skjermen slukker ikke mens modellen er åpen. Etter 10 minutter uten berøring får den slukke igjen, så batteriet spares.": "The screen stays on while the model is open. After 10 minutes without a touch it may turn off again, to save battery.",
   "Byggeplass {0}": "Site {0}",
   "Storm-ansatt": "Storm employee",
   "Sjekk inn på jobb": "Check in at work",

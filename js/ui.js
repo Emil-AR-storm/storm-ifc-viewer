@@ -161,7 +161,11 @@ function renderSettings() {
   // 02.11). Skrives i kodeboksen første gang — endres her.
   if (LETT) html += '<h4>' + t("Navnet ditt") + '</h4>' +
     '<div class="set-row"><input type="text" id="stNavn" maxlength="40" autocomplete="name" style="flex:1" value="' + esc(montorNavn()) + '"></div>' +
-    '<p class="set-hjelp">' + t("Står på markeringene, bildene og ferdigmeldingene dine.") + '</p>';
+    '<p class="set-hjelp">' + t("Står på markeringene, bildene og ferdigmeldingene dine.") + '</p>' +
+    // 🔆 Hold skjermen våken (Emil 16.11): på som standard, slipper etter 10 min uten berøring
+    '<div class="set-row"><span class="n">' + t("Hold skjermen våken") + '</span>' +
+    '<input type="checkbox" id="stVaaken"' + (S.settings.holdVaaken === false ? "" : " checked") + '></div>' +
+    '<p class="set-hjelp">' + t("Skjermen slukker ikke mens modellen er åpen. Etter 10 minutter uten berøring får den slukke igjen, så batteriet spares.") + '</p>';
   html += '<h4>' + t("Kamera") + '</h4>' +
     '<div class="set-row"><span class="n">' + t("Rotasjonshastighet") + '</span>' +
     '<input type="range" id="stRot" min="0.3" max="3" step="0.1" value="' + S.settings.rotSpeed + '"></div>' +
@@ -318,6 +322,7 @@ function renderSettings() {
   $("stZoom").oninput = (e) => { S.settings.zoomSpeed = Number(e.target.value); saveSettings(); };
   $("stInv").onchange = (e) => { S.settings.invertZoom = e.target.checked; saveSettings(); };
   $("stEvig").onchange = (e) => { S.settings.evigZoom = e.target.checked; saveSettings(); };
+  if ($("stVaaken")) $("stVaaken").onchange = (e) => { S.settings.holdVaaken = e.target.checked; saveSettings(); if (S.vaaken) S.vaaken.oppdater(); };
   if ($("stTerreng")) $("stTerreng").onchange = (e) => {
     S.settings.terrengBygg = e.target.checked; saveSettings();
     if (S.oppdaterTerrengBygg) S.oppdaterTerrengBygg();

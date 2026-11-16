@@ -3213,6 +3213,8 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Fjern raden": "Usuń wiersz",
   "Bemanning": "Obsada",
   "samme som sist ({0})": "jak ostatnio ({0})",
+  "Hold skjermen våken": "Nie wygaszaj ekranu",
+  "Skjermen slukker ikke mens modellen er åpen. Etter 10 minutter uten berøring får den slukke igjen, så batteriet spares.": "Ekran nie gaśnie, gdy model jest otwarty. Po 10 minutach bez dotyku może zgasnąć, aby oszczędzać baterię.",
   "Byggeplass {0}": "Budowa {0}",
   "Storm-ansatt": "Pracownik Storm",
   "Sjekk inn på jobb": "Zamelduj się w pracy",

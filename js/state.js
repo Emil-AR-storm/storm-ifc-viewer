@@ -29,6 +29,7 @@ export const DEFAULT_SETTINGS = {
   // scene.js). AV som standard: den som ikke har bedt om det, skal ikke
   // plutselig fly tvers gjennom stålet.
   evigZoom: false,
+  holdVaaken: true,    // 🔆 byggeplassen: skjermen våken mens modellen er åpen (16.11)
   // ⛰ Terrenget på byggeplass-siden (Emil 30.09). PÅ som standard — Emil valgte
   // kartet og hele utsnittet. Kan slås av i Innstillinger på en treg telefon.
   terrengBygg: true,
