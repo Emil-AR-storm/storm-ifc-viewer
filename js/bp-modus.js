@@ -255,6 +255,8 @@ export function settModus(ny) {
   oppdaterStoy();
   S.miniSkitten = true;
   oppdater();
+  // Full ↔ Enkel: verktøygruppene måles på nytt («Mer» i Full, Emil 16.11)
+  try { window.dispatchEvent(new Event("resize")); } catch (_) { /* gammel nettleser */ }
 }
 
 // «mer info her →»: kort forklaring under bryteren

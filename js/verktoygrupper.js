@@ -247,6 +247,8 @@ function følgKnapper() {
 // sidelengs på én linje. Der er «Mer» av, og alle gruppene står som før.
 
 const SMAL = 640;                 // samme grense som js/mobile.js
+// Byggeplassen i Full (16.11): disse toppknappene går også i «Mer» når de ikke får plass
+const EKSTRA_I_MER = ["btnComments", "btnFit", "btnHjelp", "btnTema"];
 const STATUS_PLASS = 110;         // så mye «0 elementer · …» får beholde, høyst
 
 // Ren logikk: hvilke grupper får plass? `grupper` = [{ id, w }] i rekkefølge,
@@ -303,6 +305,8 @@ function byggMer() {
   m.setAttribute("aria-labelledby", "vgMer");
   m.hidden = true;
   m.addEventListener("click", (e) => {
+    const x = e.target.closest && e.target.closest("[data-mer-x]");
+    if (x) { const o = $(x.dataset.merX); lukkMer(true); if (o) o.click(); return; }
     const p = e.target.closest && e.target.closest("[data-mer-velg]");
     if (!p) return;
     const orig = document.querySelector('#verktoygrupper button[data-velg="' + p.dataset.merVelg + '"]');
@@ -329,6 +333,16 @@ function fyllMeny() {
   const m = merMeny();
   if (!m) return [];
   const ute = [...document.querySelectorAll("#verktoygrupper button[data-velg].vg-ute")];
+  // 🏗 Byggeplassen i Full: også vanlige toppknapper som ikke fikk plass (16.11)
+  const uteX = [...document.querySelectorAll("#topbar > button.vg-ute-x")];
+  const xHtml = uteX.map(orig => {
+    const svg = orig.querySelector("svg");
+    let tekst = ((orig.querySelector(".btn-t") || {}).textContent || orig.title || orig.getAttribute("aria-label") || orig.id).trim();
+    // Markeringslista viser bare antallet på knappen («0») – i menyen trengs navnet
+    if (orig.id === "btnComments") tekst = t("Markeringer") + " (" + (orig.textContent.trim() || "0") + ")";
+    return '<button type="button" role="menuitem" tabindex="-1" data-mer-x="' + esc(orig.id) + '">' +
+      (svg ? svg.outerHTML : "") + '<span class="btn-t">' + esc(tekst) + '</span></button>';
+  }).join("");
   m.innerHTML = ute.map(orig => {
     const g = GRUPPER.find(x => x.id === orig.dataset.velg);
     const tekst = (orig.querySelector(".btn-t") || orig).textContent.trim();
@@ -339,7 +353,7 @@ function fyllMeny() {
       ikon(g ? g.ikonNavn : "mer") + '<span class="btn-t">' + esc(tekst) + '</span>' +
       (orig.classList.contains("laast") ? '<span class="laas-ikon" aria-hidden="true">🔒</span>' : '') +
       '</button>';
-  }).join("");
+  }).join("") + xHtml;
   return [...m.querySelectorAll("[role=menuitem]")];
 }
 
@@ -399,7 +413,10 @@ function synligIFlyt(el) {
 
 function ytreBredde(el) {
   const cs = window.getComputedStyle(el);
-  return el.getBoundingClientRect().width + (parseFloat(cs.marginLeft) || 0) + (parseFloat(cs.marginRight) || 0);
+  // margin-left: auto (skyveren foran «mer info her» på byggeplassen) leses som
+  // hele den ledige plassen – den er ikke bredde knappen trenger (16.11).
+  const marg = (v) => { const n = parseFloat(v) || 0; return n > 24 ? 0 : n; };
+  return el.getBoundingClientRect().width + marg(cs.marginLeft) + marg(cs.marginRight);
 }
 
 // Toppbarens og verktøylinjas faktiske bunn → CSS-variabler. #toolbar,
@@ -423,8 +440,21 @@ function oppdaterHøyder() {
 export function tilpassToppbar() {
   const topp = $("topbar"), boks = $("verktoygrupper");
   if (!topp || !boks) return;
-  if (LETT) { oppdaterHøyder(); return; }     // byggeplassen: uendret, bare høyden følges
+  // 🏗 Byggeplassen i Full (Emil 16.11): «du må bla i verktøylinja for å finne
+  // ting» – det som ikke får plass, går i «Mer» også her, også på telefon.
+  // I Enkel er gruppene ikke i bruk: alt settes tilbake, bare høyden følges.
+  const bpFull = LETT && document.documentElement.dataset.bpModus === "full";
   const knapper = [...boks.querySelectorAll("button[data-velg]")];
+  // Vanlige toppknapper som også kan gå i «Mer» på byggeplassen (Full)
+  const ekstra = LETT ? EKSTRA_I_MER.map(id => $(id)).filter(Boolean) : [];
+  ekstra.forEach(k => k.classList.remove("vg-ute-x"));
+  if (LETT && !bpFull) {
+    knapper.forEach(k => k.classList.remove("vg-ute"));
+    if (merKnapp()) merKnapp().hidden = true;
+    lukkMer(false);
+    oppdaterHøyder();
+    return;
+  }
   const før = knapper.filter(k => k.classList.contains("vg-ute")).map(k => k.dataset.velg).join("|");
   const førTrang = topp.classList.contains("topp-trang");
 
@@ -442,7 +472,7 @@ export function tilpassToppbar() {
 
   // Telefon, ingen modell (gruppene skjult) eller ingen layout (jsdom): stopp her
   const bredde = topp.clientWidth;
-  if (window.innerWidth <= SMAL || !bredde || window.getComputedStyle(boks).display === "none") return ferdig();
+  if ((window.innerWidth <= SMAL && !bpFull) || !bredde || window.getComputedStyle(boks).display === "none") return ferdig();
   // «Mer» bygges først når det finnes en toppbar å måle (ikke i jsdom)
   byggMer();
   const mer = merKnapp();
@@ -451,7 +481,7 @@ export function tilpassToppbar() {
     const cs = window.getComputedStyle(topp);
     const innvendig = bredde - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
     const gap = parseFloat(cs.columnGap) || parseFloat(cs.gap) || 0;
-    const andre = [...topp.children].filter(el => el !== boks && synligIFlyt(el));
+    const andre = [...topp.children].filter(el => el !== boks && synligIFlyt(el) && !(bpFull && ekstra.includes(el)));
     let brukt = 0;
     for (const el of andre) {
       // Statusteksten krymper (ellipse) — den får bare beholde litt
@@ -465,8 +495,10 @@ export function tilpassToppbar() {
       (parseFloat(bcs.marginLeft) || 0) + (parseFloat(bcs.marginRight) || 0);
     const indreGap = parseFloat(bcs.columnGap) || parseFloat(bcs.gap) || 0;
     const ledig = innvendig - brukt - ramme - 1;     // 1 px slakk for avrunding
-    const grupper = knapper.filter(k => k.style.display !== "none")
-      .map(k => ({ id: k.dataset.velg, w: k.getBoundingClientRect().width }));
+    const grupper = knapper.filter(k => k.style.display !== "none" && window.getComputedStyle(k).display !== "none")
+      .map(k => ({ id: k.dataset.velg, w: k.getBoundingClientRect().width }))
+      // Byggeplassen i Full: toppknappene står bak gruppene i køen; ytre bredde + mellomrom i toppbaren
+      .concat(bpFull ? ekstra.filter(el => synligIFlyt(el)).map(el => ({ id: "x:" + el.id, w: ytreBredde(el) + gap })) : []);
     mer.hidden = false;
     const merBredde = mer.getBoundingClientRect().width;
     mer.hidden = true;
@@ -484,6 +516,7 @@ export function tilpassToppbar() {
   }
   if (fordeling.ute.length) {
     knapper.forEach(k => k.classList.toggle("vg-ute", fordeling.ute.includes(k.dataset.velg)));
+    ekstra.forEach(k => k.classList.toggle("vg-ute-x", fordeling.ute.includes("x:" + k.id)));
     mer.hidden = false;
   }
   ferdig();
