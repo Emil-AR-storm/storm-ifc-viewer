@@ -1493,9 +1493,8 @@ body:not(.har-modell) #btnFit { display: none !important; }
    og må ligge over dem — Emil 27.10: «signaturen dukker opp under vinduet». */
 #signaturBoks { display: none; position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,.65); }
 #signaturBoks.open { display: flex; align-items: center; justify-content: center; }
-/* 12.11: «Ikke nødvendig» spør «Låse skjemaet uten tegnet signatur?» – det
-   spørsmålet (70) lå UNDER signaturboksen (90) og kunne ikke trykkes på. */
-body:has(#signaturBoks.open) .spor-stabel { z-index: 95; }
+/* 12.11: spørsmålet etter «Ikke nødvendig» lå under signaturboksen (90) –
+   nå står alle spørsmål øverst (.spor-stabel 9100). */
 #signaturBoks .sg-boks {
   background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
   box-shadow: var(--skygge); width: min(560px, 94vw);
@@ -3047,7 +3046,9 @@ html[data-tema="lys"] .lp-vekt { color-scheme: light; }
 .spor-ja.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .spor-ja.fare { background: var(--danger); border-color: var(--danger); color: #fff; }
 /* Kort øverst når spørsmålet ikke kom fra et panel */
-.spor-stabel { position: fixed; z-index: 70; left: 50%; translate: -50% 0; top: 64px; width: min(460px, calc(100vw - 24px));
+/* 16.11: spørsmålene («Lage ny montørkode …?») lå UNDER adminpanelet (150) og
+   andre dialoger. Et spørsmål skal alltid stå øverst – også over varslene. */
+.spor-stabel { position: fixed; z-index: 9100; left: 50%; translate: -50% 0; top: 64px; width: min(460px, calc(100vw - 24px));
   display: flex; flex-direction: column; gap: 8px; }
 .spor-boks.flytende { margin: 0; padding: 14px 16px; background: var(--panel); border-left-width: 4px; box-shadow: var(--skygge); font-size: 14px; }
 .spor-boks.flytende.fare { background: var(--panel); }
@@ -3207,6 +3208,10 @@ body:not(.har-modell) .bpm-info, body:not(.har-modell) .bpm-bryter { display: no
      bp-modus.js måler bredden (--bpm-plass) og høyden (--bpm-topp). */
   html[data-lett="1"] body.har-modell #topbar { right: var(--bpm-plass, 0px); }
   .bpm-bryter { position: fixed; right: 6px; top: var(--bpm-topp, 6px); z-index: 11; box-shadow: var(--skygge); }
+  /* Bakgrunnen bak bryteren: samme flate som toppbaren (Emil 16.11) */
+  #bpmBak { position: fixed; top: 0; right: 0; width: var(--bpm-plass, 0px); height: var(--bpm-hoyde, 0px); z-index: 10;
+    background: linear-gradient(to bottom, var(--flate-95), var(--flate-72)); pointer-events: none; }
+  body:not(.har-modell) #bpmBak { display: none; }
   .bpm-info { font-size: 10.5px; padding: 4px 0; }
   .bpm-bryter button { padding: 6px 7px; font-size: 12px; }
 }
@@ -3342,3 +3347,42 @@ html[data-innebygd] #hint, html[data-innebygd] #miniMap { display: none !importa
 .ib-konto-tekst small { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 .ib-lenke { display: block; width: 100%; margin-top: 10px; padding: 4px; background: none; border: 0; color: var(--muted); font-size: 12.5px; text-decoration: underline; justify-content: center; cursor: pointer; }
 .ib-lenke:hover { color: var(--text); background: none; }
+
+/* 🕘 Sjekk inn på jobb – Storm Byggeplass med ansattkoden (runde J, 13.11) */
+.op-bak { position: fixed; inset: 0; z-index: 120; background: var(--bg); display: flex; justify-content: center; align-items: flex-start; overflow-y: auto; padding: 16px; box-sizing: border-box; }
+.op-info-bak { z-index: 130; background: rgba(0,0,0,.6); align-items: center; }
+.op-kort { width: 100%; max-width: 460px; background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 12px; color: var(--text); box-sizing: border-box; }
+.op-topp { display: flex; align-items: center; gap: 10px; font-size: 16px; }
+.op-topp span { margin-left: auto; color: var(--muted); font-size: 13px; }
+.op-tilbake { background: none; border: 0; color: var(--text); font-size: 26px; line-height: 1; padding: 0 6px 0 0; cursor: pointer; }
+.op-stor { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; width: 100%; padding: 16px; font-size: 17px; font-weight: 700; border-radius: 12px; text-align: left; }
+.op-stor small { font-size: 12.5px; font-weight: 400; opacity: .85; }
+.op-liten, .op-hint { font-size: 13px; color: var(--muted); margin: 0; }
+.op-hint { color: var(--text); }
+.op-rader { display: flex; flex-direction: column; gap: 6px; }
+.op-rad { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel2); }
+.op-rad.velg { cursor: pointer; }
+.op-rad.velg:hover { border-color: var(--accent); }
+.op-rad.egen { border: 2px solid var(--accent); }
+.op-navn { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
+.op-navn b { font-size: 15px; }
+.op-navn small { color: var(--muted); font-size: 12.5px; }
+.op-merke { align-self: flex-start; font-size: 10.5px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: .04em; }
+.op-knapp { padding: 10px 16px; font-size: 15px; font-weight: 700; border-radius: 10px; min-width: 112px; }
+.op-knapp.ut { background: #2b2f36; border-color: #2b2f36; color: #fff; }
+html[data-tema="lys"] .op-knapp.ut { background: #1f2329; border-color: #1f2329; }
+.op-status { font-size: 13px; color: var(--muted); min-width: 60px; text-align: right; }
+.op-status.inne { color: var(--ok); font-weight: 700; }
+.op-kvittering { padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--ok) 14%, transparent); border: 1px solid color-mix(in srgb, var(--ok) 45%, transparent); font-weight: 700; font-size: 14px; }
+.op-feil { padding: 9px 12px; border-radius: 10px; background: color-mix(in srgb, var(--warn) 14%, transparent); border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent); font-size: 13px; }
+.op-lenke { background: none; border: 0; color: var(--accent); font-size: 14px; padding: 4px 0; align-self: flex-start; cursor: pointer; }
+.op-nytt { display: flex; gap: 8px; }
+.op-nytt input { flex: 1; min-width: 0; font-size: 15px; padding: 9px 10px; }
+.op-info { font-size: 12px; color: var(--muted); margin: 0; line-height: 1.45; }
+.op-infokort { max-height: calc(100vh - 32px); }
+.op-tekst { font-size: 13.5px; line-height: 1.5; overflow-y: auto; max-height: 52vh; padding-right: 4px; }
+.op-som { font-size: 13px; color: var(--muted); margin: 0; }
+.op-avkryss { display: flex; gap: 8px; align-items: center; font-size: 15px; font-weight: 600; }
+.op-avkryss input { width: 20px; height: 20px; accent-color: var(--accent); }
+.op-kn { display: flex; gap: 8px; justify-content: flex-end; }
+.op-kn .op-knapp:disabled { opacity: .45; }
