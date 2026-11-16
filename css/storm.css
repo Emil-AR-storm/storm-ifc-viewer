@@ -1601,6 +1601,7 @@ body[data-vgruppe="dok"]      #moreMenu button[data-gruppe="dok"] { display: inl
    så lyst og mørkt tema følger av seg selv. */
 #verktoygrupper > button { flex: 0 0 auto; white-space: nowrap; }
 #verktoygrupper > button.vg-ute { display: none !important; }
+#topbar > button.vg-ute-x { display: none !important; }   /* byggeplassen i Full: ligger i «Mer» (16.11) */
 #verktoygrupper > .vg-mer[hidden] { display: none; }
 #verktoygrupper > .vg-mer.apen:not(.active) { border-color: var(--text); }
 .vg-mer-meny {
