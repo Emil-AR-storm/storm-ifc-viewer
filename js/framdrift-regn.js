@@ -85,7 +85,7 @@ export function vaskEtappe(e) {
   const start = dato(e.dato);
   let slutt = dato(e.slutt);
   if (slutt && start && slutt < start) slutt = start;     // slutten kan ikke komme før starten
-  return {
+  const ut = {
     id, nr,
     navn: standardNavn(tekst(e.navn, 80).trim()) || ("Trinn " + nr),
     farge: hex(e.farge) || fargeFor(nr),
@@ -94,7 +94,23 @@ export function vaskEtappe(e) {
     av: tekst(e.av, 80),
     endret
   };
+  // 🔗 Steg 7 (17.11): trinn som kommer fra Storm Prosjekter beholder koblingen.
+  // Uten dette ble kilde/jobb/fag/status/spEndret kastet ved første lagring her.
+  if (e.kilde === SP_KILDE) {
+    ut.kilde = SP_KILDE;
+    ut.jobb = tekst(e.jobb, 20);
+    ut.fag = tekst(e.fag, 20);
+    ut.status = tekst(e.status, 20);
+    ut.spEndret = tekst(e.spEndret, 40);
+    // Når objektene sist ble endret her (se objektTid i sp-flett.js)
+    if (e.objEndret) ut.objEndret = tekst(e.objEndret, 40);
+  }
+  return ut;
 }
+// Trinnet eies av Storm Prosjekter: navn, datoer og farge endres der, her
+// legges bare 3D-objektene til.
+export const SP_KILDE = "storm-prosjekter";
+export const fraSP = (e) => !!(e && !e.slettet && e.kilde === SP_KILDE);
 export function vaskEtappeListe(liste) {
   return (Array.isArray(liste) ? liste : []).slice(0, MAKS_ETAPPER * 2).map(vaskEtappe).filter(Boolean);
 }

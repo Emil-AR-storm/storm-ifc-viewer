@@ -23,10 +23,12 @@ import { markerGroup } from "./scene.js";
 import { hentLogoer } from "./tegninger.js";
 import { ryddLogonavn } from "./rapport.js";
 import { t, tn } from "./i18n.js";
-import { flettPaaId, spLes, spPaalogget, spSkriv } from "./sp-lager.js";
+import { flettFramdrift, spLes, spPaalogget, spSkriv } from "./sp-lager.js";
+import { TJENESTER } from "./config.js";
+import { tilgangsNøkkel } from "./tilgang.js";
 import { clearSelection, veksleMateriellIUtvalg } from "./elements.js";
 import { metaFor } from "./ifcrpc.js";
-import { SLAG_NAVN, etappeForNokkel, pdfTrinn, fjern, leggTil, nokkel, nyEtappe, sortert, synlige, tellingPerSlag, tidsSpenn, vaskEtappe, vaskEtappeListe } from "./framdrift-regn.js";
+import { SLAG_NAVN, framdriftForByggeplass, fraSP, etappeForNokkel, pdfTrinn, fjern, leggTil, nokkel, nyEtappe, sortert, synlige, tellingPerSlag, tidsSpenn, vaskEtappe, vaskEtappeListe } from "./framdrift-regn.js";
 import { begrensListe, forberedMobilPanel, ryddFramdriftVis, settSkjulTildelte, stoppAvspilling, tegnFramdrift, tegnTidslinje } from "./framdrift-vis.js";
 import { LAG_ID as TRP_BLIKK_LAG } from "./framdrift-plukk.js";
 import { forberedKilder, nullstillKilder } from "./framdrift-kilde.js";
@@ -67,7 +69,7 @@ async function skrivSp() {
   if (!spPaalogget()) { spStatus = "av"; visLagring(); return; }
   const forFil = S.fileName;
   const sendtNr = endringNr;
-  const res = await spSkriv(SP_MAPPE, spFil(), vaskEtappeListe(S.framdrift), (e) => String(e && e.id || ""));
+  const res = await spSkriv(SP_MAPPE, spFil(), vaskEtappeListe(S.framdrift), (e) => String(e && e.id || ""), { flett: flettFramdrift });
   if (S.fileName !== forFil) return;
   spStatus = res.ok ? "ok" : "feil";
   if (res.ok && res.liste) {
@@ -76,12 +78,44 @@ async function skrivSp() {
     // sekund senere — samme feil som ble sett live i Rigg. Nå flettes svaret
     // med det som ligger her med nyeste `endret`, og ble noe endret etter
     // sendingen, lagres det én gang til.
-    S.framdrift = vaskEtappeListe(flettPaaId(vaskEtappeListe(S.framdrift), vaskEtappeListe(res.liste)));
+    S.framdrift = vaskEtappeListe(flettFramdrift(vaskEtappeListe(S.framdrift), vaskEtappeListe(res.liste)));
     lagreLokalt();
     if (endringNr !== sendtNr) { clearTimeout(lagreTid); lagreTid = setTimeout(skrivSp, 600); }
     if (erApen()) tegnPanel();
+    tilByggeplassSnart();
   }
   else visLagring();
+}
+
+// 🏗 Steg 7 (17.11): planen går til byggeplassen av seg selv – uten «Storm
+// Byggeplass»-trykket. Etter en vellykket lagring, og bare når modellen er
+// publisert til en byggeplass (samme prosjektnummer som Storm Byggeplass-
+// knappen husker), sendes trinnene til Workeren (POST /sp/framdrift).
+// Samlet: 5 sekunder etter siste endring, ikke ett kall per klikk.
+// Samme innlogging som Storm Byggeplass-knappen (nøkkel/kort) – ingen nye nøkler.
+export const BYGGEPLASS_VENT_MS = 5000;
+let bpTid = 0;
+function tilByggeplassSnart() {
+  clearTimeout(bpTid);
+  bpTid = setTimeout(sendTilByggeplass, BYGGEPLASS_VENT_MS);
+}
+export async function sendTilByggeplass() {
+  const fil = S.fileName || "";
+  const prosjekt = (S.bpProsjektFor && S.bpProsjektFor(fil)) || "";
+  const token = tilgangsNøkkel();
+  if (!fil || !/^\d{5}$/.test(prosjekt) || !token || !TJENESTER.worker) return { sendt: false };
+  try {
+    const r = await fetch(TJENESTER.worker + "/sp/framdrift", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-token": token },
+      body: JSON.stringify({ prosjekt, ifc: fil, planer: [{ fil, etapper: framdriftForByggeplass(S.framdrift || []) }] })
+    });
+    return { sendt: r.ok, status: r.status };
+  } catch (err) {
+    // Ingen dekning: neste lagring prøver igjen, og Storm Byggeplass-knappen tar alt
+    console.warn("Framdriften kom ikke til byggeplassen:", err && err.message);
+    return { sendt: false };
+  }
 }
 async function hentFraSp() {
   if (!spPaalogget()) { spStatus = "av"; return; }
@@ -90,7 +124,7 @@ async function hentFraSp() {
   if (S.fileName !== forFil) return;
   spStatus = (res.status === "ok" || res.status === "tom") ? "ok" : "feil";
   if (spStatus === "ok") {
-    S.framdrift = vaskEtappeListe(flettPaaId(vaskEtappeListe(S.framdrift), vaskEtappeListe(res.liste)));
+    S.framdrift = vaskEtappeListe(flettFramdrift(vaskEtappeListe(S.framdrift), vaskEtappeListe(res.liste)));
     lagreLokalt();
   }
   if (erApen()) tegnPanel();
@@ -107,7 +141,23 @@ function visLagring() { const el = $("fpLagring"); if (el) el.textContent = lagr
 // settListeStemplet: det som endres får ferskt `endret`, og et trinn som
 // skal bort blir en gravstein. Uten stempelet vant SharePoint-flettingen
 // tilbake med den nyere utgaven, og angringen forsvant ved neste lagring.
+// Trinn fra Storm Prosjekter (steg 7): bare objektene (og nummeret) settes
+// tilbake – navn og datoer kommer fra Storm Prosjekter og angres aldri her.
+export function spTilbake(maal, naa) {
+  const nå = vaskEtappeListe(naa), mål = vaskEtappeListe(maal);
+  const ut = mål.map(m => {
+    const n = nå.find(x => x.id === m.id);
+    if (n && n.slettet && (fraSP(m) || m.kilde)) return n;               // slettet i Storm Prosjekter
+    if (n && fraSP(n)) return Object.assign({}, n, { objekter: m.slettet ? n.objekter : m.objekter, nr: m.slettet ? n.nr : m.nr });
+    return m;
+  });
+  // Et sp-trinn som ikke fantes i øyeblikksbildet (kom fra Storm Prosjekter
+  // etterpå) skal ikke bli en gravstein av en angring
+  for (const n of nå) if (fraSP(n) && !mål.some(m => m.id === n.id)) ut.push(n);
+  return ut;
+}
 function settTilbake(maal) {
+  maal = spTilbake(maal, S.framdrift);
   S.framdrift = vaskEtappeListe(settListeStemplet(vaskEtappeListe(maal), new Date().toISOString(), vaskEtappeListe(S.framdrift)));
   // Velgemodus for et trinn som ikke finnes lenger, gir ingen mening
   if (velger && !synlige(S.framdrift).some(e => e.id === velger.etappeId)) avsluttVelg(false);
@@ -123,6 +173,13 @@ function medAngre(tekst, foer) {
 
 // ═══════════════════════ ETAPPENE ═══════════════════════
 export function endreEtappe(id, endring) {
+  // Låst for trinn fra Storm Prosjekter: navn, datoer og farge endres der
+  const gml = vaskEtappeListe(S.framdrift).find(e => e.id === id);
+  if (fraSP(gml)) {
+    endring = Object.assign({}, endring);
+    for (const k of ["navn", "dato", "slutt", "farge", "kilde", "jobb", "fag", "status", "spEndret"]) delete endring[k];
+    if (!Object.keys(endring).length) return;
+  }
   const foer = vaskEtappeListe(S.framdrift);
   const naa = new Date().toISOString();
   S.framdrift = vaskEtappeListe(S.framdrift).map(e =>
@@ -161,6 +218,8 @@ export function leggTilEtappe() {
   return e;
 }
 export function slettEtappe(id) {
+  // Trinn fra Storm Prosjekter slettes der (aktiviteten), ikke her
+  if (fraSP(vaskEtappeListe(S.framdrift).find(e => e.id === id))) return;
   const foer = vaskEtappeListe(S.framdrift);
   const naa = new Date().toISOString();
   S.framdrift = vaskEtappeListe(S.framdrift).map(e => e.id === id ? { id, slettet: true, endret: naa } : e);
@@ -452,6 +511,21 @@ function koblFaner(body) {
   });
 }
 
+// «7.12.–18.12. (uke 50–51)» – samme form som i Storm Prosjekter
+function ukeNr(iso) {
+  const d = new Date(iso + "T12:00:00Z"); if (isNaN(d)) return 0;
+  const dag = (d.getUTCDay() + 6) % 7; d.setUTCDate(d.getUTCDate() - dag + 3);
+  const f = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));
+  return 1 + Math.round(((d - f) / 86400000 - 3 + ((f.getUTCDay() + 6) % 7)) / 7);
+}
+export function spDatoTekst(e) {
+  const kort = (iso) => { const [, m, d] = iso.split("-"); return Number(d) + "." + Number(m) + "."; };
+  if (!e.dato) return t("Uten dato");
+  const til = e.slutt && e.slutt !== e.dato ? e.slutt : "";
+  const u1 = ukeNr(e.dato), u2 = til ? ukeNr(til) : u1;
+  return kort(e.dato) + (til ? "–" + kort(til) : "") + " (" + (u2 !== u1 ? t("uke {0}–{1}", u1, u2) : t("uke {0}", u1)) + ")";
+}
+
 export function tegnPanel() {
   const body = $("framdriftBody");
   if (!body) return;
@@ -482,17 +556,27 @@ export function tegnPanel() {
   html += '<div class="fp-liste" id="fpListe">';
   for (const e of liste) {
     const velgerHer = velgerEtappe() === e.id;
-    html += '<div class="st-etappe fp-etappe" data-id="' + esc(e.id) + '" style="border-left:4px solid ' + esc(e.farge) + '">' +
-      '<div class="st-rad">' +
-        '<input type="color" class="st-farge" value="' + esc(e.farge) + '" title="' + esc(t("Farge")) + '">' +
-        '<b class="st-nr">' + e.nr + "</b>" +
-        '<input type="text" class="st-navn" maxlength="80" value="' + esc(e.navn) + '">' +
-        '<button class="st-slett" title="' + esc(t("Slett trinnet")) + '">' + ikon("slett") + "</button>" +
-      "</div>" +
-      '<div class="st-rad fp-datoer">' +
-        '<label class="fp-dato">' + esc(t("Fra")) + ' <input type="date" class="fp-fra" value="' + esc(e.dato) + '"></label>' +
-        '<label class="fp-dato">' + esc(t("Til")) + ' <input type="date" class="fp-til" value="' + esc(e.slutt) + '"></label>' +
-      "</div>" +
+    const sp = fraSP(e);
+    html += '<div class="st-etappe fp-etappe' + (sp ? " fp-sp" : "") + '" data-id="' + esc(e.id) + '" style="border-left:4px solid ' + esc(e.farge) + '">' +
+      (sp
+        // 🔗 Fra Storm Prosjekter: navn, datoer og farge er låst her (steg 7)
+        ? '<div class="st-rad"><span class="fp-sp-farge" style="background:' + esc(e.farge) + '"></span>' +
+            '<b class="st-nr">' + e.nr + "</b>" +
+            '<span class="fp-sp-navn">' + esc(e.navn) + "</span>" +
+            '<span class="fp-sp-merke">' + esc(t("Fra Storm Prosjekter")) + "</span></div>" +
+          '<div class="st-rad fp-datoer fp-sp-info"><span>' + esc(spDatoTekst(e)) + "</span>" +
+            ([e.fag, e.status].filter(Boolean).length ? '<span class="fp-sp-fag">' + esc([e.fag, e.status].filter(Boolean).join(" · ")) + "</span>" : "") + "</div>" +
+          '<p class="fp-sp-hjelp">' + esc(t("Endres i Storm Prosjekter → Fremdrift")) + "</p>"
+        : '<div class="st-rad">' +
+            '<input type="color" class="st-farge" value="' + esc(e.farge) + '" title="' + esc(t("Farge")) + '">' +
+            '<b class="st-nr">' + e.nr + "</b>" +
+            '<input type="text" class="st-navn" maxlength="80" value="' + esc(e.navn) + '">' +
+            '<button class="st-slett" title="' + esc(t("Slett trinnet")) + '">' + ikon("slett") + "</button>" +
+          "</div>" +
+          '<div class="st-rad fp-datoer">' +
+            '<label class="fp-dato">' + esc(t("Fra")) + ' <input type="date" class="fp-fra" value="' + esc(e.dato) + '"></label>' +
+            '<label class="fp-dato">' + esc(t("Til")) + ' <input type="date" class="fp-til" value="' + esc(e.slutt) + '"></label>' +
+          "</div>") +
       '<div class="st-rad st-knapper fp-knapper"><span class="st-innhold">' + esc(innholdTekst(e)) + "</span>" +
         '<button class="st-legg' + (velgerHer && !velgerFjerner() ? " aktiv" : "") + '">' + esc(velgerHer && !velgerFjerner() ? t("Velger …") : t("+ Legg til")) + "</button>" +
         (e.objekter.length ? '<button class="st-fjern' + (velgerHer && velgerFjerner() ? " aktiv" : "") + '" title="' + esc(t("Ta enkeltobjekter ut av trinnet igjen")) + '">' +
@@ -529,16 +613,20 @@ export function tegnPanel() {
   $("fpLogo").onchange = (ev) => { S.settings.framdriftLogo = fraLogoValg(ev.target.value); writePrefs(); slippFokus(ev); };
   body.querySelectorAll(".fp-etappe").forEach(rad => {
     const id = rad.dataset.id;
-    rad.querySelector(".st-navn").onchange = (ev) => { endreEtappe(id, { navn: ev.target.value }); slippFokus(ev); };
-    rad.querySelector(".fp-fra").onchange = (ev) => { endreEtappe(id, { dato: ev.target.value }); tegnPanel(); };
-    rad.querySelector(".fp-til").onchange = (ev) => { endreEtappe(id, { slutt: ev.target.value }); tegnPanel(); };
-    rad.querySelector(".st-farge").onchange = (ev) => { endreEtappe(id, { farge: ev.target.value }); tegnPanel(); };
+    const navnEl = rad.querySelector(".st-navn");
+    if (navnEl) {   // ikke på trinn fra Storm Prosjekter (låst)
+      navnEl.onchange = (ev) => { endreEtappe(id, { navn: ev.target.value }); slippFokus(ev); };
+      rad.querySelector(".fp-fra").onchange = (ev) => { endreEtappe(id, { dato: ev.target.value }); tegnPanel(); };
+      rad.querySelector(".fp-til").onchange = (ev) => { endreEtappe(id, { slutt: ev.target.value }); tegnPanel(); };
+      rad.querySelector(".st-farge").onchange = (ev) => { endreEtappe(id, { farge: ev.target.value }); tegnPanel(); };
+    }
     rad.querySelector(".st-legg").onclick = () => { if (velgerEtappe() === id && !velgerFjerner()) avsluttVelg(true); else startVelg(id); };
     const fj = rad.querySelector(".st-fjern");
     if (fj) fj.onclick = () => { if (velgerEtappe() === id && velgerFjerner()) avsluttVelg(true); else startVelg(id, true); };
     const tom = rad.querySelector(".st-tom");
     if (tom) tom.onclick = async () => { if (await bekreft(t("Ta alt ut av trinnet?"))) tomEtappe(id); };
-    rad.querySelector(".st-slett").onclick = async () => {
+    const sl = rad.querySelector(".st-slett");
+    if (sl) sl.onclick = async () => {
       const e = synlige(S.framdrift).find(x => x.id === id);
       if (e && await bekreft(t("Slette {0}?", e.navn))) slettEtappe(id);
     };

@@ -50,3 +50,46 @@ export function flettPaaNavn(lokale, eksterne) { return flett(lokale, eksterne);
 export function flettPaaId(lokale, eksterne) {
   return flett(lokale, eksterne, (p) => String(p && p.id || ""));
 }
+
+// ---------- 📅 Framdriftsplanen: trinn fra Storm Prosjekter (steg 7, 17.11) ----------
+// Storm Prosjekter eier navn/datoer/farge/fag/status (stemplet med spEndret);
+// Storm IFC eier objektene og nummeret (stemplet med endret). Et trinn med
+// kilde «storm-prosjekter» flettes derfor FELT FOR FELT – ellers kunne en
+// montør som legger til objekter rett etter at prosjektlederen flyttet datoen,
+// skrive den gamle datoen tilbake (eller omvendt).
+//   · uten kilde: som før – nyeste `endret` vinner
+//   · gravstein: nyeste `endret` vinner, som før
+const SP_FELT = ["navn", "dato", "slutt", "farge", "fag", "status", "jobb", "spEndret", "kilde"];
+export function objektTid(x) {
+  const a = String(x && x.objEndret || "");
+  const b = x && x.endret && x.endret !== x.spEndret ? String(x.endret) : "";
+  return a > b ? a : b;
+}
+export function flettFramdrift(lokale, eksterne) {
+  const id = (p) => String(p && p.id || "");
+  const ut = new Map();
+  for (const p of (eksterne || [])) if (p && id(p)) ut.set(id(p), p);
+  for (const p of (lokale || [])) {
+    if (!p || !id(p)) continue;
+    const f = ut.get(id(p));
+    if (!f) { ut.set(id(p), p); continue; }
+    const sp = (x) => x && !x.slettet && x.kilde === "storm-prosjekter";
+    if (sp(p) && sp(f)) {
+      const spVinner = String(p.spEndret || "") >= String(f.spEndret || "") ? p : f;
+      // Hvem har de nyeste OBJEKTENE? Storm Prosjekter setter endret = spEndret
+      // når det skriver, så en slik `endret` sier ingenting om objektene. Derfor
+      // objektTid(): objEndret, eller endret når den ikke er Storm Prosjekters.
+      // Uten dette ville en datoflytting (nyere endret) spist objekter som en
+      // montør nettopp hadde lagt til, men ennå ikke fått lagret.
+      const op = objektTid(p), of = objektTid(f);
+      const ifcVinner = (op || of) ? (op >= of ? p : f) : (String(p.endret || "") >= String(f.endret || "") ? p : f);
+      const m = Object.assign({}, ifcVinner);
+      for (const k of SP_FELT) if (k in spVinner) m[k] = spVinner[k];
+      m.objekter = ifcVinner.objekter; m.nr = ifcVinner.nr;
+      if (op || of) m.objEndret = op > of ? op : of;
+      m.endret = String(p.endret || "") > String(f.endret || "") ? p.endret : f.endret;
+      ut.set(id(p), m);
+    } else if (String(p.endret || "") > String(f.endret || "")) ut.set(id(p), p);
+  }
+  return [...ut.values()];
+}

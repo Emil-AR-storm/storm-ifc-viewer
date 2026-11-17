@@ -479,6 +479,8 @@ function huskProsjektFor(fil, prosjekt) {
 function prosjektFor(fil) {
   try { return (JSON.parse(localStorage.getItem("storm-bp-kart") || "{}"))[fil] || ""; } catch (_) { return ""; }
 }
+// 📅 Steg 7: framdrift.js sender planen til byggeplassen selv – samme nummer
+S.bpProsjektFor = (modell) => prosjektFor(lettNavn(modell || ""));
 
 async function oppdaterBadge() {
   if (!btn) return;

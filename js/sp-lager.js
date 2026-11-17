@@ -104,7 +104,9 @@ async function spSkrivIntern(mappe, fil, poster, nokkel, opt) {
       const fra = await spLes(mappe, fil);
       if (fra.status === "feil") return { ok: false, grunn: "feil" };
       const beholdt = [];
-      const samlet = ryddGravsteiner(flett(poster, fra.liste, nokkel, opt && opt.behold, beholdt));
+      // opt.flett(lokale, eksterne): egen flettefunksjon (framdriften, steg 7)
+      const samlet = ryddGravsteiner(opt && typeof opt.flett === "function" ? opt.flett(poster, fra.liste)
+        : flett(poster, fra.liste, nokkel, opt && opt.behold, beholdt));
       const etag = fra.status === "ok" ? await lesEtag(token, sid, mappe, fil) : null;
       const hoder = { "Content-Type": "application/json" };
       if (etag) hoder["If-Match"] = etag;
@@ -223,7 +225,7 @@ export async function spFilInfo(mappe, fil) {
   }
 }
 
-export { flett, flettPaaId, flettPaaNavn, ryddGravsteiner } from "./sp-flett.js";
+export { flett, flettFramdrift, flettPaaId, flettPaaNavn, ryddGravsteiner } from "./sp-flett.js";
 
 // ☁ Forslag 6C (03.11): hver skriving melder seg i lagringsstatusen, så ringen
 // rundt SharePoint-prikken og lista bak den viser hva som lagres, er lagret
