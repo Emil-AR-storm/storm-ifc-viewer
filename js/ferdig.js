@@ -20,7 +20,7 @@ import { $, S, esc, ikon } from "./state.js";
 import { frameHooks, scene } from "./scene.js";
 import { t, tn } from "./i18n.js";
 import { varsel } from "./varsel.js";
-import { flettPaaId, spLes, spPaalogget, spSkriv } from "./sp-lager.js";
+import { flettPaaId, spLastOppStille, spLes, spPaalogget, spSkriv } from "./sp-lager.js";
 import { metaFor, sikreMeta } from "./ifcrpc.js";
 import { idFor, nokkel, slagFor, synlige } from "./framdrift-regn.js";
 import * as F from "./ferdig-regn.js";
@@ -53,8 +53,42 @@ async function skrivSp() {
     S.ferdig = F.vaskMeldinger(flettPaaId(F.vaskMeldinger(S.ferdig), F.vaskMeldinger(res.liste)));
     lagreLokalt();
     if (endringNr !== sendtNr) { clearTimeout(lagreTid); lagreTid = setTimeout(skrivSp, 600); }
+    statusSnart();
   }
   oppdater();
+}
+
+// ═══════════ 📊 STATUS TIL STORM PROSJEKTER (17.11) ═══════════
+// Rapport-fanens tall som et sammendrag i Framdriftsplan/<modell>.status.json
+// (ved siden av .framdrift.json og .ferdig.json). Storm Prosjekter leser den
+// i Fremdrift, på Dashbord og i lenken til byggherren. Skrives over hver gang
+// (ingen fletting – det er et sammendrag), samlet 3 s etter siste endring, og
+// bare når innholdet (uten `oppdatert`) er endret. Krever en åpen modell.
+export const STATUS_VENT_MS = 3000;
+let statusTid = 0;
+const statusSist = new Map();   // modellfil → sist skrevne innhold (uten oppdatert)
+export function statusSnart() {
+  clearTimeout(statusTid);
+  statusTid = setTimeout(() => { skrivStatus().catch(() => {}); }, STATUS_VENT_MS);
+}
+S.ferdigStatusSnart = statusSnart;
+export async function skrivStatus() {
+  if (!S.modelGroup || !S.fileName || !spPaalogget()) return { skrevet: false };
+  const forFil = S.fileName;
+  const r = await beregn();
+  if (S.fileName !== forFil) return { skrevet: false };
+  const st = F.statusSammendrag(r, { modell: forFil, oppdatert: new Date().toISOString(), av: mittNavn() });
+  const n = F.statusNokkel(st);
+  let sist = statusSist.get(forFil);
+  if (sist === undefined) { try { sist = localStorage.getItem("storm-ifc-status::" + forFil) || ""; } catch (_) { sist = ""; } }
+  if (n === sist) return { skrevet: false, uendret: true };
+  const res = await spLastOppStille(SP_MAPPE, forFil + ".status.json", JSON.stringify(st), "application/json");
+  if (res && res.ok) {
+    statusSist.set(forFil, n);
+    try { localStorage.setItem("storm-ifc-status::" + forFil, n); } catch (_) {}
+    return { skrevet: true, status: st };
+  }
+  return { skrevet: false };
 }
 async function hentFraSp() {
   if (!spPaalogget()) { spStatus = "av"; return; }
@@ -334,6 +368,7 @@ export async function tegnRapport(el) {
   const runde = ++malerRunde;
   el.innerHTML = '<p class="hint">' + esc(t("Regner …")) + "</p>";
   const r = await beregn();
+  statusSnart();   // tallene er regnet – Storm Prosjekter får dem (bare hvis noe er endret)
   if (runde !== malerRunde || !el.isConnected) return;
   const nValgt = valgte().length;
   const st = r.plan.status;

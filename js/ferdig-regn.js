@@ -208,6 +208,45 @@ export function rapport(univers, meldinger, framdrift, iDag) {
   };
 }
 
+// ═══════════ STATUS TIL STORM PROSJEKTER (17.11) ═══════════
+// BYGGEPLAN-Storm-IFC-rapportstatus-til-Storm-Prosjekter-2026-11-17.md.
+// Sammendraget av Rapport-fanen som skrives til Framdriftsplan/<modell>.status.json.
+// `plan` = antall objekter med plan per trinn ({ fra, til, n }), så Storm
+// Prosjekter kan regne «plan i dag» selv – også dager ingen har åpnet Storm IFC.
+// Ren funksjon: samme tall som rapport(), ingen nett, ingen klokke (meta.oppdatert).
+export function statusSammendrag(r, meta) {
+  const m = meta || {};
+  const rader = (r && r.rader) || [];
+  const planFor = (liste) => {
+    const per = new Map();
+    for (const x of liste) {
+      if (!x.harPlan || !x.trinn || !x.trinn.dato) continue;
+      const fra = x.trinn.dato, til = x.trinn.slutt || x.trinn.dato;
+      const k = x.trinn.id;
+      const p = per.get(k) || { fra, til, n: 0 };
+      p.n++; per.set(k, p);
+    }
+    return [...per.values()].sort((a, b) => a.fra < b.fra ? -1 : a.fra > b.fra ? 1 : a.til < b.til ? -1 : a.til > b.til ? 1 : 0);
+  };
+  const tall = (liste) => ({
+    n: liste.length,
+    ferdig: liste.filter(x => x.ferdig).length,
+    planN: liste.filter(x => x.harPlan).length,
+    planFerdig: liste.filter(x => x.harPlan && x.ferdig).length,
+    plan: planFor(liste)
+  });
+  const typer = ((r && r.typer) || []).map(g => Object.assign({ navn: g.gruppe }, tall(rader.filter(x => x.gruppe === g.gruppe))));
+  const trinn = ((r && r.trinn) || []).map(e => ({ id: e.id, navn: e.navn, dato: e.dato || "", slutt: e.slutt || e.dato || "", n: e.n, ferdig: e.ferdig }));
+  return { versjon: 1, modell: String(m.modell || ""), oppdatert: String(m.oppdatert || ""), av: String(m.av || ""),
+    total: tall(rader), typer, trinn };
+}
+// Er det noe nytt å skrive? Sammenligner uten `oppdatert` (og uten `av`).
+export function statusNokkel(st) {
+  if (!st) return "";
+  const { oppdatert, av, ...rest } = st;
+  return JSON.stringify(rest);
+}
+
 // plan: [[dag, %]] fra første trinnstart til siste trinnslutt.
 // faktisk: [[dag, %]] fra første start til i dag (ferdig innen dagens slutt).
 export function lagKurve(planRader, trinnListe, iDagNr) {
