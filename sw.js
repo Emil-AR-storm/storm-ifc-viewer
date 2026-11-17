@@ -36,7 +36,7 @@
 
 // ---- GENERERT BLOKK START (verktoy/lag-sw-liste.mjs) ----
 // IKKE REDIGER FOR HÅND. Kjør: node "verktoy/lag-sw-liste.mjs"
-const SW_VERSJON = "71ddf1fb9efc";
+const SW_VERSJON = "06edb6a033a9";
 const SKALL = [
   "/bygg.html",
   "/css/storm.css",
@@ -259,6 +259,11 @@ self.addEventListener("fetch", (e) => {
   if (req.method !== "GET") return;
 
   const url = new URL(req.url);
+  // 🔗 17.11: delte lenker til byggherren (/d/…) og Storm Prosjekter-rutene
+  // (/sp/…) er ikke byggeplass-siden. Før fikk en PDF fra en byggherre-lenke
+  // bygg.html (uten stil) hvis nettleseren hadde brukt Storm Byggeplass før.
+  // Må stå FØR navigasjonen under.
+  if (url.origin === self.location.origin && (url.pathname.startsWith("/d/") || url.pathname.startsWith("/sp/"))) return;
   // Fremmede domener rører vi ikke. jsDelivr (web-ifc, QR-biblioteket) og
   // Microsoft Graph hører ikke hjemme i en cache vi styrer.
   if (url.origin !== self.location.origin) return;
