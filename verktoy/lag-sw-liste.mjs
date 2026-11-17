@@ -173,6 +173,13 @@ const sprakStier = Object.keys(sprakfiler).sort().map(k => sprakfiler[k]);
 // versjon.
 const h = crypto.createHash("sha256");
 for (const f of [...skall, ...sprakStier]) { h.update(f); h.update(fs.readFileSync(path.join(ROT, f.slice(1)))); }
+// 17.11: også sw.js sin egen kode (uten den genererte blokken), så en rettelse
+// i service workeren alene gir ny cache-versjon.
+{
+  const sw = fs.readFileSync(path.join(ROT, "sw.js"), "utf8");
+  const a = sw.indexOf("// ---- GENERERT BLOKK START"), b = sw.indexOf("// ---- GENERERT BLOKK SLUTT ----");
+  h.update("sw.js"); h.update(a !== -1 && b !== -1 ? sw.slice(0, a) + sw.slice(b) : sw);
+}
 const versjon = h.digest("hex").slice(0, 12);
 
 // ---------- 5. Skriv blokken inn i sw.js ----------
