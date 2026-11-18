@@ -61,29 +61,49 @@ async function mappePåId(g, d, id) {
   return j && j.folder ? j : null;
 }
 
-// Prosjektmappa – samme rekkefølge som finnProsjektmappe i Storm Prosjekter:
-//   1. prosjektets egen ProsjektmappeId (felles mappe)
-//   2. egen gammel mappe i rota, «<Arbeidsomrade> <ProsjektNr> » (ikke felles)
-//   3. jobbens felles mappe: et annet hovedprosjekt i jobben med ProsjektmappeId
-//   4. IngenMappe – Storm IFC lager den ALDRI.
+// Prosjektmappa – samme rekkefølge som Storm Prosjekter 4.57 (18.11):
+//   1. prosjektets ProsjektmappeId. Under «Storm Entreprenør/», «Storm Betong/»
+//      eller «Storm Stål/» er den EGEN (ikke felles); i rota er den en gammel
+//      felles mappe. Ligger den i «_Arkiv felles mapper» (flyttet), brukes den ikke.
+//   2. uten ID: «<selskapsmappe>/<ProsjektNr> …» (prefiks-søk)
+//   3. gammel egen mappe i rota, «<Arbeidsomrade> <ProsjektNr> » (ikke felles)
+//   4. gammel felles mappe via et annet prosjekt i jobben (bare til mappene er
+//      delt opp) – aldri et annet selskaps egen mappe, aldri arkivet
+//   5. IngenMappe – Storm IFC lager den ALDRI (åpne Dokumenter i Storm Prosjekter).
 // Svar: { sti, navn, id, felles }
+async function barnAv(g, d, sti) {
+  const ut = [];
+  let url = "/drives/" + d + (sti ? "/root:/" + R.graphSti(sti) + ":/children" : "/root/children") + "?$select=name,folder&$top=999";
+  for (let i = 0; url && i < 50; i++) {
+    const r = await g.hent(url);
+    if (r.status === 404) return ut;
+    if (!r.ok) throw new Error("Graph " + r.status);
+    const j = await r.json();
+    ut.push(...(j.value || []));
+    url = j["@odata.nextLink"] || null;
+  }
+  return ut;
+}
 export async function prosjektmappe(token, rad, rader) {
   const g = lag(token);
   const { driveId: d } = await stedOgBibliotek(token);
   const f = (rad && (rad.fields || rad)) || {};
-  const somFelles = (m) => ({ sti: R.stiFraItem(m), navn: m.name, id: m.id, felles: true });
+  const fraItem = (m) => { const sti = R.stiFraItem(m); return { sti, navn: m.name, id: m.id, felles: !R.underSelskapsmappe(sti) }; };
   const egen = await mappePåId(g, d, f.ProsjektmappeId);
-  if (egen) return somFelles(egen);
-  let url = "/drives/" + d + "/root/children?$select=name,folder&$top=999";
-  for (let i = 0; url && i < 50; i++) {
-    const j = await g.json(url);
-    const navn = R.finnProsjektmappe(j.value || [], rad);
-    if (navn) return { sti: navn, navn, id: "", felles: false };
-    url = j["@odata.nextLink"] || null;
+  if (egen && !R.iArkiv(R.stiFraItem(egen))) return fraItem(egen);
+  const sm = R.selskapsmappe(f.Arbeidsomrade);
+  if (sm) {
+    const navn = R.finnSelskapsmappeProsjekt(await barnAv(g, d, sm), rad);
+    if (navn) return { sti: sm + "/" + navn, navn, id: "", felles: false };
   }
+  const navn = R.finnProsjektmappe(await barnAv(g, d, ""), rad);
+  if (navn) return { sti: navn, navn, id: "", felles: false };
   for (const annen of R.jobbMappeKandidater(rader || [], rad)) {
     const m = await mappePåId(g, d, (annen.fields || annen).ProsjektmappeId);
-    if (m) return somFelles(m);
+    if (!m) continue;
+    const sti = R.stiFraItem(m);
+    if (R.iArkiv(sti) || R.underSelskapsmappe(sti)) continue;   // arkivet, eller et annet selskaps egen mappe
+    return { sti, navn: m.name, id: m.id, felles: true };
   }
   throw new IngenMappe(R.prosjektPrefiks(rad));
 }

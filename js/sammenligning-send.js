@@ -63,7 +63,15 @@ export async function sendTilStormProsjekter() {
     const å = åpenModell();
     let jobb = LR.finnJobb(rader, å);
     if (!jobb.length && S.prosjektInfo) jobb = LR.jobbForNummer(rader, (S.prosjektInfo() || {}).nummer);
-    const valgt = LR.foreslåProsjekt(jobb, "sammenligning");
+    let valgt = LR.foreslåProsjekt(jobb, "sammenligning", å);
+    // 18.11: én mappe per selskap – brukeren velger selskapet når jobben har flere
+    if (valgt && jobb.length > 1) {
+      vis("");
+      const { velgSelskap } = await import("./legg-i-prosjekt.js");
+      valgt = await velgSelskap(jobb, valgt, t("Hvilket selskap gjelder sammenligningen?"));
+      if (!valgt) return { ok: false, grunn: "avbrutt" };
+      vis(t("Finner prosjektet …"));
+    }
     if (!valgt) {
       varsel(t("Fant ikke jobben modellen hører til i Storm Prosjekter. Koble modellen til jobben der (Modell-feltet), eller skriv prosjektnummeret i Prosjektinfo."));
       return { ok: false, grunn: "ingen-prosjekt" };
@@ -134,7 +142,7 @@ export async function sendTilStormProsjekter() {
     return { ok: true, id, mappe: mappa.sti + "/" + under, prosjekt: felt.Nokkel, json: j };
   } catch (err) {
     const G2 = await import("./legg-i-prosjekt-graph.js");
-    if (err instanceof G2.IngenMappe) varsel(t("Prosjektet har ingen mappe ennå – åpne det i Storm Prosjekter og trykk Mappe først."));
+    if (err instanceof G2.IngenMappe) varsel(t("Prosjektet har ingen mappe ennå – åpne Dokumenter på prosjektet i Storm Prosjekter først."));
     else if (err instanceof G2.IngenTilgang) varsel(t("Du har ikke tilgang til prosjektmappa i Storm Prosjekter."));
     else varsel(t("Klarte ikke å sende sammenligningen: {0}", (err && err.message) || err));
     return { ok: false, grunn: "feil" };

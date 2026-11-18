@@ -562,7 +562,7 @@ async function signer() {
     } catch (err) { lip = { ok: false, grunn: "feil", melding: err && err.message }; }
     const prosjektTekst = lip && lip.ok ? " " + t("Lagt i {0} → {1}.", lip.prosjekt, lip.mappe)
       : lip && lip.grunn === "ingen-prosjekt" ? " " + t("Fant ikke jobben i Storm Prosjekter – bruk «Legg i prosjekt» på PDF-en.")
-      : lip && lip.grunn === "ingen-mappe" ? " " + t("Prosjektet har ingen mappe ennå – åpne det i Storm Prosjekter og trykk Mappe først.")
+      : lip && lip.grunn === "ingen-mappe" ? " " + t("Prosjektet har ingen mappe ennå – åpne Dokumenter på prosjektet i Storm Prosjekter først.")
       : lip && lip.grunn === "ingen-tilgang" ? " " + t("Du har ikke tilgang til prosjektmappa i Storm Prosjekter.")
       : lip && lip.grunn === "feil" ? " " + t("Klarte ikke å legge fila i prosjektet: {0}", lip.melding || "?") : "";
     varsel((up.ok ? t("Signert og lagret. PDF-en er lastet ned og ligger også i SharePoint (Dagsrapporter).")

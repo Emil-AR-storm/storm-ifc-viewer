@@ -121,11 +121,43 @@ export function jobbForNummer(rader, nr) {
   return sorterProsjekter([...ut.values()]);
 }
 
-// Forslaget i nedtrekkslista: selskapet typen hører til, ellers det første.
-export function foreslåProsjekt(jobb, type) {
+// ---------- Én prosjektmappe per selskap (Storm Prosjekter 4.57, 18.11) ----------
+// BYGGEPLAN-Storm-IFC-selskapsmapper-2026-11-18.md
+//   Storm Entreprenør/20728 Lierstranda/…   Storm Betong/371 …   Storm Stål/105 …
+//   _Arkiv felles mapper/…   ← de gamle felles mappene, flyttet urørt. Skriv ALDRI der.
+export const SELSKAPSMAPPER = { SE: "Storm Entreprenør", SB: "Storm Betong", SS: "Storm Stål" };
+export const ARKIV_MAPPE = "_Arkiv felles mapper";
+export const selskapsmappe = (ao) => SELSKAPSMAPPER[String(ao || "").trim().toUpperCase()] || "";
+const førsteDel = (sti) => String(sti || "").replace(/^\/+/, "").split("/")[0].toLowerCase();
+export const underSelskapsmappe = (sti) => Object.values(SELSKAPSMAPPER).some(m => m.toLowerCase() === førsteDel(sti));
+export const iArkiv = (sti) => førsteDel(sti) === ARKIV_MAPPE.toLowerCase();
+// I selskapsmappa: første mappe som starter med «<ProsjektNr> » (uten selskapskode)
+export function finnSelskapsmappeProsjekt(barn, r) {
+  const pre = String(felt(r).ProsjektNr || "").trim().toLowerCase() + " ";
+  if (pre === " ") return null;
+  const m = (barn || []).find(x => x && x.folder && String(x.name || "").toLowerCase().startsWith(pre));
+  return m ? m.name : null;
+}
+// Hovedselskapet i jobben (jobb-eieren): SE hvis jobben har SE, ellers det
+// eldste prosjektet. Jobb-felles dokumenter (dagsrapporter) ligger bare der.
+export function hovedselskap(jobb) {
+  const l = (jobb || []).filter(Boolean);
+  if (!l.length) return null;
+  const se = l.find(r => String(felt(r).Arbeidsomrade || "").toUpperCase() === "SE");
+  if (se) return se;
+  const laget = (r) => String((r && (r.createdDateTime || (r.fields && r.fields.Created))) || "9999");
+  return l.slice().sort((a, b) => laget(a) < laget(b) ? -1 : laget(a) > laget(b) ? 1 : 0)[0];
+}
+// Forslaget i nedtrekkslista (18.11): selskapet på modellen (prosjektet modellen
+// er koblet til – ved flere: det typen hører til), ellers jobb-eieren.
+// Dagsrapporter går alltid til hovedselskapet.
+export function foreslåProsjekt(jobb, type, åpen) {
   if (!jobb || !jobb.length) return null;
+  if (type === "dagsrapport") return hovedselskap(jobb);
   const ønsket = typeInfo(type).selskap;
-  return jobb.find(r => String(felt(r).Arbeidsomrade || "").toUpperCase() === ønsket) || jobb[0];
+  const treff = åpen ? jobb.filter(r => modellTreff(felt(r).Modell, åpen)) : [];
+  if (treff.length) return treff.find(r => String(felt(r).Arbeidsomrade || "").toUpperCase() === ønsket) || treff[0];
+  return hovedselskap(jobb);
 }
 
 // Søk i lista over alle hovedprosjekter (nummer og navn).
@@ -154,6 +186,8 @@ export function finnProsjektmappe(barn, r) {
 // (ProsjektmappeId), fordi den kan få nytt navn når et selskap kommer til.
 // Undermappa for typen: i en FELLES mappe er «06 Endringer» delt per selskap
 // («06 Endringer/SB»). Alt annet som før.
+// 18.11: en mappe under en selskapsmappe er ALDRI felles – der er det rett i
+// «06 Endringer» (og «01 Kontrakt»). Felles gjelder bare de gamle mappene.
 export function mappeFor(type, felles, arbeidsomrade) {
   const m = typeInfo(type).mappe;
   if (felles && type === "em") {

@@ -131,7 +131,7 @@ export async function dialog(type, blob, filnavn, dato) {
   const å = åpenModell();
   const jobb = R.finnJobb(rader, å);
   const innhold = $("lipInnhold");
-  let valgt = R.foreslåProsjekt(jobb, type);
+  let valgt = R.foreslåProsjekt(jobb, type, å);
   let underMappe = info.mappe;
   let endret = false;          // har brukeren skrevet sin egen undermappe?
   let mappa = null;            // { sti, navn, id, felles } for valgt prosjekt
@@ -161,7 +161,7 @@ export async function dialog(type, blob, filnavn, dato) {
       mappeFeil = err;
       if (m) m.textContent = "📁 " + R.prosjektTekst(valgt) + " / " + underMappe;
       if (notat) notat.textContent = "";
-      feil(err instanceof G.IngenMappe ? t("Prosjektet har ingen mappe ennå – åpne det i Storm Prosjekter og trykk Mappe først.")
+      feil(err instanceof G.IngenMappe ? t("Prosjektet har ingen mappe ennå – åpne Dokumenter på prosjektet i Storm Prosjekter først.")
         : err instanceof G.IngenTilgang ? t("Du har ikke tilgang til prosjektmappa i Storm Prosjekter.")
         : t("Klarte ikke å legge fila i prosjektet: {0}", err.message));
     }
@@ -223,11 +223,34 @@ export async function dialog(type, blob, filnavn, dato) {
       $("lipAvbryt").textContent = t("Lukk");
     } catch (err) {
       ok.disabled = false; ok.innerHTML = ikon("bibliotek") + " " + esc(t("Legg i prosjekt"));
-      if (err instanceof G.IngenMappe) feil(t("Prosjektet har ingen mappe ennå – åpne det i Storm Prosjekter og trykk Mappe først."));
+      if (err instanceof G.IngenMappe) feil(t("Prosjektet har ingen mappe ennå – åpne Dokumenter på prosjektet i Storm Prosjekter først."));
       else if (err instanceof G.IngenTilgang) feil(t("Du har ikke tilgang til prosjektmappa i Storm Prosjekter."));
       else feil(t("Klarte ikke å legge fila i prosjektet: {0}", err.message));
     }
   };
+}
+
+// ---------- Velg selskap (18.11) ----------
+// Jobb med flere selskaper: brukeren velger hvilket selskap (prosjekt)
+// dokumentet gjelder. Forslaget er markert. Svar: raden, eller null (Avbryt).
+export function velgSelskap(jobb, forslag, tittel) {
+  if (!jobb || jobb.length < 2) return Promise.resolve((jobb && jobb[0]) || null);
+  if (typeof globalThis.__velgSelskapTest === "function") return Promise.resolve(globalThis.__velgSelskapTest(jobb, forslag));
+  return new Promise((ferdig) => {
+    lukkDialog();
+    const bak = document.createElement("div");
+    bak.id = "lipBak"; bak.className = "lip-bak";
+    bak.innerHTML = '<div class="lip-d" role="dialog" aria-modal="true"><h2>' + esc(tittel || t("Hvilket selskap gjelder det?")) + '</h2>' +
+      '<p class="lip-liten">' + esc(t("Jobben har flere selskaper. Det lagres i mappa til selskapet du velger.")) + '</p>' +
+      '<div class="lip-treff">' + jobb.map(r => '<button type="button" data-nokkel="' + esc(r.fields.Nokkel) + '"' + (r === forslag ? ' class="paa"' : "") + '>' +
+        esc(R.prosjektTekst(r)) + '</button>').join("") + '</div>' +
+      '<div class="lip-kn"><button type="button" id="lipAvbryt">' + esc(t("Avbryt")) + '</button></div></div>';
+    document.body.appendChild(bak);
+    const slutt = (v) => { bak.remove(); ferdig(v); };
+    $("lipAvbryt").onclick = () => slutt(null);
+    bak.addEventListener("click", (e) => { const k = e.target.closest && e.target.closest("[data-nokkel]"); if (k) slutt(jobb.find(r => r.fields.Nokkel === k.dataset.nokkel) || null); });
+    const f = bak.querySelector(".paa") || bak.querySelector("[data-nokkel]"); if (f) f.focus();
+  });
 }
 
 // ---------- Automatisk, uten dialog (felles dagsrapport, 12.11) ----------
@@ -249,7 +272,7 @@ export async function leggAutomatisk(type, blob, filnavn, dato, o) {
     const å = åpenModell();
     let jobb = R.jobbForNummer(rader, opt.nummer);
     if (!jobb.length) jobb = R.finnJobb(rader, å);
-    const valgt = R.foreslåProsjekt(jobb, type);
+    const valgt = R.foreslåProsjekt(jobb, type, å);   // dagsrapport → hovedselskapet (18.11)
     if (!valgt) return { ok: false, grunn: "ingen-prosjekt" };
     const mappa = await G.prosjektmappe(token, valgt, rader);
     const under = R.mappeFor(type, mappa.felles, valgt.fields.Arbeidsomrade);
