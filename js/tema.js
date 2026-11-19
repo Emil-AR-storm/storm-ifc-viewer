@@ -5,10 +5,12 @@
 // skript i <head> (js/tema-tidlig.js, synkront) – ellers rekker siden å male mørk flate før denne
 // modulen er lastet, og det blinker. Her ligger bare knappen og lagringen.
 //
-// Egen lagringsnøkkel med vilje: prefs-strukturen i state.js synkes til
-// SharePoint (usersync.js), og temaet er noe man gjerne vil ha ulikt på
-// PC-en inne og telefonen ute på plassen.
-import { $ } from "./state.js";
+// Egen lagringsnøkkel (storm.tema) på enheten. Før var temaet med vilje ikke
+// synket («ulikt på PC og telefon»). Emil 19.11: temaet FØLGER NÅ BRUKEREN på
+// tvers av Storm IFC, Storm Prosjekter og Storm Bemanning – lista «Brukere»
+// (felles-innstillinger.js). Klikk på knappen lagrer felles (S.lagreFelles);
+// et tema som kommer FRA lista (opt.fraFelles) lagres bare på enheten.
+import { $, S } from "./state.js";
 import { t } from "./i18n.js";
 
 const NOKKEL = "storm.tema";
@@ -28,10 +30,11 @@ export function tema() {
   return document.documentElement.dataset.tema === "lys" ? "lys" : "mork";
 }
 
-export function settTema(v) {
+export function settTema(v, opt = {}) {
   document.documentElement.dataset.tema = (v === "lys") ? "lys" : "mork";
   skriv(tema());
   tegnKnapp();
+  if (opt.fraBruker && !opt.fraFelles && S.lagreFelles) S.lagreFelles({ Tema: tema() });
 }
 
 // Knappen viser ikonet for det man bytter TIL, ikke det man står i –
@@ -47,7 +50,7 @@ function tegnKnapp() {
 
 const knapp = $("btnTema");
 if (knapp) {
-  knapp.addEventListener("click", () => settTema(tema() === "lys" ? "mork" : "lys"));
+  knapp.addEventListener("click", () => settTema(tema() === "lys" ? "mork" : "lys", { fraBruker: true }));
   tegnKnapp();
 }
 

@@ -81,6 +81,7 @@ const MODULER = [
   ["./byggeplass.js", true],
   ["./mobile.js"],                 // må lastes etter at alle knapper har fått lyttere
   ["./oppsett.js"],                // ansattliste og Planner-plan fra SharePoint
+  ["./felles-innstillinger.js"],   // 🌐🌓 felles språk og tema med Storm Prosjekter/Bemanning (19.11) – før usersync
   ["./usersync.js"]                // personlig oppsett fra SharePoint – må lastes sist
 ];
 

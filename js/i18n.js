@@ -61,11 +61,17 @@ export function tn(n, ent, flere, ...args) {
   return t(flere, n, ...args);
 }
 
-export async function setLang(kode) {
+// opt.fraFelles: valget kom fra lista «Brukere» (felles med Storm Prosjekter
+// og Storm Bemanning, 19.11) – da skrives det IKKE tilbake dit. Ellers er det
+// brukerens eget valg, og det lagres felles (S.lagreFelles, satt av
+// felles-innstillinger.js når brukeren er logget inn – ingen import-sirkel).
+// Oppstarten (lastSprak + oversettDom) går ikke via setLang og lagrer ikke.
+export async function setLang(kode, opt = {}) {
   if (!SPRAK.some(([k]) => k === kode)) kode = "no";
   S.lang = kode;
   writePrefs();
   if (S.syncPrefs) S.syncPrefs();
+  if (!opt.fraFelles && S.lagreFelles) S.lagreFelles({ Sprak: kode });
   // Ordboka må være på plass FØR DOM-en tegnes på nytt, ellers skriver
   // oversettDom() norsk over alt og teksten blir stående sånn til neste
   // tegning. S.lang settes over, altså før ventingen, så alt som bare leser

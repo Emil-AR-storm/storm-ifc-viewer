@@ -154,11 +154,14 @@ S.syncPrefs = () => {
 // oppsett.js henger seg på den samme kroken, og rekkefølgen på importene skal
 // ikke kunne slå ut den ene.
 const tidligereInnlogging = S.onSignedIn;
+// 19.11: ETTER Storm IFC sin egen prefs-fil hentes det felles valget (språk og
+// tema fra lista «Brukere»), så det felles valget vinner.
+const etterPrefs = () => { try { if (S.hentFelles) S.hentFelles(); } catch (_) {} };
 S.onSignedIn = () => {
   try { if (tidligereInnlogging) tidligereInnlogging(); } catch (_) {}
-  pullUserPrefs();
+  pullUserPrefs().catch(() => {}).then(etterPrefs);
 };
 
 // Er brukeren allerede innlogget når siden lastes, hentes oppsettet med en gang.
 // (msalInit kjører i bakgrunnen fra sharepoint.js og kaller S.onSignedIn.)
-setTimeout(() => { if (!S.prefsCloudOK) pullUserPrefs(); }, 3000);
+setTimeout(() => { if (!S.prefsCloudOK) pullUserPrefs().catch(() => {}).then(etterPrefs); }, 3000);
