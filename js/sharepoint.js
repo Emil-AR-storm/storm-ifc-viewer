@@ -32,6 +32,17 @@ export const GRAPH = "https://graph.microsoft.com/v1.0";
 
 const SP_SCOPES = ["Sites.Read.All", "Files.Read.All", "Files.ReadWrite.All"];
 
+// 19.11: e-posten til sist innloggede konto huskes som HINT (localStorage),
+// så en ny fane kan logge inn stille ved oppstart. Bare adressen – ingen token
+// eller hemmelighet; selve innloggingen ligger fortsatt i sessionStorage
+// (sikkerhetsrunden 19.10).
+export const SIST_KONTO = "storm-ifc-sist-konto";
+function settKonto(konto) {
+  S.msalApp.setActiveAccount(konto);
+  if (konto && konto.username) { try { localStorage.setItem(SIST_KONTO, String(konto.username).toLowerCase().slice(0, 120)); } catch (_) {} }
+}
+export function glemSistKonto() { try { localStorage.removeItem(SIST_KONTO); } catch (_) {} }
+
 async function msalInit() {
   if (S.msalApp) return S.msalApp;
   if (!window.msal) throw new Error(t("Innloggings-biblioteket (MSAL) lastet ikke – sjekk nettforbindelsen"));
@@ -50,10 +61,24 @@ async function msalInit() {
   });
   await S.msalApp.initialize();
   const res = await S.msalApp.handleRedirectPromise();
-  if (res && res.account) S.msalApp.setActiveAccount(res.account);
+  if (res && res.account) settKonto(res.account);
   else {
     const accs = S.msalApp.getAllAccounts();
-    if (accs.length) S.msalApp.setActiveAccount(accs[0]);
+    if (accs.length) settKonto(accs[0]);
+  }
+  // 19.11 (BYGGEPLAN-Storm-IFC-stille-innlogging-felles-innstillinger): ny fane
+  // = tom sessionStorage = ingen konto. Da kom språk, tema og oppsett først når
+  // en modell ble åpnet. Nå prøves en STILLE innlogging (skjult ramme mot
+  // Microsoft-økta) med den husket e-posten. Aldri vindu, aldri omdirigering.
+  // Feiler den (f.eks. blokkerte tredjeparts informasjonskapsler), er alt som før.
+  if (!S.msalApp.getActiveAccount() && !LETT && !iRamme) {
+    let hint = null; try { hint = localStorage.getItem(SIST_KONTO); } catch (_) {}
+    if (hint) {
+      try {
+        const r = await S.msalApp.ssoSilent({ scopes: SP_SCOPES, loginHint: hint });
+        if (r && r.account) settKonto(r.account);
+      } catch (e) { console.info("Stille innlogging gikk ikke:", (e && (e.errorCode || e.message)) || e); }
+    }
   }
   // Er vi logget inn? Hent brukerens personlige oppsett fra SharePoint.
   if (S.msalApp.getActiveAccount() && S.onSignedIn) S.onSignedIn();
@@ -114,7 +139,7 @@ async function loggInn(scopes, o, metode) {
       const r = metode === "login" || !S.msalApp.getActiveAccount()
         ? await S.msalApp.loginPopup({ scopes, loginHint: S.msHint || undefined })
         : await S.msalApp.acquireTokenPopup({ scopes, account: S.msalApp.getActiveAccount() });
-      if (r && r.account) { S.msalApp.setActiveAccount(r.account); visInnlogging("inne", r.account); }
+      if (r && r.account) { settKonto(r.account); visInnlogging("inne", r.account); }
       const tk = r && r.accessToken;
       if (tk && String(tk).trim()) return tk;
     } catch (err) {
@@ -127,7 +152,7 @@ async function loggInn(scopes, o, metode) {
       const r = metode === "login"
         ? await S.msalApp.loginPopup({ scopes })
         : await S.msalApp.acquireTokenPopup({ scopes, account: S.msalApp.getActiveAccount() });
-      if (r && r.account) S.msalApp.setActiveAccount(r.account);
+      if (r && r.account) settKonto(r.account);
       if (metode === "login" && S.onSignedIn) S.onSignedIn();
       if (r && r.account) visInnlogging("inne", r.account);
       const tk = r && r.accessToken;
@@ -161,7 +186,7 @@ export async function graphToken(scopes, opts) {
     S.msHintPrøvd = S.msHint;
     try {
       const r = await S.msalApp.ssoSilent({ scopes, loginHint: S.msHint });
-      if (r && r.account) { S.msalApp.setActiveAccount(r.account); visInnlogging("inne", r.account); account = r.account; }
+      if (r && r.account) { settKonto(r.account); visInnlogging("inne", r.account); account = r.account; }
     } catch (err) { console.info("ssoSilent mot SharePoint gikk ikke (" + ((err && (err.errorCode || err.message)) || err) + ")"); }
   }
   if (!account) {
@@ -207,7 +232,7 @@ export async function msIdToken(o) {
     // 🖼 B3: loginHint = e-posten fra Storm Prosjekter, så kontoen er ferdig valgt.
     const r = await S.msalApp.loginPopup({ scopes: SP_SCOPES, prompt: v.velgKonto ? "select_account" : undefined,
       loginHint: v.velgKonto ? undefined : (v.loginHint || undefined) });
-    if (r && r.account) { S.msalApp.setActiveAccount(r.account); visInnlogging("inne", r.account); }
+    if (r && r.account) { settKonto(r.account); visInnlogging("inne", r.account); }
     return (r && r.idToken) || null;
   }
   // Telefon i egen fane: omdirigering. Siden lastes på nytt, og den stille
@@ -225,7 +250,7 @@ export async function msSsoStille(loginHint) {
   await msalInit();
   try {
     const r = await S.msalApp.ssoSilent({ scopes: SP_SCOPES, loginHint });
-    if (r && r.account) { S.msalApp.setActiveAccount(r.account); visInnlogging("inne", r.account); }
+    if (r && r.account) { settKonto(r.account); visInnlogging("inne", r.account); }
     return (r && r.idToken) || null;
   } catch (err) {
     console.info("ssoSilent gikk ikke (" + ((err && (err.errorCode || err.message)) || err) + ") – viser «Fortsett».");

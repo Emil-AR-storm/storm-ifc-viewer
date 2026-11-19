@@ -112,7 +112,22 @@ export async function lagreFelles(felt) {
   } catch (err) { console.warn("Felles innstillinger (lagre):", (err && err.message) || err); }
 }
 
+// Rettelse B (19.11): når fanen får fokus igjen, og det er gått mer enn 30 s
+// siden sist, hentes det felles valget på nytt – et bytte gjort i Storm
+// Prosjekter i en annen fane slår da inn uten ny lasting. fraFelles-regelen
+// gjelder: ingenting skrives tilbake.
+export const FOKUS_PAUSE_MS = 30000;
+let sistHentet = 0;
+export function børHenteVedFokus(o) { return !!(o.synlig && o.harKonto && (o.nå - o.sist) > FOKUS_PAUSE_MS); }
+const hentFellesVanlig = hentFelles;
+async function hentOgMerk() { sistHentet = Date.now(); return hentFellesVanlig(); }
+if (typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", () => {
+    const harKonto = !!(S.msalApp && S.msalApp.getActiveAccount && S.msalApp.getActiveAccount());
+    if (børHenteVedFokus({ synlig: document.visibilityState === "visible", harKonto, nå: Date.now(), sist: sistHentet })) hentOgMerk();
+  });
+}
 S.lagreFelles = lagreFelles;
-S.hentFelles = hentFelles;
+S.hentFelles = hentOgMerk;
 // Til testene
 export function _nullstill() { FI.siteId = FI.listId = FI.radId = null; FI.epost = ""; FI.ingenRad = false; }
