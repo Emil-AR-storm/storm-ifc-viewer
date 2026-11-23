@@ -2543,15 +2543,31 @@ function elementMeta() {
 // 3A (SVAR fra Storm Prosjekter 23.11 + Emil 23.11): bare folkene som er lagt
 // inn på jobben (Mannskap + kontakter som er ansatte). Står det allerede en
 // annen ansvarlig på markeringen, vises den også. Ingen lagt inn: alle ansatte.
+// Lange navn (byggeplan 23.11 «Ansvarlig skal ikke gå utenfor Ny markering»):
+// lista viser maks 34 tegn, fullt navn og rolle ligger i title og data-fullt.
+// value er alltid hele navnet, så det som lagres, er uendret.
+const ANSV_KORT = 34;
+export const kortAnsvarlig = (s) => s.length > ANSV_KORT ? s.slice(0, ANSV_KORT - 1).trimEnd() + "…" : s;
 export function ansvarligOpsjoner(valgt) {
   const l = ansvarligValg(S.jobbMannskap, ANSATTE);
-  const opt = (v) => '<option value="' + esc(v.navn) + '"' + (v.navn === valgt ? " selected" : "") + '>' + esc(v.navn) + (v.rolle ? " – " + esc(v.rolle) : "") + '</option>';
+  const opt = (v, valgtNå) => {
+    const tekst = v.navn + (v.rolle ? " – " + v.rolle : "");
+    return '<option value="' + esc(v.navn) + '" title="' + esc(tekst) + '" data-fullt="' + esc(tekst) + '"' + (valgtNå ? " selected" : "") + '>' + esc(kortAnsvarlig(tekst)) + '</option>';
+  };
   const jobb = l.filter(v => v.gruppe === "jobb");
   let html = jobb.length
-    ? '<optgroup label="' + esc(t("På jobben")) + '">' + jobb.map(opt).join("") + '</optgroup>'
-    : l.map(opt).join("");
-  if (valgt && !l.some(v => v.navn === valgt)) html += '<option value="' + esc(valgt) + '" selected>' + esc(valgt) + '</option>';
+    ? '<optgroup label="' + esc(t("På jobben")) + '">' + jobb.map(v => opt(v, v.navn === valgt)).join("") + '</optgroup>'
+    : l.map(v => opt(v, v.navn === valgt)).join("");
+  if (valgt && !l.some(v => v.navn === valgt)) html += opt({ navn: valgt, rolle: "" }, true);
   return html;
+}
+// Hele navnet under lista når valget er forkortet, ellers ingenting.
+function visFulltAnsvarlig() {
+  const sel = $("commentOwner"), ut = $("commentOwnerFullt");
+  if (!sel || !ut) return;
+  const o = sel.options[sel.selectedIndex];
+  const fullt = o ? (o.getAttribute("data-fullt") || "") : "";
+  ut.textContent = o && fullt && fullt !== o.textContent ? fullt : "";
 }
 function fyllAnsvarligOgFrist() {
   if (LETT) return;
@@ -2561,9 +2577,11 @@ function fyllAnsvarligOgFrist() {
   if (!sel) {
     const lab = document.createElement("label");
     lab.className = "cd-ansvarlig";
-    lab.innerHTML = '<span>' + esc(t("Ansvarlig")) + '</span> <select id="commentOwner"></select> <span class="cd-kilde" id="commentOwnerKilde"></span>';
-    rad.appendChild(lab);
+    lab.innerHTML = '<span>' + esc(t("Ansvarlig")) + '</span> <select id="commentOwner"></select> <span class="cd-fullt" id="commentOwnerFullt"></span> <span class="cd-kilde" id="commentOwnerKilde"></span>';
+    // På egen linje under Frist, like bred som boksen (ikke inni frist-raden).
+    rad.after(lab);
     sel = $("commentOwner");
+    sel.addEventListener("change", visFulltAnsvarlig);
   }
   const meta = elementMeta();
   const fag = meta ? fagFor(meta) : "Annet";
@@ -2576,6 +2594,7 @@ function fyllAnsvarligOgFrist() {
   const k = S.jobbFolkKilde;
   if (kilde) kilde.title = k ? t("Fra Storm Prosjekter: Mannskap {0}, kontakter {1}", k.mannskap === "tom" ? t("tom") : k.mannskap === "ugyldig" ? t("kunne ikke leses") : String(k.mannskap), String(k.kontakter)) : "";
   if (sel) sel.title = kilde ? kilde.title : "";
+  visFulltAnsvarlig();
   const felt = $("commentDue");
   if (felt && !$("commentNoDue").checked) felt.value = omDager(st.dager, iDag);
 }
