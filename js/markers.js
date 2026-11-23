@@ -1,7 +1,7 @@
 // 💬 Markeringer: lagring lokalt og deling via SharePoint.
 import * as THREE from "three";
 import { $, på, S, esc, ikon, loadingEl, loadingText, lukkPaneler, tomPanelHtml, writePrefs } from "./state.js";
-import { STANDARD_MALER, fagFor, masseEndring, område, settMal, standardFor, vaskEgneMaler } from "./utfylling-regn.js";
+import { STANDARD_MALER, ansvarligValg, fagFor, masseEndring, område, settMal, standardMedJobb, vaskEgneMaler } from "./utfylling-regn.js";
 import { t } from "./i18n.js";
 import { LETT, montorNavn, settMontorNavn } from "./lett.js";
 import { ANSATTE, FRISTER, PLANNER, TJENESTER } from "./config.js";
@@ -2130,10 +2130,7 @@ export function openMarkerPopup(c) {
       '<label>' + t("Status") + '<select class="mp-st">' + Object.keys(STATUS).map(k =>
         '<option value="' + k + '"' + (k === st ? " selected" : "") + '>' + t(k) + '</option>').join("") + '</select></label>' +
       '<label>' + t("Ansvarlig") + '<select class="mp-ow"><option value="">' + t("– ingen –") + '</option>' +
-        ANSATTE.map(a => '<option value="' + esc(a.navn) + '"' + (c.owner === a.navn ? " selected" : "") + '>' +
-          esc(a.navn) + '</option>').join("") +
-        (c.owner && !ANSATTE.some(a => a.navn === c.owner)
-          ? '<option value="' + esc(c.owner) + '" selected>' + esc(c.owner) + '</option>' : "") +
+        ansvarligOpsjoner(c.owner || "") +
       '</select></label>' +
       '<label>' + t("Frist") + '<input type="date" class="mp-due" value="' + esc(c.due || "") + '"></label>' +
       // 🎨 Farge: Frist (som før) eller Egendefinert med fargevelger
@@ -2543,6 +2540,18 @@ function elementMeta() {
   const m = S.meta.get(id) || {};
   return { typeName: m.typeName || m.type || "", name: m.name || "", objectType: m.objectType || "", material: m.material || m.materialNavn || "" };
 }
+// 3A (SVAR fra Storm Prosjekter 23.11): folkene på jobben (kolonnen Mannskap)
+// står øverst under «Ansvarlig», så resten av ansattlista. Uten Mannskap: som før.
+export function ansvarligOpsjoner(valgt) {
+  const l = ansvarligValg(S.jobbMannskap, ANSATTE);
+  const opt = (v) => '<option value="' + esc(v.navn) + '"' + (v.navn === valgt ? " selected" : "") + '>' + esc(v.navn) + (v.rolle ? " – " + esc(v.rolle) : "") + '</option>';
+  const jobb = l.filter(v => v.gruppe === "jobb"), andre = l.filter(v => v.gruppe !== "jobb");
+  let html = jobb.length
+    ? '<optgroup label="' + esc(t("På jobben")) + '">' + jobb.map(opt).join("") + '</optgroup><optgroup label="' + esc(t("Andre ansatte")) + '">' + andre.map(opt).join("") + '</optgroup>'
+    : andre.map(opt).join("");
+  if (valgt && !l.some(v => v.navn === valgt)) html += '<option value="' + esc(valgt) + '" selected>' + esc(valgt) + '</option>';
+  return html;
+}
 function fyllAnsvarligOgFrist() {
   if (LETT) return;
   const rad = document.querySelector("#commentDialog .cd-frist");
@@ -2557,12 +2566,10 @@ function fyllAnsvarligOgFrist() {
   }
   const meta = elementMeta();
   const fag = meta ? fagFor(meta) : "Annet";
-  const st = standardFor(fag, S.settings && S.settings.markStandard, { ansvarlig: S.settings && S.settings.markSistAnsvarlig });
-  const navn = ANSATTE.map(a => a.navn);
-  if (st.ansvarlig && !navn.includes(st.ansvarlig)) navn.push(st.ansvarlig);
-  sel.innerHTML = '<option value="">' + esc(t("– ingen –")) + '</option>' + navn.map(n => '<option value="' + esc(n) + '"' + (n === st.ansvarlig ? " selected" : "") + '>' + esc(n) + '</option>').join("");
+  const st = standardMedJobb(fag, S.jobbMannskap, ANSATTE, S.settings && S.settings.markStandard, { ansvarlig: S.settings && S.settings.markSistAnsvarlig });
+  sel.innerHTML = '<option value="">' + esc(t("– ingen –")) + '</option>' + ansvarligOpsjoner(st.ansvarlig);
   const kilde = $("commentOwnerKilde");
-  if (kilde) kilde.textContent = st.kilde === "fag" ? "(" + t("{0} → standard", t(fag).toLowerCase()) + ")" : st.kilde === "sist" ? "(" + t("sist brukt") + ")" : "";
+  if (kilde) kilde.textContent = st.kilde === "jobb" ? "(" + t("{0} → jobbens standard", t(fag).toLowerCase()) + ")" : st.kilde === "fag" ? "(" + t("{0} → standard", t(fag).toLowerCase()) + ")" : st.kilde === "sist" ? "(" + t("sist brukt") + ")" : "";
   const felt = $("commentDue");
   if (felt && !$("commentNoDue").checked) felt.value = omDager(st.dager, iDag);
 }
@@ -3038,7 +3045,7 @@ function apneMasseEndring() {
   bak.innerHTML = '<div class="lip-d cm-masse" role="dialog" aria-modal="true"><h2>' + esc(t("Endre {0} markeringer", valgte.length)) + '</h2>' +
     '<p class="lip-liten">' + esc(navn) + '</p>' +
     '<label>' + esc(t("Ansvarlig")) + '</label><select id="cmMOwner"><option value="__u">' + esc(t("(uendret)")) + '</option><option value="">' + esc(t("– ingen –")) + '</option>' +
-      ANSATTE.map(a => '<option value="' + esc(a.navn) + '">' + esc(a.navn) + '</option>').join("") + '</select>' +
+      ansvarligOpsjoner("") + '</select>' +
     '<label>' + esc(t("Frist")) + '</label><div class="cm-m-frist"><select id="cmMFristValg"><option value="u">' + esc(t("(uendret)")) + '</option><option value="sett">' + esc(t("Sett dato")) + '</option><option value="fjern">' + esc(t("Fjern frist")) + '</option></select>' +
       '<input type="date" id="cmMDue" disabled></div>' +
     '<label>' + esc(t("Status")) + '</label><select id="cmMStatus"><option value="__u">' + esc(t("(uendret)")) + '</option>' +

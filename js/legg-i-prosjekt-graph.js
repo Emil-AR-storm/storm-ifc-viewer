@@ -39,7 +39,10 @@ export async function stedOgBibliotek(token) {
 export async function hentProsjekter(token) {
   const g = lag(token);
   const { siteId: s } = await stedOgBibliotek(token);
-  const felt = "Nokkel,Arbeidsomrade,ProsjektNr,Title,ForelderNokkel,JobbNr,Modell,Prosjekttype,ProsjektmappeId,Prosjektmappe";
+  // Kolonnene etter Kunde er bekreftet av Storm Prosjekter 4.60 (SVAR 23.11):
+  // prosjektlederen per selskap og Mannskap trengs for hele jobben (1B og 3A).
+  const felt = "Nokkel,Arbeidsomrade,ProsjektNr,Title,ForelderNokkel,JobbNr,Modell,Prosjekttype,ProsjektmappeId,Prosjektmappe," +
+    "Kunde,ProsjektlederNavn,ProsjektlederTelefon,ProsjektlederEpost,Adresse,Lat,Lon,KoordAdresse,Mannskap";
   let url = "/sites/" + s + "/lists/" + R.PROSJEKT_LISTE + "/items?$expand=fields($select=" + felt + ")&$top=999";
   const ut = [];
   for (let i = 0; url && i < 50; i++) {

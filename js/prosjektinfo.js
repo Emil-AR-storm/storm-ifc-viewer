@@ -15,12 +15,12 @@ import { $, S, esc, writePrefs } from "./state.js";
 import { t } from "./i18n.js";
 import { LETT } from "./lett.js";
 import { gjeldende, tomInfo, vaskAdresseInfo, vaskProsjektInfo } from "./prosjektinfo-regn.js";
-import { adresseUrl, vaskAdresseSvar } from "./terreng-regn.js";
+import { adresseUrl, tilTM, vaskAdresseSvar } from "./terreng-regn.js";
 import { spLes, spPaalogget, spSkriv } from "./sp-lager.js";
 import { hentLogoer } from "./tegninger.js";
 import { ryddLogonavn } from "./rapport.js";
 import { lettNavn } from "./lite.js";
-import { feltKilde, fyllFraSp, spProsjektinfo } from "./utfylling-regn.js";
+import { feltKilde, fyllFraSp, spProsjektinfo, vaskMannskap } from "./utfylling-regn.js";
 
 const SP_MAPPE = "Prosjektinfo";
 let info = vaskProsjektInfo({});
@@ -131,21 +131,34 @@ export async function hentFraStormProsjekter(alle) {
     if (!rad) { spHentStatus = "ingen"; gjenTegn(); return false; }
     const felt = await G.hentProsjektFelt(token, rad);
     if (S.fileName !== forFil) return false;
-    const spInfo = spProsjektinfo(Object.assign({}, rad.fields || {}, felt));
+    // Prosjektlederen gjelder per selskap: raden modellen hører til, ellers den
+    // første i jobben som er fylt ut (SE → SB → SS) – SVAR fra Storm Prosjekter 23.11.
+    const spInfo = spProsjektinfo(Object.assign({}, rad.fields || {}, felt), LR.sorterProsjekter([...jobb]));
+    // 3A: folkene på jobben (kolonnen Mannskap, lik på alle hovedprosjektene i jobben)
+    const mRad = [felt, rad.fields].concat(jobb.map(r => r && r.fields)).find(f => f && f.Mannskap) || null;
+    settMannskap(mRad ? vaskMannskap(mRad.Mannskap) : null);
     const forrige = info.sp || null;
     const ny = fyllFraSp(info, spInfo, forrige, !!alle);
     const før = JSON.stringify(info);
     Object.assign(info, ny);
-    // Adressen: søkes opp hos Kartverket (samme søk som feltet) når vi ikke har
-    // en, eller ved «Hent på nytt». En adresse du har valgt selv, røres ikke.
-    if (spInfo.adresse && (!info.adresse || alle)) {
-      try {
-        const l = await sok(spInfo.adresse);
-        if (l.length && S.fileName === forFil) { const a = vaskAdresseInfo(l[0]); if (a) info.adresse = a; }
-      } catch (_) { /* uten adresse – feltet står som før */ }
+    // Adressen: Lat/Lon fra Storm Prosjekter brukes direkte når de finnes,
+    // ellers søkes Adresse opp hos Kartverket (samme søk som feltet). En adresse
+    // du har valgt selv, røres ikke (bare ved «Hent på nytt»).
+    const adrTekst = spInfo.adresse || spInfo.koordAdresse;
+    if (adrTekst && (!info.adresse || alle)) {
+      if (spInfo.lat != null && spInfo.lon != null) {
+        const p = tilTM(spInfo.lat, spInfo.lon, "25833");
+        const a = vaskAdresseInfo({ tekst: adrTekst, E: p.E, N: p.N });
+        if (a) info.adresse = a;
+      } else if (spInfo.adresse) {
+        try {
+          const l = await sok(spInfo.adresse);
+          if (l.length && S.fileName === forFil) { const a = vaskAdresseInfo(l[0]); if (a) info.adresse = a; }
+        } catch (_) { /* uten adresse – feltet står som før */ }
+      }
     }
     info.sp = Object.assign({}, spInfo, { nokkel: (rad.fields || {}).Nokkel || "", hentet: new Date().toISOString() });
-    delete info.sp.kolonner;
+    for (const k of ["kolonner", "lat", "lon", "koordAdresse", "epost"]) delete info.sp[k];
     spHentStatus = "ok";
     if (JSON.stringify(info) !== før) {
       const etter = JSON.parse(JSON.stringify(info)), forrigeInfo = JSON.parse(før);
@@ -162,11 +175,22 @@ export async function hentFraStormProsjekter(alle) {
 }
 S.hentProsjektinfoFraSp = hentFraStormProsjekter;
 
+// 3A: folkene på jobben. Huskes per modell, så lista virker også uten nett.
+const mannskapNokkel = () => "storm-ifc-mannskap::" + (S.fileName || "");
+function settMannskap(m) {
+  S.jobbMannskap = m || null;
+  try { if (m) localStorage.setItem(mannskapNokkel(), JSON.stringify(m)); else localStorage.removeItem(mannskapNokkel()); } catch (_) {}
+}
+function lesMannskap() {
+  try { S.jobbMannskap = vaskMannskap(localStorage.getItem(mannskapNokkel()) || ""); } catch (_) { S.jobbMannskap = null; }
+}
+
 // afterLoad (ifc.js): lokalt først, så SharePoint i bakgrunnen.
 S.lastProsjektinfo = () => {
   if (LETT) return;
   if (S.nullstillVaer3D) S.nullstillVaer3D();   // 🌦 ikke vis forrige modells vær
   info = lesLokalt();
+  lesMannskap();
   sokTreff = []; sokMelding = "";
   meld();
   hentFraSp();

@@ -173,42 +173,115 @@ export function navnForslag(elementer) {
 export const erStandardNavn = (n) => /^(Trinn|Etappe)\s+\d+$/.test(String(n || "").trim());
 
 // ═══════════ 1B · PROSJEKTINFO FRA STORM PROSJEKTER ═══════════
-// Kolonnene i lista Prosjekter kan hete litt forskjellig. Vi leter etter de
-// kjente navnene (store/små bokstaver likegyldig) og bruker den første som har
-// en verdi. Personfelt som bare har en id (…LookupId), brukes ikke.
-export const SP_KANDIDATER = {
-  byggherre: ["Byggherre", "Kunde", "Oppdragsgiver", "Bestiller", "Kundenavn"],
-  leder: ["Prosjektleder", "ProsjektlederNavn", "PL", "Prosjektansvarlig", "Kontaktperson"],
-  telefon: ["Telefon", "ProsjektlederTelefon", "Mobil", "Kontakttelefon"],
-  adresse: ["Adresse", "Byggeplassadresse", "Prosjektadresse", "Anleggsadresse", "Gateadresse", "Leveringsadresse"],
-  postnummer: ["Postnummer", "Postnr"],
-  poststed: ["Poststed", "Sted"]
+// Kolonnene i lista Prosjekter – bekreftet av Storm Prosjekter 4.60 (23.11):
+//   Kunde (byggherre; Kontraktspart nesten aldri fylt ut), ProsjektlederNavn,
+//   ProsjektlederTelefon, ProsjektlederEpost (tekst – personkolonnene
+//   Prosjektleder/Anleggsleder er tomme og leses ALDRI), Adresse (én tekst med
+//   postnummer og sted), Lat/Lon (WGS84) og KoordAdresse, Mannskap (JSON).
+// Prosjektleder gjelder per selskap: raden til selskapet modellen hører til,
+// ellers den første i jobben som er fylt ut (SE → SB → SS).
+export const SP_KOLONNER = {
+  byggherre: ["Kunde", "Kontraktspart"],
+  leder: ["ProsjektlederNavn"],
+  telefon: ["ProsjektlederTelefon"],
+  epost: ["ProsjektlederEpost"],
+  adresse: ["Adresse"]
 };
-function plukk(felt, navn) {
-  const nøkler = Object.keys(felt || {});
-  for (const n of navn) {
-    const k = nøkler.find(x => x.toLowerCase() === n.toLowerCase());
-    if (!k) continue;
-    const v = felt[k];
-    const s = typeof v === "string" ? v : (v && typeof v === "object" && (v.LookupValue || v.Title || v.displayName)) || (typeof v === "number" ? String(v) : "");
-    if (String(s || "").trim()) return { verdi: String(s).trim(), kolonne: k };
-  }
-  return { verdi: "", kolonne: "" };
-}
-// felt = fields fra lista Prosjekter. Svar { navn, nummer, byggherre, leder, telefon, adresse, kolonner }
-export function spProsjektinfo(felt) {
+// Bakoverkompatibelt navn (testene og eldre kode)
+export const SP_KANDIDATER = SP_KOLONNER;
+const tekstFelt = (f, navn) => {
+  for (const n of navn) { const v = f && f[n]; if (typeof v === "string" && v.trim()) return v.trim(); if (typeof v === "number") return String(v); }
+  return "";
+};
+const tall = (v) => { const x = typeof v === "number" ? v : Number(String(v == null ? "" : v).replace(",", ".")); return Number.isFinite(x) && String(v) !== "" && v != null ? x : null; };
+const erEpost = (e) => /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/.test(String(e || ""));
+// felt = fields fra raden til selskapet modellen hører til.
+// jobb (valgfri) = hovedprosjektene i jobben, SE → SB → SS – brukes når
+// raden ikke har prosjektleder. Svar { navn, nummer, byggherre, leder,
+// telefon, epost, adresse, lat, lon, koordAdresse }
+export function spProsjektinfo(felt, jobb) {
   const f = felt || {};
-  const ut = { navn: tekst(f.Title, 120).trim(), nummer: tekst(f.ProsjektNr, 20).trim(), kolonner: {} };
-  for (const k of ["byggherre", "leder", "telefon"]) {
-    const p = plukk(f, SP_KANDIDATER[k]);
-    ut[k] = tekst(p.verdi, k === "telefon" ? 30 : k === "leder" ? 80 : 120);
-    if (p.kolonne) ut.kolonner[k] = p.kolonne;
+  const ut = { navn: tekst(f.Title, 120).trim(), nummer: tekst(f.ProsjektNr, 20).trim() };
+  ut.byggherre = tekst(tekstFelt(f, SP_KOLONNER.byggherre), 120);
+  let lf = f;
+  if (!tekstFelt(f, SP_KOLONNER.leder)) {
+    const annen = (jobb || []).map(r => (r && (r.fields || r)) || {}).find(x => tekstFelt(x, SP_KOLONNER.leder));
+    if (annen) lf = annen;
   }
-  const a = plukk(f, SP_KANDIDATER.adresse), pn = plukk(f, SP_KANDIDATER.postnummer), ps = plukk(f, SP_KANDIDATER.poststed);
-  ut.adresse = [a.verdi, [pn.verdi, ps.verdi].filter(Boolean).join(" ")].filter(Boolean).join(", ").slice(0, 160);
-  if (a.kolonne) ut.kolonner.adresse = a.kolonne;
+  ut.leder = tekst(tekstFelt(lf, SP_KOLONNER.leder), 80);
+  ut.telefon = tekst(tekstFelt(lf, SP_KOLONNER.telefon), 30);
+  const ep = tekstFelt(lf, SP_KOLONNER.epost).toLowerCase();
+  ut.epost = erEpost(ep) ? ep.slice(0, 120) : "";
+  ut.adresse = tekst(tekstFelt(f, SP_KOLONNER.adresse), 160);
+  const lat = tall(f.Lat), lon = tall(f.Lon);
+  ut.lat = lat != null && lat > 57 && lat < 72 ? lat : null;
+  ut.lon = lon != null && lon > 3 && lon < 32 ? lon : null;
+  if (ut.lat == null || ut.lon == null) { ut.lat = null; ut.lon = null; }
+  ut.koordAdresse = tekst(tekstFelt(f, ["KoordAdresse"]), 160);
   return ut;
 }
+
+// ═══════════ 3A · FOLKENE PÅ JOBBEN (kolonnen Mannskap, Storm Prosjekter 4.60) ═══════════
+// { versjon, oppdatert, personer: [{ navn, epost, rolle, fag, firma }], standard: { fag: epost } }
+// Alt er DATA: bare kjente felt, gyldig e-post (små bokstaver), kjente fag.
+// Tom eller ugyldig → null (da brukes ansattlista som før).
+export function vaskMannskap(v) {
+  let o = v;
+  if (typeof v === "string") { try { o = JSON.parse(v); } catch (_) { return null; } }
+  if (!o || typeof o !== "object" || !Array.isArray(o.personer)) return null;
+  const personer = [], sett = new Set();
+  for (const p of o.personer.slice(0, 200)) {
+    if (!p || typeof p !== "object") continue;
+    const navn = tekst(p.navn, 80).replace(/\s+/g, " ").trim();
+    const epost = String(p.epost || "").trim().toLowerCase().slice(0, 120);
+    if (!navn || !erEpost(epost) || sett.has(epost)) continue;
+    sett.add(epost);
+    personer.push({ navn, epost, rolle: tekst(p.rolle, 40).trim(), fag: FAG.includes(p.fag) ? p.fag : "", firma: tekst(p.firma, 80).trim() });
+  }
+  const standard = {};
+  if (o.standard && typeof o.standard === "object") {
+    for (const f of FAG) {
+      const e = String(o.standard[f] || "").trim().toLowerCase();
+      if (erEpost(e) && sett.has(e)) standard[f] = e;
+    }
+  }
+  if (!personer.length) return null;
+  return { personer, standard };
+}
+// Navnet Ansvarlig-feltet lagrer: ansattlistas navn når e-posten finnes der
+// (Planner finner personen på navnet i ansattlista), ellers navnet fra Mannskap.
+export function navnForEpost(epost, mannskap, ansatte) {
+  const e = String(epost || "").toLowerCase();
+  if (!e) return "";
+  const a = (ansatte || []).find(x => String(x.mail || x.epost || "").toLowerCase() === e);
+  if (a && a.navn) return a.navn;
+  const p = mannskap && mannskap.personer.find(x => x.epost === e);
+  return p ? p.navn : "";
+}
+// Rekkefølgen i Ansvarlig-lista: folkene på jobben først (med rolle), så resten
+// av ansattlista. Svar [{ navn, gruppe: "jobb"|"ansatte", rolle }]
+export function ansvarligValg(mannskap, ansatte) {
+  const ut = [], sett = new Set();
+  for (const p of (mannskap && mannskap.personer) || []) {
+    const navn = navnForEpost(p.epost, mannskap, ansatte) || p.navn;
+    if (sett.has(navn)) continue;
+    sett.add(navn); ut.push({ navn, gruppe: "jobb", rolle: [p.rolle, p.fag].filter(Boolean).join(" · ") });
+  }
+  for (const a of ansatte || []) {
+    if (!a || !a.navn || sett.has(a.navn)) continue;
+    sett.add(a.navn); ut.push({ navn: a.navn, gruppe: "ansatte", rolle: "" });
+  }
+  return ut;
+}
+// Standard for faget: jobbens standard (Mannskap.standard) går foran brukerens.
+export function standardMedJobb(fag, mannskap, ansatte, standarder, sist) {
+  const brukers = standardFor(fag, standarder, sist);
+  const e = mannskap && mannskap.standard && mannskap.standard[fag];
+  const navn = e ? navnForEpost(e, mannskap, ansatte) : "";
+  if (navn) return Object.assign({}, brukers, { ansvarlig: navn, kilde: "jobb" });
+  return brukers;
+}
+
 // Hvilke felt skal fylles fra Storm Prosjekter? Et felt fylles når det er tomt,
 // eller når det fortsatt er det vi hentet sist (da følger det endringer i
 // Storm Prosjekter). Har brukeren skrevet noe annet, er det «endret her» og
