@@ -155,7 +155,7 @@ export async function hentFraStormProsjekter(alle) {
     if (adrTekst && (!info.adresse || alle)) {
       if (spInfo.lat != null && spInfo.lon != null) {
         const p = tilTM(spInfo.lat, spInfo.lon, "25833");
-        const a = vaskAdresseInfo({ tekst: adrTekst, E: p.E, N: p.N });
+        const a = vaskAdresseInfo({ tekst: utenKoord(adrTekst) || adrTekst, E: p.E, N: p.N });
         if (a) info.adresse = a;
       } else if (spInfo.adresse) {
         try {
@@ -165,6 +165,7 @@ export async function hentFraStormProsjekter(alle) {
       }
     }
     info.sp = Object.assign({}, spInfo, { nokkel: (rad.fields || {}).Nokkel || "", hentet: new Date().toISOString() });
+    info.sp.adresse = utenKoord(adrTekst || "");
     for (const k of ["kolonner", "lat", "lon", "koordAdresse", "epost"]) delete info.sp[k];
     spHentStatus = "ok";
     if (JSON.stringify(info) !== før) {
@@ -323,6 +324,23 @@ function felt(id, navn, verdi, reserve, kilde, spFelt) {
     '<input type="text" id="' + id + '" value="' + esc(verdi || "") + '" placeholder="' + esc(ph) + '"></label>';
 }
 
+// Adressen slik den vises i feltet: uten koordinater på slutten, med
+// postnummer og sted når de ikke står i teksten allerede.
+const utenKoord = (x) => String(x || "").replace(/\s*\(?-?\d{1,3}[.,]\d+\s*[,;]\s*-?\d{1,3}[.,]\d+\)?\s*$/, "").trim();
+export function adresseVis(adr) {
+  if (!adr) return "";
+  const tekst = utenKoord(adr.tekst);
+  const post = [adr.postnummer, adr.poststed].filter(Boolean).join(" ").trim();
+  return post && !tekst.includes(post) ? tekst + ", " + post : tekst;
+}
+function adresseMerke(adr) {
+  const sp = info.sp && info.sp.adresse ? utenKoord(info.sp.adresse) : "";
+  if (!adr || !sp) return "";
+  return utenKoord(adr.tekst) === sp
+    ? ' <span class="pi-hentet">✓ ' + esc(t("hentet")) + "</span>"
+    : ' <span class="pi-endret">✎ ' + esc(t("endret her")) + "</span>";
+}
+
 export function prosjektinfoHtml() {
   if (LETT) return "";
   const g = prosjektInfo();
@@ -340,13 +358,12 @@ export function prosjektinfoHtml() {
       felt("piByggherre", "Byggherre / kunde", info.byggherre, "", "", "byggherre") +
       felt("piLeder", "Prosjektleder / kontakt", info.leder, "", "", "leder") +
       felt("piTelefon", "Telefon", info.telefon, "", "", "telefon") +
-      '<label class="pi-felt">' + esc(t("Byggeplassens adresse")) + "</label>" +
-      (adr
-        ? '<div class="pi-adr"><b>' + esc(adr.tekst) + "</b>" + (adr.postnummer || adr.poststed ? ", " + esc((adr.postnummer + " " + adr.poststed).trim()) : "") +
-          (adr.kommune ? '<br><span class="hint">' + esc(t("{0} kommune", adr.kommune)) + "</span>" : "") +
-          ' <button id="piAdresseFjern" class="lenke">' + esc(t("Bytt")) + "</button></div>"
-        : (g.adresse ? '<p class="hint">' + esc(t("Bruker {0} ({1}) til du velger en egen.", g.adresse, t(KILDE_TEKST[g.fra.adresse] || ""))) + "</p>" : "") +
-          '<div class="pi-sok"><input type="text" id="piAdresseSok" placeholder="' + esc(t("Gate og nummer, sted")) + '"><button id="piSok">' + esc(t("Søk")) + "</button></div>") +
+      // Byggeplassens adresse ser ut som de andre feltene (Emil 23.11): ett
+      // tekstfelt med «✓ hentet» / «✎ endret her». Enter eller å gå ut av
+      // feltet søker hos Kartverket; tømmer du feltet, fjernes adressen.
+      '<label class="pi-felt">' + esc(t("Byggeplassens adresse")) + adresseMerke(adr) +
+        '<input type="text" id="piAdresseSok" value="' + esc(adresseVis(adr)) + '" placeholder="' +
+        esc(!adr && g.adresse ? t("Bruker {0} ({1}) til du velger en egen.", g.adresse, t(KILDE_TEKST[g.fra.adresse] || "")) : t("Gate og nummer, sted – trykk Enter for å søke")) + '"></label>' +
       (sokMelding ? '<p class="hint">' + esc(sokMelding) + "</p>" : "") +
       sokTreff.map((a, i) => '<button class="pi-treff" data-i="' + i + '">' + esc(a.tekst + ", " + a.postnummer + " " + a.poststed) + "</button>").join("") +
       '<label class="pi-felt">' + esc(t("Logo på PDF-er, Excel-ark og rigg-objekter")) + ' <select id="piLogo"></select></label>' +
@@ -372,14 +389,24 @@ export function koblProsjektinfo() {
     const el = $(id);
     if (el) el.oninput = () => { info[k] = el.value; lagre(); };
   }
-  if ($("piSok")) $("piSok").onclick = startSok;
   if ($("piHentSp")) $("piHentSp").onclick = () => { spHentStatus = "henter"; gjenTegn(); hentFraStormProsjekter(true); };
-  if ($("piAdresseSok")) $("piAdresseSok").onkeydown = (e) => { if (e.key === "Enter") startSok(); };
-  if ($("piAdresseFjern")) $("piAdresseFjern").onclick = () => {
-    const før = info.adresse || null;
-    info.adresse = null; lagre(); gjenTegn();
-    meldPiAngre("Adresse fjernet", () => settAdresse(før), () => settAdresse(null));
-  };
+  const af = $("piAdresseSok");
+  if (af) {
+    const endre = () => {
+      const v = af.value.trim();
+      if (v === adresseVis(info.adresse)) return;          // ikke endret
+      if (!v) {                                             // tømt: adressen fjernes
+        if (!info.adresse) return;
+        const før = info.adresse;
+        info.adresse = null; sokTreff = []; sokMelding = ""; lagre(); gjenTegn();
+        meldPiAngre("Adresse fjernet", () => settAdresse(før), () => settAdresse(null));
+        return;
+      }
+      startSok();
+    };
+    af.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); endre(); } };
+    af.onchange = endre;
+  }
   sek.querySelectorAll(".pi-treff").forEach(b => b.onclick = () => velgAdresse(sokTreff[Number(b.dataset.i)]));
   const lv = $("piLogo");
   if (lv) {

@@ -3213,6 +3213,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Fjern raden": "Usuń wiersz",
   "Bemanning": "Obsada",
   "samme som sist ({0})": "jak ostatnio ({0})",
+  "Gate og nummer, sted – trykk Enter for å søke": "Ulica i numer, miejscowość – naciśnij Enter, aby wyszukać",
   "Skriv noe i tekstfeltet før du lagrer markeringen.": "Wpisz coś w polu tekstowym przed zapisaniem znacznika.",
   "Fra Storm Prosjekter: Mannskap {0}, kontakter {1}": "Ze Storm Prosjekter: załoga {0}, kontakty {1}",
   "tom": "pusta",

@@ -3213,6 +3213,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Fjern raden": "Pašalinti eilutę",
   "Bemanning": "Darbuotojai",
   "samme som sist ({0})": "kaip praėjusį kartą ({0})",
+  "Gate og nummer, sted – trykk Enter for å søke": "Gatvė ir numeris, vietovė – paspauskite Enter, kad ieškotumėte",
   "Skriv noe i tekstfeltet før du lagrer markeringen.": "Prieš išsaugodami žymą, įrašykite ką nors į teksto lauką.",
   "Fra Storm Prosjekter: Mannskap {0}, kontakter {1}": "Iš Storm Prosjekter: komanda {0}, kontaktai {1}",
   "tom": "tuščia",

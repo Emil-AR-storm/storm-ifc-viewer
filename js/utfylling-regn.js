@@ -224,7 +224,8 @@ export function spProsjektinfo(felt, jobb) {
     const la = tall(x.Lat), lo = tall(x.Lon);
     return la != null && la > 57 && la < 72 && lo != null && lo > 3 && lo < 32 ? { lat: la, lon: lo } : null;
   };
-  const af = rader.find(x => tekstFelt(x, SP_KOLONNER.adresse) || pos(x)) || f;
+  // Adresseteksten fra første rad som har Adresse; posisjonen helst fra den samme raden.
+  const af = rader.find(x => tekstFelt(x, SP_KOLONNER.adresse)) || rader.find(x => pos(x)) || f;
   ut.adresse = tekst(tekstFelt(af, SP_KOLONNER.adresse), 160);
   const p = pos(af) || (rader.map(pos).find(Boolean)) || null;
   ut.lat = p ? p.lat : null;

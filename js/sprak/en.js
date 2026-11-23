@@ -3213,6 +3213,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Fjern raden": "Remove row",
   "Bemanning": "Manning",
   "samme som sist ({0})": "same as last time ({0})",
+  "Gate og nummer, sted – trykk Enter for å søke": "Street and number, place – press Enter to search",
   "Skriv noe i tekstfeltet før du lagrer markeringen.": "Write something in the text field before saving the marker.",
   "Fra Storm Prosjekter: Mannskap {0}, kontakter {1}": "From Storm Prosjekter: crew {0}, contacts {1}",
   "tom": "empty",
