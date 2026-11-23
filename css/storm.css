@@ -3425,9 +3425,14 @@ html[data-tema="lys"] #venteStripe { background: #fff4cf; color: #6b4e00; border
 .cd-mal.egen { border-style: dashed; }
 .cd-mal.ny { color: var(--muted); }
 /* 3A ansvarlig */
-.cd-ansvarlig { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); flex-basis: 100%; }
-.cd-ansvarlig select { flex: 1; min-width: 0; }
-.cd-kilde { font-size: 11px; color: var(--muted); white-space: nowrap; }
+/* Ansvarlig på egen linje, aldri bredere enn boksen (byggeplan 23.11, lange navn) */
+#commentDialog .cd-ansvarlig { display: flex; flex-direction: column; gap: 4px; width: 100%; min-width: 0; margin-top: 8px; font-size: 12px; color: var(--muted); }
+#commentDialog .cd-ansvarlig select { width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; }
+#commentDialog .cd-kilde, #commentDialog .cd-fullt { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+#commentDialog .cd-fullt { color: var(--text); }
+#commentDialog .cd-fullt:empty, #commentDialog .cd-kilde:empty { display: none; }
+.mp-fields label { min-width: 0; }
+select.mp-ow, #cmMOwner { width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; }
 /* 4B endre mange */
 .mf-velg { margin-left: auto; }
 .cm-velgrad { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 8px; }
