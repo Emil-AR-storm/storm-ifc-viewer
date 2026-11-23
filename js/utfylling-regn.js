@@ -202,22 +202,34 @@ const erEpost = (e) => /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/.test(String(e || ""
 export function spProsjektinfo(felt, jobb) {
   const f = felt || {};
   const ut = { navn: tekst(f.Title, 120).trim(), nummer: tekst(f.ProsjektNr, 20).trim() };
-  ut.byggherre = tekst(tekstFelt(f, SP_KOLONNER.byggherre), 120);
+  // Raden modellen hører til først, så resten av jobben (SE → SB → SS).
+  const rader = [f].concat((jobb || []).map(r => (r && (r.fields || r)) || {}));
+  // Byggherre: hopper over Storm-selskapene (internkunde, f.eks. «Storm Betong AS»
+  // på SE-raden) og tar første eksterne kunde i jobben (Emil 23.11, jobb 20652).
+  const intern = (k) => /^storm\s+(entrepren|betong|st[åa]l)/i.test(k);
+  const kunder = rader.map(x => tekstFelt(x, SP_KOLONNER.byggherre)).filter(Boolean);
+  ut.byggherre = tekst(kunder.find(k => !intern(k)) || kunder[0] || "", 120);
   let lf = f;
   if (!tekstFelt(f, SP_KOLONNER.leder)) {
-    const annen = (jobb || []).map(r => (r && (r.fields || r)) || {}).find(x => tekstFelt(x, SP_KOLONNER.leder));
+    const annen = rader.find(x => tekstFelt(x, SP_KOLONNER.leder));
     if (annen) lf = annen;
   }
   ut.leder = tekst(tekstFelt(lf, SP_KOLONNER.leder), 80);
   ut.telefon = tekst(tekstFelt(lf, SP_KOLONNER.telefon), 30);
   const ep = tekstFelt(lf, SP_KOLONNER.epost).toLowerCase();
   ut.epost = erEpost(ep) ? ep.slice(0, 120) : "";
-  ut.adresse = tekst(tekstFelt(f, SP_KOLONNER.adresse), 160);
-  const lat = tall(f.Lat), lon = tall(f.Lon);
-  ut.lat = lat != null && lat > 57 && lat < 72 ? lat : null;
-  ut.lon = lon != null && lon > 3 && lon < 32 ? lon : null;
-  if (ut.lat == null || ut.lon == null) { ut.lat = null; ut.lon = null; }
-  ut.koordAdresse = tekst(tekstFelt(f, ["KoordAdresse"]), 160);
+  // Adresse og posisjon: raden selv, ellers første rad i jobben som har adresse
+  // eller Lat/Lon (byggeplassen er den samme for hele jobben).
+  const pos = (x) => {
+    const la = tall(x.Lat), lo = tall(x.Lon);
+    return la != null && la > 57 && la < 72 && lo != null && lo > 3 && lo < 32 ? { lat: la, lon: lo } : null;
+  };
+  const af = rader.find(x => tekstFelt(x, SP_KOLONNER.adresse) || pos(x)) || f;
+  ut.adresse = tekst(tekstFelt(af, SP_KOLONNER.adresse), 160);
+  const p = pos(af) || (rader.map(pos).find(Boolean)) || null;
+  ut.lat = p ? p.lat : null;
+  ut.lon = p ? p.lon : null;
+  ut.koordAdresse = tekst(tekstFelt(af, ["KoordAdresse"]) || (rader.map(x => tekstFelt(x, ["KoordAdresse"])).find(Boolean) || ""), 160);
   return ut;
 }
 
