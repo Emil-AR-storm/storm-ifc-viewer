@@ -3430,6 +3430,7 @@ html[data-tema="lys"] #venteStripe { background: #fff4cf; color: #6b4e00; border
 #commentDialog .cd-ansvarlig select { width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; }
 #commentDialog .cd-kilde, #commentDialog .cd-fullt { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
 #commentDialog .cd-fullt { color: var(--text); }
+#commentText.cd-mangler { outline: 2px solid var(--accent, #e5484d); outline-offset: 1px; }
 #commentDialog .cd-fullt:empty, #commentDialog .cd-kilde:empty { display: none; }
 .mp-fields label { min-width: 0; }
 select.mp-ow, #cmMOwner { width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; }
