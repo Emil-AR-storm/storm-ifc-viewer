@@ -2573,6 +2573,9 @@ function fyllAnsvarligOgFrist() {
   sel.innerHTML = '<option value="">' + esc(t("– ingen –")) + '</option>' + ansvarligOpsjoner(st.ansvarlig);
   const kilde = $("commentOwnerKilde");
   if (kilde) kilde.textContent = [st.kilde === "jobb" ? "(" + t("{0} → jobbens standard", t(fag).toLowerCase()) + ")" : st.kilde === "fag" ? "(" + t("{0} → standard", t(fag).toLowerCase()) + ")" : st.kilde === "sist" ? "(" + t("sist brukt") + ")" : "", !S.jobbMannskap ? "(" + t("ingen lagt inn på jobben – viser alle ansatte") + ")" : ""].filter(Boolean).join(" ");
+  const k = S.jobbFolkKilde;
+  if (kilde) kilde.title = k ? t("Fra Storm Prosjekter: Mannskap {0}, kontakter {1}", k.mannskap === "tom" ? t("tom") : k.mannskap === "ugyldig" ? t("kunne ikke leses") : String(k.mannskap), String(k.kontakter)) : "";
+  if (sel) sel.title = kilde ? kilde.title : "";
   const felt = $("commentDue");
   if (felt && !$("commentNoDue").checked) felt.value = omDager(st.dager, iDag);
 }

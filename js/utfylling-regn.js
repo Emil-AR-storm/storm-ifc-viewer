@@ -225,9 +225,20 @@ export function spProsjektinfo(felt, jobb) {
 // { versjon, oppdatert, personer: [{ navn, epost, rolle, fag, firma }], standard: { fag: epost } }
 // Alt er DATA: bare kjente felt, gyldig e-post (små bokstaver), kjente fag.
 // Tom eller ugyldig → null (da brukes ansattlista som før).
+// En kolonne med «utvidet tekst» kommer fra Graph som HTML (<div>{&quot;…}</div>).
+// Da tas taggene bort og tegnene gjøres om før JSON leses.
+export function lesJsonKolonne(v) {
+  if (typeof v !== "string") return v;
+  let s = v.trim();
+  if (!s) return null;
+  try { return JSON.parse(s); } catch (_) { /* prøv som HTML */ }
+  s = s.replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]*>/g, "")
+    .replace(/&quot;/g, '"').replace(/&#34;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ").replace(/&#160;/g, " ").replace(/&#58;/g, ":").replace(/&#123;/g, "{").replace(/&#125;/g, "}").replace(/&amp;/g, "&").replace(/\u200b/g, "").trim();
+  try { return JSON.parse(s); } catch (_) { return null; }
+}
 export function vaskMannskap(v) {
-  let o = v;
-  if (typeof v === "string") { try { o = JSON.parse(v); } catch (_) { return null; } }
+  const o = lesJsonKolonne(v);
   if (!o || typeof o !== "object" || !Array.isArray(o.personer)) return null;
   const personer = [], sett = new Set();
   for (const p of o.personer.slice(0, 200)) {
@@ -262,8 +273,7 @@ export function navnForEpost(epost, mannskap, ansatte) {
 // Som Ansvarlig tas bare de som er Storms ansatte (e-posten finnes i ansattlista)
 // – en ekstern kontakt kan ikke få oppgaven i Planner.
 export function vaskKontakter(v) {
-  let l = v;
-  if (typeof v === "string") { try { l = JSON.parse(v); } catch (_) { return []; } }
+  const l = lesJsonKolonne(v);
   if (!Array.isArray(l)) return [];
   const ut = [];
   for (const k of l.slice(0, 200)) {

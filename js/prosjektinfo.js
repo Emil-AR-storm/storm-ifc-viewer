@@ -139,7 +139,11 @@ export async function hentFraStormProsjekter(alle) {
     // + kontaktene på jobben som er Storms ansatte (kolonnen Kontakter, felles per jobb)
     const rader2 = [felt, rad.fields].concat(jobb.map(r => r && r.fields));
     const mRad = rader2.find(f => f && f.Mannskap) || null, kRad = rader2.find(f => f && f.Kontakter) || null;
-    settMannskap(jobbFolk(mRad ? vaskMannskap(mRad.Mannskap) : null, kRad ? vaskKontakter(kRad.Kontakter) : [], ANSATTE));
+    const mannskap = mRad ? vaskMannskap(mRad.Mannskap) : null, kontakter = kRad ? vaskKontakter(kRad.Kontakter) : [];
+    settMannskap(jobbFolk(mannskap, kontakter, ANSATTE));
+    // Hvor «På jobben» kommer fra – vises når du holder over Ansvarlig, så vi ser hvorfor noen mangler.
+    S.jobbFolkKilde = { mannskap: !mRad ? "tom" : mannskap ? mannskap.personer.length : "ugyldig", kontakter: kontakter.length };
+    console.info("Folkene på jobben fra Storm Prosjekter:", S.jobbFolkKilde);
     const forrige = info.sp || null;
     const ny = fyllFraSp(info, spInfo, forrige, !!alle);
     const før = JSON.stringify(info);
