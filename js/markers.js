@@ -2834,6 +2834,16 @@ S.omradeModeBar = (bar) => {
 
 window.saveComment = async function() {
   const text = $("commentText").value.trim();
+  // Tom tekst: ikke lukk og ikke kast markeringen – si ifra og la dialogen stå
+  // (Emil 23.11: «den forsvinner når du trykker lagre siden den ikke er fylt ut»).
+  if (!text && S.pendingPoint) {
+    varsel(t("Skriv noe i tekstfeltet før du lagrer markeringen."), { type: "info" });
+    const felt = $("commentText");
+    felt.classList.add("cd-mangler");
+    felt.addEventListener("input", () => felt.classList.remove("cd-mangler"), { once: true });
+    try { felt.focus(); } catch (_) {}
+    return;
+  }
   $("commentDialog").classList.remove("open");
   fjernOmrForhandsvisning();   // den ekte tegnes av addMarkerSprite med fristfarge
   if (!text || !S.pendingPoint) { S.pendingPoint = null; S.pendingOmrade = null; nullstillNyeBilder(); return; }
