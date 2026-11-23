@@ -3409,3 +3409,52 @@ html[data-tema="lys"] #venteStripe { background: #fff4cf; color: #6b4e00; border
 /* ---------- Forslag 7C runde 4 (16.11): «Mest brukt» / «Andre» i «Mer» ---------- */
 .vg-mer-overskrift { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); padding: 4px 8px 0; }
 .vg-mer-overskrift + button { margin-top: 0; }
+
+/* ---------- Steg 7 (17.11): trinn fra Storm Prosjekter i framdriftsplanen ---------- */
+.fp-sp-farge { width: 22px; height: 22px; border-radius: 6px; flex: none; border: 1px solid var(--border); }
+.fp-sp-navn { flex: 1; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.fp-sp-merke { flex: none; font-size: 10.5px; font-weight: 700; color: #2f6fdb; background: color-mix(in srgb, #2f6fdb 14%, transparent); border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+.fp-sp-info { font-size: 12px; color: var(--muted); gap: 10px; }
+.fp-sp-fag { color: var(--muted); }
+.fp-sp-hjelp { margin: 0; font-size: 11.5px; color: var(--muted); font-style: italic; }
+
+/* ---------- Runde 5 (23.11): mindre gjentatt utfylling ---------- */
+/* 2A tekstmaler */
+.cd-maler { display: flex; flex-wrap: wrap; gap: 5px; margin: 0 0 6px; }
+.cd-mal { padding: 4px 9px; font-size: 12px; border-radius: 999px; }
+.cd-mal.egen { border-style: dashed; }
+.cd-mal.ny { color: var(--muted); }
+/* 3A ansvarlig */
+.cd-ansvarlig { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); flex-basis: 100%; }
+.cd-ansvarlig select { flex: 1; min-width: 0; }
+.cd-kilde { font-size: 11px; color: var(--muted); white-space: nowrap; }
+/* 4B endre mange */
+.mf-velg { margin-left: auto; }
+.cm-velgrad { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 8px; }
+.cm-velgrad .hint { font-size: 11px; flex-basis: 100%; }
+.comment.velgbar { cursor: pointer; }
+.comment.valgt { outline: 2px solid #3b82f6; outline-offset: -1px; }
+.cm-cb { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--muted); border-radius: 3px; vertical-align: -2px; }
+.cm-cb.x { background: #3b82f6; border-color: #3b82f6; box-shadow: inset 0 0 0 2px var(--panel); }
+.cm-masse-linje { position: sticky; bottom: 0; display: flex; align-items: center; gap: 8px; padding: 8px; margin-top: 8px; background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; }
+.cm-masse-linje b { margin-right: auto; }
+.cm-masse label { display: block; margin-top: 8px; font-size: 12px; color: var(--muted); }
+.cm-masse select, .cm-masse input { width: 100%; }
+.cm-m-frist { display: flex; gap: 6px; }
+.cm-m-frist select { flex: 1; } .cm-m-frist input { flex: 1; }
+/* 5C trinn per etasje, 6C gjenta */
+.fp-peretasje, .fp-gjenta { border: 1px solid var(--accent); border-radius: 10px; padding: 10px; margin: 8px 0; background: var(--panel2); }
+.fp-pe-rad { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.fp-pe-navn { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.fp-gj-rad { display: flex; align-items: center; gap: 6px; font-size: 13px; padding: 3px 0; }
+/* 7B */
+.fp-allferdig { white-space: nowrap; }
+/* 9C */
+.st-navn.fp-forslag::placeholder, #grNavn::placeholder { color: var(--muted); opacity: .85; font-style: italic; }
+/* 1B */
+.pi-hentet { font-size: 10.5px; color: var(--ok); font-weight: 600; }
+.pi-endret { font-size: 10.5px; color: var(--warn); font-weight: 600; }
+.pi-sp { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; font-size: 12px; }
+/* 3A innstillinger */
+.nm-rad select { flex: 1; min-width: 0; max-width: 170px; }
+.nm-rad input[type=number] { width: 58px; }
