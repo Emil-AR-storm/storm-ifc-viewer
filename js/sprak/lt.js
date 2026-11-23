@@ -3213,6 +3213,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Fjern raden": "Pašalinti eilutę",
   "Bemanning": "Darbuotojai",
   "samme som sist ({0})": "kaip praėjusį kartą ({0})",
+  "ingen lagt inn på jobben – viser alle ansatte": "šiam darbui niekas nepriskirtas – rodomi visi darbuotojai",
   "På jobben": "Šiame darbe",
   "Andre ansatte": "Kiti darbuotojai",
   "{0} → jobbens standard": "{0} → darbo numatytasis",

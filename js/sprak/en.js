@@ -3213,6 +3213,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Fjern raden": "Remove row",
   "Bemanning": "Manning",
   "samme som sist ({0})": "same as last time ({0})",
+  "ingen lagt inn på jobben – viser alle ansatte": "nobody added to this job – showing all employees",
   "På jobben": "On this job",
   "Andre ansatte": "Other employees",
   "{0} → jobbens standard": "{0} → job default",

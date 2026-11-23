@@ -20,7 +20,8 @@ import { spLes, spPaalogget, spSkriv } from "./sp-lager.js";
 import { hentLogoer } from "./tegninger.js";
 import { ryddLogonavn } from "./rapport.js";
 import { lettNavn } from "./lite.js";
-import { feltKilde, fyllFraSp, spProsjektinfo, vaskMannskap } from "./utfylling-regn.js";
+import { feltKilde, fyllFraSp, jobbFolk, spProsjektinfo, vaskKontakter, vaskMannskap } from "./utfylling-regn.js";
+import { ANSATTE } from "./config.js";
 
 const SP_MAPPE = "Prosjektinfo";
 let info = vaskProsjektInfo({});
@@ -135,8 +136,10 @@ export async function hentFraStormProsjekter(alle) {
     // første i jobben som er fylt ut (SE → SB → SS) – SVAR fra Storm Prosjekter 23.11.
     const spInfo = spProsjektinfo(Object.assign({}, rad.fields || {}, felt), LR.sorterProsjekter([...jobb]));
     // 3A: folkene på jobben (kolonnen Mannskap, lik på alle hovedprosjektene i jobben)
-    const mRad = [felt, rad.fields].concat(jobb.map(r => r && r.fields)).find(f => f && f.Mannskap) || null;
-    settMannskap(mRad ? vaskMannskap(mRad.Mannskap) : null);
+    // + kontaktene på jobben som er Storms ansatte (kolonnen Kontakter, felles per jobb)
+    const rader2 = [felt, rad.fields].concat(jobb.map(r => r && r.fields));
+    const mRad = rader2.find(f => f && f.Mannskap) || null, kRad = rader2.find(f => f && f.Kontakter) || null;
+    settMannskap(jobbFolk(mRad ? vaskMannskap(mRad.Mannskap) : null, kRad ? vaskKontakter(kRad.Kontakter) : [], ANSATTE));
     const forrige = info.sp || null;
     const ny = fyllFraSp(info, spInfo, forrige, !!alle);
     const før = JSON.stringify(info);

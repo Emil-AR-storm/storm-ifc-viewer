@@ -3213,6 +3213,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Fjern raden": "Usuń wiersz",
   "Bemanning": "Obsada",
   "samme som sist ({0})": "jak ostatnio ({0})",
+  "ingen lagt inn på jobben – viser alle ansatte": "nikt nie jest dodany do tej budowy – pokazano wszystkich pracowników",
   "På jobben": "Na tej budowie",
   "Andre ansatte": "Pozostali pracownicy",
   "{0} → jobbens standard": "{0} → domyślnie dla budowy",

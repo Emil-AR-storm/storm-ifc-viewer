@@ -258,8 +258,38 @@ export function navnForEpost(epost, mannskap, ansatte) {
   const p = mannskap && mannskap.personer.find(x => x.epost === e);
   return p ? p.navn : "";
 }
-// Rekkefølgen i Ansvarlig-lista: folkene på jobben først (med rolle), så resten
-// av ansattlista. Svar [{ navn, gruppe: "jobb"|"ansatte", rolle }]
+// Kontaktene på jobben (kolonnen Kontakter, [{id,rolle,navn,firma,tlf,epost,merknad}]).
+// Som Ansvarlig tas bare de som er Storms ansatte (e-posten finnes i ansattlista)
+// – en ekstern kontakt kan ikke få oppgaven i Planner.
+export function vaskKontakter(v) {
+  let l = v;
+  if (typeof v === "string") { try { l = JSON.parse(v); } catch (_) { return []; } }
+  if (!Array.isArray(l)) return [];
+  const ut = [];
+  for (const k of l.slice(0, 200)) {
+    if (!k || typeof k !== "object") continue;
+    const epost = String(k.epost || "").trim().toLowerCase().slice(0, 120);
+    const navn = tekst(k.navn, 80).replace(/\s+/g, " ").trim();
+    if (!navn || !erEpost(epost)) continue;
+    ut.push({ navn, epost, rolle: tekst(k.rolle, 40).trim(), fag: "", firma: tekst(k.firma, 80).trim() });
+  }
+  return ut;
+}
+// Folkene på jobben = Mannskap + kontaktene som er Storms ansatte.
+// Svar { personer, standard } eller null når ingen er lagt inn.
+export function jobbFolk(mannskap, kontakter, ansatte) {
+  const personer = mannskap ? mannskap.personer.slice() : [];
+  const sett = new Set(personer.map(p => p.epost));
+  const ansatt = new Set((ansatte || []).map(a => String(a.mail || a.epost || "").toLowerCase()).filter(Boolean));
+  for (const k of kontakter || []) {
+    if (sett.has(k.epost) || !ansatt.has(k.epost)) continue;
+    sett.add(k.epost); personer.push(k);
+  }
+  return personer.length ? { personer, standard: (mannskap && mannskap.standard) || {} } : null;
+}
+// Valgene i Ansvarlig-lista (Emil 23.11: «kun dem som faktisk er lagt inn på
+// prosjektet»). Er noen lagt inn på jobben, vises BARE de. Ingen lagt inn →
+// hele ansattlista som før. Svar [{ navn, gruppe: "jobb"|"ansatte", rolle }]
 export function ansvarligValg(mannskap, ansatte) {
   const ut = [], sett = new Set();
   for (const p of (mannskap && mannskap.personer) || []) {
@@ -267,6 +297,7 @@ export function ansvarligValg(mannskap, ansatte) {
     if (sett.has(navn)) continue;
     sett.add(navn); ut.push({ navn, gruppe: "jobb", rolle: [p.rolle, p.fag].filter(Boolean).join(" · ") });
   }
+  if (ut.length) return ut;
   for (const a of ansatte || []) {
     if (!a || !a.navn || sett.has(a.navn)) continue;
     sett.add(a.navn); ut.push({ navn: a.navn, gruppe: "ansatte", rolle: "" });

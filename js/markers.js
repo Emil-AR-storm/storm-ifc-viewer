@@ -2540,15 +2540,16 @@ function elementMeta() {
   const m = S.meta.get(id) || {};
   return { typeName: m.typeName || m.type || "", name: m.name || "", objectType: m.objectType || "", material: m.material || m.materialNavn || "" };
 }
-// 3A (SVAR fra Storm Prosjekter 23.11): folkene på jobben (kolonnen Mannskap)
-// står øverst under «Ansvarlig», så resten av ansattlista. Uten Mannskap: som før.
+// 3A (SVAR fra Storm Prosjekter 23.11 + Emil 23.11): bare folkene som er lagt
+// inn på jobben (Mannskap + kontakter som er ansatte). Står det allerede en
+// annen ansvarlig på markeringen, vises den også. Ingen lagt inn: alle ansatte.
 export function ansvarligOpsjoner(valgt) {
   const l = ansvarligValg(S.jobbMannskap, ANSATTE);
   const opt = (v) => '<option value="' + esc(v.navn) + '"' + (v.navn === valgt ? " selected" : "") + '>' + esc(v.navn) + (v.rolle ? " – " + esc(v.rolle) : "") + '</option>';
-  const jobb = l.filter(v => v.gruppe === "jobb"), andre = l.filter(v => v.gruppe !== "jobb");
+  const jobb = l.filter(v => v.gruppe === "jobb");
   let html = jobb.length
-    ? '<optgroup label="' + esc(t("På jobben")) + '">' + jobb.map(opt).join("") + '</optgroup><optgroup label="' + esc(t("Andre ansatte")) + '">' + andre.map(opt).join("") + '</optgroup>'
-    : andre.map(opt).join("");
+    ? '<optgroup label="' + esc(t("På jobben")) + '">' + jobb.map(opt).join("") + '</optgroup>'
+    : l.map(opt).join("");
   if (valgt && !l.some(v => v.navn === valgt)) html += '<option value="' + esc(valgt) + '" selected>' + esc(valgt) + '</option>';
   return html;
 }
@@ -2567,9 +2568,11 @@ function fyllAnsvarligOgFrist() {
   const meta = elementMeta();
   const fag = meta ? fagFor(meta) : "Annet";
   const st = standardMedJobb(fag, S.jobbMannskap, ANSATTE, S.settings && S.settings.markStandard, { ansvarlig: S.settings && S.settings.markSistAnsvarlig });
+  // Din standard / sist brukte foreslås bare når personen er lagt inn på jobben.
+  if (S.jobbMannskap && st.ansvarlig && !ansvarligValg(S.jobbMannskap, ANSATTE).some(v => v.navn === st.ansvarlig)) { st.ansvarlig = ""; st.kilde = ""; }
   sel.innerHTML = '<option value="">' + esc(t("– ingen –")) + '</option>' + ansvarligOpsjoner(st.ansvarlig);
   const kilde = $("commentOwnerKilde");
-  if (kilde) kilde.textContent = st.kilde === "jobb" ? "(" + t("{0} → jobbens standard", t(fag).toLowerCase()) + ")" : st.kilde === "fag" ? "(" + t("{0} → standard", t(fag).toLowerCase()) + ")" : st.kilde === "sist" ? "(" + t("sist brukt") + ")" : "";
+  if (kilde) kilde.textContent = [st.kilde === "jobb" ? "(" + t("{0} → jobbens standard", t(fag).toLowerCase()) + ")" : st.kilde === "fag" ? "(" + t("{0} → standard", t(fag).toLowerCase()) + ")" : st.kilde === "sist" ? "(" + t("sist brukt") + ")" : "", !S.jobbMannskap ? "(" + t("ingen lagt inn på jobben – viser alle ansatte") + ")" : ""].filter(Boolean).join(" ");
   const felt = $("commentDue");
   if (felt && !$("commentNoDue").checked) felt.value = omDager(st.dager, iDag);
 }
