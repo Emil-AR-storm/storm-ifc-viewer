@@ -20,6 +20,7 @@ import { spLes, spPaalogget, spSkriv } from "./sp-lager.js";
 import { hentLogoer } from "./tegninger.js";
 import { ryddLogonavn } from "./rapport.js";
 import { lettNavn } from "./lite.js";
+import { feltKilde, fyllFraSp, spProsjektinfo } from "./utfylling-regn.js";
 
 const SP_MAPPE = "Prosjektinfo";
 let info = vaskProsjektInfo({});
@@ -99,7 +100,67 @@ async function hentFraSp() {
     meld();
   }
   if (!tomInfo(info) || der) gjenTegn();
+  hentFraStormProsjekter(false);
 }
+
+// ═══════════ ✍️ 1B · PROSJEKTINFO FRA STORM PROSJEKTER (runde 5, Emil 23.11) ═══════════
+// Prosjektet modellen er koblet til (Modell-feltet i lista Prosjekter, ellers
+// byggeplassnummeret) fyller navn, nummer, byggherre, prosjektleder, telefon
+// og adresse. Et felt fylles når det er tomt eller fortsatt er det vi hentet
+// sist; har du skrevet noe annet, står det som «✎ endret her» og røres ikke.
+// «↺ Hent på nytt fra Storm Prosjekter» overskriver alt (kan angres).
+let spHentStatus = "";   // "" | "henter" | "ok" | "ingen" | "feil"
+export async function hentFraStormProsjekter(alle) {
+  if (LETT || !S.fileName || !spPaalogget()) return false;
+  const forFil = S.fileName;
+  spHentStatus = "henter";
+  try {
+    const sp = await import("./sharepoint.js");
+    const G = await import("./legg-i-prosjekt-graph.js");
+    const LR = await import("./legg-i-prosjekt-regn.js");
+    const token = await sp.spTokenSilent();
+    if (!token) { spHentStatus = ""; return false; }
+    const rader = await G.hentProsjekter(token);
+    const fil = S.fileName || "";
+    const å = { ifc: S.kildeIfc && S.kildeIfc.fil === fil ? S.kildeIfc.ifc : (/\.ifc$/i.test(fil) ? fil : ""), fil,
+      gruppe: S.aktivModellgruppe && S.aktivModellgruppe.fil === fil ? S.aktivModellgruppe.id : "" };
+    let jobb = LR.finnJobb(rader, å);
+    if (!jobb.length) jobb = LR.jobbForNummer(rader, bpNummer() || info.nummer);
+    const rad = LR.foreslåProsjekt(jobb, "annet", å);
+    if (S.fileName !== forFil) return false;
+    if (!rad) { spHentStatus = "ingen"; gjenTegn(); return false; }
+    const felt = await G.hentProsjektFelt(token, rad);
+    if (S.fileName !== forFil) return false;
+    const spInfo = spProsjektinfo(Object.assign({}, rad.fields || {}, felt));
+    const forrige = info.sp || null;
+    const ny = fyllFraSp(info, spInfo, forrige, !!alle);
+    const før = JSON.stringify(info);
+    Object.assign(info, ny);
+    // Adressen: søkes opp hos Kartverket (samme søk som feltet) når vi ikke har
+    // en, eller ved «Hent på nytt». En adresse du har valgt selv, røres ikke.
+    if (spInfo.adresse && (!info.adresse || alle)) {
+      try {
+        const l = await sok(spInfo.adresse);
+        if (l.length && S.fileName === forFil) { const a = vaskAdresseInfo(l[0]); if (a) info.adresse = a; }
+      } catch (_) { /* uten adresse – feltet står som før */ }
+    }
+    info.sp = Object.assign({}, spInfo, { nokkel: (rad.fields || {}).Nokkel || "", hentet: new Date().toISOString() });
+    delete info.sp.kolonner;
+    spHentStatus = "ok";
+    if (JSON.stringify(info) !== før) {
+      const etter = JSON.parse(JSON.stringify(info)), forrigeInfo = JSON.parse(før);
+      lagre();
+      if (alle) meldPiAngre("Hentet fra Storm Prosjekter", () => { info = vaskProsjektInfo(forrigeInfo); lagre(); gjenTegn(); }, () => { info = vaskProsjektInfo(etter); lagre(); gjenTegn(); });
+    }
+    gjenTegn();
+    return true;
+  } catch (err) {
+    console.warn("Prosjektinfo fra Storm Prosjekter:", err && err.message);
+    spHentStatus = "feil"; gjenTegn();
+    return false;
+  }
+}
+S.hentProsjektinfoFraSp = hentFraStormProsjekter;
 
 // afterLoad (ifc.js): lokalt først, så SharePoint i bakgrunnen.
 S.lastProsjektinfo = () => {
@@ -223,9 +284,11 @@ function statusTekst() {
 }
 function visStatus() { const el = $("piStatus"); if (el) el.textContent = statusTekst(); }
 
-function felt(id, navn, verdi, reserve, kilde) {
+function felt(id, navn, verdi, reserve, kilde, spFelt) {
   const ph = reserve ? reserve + (kilde ? " (" + t(KILDE_TEKST[kilde] || kilde) + ")" : "") : "";
-  return '<label class="pi-felt">' + esc(t(navn)) +
+  const k = spFelt ? feltKilde(info, info.sp, spFelt) : "";
+  const merke = k === "hentet" ? ' <span class="pi-hentet">✓ ' + esc(t("hentet")) + "</span>" : k === "endret" ? ' <span class="pi-endret">✎ ' + esc(t("endret her")) + "</span>" : "";
+  return '<label class="pi-felt">' + esc(t(navn)) + merke +
     '<input type="text" id="' + id + '" value="' + esc(verdi || "") + '" placeholder="' + esc(ph) + '"></label>';
 }
 
@@ -241,11 +304,11 @@ export function prosjektinfoHtml() {
     inni +=
       '<p style="color:var(--muted);font-size:11px;margin:0 0 6px">' +
         esc(t("Fylles inn automatisk i Rapport, Sjekkliste, Støpeplan, Riggplan, Framdriftsplan, SW-tegning, rigg-objektene og Vis vær. Det du skriver i et verktøy, gjelder bare der.")) + "</p>" +
-      felt("piNavn", "Prosjektnavn", info.navn) +
-      felt("piNummer", "Prosjektnummer", info.nummer, info.nummer ? "" : (g.fra.nummer !== "info" ? g.nummer : ""), g.fra.nummer) +
-      felt("piByggherre", "Byggherre / kunde", info.byggherre) +
-      felt("piLeder", "Prosjektleder / kontakt", info.leder) +
-      felt("piTelefon", "Telefon", info.telefon) +
+      felt("piNavn", "Prosjektnavn", info.navn, "", "", "navn") +
+      felt("piNummer", "Prosjektnummer", info.nummer, info.nummer ? "" : (g.fra.nummer !== "info" ? g.nummer : ""), g.fra.nummer, "nummer") +
+      felt("piByggherre", "Byggherre / kunde", info.byggherre, "", "", "byggherre") +
+      felt("piLeder", "Prosjektleder / kontakt", info.leder, "", "", "leder") +
+      felt("piTelefon", "Telefon", info.telefon, "", "", "telefon") +
       '<label class="pi-felt">' + esc(t("Byggeplassens adresse")) + "</label>" +
       (adr
         ? '<div class="pi-adr"><b>' + esc(adr.tekst) + "</b>" + (adr.postnummer || adr.poststed ? ", " + esc((adr.postnummer + " " + adr.poststed).trim()) : "") +
@@ -256,6 +319,12 @@ export function prosjektinfoHtml() {
       (sokMelding ? '<p class="hint">' + esc(sokMelding) + "</p>" : "") +
       sokTreff.map((a, i) => '<button class="pi-treff" data-i="' + i + '">' + esc(a.tekst + ", " + a.postnummer + " " + a.poststed) + "</button>").join("") +
       '<label class="pi-felt">' + esc(t("Logo på PDF-er, Excel-ark og rigg-objekter")) + ' <select id="piLogo"></select></label>' +
+      // ✍️ 1B: hentet fra Storm Prosjekter
+      '<div class="pi-sp">' + (info.sp && info.sp.hentet
+        ? '<span class="hint">' + esc(t("Hentet fra Storm Prosjekter {0}", new Date(info.sp.hentet).toLocaleString("no-NO", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }))) + "</span>"
+        : spHentStatus === "ingen" ? '<span class="hint">' + esc(t("Fant ikke prosjektet modellen hører til i Storm Prosjekter.")) + "</span>"
+        : spHentStatus === "feil" ? '<span class="hint">' + esc(t("Fikk ikke hentet fra Storm Prosjekter.")) + "</span>" : "") +
+        ' <button id="piHentSp" class="lenke">↺ ' + esc(spHentStatus === "henter" ? t("Henter …") : t("Hent på nytt fra Storm Prosjekter")) + "</button></div>" +
       '<p id="piStatus" style="color:var(--muted);font-size:11px;margin:6px 0 0">' + esc(statusTekst()) + "</p>";
   }
   return '<details id="piSeksjon"' + (apen ? " open" : "") + '><summary><h4 style="display:inline">' + esc(t("Prosjektinfo")) + "</h4>" + merke + "</summary>" + inni + "</details>";
@@ -273,6 +342,7 @@ export function koblProsjektinfo() {
     if (el) el.oninput = () => { info[k] = el.value; lagre(); };
   }
   if ($("piSok")) $("piSok").onclick = startSok;
+  if ($("piHentSp")) $("piHentSp").onclick = () => { spHentStatus = "henter"; gjenTegn(); hentFraStormProsjekter(true); };
   if ($("piAdresseSok")) $("piAdresseSok").onkeydown = (e) => { if (e.key === "Enter") startSok(); };
   if ($("piAdresseFjern")) $("piAdresseFjern").onclick = () => {
     const før = info.adresse || null;

@@ -27,7 +27,9 @@ import { flettFramdrift, spLes, spPaalogget, spSkriv } from "./sp-lager.js";
 import { TJENESTER } from "./config.js";
 import { tilgangsNøkkel } from "./tilgang.js";
 import { clearSelection, veksleMateriellIUtvalg } from "./elements.js";
-import { metaFor } from "./ifcrpc.js";
+import { metaFor, sikreMeta } from "./ifcrpc.js";
+import { erStandardNavn, navnForslag, slåSammen, tilsvarende, trinnPerEtasje } from "./utfylling-regn.js";
+import { ikkeTell } from "./ferdig-regn.js";
 import { SLAG_NAVN, framdriftForByggeplass, fraSP, etappeForNokkel, pdfTrinn, fjern, leggTil, nokkel, nyEtappe, sortert, synlige, tellingPerSlag, tidsSpenn, vaskEtappe, vaskEtappeListe } from "./framdrift-regn.js";
 import { begrensListe, forberedMobilPanel, ryddFramdriftVis, settSkjulTildelte, stoppAvspilling, tegnFramdrift, tegnTidslinje } from "./framdrift-vis.js";
 import { LAG_ID as TRP_BLIKK_LAG } from "./framdrift-plukk.js";
@@ -83,6 +85,8 @@ async function skrivSp() {
     if (endringNr !== sendtNr) { clearTimeout(lagreTid); lagreTid = setTimeout(skrivSp, 600); }
     if (erApen()) tegnPanel();
     tilByggeplassSnart();
+    // 📊 Trinn og datoer endrer planen i status-fila til Storm Prosjekter (17.11)
+    if (S.ferdigStatusSnart) S.ferdigStatusSnart();
   }
   else visLagring();
 }
@@ -324,8 +328,132 @@ export function leggValgteTil(id) {
     : tn(r.lagtTil, "{0} objekt lagt i {1}.", "{0} objekter lagt i {1}.", e ? e.navn : "");
   lagre();
   if (r.lagtTil) medAngre("Lagt til i trinn", foer);
+  // ✍️ 6C: tilby å gjøre det samme i de andre etasjene
+  const ifcIder = nye.filter(o => /^id:/.test(o.k)).map(o => Number(o.k.slice(3)));
+  if (r.lagtTil && ifcIder.length && !fraSP(e)) foreslåGjenta(id, ifcIder);
   return r.lagtTil;
 }
+
+// ═══════════ ✍️ 6C · GJENTA FOR ALLE ETASJER (runde 5, Emil 23.11) ═══════════
+// Etter «Legg til» finnes de tilsvarende elementene (samme type og profil, samme
+// sted i plan ±30 cm) i de andre etasjene. Panelet viser én rad per etasje med
+// treff; «Gjenta på N etasjer» lager ett nytt trinn per etasje med dem.
+let gjenta = null;   // { etappeId, rader: [{ etasje, navn, ids, mangler, på }] }
+const GJENTA_TOL_M = 0.3;
+async function foreslåGjenta(etappeId, ider) {
+  try {
+    const H = await import("./etasje-hjelp.js");
+    const u = await H.beskriv(ider);
+    if (!u.elementer.length || u.etasjer.length < 2) return;
+    const alle = await H.beskrivAlle();
+    const tol = GJENTA_TOL_M / (S.enhetSkala || 1);
+    const res = tilsvarende(u.elementer, alle.elementer, tol);
+    if (!res.length) return;
+    const fraNavn = (u.etasjer[u.elementer[0].etasje] || {}).navn || "";
+    gjenta = { etappeId, fraNavn, rader: res.map(x => ({ etasje: x.etasje, navn: (u.etasjer[x.etasje] || {}).navn || String(x.etasje + 1), ids: x.ids, mangler: x.mangler, på: true })) };
+    if (erApen()) tegnPanel();
+  } catch (err) { console.warn("Fant ikke tilsvarende i andre etasjer:", err && err.message); }
+}
+function gjentaHtml() {
+  if (!gjenta) return "";
+  const e = synlige(S.framdrift).find(x => x.id === gjenta.etappeId);
+  if (!e) { gjenta = null; return ""; }
+  const n = gjenta.rader.filter(r => r.på).length;
+  return '<div class="fp-gjenta"><b>' + esc(t("Gjenta handlingen")) + '</b>' +
+    '<p class="set-hjelp" style="margin:2px 0 6px">' + esc(t("Samme elementer i de andre etasjene – ett nytt trinn per etasje.")) + '</p>' +
+    gjenta.rader.map((r, i) => '<label class="fp-gj-rad"><input type="checkbox" data-gj="' + i + '"' + (r.på ? " checked" : "") + '> ' +
+      esc(t("{0} · {1} elementer → nytt trinn", r.navn, r.ids.length)) + (r.mangler ? ' <span class="hint">' + esc(t("({0} fant ingen match)", r.mangler)) + '</span>' : "") + '</label>').join("") +
+    '<div class="prop-actions"><button id="fpGjentaNei">' + esc(t("Nei takk")) + '</button>' +
+    '<button id="fpGjentaJa" class="primary"' + (n ? "" : " disabled") + '>' + esc(n === 1 ? t("Gjenta på 1 etasje") : t("Gjenta på {0} etasjer", n)) + '</button></div></div>';
+}
+function koblGjenta(body) {
+  if (!gjenta) return;
+  body.querySelectorAll("[data-gj]").forEach(c => c.onchange = () => { gjenta.rader[Number(c.dataset.gj)].på = c.checked; tegnPanel(); });
+  if ($("fpGjentaNei")) $("fpGjentaNei").onclick = () => { gjenta = null; tegnPanel(); };
+  if ($("fpGjentaJa")) $("fpGjentaJa").onclick = () => utforGjenta();
+}
+export function utforGjenta() {
+  if (!gjenta) return 0;
+  const kilde = synlige(S.framdrift).find(x => x.id === gjenta.etappeId);
+  if (!kilde) { gjenta = null; return 0; }
+  const foer = vaskEtappeListe(S.framdrift);
+  const naa = new Date().toISOString();
+  let n = 0;
+  for (const r of gjenta.rader.filter(x => x.på)) {
+    const ny = nyEtappe(S.framdrift, naa);
+    ny.navn = (gjenta.fraNavn && kilde.navn.includes(gjenta.fraNavn) ? kilde.navn.replace(gjenta.fraNavn, r.navn) : kilde.navn + " – " + r.navn).slice(0, 80);
+    ny.farge = kilde.farge; ny.av = mittNavn();
+    S.framdrift = vaskEtappeListe(S.framdrift).concat([ny]);
+    S.framdrift = leggTil(S.framdrift, ny.id, r.ids.map(id => ({ k: nokkel("id", id), gid: (metaFor(id) || {}).globalId || "" })), naa).liste;
+    n++;
+  }
+  gjenta = null;
+  if (n) { sisteMelding = tn(n, "{0} nytt trinn laget.", "{0} nye trinn laget."); lagre(); medAngre("Gjentatt i andre etasjer", foer); }
+  tegnPanel();
+  return n;
+}
+S._framdriftGjenta = () => gjenta;
+export function _settGjenta(g) { gjenta = g; }
+
+// ═══════════ ✍️ 5C · TRINN PER ETASJE MED FORHÅNDSVISNING (runde 5) ═══════════
+// «Lag trinn per etasje» farger modellen etasje for etasje (samme farger som
+// trinnene får). Forslagene kan slås sammen. «Bruk» lager trinnene med
+// elementene i. Avbryt rører ingenting.
+let perEtasje = null;   // [{ navn, ids }]
+export async function startPerEtasje() {
+  const H = await import("./etasje-hjelp.js");
+  const l = await H.etasjer();
+  if (!l.length) { varsel(t("Fant ingen etasjer i modellen.")); return; }
+  const alle = new Set(); l.forEach(e => e.ids.forEach(id => alle.add(id)));
+  try { await sikreMeta(() => alle); } catch (_) { /* uten meta telles alt */ }
+  perEtasje = trinnPerEtasje(l, (id) => !ikkeTell((metaFor(id) || {}).typeName));
+  if (!perEtasje.length) { perEtasje = null; varsel(t("Fant ingen elementer i etasjene.")); return; }
+  visPerEtasje();
+  tegnPanel();
+}
+async function visPerEtasje() {
+  const H = await import("./etasje-hjelp.js");
+  if (!perEtasje) { H.fjernOverlay(); return; }
+  const start = nesteNrFra();
+  H.visOverlay(perEtasje.map((f, i) => ({ ids: f.ids, farge: fargeForNr(start + i) })));
+}
+const nesteNrFra = () => synlige(S.framdrift).reduce((m, e) => Math.max(m, e.nr), 0) + 1;
+const FARGER5 = ["#2f6fdb", "#7c4dcc", "#f08a24", "#14a3a3", "#c2388a"];
+const fargeForNr = (nr) => FARGER5[(Math.max(1, nr) - 1) % FARGER5.length];
+function perEtasjeHtml() {
+  const start = nesteNrFra();
+  return '<div class="fp-peretasje"><b>' + esc(t("Lag trinn per etasje")) + '</b>' +
+    '<p class="set-hjelp" style="margin:2px 0 6px">' + esc(t("Modellen er farget per forslag. Slå sammen etasjer som skal være ett trinn, og trykk «Bruk».")) + '</p>' +
+    perEtasje.map((f, i) => '<div class="fp-pe-rad"><span class="fp-sp-farge" style="background:' + fargeForNr(start + i) + '"></span>' +
+      '<span class="fp-pe-navn">' + esc((start + i) + " · " + f.navn) + '</span><span class="hint">' + esc(t("{0} elementer", f.ids.length)) + '</span>' +
+      (i < perEtasje.length - 1 ? '<button class="lenke" data-pe-slaa="' + i + '" title="' + esc(t("Slå sammen med neste")) + '">⤓ ' + esc(t("slå sammen")) + '</button>' : "") + '</div>').join("") +
+    '<div class="prop-actions"><button id="fpPeAvbryt">' + esc(t("Avbryt")) + '</button>' +
+    '<button id="fpPeBruk" class="primary">' + esc(t("Bruk")) + '</button></div></div>';
+}
+function koblPerEtasje(body) {
+  body.querySelectorAll("[data-pe-slaa]").forEach(b => b.onclick = () => { perEtasje = slåSammen(perEtasje, Number(b.dataset.peSlaa)); visPerEtasje(); tegnPanel(); });
+  if ($("fpPeAvbryt")) $("fpPeAvbryt").onclick = () => { perEtasje = null; visPerEtasje(); tegnPanel(); };
+  if ($("fpPeBruk")) $("fpPeBruk").onclick = () => brukPerEtasje();
+}
+export function brukPerEtasje() {
+  if (!perEtasje) return 0;
+  const foer = vaskEtappeListe(S.framdrift);
+  const naa = new Date().toISOString();
+  let flyttet = 0;
+  for (const f of perEtasje) {
+    const ny = nyEtappe(S.framdrift, naa);
+    ny.navn = f.navn.slice(0, 80); ny.av = mittNavn();
+    S.framdrift = vaskEtappeListe(S.framdrift).concat([ny]);
+    const r = leggTil(S.framdrift, ny.id, f.ids.map(id => ({ k: nokkel("id", id), gid: (metaFor(id) || {}).globalId || "" })), naa);
+    S.framdrift = r.liste; flyttet += r.flyttet || 0;
+  }
+  const n = perEtasje.length;
+  perEtasje = null; visPerEtasje();
+  sisteMelding = tn(n, "{0} trinn laget per etasje.", "{0} trinn laget per etasje.") + (flyttet ? " " + t("{0} elementer ble flyttet fra andre trinn.", flyttet) : "");
+  lagre(); medAngre("Trinn per etasje", foer); tegnPanel();
+  return n;
+}
+S._framdriftPerEtasje = () => perEtasje;
 
 // ═══════════ «LEGG TIL»: VELGEMODUSEN (som støpeplanen) ═══════════
 // Hvert trykk i modellen legger til eller tar bort (shift-dra for mange).
@@ -543,7 +671,8 @@ export function tegnPanel() {
   let html = (liste.length
     ? '<details class="set-hjelp fp-hjelp"><summary>' + esc(t("Slik bruker du framdriftsplanen")) + "</summary>" + forklaring + "</details>"
     : '<p class="set-hjelp" style="margin-top:0">' + forklaring + "</p>") +
-    (sisteMelding ? '<p class="set-hjelp" style="color:var(--text)">' + esc(sisteMelding) + "</p>" : "");
+    (sisteMelding ? '<p class="set-hjelp" style="color:var(--text)">' + esc(sisteMelding) + "</p>" : "") +
+    (perEtasje ? perEtasjeHtml() : "") + gjentaHtml();
   if (liste.length) html += '<label class="set-hjelp fp-vis"><input type="checkbox" id="fpVis"' + (S.framdriftVis !== false ? " checked" : "") + "> " +
     esc(t("Vis framdriften i modellen — dra glideren nederst")) + "</label>" +
     // 🌦 Samme bryter som i Vis vær — været på tidslinja, her og på byggeplassen
@@ -570,7 +699,10 @@ export function tegnPanel() {
         : '<div class="st-rad">' +
             '<input type="color" class="st-farge" value="' + esc(e.farge) + '" title="' + esc(t("Farge")) + '">' +
             '<b class="st-nr">' + e.nr + "</b>" +
-            '<input type="text" class="st-navn" maxlength="80" value="' + esc(e.navn) + '">' +
+            (erStandardNavn(e.navn) && e.objekter.some(o => /^id:/.test(o.k))
+              // ✍️ 9C: grått navneforslag i feltet – Tab tar det
+              ? '<input type="text" class="st-navn fp-forslag" maxlength="80" value="" data-std="' + esc(e.navn) + '" placeholder="' + esc(e.navn) + '">'
+              : '<input type="text" class="st-navn" maxlength="80" value="' + esc(e.navn) + '">') +
             '<button class="st-slett" title="' + esc(t("Slett trinnet")) + '">' + ikon("slett") + "</button>" +
           "</div>" +
           '<div class="st-rad fp-datoer">' +
@@ -582,11 +714,14 @@ export function tegnPanel() {
         (e.objekter.length ? '<button class="st-fjern' + (velgerHer && velgerFjerner() ? " aktiv" : "") + '" title="' + esc(t("Ta enkeltobjekter ut av trinnet igjen")) + '">' +
           esc(velgerHer && velgerFjerner() ? t("Velger …") : t("− Fjern")) + "</button>" : "") +
         (e.objekter.length ? '<button class="st-tom">' + esc(t("Tøm")) + "</button>" : "") +
+        // ✍️ 7B: ferdigmeld alt i trinnet, med dato
+        (e.objekter.some(o => /^(id|sw|tak|blikk):/.test(o.k)) ? '<button class="fp-allferdig" title="' + esc(t("Ferdigmeld alt i trinnet")) + '">✓ ' + esc(t("Alt ferdig")) + "</button>" : "") +
       "</div></div>";
   }
   html += "</div>";
   html += '<label class="set-hjelp st-logo">' + esc(t("Logo på PDF")) + ' <select id="fpLogo"></select></label>' +
     '<div class="prop-actions" style="margin-top:10px"><button id="fpNy" class="primary">' + ikon("pluss") + " " + esc(t("Nytt trinn")) + "</button>" +
+      (S.modelGroup && !perEtasje ? '<button id="fpPerEtasje" title="' + esc(t("Ett trinn per etasje, med elementene lagt inn – forhåndsvist i modellen")) + '">▦ ' + esc(t("Lag trinn per etasje")) + "</button>" : "") +
       '<button id="fpPdf"' + (pdfTrinn(S.framdrift).length ? "" : " disabled") + ' title="' + esc(t("Én side per trinn: bygget sett fra nord, sør, øst og vest, og det som er nytt i trinnet")) + '">' +
       ikon("lastned") + " " + esc(t("Last ned PDF")) + "</button>" +
       '<button id="fpVideo"' + (pdfTrinn(S.framdrift).length ? "" : " disabled") + ' title="' + esc(t("Kameraet går én gang rundt bygget mens trinnene bygges opp. Lagres i SharePoint, så PDF-en får en QR-kode til videoen.")) + '">' +
@@ -596,6 +731,8 @@ export function tegnPanel() {
   koblFaner(body);
 
   $("fpNy").onclick = () => leggTilEtappe();
+  if ($("fpPerEtasje")) $("fpPerEtasje").onclick = () => startPerEtasje();
+  koblPerEtasje(body); koblGjenta(body);
   $("fpPdf").onclick = () => lastNedPdf();
   $("fpVideo").onclick = () => lagVideo();
   if ($("fpVis")) $("fpVis").onchange = (ev) => { S.framdriftVis = ev.target.checked; oppdaterVis(); slippFokus(ev); };
@@ -615,7 +752,8 @@ export function tegnPanel() {
     const id = rad.dataset.id;
     const navnEl = rad.querySelector(".st-navn");
     if (navnEl) {   // ikke på trinn fra Storm Prosjekter (låst)
-      navnEl.onchange = (ev) => { endreEtappe(id, { navn: ev.target.value }); slippFokus(ev); };
+      navnEl.onchange = (ev) => { if (ev.target.classList.contains("fp-forslag") && !ev.target.value.trim()) return; endreEtappe(id, { navn: ev.target.value }); slippFokus(ev); };
+      if (navnEl.classList.contains("fp-forslag")) koblNavneforslag(navnEl, id);
       rad.querySelector(".fp-fra").onchange = (ev) => { endreEtappe(id, { dato: ev.target.value }); tegnPanel(); };
       rad.querySelector(".fp-til").onchange = (ev) => { endreEtappe(id, { slutt: ev.target.value }); tegnPanel(); };
       rad.querySelector(".st-farge").onchange = (ev) => { endreEtappe(id, { farge: ev.target.value }); tegnPanel(); };
@@ -623,6 +761,8 @@ export function tegnPanel() {
     rad.querySelector(".st-legg").onclick = () => { if (velgerEtappe() === id && !velgerFjerner()) avsluttVelg(true); else startVelg(id); };
     const fj = rad.querySelector(".st-fjern");
     if (fj) fj.onclick = () => { if (velgerEtappe() === id && velgerFjerner()) avsluttVelg(true); else startVelg(id, true); };
+    const alle = rad.querySelector(".fp-allferdig");
+    if (alle) alle.onclick = () => ferdigmeldTrinn(id);
     const tom = rad.querySelector(".st-tom");
     if (tom) tom.onclick = async () => { if (await bekreft(t("Ta alt ut av trinnet?"))) tomEtappe(id); };
     const sl = rad.querySelector(".st-slett");
@@ -633,6 +773,63 @@ export function tegnPanel() {
   });
   begrensListe($("fpListe"));
   oppdaterVis();
+}
+
+// ═══════════ ✍️ 9C · NAVNEFORSLAG (runde 5) ═══════════
+// Trinn med standardnavn («Trinn 3») og elementer får et grått forslag i
+// navnefeltet («Søyler HEB200 2. etasje»). Tab tar forslaget; skriver du selv,
+// gjelder det du skriver. Tomt felt = navnet står som før.
+const forslagBuffer = new Map();   // etappeId|objekter → forslag
+async function forslagFor(e) {
+  const ids = e.objekter.filter(o => /^id:/.test(o.k)).map(o => Number(o.k.slice(3)));
+  const nokkelF = e.id + "|" + ids.length + "|" + ids.slice(0, 20).join(",");
+  if (forslagBuffer.has(nokkelF)) return forslagBuffer.get(nokkelF);
+  const H = await import("./etasje-hjelp.js");
+  const b = await H.beskriv(ids.slice(0, 2000));
+  const f = navnForslag(b.elementer.map(x => ({ typeName: x.typeName, name: x.name, etasje: x.etasjeNavn })));
+  forslagBuffer.set(nokkelF, f);
+  return f;
+}
+function koblNavneforslag(inp, id) {
+  const e = synlige(S.framdrift).find(x => x.id === id);
+  if (!e) return;
+  forslagFor(e).then(f => {
+    if (!f || !inp.isConnected) return;
+    inp.dataset.forslag = f;
+    inp.placeholder = f + "   (" + t("Tab for å bruke") + ")";
+  }).catch(() => {});
+  inp.addEventListener("keydown", (ev) => {
+    if (ev.key === "Tab" && !inp.value.trim() && inp.dataset.forslag) {
+      ev.preventDefault();
+      endreEtappe(id, { navn: inp.dataset.forslag });
+      tegnPanel();
+    }
+  });
+}
+
+// ═══════════ ✍️ 7B · FERDIGMELD HELE TRINNET, MED DATO (runde 5) ═══════════
+export async function ferdigmeldTrinn(id) {
+  const e = synlige(S.framdrift).find(x => x.id === id);
+  if (!e || !S.ferdigIkkeFerdig) return;
+  const liste = await S.ferdigIkkeFerdig(id);
+  const gml = $("fpFerdigBak"); if (gml) gml.remove();
+  const bak = document.createElement("div");
+  bak.id = "fpFerdigBak"; bak.className = "lip-bak";
+  const idag = (() => { const d = new Date(); const p = (n) => String(n).padStart(2, "0"); return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()); })();
+  bak.innerHTML = '<div class="lip-d" role="dialog" aria-modal="true"><h2>' + esc(t("Ferdigmeld trinn {0}", e.nr)) + '</h2>' +
+    '<p>' + esc(liste.length ? tn(liste.length, "{0} element er ikke ferdigmeldt.", "{0} elementer er ikke ferdigmeldt.") : t("Alt i trinnet er allerede ferdigmeldt.")) + '</p>' +
+    (liste.length ? '<label>' + esc(t("Ferdig dato")) + '</label><input type="date" id="fpFerdigDato" max="' + idag + '" value="' + idag + '">' +
+      '<p class="lip-liten">' + esc(t("Datoen det ble ferdig – kurven og «dager bak» regnes ut fra den.")) + '</p>' : "") +
+    '<div class="lip-kn"><button type="button" id="fpFerdigAvbryt">' + esc(liste.length ? t("Avbryt") : t("Lukk")) + '</button>' +
+    (liste.length ? '<button type="button" class="primary" id="fpFerdigOk">' + esc(t("Ferdigmeld {0}", liste.length)) + '</button>' : "") + '</div></div>';
+  document.body.appendChild(bak);
+  $("fpFerdigAvbryt").onclick = () => bak.remove();
+  bak.addEventListener("pointerdown", (ev) => { if (ev.target === bak) bak.remove(); });
+  if ($("fpFerdigOk")) $("fpFerdigOk").onclick = () => {
+    const dato = $("fpFerdigDato").value || idag;
+    bak.remove();
+    if (S.ferdigMeldListe) S.ferdigMeldListe(liste, dato > idag ? idag : dato);
+  };
 }
 
 // 📅 Glideren (trinn 3, js/framdrift-vis.js): på når panelet er åpent og

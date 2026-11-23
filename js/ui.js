@@ -4,7 +4,8 @@ import { SPRAK, setLang, t } from "./i18n.js";
 import { LETT, montorNavn, settMontorNavn } from "./lett.js";
 import { OPPSETT_FELT, OPPSETT_FIL, OPPSETT_STATUS } from "./oppsett.js";
 import { angre, gjenopprett } from "./angre.js";
-import { FRISTER } from "./config.js";
+import { ANSATTE, FRISTER } from "./config.js";
+import { FAG, STANDARD_DAGER, vaskStandarder } from "./utfylling-regn.js";
 import { vaskGrenser } from "./frist.js";
 import { renderCommentList, tegnAlleMarkeringerPaNytt } from "./markers.js";
 import { applyAxisFont } from "./axes.js";
@@ -266,6 +267,20 @@ function renderSettings() {
   // menyen skal ikke bli lengre enn før. Testen «få rader før hurtigtastene»
   // vokter det, og vi lå allerede på grensa.
   const gjettet = gjettEnhetSkala(S.modelSize) === 0.001 ? t("millimeter") : t("meter");
+  // ✍️ 3A (runde 5, 23.11): standard ansvarlig og frist for nye markeringer per fag
+  if (!LETT) {
+    const std = vaskStandarder(S.settings.markStandard);
+    html += '<details id="stNyeMark"><summary><h4 style="display:inline">' + t("Nye markeringer") + '</h4></summary>' +
+      '<p style="color:var(--muted);font-size:11px;margin:2px 0 6px">' + t("Fylles inn i «Ny markering» ut fra elementet du trykker på. Uten standard brukes den du valgte sist.") + '</p>' +
+      FAG.map(f => '<div class="set-row nm-rad"><span class="n">' + t(f) + '</span>' +
+        '<select data-nm-ans="' + f + '"><option value="">' + t("(sist brukt)") + '</option>' +
+          ANSATTE.map(a => '<option value="' + esc(a.navn) + '"' + (std[f] && std[f].ansvarlig === a.navn ? " selected" : "") + '>' + esc(a.navn) + '</option>').join("") +
+          (std[f] && std[f].ansvarlig && !ANSATTE.some(a => a.navn === std[f].ansvarlig) ? '<option selected value="' + esc(std[f].ansvarlig) + '">' + esc(std[f].ansvarlig) + '</option>' : "") +
+        '</select>' +
+        '<input type="number" min="0" max="365" step="1" data-nm-dager="' + f + '" placeholder="' + STANDARD_DAGER + '" value="' + (std[f] && "dager" in std[f] ? std[f].dager : "") + '" title="' + esc(t("Frist om antall dager")) + '"> <span class="hint">' + t("dager") + '</span></div>').join("") +
+      '</details>';
+  }
+
   html += '<details><summary><h4 style="display:inline">' + t("Enheter") + '</h4></summary>' +
     '<div class="set-row"><span class="n">' + t("Modellens enhet") + '</span>' +
     '<select id="stModellEnhet">' + [
@@ -400,6 +415,16 @@ function renderSettings() {
     renderCommentList();
   };
   $("stFristGul").onchange = settFrist;
+  // 3A: standard per fag
+  const lagreNm = () => {
+    const ny = {};
+    for (const f of FAG) {
+      const a = document.querySelector('[data-nm-ans="' + f + '"]'), d = document.querySelector('[data-nm-dager="' + f + '"]');
+      ny[f] = { ansvarlig: a ? a.value : "", dager: d ? d.value : "" };
+    }
+    S.settings.markStandard = vaskStandarder(ny); saveSettings();
+  };
+  document.querySelectorAll("[data-nm-ans], [data-nm-dager]").forEach(el => el.onchange = lagreNm);
   $("stFristRod").onchange = settFrist;
   $("setBody").querySelectorAll("button[data-key]").forEach(b => {
     b.onclick = () => { S.keyWaitFor = b.dataset.key; renderSettings(); };

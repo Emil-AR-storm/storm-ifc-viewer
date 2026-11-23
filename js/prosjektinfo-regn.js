@@ -53,7 +53,13 @@ export function vaskProsjektInfo(x) {
     telefon: tekst(p.telefon, 30),
     logo: tekst(p.logo, 200),
     adresse: vaskAdresseInfo(p.adresse),
-    endret: tekst(p.endret, 40)
+    endret: tekst(p.endret, 40),
+    // ✍️ 1B (runde 5, 23.11): det som sist ble hentet fra Storm Prosjekter. Brukes
+    // til «✓ hentet» / «✎ endret her», og til å følge endringer der.
+    ...(p.sp && typeof p.sp === "object" ? { sp: {
+      navn: tekst(p.sp.navn, 120), nummer: tekst(p.sp.nummer, 20), byggherre: tekst(p.sp.byggherre, 120),
+      leder: tekst(p.sp.leder, 80), telefon: tekst(p.sp.telefon, 30), adresse: tekst(p.sp.adresse, 160),
+      nokkel: tekst(p.sp.nokkel, 60), hentet: tekst(p.sp.hentet, 40) } } : {})
   };
 }
 

@@ -1,6 +1,7 @@
 // 💬 Markeringer: lagring lokalt og deling via SharePoint.
 import * as THREE from "three";
-import { $, på, S, esc, ikon, loadingEl, loadingText, lukkPaneler, tomPanelHtml } from "./state.js";
+import { $, på, S, esc, ikon, loadingEl, loadingText, lukkPaneler, tomPanelHtml, writePrefs } from "./state.js";
+import { STANDARD_MALER, fagFor, masseEndring, område, settMal, standardFor, vaskEgneMaler } from "./utfylling-regn.js";
 import { t } from "./i18n.js";
 import { LETT, montorNavn, settMontorNavn } from "./lett.js";
 import { ANSATTE, FRISTER, PLANNER, TJENESTER } from "./config.js";
@@ -2481,6 +2482,7 @@ export const STANDARD_FRIST_DAGER = 14;
 
 export function forberedNyMarkering() {
   $("commentText").value = "";
+  tegnMaler();
   const felt = $("commentDue"), av = $("commentNoDue");
   if (!felt || !av) return;                    // eldre HTML uten feltet
   if (LETT) { felt.value = ""; av.checked = true; return; }
@@ -2488,7 +2490,83 @@ export function forberedNyMarkering() {
   felt.value = omDager(STANDARD_FRIST_DAGER, iDag);
   felt.disabled = false;
   av.onchange = () => { felt.disabled = av.checked; if (av.checked) felt.value = ""; };
+  fyllAnsvarligOgFrist();
 }
+
+// ═══════════ ✍️ 2A · TEKSTMALER (runde 5, Emil 23.11) ═══════════
+// Knapper over tekstfeltet: de vanligste tekstene med ett trykk, pluss egne
+// («+ Egen» lagrer det som står i feltet). Høyreklikk / trykk og hold på en
+// egen mal sletter den. Også på byggeplassen.
+const egneMaler = () => vaskEgneMaler(S.settings && S.settings.markMaler);
+function lagreInnst() { try { writePrefs(); if (S.syncPrefs) S.syncPrefs(); } catch (_) { /* lagres neste gang */ } }
+export function tegnMaler() {
+  const ta = $("commentText");
+  if (!ta) return;
+  let el = $("cdMaler");
+  if (!el) { el = document.createElement("div"); el.id = "cdMaler"; el.className = "cd-maler"; ta.parentNode.insertBefore(el, ta); }
+  const std = STANDARD_MALER.map(m => t(m)), egne = egneMaler();
+  const kjente = std.concat(egne);
+  el.innerHTML = std.map(m => '<button type="button" class="cd-mal" data-mal="' + esc(m) + '">' + esc(m) + '</button>').join("") +
+    egne.map(m => '<button type="button" class="cd-mal egen" data-mal="' + esc(m) + '" title="' + esc(t("Høyreklikk eller hold inne for å slette")) + '">' + esc(m) + '</button>').join("") +
+    '<button type="button" class="cd-mal ny" id="cdMalNy" title="' + esc(t("Lagre teksten i feltet som en egen mal")) + '">+ ' + esc(t("Egen")) + '</button>';
+  el.querySelectorAll("[data-mal]").forEach(b => {
+    b.onclick = () => { ta.value = settMal(ta.value, b.dataset.mal, kjente); ta.focus(); try { ta.setSelectionRange(ta.value.length, ta.value.length); } catch (_) {} };
+    if (b.classList.contains("egen")) {
+      let holdTid = 0;
+      const slett = async (e) => { if (e) e.preventDefault(); if (!await bekreft(t("Slette malen «{0}»?", b.dataset.mal))) return;
+        S.settings.markMaler = egneMaler().filter(x => x !== b.dataset.mal); lagreInnst(); tegnMaler(); };
+      b.oncontextmenu = slett;
+      b.addEventListener("pointerdown", (e) => { if (e.pointerType === "touch") holdTid = setTimeout(() => slett(), 650); });
+      ["pointerup", "pointerleave", "pointercancel"].forEach(h => b.addEventListener(h, () => clearTimeout(holdTid)));
+    }
+  });
+  $("cdMalNy").onclick = async () => {
+    let tekst = String(ta.value || "").replace(/\s+–\s*$/, "").trim();
+    for (const k of kjente) if (tekst.startsWith(k + " – ")) { tekst = k; break; }
+    const navn = await spor(t("Ny mal – teksten som settes inn:"), tekst.slice(0, 60));
+    const v = String(navn || "").replace(/\s+/g, " ").trim().slice(0, 60);
+    if (!v) return;
+    if (!S.settings) return;
+    S.settings.markMaler = vaskEgneMaler(egneMaler().concat([v]));
+    lagreInnst(); tegnMaler();
+  };
+}
+
+// ═══════════ ✍️ 3A · ANSVARLIG OG FRIST FERDIG UTFYLT (runde 5) ═══════════
+// Faget til elementet markeringen står på (betong/stål/tre/annet) gir
+// standarden fra ⚙ Innstillinger → Nye markeringer. Uten standard: sist
+// valgte ansvarlig. Synlig i dialogen og kan endres før lagring – ingen
+// stille eier (jf. J1 i saveComment). Bare kontoret.
+function elementMeta() {
+  const id = S.currentPropID;
+  if (id == null || !S.meta) return null;
+  const m = S.meta.get(id) || {};
+  return { typeName: m.typeName || m.type || "", name: m.name || "", objectType: m.objectType || "", material: m.material || m.materialNavn || "" };
+}
+function fyllAnsvarligOgFrist() {
+  if (LETT) return;
+  const rad = document.querySelector("#commentDialog .cd-frist");
+  if (!rad) return;
+  let sel = $("commentOwner");
+  if (!sel) {
+    const lab = document.createElement("label");
+    lab.className = "cd-ansvarlig";
+    lab.innerHTML = '<span>' + esc(t("Ansvarlig")) + '</span> <select id="commentOwner"></select> <span class="cd-kilde" id="commentOwnerKilde"></span>';
+    rad.appendChild(lab);
+    sel = $("commentOwner");
+  }
+  const meta = elementMeta();
+  const fag = meta ? fagFor(meta) : "Annet";
+  const st = standardFor(fag, S.settings && S.settings.markStandard, { ansvarlig: S.settings && S.settings.markSistAnsvarlig });
+  const navn = ANSATTE.map(a => a.navn);
+  if (st.ansvarlig && !navn.includes(st.ansvarlig)) navn.push(st.ansvarlig);
+  sel.innerHTML = '<option value="">' + esc(t("– ingen –")) + '</option>' + navn.map(n => '<option value="' + esc(n) + '"' + (n === st.ansvarlig ? " selected" : "") + '>' + esc(n) + '</option>').join("");
+  const kilde = $("commentOwnerKilde");
+  if (kilde) kilde.textContent = st.kilde === "fag" ? "(" + t("{0} → standard", t(fag).toLowerCase()) + ")" : st.kilde === "sist" ? "(" + t("sist brukt") + ")" : "";
+  const felt = $("commentDue");
+  if (felt && !$("commentNoDue").checked) felt.value = omDager(st.dager, iDag);
+}
+S.fyllAnsvarligOgFrist = fyllAnsvarligOgFrist;
 
 // ---------- ⭕▭ Tegne et område (dra og slipp) ----------
 // I markering-modus kan man i stedet for et enkelt trykk MARKERE OMRÅDET
@@ -2740,7 +2818,7 @@ window.saveComment = async function() {
     // tilfeldigvis står øverst i oppsett.json stille eier av alt som opprettes –
     // uten at noen valgte det, og uten at noen fikk beskjed. Tom eier er synlig
     // og ærlig; feil eier ser riktig ut, og da oppdager ingen den.
-    owner: "",
+    owner: (!LETT && $("commentOwner")) ? String($("commentOwner").value || "") : "",
     // Frist fra dialogen. Tom på byggeplassen og når «ingen frist» er huket av —
     // da får markeringen grå ring, som er ærlig: ingen har bestemt når dette
     // skal være ferdig. Grå blir dermed en arbeidskø, ikke en mangel.
@@ -2753,6 +2831,8 @@ window.saveComment = async function() {
   // ⭕▭ ble markeringen tegnet som et område, følger området med markeringen —
   // gjennom samme vask, samme delte fil og samme eksport som alt annet
   if (S.pendingOmrade) { c.omrade = S.pendingOmrade; S.pendingOmrade = null; }
+  // 3A: sist valgte ansvarlig huskes til neste gang (når faget ikke har standard)
+  if (!LETT && S.settings && c.owner !== (S.settings.markSistAnsvarlig || "")) { S.settings.markSistAnsvarlig = c.owner; lagreInnst(); }
   // IFC-elementet markeringen står på, hvis noe var valgt da den ble laget.
   // Er ingenting valgt, settes ingenting – et tomt felt er ærlig, en gjetning
   // ser riktig ut og da oppdager ingen den.
@@ -2925,6 +3005,75 @@ export function passerFilter(c, f, navn, sondag) {
   return true;
 }
 
+// ═══════════ ✍️ 4B · ENDRE MANGE MARKERINGER (runde 5, Emil 23.11) ═══════════
+// «Velg» øverst i lista gir avkrysning på hvert kort (shift-klikk = alt
+// imellom, «Velg alle» = alle lista viser nå, også med filter). De valgte får
+// blå boble i modellen. «Endre N markeringer» åpner skjemaet: Ansvarlig,
+// Frist og Status, der «(uendret)» ikke rører feltet. Én angrepost. Bare kontoret.
+let velgModus = false, sistValgt = null;
+const valgteM = new Set();
+function merkValgteBobler() {
+  for (const sp of markerGroup.children) {
+    const paa = velgModus && valgteM.has(String(sp.userData.commentId));
+    if (paa && !sp.userData.mvMat && sp.material && sp.material.clone) {
+      sp.userData.mvOrig = sp.material; sp.userData.mvMat = sp.material.clone();
+      if (sp.userData.mvMat.color) sp.userData.mvMat.color.set(0x3b82f6);
+      sp.material = sp.userData.mvMat;
+    } else if (!paa && sp.userData.mvMat) {
+      if (sp.material === sp.userData.mvMat) sp.material = sp.userData.mvOrig;
+      sp.userData.mvMat.dispose(); delete sp.userData.mvMat; delete sp.userData.mvOrig;
+    }
+  }
+  S.miniSkitten = true;
+}
+function avsluttVelgM() { velgModus = false; valgteM.clear(); sistValgt = null; merkValgteBobler(); renderCommentList(); }
+export function _velgTilstand() { return { velgModus, valgte: [...valgteM] }; }
+function apneMasseEndring() {
+  const valgte = S.comments.filter(c => valgteM.has(String(c.id)));
+  if (!valgte.length) return;
+  const gml = $("cmMasseBak"); if (gml) gml.remove();
+  const bak = document.createElement("div");
+  bak.id = "cmMasseBak"; bak.className = "lip-bak";
+  const navn = valgte.slice(0, 3).map(c => "«" + String(c.text || "").slice(0, 40) + "»").join(", ") + (valgte.length > 3 ? " " + t("+ {0} til", valgte.length - 3) : "");
+  bak.innerHTML = '<div class="lip-d cm-masse" role="dialog" aria-modal="true"><h2>' + esc(t("Endre {0} markeringer", valgte.length)) + '</h2>' +
+    '<p class="lip-liten">' + esc(navn) + '</p>' +
+    '<label>' + esc(t("Ansvarlig")) + '</label><select id="cmMOwner"><option value="__u">' + esc(t("(uendret)")) + '</option><option value="">' + esc(t("– ingen –")) + '</option>' +
+      ANSATTE.map(a => '<option value="' + esc(a.navn) + '">' + esc(a.navn) + '</option>').join("") + '</select>' +
+    '<label>' + esc(t("Frist")) + '</label><div class="cm-m-frist"><select id="cmMFristValg"><option value="u">' + esc(t("(uendret)")) + '</option><option value="sett">' + esc(t("Sett dato")) + '</option><option value="fjern">' + esc(t("Fjern frist")) + '</option></select>' +
+      '<input type="date" id="cmMDue" disabled></div>' +
+    '<label>' + esc(t("Status")) + '</label><select id="cmMStatus"><option value="__u">' + esc(t("(uendret)")) + '</option>' +
+      Object.keys(STATUS).map(k => '<option value="' + esc(k) + '">' + esc(t(k)) + '</option>').join("") + '</select>' +
+    '<div class="lip-kn"><button type="button" id="cmMAvbryt">' + esc(t("Avbryt")) + '</button>' +
+    '<button type="button" class="primary" id="cmMLagre">' + esc(t("Lagre på alle {0}", valgte.length)) + '</button></div></div>';
+  document.body.appendChild(bak);
+  $("cmMFristValg").onchange = (e) => { const d = $("cmMDue"); d.disabled = e.target.value !== "sett"; if (e.target.value === "sett" && !d.value) d.value = omDager(STANDARD_FRIST_DAGER, iDag); };
+  $("cmMAvbryt").onclick = () => bak.remove();
+  bak.addEventListener("pointerdown", (e) => { if (e.target === bak) bak.remove(); });
+  $("cmMLagre").onclick = () => {
+    const endring = {};
+    if ($("cmMOwner").value !== "__u") endring.owner = $("cmMOwner").value;
+    const fv = $("cmMFristValg").value;
+    if (fv === "sett" && $("cmMDue").value) endring.due = $("cmMDue").value;
+    if (fv === "fjern") endring.due = "";
+    if ($("cmMStatus").value !== "__u") endring.status = $("cmMStatus").value;
+    bak.remove();
+    utforMasseEndring(endring);
+  };
+}
+export function utforMasseEndring(endring, ider) {
+  const patcher = masseEndring(S.comments, ider || [...valgteM], endring);
+  if (!patcher.length) { avsluttVelgM(); return 0; }
+  const foer = patcher.map(p => { const c = S.comments.find(x => String(x.id) === String(p.id)); return { id: p.id, gml: { owner: c.owner || "", due: c.due || "", status: statusOf(c) } }; });
+  const bruk = (liste) => { for (const x of liste) { const c = S.comments.find(y => String(y.id) === String(x.id)); if (c) updateComment(c, x.p); } };
+  bruk(patcher.map(p => ({ id: p.id, p: p.patch })));
+  if (S.pushAngre) S.pushAngre({ tekst: "Endret markeringer",
+    angre: () => bruk(foer.map(f => ({ id: f.id, p: f.gml }))),
+    gjenopprett: () => bruk(patcher.map(p => ({ id: p.id, p: p.patch }))) });
+  varsel(t("{0} markeringer endret.", patcher.length));
+  avsluttVelgM();
+  return patcher.length;
+}
+
 export function renderCommentList() {
   $("commentCount").textContent = S.comments.length;
   const body = $("commentBody");
@@ -2949,9 +3098,18 @@ export function renderCommentList() {
     esc(tekst) + ' <b>' + n + '</b></button>';
   let html = status +
     '<div class="mf-rad">' + brikke("alle", t("Alle"), S.comments.length, !listFiltre.size) +
-      tilgjengelige.map(f => brikke(f, NAVN[f], antall(f), listFiltre.has(f))).join("") + '</div>';
+      tilgjengelige.map(f => brikke(f, NAVN[f], antall(f), listFiltre.has(f))).join("") +
+      (LETT ? "" : '<button type="button" class="mf-brikke mf-velg' + (velgModus ? " akt" : "") + '" id="cmVelg">' + esc(velgModus ? t("Ferdig") : t("Velg")) + '</button>') +
+      '</div>';
 
   const vis = S.comments.filter(c => [...listFiltre].every(f => passerFilter(c, f, navn, sondag)));
+  // 4B: valgte som ikke finnes lenger, glemmes
+  for (const id of [...valgteM]) if (!S.comments.some(c => String(c.id) === id)) valgteM.delete(id);
+  if (velgModus) {
+    html += '<div class="cm-velgrad"><button type="button" id="cmVelgAlle">' + esc(t("Velg alle ({0})", vis.length)) + '</button>' +
+      (valgteM.size ? '<button type="button" id="cmVelgIngen">' + esc(t("Fjern valg")) + '</button>' : "") +
+      '<span class="hint">' + esc(t("Trykk på markeringene du vil endre. Shift + klikk velger alt imellom.")) + '</span></div>';
+  }
   // uløste med frist, som ikke alt har fått en oppgave
   const apne = S.comments.filter(c => statusOf(c) !== "Løst" && c.due && !c.taskId);
   if (apne.length > 1) {
@@ -2968,9 +3126,11 @@ export function renderCommentList() {
     // 👁 Skjult markering tegnes blass — kortet skal LESES som avslått, ellers
     // sitter man og leter etter en boble i modellen som ikke er der.
     const skjult = markeringSkjult(c.id);
-    return '<div class="comment' + (skjult ? " skjult" : "") + '" data-id="' + esc(c.id) +
+    const valgt = velgModus && valgteM.has(String(c.id));
+    return '<div class="comment' + (skjult ? " skjult" : "") + (velgModus ? " velgbar" : "") + (valgt ? " valgt" : "") + '" data-id="' + esc(c.id) +
       '" style="border-left:3px solid ' + STATUS[st].col + (skjult ? ";opacity:.5" : "") + '">' +
-      '<div class="meta"><span>' + esc((c.author ? c.author + " · " : "") + (c.date || "")) + '</span>' +
+      '<div class="meta"><span>' + (velgModus ? '<span class="cm-cb' + (valgt ? " x" : "") + '" role="checkbox" aria-checked="' + (valgt ? "true" : "false") + '"></span> ' : "") +
+        esc((c.author ? c.author + " · " : "") + (c.date || "")) + '</span>' +
         '<span>' +
         // Øyeknappen står i KORTET, ikke i 3D-en: den skjulte markeringen er
         // per definisjon ikke synlig i modellen, så knappen som henter den
@@ -3013,7 +3173,16 @@ export function renderCommentList() {
   }).join("") ||
     '<p style="color:var(--muted)">' + esc(t("Ingen markeringer passer filteret.")) + '</p>';
 
+  if (velgModus && valgteM.size) html += '<div class="cm-masse-linje"><b>' + esc(t("{0} valgt", valgteM.size)) + '</b>' +
+    '<button type="button" id="cmVelgAvbryt">' + esc(t("Avbryt")) + '</button>' +
+    '<button type="button" class="primary" id="cmEndreMange">' + esc(t("Endre {0} markeringer", valgteM.size)) + '</button></div>';
   body.innerHTML = html;
+  if ($("cmVelg")) $("cmVelg").onclick = () => { if (velgModus) avsluttVelgM(); else { velgModus = true; renderCommentList(); } };
+  if ($("cmVelgAlle")) $("cmVelgAlle").onclick = () => { vis.forEach(c => valgteM.add(String(c.id))); merkValgteBobler(); renderCommentList(); };
+  if ($("cmVelgIngen")) $("cmVelgIngen").onclick = () => { valgteM.clear(); merkValgteBobler(); renderCommentList(); };
+  if ($("cmVelgAvbryt")) $("cmVelgAvbryt").onclick = avsluttVelgM;
+  if ($("cmEndreMange")) $("cmEndreMange").onclick = apneMasseEndring;
+  if (velgModus) merkValgteBobler();
   body.querySelectorAll("button[data-flt]").forEach(b => {
     b.onclick = () => {
       const f = b.dataset.flt;
@@ -3026,6 +3195,17 @@ export function renderCommentList() {
   if ($("cmAllTasks")) $("cmAllTasks").onclick = () => sendTilPlanner(apne);
   body.querySelectorAll(".comment").forEach(el => {
     el.addEventListener("click", (e) => {
+      // 4B: i velgemodus velger et trykk kortet (shift = alt imellom)
+      if (velgModus) {
+        const id = String(el.dataset.id);
+        const rekke = vis.map(c => String(c.id));
+        const nye = e.shiftKey && sistValgt ? område(rekke, sistValgt, id) : [id];
+        const på = !valgteM.has(id) || (e.shiftKey && sistValgt);
+        for (const x of nye) { if (på) valgteM.add(x); else valgteM.delete(x); }
+        sistValgt = id;
+        merkValgteBobler(); renderCommentList();
+        return;
+      }
       // closest, ikke e.target: knappen har et svg-ikon inni seg, og klikket
       // treffer <svg> — getAttribute på det gir null, og knappen ville vært død.
       const skjulEl = e.target.closest ? e.target.closest("[data-skjul]") : null;

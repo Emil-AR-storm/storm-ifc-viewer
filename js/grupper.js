@@ -23,6 +23,7 @@ import { mmTilScene } from "./materiell-vis.js";
 // Se js/sp-lager.js for hvorfor, og for flettingen.
 import { flettPaaId, spLes, spPaalogget, spSkriv } from "./sp-lager.js";
 import { varsel } from "./varsel.js";
+import { navnForslag } from "./utfylling-regn.js";
 
 const LETT = document.documentElement.dataset.lett === "1";
 export const GRUPPE_MAKS_ELEMENTER = 5000;
@@ -312,8 +313,21 @@ function tegnPanel() {
   }
   body.innerHTML = html;
   const inp = $("grNavn"), knapp = $("grLagre");
+  // ✍️ 9C (runde 5, 23.11): grått navneforslag ut fra det som er valgt – Tab
+  // tar det, og «Lagre» med tomt felt bruker det.
+  if (inp && valgte.length) {
+    import("./etasje-hjelp.js").then(H => H.beskriv(valgte.slice(0, 2000))).then(b => {
+      const f = navnForslag(b.elementer.map(x => ({ typeName: x.typeName, name: x.name, etasje: x.etasjeNavn })));
+      if (!f || !inp.isConnected) return;
+      inp.dataset.forslag = f;
+      inp.placeholder = f + "   (" + t("Tab for å bruke") + ")";
+    }).catch(() => {});
+    inp.addEventListener("keydown", (ev) => {
+      if (ev.key === "Tab" && !inp.value.trim() && inp.dataset.forslag) { ev.preventDefault(); inp.value = inp.dataset.forslag; }
+    });
+  }
   if (knapp) knapp.onclick = () => {
-    const navn = (inp.value || "").trim();
+    const navn = (inp.value || "").trim() || inp.dataset.forslag || "";
     if (!navn) { varsel(t("Gi gruppen et navn først.")); return; }
     const ids = valgteIder();
     if (!ids.length) return;

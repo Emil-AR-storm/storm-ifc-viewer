@@ -50,6 +50,16 @@ export async function hentProsjekter(token) {
   return ut;
 }
 
+// ✍️ 1B (runde 5): alle kolonnene til ett prosjekt (Prosjektinfo fra Storm
+// Prosjekter). Uten $select, så vi ser hva lista faktisk har.
+export async function hentProsjektFelt(token, rad) {
+  const g = lag(token);
+  const { siteId: s } = await stedOgBibliotek(token);
+  if (!rad || !rad.id) return (rad && rad.fields) || {};
+  const j = await g.json("/sites/" + s + "/lists/" + R.PROSJEKT_LISTE + "/items/" + encodeURIComponent(rad.id) + "?$expand=fields");
+  return (j && j.fields) || {};
+}
+
 // Mappe på ID (felles mappe, Storm Prosjekter 4.26). null ved 404 eller når
 // det ikke er en mappe.
 async function mappePåId(g, d, id) {

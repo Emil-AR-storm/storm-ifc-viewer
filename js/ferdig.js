@@ -197,6 +197,48 @@ export function meld(ferdig) {
   oppdater();
   return nye.length;
 }
+// ✍️ 7B (runde 5, 23.11): ferdigmeld alt i et trinn med en valgt dato.
+// tid = datoen det ble ferdig (kl. 12 lokal tid), endret = nå – så meldingen
+// vinner flettingen i SharePoint selv om datoen ligger bakover i tid.
+S.ferdigIkkeFerdig = async (etappeId) => {
+  const r = await beregn();
+  return r.rader.filter(x => x.trinn && x.trinn.id === etappeId && !x.ferdig).map(x => ({ k: x.k, gid: x.gid || "" }));
+};
+export function meldListe(liste, datoISO) {
+  if (!liste || !liste.length) return 0;
+  const naa = new Date().toISOString(), av = mittNavn();
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(datoISO || "") ? new Date(datoISO + "T12:00:00") : new Date();
+  const tid = isNaN(d) ? naa : d.toISOString();
+  const foer = F.vaskMeldinger(S.ferdig);
+  const nye = liste.map(o => {
+    const gid = o.gid || (slagFor(o.k) === "id" ? ((metaFor(Number(idFor(o.k))) || {}).globalId || "") : "");
+    const m = F.nyMelding(o.k, gid, true, av, tid, "kontor");
+    return m ? Object.assign(m, { endret: naa }) : null;
+  }).filter(Boolean);
+  S.ferdig = F.flettMeldinger(S.ferdig, nye);
+  lagre();
+  if (S.pushAngre) {
+    const etter = F.vaskMeldinger(S.ferdig);
+    const sett = (mal) => {
+      const t2 = new Date().toISOString();
+      const ny = new Map(mal.map(m => [m.id, m]));
+      const ut = [];
+      for (const m of F.vaskMeldinger(S.ferdig)) {
+        const x = ny.get(m.id);
+        ut.push(x ? Object.assign({}, x, { endret: t2 }) : Object.assign({}, m, { ferdig: false, endret: t2 }));
+        ny.delete(m.id);
+      }
+      for (const m of ny.values()) ut.push(Object.assign({}, m, { endret: t2 }));
+      S.ferdig = F.vaskMeldinger(ut); lagre(); oppdater();
+    };
+    S.pushAngre({ tekst: "Trinnet ferdigmeldt", angre: () => sett(foer), gjenopprett: () => sett(etter) });
+  }
+  varsel(tn(nye.length, "{0} objekt ferdigmeldt.", "{0} objekter ferdigmeldt."));
+  oppdater();
+  return nye.length;
+}
+S.ferdigMeldListe = meldListe;
+
 // 10b: meldinger fra byggeplassen (byggeplass.js hentInnboks) — siste tid vinner
 // Meldingene fra telefonen er { k, gid?, ferdig, tid, av }. Mangler GlobalId
 // for et IFC-element, slås den opp her — ellers ville en melding på «id:12»

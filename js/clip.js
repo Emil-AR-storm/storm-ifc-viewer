@@ -478,7 +478,8 @@ async function buildStoreyList() {
     if (!ys.length) continue;
     ys.sort((a, b) => a - b);
     // etasjens gulvnivå = median av elementenes underkant (robust mot enkeltelementer under gulvet)
-    S.storeyList.push({ name: d.name, count: ys.length, yBase: ys[Math.floor(ys.length / 2)] });
+    // ids: elementene i etasjen (runde 5, 23.11 – trinn per etasje, gjenta i neste etasje, navneforslag)
+    S.storeyList.push({ name: d.name, count: ys.length, yBase: ys[Math.floor(ys.length / 2)], ids: [...d.ids] });
   }
   S.storeyList.sort((a, b) => a.yBase - b.yBase);
 }
