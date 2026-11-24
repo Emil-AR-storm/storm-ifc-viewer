@@ -36,7 +36,7 @@
 
 // ---- GENERERT BLOKK START (verktoy/lag-sw-liste.mjs) ----
 // IKKE REDIGER FOR HÅND. Kjør: node "verktoy/lag-sw-liste.mjs"
-const SW_VERSJON = "844a785ebcec";
+const SW_VERSJON = "6a9eb1e8d7d3";
 const SKALL = [
   "/bygg.html",
   "/css/storm.css",
@@ -157,7 +157,7 @@ const SKALL = [
 // Innholdet i hver fil (SHA-256, 16 tegn) – uendrede filer hentes fra forrige cache.
 const SKALL_HASH = {
   "/bygg.html": "f147970651b4b2a7",
-  "/css/storm.css": "fde528a9373f0de3",
+  "/css/storm.css": "b70c4fafb7ec09b9",
   "/img/favicon.svg": "48ffba3e7d9c7b40",
   "/img/favicon-32.png": "2f521c7514d1898c",
   "/img/apple-touch-icon.png": "76237b63b2fbe371",
@@ -196,7 +196,7 @@ const SKALL_HASH = {
   "/js/kran-regn.js": "b46bf91549869956",
   "/js/lagring-status.js": "509d3fe666c90210",
   "/js/lapp-kollisjon.js": "f088c2f7f0f53b1a",
-  "/js/lett-main.js": "84b1af143d6fb5ea",
+  "/js/lett-main.js": "dc5544071da07d8e",
   "/js/lett.js": "dfb09ffe063b7af5",
   "/js/lever.js": "665b40c0dbb73d01",
   "/js/lite.js": "c7bc92cb94e87c17",
@@ -207,7 +207,7 @@ const SKALL_HASH = {
   "/js/markering-flett.js": "fcfc9c1ab738e288",
   "/js/markers.js": "7d2cd96e0b598cb6",
   "/js/materiell-vis.js": "7ed64cdff172d95e",
-  "/js/measure.js": "04e861707e2c7944",
+  "/js/measure.js": "6c2156958b3aba96",
   "/js/minimap.js": "b3cba566f7fcb6b1",
   "/js/mobile.js": "35b9d29eb90fb203",
   "/js/modes.js": "e6368b59b1c3aae8",
