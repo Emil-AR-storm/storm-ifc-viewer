@@ -77,8 +77,17 @@ function tegnLappeneOm() {
 }
 
 // ---------- Kortet «Er dette riktig kote?» ----------
-let avvist = "", velgNeste = false;
+let avvist = "", velgNeste = false, kortFil = "";
 function lukkKort() { const k = document.getElementById("koteKort"); if (k) k.remove(); }
+// Kortet blir ikke stående når du bytter verktøy, trykker Esc eller åpner en
+// annen modell (funnet i funksjonstesten 24.11: det lå igjen over Markering).
+{
+  const forrige = S.modusByttet;
+  S.modusByttet = (m) => { if (m !== "kote") lukkKort(); if (forrige) forrige(m); };
+}
+if (typeof document !== "undefined") document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && document.getElementById("koteKort")) { avvist = S.fileName || ""; lukkKort(); }
+}, true);
 
 function plasser(el, punkt) {
   let x = innerWidth / 2, y = innerHeight / 2;
@@ -89,12 +98,16 @@ function plasser(el, punkt) {
   } catch (_) {}
   const b = Math.min(320, innerWidth - 24);
   el.style.width = b + "px";
-  el.style.left = Math.max(12, Math.min(innerWidth - b - 12, x + 24)) + "px";
+  // Ikke oppå kotelappen (den står midt på punktet og er ~120 px bred):
+  // til høyre for den, ellers til venstre.
+  const høyre = x + 90, venstre = x - 90 - b;
+  el.style.left = Math.max(12, høyre + b <= innerWidth - 12 ? høyre : venstre >= 12 ? venstre : innerWidth - b - 12) + "px";
   el.style.top = Math.max(60, Math.min(innerHeight - 360, y - 60)) + "px";
 }
 
 export function visKort(punkt, raa) {
   lukkKort();
+  kortFil = S.fileName || "";
   const el = document.createElement("div");
   el.id = "koteKort"; el.className = "kote-kort"; el.setAttribute("role", "dialog");
   const b = bunn();
@@ -144,7 +157,7 @@ S.koteVelgPunkt = async () => {
 };
 
 // Koten er endret her (prosjektinfo.js) eller kom fra SharePoint (hendelsen)
-S.koteEndret = () => { oppdaterMerke(); tegnLappeneOm(); };
+S.koteEndret = () => { if (kortFil !== (S.fileName || "")) lukkKort(); oppdaterMerke(); tegnLappeneOm(); };
 if (typeof document !== "undefined") document.addEventListener("storm-prosjektinfo", () => S.koteEndret());
 export const _tilstand = () => ({ avvist, velgNeste });
 export const _nullstill = () => { avvist = ""; velgNeste = false; bunnNokkel = ""; lukkKort(); };
