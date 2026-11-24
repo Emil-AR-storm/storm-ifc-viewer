@@ -1,6 +1,7 @@
 // 💬 Markeringer: lagring lokalt og deling via SharePoint.
 import * as THREE from "three";
 import { $, på, S, esc, ikon, loadingEl, loadingText, lukkPaneler, tomPanelHtml, writePrefs } from "./state.js";
+import { markeringEndringer } from "./endring-regn.js";
 import { STANDARD_MALER, ansvarligValg, fagFor, masseEndring, område, settMal, standardMedJobb, vaskEgneMaler } from "./utfylling-regn.js";
 import { t } from "./i18n.js";
 import { LETT, montorNavn, settMontorNavn } from "./lett.js";
@@ -612,6 +613,19 @@ async function syncSharedComments(stille) {
     return true;
   } catch(_) { S.sharedOK = false; renderCommentList(); return false; }
 }
+
+// 🔴 endringsvarsel.js (24.11): markeringsfila meldes, og innholdet beskrives
+// (ny markering, status, svar, slettet – og hvem). «Hent endringene» er den
+// vanlige innlastingen med fletting, så ingenting du holder på med forsvinner.
+if (!LETT) (S.delteFiler = S.delteFiler || []).push({
+  id: "markeringer", navn: "Markeringene", mappe: "Markeringer", fil: () => syncedFile() + ".markeringer.json",
+  hent: async () => { if (!(await syncSharedComments())) throw new Error("ikke hentet"); },
+  beskriv: (data, filAv) => {
+    const eks = (Array.isArray(data) ? data : []).map(vaskMarkering).filter(Boolean);
+    const kjente = grunnlinjeFil === syncedFile() ? new Set(grunnlinje.keys()) : new Set();
+    return markeringEndringer(S.comments, eks, kjente, filAv, statusOf);
+  }
+});
 
 // eTag-en ligger på selve elementet i SharePoint, ikke på innholdet, så den må
 // hentes for seg. null = fila finnes ikke ennå (første markering på modellen).

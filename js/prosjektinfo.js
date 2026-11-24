@@ -87,6 +87,8 @@ async function skrivSp() {
   spStatus = res.ok ? "ok" : "feil";
   visStatus();
 }
+// 🔴 endringsvarsel.js (24.11): sier fra når noen andre har lagret denne fila
+if (!LETT) (S.delteFiler = S.delteFiler || []).push({ id: "prosjektinfo", navn: "Prosjektinfo", mappe: SP_MAPPE, fil: spFil, hent: hentFraSp });
 async function hentFraSp() {
   if (LETT || !spPaalogget()) { spStatus = "av"; return; }
   const forFil = S.fileName;
@@ -121,16 +123,17 @@ export async function hentFraStormProsjekter(alle) {
     const LR = await import("./legg-i-prosjekt-regn.js");
     const token = await sp.spTokenSilent();
     if (!token) { spHentStatus = ""; return false; }
-    const rader = await G.hentProsjekter(token);
     const fil = S.fileName || "";
     const å = { ifc: S.kildeIfc && S.kildeIfc.fil === fil ? S.kildeIfc.ifc : (/\.ifc$/i.test(fil) ? fil : ""), fil,
       gruppe: S.aktivModellgruppe && S.aktivModellgruppe.fil === fil ? S.aktivModellgruppe.id : "" };
-    let jobb = LR.finnJobb(rader, å);
-    if (!jobb.length) jobb = LR.jobbForNummer(rader, bpNummer() || info.nummer);
+    // 🔗 B2 (24.11): bare jobben hentes (den huskede koblingen), ikke hele lista
+    const J = await import("./sp-jobb.js");
+    const svar = await J.hentJobb(token, å, { nummer: bpNummer() || info.nummer, tunge: true }, G);
+    const jobb = svar.jobb;
     const rad = LR.foreslåProsjekt(jobb, "annet", å);
     if (S.fileName !== forFil) return false;
     if (!rad) { spHentStatus = "ingen"; gjenTegn(); return false; }
-    const felt = await G.hentProsjektFelt(token, rad);
+    const felt = svar.komplett ? (rad.fields || {}) : await G.hentProsjektFelt(token, rad);
     if (S.fileName !== forFil) return false;
     // Prosjektlederen gjelder per selskap: raden modellen hører til, ellers den
     // første i jobben som er fylt ut (SE → SB → SS) – SVAR fra Storm Prosjekter 23.11.

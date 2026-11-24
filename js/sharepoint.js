@@ -351,6 +351,7 @@ export async function sjekkInnlogging() {
   return innNå;
 }
 
+S.tegnInnloggingInfo = () => tegnInfo();
 function tegnInfo() {
   const info = $("innloggingInfo");
   if (!info) return;
@@ -359,12 +360,15 @@ function tegnInfo() {
   const farge = { ok: "var(--ok)", lagrer: "#d97706", feil: "var(--danger)", lokal: "#d97706" };
   info.innerHTML = '<div class="innlogging-topp"><span class="innlogging-prikk" data-tilstand="' + esc(innNå) + '"></span>' +
     '<span>' + esc(innloggingTekst(innNå, innKonto)) + '</span></div>' +
+    // 🔴 Endringer fra andre i modellen (endringsvarsel.js, 24.11)
+    (S.endringerHtml ? S.endringerHtml() : "") +
     '<div class="lagring-liste"><b>' + esc(t("Lagring i SharePoint")) + '</b>' +
     (liste.length
       ? "<ul>" + liste.map(s => '<li><span>' + esc(t(s.navn)) + '</span><span style="color:' + (farge[s.tilstand] || "inherit") + '">' +
           (s.tilstand === "ok" ? "✓ " : s.tilstand === "feil" ? "✕ " : "") + esc(LS.tilstandTekst(s)) + "</span></li>").join("") + "</ul>"
       : '<p class="set-hjelp">' + esc(t("Ingenting er lagret i denne økta ennå.")) + "</p>") +
     '<div class="prop-actions"><button type="button" id="lagreAltNa" class="primary">' + esc(t("Lagre alt nå")) + "</button></div></div>";
+  if (S.koblEndringer) S.koblEndringer(info);
   const knapp = info.querySelector("#lagreAltNa");
   if (knapp) knapp.onclick = (e) => {
     e.stopPropagation();

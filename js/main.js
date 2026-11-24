@@ -81,6 +81,7 @@ const MODULER = [
   ["./byggeplass.js", true],
   ["./mobile.js"],                 // må lastes etter at alle knapper har fått lyttere
   ["./oppsett.js"],                // ansattliste og Planner-plan fra SharePoint
+  ["./endringsvarsel.js"],        // 🔴 «Modellen er endret» – rød prikk og stripe (24.11, prøvebilde C)
   ["./felles-innstillinger.js"],   // 🌐🌓 felles språk og tema med Storm Prosjekter/Bemanning (19.11) – før usersync
   ["./usersync.js"]                // personlig oppsett fra SharePoint – må lastes sist
 ];

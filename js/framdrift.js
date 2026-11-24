@@ -121,6 +121,8 @@ export async function sendTilByggeplass() {
     return { sendt: false };
   }
 }
+// 🔴 endringsvarsel.js (24.11): sier fra når noen andre har lagret denne fila
+(S.delteFiler = S.delteFiler || []).push({ id: "framdrift", navn: "Framdriftsplanen", mappe: SP_MAPPE, fil: spFil, hent: hentFraSp });
 async function hentFraSp() {
   if (!spPaalogget()) { spStatus = "av"; return; }
   const forFil = S.fileName;

@@ -118,6 +118,8 @@ function lagreBeggeSteder() {
 
 // Hentes når en modell åpnes. Nyeste `endret` vinner — ikke «skya vinner», for
 // da ville en gruppe du lagret uten dekning blitt spist av en eldre utgave.
+// 🔴 endringsvarsel.js (24.11): sier fra når noen andre har lagret denne fila
+if (!LETT) (S.delteFiler = S.delteFiler || []).push({ id: "grupper", navn: "Gruppene", mappe: GR_SP_MAPPE, fil: grSpFil, hent: hentGrupperFraSp });
 async function hentGrupperFraSp() {
   if (LETT || !spPaalogget()) { grSpStatus = "av"; return; }
   const forFil = S.fileName;

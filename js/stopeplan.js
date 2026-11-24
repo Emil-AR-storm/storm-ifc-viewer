@@ -85,6 +85,8 @@ async function skrivSp() {
   else visLagring();
 }
 
+// 🔴 endringsvarsel.js (24.11): sier fra når noen andre har lagret denne fila
+(S.delteFiler = S.delteFiler || []).push({ id: "stopeplan", navn: "Støpeplanen", mappe: SP_MAPPE, fil: spFil, hent: hentFraSp });
 async function hentFraSp() {
   if (!spPaalogget()) { spStatus = "av"; return; }
   const forFil = S.fileName;

@@ -59,10 +59,11 @@ export async function sendTilStormProsjekter() {
     vis(t("Finner prosjektet …"));
     const token = await sp.spToken();
     if (!token) { varsel(t("Logg inn på SharePoint først.")); return { ok: false, grunn: "av" }; }
-    const rader = await G.hentProsjekter(token);
     const å = åpenModell();
-    let jobb = LR.finnJobb(rader, å);
-    if (!jobb.length && S.prosjektInfo) jobb = LR.jobbForNummer(rader, (S.prosjektInfo() || {}).nummer);
+    // 🔗 B2 (24.11): jobben uten hele Prosjekter-lista
+    const J = await import("./sp-jobb.js");
+    const svar = await J.hentJobb(token, å, { nummer: S.prosjektInfo ? (S.prosjektInfo() || {}).nummer : "" }, G);
+    const jobb = svar.jobb, rader = svar.rader;
     let valgt = LR.foreslåProsjekt(jobb, "sammenligning", å);
     // 18.11: én mappe per selskap – brukeren velger selskapet når jobben har flere
     if (valgt && jobb.length > 1) {

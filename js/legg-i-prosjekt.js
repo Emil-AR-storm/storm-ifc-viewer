@@ -119,17 +119,22 @@ export async function dialog(type, blob, filnavn, dato) {
 
   const sp = await import("./sharepoint.js");
   const G = await import("./legg-i-prosjekt-graph.js");
-  let token, rader;
+  let token, rader, jobb;
+  const å = åpenModell();
   try {
     token = await sp.spToken();
     if (!token) { feil(t("Logg inn på SharePoint først.")); return; }
-    rader = await G.hentProsjekter(token);
+    // 🔗 B2 (24.11): jobben fra den huskede koblingen (ferske rader). Finnes ingen
+    // jobb, hentes den lette lista, så brukeren kan søke selv.
+    const J = await import("./sp-jobb.js");
+    const svar = await J.hentJobb(token, å, {}, G);
+    jobb = R.finnJobb(svar.jobb, å);
+    rader = svar.rader;
+    if (!jobb.length && svar.kilde === "kobling") rader = await G.hentProsjekterLett(token);
   } catch (err) {
     feil(err instanceof G.IngenTilgang ? t("Du har ikke tilgang til prosjektlista i Storm Prosjekter.") : t("Fikk ikke hentet prosjektene: {0}", err.message));
     return;
   }
-  const å = åpenModell();
-  const jobb = R.finnJobb(rader, å);
   const innhold = $("lipInnhold");
   let valgt = R.foreslåProsjekt(jobb, type, å);
   let underMappe = info.mappe;
@@ -268,10 +273,11 @@ export async function leggAutomatisk(type, blob, filnavn, dato, o) {
   try {
     const token = await sp.spTokenSilent();
     if (!token) return { ok: false, grunn: "av" };
-    const rader = await G.hentProsjekter(token);
     const å = åpenModell();
-    let jobb = R.jobbForNummer(rader, opt.nummer);
-    if (!jobb.length) jobb = R.finnJobb(rader, å);
+    // 🔗 B2 (24.11): byggeplassnummeret først, så modellen – uten hele lista
+    const J = await import("./sp-jobb.js");
+    const svar = await J.hentJobb(token, å, { nummer: opt.nummer, nummerFørst: true }, G);
+    const jobb = svar.jobb, rader = svar.rader;
     const valgt = R.foreslåProsjekt(jobb, type, å);   // dagsrapport → hovedselskapet (18.11)
     if (!valgt) return { ok: false, grunn: "ingen-prosjekt" };
     const mappa = await G.prosjektmappe(token, valgt, rader);

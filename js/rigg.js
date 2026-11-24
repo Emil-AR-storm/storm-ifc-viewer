@@ -107,6 +107,7 @@ function mittNavn() {
 // rigger samtidig mister ikke hverandres brakker.
 const SP_MAPPE = "Rigg";
 function spFil() { return S.fileName + ".rigg.json"; }
+(S.delteFiler = S.delteFiler || []).push({ id: "rigg", navn: "Riggen", mappe: SP_MAPPE, fil: spFil, hent: () => S.lastRigg() });   // 🔴 endringsvarsel.js
 function lsNokkel() { return "storm-ifc-rigg::" + S.fileName; }
 let spStatus = "av";
 let lagreTid = 0;
