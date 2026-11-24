@@ -181,10 +181,12 @@ canvas.addEventListener("pointerup", (e) => {
     }
   } else if (S.mode === "kote") {
     // koteValue gir høyden i MODELLENS enheter – må til meter først
-    const label = makeLabel("▲ " + fmtLen(tilM(koteValue(hit.point))), "#22d3ee");
+    // ▲ 24.11: kontorets kote for modellen (Prosjektinfo → koteForskyv) gjelder her også
+    const koteM = tilM(koteValue(hit.point)) + (S.koteForskyv ? S.koteForskyv() : 0);
+    const label = makeLabel("▲ " + fmtLen(koteM), "#22d3ee");
     label.userData.px = 30; // konstant skjermstørrelse
     label.userData.aspect = label.scale.x / label.scale.y;
-    label.userData.meter = tilM(koteValue(hit.point));   // så lappen kan tegnes om ved enhetsbytte
+    label.userData.meter = koteM;   // så lappen kan tegnes om ved enhetsbytte
     label.position.copy(hit.point);
     koteGroup.add(label);
     if (S.pushAngre) S.pushAngre({

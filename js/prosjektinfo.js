@@ -14,7 +14,7 @@
 import { $, S, esc, writePrefs } from "./state.js";
 import { t } from "./i18n.js";
 import { LETT } from "./lett.js";
-import { gjeldende, tomInfo, vaskAdresseInfo, vaskProsjektInfo } from "./prosjektinfo-regn.js";
+import { fmtKote, gjeldende, koteForskyv, koteStatus, lesKoteTall, tomInfo, vaskAdresseInfo, vaskKote, vaskProsjektInfo } from "./prosjektinfo-regn.js";
 import { adresseUrl, tilTM, vaskAdresseSvar } from "./terreng-regn.js";
 import { spLes, spPaalogget, spSkriv } from "./sp-lager.js";
 import { hentLogoer } from "./tegninger.js";
@@ -50,6 +50,58 @@ export function prosjektInfo() {
   return gjeldende(info, { lettProsjekt: S.lettProsjekt, bpNummer: bpNummer(), terreng: ter, rapLogo: S.settings && S.settings.rapLogo });
 }
 S.prosjektInfo = prosjektInfo;
+
+// ▲ KOTE (Emil 24.11): forskyvningen som gjør modellens koter til moh. Kote-
+// verktøyet (main.js, lett-main.js), terrenget og byggeplassen leser denne.
+S.koteForskyv = () => { const g = prosjektInfo(); return Number(g.koteForskyv) || 0; };
+S.koteInfo = () => (LETT ? null : info.kote || null);
+S.koteStatus = () => koteStatus(LETT ? null : info.kote, S.koteBunnRaa ? S.koteBunnRaa() : null);
+// Lagre (eller fjerne, k = null) koten for modellen – med angre.
+S.settKote = (k) => {
+  if (LETT || !S.fileName) return;
+  const før = info.kote ? JSON.parse(JSON.stringify(info.kote)) : null;
+  const ny = k ? vaskKote(Object.assign({}, k, { av: innlogget(), endret: new Date().toISOString() })) : null;
+  const sett = (v) => { if (v) info.kote = v; else delete info.kote; lagre(); gjenTegn(); if (S.koteEndret) S.koteEndret(); };
+  sett(ny);
+  if (S.pushAngre) S.pushAngre({ tekst: "Kote for modellen", angre: () => sett(før), gjenopprett: () => sett(ny) });
+};
+function innlogget() {
+  try { const a = S.msalApp && S.msalApp.getActiveAccount(); return (a && (a.name || a.username)) || ""; } catch (_) { return ""; }
+}
+// Feltet i Innstillinger → Prosjektinfo
+function koteFeltHtml() {
+  const bunn = S.koteBunnRaa ? S.koteBunnRaa() : null;
+  const st = koteStatus(info.kote, bunn);
+  const k = info.kote || null;
+  const f = koteForskyv(k);
+  const tall = fmtKote;
+  const merke = st === "bekreftet" || st === "satt" ? ' <span class="pi-hentet">✓ ' + esc(st === "satt" ? t("satt") : t("bekreftet")) + "</span>"
+    : st === "usikker" ? ' <span class="pi-kote-sp">? ' + esc(t("usikker")) + "</span>"
+    : st === "sannsynlig" ? ' <span class="pi-endret">~ ' + esc(t("ser ut som moh.")) + "</span>" : "";
+  const hint = st === "satt" ? t("Satt fra «{0}» = {1} av {2} (modellen flyttet {3} m)", k.punkt || t("et punkt"), tall(k.kote != null ? k.kote : 0), k.av || "?", tall(f))
+    : st === "bekreftet" ? t("Kotene i modellen er bekreftet riktige av {0}.", k.av || "?")
+    : st === "usikker" ? t("Bygget starter på {0}. Er det riktig høyde over havet, eller er kotene målt fra bygget?", tall(bunn))
+    : st === "sannsynlig" ? t("Bygget starter på {0}. Det ser ut som meter over havet – bekreft eller sett riktig kote.", tall(bunn))
+    : t("Åpne en modell for å se kotene.");
+  return '<label class="pi-felt">' + esc(t("Kote nederst i bygget (moh.)")) + merke +
+      '<input type="text" id="piKote" inputmode="decimal" ' + (bunn == null ? "disabled " : "") + 'value="' + (bunn == null ? "" : esc(tall(bunn + f))) + '" placeholder="' + esc(t("f.eks. 12,350")) + '"></label>' +
+    '<p class="hint pi-kote-hint">' + esc(hint) + "</p>" +
+    '<div class="pi-kote-kn"><button type="button" id="piKoteVelg">▲ ' + esc(t("Velg punkt i modellen")) + "</button>" +
+    (st !== "bekreftet" && st !== "satt" && bunn != null ? '<button type="button" id="piKoteRiktig">' + esc(t("Kotene er riktige")) + "</button>" : "") +
+    (k ? '<button type="button" id="piKoteFjern" class="lenke">' + esc(t("Fjern")) + "</button>" : "") + "</div>";
+}
+function koblKoteFelt() {
+  const inp = $("piKote");
+  if (inp) inp.onchange = () => {
+    const v = lesKoteTall(inp.value);
+    const bunn = S.koteBunnRaa ? S.koteBunnRaa() : null;
+    if (v == null || bunn == null) { gjenTegn(); return; }
+    S.settKote({ forskyv: v - bunn, kote: v, punktKote: bunn, punkt: t("Nederst i bygget") });
+  };
+  if ($("piKoteVelg")) $("piKoteVelg").onclick = () => { if (S.koteVelgPunkt) S.koteVelgPunkt(); };
+  if ($("piKoteRiktig")) $("piKoteRiktig").onclick = () => S.settKote({ bekreftet: true });
+  if ($("piKoteFjern")) $("piKoteFjern").onclick = () => S.settKote(null);
+}
 S.standardLogoFil = () => prosjektInfo().logo || "";
 
 // Rapportmenyen og sjekklista har ikke et eget logovalg — de viser «standarden».
@@ -369,6 +421,8 @@ export function prosjektinfoHtml() {
         esc(!adr && g.adresse ? t("Bruker {0} ({1}) til du velger en egen.", g.adresse, t(KILDE_TEKST[g.fra.adresse] || "")) : t("Gate og nummer, sted – trykk Enter for å søke")) + '"></label>' +
       (sokMelding ? '<p class="hint">' + esc(sokMelding) + "</p>" : "") +
       sokTreff.map((a, i) => '<button class="pi-treff" data-i="' + i + '">' + esc(a.tekst + ", " + a.postnummer + " " + a.poststed) + "</button>").join("") +
+      // ▲ Kote (Emil 24.11)
+      koteFeltHtml() +
       '<label class="pi-felt">' + esc(t("Logo på PDF-er, Excel-ark og rigg-objekter")) + ' <select id="piLogo"></select></label>' +
       // ✍️ 1B: hentet fra Storm Prosjekter
       '<div class="pi-sp">' + (info.sp && info.sp.hentet
@@ -393,6 +447,7 @@ export function koblProsjektinfo() {
     if (el) el.oninput = () => { info[k] = el.value; lagre(); };
   }
   if ($("piHentSp")) $("piHentSp").onclick = () => { spHentStatus = "henter"; gjenTegn(); hentFraStormProsjekter(true); };
+  koblKoteFelt();
   const af = $("piAdresseSok");
   if (af) {
     const endre = () => {

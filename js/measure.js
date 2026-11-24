@@ -373,7 +373,7 @@ export function oppdaterLengdeEtiketter() {
     gruppe.children.forEach(o => {
       // Bare lappene bærer et tall. Streker og prikker hoppes over.
       if (!o.isSprite || typeof (o.userData && o.userData.meter) !== "number") return;
-      tegnOm(o, prefiks + fmtLen(o.userData.meter), farge);
+      tegnOm(o, prefiks + fmtLen(o.userData.meter) + (o.userData.usikker ? " ?" : ""), farge);
     });
   }
 }

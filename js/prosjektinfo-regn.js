@@ -43,6 +43,48 @@ export function vaskAdresseInfo(a) {
   return ut;
 }
 
+// ▲ KOTE (Emil 24.11, prøvebilde B + felt i Innstillinger): er kotene i modellen
+// meter over havet? Modellen kan være eksportert fra prosjektets nullpunkt (0
+// = bunnen av bygget) i stedet for med høyde over havet. Da settes en
+// FORSKYVNING (meter) for hele modellen, enten fra et punkt med kjent kote
+// eller ved at noen bekrefter at kotene er riktige.
+//   forskyv   – meter som legges til modellens egne koter
+//   kote      – koten brukeren skrev for punktet (moh.)
+//   punktKote – modellens egen kote i punktet (meter)
+//   punkt     – hva punktet er («OK gulv 1. etasje»), valgfritt
+//   bekreftet – «Ja, kotene er riktige» (forskyv 0)
+export const KOTE_SPOR = { fra: -5, til: 5 };   // bygget starter mellom −5 og +5 m: spør
+export function vaskKote(k) {
+  if (!k || typeof k !== "object") return null;
+  if (k.bekreftet === true) return { bekreftet: true, forskyv: 0, av: tekst(k.av, 80), endret: tekst(k.endret, 40) };
+  const f = tall(k.forskyv);
+  if (f == null || Math.abs(f) > 10000) return null;
+  const ut = { forskyv: Math.round(f * 1000) / 1000, punkt: tekst(k.punkt, 80), av: tekst(k.av, 80), endret: tekst(k.endret, 40) };
+  const kt = tall(k.kote), pk = tall(k.punktKote);
+  if (kt != null && Math.abs(kt) < 10000) ut.kote = Math.round(kt * 1000) / 1000;
+  if (pk != null && Math.abs(pk) < 100000) ut.punktKote = Math.round(pk * 1000) / 1000;
+  return ut;
+}
+// Status for modellens koter. bunnM = modellens egen kote nederst i bygget (m).
+//   "bekreftet" | "satt" | "usikker" (spør) | "sannsynlig" (ser ut som moh.) | "ukjent"
+export function koteStatus(kote, bunnM) {
+  const k = vaskKote(kote);
+  if (k && k.bekreftet) return "bekreftet";
+  if (k) return "satt";
+  if (bunnM == null || !Number.isFinite(bunnM)) return "ukjent";
+  return bunnM >= KOTE_SPOR.fra && bunnM <= KOTE_SPOR.til ? "usikker" : "sannsynlig";
+}
+// «+12,350» / «−0,200» – koter skrives alltid med fortegn og tre desimaler
+export const fmtKote = (m) => (m < 0 ? "−" : "+") + Math.abs(m).toFixed(3).replace(".", ",");
+export const koteForskyv = (kote) => { const k = vaskKote(kote); return k && !k.bekreftet ? k.forskyv : 0; };
+// Tall skrevet med komma eller punktum («12,700», «+12.7») → meter, ellers null.
+export function lesKoteTall(v) {
+  const s = String(v == null ? "" : v).trim().replace(/\s+/g, "").replace(",", ".").replace(/^\+/, "").replace(/^[−–]/, "-");
+  if (!/^-?\d+(\.\d+)?$/.test(s)) return null;
+  const x = Number(s);
+  return Number.isFinite(x) && Math.abs(x) < 10000 ? x : null;
+}
+
 export function vaskProsjektInfo(x) {
   const p = x && typeof x === "object" ? x : {};
   return {
@@ -54,6 +96,7 @@ export function vaskProsjektInfo(x) {
     logo: tekst(p.logo, 200),
     adresse: vaskAdresseInfo(p.adresse),
     endret: tekst(p.endret, 40),
+    ...(vaskKote(p.kote) ? { kote: vaskKote(p.kote) } : {}),
     // ✍️ 1B (runde 5, 23.11): det som sist ble hentet fra Storm Prosjekter. Brukes
     // til «✓ hentet» / «✎ endret her», og til å følge endringer der.
     ...(p.sp && typeof p.sp === "object" ? { sp: {
@@ -99,6 +142,8 @@ export function gjeldende(info, kilder) {
   ut.kommune = adr ? adr.kommune : "";
   ut.E = adr ? adr.E : null; ut.N = adr ? adr.N : null;
   ut.lat = adr ? adr.lat : null; ut.lon = adr ? adr.lon : null;
+  ut.kote = p.kote || null;
+  ut.koteForskyv = koteForskyv(p.kote);
   ut.fra = fra;
   return ut;
 }
@@ -121,7 +166,10 @@ export function forByggeplass(g) {
   if (!g) return null;
   const ut = { navn: g.navn || "", nummer: g.nummer || "", adresse: g.adresse || "", kommune: g.kommune || "",
     lat: g.lat != null ? g.lat : null, lon: g.lon != null ? g.lon : null };
-  return (ut.navn || ut.nummer || ut.adresse || ut.lat != null) ? ut : null;
+  // ▲ Kotene på byggeplassen blir de samme som på kontoret
+  const f = Number(g.koteForskyv);
+  if (Number.isFinite(f) && f !== 0 && Math.abs(f) <= 10000) ut.koteForskyv = Math.round(f * 1000) / 1000;
+  return (ut.navn || ut.nummer || ut.adresse || ut.lat != null || ut.koteForskyv) ? ut : null;
 }
 
 // Verktøyenes egne logovalg: null (aldri valgt) og PROSJEKT_LOGO betyr

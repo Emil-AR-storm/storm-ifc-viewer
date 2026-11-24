@@ -67,6 +67,7 @@ const MODULER = [
   ["./angre.js"],                  // ↩ angre/gjenopprett – må lastes før ui.js (hurtigtastene)
   ["./sharepoint.js"],
   ["./prosjektinfo.js"],           // 🗂 felles prosjektinfo i Innstillinger — FØR ui.js
+  ["./kote-ref.js"],               // ▲ er kotene riktige? spørsmål og «sett kote» (24.11, prøvebilde B)
   ["./ui.js"],
   ["./tema.js"],                   // lyst/mørkt tema – trenger knappen i toppbaren
   ["./hjul.js"],                   // navigasjonshjul – trenger knappen i verktøylinja
@@ -287,13 +288,19 @@ canvas.addEventListener("pointerup", (e) => {
     // ⛰ Er modellen satt ned i terrenget med en gulvkote, svarer terreng.js i
     // stedet (moh.) — gulvet viser gulvkoten, terrenget sin høyde.
     const moh = S.koteMoh ? S.koteMoh(hit.point) : null;
-    const koteM = moh != null ? moh : tilM(koteValue(hit.point));
-    const label = makeLabel("▲ " + fmtLen(koteM), "#22d3ee");
+    // ▲ 24.11: modellens egen kote + forskyvningen fra Prosjektinfo (kote-ref.js)
+    const raa = tilM(koteValue(hit.point));
+    const koteM = moh != null ? moh : raa + (S.koteForskyv ? S.koteForskyv() : 0);
+    const usikker = moh == null && S.koteStatus && S.koteStatus() === "usikker";
+    const label = makeLabel("▲ " + fmtLen(koteM) + (usikker ? " ?" : ""), "#22d3ee");
     label.userData.px = 30; // konstant skjermstørrelse
     label.userData.aspect = label.scale.x / label.scale.y;
     label.userData.meter = koteM;   // så lappen kan tegnes om ved enhetsbytte
+    if (moh == null) label.userData.raa = raa;   // tegnes om når koten for modellen settes
+    label.userData.usikker = usikker;
     label.position.copy(hit.point);
     koteGroup.add(label);
+    if (moh == null && S.koteSporsmal) S.koteSporsmal(hit.point.clone(), raa, label);
     if (S.pushAngre) S.pushAngre({
       tekst: "Kote",
       angre: () => koteGroup.remove(label),

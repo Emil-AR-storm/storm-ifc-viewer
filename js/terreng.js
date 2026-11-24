@@ -1855,9 +1855,12 @@ async function hentTerreng(adr) {
     // Gulvet legges oppå terrenget (grovt) til brukeren skriver koten fra
     // tegningen. Plata står på: terrenget skal ikke gå gjennom bygget.
     const gk = lavesteUnder(g, E0, N0, plass, mr.fp);
+    // ▲ 24.11: har modellen kjente koter (satt, bekreftet eller tydelig moh.),
+    // er gulvet modellens egen kote – ikke et grovt anslag fra terrenget.
+    const mk = S.modellBunnKote ? S.modellBunnKote() : null;
     const nytt = {
       grid: g, bb, E0, N0, h0, hPunkt, spenn, adresse: adr, klipp: fulltKlipp(g), plass,
-      gulv: { kote: Math.round((gk != null ? gk : h0) * 1000) / 1000, grov: true },
+      gulv: mk != null ? { kote: mk, grov: false } : { kote: Math.round((gk != null ? gk : h0) * 1000) / 1000, grov: true },
       pad: padStandard(mr.fp), planum: vaskPlanum(null), skraning: vaskSkraning(null), fest: vaskFest({})
     };
     terreng = nytt;
@@ -2060,8 +2063,9 @@ async function lastTerrengPost(post, pl, medKamera, medAngre) {
     const plass = pl ? pl.plass : { pE: 0, pN: 0, rot: 0 };
     let gulv = pl && pl.gulv;
     if (!gulv) {
+      const mk = S.modellBunnKote ? S.modellBunnKote() : null;
       const gk = lavesteUnder(g, E0, N0, plass, mr.fp);
-      gulv = { kote: Math.round((gk != null ? gk : h0) * 1000) / 1000, grov: true };
+      gulv = mk != null ? { kote: mk, grov: false } : { kote: Math.round((gk != null ? gk : h0) * 1000) / 1000, grov: true };
     }
     const fullt = fulltKlipp(g);
     const klipp = pl && pl.klipp && pl.klipp.i1 <= fullt.i1 && pl.klipp.j1 <= fullt.j1 ? pl.klipp : fullt;
@@ -2793,6 +2797,14 @@ function tegnPanel() {
         ? t("Grovt: beregnet fra laveste terrengpunkt under bygget, ikke oppgitt. Skriv gulvkoten fra tegningen.")
         : t("Oppgitt fra tegningen.")) + "</p>" +
       "<p " + LITEN + ">" + t("Gulvet er modellens laveste punkt — bunnen av søylene, toppen av betonggulvet. ▲ Kote viser nå moh.") + "</p>" +
+      // ▲ 24.11: gulvkoten og modellens kote (Prosjektinfo) er ikke like – si fra, velg aldri stille
+      (() => {
+        const mk = S.modellBunnKote ? S.modellBunnKote() : null;
+        if (mk == null || !gulv || Math.abs(mk - gulv.kote) <= 0.02) return "";
+        return '<p style="font-size:11px;margin:4px 0 0;color:var(--warn,#f59e0b)">' +
+          esc(t("Modellens kote sier {0} nederst i bygget, gulvkoten her er {1}.", mk.toFixed(3).replace(".", ","), gulv.kote.toFixed(3).replace(".", ","))) +
+          ' <button id="trBrukModellKote" class="lenke">' + esc(t("Bruk modellens kote")) + "</button></p>";
+      })() +
       '<div class="prop-actions"><button id="trOppaa">' + ikon("kote") + " " + t("Legg oppå terrenget") + "</button></div>" +
 
       // Utskjæring
@@ -2864,6 +2876,7 @@ function tegnPanel() {
   kobl("trRotV", () => { if (terreng) settRotasjon(snapVinkel(terreng.plass.rot - 90, 0.05)); });
   kobl("trRotH", () => { if (terreng) settRotasjon(snapVinkel(terreng.plass.rot + 90, 0.05)); });
   kobl("trOppaa", () => leggOppaa(true));
+  kobl("trBrukModellKote", () => { const mk = S.modellBunnKote ? S.modellBunnKote() : null; if (mk != null) settGulv(mk, false, true); });
   kobl("trPadStd", () => { if (terreng && S.modelGroup) settPad(padStandard(modellRef().fp), true); });
   koblPadSkjema();
   const rot = $("trRot");
