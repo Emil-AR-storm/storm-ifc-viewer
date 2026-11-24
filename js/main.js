@@ -15,6 +15,7 @@ import { naermesteMaaleflate, registrerPeker } from "./pek-eier.js";
 import { sjekkKort, startTilgang } from "./tilgang.js";
 import { erInnebygd, forberedInnebygd, startForsidebilde, startInnebygd, startVanligMål } from "./innebygd.js";   // 🖼 Storm IFC inne i Storm Prosjekter (fase B)   // 🔒 gratisdel og enhetskort (post 11)
 import { varsel } from "./varsel.js";
+import { fmtKote } from "./prosjektinfo-regn.js";
 
 // ---------- Resten av modulene (rekkefølgen bestemmer oppstart) ----------
 // 🔒 Post 11 (14.10.2026): de LÅSTE verktøyene lastes bare når denne
@@ -292,7 +293,9 @@ canvas.addEventListener("pointerup", (e) => {
     const raa = tilM(koteValue(hit.point));
     const koteM = moh != null ? moh : raa + (S.koteForskyv ? S.koteForskyv() : 0);
     const usikker = moh == null && S.koteStatus && S.koteStatus() === "usikker";
-    const label = makeLabel("▲ " + fmtLen(koteM) + (usikker ? " ?" : ""), "#22d3ee");
+    // Koter skrives som på tegningene: fortegn, komma og tre desimaler (+6,000) – likt
+    // med kotekortet og Prosjektinfo (Emil 24.11)
+    const label = makeLabel("▲ " + fmtKote(koteM) + (usikker ? " ?" : ""), "#22d3ee");
     label.userData.px = 30; // konstant skjermstørrelse
     label.userData.aspect = label.scale.x / label.scale.y;
     label.userData.meter = koteM;   // så lappen kan tegnes om ved enhetsbytte

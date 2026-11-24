@@ -8,6 +8,7 @@ import { diagFerdig, diagNullstill, diagSteg, feilTekst, sjekkForrigeForsok, vis
 import "./html-lyttere.js";
 import * as THREE from "three";
 import { $, S, esc, fmtLen, loadingEl, loadingText, tilM } from "./state.js";
+import { fmtKote } from "./prosjektinfo-regn.js";
 import { lastSprak, oversettDom, setLang, t } from "./i18n.js";
 import { setClipFromFace } from "./clip.js";
 import { clearSelection, hitID, pick, pickEkstra, selectElement, showProperties } from "./elements.js";
@@ -183,7 +184,7 @@ canvas.addEventListener("pointerup", (e) => {
     // koteValue gir høyden i MODELLENS enheter – må til meter først
     // ▲ 24.11: kontorets kote for modellen (Prosjektinfo → koteForskyv) gjelder her også
     const koteM = tilM(koteValue(hit.point)) + (S.koteForskyv ? S.koteForskyv() : 0);
-    const label = makeLabel("▲ " + fmtLen(koteM), "#22d3ee");
+    const label = makeLabel("▲ " + fmtKote(koteM), "#22d3ee");   // som på tegningene: +6,000
     label.userData.px = 30; // konstant skjermstørrelse
     label.userData.aspect = label.scale.x / label.scale.y;
     label.userData.meter = koteM;   // så lappen kan tegnes om ved enhetsbytte

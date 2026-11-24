@@ -37,6 +37,7 @@ import {
   gyldigeOmrader, omradeStatus, omradeDz, OMR_STD, OMR_MAKS, OMR_MAKS_DZ, OMR_MAKS_N, padHoyder, polyMotRekt, vaskOmrader, omrRen,
   KOORDSYS, SIDER, dzFarger, ferdigGrid, masseRader, sideRetning, festEttPunkt, festSjekk, festToPunkt, masseFelt, vaskFest, vaskSkraning
 } from "./terreng-regn.js";
+import { fmtKote } from "./prosjektinfo-regn.js";
 import { lastNedXlsx, pick } from "./elements.js";
 import { snapPoint } from "./measure.js";
 import { varsel } from "./varsel.js";
@@ -2802,7 +2803,7 @@ function tegnPanel() {
         const mk = S.modellBunnKote ? S.modellBunnKote() : null;
         if (mk == null || !gulv || Math.abs(mk - gulv.kote) <= 0.02) return "";
         return '<p style="font-size:11px;margin:4px 0 0;color:var(--warn,#f59e0b)">' +
-          esc(t("Modellens kote sier {0} nederst i bygget, gulvkoten her er {1}.", mk.toFixed(3).replace(".", ","), gulv.kote.toFixed(3).replace(".", ","))) +
+          esc(t("Modellens kote sier {0} nederst i bygget, gulvkoten her er {1}.", fmtKote(mk), fmtKote(gulv.kote))) +
           ' <button id="trBrukModellKote" class="lenke">' + esc(t("Bruk modellens kote")) + "</button></p>";
       })() +
       '<div class="prop-actions"><button id="trOppaa">' + ikon("kote") + " " + t("Legg oppå terrenget") + "</button></div>" +

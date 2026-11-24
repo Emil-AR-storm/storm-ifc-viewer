@@ -1,6 +1,7 @@
 // 📏 Mål og ⛰ kote, med kant-snapping.
 import * as THREE from "three";
 import { S, fmtLen, tilM } from "./state.js";
+import { fmtKote } from "./prosjektinfo-regn.js";
 import { pick, pickFlate } from "./elements.js";
 import { naermesteMaaleflate } from "./pek-eier.js";
 import { camera, canvas, frameHooks, koteGroup, makeLabel, measureGroup, meldLapperIGruppe, renderer, scene, updateScreenScaled } from "./scene.js";
@@ -368,12 +369,13 @@ export function oppdaterLengdeEtiketter() {
   // 📐 Vis mål har sine egne lapper med metertall i seg. De hører til samme
   // problem – tall brent inn i en tekstur – og skal tegnes om i samme slengen.
   if (S.tegnMaalOm) { try { S.tegnMaalOm(); } catch (err) { console.warn(err); } }
-  for (const [gruppe, farge, prefiks] of
-       [[measureGroup, "#f59e0b", ""], [koteGroup, "#22d3ee", "▲ "]]) {
+  for (const [gruppe, farge, prefiks, fmt] of
+       [[measureGroup, "#f59e0b", "", fmtLen], [koteGroup, "#22d3ee", "▲ ", fmtKote]]) {
     gruppe.children.forEach(o => {
       // Bare lappene bærer et tall. Streker og prikker hoppes over.
+      // Koter: alltid som på tegningene (+6,000), uansett enhetsvalg for lengder.
       if (!o.isSprite || typeof (o.userData && o.userData.meter) !== "number") return;
-      tegnOm(o, prefiks + fmtLen(o.userData.meter) + (o.userData.usikker ? " ?" : ""), farge);
+      tegnOm(o, prefiks + fmt(o.userData.meter) + (o.userData.usikker ? " ?" : ""), farge);
     });
   }
 }
