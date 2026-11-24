@@ -70,34 +70,25 @@ export async function hentProsjekterLett(token) {
   return ut;
 }
 // Alle radene med ett jobbnummer, med ALLE kolonnene (som hentProsjektFelt).
-// Filteret på JobbNr virker best når kolonnen er indeksert i lista; uten
-// indeks godtar SharePoint det med Prefer-hodet så lenge lista er under 5000
-// rader (og kan en sjelden gang si nei – da faller sp-jobb.js tilbake).
-// JobbNr prøves først som tekst, så som tall (vi vet ikke kolonnetypen sikkert).
+// SVAR fra Storm Prosjekter 24.11: JobbNr er TEKST og INDEKSERT (689 rader),
+// så filteret er raskt og trenger ikke Prefer-hodet. Verdien er SE-nummeret
+// («20652») eller selskapets nøkkel når jobben ikke har SE («SB-371»).
+// En jobb uten JobbNr hentes på rad-id i sp-jobb.js (ingen modell peker på en
+// slik rad i dag, ifølge samme svar).
 export async function hentJobbRader(token, jobbNr) {
   const n = String(jobbNr == null ? "" : jobbNr).trim();
   if (!n) return [];
   const g = lag(token);
   const { siteId: s } = await stedOgBibliotek(token);
-  const prøv = async (verdi) => {
-    let url = "/sites/" + s + "/lists/" + R.PROSJEKT_LISTE + "/items?$expand=fields&$top=200&$filter=" +
-      encodeURIComponent("fields/JobbNr eq " + verdi);
-    const ut = [];
-    for (let i = 0; url && i < 20; i++) {
-      const r = await g.hent(url, { headers: { Prefer: "HonorNonIndexedQueriesWarningMayFailRandomly" } });
-      if (!r.ok) { const e = new Error("Graph " + r.status); e.status = r.status; throw e; }
-      const j = await r.json();
-      ut.push(...(j.value || []));
-      url = j["@odata.nextLink"] || null;
-    }
-    return ut;
-  };
-  try { return await prøv("'" + n.replace(/'/g, "''") + "'"); }
-  catch (e) {
-    if (e instanceof IngenTilgang) throw e;
-    if (/^\d+$/.test(n) && e.status === 400) return prøv(n);
-    throw e;
+  let url = "/sites/" + s + "/lists/" + R.PROSJEKT_LISTE + "/items?$expand=fields&$top=200&$filter=" +
+    encodeURIComponent("fields/JobbNr eq '" + n.replace(/'/g, "''") + "'");
+  const ut = [];
+  for (let i = 0; url && i < 20; i++) {
+    const j = await g.json(url);
+    ut.push(...(j.value || []));
+    url = j["@odata.nextLink"] || null;
   }
+  return ut;
 }
 // Én rad (id, createdDateTime og alle kolonnene) – for en jobb uten jobbnummer.
 export async function hentProsjektRad(token, id) {

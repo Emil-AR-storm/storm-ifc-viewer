@@ -17,6 +17,9 @@
 //      bare for jobben.
 //   4. Feiler noe av dette: dagens fulle henting (hentProsjekter). Det kan
 //      aldri bli dårligere enn før.
+//   (SVAR fra Storm Prosjekter 24.11: JobbNr og ProsjektNr er tekst og
+//   indeksert. Mangler JobbNr, huskes rad-id-ene i stedet – samme regel som
+//   Storm Prosjekters jobbFor, der jobben da er prosjektets egen Nøkkel.)
 //
 // Svar: { jobb: [rader i jobben, SE → SB → SS], rader: [lista hvis den ble
 //         hentet – ellers jobben], kilde: "kobling" | "liste" | "full",
