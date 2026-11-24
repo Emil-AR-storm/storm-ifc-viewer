@@ -301,8 +301,42 @@ frameHooks.push(() => {
   if (pl.far && Math.abs(pl.far - camera.far) > 1e-6 && (p.farM > 0 || camera.far < pl.far)) { camera.far = pl.far; endret = true; }
   if (endret) camera.updateProjectionMatrix();
 });
+// ⚡ Forslag 7 (24.11): ROLIG TEGNING NÅR INGENTING SKJER.
+// Før ble hele scenen tegnet 60 ganger i sekundet også når modellen sto helt
+// stille. Nå tegnes full fart når noe skjer, og ellers 10 bilder i sekundet:
+//   · full fart i 1,5 s etter mus, berøring, hjul og tastatur
+//   · full fart så lenge kameraet beveger seg (fly til, viewcube, grupper,
+//     «Vis i modellen» – alle flytter kameraet, og det merkes her)
+//   · full fart når en modul ber om det: S.holdAktiv(ms) (framdrift-avspilling)
+//     eller en sjekk i aktivSjekker (vær-3D med regn/snø som faller)
+// Alt annet (en markering som kommer fra SharePoint, en farge som byttes)
+// vises innen 0,1 s. Dobbeltsjekket 24.11: ingen krok trenger 60 bilder i
+// sekundet når ingenting beveger seg – de som animerer, er listet over.
+const ROLIG_MS = 100, AKTIV_ETTER_INPUT_MS = 1500;
+let aktivTil = 0, sistTegnet = 0;
+const sistKam = new Float64Array(10);
+export const aktivSjekker = [];
+// Date.now, ikke performance.now: testene (jsdom) har en performance som går i
+// ring når den kalles fra en hendelseslytter, og millisekunder holder her.
+export function holdAktiv(ms) { const t = Date.now() + (ms || AKTIV_ETTER_INPUT_MS); if (t > aktivTil) aktivTil = t; }
+S.holdAktiv = holdAktiv;
+for (const ev of ["pointerdown", "pointermove", "wheel", "keydown", "touchstart", "touchmove", "resize"]) {
+  try { addEventListener(ev, () => holdAktiv(), { passive: true, capture: true }); } catch (_) {}
+}
+function kameraFlyttet() {
+  const p = camera.position, q = camera.quaternion, m = controls.target;
+  const v = [p.x, p.y, p.z, q.x, q.y, q.z, q.w, m.x, m.y, m.z];
+  let endret = false;
+  for (let i = 0; i < 10; i++) if (sistKam[i] !== v[i]) { endret = true; sistKam[i] = v[i]; }
+  return endret;
+}
 renderer.setAnimationLoop(() => {
   controls.update();
+  const naa = Date.now();
+  let aktiv = naa < aktivTil || kameraFlyttet();
+  if (!aktiv) for (const f of aktivSjekker) { try { if (f()) { aktiv = true; break; } } catch (_) {} }
+  if (!aktiv && naa - sistTegnet < ROLIG_MS) return;
+  sistTegnet = naa;
   for (const fn of frameHooks) { try { fn(); } catch (err) { console.warn(err); } }
   // 🏷 Etter at alle lagene har satt størrelsen på lappene sine: la dem vike
   // for hverandre (lapp-kollisjon.js). Sist, så ingen krok skalerer dem opp igjen.

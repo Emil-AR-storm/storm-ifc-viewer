@@ -21,7 +21,7 @@
 // S.skjulVaer3D(true).
 import * as THREE from "three";
 import { S, writePrefs } from "./state.js";
-import { camera, controls, frameHooks, scene } from "./scene.js";
+import { aktivSjekker, camera, controls, frameHooks, scene } from "./scene.js";
 import { nattFor } from "./vaer-regn.js";
 S.vaerNatt = (lat, dato, time) => nattFor(lat, dato, time);
 
@@ -214,6 +214,9 @@ function bygg() {
 let sist = 0, nesteLyn = 0, lynStart = -1e9;
 // Skjermen: hver frame, rundt hovedkameraet. Videoen kaller oppdaterFor()
 // selv før hvert bilde, med sitt eget kamera og sin egen klokke.
+// ⚡ Regn og snø faller hele tiden: full fart mens været vises (scene.js tegner
+// ellers rolig når ingenting beveger seg).
+aktivSjekker.push(() => gruppe.visible && !videoModus);
 frameHooks.push(() => {
   if (!gruppe.visible || videoModus) return;
   const naa = performance.now();

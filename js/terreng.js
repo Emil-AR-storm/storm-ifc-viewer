@@ -775,6 +775,7 @@ function tegnTerreng() {
   flateMesh.userData.terreng = true;
   innhold.add(flateMesh);
   byggFlate(mr);
+  flateNokkel = flateNokkelFor(mr); flateFor = flateMesh;
   plasserGrupper(mr);
   tegnHandtak();
   brukKart();
@@ -786,10 +787,23 @@ function tegnTerreng() {
 }
 
 // Etter en ferdig endring av plass, plate eller gulv
+// ⚡ Forslag 8 (24.11): flata bygges bare på nytt når noe som former den er
+// endret. Bytter du bare farge eller navn på et fargeområde, står flata som
+// den er – resten (gruppene, håndtakene, tallene, lagringen) oppdateres som før.
+// Nøkkelen tar med alt byggFlate leser; er du i tvil, er den ulik og flata
+// bygges (den trygge veien).
+let flateNokkel = "", flateFor = null;
+function flateNokkelFor(mr) {
+  const p = terreng.pad ? Object.assign({}, terreng.pad, { farger: undefined }) : null;
+  const g = terreng.grid || {};
+  return JSON.stringify([g.w, g.h, g.dx, g.dy, g.x0, g.y0, terreng.id || "", terreng.E0, terreng.N0, terreng.h0, terreng.plass, terreng.gulv, p, terreng.planum,
+    terreng.skraning, terreng.klipp, visMasser, visFerdig, mr.skala, mr.c.x, mr.c.y, mr.c.z, kartValg]);
+}
 function oppdaterAlt() {
   if (!terreng || !flateMesh || !S.modelGroup) return;
   const mr = modellRef();
-  byggFlate(mr);
+  const nk = flateNokkelFor(mr);
+  if (nk !== flateNokkel || flateFor !== flateMesh || !terreng.ok) { byggFlate(mr); flateNokkel = nk; flateFor = flateMesh; }
   plasserGrupper(mr);
   tegnHandtak();
   visTall();

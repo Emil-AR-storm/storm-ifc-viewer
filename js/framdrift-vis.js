@@ -645,6 +645,7 @@ export function spillAv(sekunder) {
     const tid = sp.a + Math.min(1, (naa - t0) / varighet) * sp.dager;
     if (tid >= sp.b) { spiller = null; settFramdriftTid(null, true); return; }
     S.framdriftTid = tid;
+    if (S.holdAktiv) S.holdAktiv(300);   // ⚡ avspillingen skal gå i full fart
     tegnFramdrift();
     oppdaterTopp(); oppdaterBarer();
     raf(steg);

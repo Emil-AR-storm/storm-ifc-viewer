@@ -3125,6 +3125,7 @@ export function renderCommentList() {
   if (!S.comments.length) {
     body.innerHTML = status + tomPanelHtml("markeringer", t("Ingen markeringer ennå"),
       t("Trykk «Markering» og så i modellen der det gjelder."), LETT ? null : { tekst: t("Markering"), klikk: "#btnMarker" });
+    sisteListeHtml = "";
     return;
   }
 
@@ -3218,7 +3219,12 @@ export function renderCommentList() {
   if (velgModus && valgteM.size) html += '<div class="cm-masse-linje"><b>' + esc(t("{0} valgt", valgteM.size)) + '</b>' +
     '<button type="button" id="cmVelgAvbryt">' + esc(t("Avbryt")) + '</button>' +
     '<button type="button" class="primary" id="cmEndreMange">' + esc(t("Endre {0} markeringer", valgteM.size)) + '</button></div>';
-  body.innerHTML = html;
+  // ⚡ Forslag 5 (24.11): er lista nøyaktig lik den som står der, røres den
+  // ikke – ingen ny DOM, ingen hopp i rulleposisjonen. Kortene lytter via ÉN
+  // lytter på lista (koblKortKlikk), så de trenger ingen egne lyttere.
+  sisteVis = vis;
+  koblKortKlikk(body);
+  if (!(html === sisteListeHtml && body.firstChild)) { sisteListeHtml = html; body.innerHTML = html; }
   if ($("cmVelg")) $("cmVelg").onclick = () => { if (velgModus) avsluttVelgM(); else { velgModus = true; renderCommentList(); } };
   if ($("cmVelgAlle")) $("cmVelgAlle").onclick = () => { vis.forEach(c => valgteM.add(String(c.id))); merkValgteBobler(); renderCommentList(); };
   if ($("cmVelgIngen")) $("cmVelgIngen").onclick = () => { valgteM.clear(); merkValgteBobler(); renderCommentList(); };
@@ -3235,35 +3241,41 @@ export function renderCommentList() {
     };
   });
   if ($("cmAllTasks")) $("cmAllTasks").onclick = () => sendTilPlanner(apne);
-  body.querySelectorAll(".comment").forEach(el => {
-    el.addEventListener("click", (e) => {
-      // 4B: i velgemodus velger et trykk kortet (shift = alt imellom)
-      if (velgModus) {
-        const id = String(el.dataset.id);
-        const rekke = vis.map(c => String(c.id));
-        const nye = e.shiftKey && sistValgt ? område(rekke, sistValgt, id) : [id];
-        const på = !valgteM.has(id) || (e.shiftKey && sistValgt);
-        for (const x of nye) { if (på) valgteM.add(x); else valgteM.delete(x); }
-        sistValgt = id;
-        merkValgteBobler(); renderCommentList();
-        return;
-      }
-      // closest, ikke e.target: knappen har et svg-ikon inni seg, og klikket
-      // treffer <svg> — getAttribute på det gir null, og knappen ville vært død.
-      const skjulEl = e.target.closest ? e.target.closest("[data-skjul]") : null;
-      if (skjulEl) {
-        const id = skjulEl.getAttribute("data-skjul");
-        settMarkeringSkjult(id, !markeringSkjult(id));
-        return;
-      }
-      const delId = e.target.getAttribute("data-del");
-      if (delId) { deleteComment(delId); closeMarkerPopup(); return; }
-      const c = S.comments.find(c => c.id == el.dataset.id);
-      // En skjult markering flyr vi IKKE til: kameraet ville landet foran en
-      // boble som ikke er der, og bobla pekt på ingenting. Øyeknappen er
-      // handlingen på et skjult kort.
-      if (c && !markeringSkjult(c.id)) { goToComment(c); openMarkerPopup(c); }
-    });
+}
+let sisteListeHtml = "", sisteVis = [];
+function koblKortKlikk(body) {
+  if (body._kortKlikk) return;
+  body._kortKlikk = true;
+  body.addEventListener("click", (e) => {
+    const el = e.target && e.target.closest ? e.target.closest(".comment") : null;
+    if (!el || !body.contains(el)) return;
+    // 4B: i velgemodus velger et trykk kortet (shift = alt imellom)
+    if (velgModus) {
+      const id = String(el.dataset.id);
+      const rekke = sisteVis.map(c => String(c.id));
+      const nye = e.shiftKey && sistValgt ? område(rekke, sistValgt, id) : [id];
+      const på = !valgteM.has(id) || (e.shiftKey && sistValgt);
+      for (const x of nye) { if (på) valgteM.add(x); else valgteM.delete(x); }
+      sistValgt = id;
+      merkValgteBobler(); renderCommentList();
+      return;
+    }
+    // closest, ikke e.target: knappen har et svg-ikon inni seg, og klikket
+    // treffer <svg> — getAttribute på det gir null, og knappen ville vært død.
+    const skjulEl = e.target.closest("[data-skjul]");
+    if (skjulEl) {
+      const id = skjulEl.getAttribute("data-skjul");
+      settMarkeringSkjult(id, !markeringSkjult(id));
+      return;
+    }
+    const delEl = e.target.closest("[data-del]");
+    const delId = delEl && delEl.getAttribute("data-del");
+    if (delId) { deleteComment(delId); closeMarkerPopup(); return; }
+    const c = S.comments.find(c => c.id == el.dataset.id);
+    // En skjult markering flyr vi IKKE til: kameraet ville landet foran en
+    // boble som ikke er der, og bobla pekt på ingenting. Øyeknappen er
+    // handlingen på et skjult kort.
+    if (c && !markeringSkjult(c.id)) { goToComment(c); openMarkerPopup(c); }
   });
 }
 
