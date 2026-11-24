@@ -36,7 +36,7 @@
 
 // ---- GENERERT BLOKK START (verktoy/lag-sw-liste.mjs) ----
 // IKKE REDIGER FOR HÅND. Kjør: node "verktoy/lag-sw-liste.mjs"
-const SW_VERSJON = "5f9124291e60";
+const SW_VERSJON = "b23865f7c6e4";
 const SKALL = [
   "/bygg.html",
   "/css/storm.css",
@@ -153,6 +153,123 @@ const SKALL = [
   "/vendor/three-0.160.0/addons/lines/LineMaterial.js",
   "/vendor/three-0.160.0/addons/lines/LineSegments2.js"
 ];
+// Innholdet i hver fil (SHA-256, 16 tegn) – uendrede filer hentes fra forrige cache.
+const SKALL_HASH = {
+  "/bygg.html": "f147970651b4b2a7",
+  "/css/storm.css": "1c81d3ceb306f539",
+  "/img/favicon.svg": "48ffba3e7d9c7b40",
+  "/img/favicon-32.png": "2f521c7514d1898c",
+  "/img/apple-touch-icon.png": "76237b63b2fbe371",
+  "/js/tema-tidlig.js": "6cd284abaadf6496",
+  "/js/feilfanger.js": "2a787a955ce87f19",
+  "/js/angre.js": "7799172c1fbae979",
+  "/js/apning.js": "cbde55af8b61bd69",
+  "/js/axes.js": "a6fe5e2e2d60000b",
+  "/js/bilder.js": "f735de5833ae74c6",
+  "/js/bp-modus.js": "3d03f5b14ef97ec4",
+  "/js/clip.js": "e4b6d94b5b9eaaf7",
+  "/js/cmp-skjul.js": "1256663341f92da9",
+  "/js/compare.js": "aa0aad23eef47388",
+  "/js/config.js": "4c36fc4bd01a01c8",
+  "/js/csv.js": "2e189577299440b1",
+  "/js/diagnose.js": "a676df6242ad407a",
+  "/js/display.js": "ecbe1f1bfdb7ed76",
+  "/js/elements.js": "6e7aa6be39a8c709",
+  "/js/em-detalj.js": "82f43a862462b15f",
+  "/js/em-paring.js": "846fb430766a4d42",
+  "/js/em-regn.js": "eb7c60d132e10f63",
+  "/js/ferdig-lett.js": "c3d9a9a05c412799",
+  "/js/framdrift-kilde.js": "a7f136d131968dfc",
+  "/js/framdrift-lett.js": "e861de34cc51cfc4",
+  "/js/framdrift-regn.js": "551ba81b1a2539e5",
+  "/js/framdrift-vis.js": "c4142d3020029583",
+  "/js/frist.js": "a8b9725bed7f4019",
+  "/js/grupper.js": "9ec7167644ff62d5",
+  "/js/hjelp.js": "8693768267a29878",
+  "/js/hjul.js": "51c95daa3f6c4763",
+  "/js/html-lyttere.js": "4c71f3300ce69666",
+  "/js/i18n.js": "ebbcfc0da9daa439",
+  "/js/ifc.js": "6421f5b8b630af8e",
+  "/js/ifcrpc.js": "22f354bdebcf0a9c",
+  "/js/kran-regn.js": "b46bf91549869956",
+  "/js/lagring-status.js": "509d3fe666c90210",
+  "/js/lapp-kollisjon.js": "f088c2f7f0f53b1a",
+  "/js/lett-main.js": "647a65ec4b534b0c",
+  "/js/lett.js": "dfb09ffe063b7af5",
+  "/js/lever.js": "665b40c0dbb73d01",
+  "/js/lite.js": "c7bc92cb94e87c17",
+  "/js/lyd.js": "b242f7076382a923",
+  "/js/maal-verktoy.js": "4340193eac660297",
+  "/js/maal.js": "2acd113b25e20987",
+  "/js/markerbilde.js": "90b2d157ee4064cd",
+  "/js/markering-flett.js": "fcfc9c1ab738e288",
+  "/js/markers.js": "959369780c9f45a1",
+  "/js/materiell-vis.js": "7ed64cdff172d95e",
+  "/js/measure.js": "fcc7c8982e27169c",
+  "/js/minimap.js": "b3cba566f7fcb6b1",
+  "/js/mobile.js": "35b9d29eb90fb203",
+  "/js/modes.js": "e6368b59b1c3aae8",
+  "/js/nett.js": "7bb3e05eaeefd470",
+  "/js/nevning.js": "e00cd45997ba8abe",
+  "/js/nytt.js": "0f3eb002a1367e0e",
+  "/js/oppsett.js": "976dd79579b7e4ee",
+  "/js/outline.js": "8221bb3ebab49578",
+  "/js/pdf-utseende.js": "f2ba84681f9c07fb",
+  "/js/pek-eier.js": "b8b1ff0d708385a7",
+  "/js/planner-regn.js": "03f9c03a90a450cf",
+  "/js/planner.js": "fedd1da95a7b2f5a",
+  "/js/prefs.js": "d1ef2b5cc2a1979d",
+  "/js/profiler.js": "5da75a4643d06c84",
+  "/js/prop-kompakt.js": "8af7b223ba372ad4",
+  "/js/prosjektinfo-regn.js": "b8a88fa47fbd9366",
+  "/js/prosjektinfo.js": "b2930b38e63b8687",
+  "/js/rapport.js": "bb3c546eec0e9a08",
+  "/js/regneark.js": "0632e44df4666293",
+  "/js/rigg-modell.js": "8929295e8f0fd126",
+  "/js/rigg-regn.js": "b2460e31c92375f0",
+  "/js/rigg-vis.js": "7838190534bfd122",
+  "/js/rull-fall.js": "07d34602216bed2e",
+  "/js/scene.js": "168f4105c078f124",
+  "/js/share.js": "2991897474ba4c7f",
+  "/js/sharepoint.js": "82f4d94621a5d3cd",
+  "/js/sjekkliste.js": "4ca405e426dbce44",
+  "/js/sp-flett.js": "544b029855bed23d",
+  "/js/sp-lager.js": "52faeaf1c0f4ea74",
+  "/js/sporsmal.js": "19eeaa6662e9c26d",
+  "/js/stalbunker-regn.js": "f690be8b703ae84e",
+  "/js/state.js": "f80c9342f584a3d4",
+  "/js/stillas-modell.js": "db1c4676b92a89ad",
+  "/js/stillas-regn.js": "ec4b7127a1b84f37",
+  "/js/stopeplan-lett.js": "9e0b3f85fb65635e",
+  "/js/stopeplan-regn.js": "b0f5890398d34a01",
+  "/js/stopeplan-tid.js": "e94fdea3598eb019",
+  "/js/stopeplan-vis.js": "e633a2f8daad7197",
+  "/js/stopesjekk-regn.js": "ddf3c65f4ccd0e08",
+  "/js/sw-blikk.js": "4324ca343b978f0d",
+  "/js/sw-lett.js": "17ae0431c1323de0",
+  "/js/sw-reg.js": "f16f1879e6f75de8",
+  "/js/sw-tak.js": "65deba72e58380db",
+  "/js/tak-lett.js": "e2dc453b74aa25fe",
+  "/js/tegninger.js": "ed9e36f0c8b54f98",
+  "/js/tema.js": "84a1cc162bfccc45",
+  "/js/terreng-plate3d.js": "e5f357ff48136cf3",
+  "/js/terreng-regn.js": "bf926f1b6eaa2be7",
+  "/js/terreng-vis.js": "54d2e70070686252",
+  "/js/ui.js": "8a4ab9aa9739c965",
+  "/js/utfylling-regn.js": "8d0fa3248f90c340",
+  "/js/vaaken.js": "a1365c3709682001",
+  "/js/vaer-felles.js": "74227f451696992d",
+  "/js/vaer-regn.js": "5416fde741c17400",
+  "/js/varsel.js": "408a9db4db0ffaee",
+  "/js/vedleggko.js": "3a56df240b659784",
+  "/js/verktoygrupper.js": "eecb3bbabfdf5dc5",
+  "/js/viewcube.js": "45baaca855ac99be",
+  "/vendor/three-0.160.0/three.module.min.js": "3e690ac7d180b0aa",
+  "/vendor/three-0.160.0/addons/loaders/GLTFLoader.js": "d073b438e6a07e13",
+  "/vendor/three-0.160.0/addons/lines/LineSegmentsGeometry.js": "59419cee5eccbaac",
+  "/vendor/three-0.160.0/addons/lines/LineMaterial.js": "eed69bd471547ca0",
+  "/vendor/three-0.160.0/addons/lines/LineSegments2.js": "5009e85ffbd09e86"
+};
 // Språkfilene: hentes med import() ved behov, IKKE en del av SKALL.
 const SPRAKFILER = {
   en: "/js/sprak/en.js",
@@ -200,7 +317,17 @@ self.addEventListener("install", (e) => {
     // Telefonen hadde ingen gammel service worker og hentet alt fra nett.
     // Ett manglende ikon skal aldri kunne stoppe koden.
     const kritisk = SKALL.filter(u => !/^\/img\//.test(u));
-    await c.addAll(kritisk.map(u => new Request(u, { cache: "reload" })));
+    // ⚡ Forslag 9 (24.11): UENDREDE FILER TAS MED FRA FORRIGE VERSJON. Før
+    // lastet hver ny versjon ned hele skallet (~3 MB) på nytt, også når bare
+    // én fil var endret. Nå hentes en fil fra forrige skallcache når den har
+    // nøyaktig samme innhold (x-storm-hash = SKALL_HASH), ellers fra nettet.
+    // Fortsatt ALT-ELLER-INGENTING: alle svarene samles først, og feiler én
+    // (ikke ok eller ingen nett), kastes det, og ingenting legges i cachen –
+    // akkurat som addAll. Merket settes bare når bytene som kom, faktisk har
+    // riktig hash; en gammel kopi fra Cloudflare blir derfor aldri gjenbrukt.
+    const gamle = await gamleSkallCacher();
+    const svar = await Promise.all(kritisk.map(u => hentSkallfil(u, gamle)));
+    for (let i = 0; i < kritisk.length; i++) await c.put(kritisk[i], svar[i]);
     for (const u of SKALL) {
       if (kritisk.indexOf(u) !== -1) continue;
       try { await c.add(new Request(u, { cache: "reload" })); }
@@ -229,6 +356,43 @@ self.addEventListener("install", (e) => {
     }
   })());
 });
+
+// Forrige versjons skallcacher (de slettes først i activate).
+async function gamleSkallCacher() {
+  const ut = [];
+  try {
+    for (const n of await caches.keys()) if (n.startsWith("storm-skall-") && n !== SKALL_CACHE) ut.push(await caches.open(n));
+  } catch (_) { /* uten gamle cacher: alt hentes fra nett */ }
+  return ut;
+}
+async function hentSkallfil(u, gamle) {
+  const h = typeof SKALL_HASH === "object" ? SKALL_HASH[u] : "";
+  if (h) for (const g of gamle) {
+    try {
+      const r = await g.match(u);
+      if (r && r.headers && r.headers.get("x-storm-hash") === h) return r;
+    } catch (_) { /* hent fra nett */ }
+  }
+  const r = await fetch(new Request(u, { cache: "reload" }));
+  if (!r || !r.ok) throw new Error("Fikk ikke hentet " + u + " (" + (r ? r.status : "ingen svar") + ")");
+  return merkHash(r, h);
+}
+// Merker svaret med hashen når bytene stemmer. Uten Web Crypto, eller når
+// bytene ikke stemmer, lagres det umerket – og hentes på nytt neste versjon.
+async function merkHash(r, h) {
+  const subtle = (self.crypto && self.crypto.subtle) || (typeof crypto !== "undefined" && crypto && crypto.subtle);
+  if (!h || !subtle) return r;
+  try {
+    const buf = await r.clone().arrayBuffer();
+    const d = new Uint8Array(await subtle.digest("SHA-256", buf));
+    let hex = "";
+    for (let i = 0; i < 8; i++) hex += d[i].toString(16).padStart(2, "0");
+    if (hex !== h) return r;
+    const hode = new Headers(r.headers);
+    hode.set("x-storm-hash", h);
+    return new Response(buf, { status: r.status, statusText: r.statusText, headers: hode });
+  } catch (_) { return r; }
+}
 
 // Tobokstavskoden telefonen er satt opp med: "pl-PL" og "pl" gir begge "pl".
 function telefonensSprak() {
