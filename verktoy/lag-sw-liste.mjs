@@ -186,12 +186,21 @@ const versjon = h.digest("hex").slice(0, 12);
 const START = "// ---- GENERERT BLOKK START (verktoy/lag-sw-liste.mjs) ----";
 const SLUTT = "// ---- GENERERT BLOKK SLUTT ----";
 
+// ⚡ Forslag 9 (24.11): en hash per fil (SHA-256 av bytene, 16 tegn). Service
+// workeren bruker den til å ta med seg uendrede filer fra forrige versjons
+// cache i stedet for å laste ned hele skallet (~3 MB) på nytt hver gang.
+export function filHash(f) {
+  return crypto.createHash("sha256").update(fs.readFileSync(path.join(ROT, f.slice(1)))).digest("hex").slice(0, 16);
+}
 export function byggBlokk() {
   return START + "\n" +
     "// IKKE REDIGER FOR HÅND. Kjør: node \"verktoy/lag-sw-liste.mjs\"\n" +
     "const SW_VERSJON = \"" + versjon + "\";\n" +
     "const SKALL = [\n" +
     skall.map(f => "  \"" + f + "\"").join(",\n") + "\n];\n" +
+    "// Innholdet i hver fil (SHA-256, 16 tegn) – uendrede filer hentes fra forrige cache.\n" +
+    "const SKALL_HASH = {\n" +
+    skall.map(f => "  \"" + f + "\": \"" + filHash(f) + "\"").join(",\n") + "\n};\n" +
     "// Språkfilene: hentes med import() ved behov, IKKE en del av SKALL.\n" +
     "const SPRAKFILER = {\n" +
     Object.keys(sprakfiler).sort().map(k => "  " + k + ": \"" + sprakfiler[k] + "\"").join(",\n") + "\n};\n" +
