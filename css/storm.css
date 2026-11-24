@@ -809,7 +809,10 @@ body:not(.har-modell) #btnFit { display: none !important; }
   background: var(--flate-88);
   display: none; align-items: center; justify-content: center;
   flex-direction: column; gap: 14px;
-  z-index: 30;
+  /* 50 (før 30): ALT verktøyet viser – knapperader, tidslinjer, «Skjul været
+     i 3D», Mer-menyen, kortene – skal grås ut mens en modell lastes (Emils funn
+     24.11: «Skjul været i 3D» lå over). Dialogene (55 og opp) står fortsatt over. */
+  z-index: 50;
 }
 #loading.open { display: flex; }
 .spinner {
@@ -2858,7 +2861,7 @@ table.lag-m tr.sum2 td { font-weight: 700; border-bottom: 0; }
 .koll-st.ny { background: var(--danger); color: #fff; }
 .koll-st.godkjent { background: var(--warn); color: #111; }
 .koll-st.lost { background: var(--ok); color: #fff; }
-.koll-nav { position: fixed; left: 50%; transform: translateX(-50%); bottom: 62px; z-index: 60; display: flex; align-items: center; gap: 8px; max-width: calc(100vw - 32px);
+.koll-nav { position: fixed; left: 50%; transform: translateX(-50%); bottom: 62px; z-index: 48; display: flex; align-items: center; gap: 8px; max-width: calc(100vw - 32px);
   background: var(--panel); border: 1px solid var(--accent); border-radius: var(--radius-stor); padding: 7px 10px; font-size: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
 .koll-nav button { font-size: 12px; padding: 4px 9px; }
 .koll-nt { color: var(--muted); max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -3486,7 +3489,7 @@ html[data-tema="lys"] #endringStripe { background: #fde8e8; color: #5a1010; }
 #btnKote { position: relative; }
 #btnKote .kote-sp { position: absolute; top: -6px; right: -6px; width: 15px; height: 15px; border-radius: 50%; background: #f59e0b; color: #111;
   font-size: 10px; font-weight: 800; line-height: 15px; text-align: center; border: 2px solid var(--bg); pointer-events: none; }
-.kote-kort { position: fixed; z-index: 60; background: var(--panel); border: 1px solid #f59e0b; border-radius: 12px; padding: 12px; box-shadow: 0 12px 40px #0008; box-sizing: border-box; }
+.kote-kort { position: fixed; z-index: 48; background: var(--panel); border: 1px solid #f59e0b; border-radius: 12px; padding: 12px; box-shadow: 0 12px 40px #0008; box-sizing: border-box; }
 .kote-kort .m { color: var(--muted); font-size: 12px; margin: 4px 0 8px; }
 .kote-kort label { display: block; font-size: 12px; color: var(--muted); margin-top: 6px; }
 .kote-kort input { display: block; width: 100%; box-sizing: border-box; margin-top: 3px; }
@@ -3494,3 +3497,12 @@ html[data-tema="lys"] #endringStripe { background: #fde8e8; color: #5a1010; }
 #piSeksjon .pi-kote-sp { color: #f59e0b; font-weight: 700; font-size: 11px; }
 #piSeksjon .pi-kote-hint { font-size: 11px; color: var(--muted); margin: 2px 0 4px; }
 #piSeksjon .pi-kote-kn { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
+
+/* Hjelpeteksten nederst (#hint) lå OPPÅ minikartet (funnet i funksjonstesten
+   24.11). Når kartet vises, står teksten til høyre for det. */
+@media (min-width: 900px) {
+  body:has(#miniMap[style*="display: block"]) #hint { left: calc(12px + 180px + 10px); max-width: calc(55vw - 190px); }
+  /* Når et verktøy har kontrollinja nede (#modeBar), sier den hva du skal gjøre –
+     da viker den generelle hjelpeteksten, så de ikke går over hverandre. */
+  body:has(#modeBar.open) #hint { display: none !important; }
+}
