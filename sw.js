@@ -36,7 +36,7 @@
 
 // ---- GENERERT BLOKK START (verktoy/lag-sw-liste.mjs) ----
 // IKKE REDIGER FOR HÅND. Kjør: node "verktoy/lag-sw-liste.mjs"
-const SW_VERSJON = "b23865f7c6e4";
+const SW_VERSJON = "137c17c35c45";
 const SKALL = [
   "/bygg.html",
   "/css/storm.css",
@@ -61,6 +61,7 @@ const SKALL = [
   "/js/em-detalj.js",
   "/js/em-paring.js",
   "/js/em-regn.js",
+  "/js/endring-regn.js",
   "/js/ferdig-lett.js",
   "/js/framdrift-kilde.js",
   "/js/framdrift-lett.js",
@@ -156,7 +157,7 @@ const SKALL = [
 // Innholdet i hver fil (SHA-256, 16 tegn) – uendrede filer hentes fra forrige cache.
 const SKALL_HASH = {
   "/bygg.html": "f147970651b4b2a7",
-  "/css/storm.css": "1c81d3ceb306f539",
+  "/css/storm.css": "ec8394f5d94c1ccc",
   "/img/favicon.svg": "48ffba3e7d9c7b40",
   "/img/favicon-32.png": "2f521c7514d1898c",
   "/img/apple-touch-icon.png": "76237b63b2fbe371",
@@ -178,13 +179,14 @@ const SKALL_HASH = {
   "/js/em-detalj.js": "82f43a862462b15f",
   "/js/em-paring.js": "846fb430766a4d42",
   "/js/em-regn.js": "eb7c60d132e10f63",
+  "/js/endring-regn.js": "38c5270074725504",
   "/js/ferdig-lett.js": "c3d9a9a05c412799",
   "/js/framdrift-kilde.js": "a7f136d131968dfc",
   "/js/framdrift-lett.js": "e861de34cc51cfc4",
   "/js/framdrift-regn.js": "551ba81b1a2539e5",
   "/js/framdrift-vis.js": "c4142d3020029583",
   "/js/frist.js": "a8b9725bed7f4019",
-  "/js/grupper.js": "9ec7167644ff62d5",
+  "/js/grupper.js": "c7f5315961ff73fc",
   "/js/hjelp.js": "8693768267a29878",
   "/js/hjul.js": "51c95daa3f6c4763",
   "/js/html-lyttere.js": "4c71f3300ce69666",
@@ -203,7 +205,7 @@ const SKALL_HASH = {
   "/js/maal.js": "2acd113b25e20987",
   "/js/markerbilde.js": "90b2d157ee4064cd",
   "/js/markering-flett.js": "fcfc9c1ab738e288",
-  "/js/markers.js": "959369780c9f45a1",
+  "/js/markers.js": "7d2cd96e0b598cb6",
   "/js/materiell-vis.js": "7ed64cdff172d95e",
   "/js/measure.js": "fcc7c8982e27169c",
   "/js/minimap.js": "b3cba566f7fcb6b1",
@@ -222,7 +224,7 @@ const SKALL_HASH = {
   "/js/profiler.js": "5da75a4643d06c84",
   "/js/prop-kompakt.js": "8af7b223ba372ad4",
   "/js/prosjektinfo-regn.js": "b8a88fa47fbd9366",
-  "/js/prosjektinfo.js": "b2930b38e63b8687",
+  "/js/prosjektinfo.js": "d5a48b321a5f4e63",
   "/js/rapport.js": "bb3c546eec0e9a08",
   "/js/regneark.js": "0632e44df4666293",
   "/js/rigg-modell.js": "8929295e8f0fd126",
@@ -231,7 +233,7 @@ const SKALL_HASH = {
   "/js/rull-fall.js": "07d34602216bed2e",
   "/js/scene.js": "168f4105c078f124",
   "/js/share.js": "2991897474ba4c7f",
-  "/js/sharepoint.js": "82f4d94621a5d3cd",
+  "/js/sharepoint.js": "cc2c9218fe76f566",
   "/js/sjekkliste.js": "4ca405e426dbce44",
   "/js/sp-flett.js": "544b029855bed23d",
   "/js/sp-lager.js": "52faeaf1c0f4ea74",
