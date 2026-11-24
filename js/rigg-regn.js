@@ -786,6 +786,52 @@ export function rotFraScene(rotY, ramme, ref) {
   return normVinkel(plassRot - grader);
 }
 
+// ═══════════ 🏕 RIGGEN OG BYGGET PÅ TOMTA (Emil 23.11) ═══════════
+// Riggen står i UTM (på tomta). Hentes et terreng et annet sted enn sist
+// (bygget havner over 300 m unna der det sto), eller velger brukeren
+// «Flytt riggen med bygget» etter å ha flyttet bygget, flyttes objektene slik
+// at de står likt rundt bygget som før.
+export const NY_TOMT_M = 300;
+export const LANGT_UNNA_M = 1000;
+export function byggPos(ref) {
+  return ref ? { E: ref.E0 + (ref.plass.pE || 0), N: ref.N0 + (ref.plass.pN || 0) } : null;
+}
+export function nyTomt(a, b, grense) {
+  const p = byggPos(a), q = byggPos(b);
+  if (!p || !q) return false;
+  return Math.hypot(p.E - q.E, p.N - q.N) > (grense || NY_TOMT_M);
+}
+// Samme plass og retning rundt bygget: fra referansen fraRef til tilRef.
+export function flyttMedBygg(o, fraRef, tilRef) {
+  if (!o || o.ramme !== "utm" || !fraRef || !tilRef) return o;
+  const b = riggTilBygg(o, fraRef);
+  const p = fraBygg(b.bx, b.bz, tilRef);
+  return Object.assign({}, o, { E: rund(p.E), N: rund(p.N), rot: rotFraScene(b.rotY, "utm", tilRef) });
+}
+// Objekter i UTM som står over 1 km fra bygget – lagt inn med et annet terreng.
+export function langtUnna(o, ref, grense) {
+  if (!o || o.ramme !== "utm" || !ref) return false;
+  const b = riggTilBygg(o, ref);
+  return Math.hypot(b.bx, b.bz) > (grense || LANGT_UNNA_M);
+}
+// Hvilket terreng de bortkomne objektene ble lagt inn med: et lagret terreng
+// (E0, N0) der de ligger innenfor 1,5 km av senteret. Bygget antas å ha stått
+// midt i det terrenget (plass 0) – den vanlige plasseringen når det hentes.
+// Finnes ingen, flyttes gruppa samlet så midten havner midt i bygget.
+export function gammelRefFor(objekter, katalog) {
+  if (!objekter.length) return null;
+  const mE = objekter.reduce((a, o) => a + o.E, 0) / objekter.length;
+  const mN = objekter.reduce((a, o) => a + o.N, 0) / objekter.length;
+  let best = null, bestD = 1500;
+  for (const k of katalog || []) {
+    const E0 = Number(k && k.E0), N0 = Number(k && k.N0);
+    if (!Number.isFinite(E0) || !Number.isFinite(N0)) continue;
+    const d = Math.hypot(mE - E0, mN - N0);
+    if (d < bestD) { bestD = d; best = { E0, N0, plass: { pE: 0, pN: 0, rot: 0 } }; }
+  }
+  return best ? { ref: best, kilde: "terreng" } : { ref: { E0: mE, N0: mN, plass: { pE: 0, pN: 0, rot: 0 } }, kilde: "midten" };
+}
+
 function rund(v) { return Math.round(v * 1000) / 1000; }
 
 // ═══════════════════════ LAGRING ═══════════════════════

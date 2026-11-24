@@ -933,6 +933,8 @@ function settPlass(ny, { kompenser = true, angre = false, fullt = true } = {}) {
   }
   terreng.plass = til;
   if (fullt) oppdaterAlt(); else { plasserGrupper(mr); visTall(); }
+  // 🏕 Brukeren flyttet bygget (ikke angre/dra-steg): spør om riggen skal følge
+  if (angre && S.riggEtterByggFlytt) S.riggEtterByggFlytt(fra, til);
 }
 
 // Rotasjon fra panelet. Er bygget festet i ETT hjørne, dreies det rundt det
@@ -1282,6 +1284,7 @@ window.addEventListener("pointerup", (e) => {
       });
       settKamera(naa);
     }
+    if ((fra.pE !== til.pE || fra.pN !== til.pN || fra.rot !== til.rot) && S.riggEtterByggFlytt) S.riggEtterByggFlytt(fra, til);
   }
 }, true);
 
@@ -1909,6 +1912,8 @@ function plassFil() { return S.fileName + ".plassering.json"; }
 function lsPlassNokkel() { return "storm-ifc-terreng-plassering::" + S.fileName; }
 
 let katalog = [];          // vasket, med gravsteiner
+// 🏕 rigg-vis.js: hvor de lagrede terrengene ligger (finner riggens gamle tomt)
+S.terrengKatalog = () => katalog.filter(k => k && !k.slettet).map(k => ({ E0: k.E0, N0: k.N0, navn: k.navn }));
 let spStatus = "av";       // "av" | "ok" | "feil" — vises i panelet
 let lagrer = false;
 let lagreTid = 0;

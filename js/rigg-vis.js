@@ -26,8 +26,10 @@ import { LAPP_MAKS_M, LAPP_MIN_PX, camera, flyTil, frameHooks, grid, lappStorrel
 import { KRAN_GRONN, RIGG_SEL_ANDEL_PIL, byggModell, kranHandtakR, riggValgEffekt, toneFarge } from "./rigg-modell.js";
 import {
   AVFALLSTYPER, avfallstype, GJERDE_DELER, P_PLASS_B, P_PLASS_D, RIGG_REKKEFOLGE, RIGG_TYPER, erPil, gjerdeLappPunkt, gjerdeStykker, parkeringsPlasser, lokalTilEN, riggAntall, riggFraByggeplass, riggForByggeplassFra, riggMengdeRader,
-  riggFotavtrykk, riggObjekter, riggRef, riggTilBygg, tilUtm, vaskRef, REF_ID, kranSektor, kranKompass
+  riggFotavtrykk, riggObjekter, riggRef, riggTilBygg, tilUtm, vaskRef, REF_ID, kranSektor, kranKompass,
+  byggPos, flyttMedBygg, gammelRefFor, langtUnna, nyTomt
 } from "./rigg-regn.js";
+import { varsel } from "./varsel.js";
 import { gruppeFlate, registrerMaaleflate } from "./pek-eier.js";
 import { stillasBeinPunkter } from "./stillas-regn.js";
 
@@ -427,7 +429,25 @@ S.riggOmplasser = () => {
         }
         return p;
       });
-      const gammel = riggRef(ny);
+      let gammel = riggRef(ny);
+      // 🏕 Nytt sted (Emil 23.11): terrenget som ble hentet, ligger et annet sted
+      // enn det riggen sist ble tegnet med – da følger riggen bygget, ellers
+      // ville den blitt liggende på den gamle tomta, langt unna.
+      if (gammel && nyTomt(gammel, ref)) {
+        const fra = gammel;
+        let n = 0;
+        for (let i = 0; i < ny.length; i++) {
+          const p = ny[i];
+          if (p && p.ramme === "utm" && !p.slettet && RIGG_TYPER[p.type]) { ny[i] = Object.assign(flyttMedBygg(p, fra, ref), { endret: naa }); n++; }
+        }
+        if (n) { endret = true; gammel = null; varsel(t("Terrenget ligger et annet sted enn sist riggen ble tegnet. Riggen ({0} objekter) er flyttet med bygget.", n), { type: "info" }); }
+      }
+      // Nytt terreng på samme tomt (annet utsnitt/senter): står bygget et annet
+      // sted på tomta enn sist, spør om riggen skal følge (Emil: «spør hver gang»).
+      else if (gammel && (Math.abs(gammel.E0 - ref.E0) > 1e-3 || Math.abs(gammel.N0 - ref.N0) > 1e-3)) {
+        const a = byggPos(gammel), b = byggPos(ref);
+        if (Math.hypot(a.E - b.E, a.N - b.N) > 0.5 || Math.abs((gammel.plass.rot || 0) - (ref.plass.rot || 0)) > 0.1) spørFlytt(gammel, ref, "Terrenget er hentet på nytt, og bygget står et annet sted på tomta enn sist. Riggen ({0} objekter) står igjen.");
+      }
       const harObjekter = riggObjekter(ny).length > 0;
       const refEndret = harObjekter && !likRefSmaa(gammel, ref);
       if (refEndret) {
@@ -435,12 +455,65 @@ S.riggOmplasser = () => {
         uten.push(Object.assign({ id: REF_ID }, ref, { endret: naa }));
         S.rigg = uten;
       } else if (endret) S.rigg = ny;
+      sjekkBortkomne(ref);
       if (endret) { tegnRigg(); if (S.riggMeldEndret) S.riggMeldEndret(); return; }
       if (refEndret && S.riggMeldEndret) S.riggMeldEndret();
     }
   }
   plasserRigg();
 };
+
+// Lagrer en ny utgave av riggen med angre (samme vei som resten av riggen).
+function byttRigg(ny, tekst) {
+  const før = S.rigg;
+  S.rigg = ny; tegnRigg(); if (S.riggMeldEndret) S.riggMeldEndret();
+  if (S.pushAngre) S.pushAngre({ tekst,
+    angre: () => { S.rigg = før; tegnRigg(); if (S.riggMeldEndret) S.riggMeldEndret(); },
+    gjenopprett: () => { S.rigg = ny; tegnRigg(); if (S.riggMeldEndret) S.riggMeldEndret(); } });
+}
+
+// ❓ Spør hver gang (Emil 23.11): bygget er flyttet eller dreid på terrenget.
+// Riggen blir stående på tomta, men et trykk flytter den med bygget.
+S.riggEtterByggFlytt = (fraPlass, tilPlass) => {
+  if (LETT || !S.terrengRef) return;
+  const live = S.terrengRef();
+  if (!live) return;
+  spørFlytt(vaskRef(Object.assign({}, live, { plass: fraPlass })), vaskRef(Object.assign({}, live, { plass: tilPlass })), "Bygget er flyttet. Riggen ({0} objekter) står igjen på tomta.");
+};
+function spørFlytt(fraRef, tilRef, melding) {
+  if (!tilRef || !fraRef) return;
+  const n = riggObjekter(S.rigg || []).filter(o => o.ramme === "utm").length;
+  if (!n) return;
+  varsel(t(melding, n), { type: "info", visTekst: t("Flytt riggen med bygget"), vis: () => {
+    const naa = new Date().toISOString();
+    const ny = (S.rigg || []).map(p => (p && p.ramme === "utm" && !p.slettet && RIGG_TYPER[p.type]) ? Object.assign(flyttMedBygg(p, fraRef, tilRef), { endret: naa }) : p);
+    byttRigg(ny, "Riggen flyttet med bygget");
+  } });
+}
+
+// 🔎 Objekter som står over 1 km fra bygget (lagt inn med et annet terreng
+// før denne rettelsen): én melding per modell med «Flytt dem til bygget».
+let bortkomneMeldt = "";
+function sjekkBortkomne(ref) {
+  const borte = riggObjekter(S.rigg || []).filter(o => langtUnna(o, ref));
+  const nokkel = (S.fileName || "") + "|" + borte.length;
+  if (!borte.length || bortkomneMeldt === nokkel) return;
+  bortkomneMeldt = nokkel;
+  varsel(t("{0} rigg-objekter står over 1 km fra bygget. De ble lagt inn med et annet terreng.", borte.length), { type: "feil", visTekst: t("Flytt dem til bygget"), vis: () => {
+    const live = S.terrengRef ? S.terrengRef() : null;
+    const tilRef = live ? vaskRef(live) : null;
+    if (!tilRef) return;
+    const ider = new Set(borte.map(o => o.id));
+    const g = gammelRefFor(borte, S.terrengKatalog ? S.terrengKatalog() : []);
+    const naa = new Date().toISOString();
+    const ny = (S.rigg || []).map(p => p && ider.has(p.id) ? Object.assign(flyttMedBygg(p, g.ref, tilRef), { endret: naa }) : p);
+    byttRigg(ny, "Riggen flyttet til bygget");
+    varsel(g.kilde === "terreng"
+      ? t("Riggen er flyttet til bygget. Sjekk at den står riktig – Ctrl+Z angrer.")
+      : t("Riggen er flyttet samlet til midt i bygget. Dra objektene på plass – Ctrl+Z angrer."), { type: "info" });
+  } });
+}
+S._riggSjekkBortkomne = sjekkBortkomne;
 
 // Referansen regnes lik innenfor en millimeter og en tidel grad — ellers ville
 // hvert eneste flyttemusetrekk gitt en ny post (lagringen er uansett samlet).
