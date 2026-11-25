@@ -3213,6 +3213,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Fjern raden": "Pašalinti eilutę",
   "Bemanning": "Darbuotojai",
   "samme som sist ({0})": "kaip praėjusį kartą ({0})",
+  "NY": "NAUJA",
   "Rød prikk: noen andre har endret modellen": "Raudonas taškas: kažkas kitas pakeitė modelį",
   "Har noen andre lagret markeringer, rigg, framdrift, støpeplan, ferdigmeldinger, grupper eller prosjektinfo på modellen du har åpen, får SharePoint-prikken oppe til høyre en rød prikk. En rød stripe under toppen sier hva som er endret og av hvem. Trykk Hent endringene: bare det som er endret hentes, og modellen, kameraet og det du har åpent blir stående. Senere skjuler stripa til neste endring, og et trykk på prikken viser lista. Det du lagrer selv, gir aldri prikk.": "Jei kažkas kitas išsaugojo žymas, aikštelės įrangą, grafiką, betonavimo planą, užbaigimo pranešimus, grupes ar projekto informaciją jūsų atidarytame modelyje, SharePoint taškas viršuje dešinėje gauna raudoną tašką. Raudona juosta po viršumi parodo, kas ir kieno pakeista. Spustelėkite Gauti pakeitimus: įkeliama tik tai, kas pasikeitė, o modelis, kamera ir tai, ką turite atidarę, lieka. Vėliau paslepia juostą iki kito pakeitimo, o spustelėjus tašką rodomas sąrašas. Tai, ką išsaugote patys, niekada neduoda taško.",
   "Kote: er kotene meter over havet?": "Aukštis: ar aukščiai yra metrai virš jūros lygio?",

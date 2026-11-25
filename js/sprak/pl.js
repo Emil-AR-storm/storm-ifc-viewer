@@ -3213,6 +3213,7 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Fjern raden": "Usuń wiersz",
   "Bemanning": "Obsada",
   "samme som sist ({0})": "jak ostatnio ({0})",
+  "NY": "NOWE",
   "Rød prikk: noen andre har endret modellen": "Czerwona kropka: ktoś inny zmienił model",
   "Har noen andre lagret markeringer, rigg, framdrift, støpeplan, ferdigmeldinger, grupper eller prosjektinfo på modellen du har åpen, får SharePoint-prikken oppe til høyre en rød prikk. En rød stripe under toppen sier hva som er endret og av hvem. Trykk Hent endringene: bare det som er endret hentes, og modellen, kameraet og det du har åpent blir stående. Senere skjuler stripa til neste endring, og et trykk på prikken viser lista. Det du lagrer selv, gir aldri prikk.": "Jeśli ktoś inny zapisał znaczniki, zaplecze, harmonogram, plan betonowania, zgłoszenia ukończenia, grupy lub informacje o projekcie w otwartym modelu, kropka SharePoint w prawym górnym rogu dostaje czerwoną kropkę. Czerwony pasek pod górą mówi, co zmieniono i kto. Kliknij Pobierz zmiany: pobierane jest tylko to, co się zmieniło, a model, kamera i otwarte okna zostają bez zmian. Później ukrywa pasek do następnej zmiany, a kliknięcie kropki pokazuje listę. To, co zapisujesz sam, nigdy nie daje kropki.",
   "Kote: er kotene meter over havet?": "Rzędna: czy rzędne są w metrach n.p.m.?",

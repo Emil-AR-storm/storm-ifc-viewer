@@ -33,6 +33,13 @@ import { $, S, ikon, writePrefs } from "./state.js";
 import { t } from "./i18n.js";
 import { LETT } from "./lett.js";
 
+// 🆕 «NY»-MERKE (felles hjelpeboks, BYGGEPLAN fra Storm Prosjekter 25.11):
+// kort med `ny: NY_VERSJON` får «NY» i innholdslista til hjelpen er åpnet én
+// gang. Hjelp-knappen har en rød prikk så lenge det finnes kort du ikke har
+// sett. Ved neste runde nye kort: sett NY_VERSJON til ny dato og merk kortene.
+export const NY_VERSJON = "2026-11-25";
+export const SETT_NOKKEL = "storm.hjelp.sett";
+
 // hvor: "bygg" = byggeplass-siden, "kontor" = index.html, "begge" = begge
 export const KORT = [
   // Gruppenavnene her MÅ være de samme som i js/verktoygrupper.js
@@ -119,42 +126,42 @@ export const KORT = [
   },
   // ---------- Nytt 23.–25.11 (Emil 25.11: «legg inn funksjonene som ikke ligger i hjelp») ----------
   {
-    hvor: "kontor", ikonNavn: "markeringer",
+    hvor: "kontor", ikonNavn: "markeringer", ny: NY_VERSJON,
     tittel: "Rød prikk: noen andre har endret modellen",
     tekst: "Har noen andre lagret markeringer, rigg, framdrift, støpeplan, ferdigmeldinger, grupper eller prosjektinfo på modellen du har åpen, får SharePoint-prikken oppe til høyre en rød prikk. En rød stripe under toppen sier hva som er endret og av hvem. Trykk Hent endringene: bare det som er endret hentes, og modellen, kameraet og det du har åpent blir stående. Senere skjuler stripa til neste endring, og et trykk på prikken viser lista. Det du lagrer selv, gir aldri prikk."
   },
   {
-    hvor: "kontor", ikonNavn: "kote",
+    hvor: "kontor", ikonNavn: "kote", ny: NY_VERSJON,
     tittel: "Kote: er kotene meter over havet?",
     tekst: "Starter bygget mellom −5 og +5 m, vet ikke Storm IFC om kotene er meter over havet eller målt fra bygget. Da står det en gul «?» på Kote, og første gang du tar en kote spør Storm IFC: Er dette riktig kote? Svar Ja, kotene er riktige, eller trykk på en flat, vannrett flate du kjenner koten til (for eksempel overkant gulv) og skriv koten fra tegningen. Hele modellen flyttes like mye. Koten kan også settes i Innstillinger → Prosjektinfo. Den lagres i SharePoint og gjelder for kollegaene, byggeplassen og terrenget. Koter skrives som på tegningene: +6,000."
   },
   {
-    hvor: "kontor", ikonNavn: "innstillinger",
+    hvor: "kontor", ikonNavn: "innstillinger", ny: NY_VERSJON,
     tittel: "Prosjektinfo fra Storm Prosjekter",
     tekst: "Er modellen koblet til en jobb i Storm Prosjekter (Modell-feltet på prosjektet), fylles Prosjektinfo i Innstillinger ut av seg selv: navn, nummer, byggherre, prosjektleder, telefon og byggeplassens adresse. ✓ hentet betyr at feltet kom derfra. Skriver du noe annet, står det ✎ endret her, og feltet røres ikke. Hent på nytt fra Storm Prosjekter overskriver alt (kan angres). Bare koblingen huskes – informasjonen hentes fersk hver gang modellen åpnes."
   },
   {
-    hvor: "kontor", ikonNavn: "markering",
+    hvor: "kontor", ikonNavn: "markering", ny: NY_VERSJON,
     tittel: "Ny markering: maler, ansvarlig og frist",
     tekst: "Malene øverst (Mangler armering, Feil høyde …) fyller teksten med ett trykk, og + Egen lager din egen. Ansvarlig viser bare folkene som er lagt inn på jobben i Storm Prosjekter: prosjektledere, BAS og kontakter som er Storms ansatte. Er ingen lagt inn, vises alle ansatte. Ansvarlig og frist fylles ut fra standarden for faget (Innstillinger → Nye markeringer) eller den du brukte sist. Lagrer du uten tekst, får du et varsel – markeringen forsvinner ikke."
   },
   {
-    hvor: "kontor", ikonNavn: "rediger",
+    hvor: "kontor", ikonNavn: "rediger", ny: NY_VERSJON,
     tittel: "Endre mange markeringer på én gang",
     tekst: "Trykk Velg i markeringslista og kryss av markeringene. Shift + klikk velger alt imellom, og Velg alle tar hele lista. Trykk Endre N markeringer og sett ansvarlig, frist eller status for alle samtidig – det som står på (uendret), røres ikke. Én Ctrl+Z angrer alt."
   },
   {
-    hvor: "kontor", ikonNavn: "framdrift",
+    hvor: "kontor", ikonNavn: "framdrift", ny: NY_VERSJON,
     tittel: "Framdrift: per etasje, gjenta og ferdigmeld",
     tekst: "Lag trinn per etasje gir ett trinn per etasje med det du har valgt, og du ser det i 3D før du lagrer. Etter et nytt trinn kommer Gjenta handlingen: de samme elementene i de andre etasjene, ett nytt trinn per etasje. Navnet på trinnet foreslås av seg selv (for eksempel «Søyler HEB200 2. etasje») – trykk Tab for å bruke forslaget. ✓ Alt ferdig på trinnet ferdigmelder alt i trinnet på én gang, med datoen du velger."
   },
   {
-    hvor: "kontor", ikonNavn: "rigg",
+    hvor: "kontor", ikonNavn: "rigg", ny: NY_VERSJON,
     tittel: "Riggen og bygget på tomta",
     tekst: "Riggen står fast på tomta. Flytter eller dreier du bygget på terrenget, kommer det en melding med Flytt riggen med bygget – trykk den hvis riggen skal stå likt rundt bygget. Hentes terrenget et helt annet sted, følger riggen bygget av seg selv. Står noe over 1 km unna (lagt inn med et annet terreng), får du Flytt dem til bygget. Alt kan angres med Ctrl+Z."
   },
   {
-    hvor: "kontor", ikonNavn: "lastned",
+    hvor: "kontor", ikonNavn: "lastned", ny: NY_VERSJON,
     tittel: "Legg i prosjekt",
     tekst: "Last ned ▾ → Legg i prosjekt legger fila rett i prosjektmappa til jobben i Storm Prosjekter, i riktig undermappe. Jobben finnes fra modellen; har jobben flere selskaper (Storm Entreprenør, Betong og Stål), velger du hvilket, og fila havner i mappa til det selskapet. Du ser mappa før du trykker, og kan endre undermappen. Signerte dagsrapporter legges der av seg selv."
   },
@@ -410,6 +417,17 @@ export function skalVisesAvSegSelv(lett, alleredeVist) {
   return !!lett && !alleredeVist;
 }
 
+// Er kortet nytt for den som sist så hjelpen på versjon `sett`? (datoene
+// sammenlignes som tekst: «2026-11-25» > «2026-10-01»)
+export function erNy(k, sett) {
+  return !!(k && k.ny) && String(k.ny) > String(sett || "");
+}
+export function harUsette(liste, sett) {
+  return (liste || []).some(k => erNy(k, sett));
+}
+function lesSett() { try { return localStorage.getItem(SETT_NOKKEL) || ""; } catch (_) { return ""; } }
+function skrivSett(v) { try { localStorage.setItem(SETT_NOKKEL, v); } catch (_) { /* uten lagring: merket står */ } }
+
 // ═══════════════════════ NETTLESER ═══════════════════════
 
 // 📚 SIDE 1 ER EN INNHOLDSLISTE (Emil 13.10): «side 1 i hjelpekortet skal være
@@ -424,6 +442,8 @@ export function bunke(lett) {
 
 let kort = [];
 let nå = 0;
+// Hva du hadde sett da hjelpen ble åpnet – «NY» står hele den første gangen
+let settVedÅpning = "";
 
 // Teksten øverst: «Innhold» på lista, «25 av 43» på kortene (lista telles ikke)
 export function tellerTekst(indeks, antallMedInnhold) {
@@ -438,7 +458,8 @@ function tegnKatalog() {
     '<button type="button" class="hk-kat-rad" data-til="' + (i + 1) + '">' +
       '<span class="hk-kat-nr">' + (i + 1) + "</span>" +
       '<span class="hk-kat-ikon">' + ikon(k.ikonNavn) + "</span>" +
-      '<span class="hk-kat-tittel"></span></button>').join("");
+      '<span class="hk-kat-tittel"></span>' +
+      (erNy(k, settVedÅpning) ? '<span class="hk-ny">' + t("NY") + "</span>" : "") + "</button>").join("");
   // Titlene settes som tekst, ikke HTML — de kommer fra ordboken
   liste.querySelectorAll(".hk-kat-tittel").forEach((el, i) => { el.textContent = t(kort[i + 1].tittel); });
 }
@@ -500,8 +521,13 @@ export function apneHjelp(start) {
   kort = bunke(LETT);
   if (kort.length < 2) return;
   nå = gaTil(Number(start) || 0, 0, kort.length);
+  settVedÅpning = lesSett();
   tegn();
   boks.classList.add("open");
+  // Sett nå: neste gang står det ikke «NY», og prikken på knappen går bort
+  const nyest = kort.reduce((m, k) => (k.ny && String(k.ny) > m ? String(k.ny) : m), "");
+  if (nyest && nyest > settVedÅpning) skrivSett(nyest);
+  oppdaterPrikk();
   const knapp = $("btnHjelp");
   if (knapp) knapp.classList.add("active");
 }
@@ -539,6 +565,17 @@ S.rebuildHjelp = () => { if (erApen()) tegn(); };
 S.visForsteHjelp = () => {
   if (skalVisesAvSegSelv(LETT, S.settings.hjelpVist)) apneHjelp(0);
 };
+
+// Rød prikk på Hjelp-knappen så lenge det finnes kort for denne siden du ikke har sett
+export function oppdaterPrikk() {
+  const k = $("btnHjelp");
+  if (!k) return;
+  let p = k.querySelector(".hjelp-ny-prikk");
+  const vis = harUsette(kortFor(LETT), lesSett());
+  if (vis && !p) { p = document.createElement("span"); p.className = "hjelp-ny-prikk"; p.setAttribute("aria-hidden", "true"); k.appendChild(p); }
+  if (!vis && p) p.remove();
+}
+oppdaterPrikk();
 
 const knapp = $("btnHjelp");
 if (knapp) knapp.addEventListener("click", () => { erApen() ? lukkHjelp() : apneHjelp(0); });
