@@ -245,3 +245,49 @@ export function oversiktPost(o) {
     ...(o.prosjekt ? { prosjekt: String(o.prosjekt) } : {})
   };
 }
+
+// ---------- 🏢 Selskapsdeling (BYGGEPLAN fra Storm Prosjekter 25.11) ----------
+// Ny kilde: lista Prosjekter og Prosjektdokumenter finnes i hvert selskaps
+// gruppe. Radene merkes med selskapet (`_omr`, id «SB:123»), og det som er
+// felles for jobben ligger i lista Jobber på /sites/StormProsjekter.
+export const JOBBER_LISTE = "Jobber";
+// Feltene Storm IFC leser fra Jobber. ByggeplassKode og AnsattKode hentes
+// ALDRI – Storm IFC trenger dem ikke (kodene er Workerens sak).
+export const JOBB_FELT = ["JobbNr", "Modell", "ByggeplassNr", "BemanningId", "BemanningNavn", "Kontakter", "Mannskap", "Adresse", "Lat", "Lon", "KoordAdresse"];
+export const JOBB_FELT_LETT = ["JobbNr", "Modell"];
+// Jobbens nummer, som jobbFor i Storm Prosjekter: JobbNr, ellers Nokkel
+export const jobbNøkkel = (r) => { const f = felt(r); return String(f.JobbNr || f.Nokkel || "").trim(); };
+const tom = (v) => v == null || (typeof v === "string" && !v.trim());
+// Jobber legges OPPÅ hovedprosjektene (som Storm Prosjekter 4.66): felt med
+// verdi i Jobber vinner, tomme felt røres ikke. Underprosjekter røres ikke.
+export function leggPåJobber(rader, jobber) {
+  const etter = new Map();
+  for (const j of jobber || []) { const n = String(felt(j).JobbNr || "").trim(); if (n && !etter.has(n)) etter.set(n, felt(j)); }
+  if (!etter.size) return rader || [];
+  return (rader || []).map(r => {
+    const f = felt(r);
+    if (f.ForelderNokkel) return r;
+    const j = etter.get(jobbNøkkel(r));
+    if (!j) return r;
+    const ny = Object.assign({}, f);
+    for (const k of JOBB_FELT) if (k !== "JobbNr" && !tom(j[k])) ny[k] = j[k];
+    return Object.assign({}, r, { fields: ny });
+  });
+}
+// «SB:123» → { omr: "SB", id: "123" }. Uten selskap: null.
+export function delId(id) {
+  const m = /^(SE|SB|SS):(.+)$/.exec(String(id || ""));
+  return m ? { omr: m[1], id: m[2] } : null;
+}
+// Merk en rad med selskapet den kom fra
+export function medSelskap(rad, omr) {
+  const f = Object.assign({}, (rad && rad.fields) || {});
+  if (!f.Arbeidsomrade) f.Arbeidsomrade = omr;
+  return Object.assign({}, rad, { id: omr + ":" + String((rad && rad.id) || ""), _omr: omr, fields: f });
+}
+// Hvilket selskaps bibliotek en sti hører til: første del av stien
+// («Storm Betong/371 …» → SB). Ingen selskapsmappe → "" (lastes ALDRI opp).
+export function selskapForSti(sti) {
+  const d = førsteDel(sti);
+  return Object.keys(SELSKAPSMAPPER).find(k => SELSKAPSMAPPER[k].toLowerCase() === d) || "";
+}

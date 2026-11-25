@@ -20,6 +20,8 @@
 //   (SVAR fra Storm Prosjekter 24.11: JobbNr og ProsjektNr er tekst og
 //   indeksert. Mangler JobbNr, huskes rad-id-ene i stedet – samme regel som
 //   Storm Prosjekters jobbFor, der jobben da er prosjektets egen Nøkkel.)
+//   (Selskapsdeling 25.11: i ny kilde er id-ene «SB:123». En gammel id uten
+//   selskap finnes ikke der – da letes det på nytt, som når koblingen ikke stemmer.)
 //
 // Svar: { jobb: [rader i jobben, SE → SB → SS], rader: [lista hvis den ble
 //         hentet – ellers jobben], kilde: "kobling" | "liste" | "full",
@@ -35,7 +37,8 @@ export function lesKobling(fil) {
     const k = JSON.parse(localStorage.getItem(LS + fil) || "null");
     if (!k || typeof k !== "object") return null;
     const jobbNr = String(k.jobbNr || "").trim().slice(0, 20);
-    const ider = Array.isArray(k.ider) ? k.ider.map(String).filter(x => /^[\w-]{1,40}$/.test(x)).slice(0, 10) : [];
+    // «SB:123» = rad i et selskap (selskapsdeling 25.11); gamle id-er uten selskap leses som før
+    const ider = Array.isArray(k.ider) ? k.ider.map(String).filter(x => /^(?:S[EBS]:)?[\w-]{1,40}$/.test(x)).slice(0, 10) : [];
     return jobbNr || ider.length ? { jobbNr, ider } : null;
   } catch (_) { return null; }
 }
@@ -86,7 +89,7 @@ export async function hentJobb(token, åpen, opt, deps) {
       if (jobb.length && R.finnJobb(rader, åpen).length) return { jobb, rader: jobb, kilde: "kobling", komplett: true };
       if (jobb.length && o.nummerFørst) return { jobb, rader: jobb, kilde: "kobling", komplett: true };
     } catch (err) {
-      if (err instanceof G.IngenTilgang) throw err;
+      if (err instanceof G.IngenTilgang || (G.IngenSelskap && err instanceof G.IngenSelskap)) throw err;
       /* koblingen kunne ikke brukes – let i lista */
     }
   }
@@ -95,7 +98,7 @@ export async function hentJobb(token, åpen, opt, deps) {
   let rader, kilde = "liste";
   try { rader = await G.hentProsjekterLett(token); }
   catch (err) {
-    if (err instanceof G.IngenTilgang) throw err;
+    if (err instanceof G.IngenTilgang || (G.IngenSelskap && err instanceof G.IngenSelskap)) throw err;
     // 4. Som før
     rader = await G.hentProsjekter(token); kilde = "full";
   }
@@ -112,7 +115,7 @@ export async function hentJobb(token, åpen, opt, deps) {
       const etter = new Map(fulle.map(r => [String(r.id), r]));
       if (jobb.every(r => etter.has(String(r.id)))) { jobb = jobb.map(r => etter.get(String(r.id))); komplett = true; }
     } catch (err) {
-      if (err instanceof G.IngenTilgang) throw err;
+      if (err instanceof G.IngenTilgang || (G.IngenSelskap && err instanceof G.IngenSelskap)) throw err;
       // Filteret ble avvist: én rad om gangen (som før B2)
       try {
         jobb = await Promise.all(jobb.map(async r => Object.assign({}, r, { fields: Object.assign({}, r.fields, await G.hentProsjektFelt(token, r)) })));

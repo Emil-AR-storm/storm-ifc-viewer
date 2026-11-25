@@ -132,7 +132,8 @@ export async function dialog(type, blob, filnavn, dato) {
     rader = svar.rader;
     if (!jobb.length && svar.kilde === "kobling") rader = await G.hentProsjekterLett(token);
   } catch (err) {
-    feil(err instanceof G.IngenTilgang ? t("Du har ikke tilgang til prosjektlista i Storm Prosjekter.") : t("Fikk ikke hentet prosjektene: {0}", err.message));
+    feil(err instanceof G.IngenSelskap ? t("Du er ikke lagt inn i noe selskap i SharePoint") + ". " + t("Be den som styrer SharePoint om å legge deg inn i Storm Entreprenør, Storm Betong eller Storm Stål.")
+      : err instanceof G.IngenTilgang ? t("Du har ikke tilgang til prosjektlista i Storm Prosjekter.") : t("Fikk ikke hentet prosjektene: {0}", err.message));
     return;
   }
   const innhold = $("lipInnhold");
@@ -297,6 +298,7 @@ export async function leggAutomatisk(type, blob, filnavn, dato, o) {
   } catch (err) {
     if (err instanceof G.IngenMappe) return { ok: false, grunn: "ingen-mappe" };
     if (err instanceof G.IngenTilgang) return { ok: false, grunn: "ingen-tilgang" };
+    if (err instanceof G.IngenSelskap) return { ok: false, grunn: "ingen-selskap" };
     return { ok: false, grunn: "feil", melding: err && err.message };
   }
 }

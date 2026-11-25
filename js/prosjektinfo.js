@@ -164,7 +164,7 @@ async function hentFraSp() {
 // og adresse. Et felt fylles når det er tomt eller fortsatt er det vi hentet
 // sist; har du skrevet noe annet, står det som «✎ endret her» og røres ikke.
 // «↺ Hent på nytt fra Storm Prosjekter» overskriver alt (kan angres).
-let spHentStatus = "";   // "" | "henter" | "ok" | "ingen" | "feil"
+let spHentStatus = "";   // "" | "henter" | "ok" | "ingen" | "feil" | "ingen-selskap"
 export async function hentFraStormProsjekter(alle) {
   if (LETT || !S.fileName || !spPaalogget()) return false;
   const forFil = S.fileName;
@@ -232,7 +232,8 @@ export async function hentFraStormProsjekter(alle) {
     return true;
   } catch (err) {
     console.warn("Prosjektinfo fra Storm Prosjekter:", err && err.message);
-    spHentStatus = "feil"; gjenTegn();
+    // Selskapsdeling (25.11): ikke med i noe selskap → egen, tydelig melding
+    spHentStatus = err && err.constructor && err.constructor.name === "IngenSelskap" ? "ingen-selskap" : "feil"; gjenTegn();
     return false;
   }
 }
@@ -428,7 +429,8 @@ export function prosjektinfoHtml() {
       '<div class="pi-sp">' + (info.sp && info.sp.hentet
         ? '<span class="hint">' + esc(t("Hentet fra Storm Prosjekter {0}", new Date(info.sp.hentet).toLocaleString("no-NO", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }))) + "</span>"
         : spHentStatus === "ingen" ? '<span class="hint">' + esc(t("Fant ikke prosjektet modellen hører til i Storm Prosjekter.")) + "</span>"
-        : spHentStatus === "feil" ? '<span class="hint">' + esc(t("Fikk ikke hentet fra Storm Prosjekter.")) + "</span>" : "") +
+        : spHentStatus === "feil" ? '<span class="hint">' + esc(t("Fikk ikke hentet fra Storm Prosjekter.")) + "</span>"
+        : spHentStatus === "ingen-selskap" ? '<span class="hint">' + esc(t("Du er ikke lagt inn i noe selskap i SharePoint")) + "</span>" : "") +
         ' <button id="piHentSp" class="lenke">↺ ' + esc(spHentStatus === "henter" ? t("Henter …") : t("Hent på nytt fra Storm Prosjekter")) + "</button></div>" +
       '<p id="piStatus" style="color:var(--muted);font-size:11px;margin:6px 0 0">' + esc(statusTekst()) + "</p>";
   }

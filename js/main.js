@@ -67,6 +67,7 @@ const MODULER = [
   ["./modes.js"],
   ["./angre.js"],                  // ↩ angre/gjenopprett – må lastes før ui.js (hurtigtastene)
   ["./sharepoint.js"],
+  ["./selskapsdeling.js"],        // 🏢 ?kilde=ny|gammel|standard huskes ved oppstart (selskapsdeling 25.11)
   ["./prosjektinfo.js"],           // 🗂 felles prosjektinfo i Innstillinger — FØR ui.js
   ["./kote-ref.js"],               // ▲ er kotene riktige? spørsmål og «sett kote» (24.11, prøvebilde B)
   ["./ui.js"],

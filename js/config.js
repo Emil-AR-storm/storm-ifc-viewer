@@ -82,3 +82,17 @@ export const TETTHET = { "Betong": 2400, "Stål": 7850 };
 //
 // SAMME objekt hele veien, som ANSATTE og TETTHET.
 export const EGNE_PROFILER = {};
+
+// ---------- Selskapsdeling i SharePoint (BYGGEPLAN fra Storm Prosjekter 25.11) ----------
+// Prosjektlista og prosjektmappene deles per selskap: hver bruker ser bare
+// selskapene hen er medlem av (SE, SB, SS). Modellbiblioteket er FELLES og
+// uendret – dette gjelder bare koblingen til Storm Prosjekter.
+// aktiv: false = nøyaktig som før (lista og mappene på /sites/StormProsjekter).
+// Omleggingen er ÉN linje (aktiv: true), samme dag i Storm IFC, Bemanning og
+// Storm Prosjekter. ?kilde=ny / gammel / standard på adressen overstyrer
+// (huskes i nettleseren), så den kan testes før omleggingen. Se js/selskapsdeling.js.
+export const SELSKAPSDELING = {
+  aktiv: false,
+  omrader: { SE: "/sites/StormEntreprenor", SB: "/sites/StormBetong", SS: "/sites/StormStal" },
+  mapper: { SE: "Storm Entreprenør", SB: "Storm Betong", SS: "Storm Stål" }
+};

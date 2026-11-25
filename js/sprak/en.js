@@ -3213,6 +3213,8 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Fjern raden": "Remove row",
   "Bemanning": "Manning",
   "samme som sist ({0})": "same as last time ({0})",
+  "Du er ikke lagt inn i noe selskap i SharePoint": "You have not been added to any company in SharePoint",
+  "Be den som styrer SharePoint om å legge deg inn i Storm Entreprenør, Storm Betong eller Storm Stål.": "Ask your SharePoint administrator to add you to Storm Entreprenør, Storm Betong or Storm Stål.",
   "NY": "NEW",
   "Rød prikk: noen andre har endret modellen": "Red dot: someone else has changed the model",
   "Har noen andre lagret markeringer, rigg, framdrift, støpeplan, ferdigmeldinger, grupper eller prosjektinfo på modellen du har åpen, får SharePoint-prikken oppe til høyre en rød prikk. En rød stripe under toppen sier hva som er endret og av hvem. Trykk Hent endringene: bare det som er endret hentes, og modellen, kameraet og det du har åpent blir stående. Senere skjuler stripa til neste endring, og et trykk på prikken viser lista. Det du lagrer selv, gir aldri prikk.": "If someone else has saved markers, site setup, schedule, pour plan, completion reports, groups or project info on the model you have open, the SharePoint dot at the top right gets a red dot. A red strip below the top says what has changed and by whom. Click Get the changes: only what has changed is loaded, and the model, the camera and what you have open stay as they are. Later hides the strip until the next change, and clicking the dot shows the list. What you save yourself never gives a dot.",

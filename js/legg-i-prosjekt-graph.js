@@ -2,12 +2,16 @@
 // legg-i-prosjekt-regn.js. Bare brukerens egen Microsoft-innlogging; ingen
 // nøkler, ingen Worker. Prøves med falsk fetch i _test/test-legg-i-prosjekt.mjs.
 import * as R from "./legg-i-prosjekt-regn.js";
+import { SELSKAPSDELING } from "./config.js";
+import { nyKilde } from "./selskapsdeling.js";
 
 export const GRAPH = "https://graph.microsoft.com/v1.0";
 const HOST = "stormentrepreno.sharepoint.com";
 
 export class IngenTilgang extends Error {}
 export class IngenMappe extends Error {}
+// Ny kilde, men brukeren er ikke med i noe selskap i SharePoint
+export class IngenSelskap extends Error {}
 
 function lag(token) {
   const hode = (ekstra) => Object.assign({ Authorization: "Bearer " + token }, ekstra || {});
@@ -35,14 +39,17 @@ export async function stedOgBibliotek(token) {
   return { siteId, driveId };
 }
 
+const FULLE_FELT = "Nokkel,Arbeidsomrade,ProsjektNr,Title,ForelderNokkel,JobbNr,Modell,Prosjekttype,ProsjektmappeId,Prosjektmappe," +
+  "Kunde,ProsjektlederNavn,ProsjektlederTelefon,ProsjektlederEpost,Adresse,Lat,Lon,KoordAdresse,Mannskap,Kontakter";
+
 // Alle rader i lista Prosjekter (følger @odata.nextLink).
 export async function hentProsjekter(token) {
+  if (nyKilde()) return nyHentListe(token, FULLE_FELT, R.JOBB_FELT);
   const g = lag(token);
   const { siteId: s } = await stedOgBibliotek(token);
   // Kolonnene etter Kunde er bekreftet av Storm Prosjekter 4.60 (SVAR 23.11):
   // prosjektlederen per selskap og Mannskap trengs for hele jobben (1B og 3A).
-  const felt = "Nokkel,Arbeidsomrade,ProsjektNr,Title,ForelderNokkel,JobbNr,Modell,Prosjekttype,ProsjektmappeId,Prosjektmappe," +
-    "Kunde,ProsjektlederNavn,ProsjektlederTelefon,ProsjektlederEpost,Adresse,Lat,Lon,KoordAdresse,Mannskap,Kontakter";
+  const felt = FULLE_FELT;
   let url = "/sites/" + s + "/lists/" + R.PROSJEKT_LISTE + "/items?$expand=fields($select=" + felt + ")&$top=999";
   const ut = [];
   for (let i = 0; url && i < 50; i++) {
@@ -58,6 +65,7 @@ export async function hentProsjekter(token) {
 // (hentJobbRader), ikke for alle prosjektene i Storm Prosjekter.
 export const LETT_FELT = "Nokkel,Arbeidsomrade,ProsjektNr,Title,ForelderNokkel,JobbNr,Modell,Prosjekttype,ProsjektmappeId,Prosjektmappe";
 export async function hentProsjekterLett(token) {
+  if (nyKilde()) return nyHentListe(token, LETT_FELT, R.JOBB_FELT_LETT);
   const g = lag(token);
   const { siteId: s } = await stedOgBibliotek(token);
   let url = "/sites/" + s + "/lists/" + R.PROSJEKT_LISTE + "/items?$expand=fields($select=" + LETT_FELT + ")&$top=999";
@@ -78,6 +86,7 @@ export async function hentProsjekterLett(token) {
 export async function hentJobbRader(token, jobbNr) {
   const n = String(jobbNr == null ? "" : jobbNr).trim();
   if (!n) return [];
+  if (nyKilde()) return nyHentJobbRader(token, n);
   const g = lag(token);
   const { siteId: s } = await stedOgBibliotek(token);
   let url = "/sites/" + s + "/lists/" + R.PROSJEKT_LISTE + "/items?$expand=fields&$top=200&$filter=" +
@@ -92,6 +101,7 @@ export async function hentJobbRader(token, jobbNr) {
 }
 // Én rad (id, createdDateTime og alle kolonnene) – for en jobb uten jobbnummer.
 export async function hentProsjektRad(token, id) {
+  if (nyKilde()) return nyHentRad(token, id);
   const g = lag(token);
   const { siteId: s } = await stedOgBibliotek(token);
   return g.json("/sites/" + s + "/lists/" + R.PROSJEKT_LISTE + "/items/" + encodeURIComponent(id) + "?$expand=fields");
@@ -100,6 +110,11 @@ export async function hentProsjektRad(token, id) {
 // ✍️ 1B (runde 5): alle kolonnene til ett prosjekt (Prosjektinfo fra Storm
 // Prosjekter). Uten $select, så vi ser hva lista faktisk har.
 export async function hentProsjektFelt(token, rad) {
+  if (nyKilde()) {
+    if (!rad || !rad.id) return (rad && rad.fields) || {};
+    const r = await nyHentRad(token, rad.id);
+    return (r && r.fields) || {};
+  }
   const g = lag(token);
   const { siteId: s } = await stedOgBibliotek(token);
   if (!rad || !rad.id) return (rad && rad.fields) || {};
@@ -142,6 +157,7 @@ async function barnAv(g, d, sti) {
   return ut;
 }
 export async function prosjektmappe(token, rad, rader) {
+  if (nyKilde()) return nyProsjektmappe(token, rad);
   const g = lag(token);
   const { driveId: d } = await stedOgBibliotek(token);
   const f = (rad && (rad.fields || rad)) || {};
@@ -169,7 +185,7 @@ export async function prosjektmappe(token, rad, rader) {
 // conflictBehavior=replace: samme navn blir ny versjon i SharePoint.
 export async function lastOpp(token, mappe, underMappe, filnavn, blob, påFremdrift) {
   const g = lag(token);
-  const { driveId: d } = await stedOgBibliotek(token);
+  const d = await diskFor(token, mappe);
   const sti = R.graphSti(mappe, underMappe, R.vaskFilnavn(filnavn));
   const størrelse = blob.size;
   if (størrelse <= R.ENKEL_GRENSE) {
@@ -204,7 +220,7 @@ export async function lastOpp(token, mappe, underMappe, filnavn, blob, påFremdr
 // Svar: { item, finnes } – item er driveItem-en som ligger der nå.
 export async function lastOppNy(token, mappe, underMappe, filnavn, blob) {
   const g = lag(token);
-  const { driveId: d } = await stedOgBibliotek(token);
+  const d = await diskFor(token, mappe);
   const sti = "/drives/" + d + "/root:/" + R.graphSti(mappe, underMappe, R.vaskFilnavn(filnavn));
   const fra = await g.hent(sti);
   if (fra.ok) return { item: await fra.json(), finnes: true };
@@ -237,7 +253,7 @@ export async function lastOppNy(token, mappe, underMappe, filnavn, blob) {
 // Les (404 = tom), flett, skriv med If-Match; 412 → les på nytt, maks 3 ganger.
 export async function oppdaterOversikt(token, mappe, post) {
   const g = lag(token);
-  const { driveId: d } = await stedOgBibliotek(token);
+  const d = await diskFor(token, mappe);
   const sti = "/drives/" + d + "/root:/" + R.graphSti(mappe, R.OVERSIKT_MAPPE, R.OVERSIKT_FIL);
   for (let forsøk = 0; forsøk < 3; forsøk++) {
     let gammel = null, etag = null;
@@ -258,5 +274,145 @@ export async function oppdaterOversikt(token, mappe, post) {
   throw new Error("Oversiktsfila ble endret av noen andre tre ganger på rad – prøv igjen.");
 }
 
+// ═══════════════ 🏢 NY KILDE: SELSKAPSDELING (BYGGEPLAN 25.11) ═══════════════
+// Lista Prosjekter og Prosjektdokumenter i hvert selskaps gruppe. Brukeren ser
+// bare selskapene hen er medlem av. Det som er felles for jobben (Modell,
+// Mannskap, Kontakter, adressen …) ligger i lista Jobber på StormProsjekter og
+// legges oppå hovedprosjektene. Bare brukerens egen innlogging, som før.
+let selskapBuffer = null;
+const diskBuffer = {};
+let spSiteId = null;
+
+// Hvilke selskaper er brukeren med i? Svar = medlem; 401/403/404 = hoppes over;
+// annen feil kastes. Huskes for økten.
+export async function selskaper(token) {
+  if (selskapBuffer) return selskapBuffer;
+  const ut = [];
+  for (const omr of ["SE", "SB", "SS"]) {
+    const sti = SELSKAPSDELING.omrader[omr];
+    if (!sti) continue;
+    const r = await fetch(GRAPH + "/sites/" + HOST + ":" + sti + "?$select=id", { headers: { Authorization: "Bearer " + token } });
+    if (r.status === 401 || r.status === 403 || r.status === 404) continue;
+    if (!r.ok) throw new Error("Graph " + r.status);
+    const j = await r.json();
+    if (j && j.id) ut.push({ omr, siteId: j.id });
+  }
+  selskapBuffer = ut;
+  return ut;
+}
+async function alleSelskaper(token) {
+  const l = await selskaper(token);
+  if (!l.length) throw new IngenSelskap("Du er ikke lagt inn i noe selskap i SharePoint");
+  return l;
+}
+async function selskapSite(token, omr) {
+  const s = (await selskaper(token)).find(x => x.omr === omr);
+  if (!s) throw new IngenTilgang("403 " + omr);
+  return s.siteId;
+}
+// Lista i selskapet (adresseres på navnet, som før – ett kall spart)
+export async function prosjektListe(token, omr) {
+  return "/sites/" + await selskapSite(token, omr) + "/lists/" + R.PROSJEKT_LISTE;
+}
+// Prosjektdokumenter i selskapet
+export async function dokDisk(token, omr) {
+  if (diskBuffer[omr]) return diskBuffer[omr];
+  const g = lag(token);
+  const s = await selskapSite(token, omr);
+  diskBuffer[omr] = (await g.json("/sites/" + s + "/lists/" + encodeURIComponent(R.DOK_BIBLIOTEK) + "/drive")).id;
+  return diskBuffer[omr];
+}
+// Disken for en mappe: gammel kilde = StormProsjekter; ny kilde = selskapet i
+// første del av stien. En sti uten selskapsmappe lastes ALDRI opp (ellers kunne
+// den havnet i feil selskap).
+async function diskFor(token, mappe) {
+  if (!nyKilde()) return (await stedOgBibliotek(token)).driveId;
+  const omr = R.selskapForSti(mappe);
+  if (!omr) throw new Error("Mappa «" + String(mappe || "") + "» ligger ikke i en selskapsmappe – ingenting er lastet opp.");
+  return dokDisk(token, omr);
+}
+
+async function hentAlle(g, url, maks) {
+  const ut = [];
+  for (let i = 0; url && i < maks; i++) {
+    const j = await g.json(url);
+    ut.push(...(j.value || []));
+    url = j["@odata.nextLink"] || null;
+  }
+  return ut;
+}
+// Jobber på StormProsjekter (bare feltene Storm IFC trenger). Feiler den: tom
+// liste og en advarsel – da brukes radenes egne verdier.
+async function hentJobber(token, nummer, feltListe) {
+  try {
+    const g = lag(token);
+    if (!spSiteId) spSiteId = (await g.json("/sites/" + HOST + ":" + R.STORM_PROSJEKTER_SITE)).id;
+    let url = "/sites/" + spSiteId + "/lists/" + R.JOBBER_LISTE + "/items?$expand=fields($select=" + feltListe.join(",") + ")&$top=" + (nummer ? 50 : 999);
+    if (nummer) url += "&$filter=" + encodeURIComponent("fields/JobbNr eq '" + String(nummer).replace(/'/g, "''") + "'");
+    return await hentAlle(g, url, nummer ? 5 : 50);
+  } catch (err) {
+    console.warn("[Storm IFC] Lista Jobber kunne ikke leses – bruker prosjektradenes egne verdier.", err && err.message);
+    return [];
+  }
+}
+// Samme spørring mot hvert selskap brukeren er med i, slått sammen
+async function fraAlleSelskaper(token, sti) {
+  const g = lag(token);
+  const l = await alleSelskaper(token);
+  const deler = await Promise.all(l.map(async ({ omr }) => {
+    try {
+      return (await hentAlle(g, (await prosjektListe(token, omr)) + sti, 50)).map(r => R.medSelskap(r, omr));
+    } catch (err) {
+      if (err instanceof IngenTilgang) return [];    // mistet tilgangen siden sjekken
+      throw err;
+    }
+  }));
+  return [].concat(...deler);
+}
+async function nyHentListe(token, feltTekst, jobbFelt) {
+  const [rader, jobber] = await Promise.all([
+    fraAlleSelskaper(token, "/items?$expand=fields($select=" + feltTekst + ")&$top=999"),
+    hentJobber(token, "", jobbFelt)
+  ]);
+  return R.leggPåJobber(rader, jobber);
+}
+async function nyHentJobbRader(token, n) {
+  const [rader, jobber] = await Promise.all([
+    fraAlleSelskaper(token, "/items?$expand=fields&$top=200&$filter=" + encodeURIComponent("fields/JobbNr eq '" + n.replace(/'/g, "''") + "'")),
+    hentJobber(token, n, R.JOBB_FELT)
+  ]);
+  return R.leggPåJobber(rader, jobber);
+}
+// Én rad: id-en sier selskapet («SB:123»). En gammel id uten selskap finnes
+// ikke i ny kilde → feil, og sp-jobb.js leter på nytt.
+async function nyHentRad(token, id) {
+  const d = R.delId(id);
+  if (!d) throw new Error("Rad-id uten selskap: " + id);
+  const g = lag(token);
+  const rad = R.medSelskap(await g.json((await prosjektListe(token, d.omr)) + "/items/" + encodeURIComponent(d.id) + "?$expand=fields"), d.omr);
+  const n = R.jobbNøkkel(rad);
+  return n && !rad.fields.ForelderNokkel ? R.leggPåJobber([rad], await hentJobber(token, n, R.JOBB_FELT))[0] : rad;
+}
+// Prosjektmappa i prosjektets selskap:
+//   1. ProsjektmappeId på selskapets disk (ikke i arkivet)
+//   2. «<selskapsmappe>/<ProsjektNr> …»
+//   3. IngenMappe – gamle felles mapper og mapper i rota finnes ikke her.
+async function nyProsjektmappe(token, rad) {
+  const g = lag(token);
+  const f = (rad && (rad.fields || rad)) || {};
+  const omr = (rad && rad._omr) || (R.delId(rad && rad.id) || {}).omr || String(f.Arbeidsomrade || "").trim().toUpperCase();
+  const sm = R.selskapsmappe(omr);
+  if (!sm) throw new IngenMappe(R.prosjektPrefiks(rad));
+  const d = await dokDisk(token, omr);
+  const egen = await mappePåId(g, d, f.ProsjektmappeId);
+  if (egen) {
+    const sti = R.stiFraItem(egen);
+    if (!R.iArkiv(sti) && R.selskapForSti(sti) === omr) return { sti, navn: egen.name, id: egen.id, felles: false, omr };
+  }
+  const navn = R.finnSelskapsmappeProsjekt(await barnAv(g, d, sm), rad);
+  if (navn) return { sti: sm + "/" + navn, navn, id: "", felles: false, omr };
+  throw new IngenMappe(R.prosjektPrefiks(rad));
+}
+
 // Til testene: glem nettsted og bibliotek.
-export function _nullstill() { siteId = null; driveId = null; }
+export function _nullstill() { siteId = null; driveId = null; selskapBuffer = null; spSiteId = null; for (const k of Object.keys(diskBuffer)) delete diskBuffer[k]; }

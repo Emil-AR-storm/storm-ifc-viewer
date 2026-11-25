@@ -145,6 +145,7 @@ export async function sendTilStormProsjekter() {
     const G2 = await import("./legg-i-prosjekt-graph.js");
     if (err instanceof G2.IngenMappe) varsel(t("Prosjektet har ingen mappe ennå – åpne Dokumenter på prosjektet i Storm Prosjekter først."));
     else if (err instanceof G2.IngenTilgang) varsel(t("Du har ikke tilgang til prosjektmappa i Storm Prosjekter."));
+    else if (err instanceof G2.IngenSelskap) varsel(t("Du er ikke lagt inn i noe selskap i SharePoint"));
     else varsel(t("Klarte ikke å sende sammenligningen: {0}", (err && err.message) || err));
     return { ok: false, grunn: "feil" };
   } finally { vis(""); pågår = false; }
