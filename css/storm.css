@@ -426,6 +426,8 @@ body:not(.har-modell) #btnFit { display: none !important; }
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--radius-stor);
+  /* Rød strek øverst – felles med Storm Bemanning og Storm Prosjekter (25.11) */
+  border-top: 4px solid var(--storm-rod);
   box-shadow: var(--skygge);
   width: 400px; max-width: 100%;
   padding: 12px 20px 16px;
@@ -3506,3 +3508,8 @@ html[data-tema="lys"] #endringStripe { background: #fde8e8; color: #5a1010; }
      da viker den generelle hjelpeteksten, så de ikke går over hverandre. */
   body:has(#modeBar.open) #hint { display: none !important; }
 }
+
+/* 🆕 «NY» i innholdslista og rød prikk på Hjelp-knappen (felles hjelpeboks 25.11) */
+#hjelpKort .hk-ny { font-size: 10px; font-weight: 700; color: #fff; background: var(--storm-rod); padding: 1px 6px; border-radius: 999px; flex: none; line-height: 1.5; }
+#btnHjelp { position: relative; }
+#btnHjelp .hjelp-ny-prikk { position: absolute; top: 5px; right: 5px; width: 9px; height: 9px; border-radius: 50%; background: var(--storm-rod); pointer-events: none; }
