@@ -14,14 +14,14 @@ import { t } from "./i18n.js";
 // språket lastet. Kalt ved oppstart ville alt stått på norsk.
 export const HJELP = {
   propPanel: () => [t("Trykk på et element i modellen for å se navn, type, mål og mengder."), t("Shift + trykk velger flere — summen står øverst."), t("«Skjul» og «Bare dette» gjelder elementet du har valgt.")],
-  commentPanel: () => [t("Trykk «Markering» og så i modellen for å skrive et avvik, spørsmål eller en beskjed."), t("Status (Åpen, Pågår, Løst) og frist bestemmer fargen."), t("Trykk på en rad for å fly dit. Bilder og tegninger legges på i boblen.")],
+  commentPanel: () => [t("Trykk «Markering» og så i modellen for å skrive et avvik, spørsmål eller en beskjed."), t("Status (Åpen, Pågår, Løst) og frist bestemmer fargen."), t("Trykk på en rad for å fly dit. Bilder og tegninger legges på i boblen."), t("«Velg» lar deg endre ansvarlig, frist eller status på mange markeringer samtidig.")],
   vaerPanel: () => [t("Været på byggeplassen time for time, fra adressen i Prosjektinfo."), t("Varsel om vind for kranen, og regn og frost for støp."), t("Dra i tidslinja for å bla mellom timene og dagene.")],
   lasterPanel: () => [t("Veiledende snølast på taket og vindlast på fasadene."), t("Tallene er et anslag — RIB har siste ord.")],
-  framdriftPanel: () => [t("Plan: lag trinn med Fra–Til, trykk «+ Legg til» og velg det som utføres."), t("Rapport: ferdigmeld det som er gjort og se framdriften mot planen."), t("Glideren nederst viser bygget en valgt dag.")],
+  framdriftPanel: () => [t("Plan: lag trinn med Fra–Til, trykk «+ Legg til» og velg det som utføres."), t("Rapport: ferdigmeld det som er gjort og se framdriften mot planen."), t("Glideren nederst viser bygget en valgt dag."), t("«Lag trinn per etasje» lager ett trinn per etasje, og et nytt trinn kan gjentas i de andre etasjene.")],
   stopePanel: () => [t("«Ny etappe» lager en støp med dato."), t("«+ Legg til»: trykk elementene som støpes. «+ Felt» tegner et felt på plata."), t("«Merk som støpt» når det er gjort. Sjekklista før støp ligger under hver etappe.")],
   grupperPanel: () => [t("Velg elementer med shift + trykk eller shift + dra, og lagre utvalget med et navn."), t("Trykk på en lagret gruppe for å hente den fram igjen.")],
   terrengPanel: () => [t("Henter terreng og kart fra Kartverket rundt adressen."), t("Juster hvor bygget står og hvor høyt. Terrenget følger med ut til byggeplassen.")],
-  riggPanel: () => [t("Legg brakker, kraner, gjerder og containere på tomta."), t("Tårnkranen har løfteplan med lastkurve (kransjekk)."), t("Riggplanen kan lastes ned som PDF.")],
+  riggPanel: () => [t("Legg brakker, kraner, gjerder og containere på tomta."), t("Tårnkranen har løfteplan med lastkurve (kransjekk)."), t("Riggplanen kan lastes ned som PDF."), t("Flyttes bygget på terrenget, kan riggen flyttes med (meldingen «Flytt riggen med bygget»).")],
   swPanel: () => [t("Lager veggelementer, gulv og ringmur på stålmodeller."), t("Juster målene, og last ned instruksjonstegning (PDF) og materialliste.")],
   takPanel: () => [t("Legger TRP-plater på de øverste bjelkene."), t("Dra i platene for å justere, og lagre oppsettet med et navn.")],
   materiellPanel: () => [t("Legg vareleveranser i modellen så alle ser hvor de skal ligge."), t("Vekten brukes i løfteplanen.")],

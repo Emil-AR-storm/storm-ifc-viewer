@@ -18,6 +18,19 @@ import { t } from "./i18n.js";
 
 export const NYHETER = [
   {
+    id: "2026-11-25",
+    dato: "25.11.2026",
+    kontor: [
+      "Rød prikk og stripe når andre har endret modellen – hent endringene uten å åpne modellen på nytt",
+      "Kote: Storm IFC spør om kotene er riktige, og koten settes én gang for hele modellen",
+      "Prosjektinfo og Ansvarlig hentes fra jobben i Storm Prosjekter",
+      "Maler i Ny markering, «Velg» for å endre mange markeringer, og trinn per etasje i Framdriftsplan"
+    ],
+    bygg: [
+      "Kotene er de samme som på kontoret, og skrives som på tegningene: +6,000"
+    ]
+  },
+  {
     id: "2026-11-05",
     dato: "05.11.2026",
     kontor: [
