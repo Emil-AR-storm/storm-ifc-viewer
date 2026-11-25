@@ -36,7 +36,7 @@
 
 // ---- GENERERT BLOKK START (verktoy/lag-sw-liste.mjs) ----
 // IKKE REDIGER FOR HÅND. Kjør: node "verktoy/lag-sw-liste.mjs"
-const SW_VERSJON = "e98479fbf69b";
+const SW_VERSJON = "e54a572debad";
 const SKALL = [
   "/bygg.html",
   "/css/storm.css",
@@ -157,7 +157,7 @@ const SKALL = [
 // Innholdet i hver fil (SHA-256, 16 tegn) – uendrede filer hentes fra forrige cache.
 const SKALL_HASH = {
   "/bygg.html": "f147970651b4b2a7",
-  "/css/storm.css": "b70c4fafb7ec09b9",
+  "/css/storm.css": "56ec648df87bdb3d",
   "/img/favicon.svg": "48ffba3e7d9c7b40",
   "/img/favicon-32.png": "2f521c7514d1898c",
   "/img/apple-touch-icon.png": "76237b63b2fbe371",
@@ -187,7 +187,7 @@ const SKALL_HASH = {
   "/js/framdrift-vis.js": "c4142d3020029583",
   "/js/frist.js": "a8b9725bed7f4019",
   "/js/grupper.js": "c7f5315961ff73fc",
-  "/js/hjelp.js": "4d1b25fe12bdb6ee",
+  "/js/hjelp.js": "26cec17d4f96ef6f",
   "/js/hjul.js": "51c95daa3f6c4763",
   "/js/html-lyttere.js": "4c71f3300ce69666",
   "/js/i18n.js": "ebbcfc0da9daa439",
