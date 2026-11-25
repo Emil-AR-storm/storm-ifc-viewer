@@ -291,3 +291,31 @@ export function selskapForSti(sti) {
   const d = førsteDel(sti);
   return Object.keys(SELSKAPSMAPPER).find(k => SELSKAPSMAPPER[k].toLowerCase() === d) || "";
 }
+
+// ---------- 📂 Flate prosjektmapper (BYGGEPLAN fra Storm Prosjekter 25.11) ----------
+// I ny kilde flyttes prosjektmappene rett i selskapets bibliotek
+// («Prosjektdokumenter/292 Vaskehall/…» i stedet for «…/Storm Betong/292 …»).
+// Storm IFC regner fortsatt med stier MED selskapsmappa («Storm Betong/292 …»),
+// så alt annet er som før. Oversettelsen skjer bare mot Graph:
+//   ut: «Storm Betong/292 …» → «292 …»; bare «Storm Betong» → "" (rota)
+//   inn: parentReference.path får selskapsmappa rett etter «root:»
+// Gammelt oppsett (mappa «Storm Betong» finnes): ingen oversettelse.
+export function utSti(sti, sm, flat) {
+  const s = String(sti || "").replace(/^\/+/, "");
+  if (!flat || !sm) return s;
+  const deler = s.split("/");
+  if (deler[0].toLowerCase() !== String(sm).toLowerCase()) return s;
+  return deler.slice(1).join("/");
+}
+export function innItem(item, sm, flat) {
+  if (!flat || !sm || !item || !item.parentReference || typeof item.parentReference.path !== "string") return item;
+  const path = item.parentReference.path.replace(/^(.*?root:)(\/|$)/, (_, a, b) => a + "/" + sm + (b ? "/" : ""));
+  return Object.assign({}, item, { parentReference: Object.assign({}, item.parentReference, { path: path.replace(/\/$/, "") }) });
+}
+// Biblioteket finnes på ADRESSEN («…/Prosjektdokumenter»), ikke visningsnavnet
+// (det blir «Storm Betong prosjekter»).
+export function erProsjektdokumenter(webUrl) {
+  let u = String(webUrl || "");
+  try { u = decodeURIComponent(u); } catch (_) {}
+  return /\/prosjektdokumenter$/i.test(u.replace(/\/+$/, ""));
+}

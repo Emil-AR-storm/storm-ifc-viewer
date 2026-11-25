@@ -185,8 +185,8 @@ export async function prosjektmappe(token, rad, rader) {
 // conflictBehavior=replace: samme navn blir ny versjon i SharePoint.
 export async function lastOpp(token, mappe, underMappe, filnavn, blob, påFremdrift) {
   const g = lag(token);
-  const d = await diskFor(token, mappe);
-  const sti = R.graphSti(mappe, underMappe, R.vaskFilnavn(filnavn));
+  const k = await diskFor(token, mappe), d = k.d;
+  const sti = R.graphSti(R.utSti(mappe, k.sm, k.flat), underMappe, R.vaskFilnavn(filnavn));
   const størrelse = blob.size;
   if (størrelse <= R.ENKEL_GRENSE) {
     const r = await g.hent("/drives/" + d + "/root:/" + sti + ":/content?@microsoft.graph.conflictBehavior=replace",
@@ -220,8 +220,8 @@ export async function lastOpp(token, mappe, underMappe, filnavn, blob, påFremdr
 // Svar: { item, finnes } – item er driveItem-en som ligger der nå.
 export async function lastOppNy(token, mappe, underMappe, filnavn, blob) {
   const g = lag(token);
-  const d = await diskFor(token, mappe);
-  const sti = "/drives/" + d + "/root:/" + R.graphSti(mappe, underMappe, R.vaskFilnavn(filnavn));
+  const k = await diskFor(token, mappe), d = k.d;
+  const sti = "/drives/" + d + "/root:/" + R.graphSti(R.utSti(mappe, k.sm, k.flat), underMappe, R.vaskFilnavn(filnavn));
   const fra = await g.hent(sti);
   if (fra.ok) return { item: await fra.json(), finnes: true };
   if (fra.status !== 404) throw new Error("Graph " + fra.status);
@@ -253,8 +253,8 @@ export async function lastOppNy(token, mappe, underMappe, filnavn, blob) {
 // Les (404 = tom), flett, skriv med If-Match; 412 → les på nytt, maks 3 ganger.
 export async function oppdaterOversikt(token, mappe, post) {
   const g = lag(token);
-  const d = await diskFor(token, mappe);
-  const sti = "/drives/" + d + "/root:/" + R.graphSti(mappe, R.OVERSIKT_MAPPE, R.OVERSIKT_FIL);
+  const k = await diskFor(token, mappe), d = k.d;
+  const sti = "/drives/" + d + "/root:/" + R.graphSti(R.utSti(mappe, k.sm, k.flat), R.OVERSIKT_MAPPE, R.OVERSIKT_FIL);
   for (let forsøk = 0; forsøk < 3; forsøk++) {
     let gammel = null, etag = null;
     const meta = await g.hent(sti);
@@ -314,22 +314,43 @@ async function selskapSite(token, omr) {
 export async function prosjektListe(token, omr) {
   return "/sites/" + await selskapSite(token, omr) + "/lists/" + R.PROSJEKT_LISTE;
 }
-// Prosjektdokumenter i selskapet
+// Prosjektdokumenter i selskapet. Flate prosjektmapper (25.11): biblioteket
+// får visningsnavnet «Storm Betong prosjekter», men adressen er fortsatt
+// …/Prosjektdokumenter – derfor finnes det på adressen (webUrl), ikke navnet.
 export async function dokDisk(token, omr) {
   if (diskBuffer[omr]) return diskBuffer[omr];
   const g = lag(token);
   const s = await selskapSite(token, omr);
-  diskBuffer[omr] = (await g.json("/sites/" + s + "/lists/" + encodeURIComponent(R.DOK_BIBLIOTEK) + "/drive")).id;
+  const l = await hentAlle(g, "/sites/" + s + "/drives?$select=id,name,webUrl", 5);
+  const disk = l.find(x => R.erProsjektdokumenter(x.webUrl));
+  if (!disk) throw new Error("Fant ikke prosjektbiblioteket (…/Prosjektdokumenter) i " + (SELSKAPSDELING.mapper[omr] || omr) + ".");
+  diskBuffer[omr] = disk.id;
   return diskBuffer[omr];
+}
+// Gammelt eller nytt (flatt) oppsett i selskapets bibliotek? Finnes mappa
+// «Storm Betong» i rota, er det gammelt (stier som før). 404 = flatt.
+// Huskes for økten.
+const oppsettBuffer = {};
+async function oppsett(token, omr) {
+  const d = await dokDisk(token, omr);
+  const sm = R.selskapsmappe(omr);
+  if (!(omr in oppsettBuffer)) {
+    const r = await lag(token).hent("/drives/" + d + "/root:/" + R.graphSti(sm) + "?$select=id");
+    if (r.ok) oppsettBuffer[omr] = false;
+    else if (r.status === 404) oppsettBuffer[omr] = true;
+    else throw new Error("Graph " + r.status);
+  }
+  return { d, sm, flat: oppsettBuffer[omr], omr };
 }
 // Disken for en mappe: gammel kilde = StormProsjekter; ny kilde = selskapet i
 // første del av stien. En sti uten selskapsmappe lastes ALDRI opp (ellers kunne
 // den havnet i feil selskap).
+// Svar: { d, sm, flat } – flat = prosjektmappene ligger rett i biblioteket.
 async function diskFor(token, mappe) {
-  if (!nyKilde()) return (await stedOgBibliotek(token)).driveId;
+  if (!nyKilde()) return { d: (await stedOgBibliotek(token)).driveId, sm: "", flat: false };
   const omr = R.selskapForSti(mappe);
   if (!omr) throw new Error("Mappa «" + String(mappe || "") + "» ligger ikke i en selskapsmappe – ingenting er lastet opp.");
-  return dokDisk(token, omr);
+  return oppsett(token, omr);
 }
 
 async function hentAlle(g, url, maks) {
@@ -403,16 +424,18 @@ async function nyProsjektmappe(token, rad) {
   const omr = (rad && rad._omr) || (R.delId(rad && rad.id) || {}).omr || String(f.Arbeidsomrade || "").trim().toUpperCase();
   const sm = R.selskapsmappe(omr);
   if (!sm) throw new IngenMappe(R.prosjektPrefiks(rad));
-  const d = await dokDisk(token, omr);
-  const egen = await mappePåId(g, d, f.ProsjektmappeId);
+  const k = await oppsett(token, omr), d = k.d;
+  // Flatt oppsett: stien får selskapsmappa lagt til, så den ser ut som før
+  const egen = R.innItem(await mappePåId(g, d, f.ProsjektmappeId), sm, k.flat);
   if (egen) {
     const sti = R.stiFraItem(egen);
     if (!R.iArkiv(sti) && R.selskapForSti(sti) === omr) return { sti, navn: egen.name, id: egen.id, felles: false, omr };
   }
-  const navn = R.finnSelskapsmappeProsjekt(await barnAv(g, d, sm), rad);
+  // Flatt oppsett: barna av rota (utSti gir "")
+  const navn = R.finnSelskapsmappeProsjekt(await barnAv(g, d, R.utSti(sm, sm, k.flat)), rad);
   if (navn) return { sti: sm + "/" + navn, navn, id: "", felles: false, omr };
   throw new IngenMappe(R.prosjektPrefiks(rad));
 }
 
 // Til testene: glem nettsted og bibliotek.
-export function _nullstill() { siteId = null; driveId = null; selskapBuffer = null; spSiteId = null; for (const k of Object.keys(diskBuffer)) delete diskBuffer[k]; }
+export function _nullstill() { siteId = null; driveId = null; selskapBuffer = null; spSiteId = null; for (const k of Object.keys(diskBuffer)) delete diskBuffer[k]; for (const k of Object.keys(oppsettBuffer)) delete oppsettBuffer[k]; }
