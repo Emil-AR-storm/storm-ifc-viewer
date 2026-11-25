@@ -36,7 +36,7 @@
 
 // ---- GENERERT BLOKK START (verktoy/lag-sw-liste.mjs) ----
 // IKKE REDIGER FOR HÅND. Kjør: node "verktoy/lag-sw-liste.mjs"
-const SW_VERSJON = "e54a572debad";
+const SW_VERSJON = "46d99ad0339d";
 const SKALL = [
   "/bygg.html",
   "/css/storm.css",
@@ -171,7 +171,7 @@ const SKALL_HASH = {
   "/js/clip.js": "e4b6d94b5b9eaaf7",
   "/js/cmp-skjul.js": "1256663341f92da9",
   "/js/compare.js": "aa0aad23eef47388",
-  "/js/config.js": "4c36fc4bd01a01c8",
+  "/js/config.js": "b6ea5364c92731f7",
   "/js/csv.js": "2e189577299440b1",
   "/js/diagnose.js": "a676df6242ad407a",
   "/js/display.js": "ecbe1f1bfdb7ed76",
@@ -224,7 +224,7 @@ const SKALL_HASH = {
   "/js/profiler.js": "5da75a4643d06c84",
   "/js/prop-kompakt.js": "8af7b223ba372ad4",
   "/js/prosjektinfo-regn.js": "8bcf9390496e3b57",
-  "/js/prosjektinfo.js": "d7f7d7c920af3987",
+  "/js/prosjektinfo.js": "c7f57fa87c89f70d",
   "/js/rapport.js": "bb3c546eec0e9a08",
   "/js/regneark.js": "0632e44df4666293",
   "/js/rigg-modell.js": "8929295e8f0fd126",
