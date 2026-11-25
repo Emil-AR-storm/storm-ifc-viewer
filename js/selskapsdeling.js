@@ -36,6 +36,7 @@ export function lesAdresse(search) {
 
 export function kilde() {
   if (testKilde) return testKilde;
+  if (SELSKAPSDELING.aktiv) return "ny";   // 25.11.2026: etter omleggingen kan arkivet (gammel) ikke velges
   let fraAdresse = "";
   try { fraAdresse = typeof location !== "undefined" ? String(new URLSearchParams(location.search).get("kilde") || "").toLowerCase() : ""; } catch (_) {}
   if (GYLDIG.includes(fraAdresse)) return fraAdresse;

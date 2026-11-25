@@ -92,7 +92,7 @@ export const EGNE_PROFILER = {};
 // Storm Prosjekter. ?kilde=ny / gammel / standard på adressen overstyrer
 // (huskes i nettleseren), så den kan testes før omleggingen. Se js/selskapsdeling.js.
 export const SELSKAPSDELING = {
-  aktiv: false,
+  aktiv: true,   // omlagt 25.11.2026 (Emil, via Storm Prosjekter-chatten)
   omrader: { SE: "/sites/StormEntreprenor", SB: "/sites/StormBetong", SS: "/sites/StormStal" },
   mapper: { SE: "Storm Entreprenør", SB: "Storm Betong", SS: "Storm Stål" }
 };
