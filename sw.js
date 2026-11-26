@@ -36,7 +36,7 @@
 
 // ---- GENERERT BLOKK START (verktoy/lag-sw-liste.mjs) ----
 // IKKE REDIGER FOR HÅND. Kjør: node "verktoy/lag-sw-liste.mjs"
-const SW_VERSJON = "aa10fe2318c8";
+const SW_VERSJON = "49f435f3a51f";
 const SKALL = [
   "/bygg.html",
   "/css/storm.css",
@@ -157,7 +157,7 @@ const SKALL = [
 // Innholdet i hver fil (SHA-256, 16 tegn) – uendrede filer hentes fra forrige cache.
 const SKALL_HASH = {
   "/bygg.html": "f147970651b4b2a7",
-  "/css/storm.css": "adc93ade3e19d919",
+  "/css/storm.css": "932d1a0d57c0578a",
   "/img/favicon.svg": "48ffba3e7d9c7b40",
   "/img/favicon-32.png": "2f521c7514d1898c",
   "/img/apple-touch-icon.png": "76237b63b2fbe371",
@@ -180,11 +180,11 @@ const SKALL_HASH = {
   "/js/em-paring.js": "846fb430766a4d42",
   "/js/em-regn.js": "eb7c60d132e10f63",
   "/js/endring-regn.js": "38c5270074725504",
-  "/js/ferdig-lett.js": "c3d9a9a05c412799",
+  "/js/ferdig-lett.js": "53fcec7c7064a07d",
   "/js/framdrift-kilde.js": "a7f136d131968dfc",
   "/js/framdrift-lett.js": "e861de34cc51cfc4",
   "/js/framdrift-regn.js": "551ba81b1a2539e5",
-  "/js/framdrift-vis.js": "c4142d3020029583",
+  "/js/framdrift-vis.js": "fd6c20a2dead47d1",
   "/js/frist.js": "a8b9725bed7f4019",
   "/js/grupper.js": "c7f5315961ff73fc",
   "/js/hjelp.js": "910d39c8f2d4e63b",
@@ -213,7 +213,7 @@ const SKALL_HASH = {
   "/js/modes.js": "e6368b59b1c3aae8",
   "/js/nett.js": "7bb3e05eaeefd470",
   "/js/nevning.js": "e00cd45997ba8abe",
-  "/js/nytt.js": "4266ebf9bb33ad86",
+  "/js/nytt.js": "eb5e58b62beb5d82",
   "/js/oppsett.js": "976dd79579b7e4ee",
   "/js/outline.js": "8221bb3ebab49578",
   "/js/pdf-utseende.js": "f2ba84681f9c07fb",
