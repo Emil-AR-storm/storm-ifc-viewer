@@ -3513,3 +3513,17 @@ html[data-tema="lys"] #endringStripe { background: #fde8e8; color: #5a1010; }
 #hjelpKort .hk-ny { font-size: 10px; font-weight: 700; color: #fff; background: var(--storm-rod); padding: 1px 6px; border-radius: 999px; flex: none; line-height: 1.5; }
 #btnHjelp { position: relative; }
 #btnHjelp .hjelp-ny-prikk { position: absolute; top: 5px; right: 5px; width: 9px; height: 9px; border-radius: 50%; background: var(--storm-rod); pointer-events: none; }
+
+/* 🎯 Rapport for ett fag (Framdrift → Rapport, Emil 26.11, prøvebilde C) */
+.fr-filter { margin: 0 0 8px; }
+.fr-fag-tittel { font-weight: 600; margin-bottom: 4px; }
+.fr-fagrad { display: flex; flex-wrap: wrap; gap: 4px; }
+.fr-fag { padding: 3px 10px; font-size: 12px; border-radius: 12px; opacity: .6; min-height: 28px; }
+.fr-fag.aktiv { opacity: 1; background: var(--aktiv-bg); color: var(--aktiv-tekst); font-weight: 600; }
+.fr-fag .fr-fag-n { opacity: .7; font-weight: 400; margin-left: 2px; }
+.fr-egen { margin: 8px 0 0; }
+.fr-fag-hjelp { margin: 4px 0 0; }
+
+/* 🟢 «Status» ved «Spill av» (byggeplassen, Emil 26.11): grønn markering av/på */
+.fp-tid .fp-tid-knapper button.fp-status { opacity: .6; }
+.fp-tid .fp-tid-knapper button.fp-status.aktiv { opacity: 1; background: var(--ok); border-color: var(--ok); color: #fff; font-weight: 600; }
