@@ -3213,6 +3213,8 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Fjern raden": "Pašalinti eilutę",
   "Bemanning": "Darbuotojai",
   "samme som sist ({0})": "kaip praėjusį kartą ({0})",
+  "Framdriftsplan: det grønne (meldt ferdig) kommer etter hvert som glideren går, og «Status» slår det av og på": "Grafikas: žalia (pažymėta kaip baigta) atsiranda slankikliui judant, o „Status“ ją įjungia ir išjungia",
+  "Vis det som er meldt ferdig i grønt": "Rodyti žaliai tai, kas pažymėta kaip baigta",
   "{0} litt bak / pågår": "{0} šiek tiek vėluoja / vykdoma",
   "{0} forsinket": "{0} vėluoja",
   "Framdriftsrapporten (PDF) har bilder av modellen: ferdig, litt bak / pågår og forsinket": "Eigos ataskaitoje (PDF) yra modelio vaizdai: baigta, šiek tiek vėluoja / vykdoma ir vėluoja",

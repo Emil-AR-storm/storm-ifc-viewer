@@ -3213,6 +3213,8 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Fjern raden": "Remove row",
   "Bemanning": "Manning",
   "samme som sist ({0})": "same as last time ({0})",
+  "Framdriftsplan: det grønne (meldt ferdig) kommer etter hvert som glideren går, og «Status» slår det av og på": "Progress plan: the green (reported complete) appears as the slider moves, and «Status» turns it on and off",
+  "Vis det som er meldt ferdig i grønt": "Show what is reported complete in green",
   "{0} litt bak / pågår": "{0} slightly behind / in progress",
   "{0} forsinket": "{0} delayed",
   "Framdriftsrapporten (PDF) har bilder av modellen: ferdig, litt bak / pågår og forsinket": "The progress report (PDF) has pictures of the model: complete, slightly behind / in progress and delayed",

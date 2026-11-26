@@ -24,7 +24,9 @@ export const NYHETER = [
       "Framdrift → Rapport: «Rapport for» lager rapporten, PDF-en og Excel for ett fag (Stål, Betong …) – til underentreprenørene",
       "Framdriftsrapporten (PDF) har bilder av modellen: ferdig, litt bak / pågår og forsinket"
     ],
-    bygg: []
+    bygg: [
+      "Framdriftsplan: det grønne (meldt ferdig) kommer etter hvert som glideren går, og «Status» slår det av og på"
+    ]
   },
   {
     id: "2026-11-25",

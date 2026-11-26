@@ -21,7 +21,7 @@ import { varsel } from "./varsel.js";
 import { idFor, slagFor, synlige } from "./framdrift-regn.js";
 import { sikreNavn, sendHendelse } from "./markers.js";
 import { forHverTrekant, hitID, pick, pickEkstra } from "./elements.js";
-import { finnObjekter } from "./framdrift-vis.js";
+import { erBygget, finnObjekter } from "./framdrift-vis.js";
 
 const LOKAL = "storm-bp-ferdig";
 const DAGER = 21;
@@ -172,10 +172,31 @@ function rydd() { gruppe.children.forEach(m => { if (!m.userData.delt) m.geometr
 const mat = (farge, op) => new THREE.MeshBasicMaterial({ color: farge, transparent: true, opacity: op, side: THREE.DoubleSide,
   polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1, depthWrite: false });
 const panelApent = () => { const p = $("framdriftPanel"); return !!(p && p.classList.contains("open")); };
+// 🟢 «Status»-knappen ved «Spill av» (Emil 26.11): den grønne markeringen av
+// og på. Huskes på telefonen. Det valgte (blått) i Ferdigmeld vises uansett.
+const VIS_LS = "storm-bp-ferdig-vis";
+let visGronn = (() => { try { return localStorage.getItem(VIS_LS) !== "0"; } catch (_) { return true; } })();
+S.ferdigLettStatus = (paa) => {
+  if (paa === undefined) return visGronn;
+  visGronn = !!paa;
+  try { localStorage.setItem(VIS_LS, visGronn ? "1" : "0"); } catch (_) {}
+  tegnFarger();
+  return visGronn;
+};
+// Grønt bare for det som er ferdig OG bygget på datoen glideren står på –
+// markeringen kommer etter hvert som trinnene lastes inn (Emil 26.11).
+const gronne = () => (visGronn ? [...ferdig()].filter(k => !valgt.has(k) && erBygget(k)) : []);
+let sistGronne = "";
+// framdrift-vis.js sier fra når glideren har flyttet seg: tegn bare på nytt når
+// settet faktisk er endret (ikke hvert bilde under «Spill av»)
+S.framdriftVistEndret = () => {
+  if (!panelApent() && !modus) return;
+  if (gronne().join("|") !== sistGronne) tegnFarger();
+};
 function tegnFarger() {
   rydd();
+  sistGronne = "";
   if (!panelApent() && !modus) return;
-  const f = ferdig();
   const lag = (nokler, farge, op) => {
     const ider = new Set([...nokler].filter(k => slagFor(k) === "id").map(k => Number(idFor(k))));
     if (ider.size && S.modelGroup) {
@@ -199,7 +220,9 @@ function tegnFarger() {
       });
     }
   };
-  lag([...f].filter(k => !valgt.has(k)), 0x3cb44b, 0.7);
+  const g = gronne();
+  sistGronne = g.join("|");
+  if (g.length) lag(g, 0x3cb44b, 0.7);
   if (valgt.size) lag(valgt, 0x3b82f6, 0.85);
 }
 function oppdater() { if (S.framdriftLettTegn) S.framdriftLettTegn(); else tegnFarger(); }

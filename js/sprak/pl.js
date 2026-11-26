@@ -3213,6 +3213,8 @@ export default {  // ---------- Toppbar og verktøylinje ----------
   "Fjern raden": "Usuń wiersz",
   "Bemanning": "Obsada",
   "samme som sist ({0})": "jak ostatnio ({0})",
+  "Framdriftsplan: det grønne (meldt ferdig) kommer etter hvert som glideren går, og «Status» slår det av og på": "Harmonogram: zielone (zgłoszone jako gotowe) pojawia się w miarę przesuwania suwaka, a «Status» je włącza i wyłącza",
+  "Vis det som er meldt ferdig i grønt": "Pokaż na zielono to, co zgłoszono jako gotowe",
   "{0} litt bak / pågår": "{0} lekko opóźnione / w toku",
   "{0} forsinket": "{0} opóźnione",
   "Framdriftsrapporten (PDF) har bilder av modellen: ferdig, litt bak / pågår og forsinket": "Raport postępu (PDF) zawiera obrazy modelu: gotowe, lekko opóźnione / w toku i opóźnione",

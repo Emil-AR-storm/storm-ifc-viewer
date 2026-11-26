@@ -304,6 +304,14 @@ export function settVideoModus(fn) { andelOverstyring = typeof fn === "function"
 let status = { skjulteIfc: 0, steg: [], tonet: 0, skjult: 0 };
 export const framdriftStatus = () => JSON.parse(JSON.stringify(status));
 
+// 🟢 Er objektet bygget (helt synlig) på datoen glideren står på? Brukes av den
+// grønne ferdig-markeringen på byggeplassen (ferdig-lett.js, Emil 26.11: «den
+// grønne markeringen skal dukke opp ettersom de lastes inn i framdriftsplanen»).
+// Objekter som ikke ligger i noe trinn, og alt når glideren ikke er i bruk: ja.
+let vistAndel = null;
+export function erBygget(k) { return !vistAndel || !vistAndel.has(k) || vistAndel.get(k) >= 1; }
+const meldVist = () => { if (S.framdriftVistEndret) { try { S.framdriftVistEndret(); } catch (_) {} } };
+
 export function tegnFramdrift(paa) {
   if (paa !== undefined) aktiv = !!paa;
   sistTegnet = Date.now();
@@ -388,6 +396,8 @@ export function tegnFramdrift(paa) {
   for (const [o, a] of fade) { tone(o, a); if (a <= 0) nSkjult++; else nTonet++; }
   framdriftGroup.visible = true;
   status = { skjulteIfc: ifc.size, steg, tonet: nTonet, skjult: nSkjult };
+  vistAndel = alleA;
+  meldVist();
 }
 
 function gjenopprettAlt() {
@@ -397,6 +407,7 @@ function gjenopprettAlt() {
   for (const o of tonet) gjenopprettObjekt(o);
   tonet.clear();
   status = { skjulteIfc: 0, steg: [], tonet: 0, skjult: 0 };
+  if (vistAndel) { vistAndel = null; meldVist(); }
 }
 // Planen er endret (objekter lagt til/tatt ut): rekkefølge og geometri på nytt
 export function framdriftPlanEndret() {
@@ -589,6 +600,9 @@ export function tegnTidslinje(apen) {
     '<div class="st-tid-topp"><span id="fpTidTekst">' + toppTekst() + "</span>" +
       '<span class="fp-tid-knapper">' +
         '<button id="fpTidSpill">' + esc(spiller ? t("Pause") : t("Spill av")) + "</button>" +
+        // 🟢 «Status» (byggeplassen, Emil 26.11): den grønne ferdig-markeringen av og på
+        (S.ferdigLettStatus ? '<button id="fpTidStatus" class="fp-status' + (S.ferdigLettStatus() ? " aktiv" : "") + '" aria-pressed="' + (S.ferdigLettStatus() ? "true" : "false") +
+          '" title="' + esc(t("Vis det som er meldt ferdig i grønt")) + '">' + esc(t("Status")) + "</button>" : "") +
         '<button id="fpTidIdag"' + (iDag >= sp.a && iDag < sp.b ? "" : " disabled") + ">" + esc(t("I dag")) + "</button>" +
         '<button id="fpTidFerdig"' + (S.framdriftTid == null ? " disabled" : "") + ">" + esc(t("Alt ferdig")) + "</button>" +
       "</span></div>" +
@@ -601,6 +615,12 @@ export function tegnTidslinje(apen) {
   g.oninput = () => { stoppAvspilling(); settFramdriftTid(sp.a + Number(g.value), false); oppdaterBarer(); };
   g.onchange = () => tegnTidslinje();
   $("fpTidSpill").onclick = () => { if (spiller) stoppAvspilling(); else spillAv(); oppdaterTopp(); };
+  const st = $("fpTidStatus");
+  if (st) st.onclick = () => {
+    const paa = !S.ferdigLettStatus();
+    S.ferdigLettStatus(paa);
+    st.classList.toggle("aktiv", paa); st.setAttribute("aria-pressed", paa ? "true" : "false");
+  };
   $("fpTidIdag").onclick = () => { stoppAvspilling(); settFramdriftTid(iDag + 0.5, true); };
   $("fpTidFerdig").onclick = () => { stoppAvspilling(); settFramdriftTid(null, true); };
   el.querySelectorAll(".fp-bar").forEach(b => b.onclick = () => { stoppAvspilling(); settFramdriftTid(Number(b.dataset.slutt), true); });
