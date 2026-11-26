@@ -283,7 +283,8 @@ export function utsnitt(nokler) {
   for (const e of [minE, maxE]) for (const n of [minN, maxN]) for (const y of [bunnY, toppY])
     punkter.push(new THREE.Vector3(base.c.x + (e * ost.x + n * nord.x) / base.skala, y, base.c.z + (e * ost.z + n * nord.z) / base.skala));
   const rM = Math.max(maxE - minE, maxN - minN) / 2 + marg;
-  return { base, nord, ost, senter, bunnY, toppY, punkter, rM };
+  // bE/bN: utstrekningen øst–vest og nord–sør (framdriftsrapportens skråbilde velger langsiden)
+  return { base, nord, ost, senter, bunnY, toppY, punkter, rM, bE: maxE - minE, bN: maxN - minN };
 }
 
 // ═══════════════════════ HOVEDINNGANGEN ═══════════════════════

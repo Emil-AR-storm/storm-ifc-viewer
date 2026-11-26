@@ -613,11 +613,13 @@ function tegnOversikt(base, senter, nord, ost, rM, bunnY, flisB, flisH, punkter)
 // 📅 Kameraene og tegningen hver for seg, så framdriftsplanen (js/framdrift-pdf.js)
 // kan bruke NØYAKTIG de samme skråbildene: samme vinkel, utsnitt, sol og dis.
 // Returnerer [{ id, navn, kam, skygge, taake }] i OVERSIKTSBILDER-rekkefølge.
-export function oversiktKameraer(base, senter, nord, ost, rM, bunnY, aspekt, punkter) {
+// `bilder`: egne retninger i stedet for de fire himmelretningene (framdriftsrapportens
+// skråbilde, ferdig-bilder.js) – [{ id, navn, fra: { e, n } }].
+export function oversiktKameraer(base, senter, nord, ost, rM, bunnY, aspekt, punkter, bilder) {
   const maksAvstand = oversiktAvstand(rM, OVERSIKT_FOV, aspekt) / base.skala;
   const v = OVERSIKT_VINKEL * Math.PI / 180;
   const mål = new THREE.Vector3(senter.x, bunnY, senter.z);
-  return OVERSIKTSBILDER.map(b => {
+  return (bilder || OVERSIKTSBILDER).map(b => {
     // retningen kameraet står i, i scenen
     const dx = b.fra.e * ost.x + b.fra.n * nord.x, dz = b.fra.e * ost.z + b.fra.n * nord.z;
     const retning = new THREE.Vector3(dx * Math.cos(v), Math.sin(v), dz * Math.cos(v)).normalize();
@@ -632,7 +634,8 @@ export function oversiktKameraer(base, senter, nord, ost, rM, bunnY, aspekt, pun
   });
 }
 export function tegnOversiktBilde(o, pxB, pxH) {
-  return tegnMedKamera(o.kam, pxB, pxH, { skygge: o.skygge, himmel: true, taake: o.taake });
+  // himmel: false = hvit bakgrunn (framdriftsrapportens bilder, 26.11)
+  return tegnMedKamera(o.kam, pxB, pxH, { skygge: o.skygge, himmel: o.himmel !== false, taake: o.taake });
 }
 
 // ═══════════════════════ HOVEDINNGANGEN ═══════════════════════

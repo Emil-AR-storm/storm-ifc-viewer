@@ -21,7 +21,8 @@ export const NYHETER = [
     id: "2026-11-26",
     dato: "26.11.2026",
     kontor: [
-      "Framdrift → Rapport: «Rapport for» lager rapporten, PDF-en og Excel for ett fag (Stål, Betong …) – til underentreprenørene"
+      "Framdrift → Rapport: «Rapport for» lager rapporten, PDF-en og Excel for ett fag (Stål, Betong …) – til underentreprenørene",
+      "Framdriftsrapporten (PDF) har bilder av modellen: ferdig, litt bak / pågår og forsinket"
     ],
     bygg: []
   },

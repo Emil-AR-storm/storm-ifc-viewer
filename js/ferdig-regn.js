@@ -410,3 +410,30 @@ export function filterNavn(filter, typeNavn, T) {
   else if (f.mat.startsWith("s:")) deler.push(tt(SLAG_GRUPPE[f.mat.slice(2)] || f.mat.slice(2)));
   return deler.join(" · ");
 }
+
+// ═══════════ 📷 BILDENE I FRAMDRIFTSRAPPORTEN (Emil 26.11) ═══════════
+// Ett bilde per kategori som har objekter: ferdig (grønn), litt bak/pågår
+// (gul) og forsinket (rød). «Ikke startet» (grå) får ikke bilde.
+export const BILDE_KATEGORIER = [
+  { farge: "gronn", tittel: "Ferdig" },
+  { farge: "gul", tittel: "Litt bak / pågår" },
+  { farge: "rod", tittel: "Forsinket" }
+];
+export function bildeKategorier(r) {
+  const rader = (r && r.rader) || [];
+  return BILDE_KATEGORIER.map(k => Object.assign({}, k, { n: rader.filter(x => x.farge === k.farge).length }));
+}
+// Hvor kameraet står (øst/nord, enhetsvektor): på langsiden av bygget, dreid
+// 30° mot hjørnet, så både langsiden og gavlen synes. Bygget er bredest
+// øst–vest → fra sør mot sørvest; ellers fra vest mot sørvest.
+export function skraaRetning(bE, bN) {
+  const a = 30 * Math.PI / 180;
+  return (Number(bE) || 0) >= (Number(bN) || 0)
+    ? { e: -Math.sin(a), n: -Math.cos(a) }
+    : { e: -Math.cos(a), n: -Math.sin(a) };
+}
+// Teksten over bildet: «Ferdig – 67 av 89», «Litt bak / pågår – 2»
+export function bildeTekst(b, T) {
+  const tt = T || ((x) => x);
+  return b.farge === "gronn" ? tt("{0} av {1} ferdig", b.n, b.av) : tt(b.farge === "gul" ? "{0} litt bak / pågår" : "{0} forsinket", b.n);
+}

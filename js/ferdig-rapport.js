@@ -85,6 +85,7 @@ function statusPdf(d, r, o) {
     strek(d, x + 62, y + 1, B - 62 - 42, 4, ty.pst, FARGE.gronn, null);
     y += 10;
   }
+  return y;
 }
 
 function internPdf(d, r, o) {
@@ -180,15 +181,48 @@ function internPdf(d, r, o) {
       tekst(d, t("{0} arb.dager over", f.dagerOver), x + B, y, { str: 7.5, align: "right", farge: FARGE.rod });
       y += 4.6;
     }
-    if (r.forsinket.length > MAKS) tekst(d, t("… og {0} til — hele lista står i Excel-arket.", r.forsinket.length - MAKS), x, y + 2, { str: 8, farge: grå });
+    if (r.forsinket.length > MAKS) { tekst(d, t("… og {0} til — hele lista står i Excel-arket.", r.forsinket.length - MAKS), x, y + 2, { str: 8, farge: grå }); y += 6; }
   }
+  return y;
+}
+
+// ═══════════ 📷 BILDENE AV MODELLEN (Emil 26.11) ═══════════
+// Ett skråbilde per kategori med objekter: ferdig (grønn), litt bak/pågår
+// (gul), forsinket (rød). Resten av modellen er gjennomsiktig (ferdig-bilder.js).
+const PX_PER_MM = 6;
+// Emil 26.11 valgte prøvebilde A: store bilder (full bredde) rett under tallene,
+// videre på neste side ved behov. I både Status og Intern.
+const BILDE_MM = [180, 100];
+async function lagBilder(r) {
+  try { return await (await import("./ferdig-bilder.js")).lagBilder(r, Math.round(BILDE_MM[0] * PX_PER_MM), Math.round(BILDE_MM[1] * PX_PER_MM)); }
+  catch (err) { console.warn("Framdriftsrapport: bildene feilet:", err && err.message); return []; }   // rapporten kommer uansett
+}
+function leggBilder(d, r, o, y, bilder, intern) {
+  if (!bilder.length) return y;
+  const x = A4.marg, B = A4.b - 2 * A4.marg;
+  const [bb, hh] = BILDE_MM;
+  const tittel = intern ? t("Plan mot faktisk {0}", norskDato(r.iDag)) : t("Status {0}", norskDato(r.iDag));
+  y += 4;
+  for (const bl of bilder) {
+    if (y + hh + 10 > A4.h - 22) { d.addPage("a4", "portrait"); y = side(d, o, kicker(r, intern), tittel); }
+    // Overskriften: fargeruten og «332 av 573 ferdig» / «188 litt bak / pågår» / «18 forsinket»
+    d.setFillColor(...FARGE[bl.farge]); d.roundedRect(x, y - 0.2, 3.6, 3.6, 0.6, 0.6, "F");
+    tekst(d, F.bildeTekst(bl, t), x + 5.5, y + 3, { str: 10, fet: true });
+    y += 6;
+    d.addImage(bl.data, "JPEG", x + (B - bb) / 2, y, bb, hh);
+    d.setDrawColor(221, 224, 229); d.setLineWidth(0.2); d.rect(x + (B - bb) / 2, y, bb, hh);
+    y += hh + 8;
+  }
+  return y;
 }
 
 export async function lastNedPdf(r, slag) {
   const jsPDF = await hentJsPDF();
   const d = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
   const o = { logo: await finnLogo() };
-  if (slag === "intern") internPdf(d, r, o); else statusPdf(d, r, o);
+  const bilder = await lagBilder(r);
+  const y = slag === "intern" ? internPdf(d, r, o) : statusPdf(d, r, o);
+  leggBilder(d, r, o, y, bilder, slag === "intern");
   const n = d.getNumberOfPages(), bredde = A4.b - 2 * A4.marg;
   for (let i = 1; i <= n; i++) {
     d.setPage(i);
