@@ -37,7 +37,7 @@ import { LETT } from "./lett.js";
 // kort med `ny: NY_VERSJON` får «NY» i innholdslista til hjelpen er åpnet én
 // gang. Hjelp-knappen har en rød prikk så lenge det finnes kort du ikke har
 // sett. Ved neste runde nye kort: sett NY_VERSJON til ny dato og merk kortene.
-export const NY_VERSJON = "2026-11-25";
+export const NY_VERSJON = "2026-11-26";   // siste runde nye kort (Rapport for ett fag)
 export const SETT_NOKKEL = "storm.hjelp.sett";
 
 // hvor: "bygg" = byggeplass-siden, "kontor" = index.html, "begge" = begge
@@ -126,42 +126,42 @@ export const KORT = [
   },
   // ---------- Nytt 23.–25.11 (Emil 25.11: «legg inn funksjonene som ikke ligger i hjelp») ----------
   {
-    hvor: "kontor", ikonNavn: "markeringer", ny: NY_VERSJON,
+    hvor: "kontor", ikonNavn: "markeringer", ny: "2026-11-25",
     tittel: "Rød prikk: noen andre har endret modellen",
     tekst: "Har noen andre lagret markeringer, rigg, framdrift, støpeplan, ferdigmeldinger, grupper eller prosjektinfo på modellen du har åpen, får SharePoint-prikken oppe til høyre en rød prikk. En rød stripe under toppen sier hva som er endret og av hvem. Trykk Hent endringene: bare det som er endret hentes, og modellen, kameraet og det du har åpent blir stående. Senere skjuler stripa til neste endring, og et trykk på prikken viser lista. Det du lagrer selv, gir aldri prikk."
   },
   {
-    hvor: "kontor", ikonNavn: "kote", ny: NY_VERSJON,
+    hvor: "kontor", ikonNavn: "kote", ny: "2026-11-25",
     tittel: "Kote: er kotene meter over havet?",
     tekst: "Starter bygget mellom −5 og +5 m, vet ikke Storm IFC om kotene er meter over havet eller målt fra bygget. Da står det en gul «?» på Kote, og første gang du tar en kote spør Storm IFC: Er dette riktig kote? Svar Ja, kotene er riktige, eller trykk på en flat, vannrett flate du kjenner koten til (for eksempel overkant gulv) og skriv koten fra tegningen. Hele modellen flyttes like mye. Koten kan også settes i Innstillinger → Prosjektinfo. Den lagres i SharePoint og gjelder for kollegaene, byggeplassen og terrenget. Koter skrives som på tegningene: +6,000."
   },
   {
-    hvor: "kontor", ikonNavn: "innstillinger", ny: NY_VERSJON,
+    hvor: "kontor", ikonNavn: "innstillinger", ny: "2026-11-25",
     tittel: "Prosjektinfo fra Storm Prosjekter",
     tekst: "Er modellen koblet til en jobb i Storm Prosjekter (Modell-feltet på prosjektet), fylles Prosjektinfo i Innstillinger ut av seg selv: navn, nummer, byggherre, prosjektleder, telefon og byggeplassens adresse. ✓ hentet betyr at feltet kom derfra. Skriver du noe annet, står det ✎ endret her, og feltet røres ikke. Hent på nytt fra Storm Prosjekter overskriver alt (kan angres). Bare koblingen huskes – informasjonen hentes fersk hver gang modellen åpnes."
   },
   {
-    hvor: "kontor", ikonNavn: "markering", ny: NY_VERSJON,
+    hvor: "kontor", ikonNavn: "markering", ny: "2026-11-25",
     tittel: "Ny markering: maler, ansvarlig og frist",
     tekst: "Malene øverst (Mangler armering, Feil høyde …) fyller teksten med ett trykk, og + Egen lager din egen. Ansvarlig viser bare folkene som er lagt inn på jobben i Storm Prosjekter: prosjektledere, BAS og kontakter som er Storms ansatte. Er ingen lagt inn, vises alle ansatte. Ansvarlig og frist fylles ut fra standarden for faget (Innstillinger → Nye markeringer) eller den du brukte sist. Lagrer du uten tekst, får du et varsel – markeringen forsvinner ikke."
   },
   {
-    hvor: "kontor", ikonNavn: "rediger", ny: NY_VERSJON,
+    hvor: "kontor", ikonNavn: "rediger", ny: "2026-11-25",
     tittel: "Endre mange markeringer på én gang",
     tekst: "Trykk Velg i markeringslista og kryss av markeringene. Shift + klikk velger alt imellom, og Velg alle tar hele lista. Trykk Endre N markeringer og sett ansvarlig, frist eller status for alle samtidig – det som står på (uendret), røres ikke. Én Ctrl+Z angrer alt."
   },
   {
-    hvor: "kontor", ikonNavn: "framdrift", ny: NY_VERSJON,
+    hvor: "kontor", ikonNavn: "framdrift", ny: "2026-11-25",
     tittel: "Framdrift: per etasje, gjenta og ferdigmeld",
     tekst: "Lag trinn per etasje gir ett trinn per etasje med det du har valgt, og du ser det i 3D før du lagrer. Etter et nytt trinn kommer Gjenta handlingen: de samme elementene i de andre etasjene, ett nytt trinn per etasje. Navnet på trinnet foreslås av seg selv (for eksempel «Søyler HEB200 2. etasje») – trykk Tab for å bruke forslaget. ✓ Alt ferdig på trinnet ferdigmelder alt i trinnet på én gang, med datoen du velger."
   },
   {
-    hvor: "kontor", ikonNavn: "rigg", ny: NY_VERSJON,
+    hvor: "kontor", ikonNavn: "rigg", ny: "2026-11-25",
     tittel: "Riggen og bygget på tomta",
     tekst: "Riggen står fast på tomta. Flytter eller dreier du bygget på terrenget, kommer det en melding med Flytt riggen med bygget – trykk den hvis riggen skal stå likt rundt bygget. Hentes terrenget et helt annet sted, følger riggen bygget av seg selv. Står noe over 1 km unna (lagt inn med et annet terreng), får du Flytt dem til bygget. Alt kan angres med Ctrl+Z."
   },
   {
-    hvor: "kontor", ikonNavn: "lastned", ny: NY_VERSJON,
+    hvor: "kontor", ikonNavn: "lastned", ny: "2026-11-25",
     tittel: "Legg i prosjekt",
     tekst: "Last ned ▾ → Legg i prosjekt legger fila rett i prosjektmappa til jobben i Storm Prosjekter, i riktig undermappe. Jobben finnes fra modellen; har jobben flere selskaper (Storm Entreprenør, Betong og Stål), velger du hvilket, og fila havner i mappa til det selskapet. Du ser mappa før du trykker, og kan endre undermappen. Signerte dagsrapporter legges der av seg selv."
   },
@@ -339,6 +339,11 @@ export const KORT = [
     hvor: "kontor", ikonNavn: "framdrift",
     tittel: "Framdriftsrapport: hvor langt har vi kommet?",
     tekst: "Fanen 📊 Rapport i Framdriftsplan viser hvor mye som er ferdig — totalt og per elementtype. Trykk ✅ Ferdigmeld, trykk på det som er ferdig i modellen (shift + dra for mange) og trykk Ferdig. Ikke ferdig virker på samme måte og tar det tilbake. Den hvite streken på hver linje er der planen sier dere skal være i dag, regnet jevnt over hvert trinn fra Fra- til Til-dato. Farge: grønn i rute, gul litt bak, rød forsinket. Modellen farges likt: grønn ferdig, gul pågår, rød skulle vært ferdig, grå ikke startet. To nedlastinger: Intern (plan mot faktisk, trinn, forsinkede og hvert objekt i Excel) til dere selv, og Status (bare % ferdig per elementtype) til byggherre og andre mottakere. Telles i antall objekter, arbeidsdager er mandag–fredag."
+  },
+  {
+    hvor: "kontor", ikonNavn: "framdrift", ny: NY_VERSJON,
+    tittel: "Rapport for ett fag",
+    tekst: "I fanen 📊 Rapport i Framdriftsplan velger du hva rapporten gjelder under Rapport for: Hele bygget, eller ett fag som Stål, Betong, SW-elementer eller Takplater (knappene lages av modellen). ⚙ Egendefinert gir de samme nedtrekkene som i Mengder: objekttype og materiale. Tallene, S-kurven, PDF og Excel gjelder da bare faget, og resten av bygget blir grått i modellen. Fint til en underentreprenør som bare har ansvar for sitt fag. Valget huskes for modellen. Storm Prosjekter får fortsatt framdriften for hele bygget."
   },
   {
     hvor: "kontor", ikonNavn: "framdrift",

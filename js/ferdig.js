@@ -75,7 +75,7 @@ S.ferdigStatusSnart = statusSnart;
 export async function skrivStatus() {
   if (!S.modelGroup || !S.fileName || !spPaalogget()) return { skrevet: false };
   const forFil = S.fileName;
-  const r = await beregn();
+  const r = await beregnHele();   // hele bygget – fagfilteret gjelder bare skjermen og nedlastingene
   if (S.fileName !== forFil) return { skrevet: false };
   const st = F.statusSammendrag(r, { modell: forFil, oppdatert: new Date().toISOString(), av: mittNavn() });
   const n = F.statusNokkel(st);
@@ -128,7 +128,9 @@ export async function univers() {
       for (const id of ider) {
         const me = metaFor(id) || {};
         if (F.ikkeTell(me.typeName)) continue;
-        ifc.push({ k: nokkel("id", id), gid: me.globalId || "", gruppe: F.gruppeFor(me.typeName), navn: me.name || me.objectType || "" });
+        // type og mat: til «Rapport for» (fagfilteret, 26.11) – samme kilde som Mengder
+        ifc.push({ k: nokkel("id", id), gid: me.globalId || "", gruppe: F.gruppeFor(me.typeName), navn: me.name || me.objectType || "",
+          type: String(me.typeName || "").replace(/^Ifc/, ""), mat: me.material || "" });
       }
     }
     universBuffer = ifc; universNokkel = n;
@@ -295,9 +297,89 @@ const STATUS_FARGE = { gronn: "var(--ok)", gul: "var(--warn)", rod: "var(--dange
 const p1 = (x) => (Math.round(x * 10) / 10).toLocaleString("no-NO");
 const iDagISO = () => { const d = new Date(); const to = (n) => String(n).padStart(2, "0"); return d.getFullYear() + "-" + to(d.getMonth() + 1) + "-" + to(d.getDate()); };
 
+// 🎯 RAPPORT FOR ETT FAG (Emil 26.11, prøvebilde C): fagknapper + «Egendefinert»
+// (nedtrekkene fra Mengder). Valget huskes per modell i denne nettleseren.
+// Skjermen, S-kurven, fargene og PDF/Excel følger utvalget. Status til Storm
+// Prosjekter (skrivStatus) gjelder ALLTID hele bygget.
+const FILTER_LS = "storm-ifc-rapportfilter::";
+let filter = F.TOMT_FILTER, filterFil = null, visEgen = false;
+let sisteUnivers = [];
+let E = null;   // elements.js (materialGruppe, typeVisning, materialVisning) – lastes når den trengs
+async function elMod() { if (!E) E = await import("./elements.js"); return E; }
+export function gjeldendeFilter() {
+  const fil = S.fileName || "";
+  if (filterFil !== fil) {
+    filterFil = fil;
+    try { filter = F.vaskFilter(JSON.parse(localStorage.getItem(FILTER_LS + fil) || "null")); } catch (_) { filter = F.vaskFilter(null); }
+    visEgen = !!(filter.type || filter.mat.startsWith("m:"));
+  }
+  return filter;
+}
+export function settFilter(f) {
+  gjeldendeFilter();
+  filter = F.vaskFilter(f);
+  try {
+    if (F.harFilter(filter)) localStorage.setItem(FILTER_LS + (S.fileName || ""), JSON.stringify(filter));
+    else localStorage.removeItem(FILTER_LS + (S.fileName || ""));
+  } catch (_) { /* uten lagring: gjelder til siden lukkes */ }
+}
+
 export async function beregn() {
-  sisteRapport = F.rapport(await univers(), S.ferdig, S.framdrift, iDagISO());
+  const u = await univers();
+  sisteUnivers = u;
+  const f = gjeldendeFilter();
+  let utvalg = "", liste = u;
+  if (F.harFilter(f)) {
+    const E2 = await elMod();
+    liste = F.filtrerUnivers(u, f, E2.materialGruppe);
+    // Faget finnes ikke i modellen lenger (ny versjon): hele bygget
+    if (!liste.length) { liste = u; settFilter(null); }
+    else utvalg = F.filterNavn(f, E2.typeVisning, t);
+  }
+  sisteRapport = F.rapport(liste, S.ferdig, S.framdrift, iDagISO());
+  if (utvalg) sisteRapport.utvalg = utvalg;
   return sisteRapport;
+}
+// Hele bygget, uansett filter (status til Storm Prosjekter)
+async function beregnHele() { return F.rapport(await univers(), S.ferdig, S.framdrift, iDagISO()); }
+
+function filterHtml(u, E2) {
+  const f = gjeldendeFilter();
+  const knapper = F.fagKnapper(u, E2.materialGruppe);
+  const chip = (verdi, tekst, aktiv) => '<button type="button" class="fr-fag' + (aktiv ? " aktiv" : "") + '" data-fag="' + esc(verdi) + '">' + tekst + "</button>";
+  let h = '<div class="fr-filter"><div class="set-hjelp fr-fag-tittel">' + esc(t("Rapport for")) + '</div><div class="fr-fagrad">' +
+    chip("", esc(t("Hele bygget")), !visEgen && !F.harFilter(f)) +
+    knapper.map(k => chip(k.mat, esc(t(k.navn)) + ' <span class="fr-fag-n">' + k.n + "</span>", !visEgen && f.mat === k.mat && !f.type)).join("") +
+    '<button type="button" class="fr-fag' + (visEgen ? " aktiv" : "") + '" id="frFagEgen">⚙ ' + esc(t("Egendefinert …")) + "</button></div>";
+  if (visEgen) {
+    const v = F.egendefinertValg(u, f, E2.materialGruppe);
+    const matF = f.mat.startsWith("s:") ? "" : f.mat;
+    h += '<div class="qty-filtre fr-egen"><label class="qty-type-velg">' + esc(t("Objekttype")) + '<select id="frFagType">' +
+        '<option value="">' + esc(t("Alle typer ({0} stk)", v.alleTyper)) + "</option>" +
+        v.typer.map(([ty, n]) => '<option value="' + esc(ty) + '"' + (ty === f.type ? " selected" : "") + ">" + esc(E2.typeVisning(ty)) + " (" + n + esc(t(" stk")) + ")</option>").join("") +
+      "</select></label>" +
+      '<label class="qty-type-velg">' + esc(t("Materiale")) + '<select id="frFagMat">' +
+        '<option value="">' + esc(t("Alle materialer ({0} stk)", v.alleMat)) + "</option>" +
+        (v.grupper.length ? '<optgroup label="' + esc(t("Materialgrupper")) + '">' + v.grupper.map(([g, n]) =>
+          '<option value="g:' + esc(g) + '"' + ("g:" + g === matF ? " selected" : "") + ">" + esc(t(g)) + " (" + n + esc(t(" stk")) + ")</option>").join("") + "</optgroup>" : "") +
+        (v.materialer.length ? '<optgroup label="' + esc(t("Enkeltmaterialer")) + '">' + v.materialer.map(([m, n]) =>
+          '<option value="m:' + esc(m) + '"' + ("m:" + m === matF ? " selected" : "") + ">" + esc(E2.materialVisning(m)) + " (" + n + esc(t(" stk")) + ")</option>").join("") + "</optgroup>" : "") +
+      "</select></label></div>";
+  }
+  const navn = F.harFilter(f) ? F.filterNavn(f, E2.typeVisning, t) : "";
+  h += '<p class="set-hjelp fr-fag-hjelp">' + esc(navn
+    ? t("Tallene, S-kurven, fargene, PDF og Excel gjelder bare {0}. Storm Prosjekter får fortsatt hele bygget.", navn)
+    : t("Velg et fag for å lage rapporten bare for det – f.eks. til en underentreprenør.")) + "</p></div>";
+  return h;
+}
+function koblFilter(el) {
+  const tegnPåNytt = () => tegnRapport($("ferdigBody"));
+  el.querySelectorAll("[data-fag]").forEach(b => b.onclick = () => { visEgen = false; settFilter({ mat: b.dataset.fag, type: "" }); tegnPåNytt(); });
+  const egen = el.querySelector("#frFagEgen");
+  if (egen) egen.onclick = () => { visEgen = !visEgen; tegnPåNytt(); };
+  const ty = el.querySelector("#frFagType"), ma = el.querySelector("#frFagMat");
+  if (ty) ty.onchange = () => { const f = gjeldendeFilter(); settFilter({ mat: f.mat.startsWith("s:") ? "" : f.mat, type: ty.value }); tegnPåNytt(); };
+  if (ma) ma.onchange = () => { settFilter({ mat: ma.value, type: gjeldendeFilter().type }); tegnPåNytt(); };
 }
 
 function bar(pst, farge, plan) {
@@ -407,6 +489,7 @@ export function byttTilDeNye() {
 }
 S.ferdigByttTilDeNye = byttTilDeNye;
 
+const el2ok = (x) => !!(x && x.isConnected);
 export async function tegnRapport(el) {
   if (!el) return;
   const runde = ++malerRunde;
@@ -416,7 +499,10 @@ export async function tegnRapport(el) {
   if (runde !== malerRunde || !el.isConnected) return;
   const nValgt = valgte().length;
   const st = r.plan.status;
-  let h = '<div class="fr-tot"><div class="fr-totrad"><div><div class="set-hjelp">' + esc(t("TOTALT PROSJEKTET")) + '</div><div class="fr-stor">' + p1(r.pst) + " %</div></div>" +
+  const E2 = await elMod();
+  if (runde !== malerRunde || !el2ok(el)) return;
+  const tittel = r.utvalg ? r.utvalg.toLocaleUpperCase("nb-NO") + " · " + t("{0} OBJEKTER", r.n) : t("TOTALT PROSJEKTET");
+  let h = filterHtml(sisteUnivers, E2) + '<div class="fr-tot"><div class="fr-totrad"><div><div class="set-hjelp">' + esc(tittel) + '</div><div class="fr-stor">' + p1(r.pst) + " %</div></div>" +
     (r.plan.n ? '<div style="text-align:right"><div class="set-hjelp">' + esc(t("PLAN I DAG")) + '</div><div class="fr-stor fr-plan">' + p1(r.plan.pst) + " %</div></div>" : "") + "</div>" +
     bar(r.plan.n ? r.plan.faktiskPst : r.pst, STATUS_FARGE[st === "gra" ? "gronn" : st], r.plan.n ? r.plan.pst : null) +
     '<div class="set-hjelp">' + esc(t("{0} av {1} ferdigmeldt", r.ferdig, r.n)) +
@@ -460,6 +546,7 @@ export async function tegnRapport(el) {
     tegnFarger();
   });
   koblBytteBoks(el);
+  koblFilter(el);
   $("frIntPdf").onclick = () => last("pdf", "intern");
   $("frIntXlsx").onclick = () => last("xlsx", "intern");
   $("frStPdf").onclick = () => last("pdf", "status");
@@ -489,8 +576,9 @@ S.ferdigOppdater = oppdater;
 const fargeGruppe = new THREE.Group();
 fargeGruppe.name = "ferdigFarger";
 scene.add(fargeGruppe);
-const FARGE = { gronn: 0x3cb44b, gul: 0xe9a13b, rod: 0xef4444, gra: 0x8a929c };
-const fargeMat = (f) => new THREE.MeshBasicMaterial({ color: FARGE[f], transparent: true, opacity: f === "gra" ? 0.35 : 0.8, side: THREE.DoubleSide,
+// utenfor: det som ikke er med i «Rapport for» (fagfilteret) gråes ut (Emil 26.11)
+const FARGE = { gronn: 0x3cb44b, gul: 0xe9a13b, rod: 0xef4444, gra: 0x8a929c, utenfor: 0xc9cdd3 };
+const fargeMat = (f) => new THREE.MeshBasicMaterial({ color: FARGE[f], transparent: true, opacity: f === "gra" ? 0.35 : f === "utenfor" ? 0.88 : 0.8, side: THREE.DoubleSide,
   polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1, depthWrite: false });
 function ryddFargeMesh() {
   fargeGruppe.children.forEach(m => { if (!m.userData.delt) m.geometry.dispose(); m.material.dispose(); });
@@ -574,8 +662,11 @@ async function tegnFarger() {
   const valgtK = new Set(velgerAktiv() && S.framdriftValgteRaa ? S.framdriftValgteRaa().map(o => o.k) : []);
   if (velgerAktiv() && S.currentPropID != null) valgtK.add("id:" + S.currentPropID);
   const v = new THREE.Vector3();
-  for (const f of ["gronn", "gul", "rod", "gra"]) {
-    const rader = sisteRapport.rader.filter(x => x.farge === f && !valgtK.has(x.k) && !(VIS.ferdig === false && x.ferdig));
+  // Rapport for ett fag: resten av bygget gråes ut, så modellen viser det samme som tallene
+  const iRapport = new Set(sisteRapport.rader.map(x => x.k));
+  const utenfor = sisteRapport.utvalg ? sisteUnivers.filter(u => !iRapport.has(u.k) && !valgtK.has(u.k)) : [];
+  for (const f of ["gronn", "gul", "rod", "gra", "utenfor"]) {
+    const rader = f === "utenfor" ? utenfor : sisteRapport.rader.filter(x => x.farge === f && !valgtK.has(x.k) && !(VIS.ferdig === false && x.ferdig));
     const ider = new Set(rader.filter(x => slagFor(x.k) === "id").map(x => Number(idFor(x.k))));
     if (ider.size) {
       const pos = [];

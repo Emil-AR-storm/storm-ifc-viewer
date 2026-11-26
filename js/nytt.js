@@ -18,6 +18,14 @@ import { t } from "./i18n.js";
 
 export const NYHETER = [
   {
+    id: "2026-11-26",
+    dato: "26.11.2026",
+    kontor: [
+      "Framdrift → Rapport: «Rapport for» lager rapporten, PDF-en og Excel for ett fag (Stål, Betong …) – til underentreprenørene"
+    ],
+    bygg: []
+  },
+  {
     id: "2026-11-25",
     dato: "25.11.2026",
     kontor: [

@@ -302,19 +302,21 @@ const tidNo = (iso) => { const t = Date.parse(iso || ""); if (!Number.isFinite(t
 export const STATUS_TEKST = { gronn: "I rute", gul: "Litt bak", rod: "Forsinket", gra: "Ikke startet" };
 export const FARGE_TEKST = { gronn: "Ferdig", gul: "Pågår", rod: "Forsinket", gra: "Ikke startet" };
 
+// «Totalt prosjektet», eller «Totalt: Stål» når rapporten gjelder ett fag
+export const totalTekst = (r, tt) => (r && r.utvalg ? tt("Totalt") + ": " + r.utvalg : tt("Totalt prosjektet"));
 // Status (til mottaker): bare % ferdig per type og totalt
 export function statusRader(r, T) {
   const tt = T || ((x) => x);
   return [[tt("Elementtype"), tt("Ferdig"), tt("Totalt"), tt("% ferdig")]]
     .concat(r.typer.map(x => [tt(x.gruppe), x.ferdig, x.n, x.pst]))
-    .concat([[tt("Totalt prosjektet"), r.ferdig, r.n, r.pst]]);
+    .concat([[totalTekst(r, tt), r.ferdig, r.n, r.pst]]);
 }
 // Intern: typene med plan, trinnene, og hvert objekt
 export function internTypeRader(r, T) {
   const tt = T || ((x) => x);
   return [[tt("Elementtype"), tt("Ferdig"), tt("Totalt"), tt("% ferdig"), tt("Med plan"), tt("Plan i dag %"), tt("Faktisk (med plan) %"), tt("Avvik %-poeng"), tt("Status")]]
     .concat(r.typer.map(x => [tt(x.gruppe), x.ferdig, x.n, x.pst, x.planN, x.planN ? x.planPst : "", x.planN ? x.faktiskPlanPst : "", x.planN ? x.avvik : "", tt(STATUS_TEKST[x.status])]))
-    .concat([[tt("Totalt prosjektet"), r.ferdig, r.n, r.pst, r.plan.n, r.plan.n ? r.plan.pst : "", r.plan.n ? r.plan.faktiskPst : "", r.plan.n ? r.plan.avvik : "", tt(STATUS_TEKST[r.plan.status])]]);
+    .concat([[totalTekst(r, tt), r.ferdig, r.n, r.pst, r.plan.n, r.plan.n ? r.plan.pst : "", r.plan.n ? r.plan.faktiskPst : "", r.plan.n ? r.plan.avvik : "", tt(STATUS_TEKST[r.plan.status])]]);
 }
 export function internTrinnRader(r, T) {
   const tt = T || ((x) => x);
@@ -339,4 +341,72 @@ export function excelStil(fargeFor, kolonner) {
     const f = fargeFor(i - 1);
     return f ? EXCEL_STIL[f] || 0 : 0;
   };
+}
+
+// ═══════════ 🎯 RAPPORT FOR ETT FAG (Emil 26.11, prøvebilde C) ═══════════
+// «Underentreprenører som bare har ansvar for ett fag, trenger bare
+// framdriften for faget sitt (stål, betong …).» Rapporten kan avgrenses med
+// fagknapper (materialgruppene i modellen + SW-elementer, takplater og blikk)
+// eller «Egendefinert» med de samme nedtrekkene som Mengder (objekttype og
+// materiale). Filteret er { mat, type }:
+//   mat: "" | "g:<materialgruppe>" | "m:<materialnavn>" | "s:sw|tak|blikk"
+//   type: "" | IFC-typen uten «Ifc» («Column»)
+// matGruppe (elements.materialGruppe) sendes inn, så denne fila er ren.
+// Status til Storm Prosjekter gjelder ALLTID hele bygget.
+export const TOMT_FILTER = Object.freeze({ mat: "", type: "" });
+export function vaskFilter(f) {
+  const mat = String((f && f.mat) || "").slice(0, 120), type = String((f && f.type) || "").slice(0, 80);
+  return { mat: /^(g|m|s):/.test(mat) ? mat : "", type: /^s:/.test(mat) ? "" : type };
+}
+export const harFilter = (f) => { const v = vaskFilter(f); return !!(v.mat || v.type); };
+export function iFilter(u, f, matGruppe) {
+  const s = slagFor(u.k);
+  if (f.mat.startsWith("s:")) return s === f.mat.slice(2);
+  if (s !== "id") return false;             // SW, tak og blikk har ikke IFC-type eller materiale
+  if (f.type && (u.type || "") !== f.type) return false;
+  if (f.mat.startsWith("g:")) return (matGruppe ? matGruppe(u.mat) : "") === f.mat.slice(2);
+  if (f.mat.startsWith("m:")) return (u.mat || "") === f.mat.slice(2);
+  return true;
+}
+export function filtrerUnivers(univers, filter, matGruppe) {
+  const f = vaskFilter(filter);
+  if (!f.mat && !f.type) return univers || [];
+  return (univers || []).filter(u => u && iFilter(u, f, matGruppe));
+}
+// Fagknappene: materialgruppene (IFC) og SW/tak/blikk som finnes, flest først
+export function fagKnapper(univers, matGruppe) {
+  const tell = new Map();
+  const leggTil = (mat, navn) => { const x = tell.get(mat) || { mat, navn, n: 0 }; x.n++; tell.set(mat, x); };
+  for (const u of univers || []) {
+    const s = slagFor(u.k);
+    if (s === "id") { const g = matGruppe ? matGruppe(u.mat) : ""; if (g) leggTil("g:" + g, g); }
+    else if (SLAG_GRUPPE[s]) leggTil("s:" + s, SLAG_GRUPPE[s]);
+  }
+  return [...tell.values()].sort((a, b) => b.n - a.n || (a.navn < b.navn ? -1 : 1));
+}
+// «Egendefinert»: nedtrekkene som i Mengder. Hver liste teller innenfor det
+// ANDRE valget, så du ikke kan velge en kombinasjon som gir 0.
+export function egendefinertValg(univers, filter, matGruppe) {
+  const f = vaskFilter(filter);
+  const ifc = (univers || []).filter(u => u && slagFor(u.k) === "id");
+  const matF = f.mat.startsWith("s:") ? "" : f.mat;
+  const forType = matF ? ifc.filter(u => iFilter(u, { mat: matF, type: "" }, matGruppe)) : ifc;
+  const forMat = f.type ? ifc.filter(u => (u.type || "") === f.type) : ifc;
+  const telle = (liste, nøkkel) => { const m = new Map(); for (const u of liste) { const k = nøkkel(u); if (k == null) continue; m.set(k, (m.get(k) || 0) + 1); } return [...m.entries()].sort((a, b) => b[1] - a[1]); };
+  return {
+    alleTyper: forType.length, alleMat: forMat.length,
+    typer: telle(forType, u => u.type || ""),
+    grupper: telle(forMat, u => (matGruppe && matGruppe(u.mat)) || null),
+    materialer: telle(forMat, u => u.mat || "")
+  };
+}
+// Navnet på utvalget («Stål», «Søyler · S355»). typeNavn = elements.typeVisning.
+export function filterNavn(filter, typeNavn, T) {
+  const f = vaskFilter(filter), tt = T || ((x) => x);
+  const deler = [];
+  if (f.type) deler.push(typeNavn ? typeNavn(f.type) : f.type);
+  if (f.mat.startsWith("g:")) deler.push(tt(f.mat.slice(2)));
+  else if (f.mat.startsWith("m:")) deler.push(f.mat.slice(2) || tt("Uten materiale"));
+  else if (f.mat.startsWith("s:")) deler.push(tt(SLAG_GRUPPE[f.mat.slice(2)] || f.mat.slice(2)));
+  return deler.join(" · ");
 }

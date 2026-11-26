@@ -34,10 +34,14 @@ function prosjekt() {
   const i = S.prosjektInfo ? S.prosjektInfo() || {} : {};
   return [i.nummer, i.navn].filter(Boolean).join(" · ") || String(S.fileName || "").replace(/\.(ifc|glb)$/i, "");
 }
-export function filnavn(slag, iDag, ext) {
+export function filnavn(slag, iDag, ext, utvalg) {
   const base = String(S.fileName || "modell").replace(/\.(ifc|glb)$/i, "").replace(/[\\/:*?"<>|]/g, "-").trim();
-  return (slag === "intern" ? t("Framdriftsrapport intern") : t("Framdriftsrapport status")) + " " + base + " " + iDag + "." + ext;
+  // 🎯 Rapport for ett fag (26.11): «… status Hegdal - Stål 2026-11-26.pdf»
+  const fag = utvalg ? " - " + String(utvalg).replace(/[\\/:*?"<>|]/g, "-").trim() : "";
+  return (slag === "intern" ? t("Framdriftsrapport intern") : t("Framdriftsrapport status")) + " " + base + fag + " " + iDag + "." + ext;
 }
+// Overskriften over tittelen: «Framdriftsrapport» eller «Framdriftsrapport · Stål»
+const kicker = (r, intern) => (intern ? t("Framdriftsrapport · intern") : t("Framdriftsrapport")) + (r.utvalg ? " · " + r.utvalg : "");
 
 // ═══════════ PDF ═══════════
 function side(d, o, kicker, tittel, under) {
@@ -64,17 +68,17 @@ function tekst(d, s, x, y, o) {
 
 function statusPdf(d, r, o) {
   const x = A4.marg, B = A4.b - 2 * A4.marg, grå = rgb(pdfFarger().hjelpetekst);
-  let y = side(d, o, t("Framdriftsrapport"), t("Status {0}", norskDato(r.iDag)), t("Hvor mye som er ferdig, per elementtype og totalt"));
+  let y = side(d, o, kicker(r), t("Status {0}", norskDato(r.iDag)), t("Hvor mye som er ferdig, per elementtype og totalt"));
   // Totalen
   d.setFillColor(244, 245, 247); d.roundedRect(x, y, B, 34, 2, 2, "F");
-  tekst(d, t("Totalt prosjektet"), x + 6, y + 8, { str: 8, farge: grå, fet: true });
+  tekst(d, F.totalTekst(r, t), x + 6, y + 8, { str: 8, farge: grå, fet: true });
   tekst(d, p1(r.pst) + " %", x + 6, y + 22, { str: 26, fet: true });
   tekst(d, t("{0} av {1} ferdig", r.ferdig, r.n), x + B - 6, y + 22, { str: 10, align: "right" });
   strek(d, x + 6, y + 26, B - 12, 4, r.pst, FARGE.gronn, null);
   y += 44;
   tekst(d, t("Per elementtype"), x, y, { fet: true, str: 10 }); y += 6;
   for (const ty of r.typer) {
-    if (y > A4.h - 40) { d.addPage("a4", "portrait"); y = side(d, o, t("Framdriftsrapport"), t("Status {0}", norskDato(r.iDag))); }
+    if (y > A4.h - 40) { d.addPage("a4", "portrait"); y = side(d, o, kicker(r), t("Status {0}", norskDato(r.iDag))); }
     tekst(d, t(ty.gruppe), x, y + 4, { str: 9.5, fet: true });
     tekst(d, ty.ferdig + " / " + ty.n, x + B - 22, y + 4, { str: 8.5, farge: grå, align: "right" });
     tekst(d, p1(ty.pst) + " %", x + B, y + 4, { str: 9.5, fet: true, align: "right" });
@@ -85,7 +89,7 @@ function statusPdf(d, r, o) {
 
 function internPdf(d, r, o) {
   const x = A4.marg, B = A4.b - 2 * A4.marg, grå = rgb(pdfFarger().hjelpetekst);
-  const kick = t("Framdriftsrapport · intern");
+  const kick = kicker(r, true);
   let y = side(d, o, kick, t("Plan mot faktisk {0}", norskDato(r.iDag)), t("Den mørke streken er der Framdriftsplan sier vi skal være i dag"));
   const st = r.plan.status;
   d.setFillColor(244, 245, 247); d.roundedRect(x, y, B, 40, 2, 2, "F");
@@ -192,7 +196,7 @@ export async function lastNedPdf(r, slag) {
       hale: L(slag === "intern" ? t("Telles i antall objekter. Plan i dag regnes jevnt over hvert trinn i Framdriftsplan. Arbeidsdager = man–fre.") : t("Telles i antall objekter.")),
       hoyreTekst: L(t("Side {0} av {1}", i, n) + " · " + norskDato(r.iDag)) });
   }
-  const fil = filnavn(slag, r.iDag, "pdf");
+  const fil = filnavn(slag, r.iDag, "pdf", r.utvalg);
   lastNedFil(d.output("blob"), fil);
   return fil;
 }
@@ -216,7 +220,7 @@ export async function lastNedExcel(r, slag) {
     ark = [{ navn: t("Status"), rader: F.statusRader(r, t), bredder: [26, 10, 10, 11] }];
   }
   const data = X.lagXlsxFlere(ark, await excelToppfelt());
-  const fil = filnavn(slag, r.iDag, "xlsx");
+  const fil = filnavn(slag, r.iDag, "xlsx", r.utvalg);
   lastNedFil(new Blob([data], { type: X.XLSX_MIME }), fil);
   return fil;
 }
